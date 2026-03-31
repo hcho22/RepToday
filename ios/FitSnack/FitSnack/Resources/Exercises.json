@@ -1,0 +1,1025 @@
+[
+  {
+    "id": "push_up",
+    "name": "push_up",
+    "displayName": "Push-Up",
+    "description": "A classic bodyweight pushing exercise that builds chest, shoulder, and tricep strength while engaging the core.",
+    "instructions": [
+      "Start in a high plank with hands slightly wider than shoulder-width apart.",
+      "Lower your chest to just above the floor, keeping elbows at a 45-degree angle from your body.",
+      "Press back up to the starting position, maintaining a straight line from head to heels.",
+      "Keep your core braced throughout the movement."
+    ],
+    "commonMistakes": [
+      "Letting the hips sag or pike upward.",
+      "Flaring elbows out to 90 degrees, stressing the shoulder joint.",
+      "Not reaching full lockout at the top of the movement."
+    ],
+    "muscleGroups": {
+      "primary": ["chest", "triceps", "shoulders"],
+      "secondary": ["core", "forearms"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": ["incline_push_up"],
+    "progressions": ["diamond_push_up", "pike_push_up"],
+    "metValue": 3.8,
+    "tags": ["bodyweight", "upper_body", "chest", "no_equipment"]
+  },
+  {
+    "id": "diamond_push_up",
+    "name": "diamond_push_up",
+    "displayName": "Diamond Push-Up",
+    "description": "A push-up variation with hands close together forming a diamond shape, placing greater emphasis on the triceps.",
+    "instructions": [
+      "Start in a high plank position with hands together under your chest, thumbs and index fingers touching to form a diamond shape.",
+      "Lower your chest toward your hands, keeping elbows close to your sides.",
+      "Press back up to full arm extension.",
+      "Keep your body in a rigid straight line throughout."
+    ],
+    "commonMistakes": [
+      "Allowing the hips to sag or rise during the movement.",
+      "Letting elbows flare outward instead of tracking back along the torso."
+    ],
+    "muscleGroups": {
+      "primary": ["triceps", "chest"],
+      "secondary": ["shoulders", "core"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": ["push_up"],
+    "progressions": [],
+    "metValue": 4.0,
+    "tags": ["bodyweight", "upper_body", "triceps", "no_equipment"]
+  },
+  {
+    "id": "pike_push_up",
+    "name": "pike_push_up",
+    "displayName": "Pike Push-Up",
+    "description": "A push-up variation performed in a pike position that shifts load to the shoulders, mimicking an overhead press.",
+    "instructions": [
+      "Start in a downward-dog position with hips raised high and body forming an inverted V.",
+      "Bend your elbows to lower the top of your head toward the floor.",
+      "Press back up by extending your elbows, returning to the pike position.",
+      "Keep feet hip-width apart and core engaged throughout."
+    ],
+    "commonMistakes": [
+      "Not maintaining a high enough hip position, reducing shoulder engagement.",
+      "Letting the elbows flare out excessively rather than tracking slightly back."
+    ],
+    "muscleGroups": {
+      "primary": ["shoulders"],
+      "secondary": ["triceps", "chest", "core"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": ["push_up"],
+    "progressions": ["dumbbell_shoulder_press"],
+    "metValue": 4.0,
+    "tags": ["bodyweight", "upper_body", "shoulders", "no_equipment"]
+  },
+  {
+    "id": "dips_on_chair",
+    "name": "dips_on_chair",
+    "displayName": "Chair Dips",
+    "description": "A tricep-focused dip performed with hands placed on the edge of a chair or bench, suitable for home workouts.",
+    "instructions": [
+      "Sit on the edge of a sturdy chair and place your hands beside your hips, fingers pointing forward.",
+      "Slide your hips off the chair with legs extended or bent at 90 degrees.",
+      "Bend your elbows to lower your body until upper arms are roughly parallel to the floor.",
+      "Press through your palms to return to the starting position."
+    ],
+    "commonMistakes": [
+      "Allowing the shoulders to shrug up toward the ears at the bottom.",
+      "Bending the elbows outward instead of tracking them straight back."
+    ],
+    "muscleGroups": {
+      "primary": ["triceps"],
+      "secondary": ["chest", "shoulders"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["bench"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": ["push_up"],
+    "progressions": ["diamond_push_up"],
+    "metValue": 3.5,
+    "tags": ["bodyweight", "upper_body", "triceps", "chair"]
+  },
+  {
+    "id": "incline_push_up",
+    "name": "incline_push_up",
+    "displayName": "Incline Push-Up",
+    "description": "A beginner-friendly push-up variation performed with hands elevated on a surface, reducing the percentage of bodyweight lifted.",
+    "instructions": [
+      "Place your hands on an elevated surface such as a bench, step, or countertop, slightly wider than shoulder-width.",
+      "Walk your feet back so your body forms a straight line from head to heels.",
+      "Lower your chest toward the surface by bending your elbows.",
+      "Push back up to full arm extension."
+    ],
+    "commonMistakes": [
+      "Sagging the hips, which removes core engagement.",
+      "Using a surface that is too low, making the movement too similar to a flat push-up before you are ready."
+    ],
+    "muscleGroups": {
+      "primary": ["chest", "triceps"],
+      "secondary": ["shoulders", "core"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": ["bench"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": ["push_up"],
+    "metValue": 3.0,
+    "tags": ["bodyweight", "upper_body", "beginner", "chest"]
+  },
+  {
+    "id": "superman",
+    "name": "superman",
+    "displayName": "Superman",
+    "description": "A prone bodyweight exercise that strengthens the posterior chain, particularly the lower back and glutes.",
+    "instructions": [
+      "Lie face down on a mat with arms extended overhead and legs straight.",
+      "Simultaneously lift your arms, chest, and legs off the floor as high as comfortable.",
+      "Hold briefly at the top, squeezing your glutes and back muscles.",
+      "Slowly lower back to the starting position."
+    ],
+    "commonMistakes": [
+      "Holding the breath instead of breathing steadily.",
+      "Jerking the body up rather than lifting with controlled muscle contraction."
+    ],
+    "muscleGroups": {
+      "primary": ["lower_back", "glutes"],
+      "secondary": ["upper_back", "hamstrings"]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": ["dumbbell_rdl"],
+    "metValue": 3.0,
+    "tags": ["bodyweight", "posterior_chain", "lower_back", "no_equipment"]
+  },
+  {
+    "id": "bodyweight_squat",
+    "name": "bodyweight_squat",
+    "displayName": "Bodyweight Squat",
+    "description": "A fundamental lower-body exercise that builds quad, glute, and hamstring strength with no equipment.",
+    "instructions": [
+      "Stand with feet shoulder-width apart and toes pointed slightly outward.",
+      "Hinge at your hips and bend your knees to lower until thighs are parallel to the floor.",
+      "Keep your chest tall and knees tracking over your toes.",
+      "Drive through your heels to return to standing."
+    ],
+    "commonMistakes": [
+      "Letting the knees cave inward during the descent or ascent.",
+      "Rounding the lower back at the bottom of the squat.",
+      "Rising onto the toes instead of keeping heels grounded."
+    ],
+    "muscleGroups": {
+      "primary": ["quads", "glutes"],
+      "secondary": ["hamstrings", "core", "calves"]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": 15,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [],
+    "progressions": ["goblet_squat", "dumbbell_split_squat"],
+    "metValue": 3.5,
+    "tags": ["bodyweight", "lower_body", "quads", "no_equipment"]
+  },
+  {
+    "id": "reverse_lunge",
+    "name": "reverse_lunge",
+    "displayName": "Reverse Lunge",
+    "description": "A unilateral lower-body exercise that targets the quads and glutes while improving balance and hip stability.",
+    "instructions": [
+      "Stand tall with feet hip-width apart and hands on your hips or at your sides.",
+      "Step one foot straight back and lower your back knee toward the floor.",
+      "Keep your front shin vertical and chest upright.",
+      "Push through your front heel to return to standing, then repeat on the other side."
+    ],
+    "commonMistakes": [
+      "Letting the front knee drift past the toes, increasing joint stress.",
+      "Leaning the torso forward instead of staying upright."
+    ],
+    "muscleGroups": {
+      "primary": ["quads", "glutes"],
+      "secondary": ["hamstrings", "core", "hip_flexors"]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["none"],
+    "isUnilateral": true,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": ["bodyweight_squat"],
+    "progressions": ["dumbbell_split_squat"],
+    "metValue": 4.0,
+    "tags": ["bodyweight", "lower_body", "unilateral", "no_equipment"]
+  },
+  {
+    "id": "glute_bridge",
+    "name": "glute_bridge",
+    "displayName": "Glute Bridge",
+    "description": "A floor-based hip extension exercise that isolates the glutes and strengthens the posterior chain.",
+    "instructions": [
+      "Lie on your back with knees bent and feet flat on the floor, hip-width apart.",
+      "Squeeze your glutes and drive your hips up until your body forms a straight line from knees to shoulders.",
+      "Hold at the top for one to two seconds, maintaining glute contraction.",
+      "Lower your hips back to the floor with control."
+    ],
+    "commonMistakes": [
+      "Hyperextending the lower back instead of using the glutes to drive the movement.",
+      "Letting the knees collapse inward at the top of the bridge."
+    ],
+    "muscleGroups": {
+      "primary": ["glutes"],
+      "secondary": ["hamstrings", "lower_back", "core"]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": 15,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [],
+    "progressions": ["dumbbell_rdl"],
+    "metValue": 3.0,
+    "tags": ["bodyweight", "lower_body", "glutes", "floor"]
+  },
+  {
+    "id": "step_up",
+    "name": "step_up",
+    "displayName": "Step-Up",
+    "description": "A unilateral lower-body exercise using a step or bench that builds quad and glute strength while improving balance.",
+    "instructions": [
+      "Stand facing a step or bench that is roughly knee height.",
+      "Place one foot fully on the step and drive through that heel to lift your body up.",
+      "Bring the trailing foot up to stand on the step, then step back down with control.",
+      "Complete all reps on one side before switching."
+    ],
+    "commonMistakes": [
+      "Pushing off the back foot instead of driving purely through the front leg.",
+      "Letting the front knee cave inward as you step up."
+    ],
+    "muscleGroups": {
+      "primary": ["quads", "glutes"],
+      "secondary": ["hamstrings", "calves", "core"]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["bench"],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": ["reverse_lunge"],
+    "progressions": ["dumbbell_split_squat"],
+    "metValue": 4.5,
+    "tags": ["bodyweight", "lower_body", "unilateral", "bench"]
+  },
+  {
+    "id": "calf_raise",
+    "name": "calf_raise",
+    "displayName": "Calf Raise",
+    "description": "An isolation exercise for the calf muscles performed by rising onto the toes from a standing position.",
+    "instructions": [
+      "Stand with feet hip-width apart, toes pointing forward.",
+      "Slowly rise onto the balls of your feet as high as possible.",
+      "Hold briefly at the top, then lower your heels back to the floor with control.",
+      "For added range, perform on the edge of a step."
+    ],
+    "commonMistakes": [
+      "Rushing through the movement without achieving full range of motion.",
+      "Rolling the ankles outward instead of rising straight up."
+    ],
+    "muscleGroups": {
+      "primary": ["calves"],
+      "secondary": []
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": 15,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.5,
+    "tags": ["bodyweight", "lower_body", "calves", "no_equipment"]
+  },
+  {
+    "id": "lateral_lunge",
+    "name": "lateral_lunge",
+    "displayName": "Lateral Lunge",
+    "description": "A side-to-side lunge that targets the inner thighs and glutes while improving hip mobility.",
+    "instructions": [
+      "Stand with feet together and hands clasped in front of your chest.",
+      "Take a wide step to one side and sink your hips back and down over that foot, keeping the opposite leg straight.",
+      "Push through the bent leg's heel to return to the starting position.",
+      "Alternate sides each rep."
+    ],
+    "commonMistakes": [
+      "Allowing the stepping knee to cave inward.",
+      "Leaning the torso too far forward instead of sitting the hips back."
+    ],
+    "muscleGroups": {
+      "primary": ["quads", "glutes", "adductors"],
+      "secondary": ["hamstrings", "abductors", "core"]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["none"],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": ["bodyweight_squat"],
+    "progressions": ["goblet_squat"],
+    "metValue": 4.0,
+    "tags": ["bodyweight", "lower_body", "adductors", "no_equipment"]
+  },
+  {
+    "id": "plank",
+    "name": "plank",
+    "displayName": "Plank",
+    "description": "An isometric core exercise that builds stability and endurance throughout the entire trunk.",
+    "instructions": [
+      "Place forearms on the floor with elbows directly under shoulders, hands flat or clasped.",
+      "Extend your legs behind you, resting on your toes.",
+      "Squeeze your glutes and brace your core to maintain a straight line from head to heels.",
+      "Hold the position while breathing steadily."
+    ],
+    "commonMistakes": [
+      "Letting the hips sag, placing stress on the lower back.",
+      "Piking the hips upward, reducing core activation.",
+      "Holding the breath instead of breathing throughout the hold."
+    ],
+    "muscleGroups": {
+      "primary": ["core"],
+      "secondary": ["shoulders", "glutes", "lower_back"]
+    },
+    "movementPattern": "plank",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": ["hollow_hold"],
+    "metValue": 3.5,
+    "tags": ["bodyweight", "core", "isometric", "no_equipment"]
+  },
+  {
+    "id": "dead_bug",
+    "name": "dead_bug",
+    "displayName": "Dead Bug",
+    "description": "A supine core stability exercise that trains anti-extension strength while improving coordination.",
+    "instructions": [
+      "Lie on your back with arms pointing toward the ceiling and knees bent at 90 degrees above your hips.",
+      "Brace your core to press your lower back into the floor.",
+      "Slowly lower one arm overhead and extend the opposite leg simultaneously.",
+      "Return to the start and repeat on the other side."
+    ],
+    "commonMistakes": [
+      "Letting the lower back arch away from the floor as limbs extend.",
+      "Moving too quickly and losing spinal stability."
+    ],
+    "muscleGroups": {
+      "primary": ["core"],
+      "secondary": ["hip_flexors", "lower_back"]
+    },
+    "movementPattern": "plank",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [],
+    "progressions": ["hollow_hold"],
+    "metValue": 3.0,
+    "tags": ["bodyweight", "core", "stability", "floor"]
+  },
+  {
+    "id": "bicycle_crunch",
+    "name": "bicycle_crunch",
+    "displayName": "Bicycle Crunch",
+    "description": "A dynamic core exercise that targets the obliques and rectus abdominis through a rotational cycling motion.",
+    "instructions": [
+      "Lie on your back with hands lightly behind your head and knees bent at 90 degrees off the floor.",
+      "Bring one knee toward your chest while rotating the opposite elbow toward it.",
+      "Simultaneously extend the other leg out straight.",
+      "Alternate sides in a controlled, smooth cycling motion."
+    ],
+    "commonMistakes": [
+      "Pulling on the neck with the hands instead of using the core to rotate.",
+      "Rushing the movement and losing rotational range."
+    ],
+    "muscleGroups": {
+      "primary": ["obliques", "core"],
+      "secondary": ["hip_flexors"]
+    },
+    "movementPattern": "rotation",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": 20,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 3.8,
+    "tags": ["bodyweight", "core", "obliques", "floor"]
+  },
+  {
+    "id": "mountain_climber",
+    "name": "mountain_climber",
+    "displayName": "Mountain Climber",
+    "description": "A dynamic full-body exercise combining core stability with cardio, performed from a high plank position.",
+    "instructions": [
+      "Start in a high plank position with wrists under shoulders and body in a straight line.",
+      "Drive one knee toward your chest, then quickly switch legs.",
+      "Keep your hips low and level throughout the movement.",
+      "Maintain a braced core and steady breathing."
+    ],
+    "commonMistakes": [
+      "Allowing the hips to bounce up with each knee drive.",
+      "Placing the hands too far forward, which shifts weight away from the core."
+    ],
+    "muscleGroups": {
+      "primary": ["core", "hip_flexors"],
+      "secondary": ["shoulders", "chest", "quads"]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 3,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": ["plank"],
+    "progressions": [],
+    "metValue": 8.0,
+    "tags": ["bodyweight", "core", "cardio", "full_body"]
+  },
+  {
+    "id": "hollow_hold",
+    "name": "hollow_hold",
+    "displayName": "Hollow Hold",
+    "description": "An advanced isometric core exercise that builds deep abdominal strength and body tension.",
+    "instructions": [
+      "Lie on your back and press your lower back firmly into the floor.",
+      "Raise your legs to about 30-45 degrees and lift your shoulders off the floor.",
+      "Extend your arms overhead, keeping them close to your ears.",
+      "Hold this banana-shaped position, breathing steadily."
+    ],
+    "commonMistakes": [
+      "Letting the lower back arch off the floor, indicating the core is not braced enough.",
+      "Raising the legs too high, which reduces the difficulty and core challenge."
+    ],
+    "muscleGroups": {
+      "primary": ["core"],
+      "secondary": ["hip_flexors", "lower_back"]
+    },
+    "movementPattern": "plank",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 20,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": ["plank", "dead_bug"],
+    "progressions": [],
+    "metValue": 3.5,
+    "tags": ["bodyweight", "core", "isometric", "advanced"]
+  },
+  {
+    "id": "dumbbell_shoulder_press",
+    "name": "dumbbell_shoulder_press",
+    "displayName": "Dumbbell Shoulder Press",
+    "description": "A seated or standing overhead pressing movement that builds shoulder size and strength.",
+    "instructions": [
+      "Hold a dumbbell in each hand at shoulder height with palms facing forward.",
+      "Press the dumbbells directly overhead until your arms are fully extended.",
+      "Lower the weights back to shoulder height with control.",
+      "Keep your core braced and avoid arching the lower back."
+    ],
+    "commonMistakes": [
+      "Arching the lower back excessively to compensate for tight shoulders.",
+      "Pressing the dumbbells at an angle rather than straight overhead."
+    ],
+    "muscleGroups": {
+      "primary": ["shoulders"],
+      "secondary": ["triceps", "upper_back", "core"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["dumbbells"],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": ["pike_push_up"],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": ["dumbbell", "upper_body", "shoulders", "pressing"]
+  },
+  {
+    "id": "dumbbell_row",
+    "name": "dumbbell_row",
+    "displayName": "Dumbbell Row",
+    "description": "A unilateral pulling exercise that develops upper back, lat, and bicep strength.",
+    "instructions": [
+      "Place one hand and same-side knee on a bench for support, holding a dumbbell in the opposite hand.",
+      "Let the dumbbell hang at arm's length with a neutral grip.",
+      "Pull the dumbbell up toward your hip, driving the elbow straight back.",
+      "Lower the dumbbell under control and repeat for all reps before switching sides."
+    ],
+    "commonMistakes": [
+      "Rotating the torso to generate momentum instead of pulling with the back.",
+      "Pulling the dumbbell toward the chest rather than the hip, reducing lat engagement."
+    ],
+    "muscleGroups": {
+      "primary": ["upper_back"],
+      "secondary": ["biceps", "forearms", "core"]
+    },
+    "movementPattern": "pull",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["dumbbells", "bench"],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": ["dumbbell", "upper_body", "back", "pulling"]
+  },
+  {
+    "id": "dumbbell_curl",
+    "name": "dumbbell_curl",
+    "displayName": "Dumbbell Bicep Curl",
+    "description": "An isolation exercise for the biceps performed with dumbbells in a standing or seated position.",
+    "instructions": [
+      "Stand holding a dumbbell in each hand with arms extended and palms facing forward.",
+      "Keeping your elbows tucked at your sides, curl both dumbbells up toward your shoulders.",
+      "Squeeze your biceps at the top of the movement.",
+      "Lower the weights slowly back to the starting position."
+    ],
+    "commonMistakes": [
+      "Swinging the torso to help lift the weight, taking tension off the biceps.",
+      "Letting the elbows drift forward during the curl."
+    ],
+    "muscleGroups": {
+      "primary": ["biceps"],
+      "secondary": ["forearms"]
+    },
+    "movementPattern": "pull",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": ["dumbbells"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 3.5,
+    "tags": ["dumbbell", "upper_body", "biceps", "isolation"]
+  },
+  {
+    "id": "dumbbell_lateral_raise",
+    "name": "dumbbell_lateral_raise",
+    "displayName": "Dumbbell Lateral Raise",
+    "description": "A shoulder isolation exercise that targets the medial deltoid by raising dumbbells out to the sides.",
+    "instructions": [
+      "Stand with a dumbbell in each hand at your sides, palms facing inward.",
+      "With a slight bend in the elbows, raise both arms out to the sides until they reach shoulder height.",
+      "Pause briefly at the top with a slight forward tilt of the dumbbells.",
+      "Lower the weights slowly back to your sides."
+    ],
+    "commonMistakes": [
+      "Using too much weight and swinging the body to initiate the lift.",
+      "Shrugging the shoulders up rather than lifting through the arms."
+    ],
+    "muscleGroups": {
+      "primary": ["shoulders"],
+      "secondary": ["upper_back", "forearms"]
+    },
+    "movementPattern": "push",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["dumbbells"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": ["dumbbell_shoulder_press"],
+    "metValue": 3.0,
+    "tags": ["dumbbell", "upper_body", "shoulders", "isolation"]
+  },
+  {
+    "id": "goblet_squat",
+    "name": "goblet_squat",
+    "displayName": "Goblet Squat",
+    "description": "A squat variation holding a dumbbell or kettlebell at chest height that promotes an upright torso and deep squat mechanics.",
+    "instructions": [
+      "Hold a dumbbell vertically by one end at chest height, elbows pointing down.",
+      "Stand with feet shoulder-width apart and toes turned slightly outward.",
+      "Squat down until your elbows touch the inside of your knees, keeping your chest tall.",
+      "Drive through your heels to return to standing."
+    ],
+    "commonMistakes": [
+      "Letting the torso lean forward excessively rather than staying upright.",
+      "Knees caving inward at the bottom of the squat."
+    ],
+    "muscleGroups": {
+      "primary": ["quads", "glutes"],
+      "secondary": ["hamstrings", "core", "adductors"]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": ["dumbbells"],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": ["bodyweight_squat"],
+    "progressions": ["dumbbell_split_squat"],
+    "metValue": 5.5,
+    "tags": ["dumbbell", "lower_body", "quads", "glutes"]
+  },
+  {
+    "id": "dumbbell_rdl",
+    "name": "dumbbell_rdl",
+    "displayName": "Dumbbell Romanian Deadlift",
+    "description": "A hip hinge movement with dumbbells that targets the hamstrings and glutes through a controlled lowering phase.",
+    "instructions": [
+      "Stand holding dumbbells in front of your thighs with a neutral grip.",
+      "Hinge at your hips, pushing them back, and lower the dumbbells along your legs.",
+      "Keep a slight bend in your knees and a flat back throughout.",
+      "Drive your hips forward to return to standing, squeezing your glutes at the top."
+    ],
+    "commonMistakes": [
+      "Rounding the lower back as the dumbbells descend.",
+      "Bending the knees too much, turning the movement into a squat."
+    ],
+    "muscleGroups": {
+      "primary": ["hamstrings", "glutes"],
+      "secondary": ["lower_back", "core", "forearms"]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": ["dumbbells"],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": ["glute_bridge", "superman"],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": ["dumbbell", "lower_body", "hamstrings", "hinge"]
+  },
+  {
+    "id": "dumbbell_split_squat",
+    "name": "dumbbell_split_squat",
+    "displayName": "Dumbbell Split Squat",
+    "description": "A unilateral lunge-pattern exercise with dumbbells that develops single-leg strength and stability.",
+    "instructions": [
+      "Hold a dumbbell in each hand and step one foot forward and one foot back into a staggered stance.",
+      "Lower your back knee toward the floor while keeping your front shin vertical.",
+      "Keep your torso upright and core braced throughout.",
+      "Press through your front heel to return to the top position."
+    ],
+    "commonMistakes": [
+      "Placing the feet too close together, causing balance issues.",
+      "Letting the front knee track inward rather than staying over the second toe."
+    ],
+    "muscleGroups": {
+      "primary": ["quads", "glutes"],
+      "secondary": ["hamstrings", "core", "hip_flexors"]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": ["dumbbells"],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": ["reverse_lunge"],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": ["dumbbell", "lower_body", "unilateral", "quads"]
+  },
+  {
+    "id": "arm_circles",
+    "name": "arm_circles",
+    "displayName": "Arm Circles",
+    "description": "A dynamic shoulder warm-up exercise that increases blood flow and mobility in the shoulder joint.",
+    "instructions": [
+      "Stand with feet shoulder-width apart and extend both arms out to the sides at shoulder height.",
+      "Make small forward circles gradually increasing to large circles.",
+      "After 15 seconds, reverse the direction.",
+      "Keep your posture tall and core lightly engaged."
+    ],
+    "commonMistakes": [
+      "Tensing the shoulders and neck instead of staying relaxed.",
+      "Skipping the direction reversal, which limits full shoulder mobility."
+    ],
+    "muscleGroups": {
+      "primary": ["shoulders"],
+      "secondary": ["upper_back"]
+    },
+    "movementPattern": "rotation",
+    "category": "warmup",
+    "difficulty": 1,
+    "equipment": ["none"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 1,
+    "restBetweenSetsSeconds": 15,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.5,
+    "tags": ["warmup", "shoulders", "mobility", "no_equipment"]
+  },
+  {
+    "id": "leg_swings",
+    "name": "leg_swings",
+    "displayName": "Leg Swings",
+    "description": "A dynamic lower-body warm-up that mobilizes the hip joint through forward-back and lateral swinging motions.",
+    "instructions": [
+      "Stand on one leg, holding a wall or sturdy surface for balance.",
+      "Swing the free leg forward and back in a controlled arc, gradually increasing range.",
+      "After 15 seconds, switch to lateral swings across the body.",
+      "Repeat on the other leg."
+    ],
+    "commonMistakes": [
+      "Swinging too aggressively before the hip is warmed up.",
+      "Allowing the standing hip to shift rather than staying stable."
+    ],
+    "muscleGroups": {
+      "primary": ["hip_flexors", "hamstrings"],
+      "secondary": ["glutes", "adductors", "abductors"]
+    },
+    "movementPattern": "hinge",
+    "category": "warmup",
+    "difficulty": 1,
+    "equipment": ["none"],
+    "isUnilateral": true,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 1,
+    "restBetweenSetsSeconds": 15,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.5,
+    "tags": ["warmup", "hips", "mobility", "no_equipment"]
+  },
+  {
+    "id": "cat_cow",
+    "name": "cat_cow",
+    "displayName": "Cat-Cow",
+    "description": "A gentle spinal mobility exercise performed on all fours that warms up the spine and core.",
+    "instructions": [
+      "Begin on all fours with wrists under shoulders and knees under hips.",
+      "Inhale as you drop your belly toward the floor and lift your head and tailbone (cow).",
+      "Exhale as you round your spine toward the ceiling and tuck your chin and pelvis (cat).",
+      "Flow between positions slowly, coordinating movement with your breath."
+    ],
+    "commonMistakes": [
+      "Rushing through the movement without using the breath to guide it.",
+      "Moving only through the lower back rather than mobilizing the entire spine."
+    ],
+    "muscleGroups": {
+      "primary": ["lower_back", "core"],
+      "secondary": ["upper_back"]
+    },
+    "movementPattern": "rotation",
+    "category": "warmup",
+    "difficulty": 1,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 1,
+    "restBetweenSetsSeconds": 15,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.0,
+    "tags": ["warmup", "spine", "mobility", "yoga_mat"]
+  },
+  {
+    "id": "childs_pose",
+    "name": "childs_pose",
+    "displayName": "Child's Pose",
+    "description": "A restorative yoga stretch that releases tension in the lower back, hips, and shoulders.",
+    "instructions": [
+      "Kneel on a mat, sit your hips back toward your heels, and extend your arms forward on the floor.",
+      "Lower your chest and forehead toward the ground.",
+      "Breathe deeply and allow your hips and lower back to relax with each exhale.",
+      "Hold the position for the full duration."
+    ],
+    "commonMistakes": [
+      "Holding the breath instead of using deep breathing to deepen the stretch.",
+      "Not sitting the hips far enough back, reducing the stretch in the lower back."
+    ],
+    "muscleGroups": {
+      "primary": ["lower_back", "hip_flexors"],
+      "secondary": ["shoulders", "upper_back"]
+    },
+    "movementPattern": "plank",
+    "category": "cooldown",
+    "difficulty": 1,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 1,
+    "restBetweenSetsSeconds": 15,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.0,
+    "tags": ["cooldown", "flexibility", "lower_back", "yoga"]
+  },
+  {
+    "id": "standing_quad_stretch",
+    "name": "standing_quad_stretch",
+    "displayName": "Standing Quad Stretch",
+    "description": "A standing stretch targeting the quadriceps, performed by pulling one foot toward the glutes.",
+    "instructions": [
+      "Stand on one foot, using a wall for balance if needed.",
+      "Bend the other knee and grasp the ankle or foot behind you.",
+      "Pull your heel toward your glutes until you feel a stretch in the front of the thigh.",
+      "Hold for the full duration, then switch legs."
+    ],
+    "commonMistakes": [
+      "Letting the knee of the stretching leg flare outward rather than pointing straight down.",
+      "Leaning forward at the hips instead of standing tall."
+    ],
+    "muscleGroups": {
+      "primary": ["quads"],
+      "secondary": ["hip_flexors"]
+    },
+    "movementPattern": "plank",
+    "category": "cooldown",
+    "difficulty": 1,
+    "equipment": ["none"],
+    "isUnilateral": true,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 1,
+    "restBetweenSetsSeconds": 15,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.0,
+    "tags": ["cooldown", "flexibility", "quads", "standing"]
+  },
+  {
+    "id": "seated_hamstring_stretch",
+    "name": "seated_hamstring_stretch",
+    "displayName": "Seated Hamstring Stretch",
+    "description": "A floor-based stretch that targets the hamstrings, performed from a seated forward-fold position.",
+    "instructions": [
+      "Sit on the floor with both legs extended straight in front of you.",
+      "Sit tall and hinge forward from your hips, reaching your hands toward your feet.",
+      "Hold the position when you feel a comfortable stretch in the back of your thighs.",
+      "Breathe deeply and try to lengthen your spine with each inhale."
+    ],
+    "commonMistakes": [
+      "Rounding the back from the upper spine rather than hinging from the hips.",
+      "Forcing the stretch by pulling aggressively, which can cause the hamstrings to tighten as a protective response."
+    ],
+    "muscleGroups": {
+      "primary": ["hamstrings"],
+      "secondary": ["lower_back", "calves"]
+    },
+    "movementPattern": "hinge",
+    "category": "cooldown",
+    "difficulty": 1,
+    "equipment": ["yoga_mat"],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 1,
+    "restBetweenSetsSeconds": 15,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [],
+    "metValue": 2.0,
+    "tags": ["cooldown", "flexibility", "hamstrings", "floor"]
+  }
+]
