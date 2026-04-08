@@ -90,12 +90,22 @@ Each story should be small enough to implement in one focused session.
 - [ ] Another criterion
 - [ ] Typecheck/lint passes
 - [ ] **[UI stories only]** Verify in browser using dev-browser skill
+
+**Validation Test:**
+
+- **Setup:** [Preconditions or test data needed]
+- **Steps:**
+  1. [Concrete action to perform]
+  2. [Next action]
+- **Expected Result:** [What should happen if the story is implemented correctly]
+- **Failure Indicator:** [What would indicate the implementation is broken]
 ```
 
 **Important:**
 
 - Acceptance criteria must be verifiable, not vague. "Works correctly" is bad. "Button shows confirmation dialog before deleting" is good.
 - **For any story with UI changes:** Always include "Verify in browser using dev-browser skill" as acceptance criteria. This ensures visual verification of frontend work.
+- **Every user story must include a Validation Test.** This is a short, concrete, manually runnable test that proves the story works end-to-end. It should describe the setup, steps, expected result, and what failure looks like. Think of it as a mini QA script — specific enough that anyone (including an AI agent) can execute it without guessing.
 
 ### 4. Functional Requirements
 
@@ -150,7 +160,7 @@ The PRD reader may be a junior developer or AI agent. Therefore:
 ## Output
 
 - **Format:** Markdown (`.md`)
-- **Location:** `.agent/Tasks/`
+- **Location:** `.claude/agent/tasks/`
 - **Filename:** `prd-[feature-name].md` (kebab-case)
 
 ---
@@ -183,6 +193,17 @@ Add priority levels to tasks so users can focus on what matters most. Tasks can 
 - [ ] Generate and run migration successfully
 - [ ] Typecheck passes
 
+**Validation Test:**
+
+- **Setup:** Clean database with existing tasks table
+- **Steps:**
+  1. Run the migration
+  2. Insert a new task without specifying priority
+  3. Insert a task with priority set to 'high'
+  4. Query both tasks
+- **Expected Result:** First task has priority 'medium' (default). Second task has priority 'high'. No errors.
+- **Failure Indicator:** Migration fails, default is missing, or column rejects valid values
+
 ### US-002: Display priority indicator on task cards
 
 **Description:** As a user, I want to see task priority at a glance so I know what needs attention first.
@@ -193,6 +214,15 @@ Add priority levels to tasks so users can focus on what matters most. Tasks can 
 - [ ] Priority visible without hovering or clicking
 - [ ] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
+
+**Validation Test:**
+
+- **Setup:** Three tasks exist, one at each priority level (high, medium, low)
+- **Steps:**
+  1. Open the task list page
+  2. Inspect each task card visually
+- **Expected Result:** High-priority task shows a red badge, medium shows yellow, low shows gray. Badges are visible without interaction.
+- **Failure Indicator:** Badges are missing, wrong color, or only appear on hover
 
 ### US-003: Add priority selector to task edit
 
@@ -206,6 +236,17 @@ Add priority levels to tasks so users can focus on what matters most. Tasks can 
 - [ ] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
+**Validation Test:**
+
+- **Setup:** A task exists with priority 'low'
+- **Steps:**
+  1. Open the task edit modal for the task
+  2. Confirm the priority dropdown shows 'low' selected
+  3. Change priority to 'high'
+  4. Close and reopen the modal
+- **Expected Result:** Dropdown updates immediately on selection. After reopening, 'high' is the selected value. Database reflects the change.
+- **Failure Indicator:** Dropdown doesn't show current value, change doesn't persist, or requires a separate save action
+
 ### US-004: Filter tasks by priority
 
 **Description:** As a user, I want to filter the task list to see only high-priority items when I'm focused.
@@ -217,6 +258,17 @@ Add priority levels to tasks so users can focus on what matters most. Tasks can 
 - [ ] Empty state message when no tasks match filter
 - [ ] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
+
+**Validation Test:**
+
+- **Setup:** Tasks exist at all three priority levels
+- **Steps:**
+  1. Open the task list (default filter: All)
+  2. Select 'High' from the filter dropdown
+  3. Copy the current URL and open it in a new tab
+  4. Change filter to a priority with no matching tasks
+- **Expected Result:** Step 2 shows only high-priority tasks. Step 3 loads with the High filter already applied. Step 4 shows an empty state message (not a blank page).
+- **Failure Indicator:** Filter doesn't hide tasks, URL doesn't preserve filter, or empty state is missing
 
 ## Functional Requirements
 
@@ -259,6 +311,7 @@ Before saving the PRD:
 - [ ] Asked clarifying questions with lettered options
 - [ ] Incorporated user's answers
 - [ ] User stories are small and specific
+- [ ] Each user story has a Validation Test with setup, steps, expected result, and failure indicator
 - [ ] Functional requirements are numbered and unambiguous
 - [ ] Non-goals section defines clear boundaries
-- [ ] Saved to `tasks/prd-[feature-name].md`
+- [ ] Saved to `.claude/agent/tasks/prd-[feature-name].md`
