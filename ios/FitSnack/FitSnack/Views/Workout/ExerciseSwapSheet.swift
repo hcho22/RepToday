@@ -5,17 +5,9 @@ struct ExerciseSwapSheet: View {
     @Environment(\.services) private var services
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedReason: String?
+    @State private var selectedReason: SwapReason?
     @State private var replacement: WorkoutExercise?
     @State private var isLoading = false
-
-    private let reasons = [
-        "Too hard",
-        "Too easy",
-        "No equipment",
-        "Injury",
-        "Other",
-    ]
 
     var body: some View {
         NavigationStack {
@@ -36,13 +28,17 @@ struct ExerciseSwapSheet: View {
                         .foregroundStyle(AppColors.textSecondary)
 
                     VStack(spacing: AppSpacing.sm) {
-                        ForEach(reasons, id: \.self) { reason in
+                        ForEach(SwapReason.allCases) { reason in
                             Button {
                                 selectedReason = reason
                                 Task { await performSwap(reason: reason) }
                             } label: {
-                                HStack {
-                                    Text(reason)
+                                HStack(spacing: AppSpacing.sm) {
+                                    Image(systemName: reason.icon)
+                                        .font(AppTypography.body)
+                                        .foregroundStyle(AppColors.brand)
+                                        .frame(width: 24)
+                                    Text(reason.displayName)
                                         .font(AppTypography.body)
                                         .foregroundStyle(AppColors.textPrimary)
                                     Spacer()
@@ -148,7 +144,7 @@ struct ExerciseSwapSheet: View {
         }
     }
 
-    private func performSwap(reason: String) async {
+    private func performSwap(reason: SwapReason) async {
         guard let services, let exerciseId = viewModel.swapTargetExerciseId else { return }
         isLoading = true
 

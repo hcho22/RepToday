@@ -119,7 +119,7 @@ final class WorkoutViewModel {
         showSwapSheet = true
     }
 
-    func swapExercise(reason: String, using services: ServiceContainer?) async {
+    func swapExercise(reason: SwapReason, using services: ServiceContainer?) async {
         guard let services, let exerciseId = currentExercise?.exerciseId else { return }
         do {
             workout = try await services.workout.swapExercise(in: workout, exerciseId: exerciseId, reason: reason)

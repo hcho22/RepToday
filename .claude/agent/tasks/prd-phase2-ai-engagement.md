@@ -366,33 +366,33 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New file `Services/Engine/ExerciseFilter.swift` — extracted and enhanced filtering logic:
+- [x] New file `Services/Engine/ExerciseFilter.swift` — extracted and enhanced filtering logic:
   - Equipment filtering (existing)
   - Injury exclusion (existing)
   - Difficulty gating by fitness level: beginner=1-2, intermediate=1-3, advanced=1-5 (existing)
   - **NEW:** Skip-frequency filtering — remove exercises skipped > 3 times (reads from `SDUserProfile.exerciseSkipCountsRaw`)
   - **NEW:** Apartment-friendly filtering — when user preference set, remove exercises where `apartmentFriendly == false`
   - **NEW:** Rating boost — exercises rated 4-5 stars by user get sorted higher in selection (reads from `SDUserProfile.exerciseRatingsRaw`)
-- [ ] New file `Services/Engine/ExerciseSelector.swift`:
+- [x] New file `Services/Engine/ExerciseSelector.swift`:
   - **NEW:** Staleness scoring — days since each movement pattern was last worked (from workout history)
   - **NEW:** Variety enforcement — don't repeat exercises from last 3 workouts
   - **NEW:** Progression chain integration — select exercise at user's current chain level
   - **NEW:** Auto-advancement detection — if `advancementCriteria` met based on recent `SetLog` data, flag for next level
-- [ ] New file `Services/Engine/MovementPatternRotation.swift`:
+- [x] New file `Services/Engine/MovementPatternRotation.swift`:
   - **NEW:** Day rotation: Push+Core (Day A) / Pull+Hinge (Day B) / Squat+Primal (Day C) / Full Body Circuit (Day D)
   - **NEW:** Selects pattern combo with highest staleness score
   - **NEW:** Never repeats yesterday's primary pattern unless only option
-- [ ] New file `Services/Engine/WorkoutAssembler.swift`:
+- [x] New file `Services/Engine/WorkoutAssembler.swift`:
   - **NEW:** Takes a `WorkoutTemplate` + selected exercises, assembles `WorkoutBlock` structures
   - **NEW:** Timing verification: `totalTime <= requestedDuration`
   - **NEW:** Overflow handling: remove last exercise or reduce sets if over budget
   - **NEW:** Underflow handling: add exercise from same pattern if under budget by > 2 min
-- [ ] `Services/WorkoutGenerationEngine.swift` refactored to a facade that orchestrates the 4 modules
-- [ ] Generate signature expanded: `func generate(duration: Int, profile: UserProfile, history: [Workout], progressionLevels: [String: Int], exercisePreferences: ExercisePreferences) -> Workout`
-- [ ] New struct `ExercisePreferences` with `skipCounts: [String: Int]` and `ratings: [String: Int]`
-- [ ] Workout generation still completes in < 100ms (on-device, no network)
-- [ ] All existing `WorkoutGenerationTests` updated to pass with new engine
-- [ ] Typecheck passes
+- [x] `Services/WorkoutGenerationEngine.swift` refactored to a facade that orchestrates the 4 modules
+- [x] Generate signature expanded: `func generate(duration: Int, profile: UserProfile, history: [Workout], progressionLevels: [String: Int], exercisePreferences: ExercisePreferences) -> Workout`
+- [x] New struct `ExercisePreferences` with `skipCounts: [String: Int]` and `ratings: [String: Int]`
+- [x] Workout generation still completes in < 100ms (on-device, no network)
+- [x] All existing `WorkoutGenerationTests` updated to pass with new engine
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -415,8 +415,8 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `ExerciseSwapSheet.swift` updated with 5 swap reasons: "Too Hard", "Too Easy", "No Equipment", "It Hurts", "Don't Like It"
-- [ ] Swap logic in `MockWorkoutService.swapExercise()` enhanced:
+- [x] `ExerciseSwapSheet.swift` updated with 5 swap reasons: "Too Hard", "Too Easy", "No Equipment", "It Hurts", "Don't Like It"
+- [x] Swap logic in `MockWorkoutService.swapExercise()` enhanced:
   - Matches by `movementPattern` (not just `category`)
   - Matches by `progressionChainId` when possible
   - "Too Hard" -> pick regression (lower `progressionOrder` in same chain)
@@ -425,9 +425,9 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
   - "Don't Like It" -> log exercise ID to skip counts, pick different exercise same pattern
   - "No Equipment" -> pick exercise with equipment user has
   - Replacement cannot be already used in current workout
-- [ ] Swap reason stored in `SDUserProfile.exerciseSkipCountsRaw` (for "Don't Like It")
-- [ ] Recalculates timing and calories after swap
-- [ ] Typecheck passes
+- [x] Swap reason stored in `SDUserProfile.exerciseSkipCountsRaw` (for "Don't Like It")
+- [x] Recalculates timing and calories after swap
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -449,10 +449,10 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `ExerciseDisplayView.swift` — `exerciseIcons` dictionary expanded for all 142 exercises
-- [ ] `movementPatternFallbackIcon` updated for all 15 new movement pattern cases
-- [ ] Any exercise without a specific icon falls back to its movement pattern icon
-- [ ] Typecheck passes
+- [x] `ExerciseDisplayView.swift` — `exerciseIcons` dictionary expanded for all 142 exercises
+- [x] `movementPatternFallbackIcon` updated for all 15 new movement pattern cases
+- [x] Any exercise without a specific icon falls back to its movement pattern icon
+- [x] Typecheck passes
 
 **Validation Test:**
 
