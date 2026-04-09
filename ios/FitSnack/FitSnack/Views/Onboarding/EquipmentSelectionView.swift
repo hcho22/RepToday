@@ -15,7 +15,7 @@ struct EquipmentSelectionView: View {
                     .foregroundStyle(AppColors.textSecondary)
 
                 FlowLayout(spacing: AppSpacing.sm) {
-                    ForEach(Equipment.allCases) { item in
+                    ForEach(Equipment.selectableCases) { item in
                         SelectableChip(
                             title: item.displayName,
                             isSelected: viewModel.availableEquipment.contains(item)

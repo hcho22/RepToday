@@ -51,7 +51,7 @@ final class ExerciseFilterTests: XCTestCase {
             id: id, name: name, displayName: name,
             description: "", instructions: ["Do the exercise"], commonMistakes: [],
             muscleGroups: Exercise.MuscleGroups(primary: primaryMuscles, secondary: secondaryMuscles),
-            movementPattern: .push, category: category, difficulty: difficulty,
+            movementPattern: .pushHorizontal, category: category, difficulty: difficulty,
             equipment: equipment, isUnilateral: false,
             defaultReps: 10, defaultDurationSeconds: nil,
             defaultSets: 3, restBetweenSetsSeconds: 30,

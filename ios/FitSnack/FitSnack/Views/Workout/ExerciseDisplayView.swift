@@ -116,18 +116,71 @@ struct ExerciseDisplayView: View {
         }
     }
 
+    // Per-exercise SF Symbol overrides for accuracy
+    private static let exerciseIcons: [String: String] = [
+        // Push — pressing motions
+        "push_up": "figure.strengthtraining.traditional",
+        "diamond_push_up": "figure.strengthtraining.traditional",
+        "pike_push_up": "figure.strengthtraining.traditional",
+        "dips_on_chair": "figure.strengthtraining.traditional",
+        "incline_push_up": "figure.strengthtraining.traditional",
+        "dumbbell_shoulder_press": "figure.strengthtraining.traditional",
+        // Dumbbell isolation
+        "dumbbell_lateral_raise": "dumbbell.fill",
+        "dumbbell_curl": "dumbbell.fill",
+        "calf_raise": "figure.step.training",
+        // Pull
+        "dumbbell_row": "figure.rowing",
+        // Squat
+        "bodyweight_squat": "figure.strengthtraining.functional",
+        "goblet_squat": "figure.strengthtraining.functional",
+        // Lunge / step
+        "reverse_lunge": "figure.step.training",
+        "step_up": "figure.stair.stepper",
+        "lateral_lunge": "figure.cross.training",
+        "dumbbell_split_squat": "figure.step.training",
+        // Hinge
+        "superman": "figure.flexibility",
+        "glute_bridge": "figure.core.training",
+        "dumbbell_rdl": "figure.strengthtraining.functional",
+        "leg_swings": "figure.flexibility",
+        "seated_hamstring_stretch": "figure.flexibility",
+        // Core / plank
+        "plank": "figure.core.training",
+        "dead_bug": "figure.core.training",
+        "hollow_hold": "figure.core.training",
+        "bicycle_crunch": "figure.core.training",
+        // Cardio
+        "mountain_climber": "figure.highintensity.intervaltraining",
+        // Rotation / mobility
+        "arm_circles": "figure.cooldown",
+        "cat_cow": "figure.flexibility",
+        // Stretching
+        "childs_pose": "figure.mind.and.body",
+        "standing_quad_stretch": "figure.cooldown",
+    ]
+
     private var iconForExercise: String {
+        Self.exerciseIcons[exercise.exercise.id] ?? movementPatternFallbackIcon
+    }
+
+    private var movementPatternFallbackIcon: String {
         switch exercise.exercise.movementPattern {
-        case .push: "figure.strengthtraining.traditional"
-        case .pull: "figure.strengthtraining.functional"
-        case .squat: "figure.squats"
+        case .pushHorizontal: "figure.strengthtraining.traditional"
+        case .pushVertical: "figure.strengthtraining.traditional"
+        case .pullVertical: "figure.rowing"
+        case .pullHorizontal: "figure.rowing"
+        case .squat: "figure.strengthtraining.functional"
         case .hinge: "figure.flexibility"
-        case .lunge: "figure.lunges"
-        case .core: "figure.core.training"
-        case .plank: "figure.core.training"
+        case .lunge: "figure.step.training"
+        case .coreAntiExtension: "figure.core.training"
+        case .coreFlexion: "figure.core.training"
+        case .coreRotation: "figure.cross.training"
+        case .coreCompression: "figure.core.training"
         case .cardio: "figure.run"
-        case .rotation: "figure.dance"
         case .carry: "figure.walk"
+        case .mobility: "figure.flexibility"
+        case .primal: "figure.mixed.cardio"
         }
     }
 }

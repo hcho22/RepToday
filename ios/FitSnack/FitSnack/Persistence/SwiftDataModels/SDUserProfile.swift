@@ -28,6 +28,14 @@ final class SDUserProfile {
     var level: Int
     var badgesRaw: String // JSON-encoded [Badge]
 
+    // Phase 2 fields
+    var streakFreezes: Int = 0
+    var lastFreezeReplenishDate: Date? = nil
+    var progressionLevelsRaw: String = "" // base64-encoded JSON [String: Int]
+    var exerciseSkipCountsRaw: String = "" // base64-encoded JSON [String: Int]
+    var exerciseRatingsRaw: String = "" // base64-encoded JSON [String: Int]
+    var preferredWorkoutTimeHour: Int? = nil
+
     init(from profile: UserProfile) {
         self.profileId = profile.id
         self.displayName = profile.displayName
@@ -51,6 +59,12 @@ final class SDUserProfile {
         self.xp = 0
         self.level = 1
         self.badgesRaw = (try? JSONEncoder().encode(Badge.allBadges).base64EncodedString()) ?? "[]"
+        self.streakFreezes = profile.streakFreezes
+        self.lastFreezeReplenishDate = profile.lastFreezeReplenishDate
+        setProgressionLevels(profile.progressionLevels)
+        setExerciseSkipCounts(profile.exerciseSkipCounts)
+        setExerciseRatings(profile.exerciseRatings)
+        self.preferredWorkoutTimeHour = profile.preferredWorkoutTimeHour
     }
 
     func toUserProfile() -> UserProfile {
@@ -74,7 +88,13 @@ final class SDUserProfile {
             typicalAvailableMinutes: typicalAvailableMinutes,
             unitSystem: UserProfile.UnitSystem(rawValue: unitSystem) ?? .imperial,
             createdAt: createdAt,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            streakFreezes: streakFreezes,
+            lastFreezeReplenishDate: lastFreezeReplenishDate,
+            progressionLevels: getProgressionLevels(),
+            exerciseSkipCounts: getExerciseSkipCounts(),
+            exerciseRatings: getExerciseRatings(),
+            preferredWorkoutTimeHour: preferredWorkoutTimeHour
         )
     }
 
@@ -91,6 +111,12 @@ final class SDUserProfile {
         self.weeklyWorkoutGoal = profile.weeklyWorkoutGoal
         self.typicalAvailableMinutes = profile.typicalAvailableMinutes
         self.unitSystem = profile.unitSystem.rawValue
+        self.streakFreezes = profile.streakFreezes
+        self.lastFreezeReplenishDate = profile.lastFreezeReplenishDate
+        setProgressionLevels(profile.progressionLevels)
+        setExerciseSkipCounts(profile.exerciseSkipCounts)
+        setExerciseRatings(profile.exerciseRatings)
+        self.preferredWorkoutTimeHour = profile.preferredWorkoutTimeHour
         self.updatedAt = Date()
     }
 
@@ -101,5 +127,42 @@ final class SDUserProfile {
 
     func setBadges(_ badges: [Badge]) {
         self.badgesRaw = (try? JSONEncoder().encode(badges).base64EncodedString()) ?? "[]"
+    }
+
+    // MARK: - Phase 2 raw field helpers
+
+    func getProgressionLevels() -> [String: Int] {
+        Self.decodeDictionary(from: progressionLevelsRaw)
+    }
+
+    func setProgressionLevels(_ levels: [String: Int]) {
+        progressionLevelsRaw = Self.encodeDictionary(levels)
+    }
+
+    func getExerciseSkipCounts() -> [String: Int] {
+        Self.decodeDictionary(from: exerciseSkipCountsRaw)
+    }
+
+    func setExerciseSkipCounts(_ counts: [String: Int]) {
+        exerciseSkipCountsRaw = Self.encodeDictionary(counts)
+    }
+
+    func getExerciseRatings() -> [String: Int] {
+        Self.decodeDictionary(from: exerciseRatingsRaw)
+    }
+
+    func setExerciseRatings(_ ratings: [String: Int]) {
+        exerciseRatingsRaw = Self.encodeDictionary(ratings)
+    }
+
+    // MARK: - Private encoding helpers
+
+    private static func encodeDictionary(_ dict: [String: Int]) -> String {
+        (try? JSONEncoder().encode(dict).base64EncodedString()) ?? ""
+    }
+
+    private static func decodeDictionary(from raw: String) -> [String: Int] {
+        guard !raw.isEmpty, let data = Data(base64Encoded: raw) else { return [:] }
+        return (try? JSONDecoder().decode([String: Int].self, from: data)) ?? [:]
     }
 }

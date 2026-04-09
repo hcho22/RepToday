@@ -10,6 +10,7 @@ final class ServiceContainer {
     let healthKit: HealthKitServiceProtocol
     let notification: NotificationServiceProtocol
     let subscription: SubscriptionServiceProtocol
+    let progression: ProgressionServiceProtocol
 
     init(
         auth: AuthServiceProtocol,
@@ -18,7 +19,8 @@ final class ServiceContainer {
         user: UserServiceProtocol,
         healthKit: HealthKitServiceProtocol,
         notification: NotificationServiceProtocol,
-        subscription: SubscriptionServiceProtocol
+        subscription: SubscriptionServiceProtocol,
+        progression: ProgressionServiceProtocol
     ) {
         self.auth = auth
         self.workout = workout
@@ -27,6 +29,7 @@ final class ServiceContainer {
         self.healthKit = healthKit
         self.notification = notification
         self.subscription = subscription
+        self.progression = progression
     }
 
     static func mock(modelContext: ModelContext) -> ServiceContainer {
@@ -36,6 +39,7 @@ final class ServiceContainer {
             modelContext: modelContext,
             exerciseService: exerciseService
         )
+        let progressionService = MockProgressionService(modelContext: modelContext)
 
         return ServiceContainer(
             auth: MockAuthService(),
@@ -44,7 +48,8 @@ final class ServiceContainer {
             user: userService,
             healthKit: MockHealthKitService(),
             notification: MockNotificationService(),
-            subscription: MockSubscriptionService()
+            subscription: MockSubscriptionService(),
+            progression: progressionService
         )
     }
 }

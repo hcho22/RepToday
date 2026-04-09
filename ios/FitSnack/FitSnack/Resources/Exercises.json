@@ -16,23 +16,42 @@
       "Not reaching full lockout at the top of the movement."
     ],
     "muscleGroups": {
-      "primary": ["chest", "triceps", "shoulders"],
-      "secondary": ["core", "forearms"]
+      "primary": [
+        "chest",
+        "triceps",
+        "shoulders"
+      ],
+      "secondary": [
+        "core",
+        "forearms"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_horizontal",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 20,
-    "regressions": ["incline_push_up"],
-    "progressions": ["diamond_push_up", "pike_push_up"],
+    "regressions": [
+      "incline_push_up"
+    ],
+    "progressions": [
+      "diamond_push_up",
+      "pike_push_up"
+    ],
     "metValue": 3.8,
-    "tags": ["bodyweight", "upper_body", "chest", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "chest",
+      "no_equipment"
+    ]
   },
   {
     "id": "diamond_push_up",
@@ -50,23 +69,38 @@
       "Letting elbows flare outward instead of tracking back along the torso."
     ],
     "muscleGroups": {
-      "primary": ["triceps", "chest"],
-      "secondary": ["shoulders", "core"]
+      "primary": [
+        "triceps",
+        "chest"
+      ],
+      "secondary": [
+        "shoulders",
+        "core"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_horizontal",
     "category": "strength",
     "difficulty": 3,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 18,
-    "regressions": ["push_up"],
+    "regressions": [
+      "push_up"
+    ],
     "progressions": [],
     "metValue": 4.0,
-    "tags": ["bodyweight", "upper_body", "triceps", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "triceps",
+      "no_equipment"
+    ]
   },
   {
     "id": "pike_push_up",
@@ -84,23 +118,40 @@
       "Letting the elbows flare out excessively rather than tracking slightly back."
     ],
     "muscleGroups": {
-      "primary": ["shoulders"],
-      "secondary": ["triceps", "chest", "core"]
+      "primary": [
+        "shoulders"
+      ],
+      "secondary": [
+        "triceps",
+        "chest",
+        "core"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_vertical",
     "category": "strength",
     "difficulty": 3,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 18,
-    "regressions": ["push_up"],
-    "progressions": ["dumbbell_shoulder_press"],
+    "regressions": [
+      "push_up"
+    ],
+    "progressions": [
+      "dumbbell_shoulder_press"
+    ],
     "metValue": 4.0,
-    "tags": ["bodyweight", "upper_body", "shoulders", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "shoulders",
+      "no_equipment"
+    ]
   },
   {
     "id": "dips_on_chair",
@@ -118,23 +169,39 @@
       "Bending the elbows outward instead of tracking them straight back."
     ],
     "muscleGroups": {
-      "primary": ["triceps"],
-      "secondary": ["chest", "shoulders"]
+      "primary": [
+        "triceps"
+      ],
+      "secondary": [
+        "chest",
+        "shoulders"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_horizontal",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["bench"],
+    "equipment": [
+      "bench"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 20,
-    "regressions": ["push_up"],
-    "progressions": ["diamond_push_up"],
+    "regressions": [
+      "push_up"
+    ],
+    "progressions": [
+      "diamond_push_up"
+    ],
     "metValue": 3.5,
-    "tags": ["bodyweight", "upper_body", "triceps", "chair"]
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "triceps",
+      "chair"
+    ]
   },
   {
     "id": "incline_push_up",
@@ -152,13 +219,21 @@
       "Using a surface that is too low, making the movement too similar to a flat push-up before you are ready."
     ],
     "muscleGroups": {
-      "primary": ["chest", "triceps"],
-      "secondary": ["shoulders", "core"]
+      "primary": [
+        "chest",
+        "triceps"
+      ],
+      "secondary": [
+        "shoulders",
+        "core"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_horizontal",
     "category": "strength",
     "difficulty": 1,
-    "equipment": ["bench"],
+    "equipment": [
+      "bench"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
@@ -166,9 +241,16 @@
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 18,
     "regressions": [],
-    "progressions": ["push_up"],
+    "progressions": [
+      "push_up"
+    ],
     "metValue": 3.0,
-    "tags": ["bodyweight", "upper_body", "beginner", "chest"]
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "beginner",
+      "chest"
+    ]
   },
   {
     "id": "superman",
@@ -186,13 +268,21 @@
       "Jerking the body up rather than lifting with controlled muscle contraction."
     ],
     "muscleGroups": {
-      "primary": ["lower_back", "glutes"],
-      "secondary": ["upper_back", "hamstrings"]
+      "primary": [
+        "lower_back",
+        "glutes"
+      ],
+      "secondary": [
+        "upper_back",
+        "hamstrings"
+      ]
     },
     "movementPattern": "hinge",
     "category": "strength",
     "difficulty": 1,
-    "equipment": ["yoga_mat"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
@@ -200,9 +290,16 @@
     "restBetweenSetsSeconds": 30,
     "estimatedTimePerSetSeconds": 20,
     "regressions": [],
-    "progressions": ["dumbbell_rdl"],
+    "progressions": [
+      "dumbbell_rdl"
+    ],
     "metValue": 3.0,
-    "tags": ["bodyweight", "posterior_chain", "lower_back", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "posterior_chain",
+      "lower_back",
+      "no_equipment"
+    ]
   },
   {
     "id": "bodyweight_squat",
@@ -221,13 +318,22 @@
       "Rising onto the toes instead of keeping heels grounded."
     ],
     "muscleGroups": {
-      "primary": ["quads", "glutes"],
-      "secondary": ["hamstrings", "core", "calves"]
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core",
+        "calves"
+      ]
     },
     "movementPattern": "squat",
     "category": "strength",
     "difficulty": 1,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 15,
     "defaultDurationSeconds": null,
@@ -235,9 +341,17 @@
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 25,
     "regressions": [],
-    "progressions": ["goblet_squat", "dumbbell_split_squat"],
+    "progressions": [
+      "goblet_squat",
+      "dumbbell_split_squat"
+    ],
     "metValue": 3.5,
-    "tags": ["bodyweight", "lower_body", "quads", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "quads",
+      "no_equipment"
+    ]
   },
   {
     "id": "reverse_lunge",
@@ -255,23 +369,41 @@
       "Leaning the torso forward instead of staying upright."
     ],
     "muscleGroups": {
-      "primary": ["quads", "glutes"],
-      "secondary": ["hamstrings", "core", "hip_flexors"]
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core",
+        "hip_flexors"
+      ]
     },
     "movementPattern": "lunge",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": true,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 25,
-    "regressions": ["bodyweight_squat"],
-    "progressions": ["dumbbell_split_squat"],
+    "regressions": [
+      "bodyweight_squat"
+    ],
+    "progressions": [
+      "dumbbell_split_squat"
+    ],
     "metValue": 4.0,
-    "tags": ["bodyweight", "lower_body", "unilateral", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "unilateral",
+      "no_equipment"
+    ]
   },
   {
     "id": "glute_bridge",
@@ -289,13 +421,21 @@
       "Letting the knees collapse inward at the top of the bridge."
     ],
     "muscleGroups": {
-      "primary": ["glutes"],
-      "secondary": ["hamstrings", "lower_back", "core"]
+      "primary": [
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "lower_back",
+        "core"
+      ]
     },
     "movementPattern": "hinge",
     "category": "strength",
     "difficulty": 1,
-    "equipment": ["yoga_mat"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 15,
     "defaultDurationSeconds": null,
@@ -303,9 +443,16 @@
     "restBetweenSetsSeconds": 30,
     "estimatedTimePerSetSeconds": 22,
     "regressions": [],
-    "progressions": ["dumbbell_rdl"],
+    "progressions": [
+      "dumbbell_rdl"
+    ],
     "metValue": 3.0,
-    "tags": ["bodyweight", "lower_body", "glutes", "floor"]
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "glutes",
+      "floor"
+    ]
   },
   {
     "id": "step_up",
@@ -323,23 +470,41 @@
       "Letting the front knee cave inward as you step up."
     ],
     "muscleGroups": {
-      "primary": ["quads", "glutes"],
-      "secondary": ["hamstrings", "calves", "core"]
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "calves",
+        "core"
+      ]
     },
     "movementPattern": "lunge",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["bench"],
+    "equipment": [
+      "bench"
+    ],
     "isUnilateral": true,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 20,
-    "regressions": ["reverse_lunge"],
-    "progressions": ["dumbbell_split_squat"],
+    "regressions": [
+      "reverse_lunge"
+    ],
+    "progressions": [
+      "dumbbell_split_squat"
+    ],
     "metValue": 4.5,
-    "tags": ["bodyweight", "lower_body", "unilateral", "bench"]
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "unilateral",
+      "bench"
+    ]
   },
   {
     "id": "calf_raise",
@@ -357,13 +522,17 @@
       "Rolling the ankles outward instead of rising straight up."
     ],
     "muscleGroups": {
-      "primary": ["calves"],
+      "primary": [
+        "calves"
+      ],
       "secondary": []
     },
-    "movementPattern": "push",
+    "movementPattern": "squat",
     "category": "strength",
     "difficulty": 1,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 15,
     "defaultDurationSeconds": null,
@@ -373,7 +542,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.5,
-    "tags": ["bodyweight", "lower_body", "calves", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "calves",
+      "no_equipment"
+    ]
   },
   {
     "id": "lateral_lunge",
@@ -391,23 +565,42 @@
       "Leaning the torso too far forward instead of sitting the hips back."
     ],
     "muscleGroups": {
-      "primary": ["quads", "glutes", "adductors"],
-      "secondary": ["hamstrings", "abductors", "core"]
+      "primary": [
+        "quads",
+        "glutes",
+        "adductors"
+      ],
+      "secondary": [
+        "hamstrings",
+        "abductors",
+        "core"
+      ]
     },
     "movementPattern": "lunge",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": true,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 22,
-    "regressions": ["bodyweight_squat"],
-    "progressions": ["goblet_squat"],
+    "regressions": [
+      "bodyweight_squat"
+    ],
+    "progressions": [
+      "goblet_squat"
+    ],
     "metValue": 4.0,
-    "tags": ["bodyweight", "lower_body", "adductors", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "adductors",
+      "no_equipment"
+    ]
   },
   {
     "id": "plank",
@@ -426,13 +619,21 @@
       "Holding the breath instead of breathing throughout the hold."
     ],
     "muscleGroups": {
-      "primary": ["core"],
-      "secondary": ["shoulders", "glutes", "lower_back"]
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "shoulders",
+        "glutes",
+        "lower_back"
+      ]
     },
-    "movementPattern": "plank",
+    "movementPattern": "core_anti_extension",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["yoga_mat"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -440,9 +641,16 @@
     "restBetweenSetsSeconds": 30,
     "estimatedTimePerSetSeconds": 30,
     "regressions": [],
-    "progressions": ["hollow_hold"],
+    "progressions": [
+      "hollow_hold"
+    ],
     "metValue": 3.5,
-    "tags": ["bodyweight", "core", "isometric", "no_equipment"]
+    "tags": [
+      "bodyweight",
+      "core",
+      "isometric",
+      "no_equipment"
+    ]
   },
   {
     "id": "dead_bug",
@@ -460,13 +668,20 @@
       "Moving too quickly and losing spinal stability."
     ],
     "muscleGroups": {
-      "primary": ["core"],
-      "secondary": ["hip_flexors", "lower_back"]
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors",
+        "lower_back"
+      ]
     },
-    "movementPattern": "plank",
+    "movementPattern": "core_anti_extension",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["yoga_mat"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": true,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
@@ -474,9 +689,16 @@
     "restBetweenSetsSeconds": 30,
     "estimatedTimePerSetSeconds": 25,
     "regressions": [],
-    "progressions": ["hollow_hold"],
+    "progressions": [
+      "hollow_hold"
+    ],
     "metValue": 3.0,
-    "tags": ["bodyweight", "core", "stability", "floor"]
+    "tags": [
+      "bodyweight",
+      "core",
+      "stability",
+      "floor"
+    ]
   },
   {
     "id": "bicycle_crunch",
@@ -494,13 +716,20 @@
       "Rushing the movement and losing rotational range."
     ],
     "muscleGroups": {
-      "primary": ["obliques", "core"],
-      "secondary": ["hip_flexors"]
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
     },
-    "movementPattern": "rotation",
+    "movementPattern": "core_rotation",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["yoga_mat"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": 20,
     "defaultDurationSeconds": null,
@@ -510,7 +739,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 3.8,
-    "tags": ["bodyweight", "core", "obliques", "floor"]
+    "tags": [
+      "bodyweight",
+      "core",
+      "obliques",
+      "floor"
+    ]
   },
   {
     "id": "mountain_climber",
@@ -528,23 +762,39 @@
       "Placing the hands too far forward, which shifts weight away from the core."
     ],
     "muscleGroups": {
-      "primary": ["core", "hip_flexors"],
-      "secondary": ["shoulders", "chest", "quads"]
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "shoulders",
+        "chest",
+        "quads"
+      ]
     },
     "movementPattern": "cardio",
     "category": "cardio",
     "difficulty": 3,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 30,
     "estimatedTimePerSetSeconds": 30,
-    "regressions": ["plank"],
+    "regressions": [
+      "plank"
+    ],
     "progressions": [],
     "metValue": 8.0,
-    "tags": ["bodyweight", "core", "cardio", "full_body"]
+    "tags": [
+      "bodyweight",
+      "core",
+      "cardio",
+      "full_body"
+    ]
   },
   {
     "id": "hollow_hold",
@@ -562,23 +812,38 @@
       "Raising the legs too high, which reduces the difficulty and core challenge."
     ],
     "muscleGroups": {
-      "primary": ["core"],
-      "secondary": ["hip_flexors", "lower_back"]
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors",
+        "lower_back"
+      ]
     },
-    "movementPattern": "plank",
+    "movementPattern": "core_anti_extension",
     "category": "strength",
     "difficulty": 4,
-    "equipment": ["yoga_mat"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 20,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 20,
-    "regressions": ["plank", "dead_bug"],
+    "regressions": [
+      "plank",
+      "dead_bug"
+    ],
     "progressions": [],
     "metValue": 3.5,
-    "tags": ["bodyweight", "core", "isometric", "advanced"]
+    "tags": [
+      "bodyweight",
+      "core",
+      "isometric",
+      "advanced"
+    ]
   },
   {
     "id": "dumbbell_shoulder_press",
@@ -596,23 +861,38 @@
       "Pressing the dumbbells at an angle rather than straight overhead."
     ],
     "muscleGroups": {
-      "primary": ["shoulders"],
-      "secondary": ["triceps", "upper_back", "core"]
+      "primary": [
+        "shoulders"
+      ],
+      "secondary": [
+        "triceps",
+        "upper_back",
+        "core"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_vertical",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["dumbbells"],
+    "equipment": [
+      "dumbbells"
+    ],
     "isUnilateral": false,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 60,
     "estimatedTimePerSetSeconds": 20,
-    "regressions": ["pike_push_up"],
+    "regressions": [
+      "pike_push_up"
+    ],
     "progressions": [],
     "metValue": 5.0,
-    "tags": ["dumbbell", "upper_body", "shoulders", "pressing"]
+    "tags": [
+      "dumbbell",
+      "upper_body",
+      "shoulders",
+      "pressing"
+    ]
   },
   {
     "id": "dumbbell_row",
@@ -630,13 +910,22 @@
       "Pulling the dumbbell toward the chest rather than the hip, reducing lat engagement."
     ],
     "muscleGroups": {
-      "primary": ["upper_back"],
-      "secondary": ["biceps", "forearms", "core"]
+      "primary": [
+        "upper_back"
+      ],
+      "secondary": [
+        "biceps",
+        "forearms",
+        "core"
+      ]
     },
-    "movementPattern": "pull",
+    "movementPattern": "pull_horizontal",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["dumbbells", "bench"],
+    "equipment": [
+      "dumbbells",
+      "bench"
+    ],
     "isUnilateral": true,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
@@ -646,7 +935,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 5.0,
-    "tags": ["dumbbell", "upper_body", "back", "pulling"]
+    "tags": [
+      "dumbbell",
+      "upper_body",
+      "back",
+      "pulling"
+    ]
   },
   {
     "id": "dumbbell_curl",
@@ -664,13 +958,19 @@
       "Letting the elbows drift forward during the curl."
     ],
     "muscleGroups": {
-      "primary": ["biceps"],
-      "secondary": ["forearms"]
+      "primary": [
+        "biceps"
+      ],
+      "secondary": [
+        "forearms"
+      ]
     },
-    "movementPattern": "pull",
+    "movementPattern": "pull_vertical",
     "category": "strength",
     "difficulty": 1,
-    "equipment": ["dumbbells"],
+    "equipment": [
+      "dumbbells"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
@@ -680,7 +980,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 3.5,
-    "tags": ["dumbbell", "upper_body", "biceps", "isolation"]
+    "tags": [
+      "dumbbell",
+      "upper_body",
+      "biceps",
+      "isolation"
+    ]
   },
   {
     "id": "dumbbell_lateral_raise",
@@ -698,13 +1003,20 @@
       "Shrugging the shoulders up rather than lifting through the arms."
     ],
     "muscleGroups": {
-      "primary": ["shoulders"],
-      "secondary": ["upper_back", "forearms"]
+      "primary": [
+        "shoulders"
+      ],
+      "secondary": [
+        "upper_back",
+        "forearms"
+      ]
     },
-    "movementPattern": "push",
+    "movementPattern": "push_horizontal",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["dumbbells"],
+    "equipment": [
+      "dumbbells"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
@@ -712,9 +1024,16 @@
     "restBetweenSetsSeconds": 45,
     "estimatedTimePerSetSeconds": 18,
     "regressions": [],
-    "progressions": ["dumbbell_shoulder_press"],
+    "progressions": [
+      "dumbbell_shoulder_press"
+    ],
     "metValue": 3.0,
-    "tags": ["dumbbell", "upper_body", "shoulders", "isolation"]
+    "tags": [
+      "dumbbell",
+      "upper_body",
+      "shoulders",
+      "isolation"
+    ]
   },
   {
     "id": "goblet_squat",
@@ -732,23 +1051,41 @@
       "Knees caving inward at the bottom of the squat."
     ],
     "muscleGroups": {
-      "primary": ["quads", "glutes"],
-      "secondary": ["hamstrings", "core", "adductors"]
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core",
+        "adductors"
+      ]
     },
     "movementPattern": "squat",
     "category": "strength",
     "difficulty": 2,
-    "equipment": ["dumbbells"],
+    "equipment": [
+      "dumbbells"
+    ],
     "isUnilateral": false,
     "defaultReps": 12,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 60,
     "estimatedTimePerSetSeconds": 22,
-    "regressions": ["bodyweight_squat"],
-    "progressions": ["dumbbell_split_squat"],
+    "regressions": [
+      "bodyweight_squat"
+    ],
+    "progressions": [
+      "dumbbell_split_squat"
+    ],
     "metValue": 5.5,
-    "tags": ["dumbbell", "lower_body", "quads", "glutes"]
+    "tags": [
+      "dumbbell",
+      "lower_body",
+      "quads",
+      "glutes"
+    ]
   },
   {
     "id": "dumbbell_rdl",
@@ -766,23 +1103,40 @@
       "Bending the knees too much, turning the movement into a squat."
     ],
     "muscleGroups": {
-      "primary": ["hamstrings", "glutes"],
-      "secondary": ["lower_back", "core", "forearms"]
+      "primary": [
+        "hamstrings",
+        "glutes"
+      ],
+      "secondary": [
+        "lower_back",
+        "core",
+        "forearms"
+      ]
     },
     "movementPattern": "hinge",
     "category": "strength",
     "difficulty": 3,
-    "equipment": ["dumbbells"],
+    "equipment": [
+      "dumbbells"
+    ],
     "isUnilateral": false,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 60,
     "estimatedTimePerSetSeconds": 20,
-    "regressions": ["glute_bridge", "superman"],
+    "regressions": [
+      "glute_bridge",
+      "superman"
+    ],
     "progressions": [],
     "metValue": 5.0,
-    "tags": ["dumbbell", "lower_body", "hamstrings", "hinge"]
+    "tags": [
+      "dumbbell",
+      "lower_body",
+      "hamstrings",
+      "hinge"
+    ]
   },
   {
     "id": "dumbbell_split_squat",
@@ -800,23 +1154,39 @@
       "Letting the front knee track inward rather than staying over the second toe."
     ],
     "muscleGroups": {
-      "primary": ["quads", "glutes"],
-      "secondary": ["hamstrings", "core", "hip_flexors"]
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core",
+        "hip_flexors"
+      ]
     },
     "movementPattern": "lunge",
     "category": "strength",
     "difficulty": 3,
-    "equipment": ["dumbbells"],
+    "equipment": [
+      "dumbbells"
+    ],
     "isUnilateral": true,
     "defaultReps": 10,
     "defaultDurationSeconds": null,
     "defaultSets": 3,
     "restBetweenSetsSeconds": 60,
     "estimatedTimePerSetSeconds": 22,
-    "regressions": ["reverse_lunge"],
+    "regressions": [
+      "reverse_lunge"
+    ],
     "progressions": [],
     "metValue": 5.5,
-    "tags": ["dumbbell", "lower_body", "unilateral", "quads"]
+    "tags": [
+      "dumbbell",
+      "lower_body",
+      "unilateral",
+      "quads"
+    ]
   },
   {
     "id": "arm_circles",
@@ -834,13 +1204,19 @@
       "Skipping the direction reversal, which limits full shoulder mobility."
     ],
     "muscleGroups": {
-      "primary": ["shoulders"],
-      "secondary": ["upper_back"]
+      "primary": [
+        "shoulders"
+      ],
+      "secondary": [
+        "upper_back"
+      ]
     },
-    "movementPattern": "rotation",
+    "movementPattern": "mobility",
     "category": "warmup",
     "difficulty": 1,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -850,7 +1226,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.5,
-    "tags": ["warmup", "shoulders", "mobility", "no_equipment"]
+    "tags": [
+      "warmup",
+      "shoulders",
+      "mobility",
+      "no_equipment"
+    ]
   },
   {
     "id": "leg_swings",
@@ -868,13 +1249,22 @@
       "Allowing the standing hip to shift rather than staying stable."
     ],
     "muscleGroups": {
-      "primary": ["hip_flexors", "hamstrings"],
-      "secondary": ["glutes", "adductors", "abductors"]
+      "primary": [
+        "hip_flexors",
+        "hamstrings"
+      ],
+      "secondary": [
+        "glutes",
+        "adductors",
+        "abductors"
+      ]
     },
-    "movementPattern": "hinge",
+    "movementPattern": "mobility",
     "category": "warmup",
     "difficulty": 1,
-    "equipment": ["none"],
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": true,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -884,7 +1274,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.5,
-    "tags": ["warmup", "hips", "mobility", "no_equipment"]
+    "tags": [
+      "warmup",
+      "hips",
+      "mobility",
+      "no_equipment"
+    ]
   },
   {
     "id": "cat_cow",
@@ -902,13 +1297,20 @@
       "Moving only through the lower back rather than mobilizing the entire spine."
     ],
     "muscleGroups": {
-      "primary": ["lower_back", "core"],
-      "secondary": ["upper_back"]
+      "primary": [
+        "lower_back",
+        "core"
+      ],
+      "secondary": [
+        "upper_back"
+      ]
     },
-    "movementPattern": "rotation",
+    "movementPattern": "mobility",
     "category": "warmup",
-    "difficulty": 1,
-    "equipment": ["yoga_mat"],
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -918,7 +1320,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.0,
-    "tags": ["warmup", "spine", "mobility", "yoga_mat"]
+    "tags": [
+      "warmup",
+      "spine",
+      "mobility",
+      "yoga_mat"
+    ]
   },
   {
     "id": "childs_pose",
@@ -936,13 +1343,21 @@
       "Not sitting the hips far enough back, reducing the stretch in the lower back."
     ],
     "muscleGroups": {
-      "primary": ["lower_back", "hip_flexors"],
-      "secondary": ["shoulders", "upper_back"]
+      "primary": [
+        "lower_back",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "shoulders",
+        "upper_back"
+      ]
     },
-    "movementPattern": "plank",
+    "movementPattern": "mobility",
     "category": "cooldown",
-    "difficulty": 1,
-    "equipment": ["yoga_mat"],
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -952,7 +1367,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.0,
-    "tags": ["cooldown", "flexibility", "lower_back", "yoga"]
+    "tags": [
+      "cooldown",
+      "flexibility",
+      "lower_back",
+      "yoga"
+    ]
   },
   {
     "id": "standing_quad_stretch",
@@ -970,13 +1390,19 @@
       "Leaning forward at the hips instead of standing tall."
     ],
     "muscleGroups": {
-      "primary": ["quads"],
-      "secondary": ["hip_flexors"]
+      "primary": [
+        "quads"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
     },
-    "movementPattern": "plank",
+    "movementPattern": "mobility",
     "category": "cooldown",
-    "difficulty": 1,
-    "equipment": ["none"],
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": true,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -986,7 +1412,12 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.0,
-    "tags": ["cooldown", "flexibility", "quads", "standing"]
+    "tags": [
+      "cooldown",
+      "flexibility",
+      "quads",
+      "standing"
+    ]
   },
   {
     "id": "seated_hamstring_stretch",
@@ -1004,13 +1435,20 @@
       "Forcing the stretch by pulling aggressively, which can cause the hamstrings to tighten as a protective response."
     ],
     "muscleGroups": {
-      "primary": ["hamstrings"],
-      "secondary": ["lower_back", "calves"]
+      "primary": [
+        "hamstrings"
+      ],
+      "secondary": [
+        "lower_back",
+        "calves"
+      ]
     },
-    "movementPattern": "hinge",
+    "movementPattern": "mobility",
     "category": "cooldown",
-    "difficulty": 1,
-    "equipment": ["yoga_mat"],
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
     "isUnilateral": false,
     "defaultReps": null,
     "defaultDurationSeconds": 30,
@@ -1020,6 +1458,6095 @@
     "regressions": [],
     "progressions": [],
     "metValue": 2.0,
-    "tags": ["cooldown", "flexibility", "hamstrings", "floor"]
+    "tags": [
+      "cooldown",
+      "flexibility",
+      "hamstrings",
+      "floor"
+    ]
+  },
+  {
+    "id": "wall_push_up",
+    "name": "wall_push_up",
+    "displayName": "Wall Push-Up",
+    "description": "A beginner-friendly push-up performed against a wall, building foundational pushing strength.",
+    "instructions": [
+      "Stand arm's length from a wall with hands at shoulder height.",
+      "Bend elbows to bring chest toward the wall.",
+      "Push back to the start, keeping body straight.",
+      "Maintain a tight core throughout."
+    ],
+    "commonMistakes": [
+      "Standing too close to the wall.",
+      "Letting hips sag forward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "chest",
+        "triceps"
+      ],
+      "secondary": [
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "push_horizontal",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "wall"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 15,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "incline_push_up"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "bodyweight",
+      "beginner",
+      "upper_body"
+    ],
+    "progressionChainId": "chain_horizontal_push",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x15 clean reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "wide_push_up",
+    "name": "wide_push_up",
+    "displayName": "Wide Push-Up",
+    "description": "A push-up variation with hands placed wider than shoulder width, emphasizing the chest.",
+    "instructions": [
+      "Place hands about 1.5x shoulder width apart.",
+      "Lower chest to the floor, elbows flaring at about 60 degrees.",
+      "Press back up to full extension.",
+      "Keep core braced and body straight."
+    ],
+    "commonMistakes": [
+      "Hands too wide causing shoulder strain.",
+      "Not reaching full depth."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "chest",
+        "shoulders"
+      ],
+      "secondary": [
+        "triceps",
+        "core"
+      ]
+    },
+    "movementPattern": "push_horizontal",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "push_up"
+    ],
+    "progressions": [
+      "archer_push_up"
+    ],
+    "metValue": 3.9,
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "chest"
+    ],
+    "progressionChainId": "chain_horizontal_push",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x12 clean reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "archer_push_up",
+    "name": "archer_push_up",
+    "displayName": "Archer Push-Up",
+    "description": "A unilateral push-up variation where one arm extends to the side while the other does the work.",
+    "instructions": [
+      "Start in a wide push-up position.",
+      "Shift weight to one arm and lower toward that hand.",
+      "The other arm extends straight to the side.",
+      "Push back up and alternate sides."
+    ],
+    "commonMistakes": [
+      "Not shifting weight enough to the working arm.",
+      "Bending the extended arm."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "chest",
+        "triceps"
+      ],
+      "secondary": [
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "push_horizontal",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "diamond_push_up"
+    ],
+    "progressions": [
+      "one_arm_push_up"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "bodyweight",
+      "upper_body",
+      "unilateral"
+    ],
+    "progressionChainId": "chain_horizontal_push",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x8 each side",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "pseudo_planche_push_up",
+    "name": "pseudo_planche_push_up",
+    "displayName": "Pseudo Planche Push-Up",
+    "description": "A push-up with hands positioned near the hips and body leaning forward, loading the shoulders heavily.",
+    "instructions": [
+      "Place hands by your hips with fingers pointing sideways.",
+      "Lean forward until shoulders are ahead of hands.",
+      "Lower chest toward the ground maintaining the lean.",
+      "Push back up keeping core engaged."
+    ],
+    "commonMistakes": [
+      "Not leaning far enough forward.",
+      "Letting hips sag."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "chest"
+      ],
+      "secondary": [
+        "biceps",
+        "core"
+      ]
+    },
+    "movementPattern": "push_horizontal",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "diamond_push_up"
+    ],
+    "progressions": [
+      "one_arm_push_up"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "bodyweight",
+      "planche_prep",
+      "upper_body"
+    ],
+    "progressionChainId": "chain_horizontal_push",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x10 with lean past hands",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "one_arm_push_up",
+    "name": "one_arm_push_up",
+    "displayName": "One-Arm Push-Up",
+    "description": "An advanced push-up performed with a single arm, demanding extreme pressing strength and core stability.",
+    "instructions": [
+      "Take a wide stance for balance.",
+      "Place one hand under your chest, other behind back.",
+      "Lower chest to the floor while resisting rotation.",
+      "Press back up with control."
+    ],
+    "commonMistakes": [
+      "Rotating the torso excessively.",
+      "Using too narrow a stance."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "chest",
+        "triceps"
+      ],
+      "secondary": [
+        "shoulders",
+        "core",
+        "obliques"
+      ]
+    },
+    "movementPattern": "push_horizontal",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "archer_push_up"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "bodyweight",
+      "advanced",
+      "upper_body"
+    ],
+    "progressionChainId": "chain_horizontal_push",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x5 each side clean",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "planche_lean_push_up",
+    "name": "planche_lean_push_up",
+    "displayName": "Planche Lean Push-Up",
+    "description": "A highly advanced push-up with an extreme forward lean, approaching planche position.",
+    "instructions": [
+      "Start in a push-up position and lean far forward.",
+      "Keep arms straight or slightly bent, shoulders well past hands.",
+      "Perform a push-up while maintaining the forward lean.",
+      "Control the descent and ascent evenly."
+    ],
+    "commonMistakes": [
+      "Insufficient forward lean.",
+      "Letting hips drop."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "chest"
+      ],
+      "secondary": [
+        "biceps",
+        "core",
+        "wrists"
+      ]
+    },
+    "movementPattern": "push_horizontal",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "pseudo_planche_push_up"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "bodyweight",
+      "planche_prep",
+      "advanced"
+    ],
+    "progressionChainId": "chain_horizontal_push",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x8 with full lean",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "decline_push_up",
+    "name": "decline_push_up",
+    "displayName": "Decline Push-Up",
+    "description": "A push-up with feet elevated, shifting more load to the upper chest and shoulders.",
+    "instructions": [
+      "Place feet on an elevated surface, hands on the floor.",
+      "Lower chest toward the ground.",
+      "Press back up maintaining a straight body line.",
+      "Keep core tight throughout."
+    ],
+    "commonMistakes": [
+      "Elevating the surface too high for current strength.",
+      "Sagging hips."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "chest"
+      ],
+      "secondary": [
+        "triceps",
+        "core"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "elevated_surface"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "pike_push_up"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "upper_body",
+      "shoulders"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x15 clean reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "wall_handstand_hold",
+    "name": "wall_handstand_hold",
+    "displayName": "Wall Handstand Hold",
+    "description": "An isometric hold in a handstand position against a wall, building shoulder stability.",
+    "instructions": [
+      "Kick up to a handstand facing the wall or with back to the wall.",
+      "Keep arms locked out and shoulders engaged.",
+      "Hold position with body straight.",
+      "Come down with control."
+    ],
+    "commonMistakes": [
+      "Not fully extending the arms.",
+      "Overarching the lower back."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders"
+      ],
+      "secondary": [
+        "core",
+        "traps",
+        "wrists"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "wall"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 20,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": [
+      "wall_handstand_push_up"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "handstand",
+      "isometric",
+      "shoulders"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x30s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "elevated_pike_push_up",
+    "name": "elevated_pike_push_up",
+    "displayName": "Elevated Pike Push-Up",
+    "description": "A pike push-up with feet on an elevated surface, increasing shoulder loading.",
+    "instructions": [
+      "Place feet on a bench or step, hips high in pike position.",
+      "Lower head toward the floor by bending elbows.",
+      "Press back up to full extension.",
+      "Maintain high hip angle throughout."
+    ],
+    "commonMistakes": [
+      "Not keeping hips high enough.",
+      "Elbows flaring wide."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders"
+      ],
+      "secondary": [
+        "triceps",
+        "chest",
+        "core"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "elevated_surface"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "decline_push_up"
+    ],
+    "progressions": [
+      "pike_push_up"
+    ],
+    "metValue": 3.8,
+    "tags": [
+      "upper_body",
+      "shoulders"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x12 clean reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "wall_handstand_push_up",
+    "name": "wall_handstand_push_up",
+    "displayName": "Wall Handstand Push-Up",
+    "description": "A handstand push-up performed against a wall for support, building overhead pressing strength.",
+    "instructions": [
+      "Kick up to a wall handstand.",
+      "Lower the top of your head toward the floor.",
+      "Press back up to full lockout.",
+      "Keep core tight and legs together."
+    ],
+    "commonMistakes": [
+      "Kicking up with too much momentum.",
+      "Not reaching full depth."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "triceps"
+      ],
+      "secondary": [
+        "traps",
+        "core"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "wall"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "pike_push_up"
+    ],
+    "progressions": [
+      "deficit_handstand_push_up"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "handstand",
+      "overhead_press",
+      "advanced"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x8 to forehead",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "deficit_handstand_push_up",
+    "name": "deficit_handstand_push_up",
+    "displayName": "Deficit Handstand Push-Up",
+    "description": "A wall handstand push-up with hands on elevated surfaces for increased range of motion.",
+    "instructions": [
+      "Place parallettes or blocks near a wall.",
+      "Kick up to a handstand on the blocks.",
+      "Lower past hand level for extra depth.",
+      "Press back up to lockout."
+    ],
+    "commonMistakes": [
+      "Going too deep too fast.",
+      "Losing balance laterally."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "triceps"
+      ],
+      "secondary": [
+        "traps",
+        "core",
+        "wrists"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "parallettes"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "wall_handstand_push_up"
+    ],
+    "progressions": [
+      "freestanding_handstand_push_up"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "handstand",
+      "overhead_press",
+      "advanced"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x6 full ROM",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "handstand_negative",
+    "name": "handstand_negative",
+    "displayName": "Handstand Negative",
+    "description": "A slow controlled descent from handstand, building eccentric overhead strength.",
+    "instructions": [
+      "Kick up to a wall handstand.",
+      "Slowly lower the top of your head to the floor over 5 seconds.",
+      "Kick back up or come down and reset.",
+      "Focus on controlled descent."
+    ],
+    "commonMistakes": [
+      "Descending too quickly.",
+      "Not maintaining body alignment."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "triceps"
+      ],
+      "secondary": [
+        "core",
+        "traps"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "wall"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "wall_handstand_push_up"
+    ],
+    "progressions": [
+      "freestanding_handstand_push_up"
+    ],
+    "metValue": 4.8,
+    "tags": [
+      "handstand",
+      "eccentric",
+      "advanced"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x5 with 5s descent",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "freestanding_handstand_push_up",
+    "name": "freestanding_handstand_push_up",
+    "displayName": "Freestanding Handstand Push-Up",
+    "description": "A handstand push-up without wall support, requiring elite strength and balance.",
+    "instructions": [
+      "Kick up to a freestanding handstand.",
+      "Slowly lower head toward the floor.",
+      "Press back up while maintaining balance.",
+      "Keep core extremely tight."
+    ],
+    "commonMistakes": [
+      "Losing balance during the press.",
+      "Not achieving full lockout."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "triceps"
+      ],
+      "secondary": [
+        "core",
+        "traps",
+        "wrists"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 3,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 120,
+    "estimatedTimePerSetSeconds": 35,
+    "regressions": [
+      "deficit_handstand_push_up"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "handstand",
+      "elite",
+      "overhead_press"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x3 freestanding",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "ninety_degree_push_up",
+    "name": "ninety_degree_push_up",
+    "displayName": "90-Degree Push-Up",
+    "description": "An ultra-advanced bent-arm press from an L-sit or planche position.",
+    "instructions": [
+      "Start in an L-sit or tuck planche on the floor.",
+      "Lower body by bending arms to 90 degrees.",
+      "Press back up to the starting position.",
+      "Maintain hollow body throughout."
+    ],
+    "commonMistakes": [
+      "Losing the tuck or L position.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "triceps"
+      ],
+      "secondary": [
+        "chest",
+        "core",
+        "wrists"
+      ]
+    },
+    "movementPattern": "push_vertical",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 3,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 120,
+    "estimatedTimePerSetSeconds": 35,
+    "regressions": [
+      "freestanding_handstand_push_up"
+    ],
+    "progressions": [],
+    "metValue": 6.0,
+    "tags": [
+      "planche_prep",
+      "elite",
+      "calisthenics"
+    ],
+    "progressionChainId": "chain_vertical_push",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x3 controlled",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "dead_hang",
+    "name": "dead_hang",
+    "displayName": "Dead Hang",
+    "description": "A passive hang from a bar, building grip strength and shoulder mobility.",
+    "instructions": [
+      "Grip the bar with hands shoulder-width apart.",
+      "Hang with arms fully extended.",
+      "Relax the shoulders and let them elevate slightly.",
+      "Hold for the prescribed duration."
+    ],
+    "commonMistakes": [
+      "Gripping too tight causing forearm fatigue.",
+      "Not fully extending the arms."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "forearms"
+      ],
+      "secondary": [
+        "shoulders",
+        "upper_back"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 20,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": [
+      "scapular_pull_up"
+    ],
+    "metValue": 2.0,
+    "tags": [
+      "grip",
+      "shoulder_health",
+      "beginner"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x30s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "scapular_pull_up",
+    "name": "scapular_pull_up",
+    "displayName": "Scapular Pull-Up",
+    "description": "A small-range pull-up focusing on scapular retraction and depression from a dead hang.",
+    "instructions": [
+      "Hang from a bar with arms extended.",
+      "Without bending elbows, pull shoulder blades down and together.",
+      "Rise slightly as scapulae engage.",
+      "Slowly return to dead hang."
+    ],
+    "commonMistakes": [
+      "Bending the elbows.",
+      "Using momentum to swing."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "traps"
+      ],
+      "secondary": [
+        "shoulders",
+        "forearms"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "dead_hang"
+    ],
+    "progressions": [
+      "negative_pull_up"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "scapular",
+      "pull_up_prep",
+      "upper_back"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x12 controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "band_assisted_pull_up",
+    "name": "band_assisted_pull_up",
+    "displayName": "Band-Assisted Pull-Up",
+    "description": "A pull-up with a resistance band looped around the bar to reduce bodyweight load.",
+    "instructions": [
+      "Loop a resistance band over the bar.",
+      "Place one knee or foot in the band.",
+      "Perform a full pull-up with band assistance.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Using too thick a band for too long.",
+      "Not achieving full range of motion."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "forearms",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "pull_up_bar",
+      "resistance_bands"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "scapular_pull_up"
+    ],
+    "progressions": [
+      "negative_pull_up"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "pull_up_prep",
+      "assisted",
+      "upper_body"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x10 with thin band",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "negative_pull_up",
+    "name": "negative_pull_up",
+    "displayName": "Negative Pull-Up",
+    "description": "A pull-up focusing on the eccentric lowering phase, building strength for full pull-ups.",
+    "instructions": [
+      "Jump or step up so your chin is above the bar.",
+      "Slowly lower yourself over 3-5 seconds.",
+      "Fully extend arms at the bottom.",
+      "Repeat from the top."
+    ],
+    "commonMistakes": [
+      "Lowering too quickly.",
+      "Not fully extending at the bottom."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "forearms",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "band_assisted_pull_up"
+    ],
+    "progressions": [
+      "chin_up"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "eccentric",
+      "pull_up_prep",
+      "upper_body"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x5 with 5s descent",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "chin_up",
+    "name": "chin_up",
+    "displayName": "Chin-Up",
+    "description": "A pull-up with palms facing you, emphasizing the biceps while working the back.",
+    "instructions": [
+      "Grip the bar with palms facing you, shoulder-width apart.",
+      "Pull up until chin clears the bar.",
+      "Lower with control to full arm extension.",
+      "Keep core engaged to avoid swinging."
+    ],
+    "commonMistakes": [
+      "Swinging or kipping.",
+      "Not reaching full extension at the bottom."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "biceps",
+        "upper_back"
+      ],
+      "secondary": [
+        "forearms",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "negative_pull_up"
+    ],
+    "progressions": [
+      "pull_up"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "biceps",
+      "upper_body",
+      "pull"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x10 clean reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "pull_up",
+    "name": "pull_up",
+    "displayName": "Pull-Up",
+    "description": "The classic overhand pull-up, a foundational upper body pulling exercise.",
+    "instructions": [
+      "Grip the bar with palms facing away, slightly wider than shoulders.",
+      "Pull up until chin clears the bar.",
+      "Lower with control to dead hang.",
+      "Avoid kipping or swinging."
+    ],
+    "commonMistakes": [
+      "Kipping or using momentum.",
+      "Not achieving full range of motion."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "forearms",
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "chin_up"
+    ],
+    "progressions": [
+      "wide_pull_up"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "upper_body",
+      "compound",
+      "pull"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x10 strict reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "wide_pull_up",
+    "name": "wide_pull_up",
+    "displayName": "Wide-Grip Pull-Up",
+    "description": "A pull-up with hands placed wider than shoulder width, emphasizing the lats.",
+    "instructions": [
+      "Grip the bar with hands well outside shoulder width.",
+      "Pull up until chin clears the bar.",
+      "Lower with control to full extension.",
+      "Focus on driving elbows down and back."
+    ],
+    "commonMistakes": [
+      "Grip too wide causing shoulder impingement.",
+      "Partial range of motion."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back"
+      ],
+      "secondary": [
+        "biceps",
+        "forearms",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "pull_up"
+    ],
+    "progressions": [
+      "l_sit_pull_up"
+    ],
+    "metValue": 4.8,
+    "tags": [
+      "upper_body",
+      "lats",
+      "advanced"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x8 full ROM",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "l_sit_pull_up",
+    "name": "l_sit_pull_up",
+    "displayName": "L-Sit Pull-Up",
+    "description": "A pull-up performed with legs held straight in an L-sit position, adding core demand.",
+    "instructions": [
+      "Hang from the bar and raise legs to an L position.",
+      "Maintain the L-sit while performing a pull-up.",
+      "Lower with control keeping legs elevated.",
+      "Return to L-sit dead hang."
+    ],
+    "commonMistakes": [
+      "Legs dropping during the pull.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "core",
+        "hip_flexors",
+        "forearms"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "wide_pull_up"
+    ],
+    "progressions": [
+      "muscle_up"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "advanced",
+      "core",
+      "compound"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 8,
+    "advancementCriteria": "3x6 strict",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "muscle_up",
+    "name": "muscle_up",
+    "displayName": "Muscle-Up",
+    "description": "An advanced bar movement combining a pull-up with a dip transition above the bar.",
+    "instructions": [
+      "Start from a dead hang with a slight false grip.",
+      "Pull explosively, transitioning elbows above the bar.",
+      "Press up to full lockout above the bar.",
+      "Lower back with control."
+    ],
+    "commonMistakes": [
+      "Not pulling high enough before transition.",
+      "Excessive kipping."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "chest",
+        "triceps"
+      ],
+      "secondary": [
+        "biceps",
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 3,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 120,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "l_sit_pull_up"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "elite",
+      "compound",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x5 strict",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "typewriter_pull_up",
+    "name": "typewriter_pull_up",
+    "displayName": "Typewriter Pull-Up",
+    "description": "An advanced pull-up where you pull to one side at the top, then traverse to the other.",
+    "instructions": [
+      "Pull up to chin level.",
+      "Shift laterally to one arm at the top.",
+      "Traverse to the other side while staying above the bar.",
+      "Lower with control and repeat."
+    ],
+    "commonMistakes": [
+      "Not pulling high enough to traverse.",
+      "Rushing the lateral movement."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "forearms",
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "pull_vertical",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 4,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 28,
+    "regressions": [
+      "wide_pull_up"
+    ],
+    "progressions": [
+      "muscle_up"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "advanced",
+      "unilateral_prep",
+      "upper_body"
+    ],
+    "progressionChainId": "chain_vertical_pull",
+    "progressionOrder": 8,
+    "advancementCriteria": "3x4 each direction",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "band_pull_apart",
+    "name": "band_pull_apart",
+    "displayName": "Band Pull-Apart",
+    "description": "A posterior chain exercise pulling a resistance band apart at chest height.",
+    "instructions": [
+      "Hold a band at chest height with arms extended.",
+      "Pull the band apart by squeezing shoulder blades together.",
+      "Slowly return to the starting position.",
+      "Keep arms straight throughout."
+    ],
+    "commonMistakes": [
+      "Bending the elbows.",
+      "Using too heavy a band."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "rotator_cuff"
+      ],
+      "secondary": [
+        "shoulders",
+        "traps"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "resistance_bands"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 15,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 12,
+    "regressions": [],
+    "progressions": [
+      "inverted_row_high"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "shoulder_health",
+      "posture",
+      "upper_back"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x15 controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "prone_y_raise",
+    "name": "prone_y_raise",
+    "displayName": "Prone Y-Raise",
+    "description": "A floor exercise raising arms in a Y pattern to strengthen the lower traps and rear delts.",
+    "instructions": [
+      "Lie face down with arms extended overhead in a Y shape.",
+      "Raise arms off the floor by squeezing the upper back.",
+      "Hold briefly at the top.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Lifting too high and using lower back.",
+      "Moving too quickly."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "traps"
+      ],
+      "secondary": [
+        "shoulders",
+        "rotator_cuff"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "inverted_row_high"
+    ],
+    "metValue": 2.0,
+    "tags": [
+      "posture",
+      "upper_back",
+      "bodyweight"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x15 with pause",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "inverted_row_high",
+    "name": "inverted_row_high",
+    "displayName": "Inverted Row (High Bar)",
+    "description": "A bodyweight row performed under a high bar at an easy angle.",
+    "instructions": [
+      "Set a bar at waist to chest height.",
+      "Hang underneath with arms extended and body straight.",
+      "Pull chest to the bar by driving elbows back.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Sagging hips.",
+      "Not pulling to full contraction."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back"
+      ],
+      "secondary": [
+        "biceps",
+        "core",
+        "forearms"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "prone_y_raise"
+    ],
+    "progressions": [
+      "inverted_row"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "upper_body",
+      "row",
+      "bodyweight"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x12 with straight body",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "inverted_row",
+    "name": "inverted_row",
+    "displayName": "Inverted Row",
+    "description": "A bodyweight row under a low bar, creating a more horizontal body angle for greater difficulty.",
+    "instructions": [
+      "Set a bar at knee height.",
+      "Hang underneath with body straight, heels on the floor.",
+      "Pull chest to the bar.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Hips sagging or piking.",
+      "Not fully extending arms at the bottom."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "core",
+        "forearms",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "inverted_row_high"
+    ],
+    "progressions": [
+      "ring_row"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "compound",
+      "upper_body",
+      "row"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x12 horizontal body",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "ring_row",
+    "name": "ring_row",
+    "displayName": "Ring Row",
+    "description": "An inverted row on gymnastic rings, adding instability for greater muscle recruitment.",
+    "instructions": [
+      "Set rings at an appropriate height.",
+      "Hang underneath with arms extended.",
+      "Pull chest to the rings, squeezing shoulder blades.",
+      "Control the descent against the ring instability."
+    ],
+    "commonMistakes": [
+      "Flaring elbows out.",
+      "Not maintaining body tension."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "core",
+        "forearms",
+        "rotator_cuff"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "rings"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "inverted_row_high"
+    ],
+    "progressions": [
+      "archer_inverted_row"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "rings",
+      "upper_body",
+      "row"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x12 at 45-degree angle",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "archer_inverted_row",
+    "name": "archer_inverted_row",
+    "displayName": "Archer Inverted Row",
+    "description": "A unilateral inverted row where one arm extends while the other pulls.",
+    "instructions": [
+      "Set up under a bar in an inverted row position.",
+      "Pull to one side while the other arm extends straight.",
+      "Lower with control and alternate sides.",
+      "Keep body rigid throughout."
+    ],
+    "commonMistakes": [
+      "Rotating the torso.",
+      "Not extending the assist arm fully."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back"
+      ],
+      "secondary": [
+        "biceps",
+        "core",
+        "forearms"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "inverted_row"
+    ],
+    "progressions": [
+      "tuck_front_lever_row"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "unilateral",
+      "advanced",
+      "row"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x8 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "tuck_front_lever_row",
+    "name": "tuck_front_lever_row",
+    "displayName": "Tuck Front Lever Row",
+    "description": "A horizontal row from a tuck front lever position on a bar.",
+    "instructions": [
+      "Hang from the bar and bring knees to chest in a tuck.",
+      "Lever body horizontal while maintaining the tuck.",
+      "Row body up toward the bar.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Losing the tuck position.",
+      "Not achieving horizontal body angle."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "core",
+        "shoulders",
+        "forearms"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "inverted_row"
+    ],
+    "progressions": [
+      "front_lever_row"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "front_lever_prep",
+      "advanced",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x6 with 2s hold",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "front_lever_row",
+    "name": "front_lever_row",
+    "displayName": "Front Lever Row",
+    "description": "A rowing motion from a full front lever position, an elite gymnastic pulling skill.",
+    "instructions": [
+      "Achieve a full front lever hang.",
+      "Pull body up toward the bar while maintaining lever position.",
+      "Lower back to full extension.",
+      "Keep body completely straight."
+    ],
+    "commonMistakes": [
+      "Dropping the hips.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back"
+      ],
+      "secondary": [
+        "biceps",
+        "core",
+        "shoulders",
+        "forearms"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 3,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 120,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "tuck_front_lever_row"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "elite",
+      "front_lever",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x5 strict",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "one_arm_inverted_row",
+    "name": "one_arm_inverted_row",
+    "displayName": "One-Arm Inverted Row",
+    "description": "An inverted row performed with a single arm, demanding extreme pulling strength.",
+    "instructions": [
+      "Set up under a bar or ring with one arm.",
+      "Keep body straight and pull chest to the bar.",
+      "Lower with control, resisting rotation.",
+      "Complete all reps on one side before switching."
+    ],
+    "commonMistakes": [
+      "Excessive body rotation.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "upper_back",
+        "biceps"
+      ],
+      "secondary": [
+        "core",
+        "forearms",
+        "obliques"
+      ]
+    },
+    "movementPattern": "pull_horizontal",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 4,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "archer_inverted_row"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "unilateral",
+      "elite",
+      "row"
+    ],
+    "progressionChainId": "chain_horizontal_pull",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x5 each arm",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "sumo_squat",
+    "name": "sumo_squat",
+    "displayName": "Sumo Squat",
+    "description": "A wide-stance squat emphasizing the inner thighs and glutes.",
+    "instructions": [
+      "Stand with feet wider than shoulder width, toes turned out.",
+      "Lower hips until thighs are parallel to the floor.",
+      "Drive through the heels to stand.",
+      "Keep chest up and knees tracking over toes."
+    ],
+    "commonMistakes": [
+      "Knees caving inward.",
+      "Leaning too far forward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes",
+        "adductors"
+      ],
+      "secondary": [
+        "core",
+        "hamstrings"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "bodyweight_squat"
+    ],
+    "progressions": [
+      "jump_squat"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "bodyweight",
+      "lower_body",
+      "inner_thigh"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x15 below parallel",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "jump_squat",
+    "name": "jump_squat",
+    "displayName": "Jump Squat",
+    "description": "An explosive squat variation adding a jump at the top for power development.",
+    "instructions": [
+      "Perform a bodyweight squat.",
+      "Explode upward from the bottom, jumping as high as possible.",
+      "Land softly with bent knees.",
+      "Immediately descend into the next rep."
+    ],
+    "commonMistakes": [
+      "Landing with stiff legs.",
+      "Not reaching full squat depth."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "calves",
+        "core",
+        "hamstrings"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "sumo_squat"
+    ],
+    "progressions": [
+      "shrimp_squat"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "plyometric",
+      "power",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x12 with full depth",
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "cossack_squat",
+    "name": "cossack_squat",
+    "displayName": "Cossack Squat",
+    "description": "A deep single-leg squat to the side with the other leg extended straight.",
+    "instructions": [
+      "Stand with feet wide apart.",
+      "Shift weight to one leg and squat deep on that side.",
+      "Keep the other leg straight with heel on the floor.",
+      "Rise and alternate sides."
+    ],
+    "commonMistakes": [
+      "Heel lifting on the squatting leg.",
+      "Not reaching full depth."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "adductors",
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "sumo_squat"
+    ],
+    "progressions": [
+      "shrimp_squat"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "mobility",
+      "unilateral",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x8 each side full depth",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "shrimp_squat",
+    "name": "shrimp_squat",
+    "displayName": "Shrimp Squat",
+    "description": "A single-leg squat holding the back foot behind you, requiring balance and leg strength.",
+    "instructions": [
+      "Stand on one leg, grab the other foot behind you.",
+      "Squat down on the standing leg until the back knee touches the floor.",
+      "Stand back up with control.",
+      "Keep torso upright."
+    ],
+    "commonMistakes": [
+      "Losing balance.",
+      "Releasing the back foot."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "core",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "cossack_squat"
+    ],
+    "progressions": [
+      "pistol_squat"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "unilateral",
+      "advanced",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x8 each side to floor",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "sissy_squat",
+    "name": "sissy_squat",
+    "displayName": "Sissy Squat",
+    "description": "A quad-dominant squat where the knees travel far forward while leaning back.",
+    "instructions": [
+      "Stand with feet hip-width apart.",
+      "Rise onto toes, lean torso backward, and bend knees forward.",
+      "Lower until upper and lower legs form a sharp angle.",
+      "Drive back up through the quads."
+    ],
+    "commonMistakes": [
+      "Not maintaining a straight line from knees to head.",
+      "Going too deep too fast."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads"
+      ],
+      "secondary": [
+        "core",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "jump_squat"
+    ],
+    "progressions": [
+      "pistol_squat"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "quad_dominant",
+      "advanced",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x10 with controlled lean",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "pistol_squat",
+    "name": "pistol_squat",
+    "displayName": "Pistol Squat",
+    "description": "A full single-leg squat with the non-working leg held straight in front.",
+    "instructions": [
+      "Stand on one leg with the other extended forward.",
+      "Squat all the way down while keeping the front leg elevated.",
+      "Stand back up without assistance.",
+      "Keep arms forward for balance."
+    ],
+    "commonMistakes": [
+      "Losing balance at the bottom.",
+      "Rounding the lower back."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 28,
+    "regressions": [
+      "shrimp_squat"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "elite",
+      "unilateral",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x5 each side full ROM",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "dragon_squat",
+    "name": "dragon_squat",
+    "displayName": "Dragon Squat",
+    "description": "An advanced single-leg squat with the free leg crossing behind, adding rotation and balance demands.",
+    "instructions": [
+      "Stand on one leg.",
+      "Cross the free leg behind the standing leg.",
+      "Squat down while maintaining balance.",
+      "Stand back up with control."
+    ],
+    "commonMistakes": [
+      "Not crossing the leg far enough behind.",
+      "Losing balance forward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "core",
+        "hip_flexors",
+        "adductors"
+      ]
+    },
+    "movementPattern": "squat",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 4,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "pistol_squat"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "elite",
+      "balance",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_squat",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x4 each side",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "hip_hinge_drill",
+    "name": "hip_hinge_drill",
+    "displayName": "Hip Hinge Drill",
+    "description": "A fundamental movement pattern drill teaching proper hip hinge mechanics.",
+    "instructions": [
+      "Stand with feet hip-width apart, slight knee bend.",
+      "Push hips back while keeping spine neutral.",
+      "Lower torso until you feel a hamstring stretch.",
+      "Drive hips forward to return to standing."
+    ],
+    "commonMistakes": [
+      "Rounding the lower back.",
+      "Bending the knees too much."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hamstrings",
+        "glutes"
+      ],
+      "secondary": [
+        "erectors",
+        "core"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "glute_bridge"
+    ],
+    "progressions": [
+      "good_morning_bodyweight"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "fundamental",
+      "lower_body",
+      "hip_hinge"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x15 with pause at bottom",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "single_leg_glute_bridge",
+    "name": "single_leg_glute_bridge",
+    "displayName": "Single-Leg Glute Bridge",
+    "description": "A glute bridge performed on one leg, doubling the load on the working glute.",
+    "instructions": [
+      "Lie on your back with one foot on the floor, other leg elevated.",
+      "Drive through the planted foot to raise hips.",
+      "Squeeze glutes at the top.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Twisting the hips.",
+      "Not achieving full hip extension."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "glute_bridge"
+    ],
+    "progressions": [
+      "hip_thrust"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "unilateral",
+      "glutes",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x12 each leg with 2s squeeze",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "good_morning_bodyweight",
+    "name": "good_morning_bodyweight",
+    "displayName": "Good Morning (Bodyweight)",
+    "description": "A standing hip hinge with hands behind the head, stretching and strengthening the posterior chain.",
+    "instructions": [
+      "Stand with feet hip-width apart, hands behind head.",
+      "Hinge at hips, pushing them backward.",
+      "Lower torso until nearly parallel to the floor.",
+      "Drive hips forward to stand."
+    ],
+    "commonMistakes": [
+      "Rounding the back.",
+      "Going too fast."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hamstrings",
+        "erectors"
+      ],
+      "secondary": [
+        "glutes",
+        "core"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "hip_hinge_drill"
+    ],
+    "progressions": [
+      "single_leg_rdl"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "posterior_chain",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x12 with controlled tempo",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "single_leg_rdl",
+    "name": "single_leg_rdl",
+    "displayName": "Single-Leg Romanian Deadlift",
+    "description": "A unilateral hip hinge standing on one leg, challenging balance and posterior chain strength.",
+    "instructions": [
+      "Stand on one leg with a slight knee bend.",
+      "Hinge at the hip, extending the free leg behind you.",
+      "Lower torso until nearly parallel to the floor.",
+      "Drive through the standing leg to return upright."
+    ],
+    "commonMistakes": [
+      "Rounding the back.",
+      "Rotating the hips."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hamstrings",
+        "glutes"
+      ],
+      "secondary": [
+        "erectors",
+        "core"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "good_morning_bodyweight"
+    ],
+    "progressions": [
+      "nordic_curl"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "unilateral",
+      "balance",
+      "posterior_chain"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x10 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "hip_thrust",
+    "name": "hip_thrust",
+    "displayName": "Hip Thrust",
+    "description": "A glute-dominant hinge with upper back on an elevated surface, maximizing hip extension load.",
+    "instructions": [
+      "Sit on the floor with upper back against a bench.",
+      "Drive through heels to raise hips to full extension.",
+      "Squeeze glutes hard at the top.",
+      "Lower hips with control."
+    ],
+    "commonMistakes": [
+      "Overextending the lower back.",
+      "Not achieving full hip extension."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "elevated_surface"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "single_leg_glute_bridge"
+    ],
+    "progressions": [
+      "nordic_curl"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "glutes",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x15 with 3s squeeze",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "nordic_curl",
+    "name": "nordic_curl",
+    "displayName": "Nordic Curl",
+    "description": "An advanced hamstring exercise lowering the body from a kneeling position using eccentric control.",
+    "instructions": [
+      "Kneel with feet anchored under a secure object.",
+      "Slowly lean forward, controlling the descent with hamstrings.",
+      "Lower as far as possible while maintaining control.",
+      "Push off the floor to assist returning up if needed."
+    ],
+    "commonMistakes": [
+      "Falling forward uncontrolled.",
+      "Bending at the hips instead of the knees."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hamstrings"
+      ],
+      "secondary": [
+        "glutes",
+        "calves",
+        "core"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "anchor_point"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "single_leg_rdl"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "eccentric",
+      "advanced",
+      "hamstrings"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x6 with 3s negative",
+    "athleteSource": [
+      "israetel"
+    ],
+    "apartmentFriendly": false
+  },
+  {
+    "id": "natural_glute_ham_raise",
+    "name": "natural_glute_ham_raise",
+    "displayName": "Natural Glute-Ham Raise",
+    "description": "An elite posterior chain exercise performing a full eccentric and concentric hamstring curl from kneeling.",
+    "instructions": [
+      "Kneel with feet anchored securely.",
+      "Lower body forward with control, keeping hips extended.",
+      "At the bottom, use hamstrings to curl body back up.",
+      "Maintain a straight line from knees to head throughout."
+    ],
+    "commonMistakes": [
+      "Breaking at the hips.",
+      "Not controlling the eccentric."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hamstrings",
+        "glutes"
+      ],
+      "secondary": [
+        "calves",
+        "core",
+        "erectors"
+      ]
+    },
+    "movementPattern": "hinge",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "anchor_point"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 4,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 28,
+    "regressions": [
+      "nordic_curl"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "elite",
+      "posterior_chain"
+    ],
+    "progressionChainId": "chain_hinge",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x5 full concentric",
+    "athleteSource": [
+      "israetel"
+    ],
+    "apartmentFriendly": false
+  },
+  {
+    "id": "split_squat",
+    "name": "split_squat",
+    "displayName": "Split Squat",
+    "description": "A stationary lunge position squat, building unilateral leg strength.",
+    "instructions": [
+      "Step one foot forward and one back into a lunge stance.",
+      "Lower the back knee toward the floor.",
+      "Drive through the front heel to rise.",
+      "Keep torso upright."
+    ],
+    "commonMistakes": [
+      "Front knee traveling too far past toes.",
+      "Leaning forward excessively."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "reverse_lunge"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "unilateral",
+      "beginner",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x12 each leg",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "assisted_lunge",
+    "name": "assisted_lunge",
+    "displayName": "Assisted Lunge",
+    "description": "A forward lunge using a wall or surface for balance support.",
+    "instructions": [
+      "Stand near a wall or sturdy surface for support.",
+      "Step forward into a lunge, lightly touching the wall for balance.",
+      "Lower until both knees are at 90 degrees.",
+      "Push back to standing."
+    ],
+    "commonMistakes": [
+      "Relying too heavily on the support.",
+      "Knees caving inward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "wall"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "split_squat"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "beginner",
+      "assisted",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x12 each leg without support",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "walking_lunge",
+    "name": "walking_lunge",
+    "displayName": "Walking Lunge",
+    "description": "A dynamic lunge where each step moves forward, building coordination and leg endurance.",
+    "instructions": [
+      "Step forward into a lunge.",
+      "Drive through the front heel and step the back foot forward.",
+      "Continue alternating legs while walking forward.",
+      "Keep torso upright throughout."
+    ],
+    "commonMistakes": [
+      "Taking steps that are too short.",
+      "Losing balance between steps."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core",
+        "calves"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "reverse_lunge"
+    ],
+    "progressions": [
+      "deficit_reverse_lunge"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "dynamic",
+      "lower_body",
+      "functional"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x12 each leg",
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "deficit_reverse_lunge",
+    "name": "deficit_reverse_lunge",
+    "displayName": "Deficit Reverse Lunge",
+    "description": "A reverse lunge stepping back off an elevated surface, increasing the range of motion.",
+    "instructions": [
+      "Stand on a low step or platform.",
+      "Step one foot back and down, lowering into a deep lunge.",
+      "Drive through the front heel to return to the platform.",
+      "Keep torso upright."
+    ],
+    "commonMistakes": [
+      "Stepping too far back.",
+      "Losing balance on the platform."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "step_or_stairs"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "walking_lunge"
+    ],
+    "progressions": [
+      "jumping_lunge"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "deficit",
+      "advanced",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x10 each leg full ROM",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "curtsy_lunge",
+    "name": "curtsy_lunge",
+    "displayName": "Curtsy Lunge",
+    "description": "A lunge stepping behind and across the body, targeting the glute medius.",
+    "instructions": [
+      "Stand with feet hip-width apart.",
+      "Step one foot behind and across the other leg.",
+      "Lower into a lunge, keeping torso upright.",
+      "Drive through the front heel to return."
+    ],
+    "commonMistakes": [
+      "Not stepping far enough behind.",
+      "Knees caving inward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "glutes",
+        "quads"
+      ],
+      "secondary": [
+        "adductors",
+        "core"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "lateral_lunge"
+    ],
+    "progressions": [
+      "jumping_lunge"
+    ],
+    "metValue": 3.8,
+    "tags": [
+      "glute_medius",
+      "unilateral",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x10 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "jumping_lunge",
+    "name": "jumping_lunge",
+    "displayName": "Jumping Lunge",
+    "description": "An explosive plyometric lunge switching legs in mid-air.",
+    "instructions": [
+      "Start in a lunge position.",
+      "Jump explosively, switching legs in the air.",
+      "Land softly in a lunge with the opposite leg forward.",
+      "Immediately jump into the next rep."
+    ],
+    "commonMistakes": [
+      "Landing with stiff legs.",
+      "Not reaching full lunge depth."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "calves",
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "deficit_reverse_lunge"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "plyometric",
+      "power",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x8 each side explosive",
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "skater_squat",
+    "name": "skater_squat",
+    "displayName": "Skater Squat",
+    "description": "A single-leg squat variant where the free leg extends behind, like a skating motion.",
+    "instructions": [
+      "Stand on one leg with the other leg floating behind.",
+      "Squat down until the back knee lightly touches the floor.",
+      "Stand back up using only the front leg.",
+      "Keep torso slightly forward for balance."
+    ],
+    "commonMistakes": [
+      "Losing balance.",
+      "Not reaching full depth."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "hamstrings",
+        "core"
+      ]
+    },
+    "movementPattern": "lunge",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "curtsy_lunge"
+    ],
+    "progressions": [],
+    "metValue": 4.5,
+    "tags": [
+      "unilateral",
+      "advanced",
+      "lower_body"
+    ],
+    "progressionChainId": "chain_lunge",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x6 each side to floor touch",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "plank_shoulder_tap",
+    "name": "plank_shoulder_tap",
+    "displayName": "Plank Shoulder Tap",
+    "description": "From a plank position, alternately tap each shoulder while resisting rotation.",
+    "instructions": [
+      "Start in a high plank position with feet wide.",
+      "Lift one hand and tap the opposite shoulder.",
+      "Return hand to the floor and repeat on the other side.",
+      "Keep hips level throughout."
+    ],
+    "commonMistakes": [
+      "Rocking the hips side to side.",
+      "Feet too narrow."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "shoulders"
+      ],
+      "secondary": [
+        "obliques",
+        "chest"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "bear_crawl"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "anti_rotation",
+      "core_stability",
+      "bodyweight"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x12 each side controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "farmer_walk_band",
+    "name": "farmer_walk_band",
+    "displayName": "Farmer Walk (Band)",
+    "description": "A loaded carry walking while holding resistance bands at your sides.",
+    "instructions": [
+      "Stand on a resistance band and hold the ends at your sides.",
+      "Walk forward with good posture.",
+      "Keep shoulders down and core braced.",
+      "Walk for the prescribed distance or time."
+    ],
+    "commonMistakes": [
+      "Leaning to one side.",
+      "Not maintaining upright posture."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "forearms",
+        "traps"
+      ],
+      "secondary": [
+        "core",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "resistance_bands"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [
+      "overhead_carry_band"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "loaded_carry",
+      "grip",
+      "functional"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x30s walk",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "bear_crawl",
+    "name": "bear_crawl",
+    "displayName": "Bear Crawl",
+    "description": "Crawling forward on hands and feet with knees hovering just above the ground.",
+    "instructions": [
+      "Start on all fours with knees hovering 1 inch off the ground.",
+      "Move the opposite hand and foot forward simultaneously.",
+      "Keep hips level and back flat.",
+      "Crawl for the prescribed distance."
+    ],
+    "commonMistakes": [
+      "Raising the hips too high.",
+      "Moving same-side limbs together."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "quads",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "plank_shoulder_tap"
+    ],
+    "progressions": [
+      "crab_walk"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "crawling",
+      "functional",
+      "bodyweight"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x30s continuous",
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "overhead_carry_band",
+    "name": "overhead_carry_band",
+    "displayName": "Overhead Carry (Band)",
+    "description": "Walking with a resistance band held overhead, challenging shoulder stability and core.",
+    "instructions": [
+      "Press a resistance band overhead with both hands.",
+      "Walk forward while keeping arms locked out.",
+      "Maintain core bracing and avoid leaning.",
+      "Walk for the prescribed distance."
+    ],
+    "commonMistakes": [
+      "Arching the lower back.",
+      "Arms drifting forward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "traps",
+        "triceps"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "resistance_bands"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "farmer_walk_band"
+    ],
+    "progressions": [
+      "suitcase_carry_band"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "overhead",
+      "stability",
+      "functional"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x30s walk with control",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "crab_walk",
+    "name": "crab_walk",
+    "displayName": "Crab Walk",
+    "description": "Walking in a tabletop position with belly facing up, building shoulder and hip endurance.",
+    "instructions": [
+      "Sit on the floor, place hands behind you, feet flat.",
+      "Raise hips off the ground into a tabletop position.",
+      "Walk forward by moving opposite hand and foot.",
+      "Keep hips elevated throughout."
+    ],
+    "commonMistakes": [
+      "Letting hips sag.",
+      "Moving too quickly and losing form."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "triceps",
+        "glutes"
+      ],
+      "secondary": [
+        "shoulders",
+        "core",
+        "hamstrings"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "bear_crawl"
+    ],
+    "progressions": [
+      "alligator_walk"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "crawling",
+      "functional",
+      "bodyweight"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x30s continuous",
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "suitcase_carry_band",
+    "name": "suitcase_carry_band",
+    "displayName": "Suitcase Carry (Band)",
+    "description": "A single-side loaded carry holding a resistance band in one hand, demanding anti-lateral-flexion.",
+    "instructions": [
+      "Stand on a resistance band with one foot, hold the end in one hand.",
+      "Walk forward while resisting the lateral pull.",
+      "Keep torso perfectly upright.",
+      "Switch sides halfway through."
+    ],
+    "commonMistakes": [
+      "Leaning away from the load.",
+      "Not bracing the core."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "forearms",
+        "traps"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "resistance_bands"
+    ],
+    "isUnilateral": true,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "farmer_walk_band"
+    ],
+    "progressions": [
+      "single_arm_overhead_carry"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "anti_lateral_flexion",
+      "functional",
+      "core"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x30s each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "alligator_walk",
+    "name": "alligator_walk",
+    "displayName": "Alligator Walk",
+    "description": "A crawling plank with a push-up at each step, combining locomotion with pressing.",
+    "instructions": [
+      "Start in a push-up position.",
+      "Perform a push-up, then crawl forward one hand and foot at a time.",
+      "Perform another push-up and continue.",
+      "Keep hips level throughout."
+    ],
+    "commonMistakes": [
+      "Hips piking up.",
+      "Not performing full push-ups."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "chest",
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "triceps",
+        "quads"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "bear_crawl"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "crawling",
+      "advanced",
+      "full_body"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x30s continuous",
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "single_arm_overhead_carry",
+    "name": "single_arm_overhead_carry",
+    "displayName": "Single-Arm Overhead Carry",
+    "description": "Walking with one arm locked out overhead holding a band, maximizing anti-lateral-flexion demand.",
+    "instructions": [
+      "Press a resistance band overhead with one hand.",
+      "Walk forward while keeping the arm locked out.",
+      "Resist leaning to the side.",
+      "Switch arms at the halfway point."
+    ],
+    "commonMistakes": [
+      "Leaning away from the overhead arm.",
+      "Elbow bending."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "obliques",
+        "traps",
+        "triceps"
+      ]
+    },
+    "movementPattern": "carry",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "resistance_bands"
+    ],
+    "isUnilateral": true,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "overhead_carry_band"
+    ],
+    "progressions": [],
+    "metValue": 3.5,
+    "tags": [
+      "unilateral",
+      "overhead",
+      "anti_lateral_flexion"
+    ],
+    "progressionChainId": "chain_carry",
+    "progressionOrder": 8,
+    "advancementCriteria": "3x30s each arm",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "bird_dog",
+    "name": "bird_dog",
+    "displayName": "Bird Dog",
+    "description": "A quadruped exercise extending opposite arm and leg to train anti-extension and coordination.",
+    "instructions": [
+      "Start on all fours with hands under shoulders and knees under hips.",
+      "Extend the right arm forward and left leg backward simultaneously.",
+      "Hold briefly, keeping hips level.",
+      "Return and switch sides."
+    ],
+    "commonMistakes": [
+      "Rotating the hips.",
+      "Arching the lower back."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "erectors"
+      ],
+      "secondary": [
+        "glutes",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "plank"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "anti_extension",
+      "beginner",
+      "core"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x12 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "kneeling_plank",
+    "name": "kneeling_plank",
+    "displayName": "Kneeling Plank",
+    "description": "A plank performed from the knees, reducing the lever arm for beginners.",
+    "instructions": [
+      "Start face down with forearms on the floor.",
+      "Lift torso off the ground, keeping knees down.",
+      "Maintain a straight line from head to knees.",
+      "Hold for the prescribed duration."
+    ],
+    "commonMistakes": [
+      "Hips sagging.",
+      "Looking up instead of straight down."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "shoulders"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 20,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": [
+      "plank"
+    ],
+    "metValue": 2.0,
+    "tags": [
+      "anti_extension",
+      "beginner",
+      "core",
+      "isometric"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x30s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "extended_plank",
+    "name": "extended_plank",
+    "displayName": "Extended Plank",
+    "description": "A plank with hands placed further forward, increasing the anti-extension demand.",
+    "instructions": [
+      "Start in a forearm plank.",
+      "Walk elbows forward a few inches past your shoulders.",
+      "Hold the position with core braced.",
+      "Maintain a straight body line."
+    ],
+    "commonMistakes": [
+      "Hips dropping.",
+      "Not extending far enough."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "shoulders",
+        "erectors"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 20,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "plank"
+    ],
+    "progressions": [
+      "long_lever_plank"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "anti_extension",
+      "intermediate",
+      "core",
+      "isometric"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x30s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "body_saw",
+    "name": "body_saw",
+    "displayName": "Body Saw",
+    "description": "A dynamic plank variation rocking forward and backward to increase anti-extension challenge.",
+    "instructions": [
+      "Start in a forearm plank with sliders or towel under feet.",
+      "Rock body backward by pushing through forearms.",
+      "Pull body forward, extending past start position.",
+      "Maintain a rigid core throughout."
+    ],
+    "commonMistakes": [
+      "Hips dropping during movement.",
+      "Rocking too fast."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "shoulders",
+        "erectors"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "sliders_or_towel"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "plank"
+    ],
+    "progressions": [
+      "long_lever_plank"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "anti_extension",
+      "dynamic",
+      "core"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x12 controlled reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "long_lever_plank",
+    "name": "long_lever_plank",
+    "displayName": "Long Lever Plank",
+    "description": "A plank with arms fully extended overhead, creating the longest possible lever arm.",
+    "instructions": [
+      "Lie face down and extend arms overhead on the floor.",
+      "Lift into a plank position with arms extended.",
+      "Hold with core maximally braced.",
+      "Maintain a straight line from hands to feet."
+    ],
+    "commonMistakes": [
+      "Lower back arching.",
+      "Not extending arms fully."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "shoulders",
+        "erectors"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 15,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "extended_plank"
+    ],
+    "progressions": [
+      "dragon_flag"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "anti_extension",
+      "advanced",
+      "isometric"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x20s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "dragon_flag",
+    "name": "dragon_flag",
+    "displayName": "Dragon Flag",
+    "description": "An advanced core exercise made famous by Bruce Lee, lowering and raising the body from a bench anchor.",
+    "instructions": [
+      "Lie on your back, grip a sturdy object behind your head.",
+      "Raise entire body up so only upper back contacts the surface.",
+      "Slowly lower body toward the ground, keeping it straight.",
+      "Stop just above the ground and raise back up."
+    ],
+    "commonMistakes": [
+      "Bending at the hips.",
+      "Lowering too quickly."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors",
+        "obliques",
+        "erectors"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "bench"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "long_lever_plank"
+    ],
+    "progressions": [
+      "ring_body_saw"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "advanced",
+      "anti_extension",
+      "full_body"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x5 full ROM",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "ring_body_saw",
+    "name": "ring_body_saw",
+    "displayName": "Ring Body Saw",
+    "description": "A body saw performed with feet in rings, adding instability for an extreme anti-extension challenge.",
+    "instructions": [
+      "Place feet in gymnastic rings, arms in plank position.",
+      "Rock body forward and backward.",
+      "Fight the instability of the rings with core bracing.",
+      "Maintain straight body alignment."
+    ],
+    "commonMistakes": [
+      "Hips dropping.",
+      "Not controlling the ring movement."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "shoulders",
+        "erectors"
+      ]
+    },
+    "movementPattern": "core_anti_extension",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "rings"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "body_saw"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "rings",
+      "elite",
+      "anti_extension"
+    ],
+    "progressionChainId": "chain_anti_extension",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x8 controlled reps",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "crunch",
+    "name": "crunch",
+    "displayName": "Crunch",
+    "description": "A basic abdominal flexion exercise lifting the upper back off the floor.",
+    "instructions": [
+      "Lie on your back with knees bent, feet flat on the floor.",
+      "Place hands behind your head or across your chest.",
+      "Curl upper back off the floor, contracting the abs.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Pulling on the neck.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 15,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "reverse_crunch"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "abs",
+      "beginner",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x20 controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "lying_knee_tuck",
+    "name": "lying_knee_tuck",
+    "displayName": "Lying Knee Tuck",
+    "description": "A supine exercise bringing the knees to the chest, working the lower abdominals.",
+    "instructions": [
+      "Lie flat on your back with legs extended.",
+      "Pull both knees toward your chest.",
+      "Squeeze the abs at the top.",
+      "Extend legs back out with control."
+    ],
+    "commonMistakes": [
+      "Using momentum.",
+      "Not fully extending the legs."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "reverse_crunch"
+    ],
+    "metValue": 2.0,
+    "tags": [
+      "abs",
+      "beginner",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x15 controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "reverse_crunch",
+    "name": "reverse_crunch",
+    "displayName": "Reverse Crunch",
+    "description": "An abdominal exercise lifting the hips off the floor by curling the pelvis upward.",
+    "instructions": [
+      "Lie on your back with knees bent at 90 degrees.",
+      "Curl the hips off the floor, bringing knees toward your chest.",
+      "Lower the hips with control.",
+      "Keep upper back on the floor."
+    ],
+    "commonMistakes": [
+      "Using momentum to swing legs.",
+      "Not curling the pelvis."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "crunch"
+    ],
+    "progressions": [
+      "lying_leg_raise"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "abs",
+      "lower_abs",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x15 with pause at top",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "v_up",
+    "name": "v_up",
+    "displayName": "V-Up",
+    "description": "A full-body crunch bringing hands and feet together at the top.",
+    "instructions": [
+      "Lie flat on your back with arms extended overhead.",
+      "Simultaneously raise legs and upper body, reaching hands to toes.",
+      "Form a V shape at the top.",
+      "Lower back down with control."
+    ],
+    "commonMistakes": [
+      "Bending the knees.",
+      "Not reaching full V position."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "crunch"
+    ],
+    "progressions": [
+      "lying_leg_raise"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "abs",
+      "full_body",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x12 with straight legs",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "lying_leg_raise",
+    "name": "lying_leg_raise",
+    "displayName": "Lying Leg Raise",
+    "description": "A supine exercise raising straight legs off the floor, targeting the lower abdominals.",
+    "instructions": [
+      "Lie flat on your back with legs straight.",
+      "Place hands under your glutes for lower back support.",
+      "Raise legs to 90 degrees while keeping them straight.",
+      "Lower slowly without touching the floor."
+    ],
+    "commonMistakes": [
+      "Arching the lower back.",
+      "Bending the knees."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "reverse_crunch"
+    ],
+    "progressions": [
+      "hanging_knee_raise"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "lower_abs",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x12 with control",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "toe_touch_crunch",
+    "name": "toe_touch_crunch",
+    "displayName": "Toe Touch Crunch",
+    "description": "A crunch reaching toward elevated feet for a full abdominal contraction.",
+    "instructions": [
+      "Lie on your back with legs raised straight up to 90 degrees.",
+      "Reach hands toward your toes, lifting upper back off the floor.",
+      "Squeeze abs at the top.",
+      "Lower upper back with control."
+    ],
+    "commonMistakes": [
+      "Only reaching with the arms, not crunching.",
+      "Swinging legs."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "v_up"
+    ],
+    "progressions": [
+      "hanging_knee_raise"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "abs",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x15 touching toes",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "hanging_knee_raise",
+    "name": "hanging_knee_raise",
+    "displayName": "Hanging Knee Raise",
+    "description": "A hanging core exercise bringing the knees to the chest while hanging from a bar.",
+    "instructions": [
+      "Hang from a pull-up bar with arms extended.",
+      "Raise knees toward your chest by curling the pelvis.",
+      "Hold briefly at the top.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Swinging to generate momentum.",
+      "Not curling the pelvis."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "forearms"
+      ]
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "lying_leg_raise"
+    ],
+    "progressions": [
+      "hanging_leg_raise"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "hanging",
+      "lower_abs",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x12 no swing",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "pike_crunch",
+    "name": "pike_crunch",
+    "displayName": "Pike Crunch",
+    "description": "A challenging crunch folding the body into a pike position from a lying start.",
+    "instructions": [
+      "Lie flat with arms extended overhead.",
+      "Simultaneously raise legs and torso, reaching hands past toes.",
+      "Fold into a tight pike at the top.",
+      "Lower with control."
+    ],
+    "commonMistakes": [
+      "Not reaching full pike.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "v_up"
+    ],
+    "progressions": [
+      "hanging_leg_raise"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "abs",
+      "advanced",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 8,
+    "advancementCriteria": "3x10 with tight pike",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "hanging_leg_raise",
+    "name": "hanging_leg_raise",
+    "displayName": "Hanging Leg Raise",
+    "description": "An advanced hanging exercise raising straight legs to bar height.",
+    "instructions": [
+      "Hang from a bar with arms extended.",
+      "Raise straight legs until they are parallel to the floor or higher.",
+      "Hold briefly at the top.",
+      "Lower with control, avoiding swing."
+    ],
+    "commonMistakes": [
+      "Swinging.",
+      "Bending the knees."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "forearms",
+        "obliques"
+      ]
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "hanging_knee_raise"
+    ],
+    "progressions": [
+      "toes_to_bar"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "hanging",
+      "advanced",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x8 straight legs",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "toes_to_bar",
+    "name": "toes_to_bar",
+    "displayName": "Toes to Bar",
+    "description": "An elite hanging core exercise touching the toes to the bar at the top of each rep.",
+    "instructions": [
+      "Hang from a bar with full extension.",
+      "Raise straight legs all the way up until toes touch the bar.",
+      "Lower with control to full extension.",
+      "Avoid excessive swinging."
+    ],
+    "commonMistakes": [
+      "Using kip instead of strict form.",
+      "Not touching the bar."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "forearms",
+        "upper_back"
+      ]
+    },
+    "movementPattern": "core_flexion",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "hanging_leg_raise"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "elite",
+      "hanging",
+      "core"
+    ],
+    "progressionChainId": "chain_core_flexion",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x8 strict",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "dead_bug_twist",
+    "name": "dead_bug_twist",
+    "displayName": "Dead Bug Twist",
+    "description": "A dead bug variation adding rotational movement as opposite limbs extend.",
+    "instructions": [
+      "Lie on your back with arms raised and knees at 90 degrees.",
+      "Extend opposite arm and leg while rotating torso slightly.",
+      "Return to center and switch sides.",
+      "Keep lower back pressed into the floor."
+    ],
+    "commonMistakes": [
+      "Lower back lifting off the floor.",
+      "Rotating too much."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "obliques"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "bicycle_crunch"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "rotation",
+      "beginner",
+      "core"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x12 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "seated_twist",
+    "name": "seated_twist",
+    "displayName": "Seated Twist",
+    "description": "A seated rotational exercise turning the torso side to side.",
+    "instructions": [
+      "Sit on the floor with knees bent, feet flat.",
+      "Lean back slightly and clasp hands together.",
+      "Rotate torso to one side, then the other.",
+      "Keep core engaged throughout."
+    ],
+    "commonMistakes": [
+      "Rotating from the shoulders instead of the torso.",
+      "Moving too quickly."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "bicycle_crunch"
+    ],
+    "metValue": 2.0,
+    "tags": [
+      "rotation",
+      "beginner",
+      "obliques"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x15 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "russian_twist",
+    "name": "russian_twist",
+    "displayName": "Russian Twist",
+    "description": "A seated rotational exercise with feet elevated, twisting side to side.",
+    "instructions": [
+      "Sit with knees bent, lean back, lift feet off the floor.",
+      "Clasp hands together and rotate torso to one side.",
+      "Touch hands near the floor beside your hip.",
+      "Rotate to the other side."
+    ],
+    "commonMistakes": [
+      "Dropping the feet.",
+      "Only moving the arms, not the torso."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "seated_twist"
+    ],
+    "progressions": [
+      "woodchop_band"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "rotation",
+      "obliques",
+      "core"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x15 each side with feet off floor",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "woodchop_band",
+    "name": "woodchop_band",
+    "displayName": "Woodchop (Band)",
+    "description": "A standing rotational exercise using a band anchored low or high, mimicking a chopping motion.",
+    "instructions": [
+      "Anchor a band at a low or high point.",
+      "Stand sideways to the anchor, grip the band with both hands.",
+      "Rotate torso and pull band diagonally across body.",
+      "Control the return to the start."
+    ],
+    "commonMistakes": [
+      "Using arms instead of torso rotation.",
+      "Moving too fast."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "shoulders"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "resistance_bands",
+      "anchor_point"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "russian_twist"
+    ],
+    "progressions": [
+      "plank_rotation"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "rotation",
+      "functional",
+      "obliques"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x12 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "plank_rotation",
+    "name": "plank_rotation",
+    "displayName": "Plank Rotation",
+    "description": "A plank with a full torso rotation reaching one arm to the ceiling.",
+    "instructions": [
+      "Start in a high plank position.",
+      "Rotate body to one side, reaching the top arm to the ceiling.",
+      "Hold briefly in a side plank position.",
+      "Return to plank and repeat on the other side."
+    ],
+    "commonMistakes": [
+      "Not rotating fully.",
+      "Hips dropping during rotation."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "shoulders"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "russian_twist"
+    ],
+    "progressions": [
+      "windshield_wiper"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "rotation",
+      "anti_rotation",
+      "core"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x10 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "windshield_wiper",
+    "name": "windshield_wiper",
+    "displayName": "Windshield Wiper",
+    "description": "A supine rotational exercise lowering straight legs from side to side.",
+    "instructions": [
+      "Lie on your back with arms extended out to the sides.",
+      "Raise legs to 90 degrees.",
+      "Lower legs to one side, keeping shoulders on the floor.",
+      "Return to center and repeat to the other side."
+    ],
+    "commonMistakes": [
+      "Shoulders lifting off the floor.",
+      "Bending the knees."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "plank_rotation"
+    ],
+    "progressions": [
+      "hanging_windshield_wiper"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "rotation",
+      "advanced",
+      "obliques"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x8 each side controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "hanging_windshield_wiper",
+    "name": "hanging_windshield_wiper",
+    "displayName": "Hanging Windshield Wiper",
+    "description": "An advanced rotational exercise performing windshield wipers while hanging from a bar.",
+    "instructions": [
+      "Hang from a bar and raise legs to bar height.",
+      "Rotate legs to one side while keeping grip.",
+      "Sweep legs to the other side in a windshield wiper motion.",
+      "Maintain straight legs throughout."
+    ],
+    "commonMistakes": [
+      "Bending the knees.",
+      "Not raising legs high enough."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "forearms",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 6,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "windshield_wiper"
+    ],
+    "progressions": [
+      "full_windshield_wiper"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "hanging",
+      "advanced",
+      "rotation"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 8,
+    "advancementCriteria": "3x6 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "full_windshield_wiper",
+    "name": "full_windshield_wiper",
+    "displayName": "Full Windshield Wiper",
+    "description": "An elite rotational exercise performing full-range windshield wipers while hanging.",
+    "instructions": [
+      "Hang from a bar and raise legs to touch the bar.",
+      "Lower legs in a wide arc to one side.",
+      "Sweep to the other side through the full range of motion.",
+      "Maintain straight legs and control throughout."
+    ],
+    "commonMistakes": [
+      "Losing control of the arc.",
+      "Using momentum."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "forearms",
+        "hip_flexors",
+        "upper_back"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 4,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 120,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "hanging_windshield_wiper"
+    ],
+    "progressions": [],
+    "metValue": 5.0,
+    "tags": [
+      "elite",
+      "rotation",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 9,
+    "advancementCriteria": "3x4 each side strict",
+    "athleteSource": [
+      "heria"
+    ],
+    "apartmentFriendly": true
+  },
+  {
+    "id": "dragon_flag_twist",
+    "name": "dragon_flag_twist",
+    "displayName": "Dragon Flag Twist",
+    "description": "A dragon flag with a rotational component, twisting the body during the lowering phase.",
+    "instructions": [
+      "Grip a sturdy surface behind your head.",
+      "Raise body into a dragon flag position.",
+      "Twist the body to one side while lowering.",
+      "Return to center at the top and twist to the other side."
+    ],
+    "commonMistakes": [
+      "Bending at the hips.",
+      "Twisting too aggressively."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors",
+        "erectors"
+      ]
+    },
+    "movementPattern": "core_rotation",
+    "category": "strength",
+    "difficulty": 5,
+    "equipment": [
+      "bench"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 4,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 120,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "windshield_wiper"
+    ],
+    "progressions": [],
+    "metValue": 5.5,
+    "tags": [
+      "elite",
+      "rotation",
+      "advanced"
+    ],
+    "progressionChainId": "chain_rotation",
+    "progressionOrder": 10,
+    "advancementCriteria": "3x4 each side",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "seated_knee_tuck",
+    "name": "seated_knee_tuck",
+    "displayName": "Seated Knee Tuck",
+    "description": "A seated compression exercise pulling the knees toward the chest.",
+    "instructions": [
+      "Sit on the edge of a chair or the floor with legs extended.",
+      "Lean back slightly, gripping the seat for support.",
+      "Pull both knees toward your chest.",
+      "Extend legs back out with control."
+    ],
+    "commonMistakes": [
+      "Using momentum.",
+      "Not fully extending the legs."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "boat_hold"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "compression",
+      "beginner",
+      "core"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 1,
+    "advancementCriteria": "3x15 controlled",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "boat_hold",
+    "name": "boat_hold",
+    "displayName": "Boat Hold",
+    "description": "An isometric V-sit position with legs and torso elevated, holding a boat shape.",
+    "instructions": [
+      "Sit on the floor and lean back slightly.",
+      "Raise bent legs to a 90-degree angle.",
+      "Hold arms parallel to the floor alongside the legs.",
+      "Maintain the position for the prescribed time."
+    ],
+    "commonMistakes": [
+      "Rounding the back excessively.",
+      "Legs dropping."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 20,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [],
+    "progressions": [
+      "v_sit_hold"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "isometric",
+      "compression",
+      "core"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 2,
+    "advancementCriteria": "3x30s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "v_sit_hold",
+    "name": "v_sit_hold",
+    "displayName": "V-Sit Hold",
+    "description": "An isometric hold in a V position with straight legs elevated.",
+    "instructions": [
+      "Sit on the floor and lean back slightly.",
+      "Raise straight legs to about 45 degrees.",
+      "Hold arms alongside the legs.",
+      "Maintain a V shape with the body."
+    ],
+    "commonMistakes": [
+      "Bending the knees.",
+      "Rounding the back."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 15,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "boat_hold"
+    ],
+    "progressions": [
+      "tuck_l_sit"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "isometric",
+      "compression",
+      "core"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 3,
+    "advancementCriteria": "3x20s with straight legs",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "pike_pulse",
+    "name": "pike_pulse",
+    "displayName": "Pike Pulse",
+    "description": "Small pulsing movements in a pike compression position to build active flexibility.",
+    "instructions": [
+      "Sit in a pike position with legs straight ahead.",
+      "Place hands on the floor beside your thighs.",
+      "Press into the floor, lifting hips slightly.",
+      "Pulse up and down with small movements."
+    ],
+    "commonMistakes": [
+      "Bending the knees.",
+      "Not engaging the hip flexors."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hip_flexors",
+        "core"
+      ],
+      "secondary": []
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "seated_knee_tuck"
+    ],
+    "progressions": [
+      "tuck_l_sit"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "compression",
+      "active_flexibility",
+      "core"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 4,
+    "advancementCriteria": "3x15 pulses",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "tuck_l_sit",
+    "name": "tuck_l_sit",
+    "displayName": "Tuck L-Sit",
+    "description": "An L-sit with knees tucked to the chest, a preparatory position for the full L-sit.",
+    "instructions": [
+      "Place hands on the floor beside your hips.",
+      "Press into the floor and lift hips off the ground.",
+      "Pull knees to your chest in a tuck position.",
+      "Hold for the prescribed time."
+    ],
+    "commonMistakes": [
+      "Not fully lifting off the ground.",
+      "Shoulders shrugging up."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "triceps",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 10,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 10,
+    "regressions": [
+      "v_sit_hold"
+    ],
+    "progressions": [
+      "l_sit_floor"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "l_sit_prep",
+      "compression",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 5,
+    "advancementCriteria": "3x15s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "l_sit_floor",
+    "name": "l_sit_floor",
+    "displayName": "L-Sit (Floor)",
+    "description": "A full L-sit performed on the floor with legs extended straight.",
+    "instructions": [
+      "Place hands on the floor beside your hips, or on fists.",
+      "Press into the floor and lift hips and legs off the ground.",
+      "Extend legs straight in front, parallel to the floor.",
+      "Hold for the prescribed time."
+    ],
+    "commonMistakes": [
+      "Bending the knees.",
+      "Not achieving full hip lift."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "triceps",
+        "shoulders",
+        "quads"
+      ]
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 10,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 10,
+    "regressions": [
+      "tuck_l_sit"
+    ],
+    "progressions": [
+      "l_sit"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "l_sit",
+      "compression",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 6,
+    "advancementCriteria": "3x15s with straight legs",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "l_sit",
+    "name": "l_sit",
+    "displayName": "L-Sit (Parallettes)",
+    "description": "A full L-sit performed on parallettes, allowing greater clearance and deeper compression.",
+    "instructions": [
+      "Grip parallettes with arms straight.",
+      "Press body up and extend legs straight forward.",
+      "Keep legs parallel to the floor.",
+      "Hold for the prescribed time."
+    ],
+    "commonMistakes": [
+      "Legs dropping.",
+      "Shoulders elevating."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "triceps",
+        "shoulders",
+        "quads"
+      ]
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "parallettes"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 10,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 10,
+    "regressions": [
+      "l_sit_floor"
+    ],
+    "progressions": [
+      "straddle_l_sit"
+    ],
+    "metValue": 4.5,
+    "tags": [
+      "l_sit",
+      "gymnastic",
+      "advanced"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 7,
+    "advancementCriteria": "3x15s full extension",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "v_sit",
+    "name": "v_sit",
+    "displayName": "V-Sit (Elevated)",
+    "description": "An elevated V-sit raising the legs higher than a standard L-sit.",
+    "instructions": [
+      "Sit on the floor or parallettes.",
+      "Press up and raise straight legs above horizontal.",
+      "Create a V shape between torso and legs.",
+      "Hold with maximum compression."
+    ],
+    "commonMistakes": [
+      "Not raising legs high enough.",
+      "Excessive rounding of the back."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "core",
+        "hip_flexors"
+      ],
+      "secondary": [
+        "quads",
+        "shoulders"
+      ]
+    },
+    "movementPattern": "core_compression",
+    "category": "strength",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 8,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 8,
+    "regressions": [
+      "l_sit_floor"
+    ],
+    "progressions": [],
+    "metValue": 4.5,
+    "tags": [
+      "compression",
+      "advanced",
+      "gymnastic"
+    ],
+    "progressionChainId": "chain_compression",
+    "progressionOrder": 8,
+    "advancementCriteria": "3x10s hold",
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "jumping_jack",
+    "name": "jumping_jack",
+    "displayName": "Jumping Jack",
+    "description": "A classic cardio exercise jumping feet wide while raising arms overhead.",
+    "instructions": [
+      "Stand with feet together, arms at your sides.",
+      "Jump feet apart while raising arms overhead.",
+      "Jump back to the starting position.",
+      "Maintain a steady rhythm."
+    ],
+    "commonMistakes": [
+      "Not fully extending the arms.",
+      "Landing flat-footed."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "calves"
+      ],
+      "secondary": [
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 20,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [],
+    "progressions": [
+      "high_knees"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "cardio",
+      "warmup",
+      "full_body"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "high_knee_march",
+    "name": "high_knee_march",
+    "displayName": "High Knee March",
+    "description": "A low-impact cardio exercise marching in place with high knee lifts.",
+    "instructions": [
+      "Stand tall with arms at your sides.",
+      "Lift one knee to hip height while pumping the opposite arm.",
+      "Lower and repeat with the other leg.",
+      "Keep a steady marching pace."
+    ],
+    "commonMistakes": [
+      "Not lifting knees high enough.",
+      "Leaning backward."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hip_flexors",
+        "quads"
+      ],
+      "secondary": [
+        "core",
+        "calves"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 20,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "high_knees"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "low_impact",
+      "cardio",
+      "beginner"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "high_knees",
+    "name": "high_knees",
+    "displayName": "High Knees",
+    "description": "A fast-paced cardio drill running in place with knees driven high.",
+    "instructions": [
+      "Run in place, driving knees to hip height.",
+      "Pump arms in sync with the legs.",
+      "Stay on the balls of your feet.",
+      "Maintain quick turnover."
+    ],
+    "commonMistakes": [
+      "Leaning too far back.",
+      "Knees not reaching hip height."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hip_flexors",
+        "quads"
+      ],
+      "secondary": [
+        "calves",
+        "core"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 20,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "high_knee_march"
+    ],
+    "progressions": [
+      "mountain_climber"
+    ],
+    "metValue": 5.5,
+    "tags": [
+      "cardio",
+      "speed",
+      "conditioning"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "butt_kick",
+    "name": "butt_kick",
+    "displayName": "Butt Kick",
+    "description": "A cardio drill running in place while kicking heels to the glutes.",
+    "instructions": [
+      "Run in place, kicking heels toward your glutes.",
+      "Keep knees pointing down.",
+      "Pump arms naturally.",
+      "Stay on the balls of your feet."
+    ],
+    "commonMistakes": [
+      "Leaning forward.",
+      "Not kicking high enough."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "hamstrings",
+        "calves"
+      ],
+      "secondary": [
+        "quads",
+        "core"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 20,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "high_knee_march"
+    ],
+    "progressions": [
+      "mountain_climber"
+    ],
+    "metValue": 5.0,
+    "tags": [
+      "cardio",
+      "hamstrings",
+      "conditioning"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "skater_hop",
+    "name": "skater_hop",
+    "displayName": "Skater Hop",
+    "description": "A lateral plyometric movement hopping side to side like a speed skater.",
+    "instructions": [
+      "Stand on one leg.",
+      "Leap laterally to the other foot.",
+      "Land softly on the opposite foot, bringing the trailing leg behind.",
+      "Immediately leap back to the other side."
+    ],
+    "commonMistakes": [
+      "Not absorbing the landing.",
+      "Not reaching enough laterally."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "glutes",
+        "quads"
+      ],
+      "secondary": [
+        "calves",
+        "core",
+        "adductors"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": true,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "high_knees"
+    ],
+    "progressions": [
+      "burpee"
+    ],
+    "metValue": 5.5,
+    "tags": [
+      "plyometric",
+      "lateral",
+      "cardio"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "squat_thrust",
+    "name": "squat_thrust",
+    "displayName": "Squat Thrust",
+    "description": "A burpee without the jump or push-up, transitioning between standing and plank.",
+    "instructions": [
+      "Stand with feet shoulder-width apart.",
+      "Squat down and place hands on the floor.",
+      "Jump feet back to a plank position.",
+      "Jump feet forward and stand up."
+    ],
+    "commonMistakes": [
+      "Not achieving full plank.",
+      "Landing heavily."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "core"
+      ],
+      "secondary": [
+        "shoulders",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 12,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "high_knees"
+    ],
+    "progressions": [
+      "burpee"
+    ],
+    "metValue": 5.5,
+    "tags": [
+      "cardio",
+      "full_body",
+      "conditioning"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "burpee",
+    "name": "burpee",
+    "displayName": "Burpee",
+    "description": "A full-body conditioning exercise combining a squat, plank, push-up, and jump.",
+    "instructions": [
+      "Stand, then squat down placing hands on the floor.",
+      "Jump feet back to a plank and perform a push-up.",
+      "Jump feet forward to the squat position.",
+      "Explode upward into a jump with arms overhead."
+    ],
+    "commonMistakes": [
+      "Skipping the push-up.",
+      "Not achieving full hip extension on the jump."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "chest",
+        "shoulders"
+      ],
+      "secondary": [
+        "core",
+        "triceps",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "squat_thrust"
+    ],
+    "progressions": [
+      "burpee_pull_up"
+    ],
+    "metValue": 7.0,
+    "tags": [
+      "full_body",
+      "conditioning",
+      "cardio"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "tuck_jump",
+    "name": "tuck_jump",
+    "displayName": "Tuck Jump",
+    "description": "An explosive plyometric jump bringing knees to the chest at the peak.",
+    "instructions": [
+      "Stand with feet shoulder-width apart.",
+      "Jump as high as possible, pulling knees to chest.",
+      "Land softly with bent knees.",
+      "Immediately jump again."
+    ],
+    "commonMistakes": [
+      "Landing with stiff legs.",
+      "Not pulling knees high enough."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "calves"
+      ],
+      "secondary": [
+        "core",
+        "hip_flexors",
+        "glutes"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 4,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 15,
+    "regressions": [
+      "jump_squat"
+    ],
+    "progressions": [
+      "burpee_pull_up"
+    ],
+    "metValue": 6.5,
+    "tags": [
+      "plyometric",
+      "power",
+      "cardio"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "burpee_pull_up",
+    "name": "burpee_pull_up",
+    "displayName": "Burpee Pull-Up",
+    "description": "A burpee performed under a pull-up bar, adding a pull-up at the top of each jump.",
+    "instructions": [
+      "Perform a burpee beneath a pull-up bar.",
+      "Jump and catch the bar.",
+      "Perform a pull-up.",
+      "Release and go directly into the next burpee."
+    ],
+    "commonMistakes": [
+      "Not completing the pull-up.",
+      "Poor timing on the bar catch."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "upper_back",
+        "chest"
+      ],
+      "secondary": [
+        "biceps",
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 5,
+    "equipment": [
+      "pull_up_bar"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 5,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 25,
+    "regressions": [
+      "burpee"
+    ],
+    "progressions": [],
+    "metValue": 8.0,
+    "tags": [
+      "full_body",
+      "elite",
+      "conditioning"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "plyometric_push_up",
+    "name": "plyometric_push_up",
+    "displayName": "Plyometric Push-Up",
+    "description": "An explosive push-up where hands leave the ground at the top.",
+    "instructions": [
+      "Start in a push-up position.",
+      "Lower chest to the floor.",
+      "Explode upward so hands leave the ground.",
+      "Land softly and immediately descend."
+    ],
+    "commonMistakes": [
+      "Hands not leaving the ground.",
+      "Landing with stiff elbows."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "chest",
+        "triceps"
+      ],
+      "secondary": [
+        "shoulders",
+        "core"
+      ]
+    },
+    "movementPattern": "cardio",
+    "category": "cardio",
+    "difficulty": 5,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 90,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [
+      "burpee"
+    ],
+    "progressions": [],
+    "metValue": 6.0,
+    "tags": [
+      "plyometric",
+      "power",
+      "upper_body"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "frog_squat",
+    "name": "frog_squat",
+    "displayName": "Frog Squat",
+    "description": "A deep squat mimicking a frog position, building hip mobility and lower body endurance.",
+    "instructions": [
+      "Stand with feet wider than shoulder width.",
+      "Squat deep, placing hands on the floor between your feet.",
+      "Rise to standing with arms overhead.",
+      "Return to the frog position."
+    ],
+    "commonMistakes": [
+      "Heels lifting off the floor.",
+      "Rounding the back excessively."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "adductors",
+        "hip_flexors",
+        "core"
+      ]
+    },
+    "movementPattern": "primal",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 10,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 18,
+    "regressions": [],
+    "progressions": [
+      "monkey_walk"
+    ],
+    "metValue": 3.0,
+    "tags": [
+      "primal",
+      "mobility",
+      "beginner"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "crawl_forward",
+    "name": "crawl_forward",
+    "displayName": "Crawl Forward",
+    "description": "A basic crawling exercise on hands and knees, building coordination and body awareness.",
+    "instructions": [
+      "Start on all fours with knees on the ground.",
+      "Move opposite hand and knee forward simultaneously.",
+      "Crawl forward for the prescribed distance.",
+      "Keep back flat and head neutral."
+    ],
+    "commonMistakes": [
+      "Moving same-side limbs together.",
+      "Raising hips too high."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "quads",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "primal",
+    "category": "strength",
+    "difficulty": 1,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 30,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [],
+    "progressions": [
+      "inchworm"
+    ],
+    "metValue": 2.5,
+    "tags": [
+      "primal",
+      "crawling",
+      "beginner"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "inchworm",
+    "name": "inchworm",
+    "displayName": "Inchworm",
+    "description": "Walking the hands out from standing to a plank and back, combining flexibility with upper body engagement.",
+    "instructions": [
+      "Stand with feet together.",
+      "Bend forward and walk hands out to a plank position.",
+      "Walk hands back toward feet.",
+      "Stand up and repeat."
+    ],
+    "commonMistakes": [
+      "Bending the knees.",
+      "Not reaching full plank."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "hamstrings",
+        "chest"
+      ]
+    },
+    "movementPattern": "primal",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 20,
+    "regressions": [
+      "crawl_forward"
+    ],
+    "progressions": [
+      "lizard_crawl"
+    ],
+    "metValue": 3.5,
+    "tags": [
+      "primal",
+      "warmup",
+      "full_body"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "monkey_walk",
+    "name": "monkey_walk",
+    "displayName": "Monkey Walk",
+    "description": "A deep squat walking movement mimicking primate locomotion.",
+    "instructions": [
+      "Squat deep with hands touching the floor.",
+      "Walk forward in the squat position, using hands for light support.",
+      "Keep hips low and core engaged.",
+      "Move continuously for the prescribed time."
+    ],
+    "commonMistakes": [
+      "Rising out of the deep squat.",
+      "Not using contralateral movement."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "quads",
+        "glutes"
+      ],
+      "secondary": [
+        "core",
+        "hip_flexors",
+        "adductors"
+      ]
+    },
+    "movementPattern": "primal",
+    "category": "strength",
+    "difficulty": 2,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "frog_squat"
+    ],
+    "progressions": [
+      "scorpion_reach"
+    ],
+    "metValue": 4.0,
+    "tags": [
+      "primal",
+      "mobility",
+      "lower_body"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": false
+  },
+  {
+    "id": "scorpion_reach",
+    "name": "scorpion_reach",
+    "displayName": "Scorpion Reach",
+    "description": "A prone rotational movement reaching one foot toward the opposite hand behind the body.",
+    "instructions": [
+      "Lie face down with arms extended to the sides.",
+      "Lift one leg and rotate it over the body toward the opposite hand.",
+      "Return to start and switch sides.",
+      "Control the movement through the full range."
+    ],
+    "commonMistakes": [
+      "Forcing the range of motion.",
+      "Rotating too quickly."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "obliques",
+        "glutes"
+      ],
+      "secondary": [
+        "erectors",
+        "hip_flexors"
+      ]
+    },
+    "movementPattern": "primal",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": 8,
+    "defaultDurationSeconds": null,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 45,
+    "estimatedTimePerSetSeconds": 22,
+    "regressions": [
+      "inchworm"
+    ],
+    "progressions": [],
+    "metValue": 3.0,
+    "tags": [
+      "primal",
+      "mobility",
+      "rotation"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": true
+  },
+  {
+    "id": "lizard_crawl",
+    "name": "lizard_crawl",
+    "displayName": "Lizard Crawl",
+    "description": "An advanced crawling pattern staying close to the ground with deep hip and shoulder engagement.",
+    "instructions": [
+      "Start in a push-up position.",
+      "Step one hand and the opposite foot forward simultaneously.",
+      "Lower body close to the ground like a lizard.",
+      "Continue crawling with alternating contralateral limbs."
+    ],
+    "commonMistakes": [
+      "Raising hips too high.",
+      "Not getting low enough to the ground."
+    ],
+    "muscleGroups": {
+      "primary": [
+        "shoulders",
+        "core"
+      ],
+      "secondary": [
+        "hip_flexors",
+        "chest",
+        "quads"
+      ]
+    },
+    "movementPattern": "primal",
+    "category": "strength",
+    "difficulty": 3,
+    "equipment": [
+      "none"
+    ],
+    "isUnilateral": false,
+    "defaultReps": null,
+    "defaultDurationSeconds": 30,
+    "defaultSets": 3,
+    "restBetweenSetsSeconds": 60,
+    "estimatedTimePerSetSeconds": 30,
+    "regressions": [
+      "inchworm"
+    ],
+    "progressions": [],
+    "metValue": 4.5,
+    "tags": [
+      "primal",
+      "crawling",
+      "advanced"
+    ],
+    "progressionChainId": null,
+    "progressionOrder": null,
+    "advancementCriteria": null,
+    "athleteSource": null,
+    "apartmentFriendly": false
   }
 ]

@@ -11,7 +11,7 @@ final class CalorieCalculatorTests: XCTestCase {
             id: "test-\(metValue)", name: "test", displayName: "Test",
             description: "", instructions: [], commonMistakes: [],
             muscleGroups: Exercise.MuscleGroups(primary: [.chest], secondary: []),
-            movementPattern: .push, category: .strength, difficulty: 1,
+            movementPattern: .pushHorizontal, category: .strength, difficulty: 1,
             equipment: [.none], isUnilateral: false,
             defaultReps: 10, defaultDurationSeconds: nil,
             defaultSets: 3, restBetweenSetsSeconds: restBetweenSets,

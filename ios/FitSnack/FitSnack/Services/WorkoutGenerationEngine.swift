@@ -223,14 +223,35 @@ struct WorkoutGenerationEngine {
             if selected.count >= 3 { break }
         }
 
-        let blockNames = ["Upper Body", "Lower Body", "Core & Cardio", "Full Body"]
         return WorkoutBlock(
             id: UUID().uuidString,
-            name: blockNames[index % blockNames.count],
+            name: blockNameForExercises(selected),
             type: .strength,
             exercises: selected,
             restBetweenExercisesSeconds: 30
         )
+    }
+
+    private func blockNameForExercises(_ exercises: [WorkoutExercise]) -> String {
+        let muscles = Set(exercises.flatMap { $0.exercise.muscleGroups.primary })
+
+        let upperMuscles: Set<MuscleGroup> = [.chest, .upperBack, .lowerBack, .shoulders, .biceps, .triceps, .forearms]
+        let lowerMuscles: Set<MuscleGroup> = [.quads, .glutes, .hamstrings, .calves, .hipFlexors, .adductors, .abductors]
+        let coreMuscles: Set<MuscleGroup> = [.core, .obliques]
+
+        let hasUpper = !muscles.isDisjoint(with: upperMuscles)
+        let hasLower = !muscles.isDisjoint(with: lowerMuscles)
+        let hasCore = !muscles.isDisjoint(with: coreMuscles)
+
+        switch (hasUpper, hasLower, hasCore) {
+        case (true, true, _): return "Full Body"
+        case (true, false, true): return "Upper Body & Core"
+        case (false, true, true): return "Lower Body & Core"
+        case (true, false, false): return "Upper Body"
+        case (false, true, false): return "Lower Body"
+        case (false, false, true): return "Core"
+        default: return "Workout"
+        }
     }
 
     private func calculateSets(for exercise: Exercise, availableTime: Int) -> Int {

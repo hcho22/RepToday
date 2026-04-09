@@ -84,6 +84,10 @@ struct WorkoutHistoryRow: View {
         case .core, .obliques: .yellow
         case .quads, .hamstrings, .glutes, .calves: .green
         case .hipFlexors, .adductors, .abductors: .teal
+        case .wrists: .purple
+        case .rotatorCuff: .orange
+        case .traps: .blue
+        case .erectors: .blue
         }
     }
 }

@@ -1,0 +1,127 @@
+[
+  {
+    "id": "chain_horizontal_push",
+    "name": "Horizontal Push",
+    "description": "Build pushing strength from incline push-ups through diamond push-ups and beyond.",
+    "movementPattern": "push_horizontal",
+    "exerciseIds": ["incline_push_up", "push_up", "dips_on_chair", "diamond_push_up"],
+    "levels": [
+      { "exerciseId": "incline_push_up", "order": 1, "advancementCriteria": "3x15 clean reps" },
+      { "exerciseId": "push_up", "order": 2, "advancementCriteria": "3x15 clean reps" },
+      { "exerciseId": "dips_on_chair", "order": 3, "advancementCriteria": "3x15 clean reps" },
+      { "exerciseId": "diamond_push_up", "order": 4, "advancementCriteria": "3x12 clean reps" }
+    ]
+  },
+  {
+    "id": "chain_vertical_push",
+    "name": "Vertical Push",
+    "description": "Progress from pike push-ups toward handstand push-ups and overhead strength.",
+    "movementPattern": "push_vertical",
+    "exerciseIds": ["pike_push_up", "dumbbell_shoulder_press"],
+    "levels": [
+      { "exerciseId": "pike_push_up", "order": 1, "advancementCriteria": "3x12 clean reps" },
+      { "exerciseId": "dumbbell_shoulder_press", "order": 2, "advancementCriteria": "3x12 clean reps" }
+    ]
+  },
+  {
+    "id": "chain_vertical_pull",
+    "name": "Vertical Pull",
+    "description": "Develop vertical pulling strength from hangs through pull-up variations.",
+    "movementPattern": "pull_vertical",
+    "exerciseIds": ["dumbbell_curl"],
+    "levels": [
+      { "exerciseId": "dumbbell_curl", "order": 1, "advancementCriteria": "3x12 clean reps" }
+    ]
+  },
+  {
+    "id": "chain_horizontal_pull",
+    "name": "Horizontal Pull",
+    "description": "Build horizontal pulling strength from inverted rows through advanced ring variations.",
+    "movementPattern": "pull_horizontal",
+    "exerciseIds": ["dumbbell_row"],
+    "levels": [
+      { "exerciseId": "dumbbell_row", "order": 1, "advancementCriteria": "3x12 clean reps each side" }
+    ]
+  },
+  {
+    "id": "chain_squat",
+    "name": "Squat",
+    "description": "Develop lower-body pushing strength from bodyweight squats through single-leg variations.",
+    "movementPattern": "squat",
+    "exerciseIds": ["bodyweight_squat", "reverse_lunge", "step_up", "lateral_lunge", "goblet_squat", "dumbbell_split_squat"],
+    "levels": [
+      { "exerciseId": "bodyweight_squat", "order": 1, "advancementCriteria": "3x20 clean reps" },
+      { "exerciseId": "reverse_lunge", "order": 2, "advancementCriteria": "3x12 clean reps each side" },
+      { "exerciseId": "step_up", "order": 3, "advancementCriteria": "3x12 clean reps each side" },
+      { "exerciseId": "lateral_lunge", "order": 4, "advancementCriteria": "3x10 clean reps each side" },
+      { "exerciseId": "goblet_squat", "order": 5, "advancementCriteria": "3x15 clean reps" },
+      { "exerciseId": "dumbbell_split_squat", "order": 6, "advancementCriteria": "3x10 clean reps each side" }
+    ]
+  },
+  {
+    "id": "chain_hinge",
+    "name": "Hinge",
+    "description": "Build posterior chain strength from glute bridges through advanced hip hinge variations.",
+    "movementPattern": "hinge",
+    "exerciseIds": ["glute_bridge", "superman", "dumbbell_rdl"],
+    "levels": [
+      { "exerciseId": "glute_bridge", "order": 1, "advancementCriteria": "3x20 clean reps" },
+      { "exerciseId": "superman", "order": 2, "advancementCriteria": "3x15 clean reps" },
+      { "exerciseId": "dumbbell_rdl", "order": 3, "advancementCriteria": "3x12 clean reps" }
+    ]
+  },
+  {
+    "id": "chain_core_anti_extension",
+    "name": "Core Anti-Extension",
+    "description": "Develop anti-extension core stability from dead bugs through dragon flags.",
+    "movementPattern": "core_anti_extension",
+    "exerciseIds": ["dead_bug", "plank", "hollow_hold"],
+    "levels": [
+      { "exerciseId": "dead_bug", "order": 1, "advancementCriteria": "3x12 clean reps each side" },
+      { "exerciseId": "plank", "order": 2, "advancementCriteria": "3x45s hold" },
+      { "exerciseId": "hollow_hold", "order": 3, "advancementCriteria": "3x30s hold" }
+    ]
+  },
+  {
+    "id": "chain_core_dynamic",
+    "name": "Core Dynamic",
+    "description": "Build dynamic core strength through rotational and flexion movements toward hanging leg raises.",
+    "movementPattern": "core_rotation",
+    "exerciseIds": ["bicycle_crunch"],
+    "levels": [
+      { "exerciseId": "bicycle_crunch", "order": 1, "advancementCriteria": "3x20 clean reps" }
+    ]
+  },
+  {
+    "id": "chain_core_compression",
+    "name": "Core Compression",
+    "description": "Develop compression strength from bolt holds through L-sits and V-sits.",
+    "movementPattern": "core_compression",
+    "exerciseIds": [],
+    "levels": []
+  },
+  {
+    "id": "chain_front_lever",
+    "name": "Front Lever",
+    "description": "Progress from scapula pull-ups through tuck and advanced tuck to full front lever.",
+    "movementPattern": "pull_vertical",
+    "exerciseIds": [],
+    "levels": []
+  },
+  {
+    "id": "chain_planche",
+    "name": "Planche",
+    "description": "Build planche strength from pseudo planche holds through crow stand to full planche.",
+    "movementPattern": "push_horizontal",
+    "exerciseIds": [],
+    "levels": []
+  },
+  {
+    "id": "chain_primal",
+    "name": "Primal Movement",
+    "description": "Develop animal flow and locomotion skills from bear crawls through primal flow sequences.",
+    "movementPattern": "primal",
+    "exerciseIds": [],
+    "levels": []
+  }
+]

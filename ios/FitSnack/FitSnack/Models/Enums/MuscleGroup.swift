@@ -17,6 +17,10 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable {
     case hipFlexors = "hip_flexors"
     case adductors
     case abductors
+    case wrists
+    case rotatorCuff = "rotator_cuff"
+    case traps
+    case erectors
 
     var id: String { rawValue }
 
@@ -38,6 +42,10 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable {
         case .hipFlexors: "Hip Flexors"
         case .adductors: "Adductors"
         case .abductors: "Abductors"
+        case .wrists: "Wrists"
+        case .rotatorCuff: "Rotator Cuff"
+        case .traps: "Traps"
+        case .erectors: "Erectors"
         }
     }
 }
