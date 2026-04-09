@@ -58,28 +58,58 @@ struct ProgressTabView: View {
                             }
                             .padding(.horizontal, AppSpacing.md)
 
+                            // Progression Chains link
+                            NavigationLink(destination: ProgressionChainView()) {
+                                FitSnackCard {
+                                    HStack {
+                                        Image(systemName: "arrow.up.right")
+                                            .font(.system(size: 24))
+                                            .foregroundStyle(AppColors.brand)
+                                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                            Text("Progression Chains")
+                                                .font(AppTypography.headline)
+                                                .foregroundStyle(AppColors.textPrimary)
+                                            Text("Track your movement skill levels")
+                                                .font(AppTypography.caption)
+                                                .foregroundStyle(AppColors.textSecondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(AppColors.textSecondary)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, AppSpacing.md)
+
                             // Calendar heat map
                             CalendarHeatMap(data: viewModel.calendarData)
                                 .padding(.horizontal, AppSpacing.md)
 
+                            // Muscle balance radar chart
+                            if !viewModel.movementPatternFrequency.isEmpty {
+                                MuscleRadarChart(data: viewModel.movementPatternFrequency)
+                                    .padding(.horizontal, AppSpacing.md)
+                            }
+
                             // Personal records
                             if !viewModel.personalRecords.isEmpty {
-                                FitSnackCard {
-                                    VStack(alignment: .leading, spacing: AppSpacing.md) {
-                                        Text("Personal Records")
-                                            .font(AppTypography.headline)
-                                            .foregroundStyle(AppColors.textPrimary)
-
-                                        ForEach(viewModel.personalRecords, id: \.title) { pr in
-                                            HStack {
-                                                Text(pr.title)
-                                                    .font(AppTypography.body)
-                                                    .foregroundStyle(AppColors.textSecondary)
-                                                Spacer()
-                                                Text(pr.value)
+                                NavigationLink(destination: PersonalRecordsView()) {
+                                    FitSnackCard {
+                                        HStack {
+                                            Image(systemName: "trophy.fill")
+                                                .font(.system(size: 24))
+                                                .foregroundStyle(AppColors.brand)
+                                            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                                Text("Personal Records")
                                                     .font(AppTypography.headline)
-                                                    .foregroundStyle(AppColors.brand)
+                                                    .foregroundStyle(AppColors.textPrimary)
+                                                Text("Workout & exercise bests")
+                                                    .font(AppTypography.caption)
+                                                    .foregroundStyle(AppColors.textSecondary)
                                             }
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .foregroundStyle(AppColors.textSecondary)
                                         }
                                     }
                                 }

@@ -725,16 +725,16 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Views/Progress/MuscleRadarChart.swift`:
+- [x] New `Views/Progress/MuscleRadarChart.swift`:
   - Swift Charts radar/spider chart (iOS 17+)
   - 7 axes: Push, Pull, Squat, Hinge, Core, Cardio, Mobility
   - Data: aggregate movement pattern frequency from last 30 days of workout history (using `MovementPattern.focusGroup`)
   - Normalized values (0-100%) so the shape is meaningful
   - Color-coded: current month in brand color, target/ideal distribution as light overlay
-- [ ] `ProgressViewModel` adds `movementPatternFrequency: [String: Int]` computed from workout history
-- [ ] `ProgressTabView` adds "Muscle Balance" section with the radar chart
-- [ ] Chart updates when new workouts are completed
-- [ ] Typecheck passes
+- [x] `ProgressViewModel` adds `movementPatternFrequency: [String: Int]` computed from workout history
+- [x] `ProgressTabView` adds "Muscle Balance" section with the radar chart
+- [x] Chart updates when new workouts are completed
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -757,19 +757,19 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Views/Progress/ProgressionChainView.swift`:
+- [x] New `Views/Progress/ProgressionChainView.swift`:
   - Shows all 12 chains as cards in a vertical scroll list
   - Each card shows: chain name, current exercise name, level X of Y, a mini progress bar
   - Tapping a card navigates to detail view
-- [ ] New `Views/Progress/ProgressionChainDetailView.swift`:
+- [x] New `Views/Progress/ProgressionChainDetailView.swift`:
   - Horizontal scrollable chain showing exercises from easiest to hardest
   - Completed levels: checkmark + green
   - Current level: highlighted + brand color
   - Locked levels: grayed out
   - Tapping any exercise shows: name, description, advancement criteria, how close user is (if data available)
-- [ ] `ProgressTabView` adds "Progression Chains" section
-- [ ] Data sourced from `ProgressionServiceProtocol.getUserLevel(for:)` and `getAllChains()`
-- [ ] Typecheck passes
+- [x] `ProgressTabView` adds "Progression Chains" section
+- [x] Data sourced from `ProgressionServiceProtocol.getUserLevel(for:)` and `getAllChains()`
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -793,14 +793,14 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Views/Progress/PersonalRecordsView.swift` — dedicated PR view:
+- [x] New `Views/Progress/PersonalRecordsView.swift` — dedicated PR view:
   - Workout PRs: longest workout, most calories, longest streak, most exercises in one workout
   - Exercise PRs: per-exercise max reps or max duration (from `SetLog` data)
   - Each PR shows: value, exercise name, date achieved
   - Sorted by recency of achievement
-- [ ] `ProgressViewModel` — `calculatePRs()` expanded to scan `SetLog` data for per-exercise maxes
-- [ ] `ProgressTabView` — "Personal Records" section links to `PersonalRecordsView`
-- [ ] Typecheck passes
+- [x] `ProgressViewModel` — `calculatePRs()` expanded to scan `SetLog` data for per-exercise maxes
+- [x] `ProgressTabView` — "Personal Records" section links to `PersonalRecordsView`
+- [x] Typecheck passes
 
 **Validation Test:**
 

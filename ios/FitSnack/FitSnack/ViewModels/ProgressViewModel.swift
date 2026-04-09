@@ -6,7 +6,9 @@ final class ProgressViewModel {
     var monthStats = MonthStats()
     var calendarData: [Date: Int] = [:]
     var personalRecords: [PersonalRecord] = []
+    var exercisePRs: [PersonalRecord] = []
     var consistencyScore: Double = 0
+    var movementPatternFrequency: [FocusGroup: Double] = [:]
 
     struct MonthStats {
         var totalWorkouts = 0
@@ -15,10 +17,16 @@ final class ProgressViewModel {
         var avgDuration = 0
     }
 
-    struct PersonalRecord {
+    struct PersonalRecord: Identifiable {
+        let id = UUID()
         var title: String
         var value: String
         var date: Date?
+        var exerciseName: String?
+    }
+
+    enum PRType {
+        case workout, exercise
     }
 
     var historyItems: [WorkoutHistory] {
@@ -44,7 +52,9 @@ final class ProgressViewModel {
             calculateMonthStats()
             buildCalendarData()
             calculatePRs(longestStreak: stats.longestWeeklyStreak)
+            calculateExercisePRs()
             calculateConsistency(weeklyGoal: stats.weeklyWorkoutGoal)
+            calculateMovementPatternFrequency()
         } catch {}
     }
 
@@ -100,6 +110,17 @@ final class ProgressViewModel {
             ))
         }
 
+        if let mostExercises = workoutHistory.max(by: { $0.allExercises.count < $1.allExercises.count }) {
+            let count = mostExercises.allExercises.count
+            if count > 0 {
+                personalRecords.append(PersonalRecord(
+                    title: "Most Exercises",
+                    value: "\(count) exercises",
+                    date: mostExercises.completedAt
+                ))
+            }
+        }
+
         personalRecords.append(PersonalRecord(
             title: "Total Workouts",
             value: "\(workoutHistory.count)",
@@ -136,5 +157,93 @@ final class ProgressViewModel {
         }
 
         consistencyScore = totalWeeks > 0 ? Double(metGoalWeeks) / Double(totalWeeks) : 0
+    }
+
+    private func calculateExercisePRs() {
+        struct ExerciseBest {
+            var exerciseName: String
+            var maxReps: Int?
+            var maxRepsDate: Date?
+            var maxDuration: Int?
+            var maxDurationDate: Date?
+        }
+
+        var bestByExercise: [String: ExerciseBest] = [:]
+
+        for workout in workoutHistory {
+            let workoutDate = workout.completedAt ?? workout.createdAt
+            for we in workout.allExercises where !we.skipped {
+                let completedSets = we.completedSets.filter { $0.completed }
+                guard !completedSets.isEmpty else { continue }
+
+                let exerciseId = we.exerciseId
+                var best = bestByExercise[exerciseId] ?? ExerciseBest(exerciseName: we.exercise.displayName)
+
+                if let maxSetReps = completedSets.compactMap({ $0.reps }).max() {
+                    if maxSetReps > (best.maxReps ?? 0) {
+                        best.maxReps = maxSetReps
+                        best.maxRepsDate = workoutDate
+                    }
+                }
+
+                if let maxSetDuration = completedSets.compactMap({ $0.durationSeconds }).max() {
+                    if maxSetDuration > (best.maxDuration ?? 0) {
+                        best.maxDuration = maxSetDuration
+                        best.maxDurationDate = workoutDate
+                    }
+                }
+
+                bestByExercise[exerciseId] = best
+            }
+        }
+
+        var records: [PersonalRecord] = []
+        for (_, best) in bestByExercise {
+            if let reps = best.maxReps, let date = best.maxRepsDate {
+                records.append(PersonalRecord(
+                    title: "Max Reps",
+                    value: "\(reps) reps",
+                    date: date,
+                    exerciseName: best.exerciseName
+                ))
+            }
+            if let duration = best.maxDuration, let date = best.maxDurationDate {
+                let formatted = duration >= 60 ? "\(duration / 60)m \(duration % 60)s" : "\(duration)s"
+                records.append(PersonalRecord(
+                    title: "Max Duration",
+                    value: formatted,
+                    date: date,
+                    exerciseName: best.exerciseName
+                ))
+            }
+        }
+
+        exercisePRs = records.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+    }
+
+    private func calculateMovementPatternFrequency() {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: now) else { return }
+
+        let recentWorkouts = workoutHistory.filter {
+            ($0.completedAt ?? $0.createdAt) >= thirtyDaysAgo
+        }
+
+        var counts: [FocusGroup: Int] = [:]
+        for workout in recentWorkouts {
+            for exercise in workout.allExercises {
+                let group = exercise.exercise.movementPattern.focusGroup
+                counts[group, default: 0] += 1
+            }
+        }
+
+        let maxCount = counts.values.max() ?? 1
+        guard maxCount > 0 else {
+            movementPatternFrequency = [:]
+            return
+        }
+
+        movementPatternFrequency = counts.mapValues { Double($0) / Double(maxCount) }
     }
 }
