@@ -102,6 +102,21 @@ final class MockUserService: UserServiceProtocol {
         return try modelContext.fetchCount(descriptor)
     }
 
+    func getCachedWeeklyReport(for isoWeek: String) async throws -> String? {
+        let descriptor = FetchDescriptor<SDUserProfile>()
+        guard let profile = try modelContext.fetch(descriptor).first else { return nil }
+        guard profile.cachedWeeklyReportWeek == isoWeek, !profile.cachedWeeklyReport.isEmpty else { return nil }
+        return profile.cachedWeeklyReport
+    }
+
+    func cacheWeeklyReport(_ report: String, for isoWeek: String) async throws {
+        let descriptor = FetchDescriptor<SDUserProfile>()
+        guard let profile = try modelContext.fetch(descriptor).first else { return }
+        profile.cachedWeeklyReport = report
+        profile.cachedWeeklyReportWeek = isoWeek
+        try modelContext.save()
+    }
+
     static func levelForXP(_ xp: Int) -> Int {
         let thresholds = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500]
         for (index, threshold) in thresholds.enumerated().reversed() {

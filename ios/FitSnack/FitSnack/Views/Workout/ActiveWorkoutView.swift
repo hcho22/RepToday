@@ -65,6 +65,9 @@ struct ActiveWorkoutView: View {
                         }
                         onComplete(completed)
                     }
+                    .task {
+                        await viewModel.generatePostWorkoutSummary(services: services)
+                    }
                 } else if viewModel.isResting {
                     RestTimerView(viewModel: viewModel)
                         .gesture(swipeGesture)

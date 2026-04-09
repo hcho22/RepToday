@@ -16,6 +16,8 @@ final class WorkoutViewModel {
     var showCompleteView = false
     var showPauseMenu = false
     var swapTargetExerciseId: String?
+    var aiSummary: String?
+    var isGeneratingInsight = false
 
     private var startTime: Date?
     private var pauseStartTime: Date?
@@ -202,6 +204,28 @@ final class WorkoutViewModel {
         workout.perceivedDifficulty = difficulty
         workout.actualDurationMinutes = elapsedSeconds / 60
         return workout
+    }
+
+    func generatePostWorkoutSummary(services: ServiceContainer?) async {
+        guard let services else { return }
+        guard services.subscription.isPremium else {
+            aiSummary = "Great workout! You put in \(workout.actualDurationMinutes ?? workout.requestedDurationMinutes) minutes of effort. Keep showing up!"
+            return
+        }
+        isGeneratingInsight = true
+        do {
+            let profile = try await services.user.getProfile() ?? .empty
+            let history = try await services.workout.getHistory()
+            let response = try await services.ai.generatePostWorkoutSummary(
+                workout: workout,
+                userProfile: profile,
+                recentHistory: history
+            )
+            aiSummary = response.text
+        } catch {
+            aiSummary = "Great workout! You put in \(workout.actualDurationMinutes ?? workout.requestedDurationMinutes) minutes of effort. Keep showing up!"
+        }
+        isGeneratingInsight = false
     }
 
     /// Save as partial — XP calculated from completed sets only

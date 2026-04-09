@@ -72,8 +72,12 @@ struct HomeView: View {
                     }
 
                     // AI Insight
-                    AIInsightCard(text: viewModel.insightText)
-                        .padding(.horizontal, AppSpacing.md)
+                    AIInsightCard(
+                        text: viewModel.insightText,
+                        isAIGenerated: viewModel.isAIInsight,
+                        isLoading: viewModel.isInsightLoading
+                    )
+                    .padding(.horizontal, AppSpacing.md)
                 }
                 .padding(.top, AppSpacing.md)
             }

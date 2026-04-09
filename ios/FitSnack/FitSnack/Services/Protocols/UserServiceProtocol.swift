@@ -9,6 +9,8 @@ protocol UserServiceProtocol {
     func addXP(_ amount: Int) async throws
     func getBadges() async throws -> [Badge]
     func unlockBadge(_ badgeId: String) async throws
+    func getCachedWeeklyReport(for isoWeek: String) async throws -> String?
+    func cacheWeeklyReport(_ report: String, for isoWeek: String) async throws
 }
 
 struct GamificationStats: Codable {

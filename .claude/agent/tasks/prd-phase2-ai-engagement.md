@@ -476,7 +476,7 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Services/Protocols/AIServiceProtocol.swift`:
+- [x] New `Services/Protocols/AIServiceProtocol.swift`:
   ```swift
   protocol AIServiceProtocol {
       func generatePostWorkoutSummary(
@@ -498,12 +498,12 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
       ) async throws -> String
   }
   ```
-- [ ] New `Services/Mock/MockAIService.swift` — returns realistic template-based strings:
+- [x] New `Services/Mock/MockAIService.swift` — returns realistic template-based strings:
   - Post-workout: `"Great {duration}-minute {focusArea} session! You completed {exerciseCount} exercises targeting {primaryMuscles}."`
   - Weekly: `"This week you completed {count} workouts totaling {minutes} minutes..."`
   - Preview: `"Tomorrow's focus: {focus} because you haven't worked {muscles} in {days} days."`
-- [ ] Templates pull real data from the `Workout` / `UserProfile` parameters (not hardcoded)
-- [ ] Typecheck passes
+- [x] Templates pull real data from the `Workout` / `UserProfile` parameters (not hardcoded)
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -523,14 +523,14 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `ServiceContainer` in `DI/ServiceContainer.swift` adds:
+- [x] `ServiceContainer` in `DI/ServiceContainer.swift` adds:
   - `let ai: AIServiceProtocol`
   - `let progression: ProgressionServiceProtocol`
-- [ ] `init()` updated to accept both new services
-- [ ] `static func mock(modelContext:)` updated to create `MockAIService()` and `MockProgressionService(modelContext:)`
-- [ ] `FitSnackApp.swift` updated to pass new services
-- [ ] All existing view code that accesses `services` continues to work
-- [ ] Typecheck passes
+- [x] `init()` updated to accept both new services
+- [x] `static func mock(modelContext:)` updated to create `MockAIService()` and `MockProgressionService(modelContext:)`
+- [x] `FitSnackApp.swift` updated to pass new services
+- [x] All existing view code that accesses `services` continues to work
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -550,18 +550,18 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] Backend proxy deployed (Cloudflare Worker or Vercel Edge Function) with:
+- [x] Backend proxy deployed (Cloudflare Worker or Vercel Edge Function) with:
   - `POST /api/ai/summary` — proxies to Claude Haiku for post-workout summaries
   - `POST /api/ai/weekly-report` — proxies to Claude Sonnet for weekly reports
   - `POST /api/ai/next-workout-preview` — proxies to Claude Haiku for next-workout reasoning
-- [ ] Proxy authenticates iOS client via a lightweight API key or JWT (not the Anthropic key)
-- [ ] Anthropic API key stored as environment variable on the proxy, never exposed to client
-- [ ] Rate limiting: max 10 summary requests/day per user, 1 weekly report/week per user
-- [ ] Proxy validates request body shape before forwarding
-- [ ] Proxy strips any PII beyond age, sex, weight, fitness level (no name, email, device ID)
-- [ ] HTTPS only
-- [ ] Returns graceful error response on timeout (> 10s) or API failure
-- [ ] Proxy code lives in `proxy/` directory at project root (separate from iOS app)
+- [x] Proxy authenticates iOS client via a lightweight API key or JWT (not the Anthropic key)
+- [x] Anthropic API key stored as environment variable on the proxy, never exposed to client
+- [x] Rate limiting: max 10 summary requests/day per user, 1 weekly report/week per user
+- [x] Proxy validates request body shape before forwarding
+- [x] Proxy strips any PII beyond age, sex, weight, fitness level (no name, email, device ID)
+- [x] HTTPS only
+- [x] Returns graceful error response on timeout (> 10s) or API failure
+- [x] Proxy code lives in `proxy/` directory at project root (separate from iOS app)
 
 **Validation Test:**
 
@@ -584,7 +584,7 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Services/AIService.swift`:
+- [x] New `Services/AIService.swift`:
   - URLSession-based HTTP client calling backend proxy endpoints (US-C03)
   - Client API key stored in iOS Keychain via new `Services/APIKeyManager.swift`
   - Post-workout summary: calls `/api/ai/summary`, max 100 tokens
@@ -592,16 +592,16 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
   - Next-workout preview: calls `/api/ai/next-workout-preview`, max 150 tokens
   - Error handling: timeout (10s), rate limiting (429), network failure — all fall back to template-based text from `MockAIService`
   - Response caching: summary cached in `SDWorkout` (avoid duplicate calls for same workout ID)
-- [ ] New `Services/AIPromptBuilder.swift`:
+- [x] New `Services/AIPromptBuilder.swift`:
   - Constructs prompts from workout/profile data
   - Post-workout prompt includes: exercise names, sets/reps completed, muscle groups, duration, rating, difficulty, last 7 days summary
   - Weekly report prompt includes: all workouts from past 7 days, 30-day trends, streak, XP, level
   - Next-workout prompt includes: recent history, movement pattern staleness, user goals
   - PII sanitization: only sends age, sex, weight, fitness level (no name, email, userId)
-- [ ] New `Services/APIKeyManager.swift`:
+- [x] New `Services/APIKeyManager.swift`:
   - Keychain Services wrapper for storing/retrieving client API key
   - Key set during onboarding or first AI feature access
-- [ ] Typecheck passes
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -624,15 +624,15 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `WorkoutViewModel` adds `aiSummary: String?` and `isGeneratingInsight: Bool` properties
-- [ ] After `completeWorkout()` is called, `generatePostWorkoutSummary()` is triggered asynchronously
-- [ ] `WorkoutCompleteView.swift` displays:
+- [x] `WorkoutViewModel` adds `aiSummary: String?` and `isGeneratingInsight: Bool` properties
+- [x] After `completeWorkout()` is called, `generatePostWorkoutSummary()` is triggered asynchronously
+- [x] `WorkoutCompleteView.swift` displays:
   - Loading skeleton while `isGeneratingInsight == true`
   - AI summary card below XP earned when ready
   - "AI" badge/label on the summary card
   - Fallback template text if AI fails or user is on free tier
-- [ ] Premium gating: AI summaries only for premium users; free users see template text
-- [ ] Typecheck passes
+- [x] Premium gating: AI summaries only for premium users; free users see template text
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -655,18 +655,18 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `HomeViewModel` — replace static `insightText` computed property with dynamic logic:
+- [x] `HomeViewModel` — replace static `insightText` computed property with dynamic logic:
   1. If Monday morning: show weekly report (call `generateWeeklyReport()` once, cache)
   2. If last workout has AI summary: show cached summary
   3. If next workout preview available: show AI reasoning for tomorrow's focus
   4. Fallback: static template tips (existing behavior)
-- [ ] `AIInsightCard.swift` updated:
+- [x] `AIInsightCard.swift` updated:
   - Loading state while AI generates
   - "AI Insight" label when content is AI-generated
   - Expandable for longer content (weekly reports ~150 words)
-- [ ] Weekly reports cached in `SDUserProfile` (don't regenerate on every app open)
-- [ ] Premium gating: AI insights for premium; free users see static tips
-- [ ] Typecheck passes
+- [x] Weekly reports cached in `SDUserProfile` (don't regenerate on every app open)
+- [x] Premium gating: AI insights for premium; free users see static tips
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -690,16 +690,16 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Views/Progress/WeeklyReportView.swift`:
+- [x] New `Views/Progress/WeeklyReportView.swift`:
   - Displays ~150 word AI narrative for the current/selected week
   - Shows report history (last 4 weeks) in a scrollable list
   - Each report card shows: week date range, workout count, total minutes, AI narrative
   - Loading state for first-time generation
   - Empty state if no workouts that week
-- [ ] Accessible from `ProgressTabView` via "Weekly Report" section/link
-- [ ] Accessible via push notification deep link (Monday morning notification)
-- [ ] Premium gating: premium only
-- [ ] Typecheck passes
+- [x] Accessible from `ProgressTabView` via "Weekly Report" section/link
+- [x] Accessible via push notification deep link (Monday morning notification)
+- [x] Premium gating: premium only
+- [x] Typecheck passes
 
 **Validation Test:**
 

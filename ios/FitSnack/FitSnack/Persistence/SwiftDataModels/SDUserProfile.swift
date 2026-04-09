@@ -35,6 +35,8 @@ final class SDUserProfile {
     var exerciseSkipCountsRaw: String = "" // base64-encoded JSON [String: Int]
     var exerciseRatingsRaw: String = "" // base64-encoded JSON [String: Int]
     var preferredWorkoutTimeHour: Int? = nil
+    var cachedWeeklyReport: String = ""
+    var cachedWeeklyReportWeek: String = "" // ISO week like "2026-W15"
 
     init(from profile: UserProfile) {
         self.profileId = profile.id

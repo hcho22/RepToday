@@ -1,0 +1,12 @@
+name = "fitsnack-ai-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+
+# KV namespace for rate limiting
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "placeholder-create-via-wrangler-kv-namespace-create"
+
+# Environment variables (set via wrangler secret put)
+# ANTHROPIC_API_KEY - Claude API key (never exposed to client)
+# CLIENT_API_KEY   - Key the iOS app uses to authenticate with this proxy

@@ -3,9 +3,11 @@ import SwiftUI
 struct ProgressTabView: View {
     @Environment(\.services) private var services
     @State private var viewModel = ProgressViewModel()
+    @State private var navigationPath = NavigationPath()
+    var appState: AppState?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if viewModel.workoutHistory.isEmpty {
                     ContentUnavailableView(
@@ -28,6 +30,29 @@ struct ProgressTabView: View {
                                         statBox(value: "\(viewModel.monthStats.totalMinutes)", label: "Minutes")
                                         statBox(value: "\(viewModel.monthStats.totalCalories)", label: "Calories")
                                         statBox(value: "\(Int(viewModel.consistencyScore * 100))%", label: "Consistency")
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, AppSpacing.md)
+
+                            // Weekly Report link
+                            NavigationLink(destination: WeeklyReportView()) {
+                                FitSnackCard {
+                                    HStack {
+                                        Image(systemName: "doc.text.magnifyingglass")
+                                            .font(.system(size: 24))
+                                            .foregroundStyle(AppColors.brand)
+                                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                            Text("Weekly Report")
+                                                .font(AppTypography.headline)
+                                                .foregroundStyle(AppColors.textPrimary)
+                                            Text("AI-powered training insights")
+                                                .font(AppTypography.caption)
+                                                .foregroundStyle(AppColors.textSecondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(AppColors.textSecondary)
                                     }
                                 }
                             }
@@ -71,8 +96,19 @@ struct ProgressTabView: View {
             }
             .background(AppColors.background)
             .navigationTitle("Progress")
+            .navigationDestination(for: String.self) { destination in
+                if destination == "weeklyReport" {
+                    WeeklyReportView()
+                }
+            }
         }
         .task { await viewModel.loadData(services: services) }
+        .onChange(of: appState?.deepLink) { _, newValue in
+            if newValue == .weeklyReport {
+                navigationPath.append("weeklyReport")
+                appState?.deepLink = nil
+            }
+        }
     }
 
     private func statBox(value: String, label: String) -> some View {

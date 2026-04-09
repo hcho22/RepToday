@@ -17,6 +17,7 @@ final class SDWorkout {
     var actualCalories: Int?
     var xpEarned: Int
     var workoutDataRaw: Data // JSON-encoded full Workout
+    var aiSummary: String? = nil
 
     init(from workout: Workout) {
         self.workoutId = workout.id

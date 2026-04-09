@@ -77,6 +77,58 @@ struct WorkoutCompleteView: View {
                     DifficultyPicker(selectedDifficulty: $selectedDifficulty)
                 }
 
+                // AI Summary
+                if viewModel.isGeneratingInsight {
+                    FitSnackCard {
+                        VStack(spacing: Theme.Spacing.sm) {
+                            HStack {
+                                Text("AI")
+                                    .font(Theme.Typography.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.Colors.brand)
+                                    .clipShape(Capsule())
+                                Text("Insight")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                                Spacer()
+                            }
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ProgressView()
+                                Text("Generating insight...")
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                } else if let summary = viewModel.aiSummary {
+                    FitSnackCard {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            HStack {
+                                Text("AI")
+                                    .font(Theme.Typography.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.Colors.brand)
+                                    .clipShape(Capsule())
+                                Text("Insight")
+                                    .font(Theme.Typography.subheadline)
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                                Spacer()
+                            }
+                            Text(summary)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Colors.textPrimary)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                }
+
                 // XP earned with count-up animation
                 FitSnackCard {
                     HStack {

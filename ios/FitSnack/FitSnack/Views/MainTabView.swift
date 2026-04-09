@@ -11,7 +11,7 @@ struct MainTabView: View {
                 }
                 .tag(AppState.Tab.home)
 
-            ProgressTabView()
+            ProgressTabView(appState: appState)
                 .tabItem {
                     Label("Progress", systemImage: "chart.bar.fill")
                 }
