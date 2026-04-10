@@ -50,6 +50,14 @@ final class MockUserService: UserServiceProtocol {
             )
         }
 
+        // Replenish freezes if a new month has started (premium only)
+        let isPremium = true // TODO: wire to real subscription state
+        if isPremium && Constants.StreakFreeze.shouldReplenish(lastReplenishDate: profile.lastFreezeReplenishDate) {
+            profile.streakFreezes = Constants.StreakFreeze.premiumUserFreezes
+            profile.lastFreezeReplenishDate = Date()
+            try modelContext.save()
+        }
+
         let workoutsThisWeek = try countWorkoutsThisWeek()
 
         return GamificationStats(
@@ -60,7 +68,9 @@ final class MockUserService: UserServiceProtocol {
             xp: profile.xp,
             level: profile.level,
             workoutsThisWeek: workoutsThisWeek,
-            weeklyWorkoutGoal: profile.weeklyWorkoutGoal
+            weeklyWorkoutGoal: profile.weeklyWorkoutGoal,
+            availableFreezes: profile.streakFreezes,
+            isPremium: isPremium
         )
     }
 
@@ -115,6 +125,20 @@ final class MockUserService: UserServiceProtocol {
         profile.cachedWeeklyReport = report
         profile.cachedWeeklyReportWeek = isoWeek
         try modelContext.save()
+    }
+
+    func useStreakFreeze() async throws {
+        let descriptor = FetchDescriptor<SDUserProfile>()
+        guard let profile = try modelContext.fetch(descriptor).first else { return }
+        guard profile.streakFreezes > 0 else { return }
+        profile.streakFreezes -= 1
+        try modelContext.save()
+    }
+
+    func getAvailableFreezes() async throws -> Int {
+        let descriptor = FetchDescriptor<SDUserProfile>()
+        guard let profile = try modelContext.fetch(descriptor).first else { return 0 }
+        return profile.streakFreezes
     }
 
     static func levelForXP(_ xp: Int) -> Int {

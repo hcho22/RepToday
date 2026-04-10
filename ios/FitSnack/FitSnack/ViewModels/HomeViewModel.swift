@@ -7,12 +7,15 @@ final class HomeViewModel {
     var isGenerating = false
     var weeklyStats = WeeklyStats()
     var streakCount = 0
+    var availableFreezes = 0
+    var isPremium = false
     var showingWorkout = false
     var userName = ""
     var hasWorkoutHistory = false
     var insightText = ""
     var isInsightLoading = false
     var isAIInsight = false
+    var showStreakSaver = false
 
     struct WeeklyStats {
         var completed = 0
@@ -78,8 +81,17 @@ final class HomeViewModel {
             weeklyStats.completed = stats.workoutsThisWeek
             weeklyStats.goal = stats.weeklyWorkoutGoal
             streakCount = stats.currentWeeklyStreak
+            availableFreezes = stats.availableFreezes
+            isPremium = stats.isPremium
             hasWorkoutHistory = stats.totalWorkoutsCompleted > 0
+
+            // Streak saver: show when it's Sunday and user is 1 workout short of weekly goal
+            let isSunday = Calendar.current.component(.weekday, from: Date()) == 1
+            showStreakSaver = isSunday && stats.workoutsThisWeek == stats.weeklyWorkoutGoal - 1
         } catch {}
+
+        // Personalized notification timing — recalculate weekly
+        await schedulePersonalizedReminder(services: services)
 
         await loadInsight(services: services)
     }
@@ -165,6 +177,36 @@ final class HomeViewModel {
         return missing.isEmpty ? "full body" : missing.sorted().joined(separator: ", ")
     }
 
+    private func schedulePersonalizedReminder(services: ServiceContainer?) async {
+        guard let services else { return }
+
+        // Only recalculate once per ISO week
+        let currentWeek = Self.currentISOWeek()
+        let lastRecalcWeek = UserDefaults.standard.string(forKey: "lastReminderRecalcWeek") ?? ""
+        guard currentWeek != lastRecalcWeek else { return }
+
+        do {
+            let history = try await services.workout.getHistory()
+            let workoutStartTimes = history.compactMap(\.startedAt)
+            try await services.notification.schedulePersonalizedReminder(basedOnHistory: workoutStartTimes)
+
+            // Persist the computed preferred hour on the user profile
+            if workoutStartTimes.count >= 5, var profile = try await services.user.getProfile() {
+                let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+                let recentHours = workoutStartTimes
+                    .filter { $0 >= fourteenDaysAgo }
+                    .map { Calendar.current.component(.hour, from: $0) }
+                if recentHours.count >= 5 {
+                    let modeHour = NotificationService.mode(of: recentHours)
+                    profile.preferredWorkoutTimeHour = modeHour
+                    try await services.user.updateProfile(profile)
+                }
+            }
+
+            UserDefaults.standard.set(currentWeek, forKey: "lastReminderRecalcWeek")
+        } catch {}
+    }
+
     func generateWorkout(services: ServiceContainer?) async {
         guard let services else { return }
         isGenerating = true
@@ -179,5 +221,18 @@ final class HomeViewModel {
     func regenerateWorkout(services: ServiceContainer?) async {
         todaysWorkout = nil
         await generateWorkout(services: services)
+    }
+
+    func startStreakSaver(services: ServiceContainer?) async {
+        guard let services else { return }
+        isGenerating = true
+        do {
+            let profile = try await services.user.getProfile() ?? .empty
+            let workout = try await services.workout.generateWorkout(duration: 5, profile: profile)
+            todaysWorkout = workout
+            showStreakSaver = false
+            showingWorkout = true
+        } catch {}
+        isGenerating = false
     }
 }

@@ -123,10 +123,46 @@ enum Constants {
         }
     }
 
+    enum StreakFreeze {
+        static let freeUserFreezes = 0
+        static let premiumUserFreezes = 2
+
+        static func maxFreezes(isPremium: Bool) -> Int {
+            isPremium ? premiumUserFreezes : freeUserFreezes
+        }
+
+        static func shouldReplenish(lastReplenishDate: Date?, now: Date = Date()) -> Bool {
+            let calendar = Calendar.current
+            guard let lastDate = lastReplenishDate else { return true }
+            let lastMonth = calendar.dateComponents([.year, .month], from: lastDate)
+            let currentMonth = calendar.dateComponents([.year, .month], from: now)
+            return lastMonth.year != currentMonth.year || lastMonth.month != currentMonth.month
+        }
+
+        static func nextReplenishDate(from now: Date = Date()) -> Date {
+            let calendar = Calendar.current
+            var components = calendar.dateComponents([.year, .month], from: now)
+            components.month! += 1
+            components.day = 1
+            return calendar.date(from: components)!
+        }
+    }
+
     enum Streak {
         static func calculateWeeklyStreak(workoutDates: [Date], weeklyGoal: Int) -> Int {
+            calculateWeeklyStreak(workoutDates: workoutDates, weeklyGoal: weeklyGoal, availableFreezes: 0).streak
+        }
+
+        struct StreakResult {
+            let streak: Int
+            let freezesUsed: Int
+        }
+
+        static func calculateWeeklyStreak(workoutDates: [Date], weeklyGoal: Int, availableFreezes: Int) -> StreakResult {
             let calendar = Calendar.current
             var streak = 0
+            var freezesRemaining = availableFreezes
+            var freezesUsed = 0
             var weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date()))!
 
             // Go backwards week by week
@@ -136,6 +172,11 @@ enum Constants {
 
                 if workoutsInWeek >= weeklyGoal {
                     streak += 1
+                } else if freezesRemaining > 0 {
+                    // Consume a freeze to preserve the streak
+                    freezesRemaining -= 1
+                    freezesUsed += 1
+                    streak += 1
                 } else {
                     break
                 }
@@ -144,7 +185,7 @@ enum Constants {
                 weekStart = previousWeek
             }
 
-            return streak
+            return StreakResult(streak: streak, freezesUsed: freezesUsed)
         }
     }
 }

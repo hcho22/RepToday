@@ -75,4 +75,84 @@ final class StreakLogicTests: XCTestCase {
         let streak = Constants.Streak.calculateWeeklyStreak(workoutDates: allDates, weeklyGoal: 3)
         XCTAssertEqual(streak, 1, "A single week meeting the goal should yield a streak of 1")
     }
+
+    // MARK: - Streak Freeze Tests
+
+    func testFreezePreservesStreakOnMissedWeek() {
+        // Current week + 2 weeks ago meet goal, last week misses → 1 freeze should bridge the gap
+        // Week -3 is empty so it will break the streak (only 1 freeze available)
+        let allDates = dates(inWeekOffset: 0, count: 3)
+            + dates(inWeekOffset: -1, count: 1) // misses goal of 3
+            + dates(inWeekOffset: -2, count: 3)
+
+        let result = Constants.Streak.calculateWeeklyStreak(workoutDates: allDates, weeklyGoal: 3, availableFreezes: 1)
+        XCTAssertEqual(result.streak, 3, "Freeze should preserve streak through missed week")
+        XCTAssertEqual(result.freezesUsed, 1, "Should consume exactly 1 freeze")
+    }
+
+    func testStreakBreaksWhenNoFreezesLeft() {
+        // Same scenario but with 0 freezes
+        let allDates = dates(inWeekOffset: 0, count: 3)
+            + dates(inWeekOffset: -1, count: 1)
+            + dates(inWeekOffset: -2, count: 3)
+
+        let result = Constants.Streak.calculateWeeklyStreak(workoutDates: allDates, weeklyGoal: 3, availableFreezes: 0)
+        XCTAssertEqual(result.streak, 1, "Without freezes, streak should break at missed week")
+        XCTAssertEqual(result.freezesUsed, 0)
+    }
+
+    func testMultipleFreezesConsumed() {
+        // 2 non-consecutive missed weeks with 2 freezes available
+        let allDates = dates(inWeekOffset: 0, count: 3)
+            + dates(inWeekOffset: -1, count: 1) // miss
+            + dates(inWeekOffset: -2, count: 3)
+            + dates(inWeekOffset: -3, count: 1) // miss
+            + dates(inWeekOffset: -4, count: 3)
+
+        let result = Constants.Streak.calculateWeeklyStreak(workoutDates: allDates, weeklyGoal: 3, availableFreezes: 2)
+        XCTAssertEqual(result.streak, 5, "Two freezes should bridge two missed weeks")
+        XCTAssertEqual(result.freezesUsed, 2)
+    }
+
+    func testThirdMissedWeekBreaksStreak() {
+        // 3 missed weeks but only 2 freezes
+        let allDates = dates(inWeekOffset: 0, count: 3)
+            + dates(inWeekOffset: -1, count: 1) // miss — freeze 1
+            + dates(inWeekOffset: -2, count: 1) // miss — freeze 2
+            + dates(inWeekOffset: -3, count: 1) // miss — no freeze left
+            + dates(inWeekOffset: -4, count: 3)
+
+        let result = Constants.Streak.calculateWeeklyStreak(workoutDates: allDates, weeklyGoal: 3, availableFreezes: 2)
+        XCTAssertEqual(result.streak, 3, "Third missed week should break streak when only 2 freezes available")
+        XCTAssertEqual(result.freezesUsed, 2)
+    }
+
+    func testOriginalCalculatorUnchangedWithoutFreezes() {
+        // The zero-arg overload should still work identically
+        let allDates = dates(inWeekOffset: 0, count: 3)
+            + dates(inWeekOffset: -1, count: 3)
+
+        let streak = Constants.Streak.calculateWeeklyStreak(workoutDates: allDates, weeklyGoal: 3)
+        XCTAssertEqual(streak, 2)
+    }
+
+    // MARK: - Streak Freeze Replenish Tests
+
+    func testShouldReplenishWhenNoLastDate() {
+        XCTAssertTrue(Constants.StreakFreeze.shouldReplenish(lastReplenishDate: nil))
+    }
+
+    func testShouldReplenishOnNewMonth() {
+        let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: Date())!
+        XCTAssertTrue(Constants.StreakFreeze.shouldReplenish(lastReplenishDate: lastMonth))
+    }
+
+    func testShouldNotReplenishSameMonth() {
+        XCTAssertFalse(Constants.StreakFreeze.shouldReplenish(lastReplenishDate: Date()))
+    }
+
+    func testPremiumFreezeCount() {
+        XCTAssertEqual(Constants.StreakFreeze.maxFreezes(isPremium: true), 2)
+        XCTAssertEqual(Constants.StreakFreeze.maxFreezes(isPremium: false), 0)
+    }
 }

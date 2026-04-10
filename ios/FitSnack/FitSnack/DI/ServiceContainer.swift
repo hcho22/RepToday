@@ -12,6 +12,7 @@ final class ServiceContainer {
     let subscription: SubscriptionServiceProtocol
     let progression: ProgressionServiceProtocol
     let ai: AIServiceProtocol
+    let share: ShareServiceProtocol
 
     init(
         auth: AuthServiceProtocol,
@@ -22,7 +23,8 @@ final class ServiceContainer {
         notification: NotificationServiceProtocol,
         subscription: SubscriptionServiceProtocol,
         progression: ProgressionServiceProtocol,
-        ai: AIServiceProtocol
+        ai: AIServiceProtocol,
+        share: ShareServiceProtocol
     ) {
         self.auth = auth
         self.workout = workout
@@ -33,8 +35,10 @@ final class ServiceContainer {
         self.subscription = subscription
         self.progression = progression
         self.ai = ai
+        self.share = share
     }
 
+    @MainActor
     static func mock(modelContext: ModelContext) -> ServiceContainer {
         let exerciseService = MockExerciseService()
         let userService = MockUserService(modelContext: modelContext)
@@ -54,7 +58,8 @@ final class ServiceContainer {
             notification: MockNotificationService(),
             subscription: MockSubscriptionService(),
             progression: progressionService,
-            ai: aiService
+            ai: aiService,
+            share: MockShareService()
         )
     }
 }

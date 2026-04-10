@@ -826,18 +826,18 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `Constants.swift` adds `StreakFreeze` namespace:
+- [x] `Constants.swift` adds `StreakFreeze` namespace:
   - Free users: 0 freezes
   - Premium users: 2 freezes per month
   - Auto-replenish on 1st of each month
   - A freeze preserves the streak for 1 week where goal was not met
-- [ ] `Constants.Streak.calculateWeeklyStreak()` updated: when walking backwards and a week doesn't meet goal, check available freezes -> consume one -> continue counting
-- [ ] `SDUserProfile` fields used: `streakFreezes`, `lastFreezeReplenishDate`
-- [ ] `UserServiceProtocol` adds: `useStreakFreeze() async throws`, `getAvailableFreezes() async throws -> Int`
-- [ ] UI: streak freeze count shown on `HomeView` near `StreakBadge` (e.g., "2 freezes available")
-- [ ] UI: Settings shows streak freeze count and next replenish date
-- [ ] Premium gating: only premium users get freezes
-- [ ] Typecheck passes
+- [x] `Constants.Streak.calculateWeeklyStreak()` updated: when walking backwards and a week doesn't meet goal, check available freezes -> consume one -> continue counting
+- [x] `SDUserProfile` fields used: `streakFreezes`, `lastFreezeReplenishDate`
+- [x] `UserServiceProtocol` adds: `useStreakFreeze() async throws`, `getAvailableFreezes() async throws -> Int`
+- [x] UI: streak freeze count shown on `HomeView` near `StreakBadge` (e.g., "2 freezes available")
+- [x] UI: Settings shows streak freeze count and next replenish date
+- [x] Premium gating: only premium users get freezes
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -863,15 +863,15 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `NotificationServiceProtocol` adds `scheduleStreakSaverCheck() async throws`
-- [ ] `NotificationService` implements: check on Sunday at 6 PM if `workoutsThisWeek == weeklyGoal - 1`. If so, send local notification: "You're 1 workout away from keeping your streak! Tap for a quick 5-minute session."
-- [ ] `HomeViewModel` adds `showStreakSaver: Bool` — true when Sunday + workoutsThisWeek == goal - 1
-- [ ] `HomeView` shows a prominent "Streak Saver" banner card when `showStreakSaver == true`:
+- [x] `NotificationServiceProtocol` adds `scheduleStreakSaverCheck() async throws`
+- [x] `NotificationService` implements: check on Sunday at 6 PM if `workoutsThisWeek == weeklyGoal - 1`. If so, send local notification: "You're 1 workout away from keeping your streak! Tap for a quick 5-minute session."
+- [x] `HomeViewModel` adds `showStreakSaver: Bool` — true when Sunday + workoutsThisWeek == goal - 1
+- [x] `HomeView` shows a prominent "Streak Saver" banner card when `showStreakSaver == true`:
   - "Keep your streak alive! Quick 5-minute workout"
   - Tap -> generates and starts a 5-minute workout (standard engine flow)
-- [ ] After completing the streak saver workout, banner disappears and weekly goal is met
-- [ ] Notification deep links to HomeView
-- [ ] Typecheck passes
+- [x] After completing the streak saver workout, banner disappears and weekly goal is met
+- [x] Notification deep links to HomeView
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -894,21 +894,21 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] New `Services/ShareService.swift`:
+- [x] New `Services/ShareService.swift`:
   - Uses SwiftUI `ImageRenderer` (iOS 16+) to render workout card as `UIImage`
   - `func generateShareCard(workout: Workout, stats: GamificationStats) -> UIImage?`
-- [ ] New `Views/Workout/ShareWorkoutCardView.swift` — the SwiftUI view rendered as image:
+- [x] New `Views/Workout/ShareWorkoutCardView.swift` — the SwiftUI view rendered as image:
   - Workout duration, exercise count, calories burned
   - Muscle groups worked (icons)
   - Streak count, XP earned
   - FitSnack branding (logo, app name)
   - Gradient background using brand colors
   - Card dimensions: 1080x1920 (Instagram story) or 1080x1080 (square post)
-- [ ] `WorkoutCompleteView.swift` adds "Share" button that:
+- [x] `WorkoutCompleteView.swift` adds "Share" button that:
   1. Renders the card via `ShareService`
   2. Presents `UIActivityViewController` with the image
-- [ ] Premium gating consideration: free users get watermarked card, premium users get clean card
-- [ ] Typecheck passes
+- [x] Premium gating consideration: free users get watermarked card, premium users get clean card
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -929,18 +929,18 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `project.yml` adds `lottie-ios` SPM dependency (latest stable version)
-- [ ] New `Components/ExerciseDemoView.swift`:
+- [x] `project.yml` adds `lottie-ios` SPM dependency (latest stable version)
+- [x] New `Components/ExerciseDemoView.swift`:
   - Wrapper around Lottie `LottieAnimationView`
   - Loads exercise-specific Lottie JSON by `exerciseId` from `Resources/Animations/`
   - Loops animation continuously
   - Falls back to SF Symbol icon when animation file not found
   - Shows loading state while animation loads
-- [ ] New directory `Resources/Animations/` — placeholder for Lottie JSON files (asset creation is a design task)
-- [ ] `ExerciseDisplayView.swift` — replace static SF Symbol icon area with `ExerciseDemoView` component
-- [ ] Animation file naming convention: `{exercise_id}.json` (e.g., `push_004.json`)
-- [ ] Graceful behavior when no animation files exist (pure fallback mode)
-- [ ] Typecheck passes
+- [x] New directory `Resources/Animations/` — placeholder for Lottie JSON files (asset creation is a design task)
+- [x] `ExerciseDisplayView.swift` — replace static SF Symbol icon area with `ExerciseDemoView` component
+- [x] Animation file naming convention: `{exercise_id}.json` (e.g., `push_004.json`)
+- [x] Graceful behavior when no animation files exist (pure fallback mode)
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -962,18 +962,18 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `PaywallView.swift` updated:
+- [x] `PaywallView.swift` updated:
   - Add "AI-Powered Insights" as premium feature with icon and description
   - Add "Streak Freezes" as premium feature with icon and description
   - Add "Progression Tracking" as premium feature
   - Show sample AI insight text with blur overlay (teaser for non-premium)
   - Features listed in order of perceived value
-- [ ] Premium feature gates verified:
+- [x] Premium feature gates verified:
   - AI summaries: premium only (free gets template text)
   - AI weekly reports: premium only
   - Streak freezes: premium only (free gets 0)
   - Shareable cards: free gets watermark, premium gets clean
-- [ ] Typecheck passes
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -1000,18 +1000,18 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `HealthKitServiceProtocol` adds:
+- [x] `HealthKitServiceProtocol` adds:
   - `func readLatestWeight() async throws -> Double?` (kg)
   - `func readLatestHeartRate() async throws -> Double?` (bpm)
   - `func readAverageRestingHeartRate(days: Int) async throws -> Double?`
-- [ ] `HealthKitService.swift`:
+- [x] `HealthKitService.swift`:
   - Expand `requestAuthorization()` to include read types: `HKQuantityType(.bodyMass)`, `HKQuantityType(.heartRate)`, `HKQuantityType(.restingHeartRate)`
   - Implement read methods using `HKSampleQuery` / `HKStatisticsQuery`
-- [ ] `MockHealthKitService.swift` — add mock implementations returning `nil`
-- [ ] `project.yml` — update `NSHealthShareUsageDescription` to mention heart rate and weight reading
-- [ ] Wire into Profile: auto-update `weightKg` in user profile when HealthKit weight changes (with user permission toggle)
-- [ ] Wire into Progress: show resting heart rate trend in ProgressTabView (optional section)
-- [ ] Typecheck passes
+- [x] `MockHealthKitService.swift` — add mock implementations returning `nil`
+- [x] `project.yml` — update `NSHealthShareUsageDescription` to mention heart rate and weight reading
+- [x] Wire into Profile: auto-update `weightKg` in user profile when HealthKit weight changes (with user permission toggle)
+- [x] Wire into Progress: show resting heart rate trend in ProgressTabView (optional section)
+- [x] Typecheck passes
 
 **Validation Test:**
 
@@ -1033,17 +1033,17 @@ The engine overhaul and AI layer transform FitSnack from a functional workout ge
 
 **Acceptance Criteria:**
 
-- [ ] `NotificationServiceProtocol` adds `schedulePersonalizedReminder(basedOnHistory workoutTimes: [Date]) async throws`
-- [ ] `NotificationService.swift` implements:
+- [x] `NotificationServiceProtocol` adds `schedulePersonalizedReminder(basedOnHistory workoutTimes: [Date]) async throws`
+- [x] `NotificationService.swift` implements:
   - Analyze last 14 days of workout start times
   - Find most common hour (mode calculation)
   - Schedule daily reminder 30 minutes before that time
   - If < 5 data points: fall back to current fixed-time schedule (user-set or default 8 AM)
   - Recalculate weekly (not on every workout)
-- [ ] `MockNotificationService.swift` — no-op implementation
-- [ ] `HomeViewModel.loadData()` — after loading workout history, call personalized scheduler
-- [ ] `SDUserProfile.preferredWorkoutTimeHour` stores computed optimal hour
-- [ ] Typecheck passes
+- [x] `MockNotificationService.swift` — no-op implementation
+- [x] `HomeViewModel.loadData()` — after loading workout history, call personalized scheduler
+- [x] `SDUserProfile.preferredWorkoutTimeHour` stores computed optimal hour
+- [x] Typecheck passes
 
 **Validation Test:**
 

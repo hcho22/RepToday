@@ -7,6 +7,11 @@ options:
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: "4.5.0"
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -29,8 +34,10 @@ targets:
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
-        INFOPLIST_KEY_NSHealthShareUsageDescription: "FitSnack reads your health data to personalize workouts and track calories."
+        INFOPLIST_KEY_NSHealthShareUsageDescription: "FitSnack reads your weight, heart rate, and workout data to personalize workouts, track calories, and show health trends."
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: "FitSnack saves your completed workouts to Apple Health."
+    dependencies:
+      - package: Lottie
     entitlements:
       path: FitSnack/FitSnack.entitlements
 

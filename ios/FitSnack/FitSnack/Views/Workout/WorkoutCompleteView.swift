@@ -6,10 +6,13 @@ struct WorkoutCompleteView: View {
     let onDone: (Int, Workout.PerceivedDifficulty) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.services) private var services
     @State private var selectedRating: Int = 3
     @State private var selectedDifficulty: Workout.PerceivedDifficulty? = .justRight
     @State private var displayedXP: Int = 0
     @State private var showCelebration = false
+    @State private var shareImage: UIImage?
+    @State private var showShareSheet = false
 
     private var earnedXP: Int {
         viewModel.elapsedSeconds / 60 * Constants.XP.perMinute
@@ -157,11 +160,33 @@ struct WorkoutCompleteView: View {
                     .transition(.scale.combined(with: .opacity))
                 }
 
+                // Share button
+                Button {
+                    Task { await generateAndShare() }
+                } label: {
+                    HStack {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Share Workout")
+                    }
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.brand)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Theme.Colors.brand.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+
                 PrimaryButton(title: "Done") {
                     onDone(selectedRating, selectedDifficulty ?? .justRight)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.bottom, Theme.Spacing.xl)
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let shareImage {
+                ShareSheet(items: [shareImage])
             }
         }
         .onAppear {
@@ -182,6 +207,29 @@ struct WorkoutCompleteView: View {
             Text(label)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.textSecondary)
+        }
+    }
+
+    private func generateAndShare() async {
+        guard let services else { return }
+        let stats = (try? await services.user.getGamificationStats()) ?? GamificationStats(
+            currentWeeklyStreak: weeklyStreak,
+            longestWeeklyStreak: weeklyStreak,
+            totalWorkoutsCompleted: 0,
+            totalMinutesExercised: 0,
+            xp: 0,
+            level: 1,
+            workoutsThisWeek: 0,
+            weeklyWorkoutGoal: 3
+        )
+        let isPremium = services.subscription.isPremium
+        if let image = services.share.generateShareCard(
+            workout: viewModel.workout,
+            stats: stats,
+            isPremium: isPremium
+        ) {
+            shareImage = image
+            showShareSheet = true
         }
     }
 
@@ -238,4 +286,16 @@ struct FlowLayout: Layout {
 
         return (positions, CGSize(width: maxWidth, height: y + rowHeight))
     }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

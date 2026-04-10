@@ -44,6 +44,16 @@ struct ProfileEditView: View {
                 }
             }
 
+            // HealthKit Weight Sync
+            Section {
+                Toggle("Sync weight from Apple Health", isOn: $profile.healthKitWeightSync)
+                    .tint(AppColors.brand)
+            } header: {
+                Label("Apple Health", systemImage: "heart.fill")
+            } footer: {
+                Text("When enabled, your weight will automatically update from Apple Health data.")
+            }
+
             // Unit toggle + Height & Weight
             Section("Body Measurements") {
                 Picker("Units", selection: $profile.unitSystem) {

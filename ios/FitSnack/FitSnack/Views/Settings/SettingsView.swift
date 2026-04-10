@@ -42,6 +42,25 @@ struct SettingsView: View {
                 }
             }
 
+            // Streak Freezes (premium only)
+            if profile.streakFreezes > 0 || profile.lastFreezeReplenishDate != nil {
+                Section("Streak Freezes") {
+                    HStack {
+                        Label("Available", systemImage: "snowflake")
+                        Spacer()
+                        Text("\(profile.streakFreezes)")
+                            .foregroundStyle(AppColors.brand)
+                            .fontWeight(.semibold)
+                    }
+                    HStack {
+                        Label("Next Replenish", systemImage: "calendar")
+                        Spacer()
+                        Text(Constants.StreakFreeze.nextReplenishDate().formatted(.dateTime.month(.abbreviated).day()))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+            }
+
             // About
             Section("About") {
                 HStack {

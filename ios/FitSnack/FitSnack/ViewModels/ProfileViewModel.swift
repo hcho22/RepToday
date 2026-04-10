@@ -14,6 +14,22 @@ final class ProfileViewModel {
         do {
             profile = try await services.user.getProfile()
             stats = try await services.user.getGamificationStats()
+            await syncHealthKitWeight(services: services)
+        } catch {}
+    }
+
+    func syncHealthKitWeight(services: ServiceContainer?) async {
+        guard let services, var currentProfile = profile, currentProfile.healthKitWeightSync else { return }
+        do {
+            if let hkWeight = try await services.healthKit.readLatestWeight(), hkWeight > 0 {
+                let roundedWeight = (hkWeight * 10).rounded() / 10
+                if abs(roundedWeight - currentProfile.weightKg) > 0.1 {
+                    currentProfile.weightKg = roundedWeight
+                    currentProfile.updatedAt = Date()
+                    try await services.user.updateProfile(currentProfile)
+                    profile = currentProfile
+                }
+            }
         } catch {}
     }
 

@@ -22,11 +22,12 @@ struct ExerciseDisplayView: View {
                 .foregroundStyle(AppColors.textSecondary)
                 .textCase(.uppercase)
 
-            // Exercise icon placeholder
-            Image(systemName: iconForExercise)
-                .font(.system(size: 64))
-                .foregroundStyle(AppColors.brand)
-                .frame(height: 100)
+            // Exercise demo — Lottie animation with SF Symbol fallback
+            ExerciseDemoView(
+                exerciseId: exercise.exercise.id,
+                fallbackIcon: iconForExercise,
+                size: 100
+            )
 
             // Exercise name
             Text(exercise.exercise.displayName)

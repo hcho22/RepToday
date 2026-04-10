@@ -4,6 +4,7 @@ struct HomeView: View {
     @Environment(\.services) private var services
     @State private var viewModel = HomeViewModel()
     @State private var showingDurationPicker = false
+    var appState: AppState?
 
     var body: some View {
         NavigationStack {
@@ -17,13 +18,47 @@ struct HomeView: View {
                                 .foregroundStyle(AppColors.textPrimary)
                         }
                         Spacer()
-                        StreakBadge(count: viewModel.streakCount)
+                        HStack(spacing: AppSpacing.xs) {
+                            StreakBadge(count: viewModel.streakCount)
+                            if viewModel.isPremium {
+                                StreakFreezeIndicator(count: viewModel.availableFreezes)
+                            }
+                        }
                     }
                     .padding(.horizontal, AppSpacing.md)
 
                     // Weekly progress dots
                     WeeklyProgressDots(stats: viewModel.weeklyStats)
                         .padding(.horizontal, AppSpacing.md)
+
+                    // Streak Saver banner
+                    if viewModel.showStreakSaver {
+                        Button {
+                            Task { await viewModel.startStreakSaver(services: services) }
+                        } label: {
+                            FitSnackCard {
+                                HStack(spacing: AppSpacing.md) {
+                                    Image(systemName: "flame.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundStyle(AppColors.fire)
+                                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                        Text("Keep your streak alive!")
+                                            .font(AppTypography.headline)
+                                            .foregroundStyle(AppColors.textPrimary)
+                                        Text("Quick 5-minute workout")
+                                            .font(AppTypography.subheadline)
+                                            .foregroundStyle(AppColors.textSecondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, AppSpacing.md)
+                    }
 
                     // Workout preview or quick start
                     if viewModel.isGenerating {
@@ -95,5 +130,11 @@ struct HomeView: View {
             }
         }
         .task { await viewModel.loadData(services: services) }
+        .onChange(of: appState?.deepLink) { _, newValue in
+            if newValue == .streakSaver {
+                Task { await viewModel.startStreakSaver(services: services) }
+                appState?.deepLink = nil
+            }
+        }
     }
 }

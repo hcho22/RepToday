@@ -35,6 +35,7 @@ final class SDUserProfile {
     var exerciseSkipCountsRaw: String = "" // base64-encoded JSON [String: Int]
     var exerciseRatingsRaw: String = "" // base64-encoded JSON [String: Int]
     var preferredWorkoutTimeHour: Int? = nil
+    var healthKitWeightSync: Bool = false
     var cachedWeeklyReport: String = ""
     var cachedWeeklyReportWeek: String = "" // ISO week like "2026-W15"
 
@@ -67,6 +68,7 @@ final class SDUserProfile {
         setExerciseSkipCounts(profile.exerciseSkipCounts)
         setExerciseRatings(profile.exerciseRatings)
         self.preferredWorkoutTimeHour = profile.preferredWorkoutTimeHour
+        self.healthKitWeightSync = profile.healthKitWeightSync
     }
 
     func toUserProfile() -> UserProfile {
@@ -96,7 +98,8 @@ final class SDUserProfile {
             progressionLevels: getProgressionLevels(),
             exerciseSkipCounts: getExerciseSkipCounts(),
             exerciseRatings: getExerciseRatings(),
-            preferredWorkoutTimeHour: preferredWorkoutTimeHour
+            preferredWorkoutTimeHour: preferredWorkoutTimeHour,
+            healthKitWeightSync: healthKitWeightSync
         )
     }
 
@@ -119,6 +122,7 @@ final class SDUserProfile {
         setExerciseSkipCounts(profile.exerciseSkipCounts)
         setExerciseRatings(profile.exerciseRatings)
         self.preferredWorkoutTimeHour = profile.preferredWorkoutTimeHour
+        self.healthKitWeightSync = profile.healthKitWeightSync
         self.updatedAt = Date()
     }
 

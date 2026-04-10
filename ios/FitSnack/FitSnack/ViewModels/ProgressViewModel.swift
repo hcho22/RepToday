@@ -9,6 +9,7 @@ final class ProgressViewModel {
     var exercisePRs: [PersonalRecord] = []
     var consistencyScore: Double = 0
     var movementPatternFrequency: [FocusGroup: Double] = [:]
+    var restingHeartRate: Double?
 
     struct MonthStats {
         var totalWorkouts = 0
@@ -55,6 +56,7 @@ final class ProgressViewModel {
             calculateExercisePRs()
             calculateConsistency(weeklyGoal: stats.weeklyWorkoutGoal)
             calculateMovementPatternFrequency()
+            restingHeartRate = try? await services.healthKit.readAverageRestingHeartRate(days: 30)
         } catch {}
     }
 

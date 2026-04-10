@@ -14,6 +14,7 @@ final class AppState {
 
     enum DeepLink: Equatable {
         case weeklyReport
+        case streakSaver
     }
 
     init() {
@@ -24,6 +25,9 @@ final class AppState {
         switch link {
         case .weeklyReport:
             selectedTab = .progress
+            deepLink = link
+        case .streakSaver:
+            selectedTab = .home
             deepLink = link
         }
     }

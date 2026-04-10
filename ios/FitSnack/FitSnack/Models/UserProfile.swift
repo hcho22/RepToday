@@ -24,6 +24,7 @@ struct UserProfile: Identifiable, Encodable {
     var exerciseSkipCounts: [String: Int] = [:]
     var exerciseRatings: [String: Int] = [:]
     var preferredWorkoutTimeHour: Int? = nil
+    var healthKitWeightSync: Bool = false
 
     enum Sex: String, Codable, CaseIterable, Identifiable {
         case male, female, other, preferNotToSay
@@ -88,5 +89,6 @@ extension UserProfile: Decodable {
         exerciseSkipCounts = try container.decodeIfPresent([String: Int].self, forKey: .exerciseSkipCounts) ?? [:]
         exerciseRatings = try container.decodeIfPresent([String: Int].self, forKey: .exerciseRatings) ?? [:]
         preferredWorkoutTimeHour = try container.decodeIfPresent(Int.self, forKey: .preferredWorkoutTimeHour)
+        healthKitWeightSync = try container.decodeIfPresent(Bool.self, forKey: .healthKitWeightSync) ?? false
     }
 }

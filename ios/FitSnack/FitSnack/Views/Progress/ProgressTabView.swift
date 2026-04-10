@@ -91,6 +91,30 @@ struct ProgressTabView: View {
                                     .padding(.horizontal, AppSpacing.md)
                             }
 
+                            // Resting heart rate (HealthKit)
+                            if let rhr = viewModel.restingHeartRate {
+                                FitSnackCard {
+                                    HStack(spacing: AppSpacing.md) {
+                                        Image(systemName: "heart.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundStyle(.red)
+                                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                            Text("Resting Heart Rate")
+                                                .font(AppTypography.headline)
+                                                .foregroundStyle(AppColors.textPrimary)
+                                            Text("30-day average")
+                                                .font(AppTypography.caption)
+                                                .foregroundStyle(AppColors.textSecondary)
+                                        }
+                                        Spacer()
+                                        Text("\(Int(rhr)) bpm")
+                                            .font(AppTypography.title2)
+                                            .foregroundStyle(AppColors.brand)
+                                    }
+                                }
+                                .padding(.horizontal, AppSpacing.md)
+                            }
+
                             // Personal records
                             if !viewModel.personalRecords.isEmpty {
                                 NavigationLink(destination: PersonalRecordsView()) {

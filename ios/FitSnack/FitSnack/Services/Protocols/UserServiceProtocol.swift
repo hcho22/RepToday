@@ -11,6 +11,8 @@ protocol UserServiceProtocol {
     func unlockBadge(_ badgeId: String) async throws
     func getCachedWeeklyReport(for isoWeek: String) async throws -> String?
     func cacheWeeklyReport(_ report: String, for isoWeek: String) async throws
+    func useStreakFreeze() async throws
+    func getAvailableFreezes() async throws -> Int
 }
 
 struct GamificationStats: Codable {
@@ -22,4 +24,6 @@ struct GamificationStats: Codable {
     var level: Int
     var workoutsThisWeek: Int
     var weeklyWorkoutGoal: Int
+    var availableFreezes: Int = 0
+    var isPremium: Bool = false
 }
