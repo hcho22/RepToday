@@ -4,21 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FitSnack is an AI-powered micro-workout iOS app (5-30 min workouts) for busy parents/professionals. Phase 1 MVP uses mock data locally; Convex backend integrates post-MVP with zero view/viewmodel changes.
+FitSnack is a discipline-first micro-workout iOS app (5-30 min sessions) for busy, desk-bound adults.
+It exists to build the habit of showing up: the user says how many minutes they have, and a deterministic on-device engine generates a complete zero-equipment session blending bodyweight strength and mobility.
+No browsing, no choosing, no thinking.
 
-## Department System
+Strength is earned over time, not the entry promise.
+Every user starts in the **Discipline Phase** (consistency is the only goal) and earns the **Strength Phase** by sustaining the habit and progressing their movements.
+At launch no user has earned the Strength Phase, so the MVP ships the Discipline-Phase experience with the `PhaseEvaluator` already in place.
 
-The project uses persona-based agents invoked via slash commands:
+The MVP runs entirely on an Apple-native stack with no custom backend.
+AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
 
-| Command | Department | Persona | Role |
-|---------|-----------|---------|------|
-| `/eng` | Engineering | John | Writes clear, well-commented code with tests |
-| `/qa` | QA | Bryan | Tests thoroughly, explains findings for beginners |
-| `/pm` | PM | Peter | Translates tech to plain English, writes PRDs |
+**Status:** clean rebuild in progress.
+The previous Phase 2 app (XP/badges/streaks, AI services, SwiftData) was removed and lives only in git history (commit `23fd56f`) as reference.
+Work proceeds story-by-story against the PRD (see below).
 
-**Context composition chain:** Root `CLAUDE.md` (project-wide) → `departments/{dept}/CLAUDE.md` (domain knowledge) → `departments/{dept}/agent.md` (persona & rules).
+## Source of Truth
 
-Commands live in `.claude/commands/`. PRD generation skill: `.claude/skills/prd/PRD_SKILL.md`.
+- **Strategic plan:** `.claude/agent/tasks/FitSnack-PRD-v5.md` - the discipline-first vision, domain concepts, engine design, and phase model.
+- **Implementation PRD / progress tracker:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` - 30 user stories (US-A01 … US-J04) with acceptance criteria and validation tests.
+  As each story is completed, its acceptance-criteria checkboxes are flipped to `[x]` so the PRD doubles as a live progress tracker.
+- Always check the PRD for the relevant story before building a feature.
+
+Note: the v5 plan references a `CONTEXT.md` and `docs/adr/` that are not present in this repo; treat the two files above as authoritative.
 
 ## Build & Run
 
@@ -27,100 +35,134 @@ Commands live in `.claude/commands/`. PRD generation skill: `.claude/skills/prd/
 cd ios/FitSnack && xcodegen generate
 
 # Build
-xcodebuild -project ios/FitSnack/FitSnack.xcodeproj -scheme FitSnack -sdk iphonesimulator -configuration Debug build
+xcodebuild -project ios/FitSnack/FitSnack.xcodeproj -scheme FitSnack \
+  -sdk iphonesimulator -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' build
 
-# Run tests
-xcodebuild -project ios/FitSnack/FitSnack.xcodeproj -scheme FitSnackTests -sdk iphonesimulator -configuration Debug test
+# Run tests (the FitSnack scheme runs the FitSnackTests target)
+xcodebuild -project ios/FitSnack/FitSnack.xcodeproj -scheme FitSnack \
+  -destination 'platform=iOS Simulator,name=iPhone 16' test
 
 # Open in Xcode
 open ios/FitSnack/FitSnack.xcodeproj
 ```
 
+There is a single scheme, `FitSnack`, which builds the app and runs the tests.
+If xcodebuild cannot resolve the destination, list installed simulators with `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`.
+
 Target: iOS 17.0+, Swift 5.9, Xcode 16.3. Bundle ID: `com.fitsnack.app`.
 
 ## Architecture
 
-**Monorepo:** `ios/` (SwiftUI app) + `convex/` (backend, placeholder for now).
+**Monorepo:**
+- `ios/` - the SwiftUI app (the entire MVP).
+- `proxy/` - a Cloudflare/Wrangler TypeScript project, the minimal API-key proxy for the deferred Phase 2 LLM language features. Not used in the MVP.
+- `convex/` - empty placeholder (`.gitkeep`); the MVP has no custom backend.
+- `artifacts/` - reports, specs, and learning logs.
 
 **MVVM + Protocol-Based Services:**
-- **Views** access services via `@Environment(\.services)` (custom `EnvironmentKey`)
-- **ViewModels** are `@Observable` classes (Observation framework, not ObservableObject)
-- **Services** are protocol-defined (`Services/Protocols/`) with mock implementations (`Services/Mock/`)
-- **ServiceContainer** (`DI/ServiceContainer.swift`) holds all service instances, injected at app root
+- **Views** access services via `@Environment(\.services)` (a custom `EnvironmentKey`).
+- **ViewModels** are `@Observable` classes (Observation framework, never `ObservableObject`/`@Published`).
+- **Services** are protocol-defined (`Services/Protocols/`) with mock implementations (`Services/Mock/`).
+- **ServiceContainer** (`DI/ServiceContainer.swift`) holds all service instances, injected at the app root.
 
-To swap a mock for a real implementation, change one line in `ServiceContainer` — views and viewmodels remain untouched.
+To swap a mock for a real implementation, change one line in `ServiceContainer` - views and viewmodels remain untouched.
 
-**Persistence:** SwiftData with two models (`SDUserProfile`, `SDWorkout`). Domain models are plain `Codable` structs; SwiftData models use `toUserProfile()`/`update(from:)` conversion methods. Complex fields stored as base64-encoded JSON strings.
+**Persistence:** CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`).
+Domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`.
+The core loop works fully offline and with no iCloud account; CloudKit handles sync and backup when available.
 
-**Navigation:** `AppState` (`@Observable`) controls onboarding vs main tabs. 4 tabs: Home, Progress, Challenges, Profile.
+**Apple-native integrations:** Sign in with Apple (identity), CloudKit (private DB sync), HealthKit (on-device workout writes), StoreKit 2 (free unlimited core + premium depth).
+No hosting cost; an Apple Developer account is required.
+
+**Navigation:** `AppState` (`@Observable`, persisted to UserDefaults) controls onboarding vs. the main app and the selected tab.
+
+## The Deterministic Engine
+
+Pure Swift, on-device, no network, no LLM, instant (latency target <100ms).
+The pipeline (one step per Epic C story in the PRD):
+
+1. **Session shape** - 5-10 min single-focus; 15 min blend (light); 20-30 min blend (full).
+2. **Pillar balance** - choose the stalest pillar by days-since-worked; bias short sessions toward mobility when the user sits 6+ hours.
+3. **Movement-pattern focus** - rank patterns by staleness; never repeat yesterday's primary pattern.
+4. **Filter pool** - drop by phase, injuries, difficulty cap, recent skips; everything is bodyweight (Zero-Equipment Floor).
+5. **Progression-chain selection** - pick the user's current chain position; offer the next when advancement criteria are met; avoid the last 3 sessions.
+6. **Adaptive Overload** - prescribe capacity-relative reps/sets/holds, never a fixed heroic number; feedback (`too_easy`/`too_hard`) adjusts within one cycle.
+7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, land within ±1 min of requested time.
+
+In-session **swap** substitutes deterministically within the same pillar, pattern, difficulty band, and time budget.
+
+## Consistency & Phase (no gamification)
+
+There is no XP, no levels, and no badges in the MVP (deferred to Phase 2, and kept off the core loop).
+The fragile streak is replaced by a forgiving system:
+
+- **Consistency Score** - a rolling, weighted measure of showing up.
+  `weeklyAdherence = min(1, workoutsCompleted / weeklyGoal)`; the score is a weighted rolling average × 100, recent weeks weighted more.
+  A 5-minute session counts as a full show-up; a single miss dents the score but never zeroes it.
+  `longestChain` is tracked and surfaced as an earned point of pride, never as a threat.
+  All copy is identity-framed ("you're someone who moves"), never loss-framed.
+- **PhaseEvaluator** - deterministic, never user-selectable.
+  A user reaches the Strength Phase only when both consistency (sustained score over a rolling window) and competence (cleared the entry tiers of the foundational chains) hold.
+  All MVP users resolve to the Discipline Phase.
 
 ## Key Conventions
 
-- Use `@Observable` (Observation framework), never `ObservableObject`/`@Published`
-- All service methods are `async throws`
-- Enums conform to `Codable`, `CaseIterable`, `Identifiable`
-- Design system tokens via `Theme.Colors`, `Theme.Typography`, `Theme.Spacing` — always use these, never hardcode colors/fonts/spacing
-- Button height: 56pt. Card corner radius: 16pt. Touch targets: 44pt minimum (60pt on workout screens)
-- Exercise database: 30 exercises in `Resources/Exercises.json`, loaded by `MockExerciseService`
-- Workout generation: `WorkoutGenerationEngine` — pure Swift, no network calls, uses MET-based calorie calculation
-- Gamification logic lives in `Utilities/Constants.swift` — XP, levels, badges, streaks (see Gamification section below)
-- Check `.claude/agent/tasks/` for the relevant PRD before building new features
+- Use `@Observable` (Observation framework), never `ObservableObject`/`@Published`.
+- All service methods are `async throws`.
+- Enums conform to `Codable`, `CaseIterable`, and `Identifiable` where they have a stable id.
+- Design system tokens via `Theme.Colors`, `Theme.Typography`, `Theme.Spacing` - always use these, never hardcode colors/fonts/spacing.
+- Button height: 56pt. Card corner radius: 16pt. Touch targets: 44pt minimum (60pt on active workout screens).
+- Exercise library: ~38 bodyweight movements in `Resources/Exercises.json`, all `equipment == []` (Zero-Equipment Floor), loaded and integrity-checked by `MockExerciseService`.
+- Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion (static demo fallback), haptics with an audio alternative.
+
+## Project Structure (ios/FitSnack/FitSnack)
+
+```
+App/            App entry point (FitSnackApp.swift)
+DesignSystem/   Theme tokens (Theme.swift)
+Models/         Domain enums and Codable structs
+Persistence/    CoreData stack (NSPersistentCloudKitContainer) + conversions
+Services/       Service implementations
+  Protocols/    Service protocol definitions
+  Mock/         Mock implementations wired in ServiceContainer
+DI/             ServiceContainer + environment injection
+ViewModels/     @Observable view models
+Views/          SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
+Utilities/      AppState and shared helpers
+Resources/      Exercises.json, Assets.xcassets, animations
+```
+
+As of the current clean rebuild, only the US-A01 scaffold exists (App, DesignSystem, RootView, Assets, empty folders).
+The rest lands story-by-story per the PRD.
 
 ## Testing
 
-Tests live in `ios/FitSnack/FitSnackTests/` (7 test files). Pattern: `XCTestCase` + `@testable import FitSnack`.
-
-| Test File | Coverage |
-|-----------|----------|
-| `WorkoutGenerationTests` | Duration, warmup, equipment filtering, muscle balancing, injury filtering, bodyweight fallback |
-| `CalorieCalculatorTests` | MET formula, rest overhead, zero duration, empty workout |
-| `StreakLogicTests` | Empty history, consecutive weeks, missed week reset, week boundaries |
-| `ExerciseFilterTests` | Equipment, difficulty, injury avoidance |
-| `ModelTests` | Encoding/decoding, Codable conformance |
-| `ColorAssetTests` | Design system color asset verification |
-
+Tests live in `ios/FitSnack/FitSnackTests/`. Pattern: `XCTestCase` + `@testable import FitSnack`.
 All new logic must have corresponding tests.
 
-## Key Files
+Current and planned coverage (added as the owning story lands):
 
-| File | Role |
-|------|------|
-| `FitSnackApp.swift` | App entry point, ModelContainer + ServiceContainer init |
-| `DI/ServiceContainer.swift` | All service protocols composed; environment injection |
-| `Services/WorkoutGenerationEngine.swift` | Workout algorithm: filter → time allocation → muscle balancing → set/rep fitting |
-| `Services/CalorieCalculator.swift` | MET × weight × duration formula |
-| `Utilities/Constants.swift` | XP values, level thresholds, 10 badge definitions |
-| `Utilities/AppState.swift` | `isOnboarded`, `selectedTab` — persisted to UserDefaults |
-| `Resources/Exercises.json` | 30-exercise database with full metadata |
-| `Persistence/ModelContainer+Extension.swift` | SwiftData schema configuration |
+| Area | Coverage |
+|------|----------|
+| Scaffold (`ScaffoldTests`) | Design-token values (button/card/touch sizes) |
+| Models / enums | Codable round-trips, stable raw values |
+| Engine | Session shape, pillar/pattern staleness, filtering, progression chains, Adaptive Overload, timing fit, swap |
+| Consistency Score | Empty history, perfect run, single-miss dent (not zero), 5-min show-up, rolling weighting |
+| PhaseEvaluator | Consistency-only and competence-only stay Discipline; both-met promotes; fresh user Discipline |
+| Persistence | Save/fetch round-trips for `CDUser` and `CDWorkoutLog` |
 
-## Gamification System
+## Out of Scope (MVP Non-Goals)
 
-All logic in `Utilities/Constants.swift`.
-
-**XP:** `(durationMinutes × 3) + ratingBonus[rating]`. Rating bonus: 1→0, 2→5, 3→10, 4→15, 5→25. Weekly goal bonus: 50. Streak milestone bonus: 100.
-
-**Levels:** 11 levels with XP thresholds: `[0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500]`.
-
-**Badges** (10 total):
-- `first_rep` — 1 workout | `week_one` — 7 consecutive days | `early_bird` — workout before 7 AM
-- `speed_demon` — 5-min workout | `endurance_king` — 30-min workout
-- `streak_starter` — 2-week streak | `iron_will` — 4-week streak | `centurion` — 100 workouts
-- `variety_pack` — 5 equipment types | `full_body` — all 6 major muscle groups in one week
-
-**Weekly Streak:** Counts consecutive ISO weeks where workouts ≥ weeklyGoal, walking backwards from current week.
+No LLM/AI calls (summaries are template-based in MVP); no custom backend; no XP/levels/badges; no social/leaderboards/challenges; no equipment-based exercises; no full Strength-Phase catalog; no Android/widgets/Live Activities/Apple Watch.
+See the PRD's Non-Goals section for the full list.
 
 ## Artifact Locations
 
 | Artifact | Path |
 |----------|------|
-| PRDs / task briefs | `.claude/agent/tasks/` |
-| Completion reports | `.claude/agent/report/` |
-| Engineering reports | `artifacts/reports/` |
-| QA test results | `artifacts/reports/test-results/` |
-| PM learning summaries | `artifacts/learning-logs/` |
+| Strategic plan + implementation PRDs / task briefs | `.claude/agent/tasks/` |
+| Engineering / QA reports | `artifacts/reports/` |
+| Test results | `artifacts/reports/test-results/` |
 | Specs / briefs | `artifacts/specs/` |
-
-## Convex Integration Path
-
-Post-MVP: init Convex in `convex/`, define TS schema mirroring SwiftData models, write query/mutation/action functions, create `Convex*Service` implementations of existing protocols, swap in `ServiceContainer`. The JS/TS SDK is used for backend functions; the Swift SDK connects the iOS client.
+| Learning logs | `artifacts/learning-logs/` |

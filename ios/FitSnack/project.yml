@@ -2,15 +2,10 @@ name: FitSnack
 options:
   bundleIdPrefix: com.fitsnack
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "17.0"
   xcodeVersion: "16.3"
   createIntermediateGroups: true
   generateEmptyDirectories: true
-
-packages:
-  Lottie:
-    url: https://github.com/airbnb/lottie-ios
-    from: "4.5.0"
 
 settings:
   base:
@@ -26,7 +21,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fitsnack.app
-        INFOPLIST_GENERATION_MODE: GeneratedByXcode
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
@@ -34,12 +28,7 @@ targets:
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
-        INFOPLIST_KEY_NSHealthShareUsageDescription: "FitSnack reads your weight, heart rate, and workout data to personalize workouts, track calories, and show health trends."
-        INFOPLIST_KEY_NSHealthUpdateUsageDescription: "FitSnack saves your completed workouts to Apple Health."
-    dependencies:
-      - package: Lottie
-    entitlements:
-      path: FitSnack/FitSnack.entitlements
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
   FitSnackTests:
     type: bundle.unit-test
