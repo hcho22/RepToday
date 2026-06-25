@@ -1,27 +1,48 @@
-# FitSnack — AI-Powered Micro-Workout App
+# FitSnack - Discipline-First Micro-Workout App
 
 **Open the app. Tell it how many minutes you have. Press play.**
 
-FitSnack is an iOS app that generates personalized AI-powered workouts in seconds, designed for busy parents and professionals who have 5-30 minutes a day to exercise. No browsing, no choosing, no thinking — just workouts that fit your life.
+FitSnack is an iOS app for busy, desk-bound adults who can give exercise 5-30 minutes a day.
+It exists to build one thing: the discipline of showing up.
+The user says how many minutes they have, and a deterministic on-device engine generates a complete zero-equipment session that blends bodyweight strength and mobility.
+No browsing, no choosing, no thinking.
+
+> **Status:** clean rebuild in progress.
+> The previous app (XP/badges/streaks, AI services, SwiftData) was removed and lives only in git history as reference.
+> Work proceeds story-by-story against the PRD; today only the US-A01 scaffold exists.
 
 ---
 
 ## Why FitSnack?
 
-Most fitness apps assume you have an hour to spare and the mental bandwidth to pick a routine. FitSnack assumes the opposite:
+Most fitness apps assume you have an hour to spare and the mental bandwidth to pick a routine.
+FitSnack assumes the opposite:
 
-- **Zero-decision workouts** — AI generates a complete, personalized workout the moment you select a duration
-- **Time-flexible by design** — Every workout is 5-30 minutes, dynamically generated — not pre-recorded videos cut to length
-- **Progressive and intelligent** — Tracks your history, manages muscle group fatigue, and ensures progressive overload even in short sessions
-- **Built for consistency, not intensity** — Rewards showing up for 5 minutes over grinding through hour-long sessions
+- **Zero-decision workouts** - a deterministic on-device engine builds a complete session the moment you select a duration.
+- **Time-flexible by design** - every session is 5-30 minutes, generated to land within ±1 minute of the time you asked for.
+- **Discipline first, strength earned** - consistency is the entry promise; strength is earned over time, never the headline.
+- **Forgiving, not fragile** - a rolling Consistency Score replaces the brittle streak, so a single miss dents but never zeroes your progress.
 
 ---
 
 ## Target Audience
 
-**Primary:** Working parents (ages 28-45) who previously exercised regularly but lost their routine. They don't lack motivation — they lack time and mental bandwidth.
+**Primary:** busy, desk-bound adults (working parents, professionals) who previously moved regularly but lost the routine.
+They don't lack motivation - they lack time and mental bandwidth.
 
-**Secondary:** Busy professionals (ages 25-40) who travel frequently or work unpredictable hours and can't commit to a fixed gym schedule.
+**Secondary:** people who travel frequently or work unpredictable hours and can't commit to a fixed gym schedule.
+
+---
+
+## The Two-Phase Journey
+
+The product builds the habit of moving; strength is *earned*, never the launch headline.
+
+- **Discipline Phase** - where every user starts. Consistency is the only goal; sessions stay short and simple.
+- **Strength Phase** - earned over time by sustaining the habit *and* progressing the foundational movement chains.
+
+The `PhaseEvaluator` is deterministic and never user-selectable.
+At launch no user has earned the Strength Phase, so the MVP ships the Discipline-Phase experience with the evaluator already in place.
 
 ---
 
@@ -29,43 +50,24 @@ Most fitness apps assume you have an hour to spare and the mental bandwidth to p
 
 ### Core Workout Loop
 
-- **AI Workout Generation** — Select a duration (5-30 min), and the engine builds a structured workout with warmup, main blocks, and cooldown
-- **Smart Exercise Selection** — Filters by available equipment, fitness level, injuries, and muscle group fatigue from recent workouts
-- **MET-Based Calorie Calculation** — Accurate calorie estimates using Metabolic Equivalent values per exercise
-- **Exercise Swapping** — Swap any exercise mid-workout with an AI-selected replacement matching the same muscle group and time budget
+- **Deterministic session generation** - select a duration (5-30 min) and the engine assembles a structured session (warm-up, main work, cooldown over 10 min) on-device, with no network and no LLM.
+- **Smart movement selection** - balances the stalest pillar and movement pattern, filters by phase, injuries, difficulty cap, and recent skips, and never repeats yesterday's primary pattern.
+- **Adaptive Overload** - prescribes capacity-relative reps/sets/holds (never a fixed heroic number); `too_easy`/`too_hard` feedback adjusts within one cycle.
+- **In-session swap** - substitutes deterministically within the same pillar, pattern, difficulty band, and time budget.
 
-### Active Workout Experience
+### Active Session Experience
 
-- Large, sweat-proof touch targets (60pt minimum on workout screens)
-- Set-by-set tracking with haptic feedback on completion
-- Automatic rest timer between sets
-- Real-time progress bar and elapsed time display
-- Exercise form tips displayed contextually
+- Large touch targets (60pt minimum on active workout screens).
+- Set-by-set tracking with haptic feedback (and an audio alternative).
+- Accessibility throughout: VoiceOver, Dynamic Type, and a static demo fallback for Reduce Motion.
 
-### Gamification & Streaks
+### Consistency, Not Gamification
 
-- **Weekly Streak System** — Consecutive weeks where you hit your workout goal (default: 3/week)
-- **XP & Leveling** — Earn XP for workouts, ratings, streaks, and personal records (6 level tiers from "Couch Explorer" to "Living Legend")
-- **10 Unlockable Badges** — "First Rep," "Early Bird," "Speed Demon," "Century," and more
-- **Streak Saver** — A 2-3 minute micro-workout offered on Sundays when you're one workout short of your goal
+There is no XP, no levels, and no badges in the MVP.
 
-### Progress Tracking
-
-- Calendar heat map (GitHub-style) showing workout days
-- Workout history with detailed exercise logs
-- Monthly stats: workouts completed, total minutes, calories burned
-
-### Subscription Model
-
-| | Free | Premium ($7.99/mo or $59.99/yr) |
-|---|---|---|
-| AI workouts | 3/week | Unlimited |
-| Workout history | Last 7 days | Full history with analytics |
-| Streak tracking | Yes | Yes + unlimited freezes |
-| AI insights & summaries | - | Yes |
-| Shareable workout cards | - | Premium designs |
-
-14-day free trial included on first install.
+- **Consistency Score** - a rolling, weighted measure of showing up; a 5-minute session counts as a full show-up, and recent weeks weigh more.
+- **Longest chain** - tracked and surfaced as an earned point of pride, never as a threat.
+- **Identity-framed copy** - "you're someone who moves," never loss-framed.
 
 ---
 
@@ -74,13 +76,15 @@ Most fitness apps assume you have an hour to spare and the mental bandwidth to p
 | Layer | Technology |
 |-------|-----------|
 | **Platform** | iOS 17.0+, Swift 5.9, Xcode 16.3 |
-| **UI Framework** | SwiftUI with Observation framework (`@Observable`) |
-| **Architecture** | MVVM + Protocol-based service injection |
-| **Persistence** | SwiftData (`SDUserProfile`, `SDWorkout`) |
-| **Backend** | Convex (planned post-MVP, placeholder in `convex/`) |
-| **Subscriptions** | StoreKit 2 |
-| **Health** | HealthKit (read/write workout data) |
+| **UI Framework** | SwiftUI with the Observation framework (`@Observable`) |
+| **Architecture** | MVVM + protocol-based service injection |
+| **Persistence** | CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`) |
+| **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
+| **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
+| **Backend** | None in the MVP (`convex/` is an empty placeholder) |
 | **Bundle ID** | `com.fitsnack.app` |
+
+AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
 
 ---
 
@@ -99,22 +103,36 @@ Most fitness apps assume you have an hour to spare and the mental bandwidth to p
                    │
 ┌──────────────────▼──────────────────────────────┐
 │  Service Protocols (Services/Protocols/)         │
-│  AuthService, WorkoutService, UserService, etc. │
+│  All methods async throws; mock implementations │
 └──────────────────┬──────────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────────┐
-│  Implementations                                │
-│  Mock (Phase 1) → Convex (Post-MVP)             │
-│  Swap one line in ServiceContainer.swift        │
+│  ServiceContainer (DI/)                          │
+│  Holds all services, injected at the app root    │
+│  Swap one line to replace a mock with the real   │
 └─────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
 
-- **Protocol-based services** — All services are protocol-defined with mock implementations. To swap a mock for a real backend, change one line in `ServiceContainer` — views and viewmodels remain untouched.
-- **SwiftData with domain separation** — SwiftData models (`SD*`) handle persistence; domain models are plain `Codable` structs. Conversion happens via `toUserProfile()`/`update(from:)` methods.
-- **Pure Swift workout generation** — `WorkoutGenerationEngine` runs entirely on-device with no network calls: filter exercises → allocate time → balance muscle groups → fit sets/reps.
-- **Environment-based DI** — `ServiceContainer` holds all service instances, injected at the app root via a custom `EnvironmentKey`.
+- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched.
+- **CoreData with domain separation** - domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`. The core loop works fully offline; CloudKit handles sync and backup when available.
+- **Deterministic engine** - the workout engine runs entirely on-device with no network or LLM calls (see below).
+- **Environment-based DI** - `ServiceContainer` holds all service instances, injected at the app root via a custom `EnvironmentKey`.
+
+---
+
+## The Deterministic Engine
+
+The on-device engine runs this pipeline (one step per Epic C story in the PRD):
+
+1. **Session shape** - 5-10 min single-focus; 15 min blend (light); 20-30 min blend (full).
+2. **Pillar balance** - choose the stalest pillar by days-since-worked; bias short sessions toward mobility when the user sits 6+ hours.
+3. **Movement-pattern focus** - rank patterns by staleness; never repeat yesterday's primary pattern.
+4. **Filter pool** - drop by phase, injuries, difficulty cap, and recent skips; everything is bodyweight (Zero-Equipment Floor).
+5. **Progression-chain selection** - pick the current chain position; offer the next when advancement criteria are met; avoid the last 3 sessions.
+6. **Adaptive Overload** - prescribe capacity-relative reps/sets/holds; feedback adjusts within one cycle.
+7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, and land within ±1 min of the requested time.
 
 ---
 
@@ -122,38 +140,38 @@ Most fitness apps assume you have an hour to spare and the mental bandwidth to p
 
 ```
 FitSnack/
-├── ios/FitSnack/
-│   ├── FitSnackApp.swift              # App entry point, ModelContainer + DI setup
-│   ├── DI/
-│   │   └── ServiceContainer.swift     # All service protocols composed
-│   ├── Models/                        # Domain models + enums (Codable structs)
-│   ├── Views/
-│   │   ├── Onboarding/               # 8-screen onboarding flow
-│   │   ├── Home/                      # Today's workout, quick start, AI insights
-│   │   ├── Workout/                   # Active workout, rest timer, exercise swap
-│   │   ├── Progress/                  # History, calendar heat map
-│   │   ├── Challenges/                # Badges, leaderboard placeholder
-│   │   ├── Profile/                   # User profile tab
-│   │   ├── Settings/                  # Preferences, subscription, equipment
-│   │   └── Paywall/                   # Premium upgrade screen
-│   ├── ViewModels/                    # @Observable view models
+├── ios/FitSnack/FitSnack/
+│   ├── App/                 # App entry point (FitSnackApp.swift)
+│   ├── DesignSystem/        # Theme tokens (Theme.swift)
+│   ├── Models/              # Domain enums and Codable structs
+│   ├── Persistence/         # CoreData stack (NSPersistentCloudKitContainer) + conversions
 │   ├── Services/
-│   │   ├── Protocols/                 # Service interfaces
-│   │   ├── Mock/                      # Mock implementations (Phase 1)
-│   │   ├── WorkoutGenerationEngine.swift
-│   │   └── CalorieCalculator.swift
-│   ├── Components/                    # Reusable UI components
-│   ├── DesignSystem/                  # Theme, colors, typography, spacing
-│   ├── Persistence/                   # SwiftData models + ModelContainer
-│   ├── Utilities/                     # Constants, AppState
-│   ├── Resources/
-│   │   └── Exercises.json             # 30-exercise database with full metadata
-│   └── FitSnackTests/                 # Unit tests
-├── convex/                            # Backend placeholder (post-MVP)
-├── FitSnack_PRD_v1.md                 # Full product requirements document
-├── FitSnack_Phase1_Plan.md            # Phase 1 implementation plan
-└── CLAUDE.md                          # AI assistant instructions
+│   │   ├── Protocols/       # Service protocol definitions
+│   │   └── Mock/            # Mock implementations wired in ServiceContainer
+│   ├── DI/                  # ServiceContainer + environment injection
+│   ├── ViewModels/          # @Observable view models
+│   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
+│   ├── Utilities/           # AppState and shared helpers
+│   └── Resources/           # Exercises.json, Assets.xcassets, animations
+├── convex/                  # Empty placeholder; the MVP has no custom backend
+├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
+└── CLAUDE.md                # Repo guidance and architecture reference
 ```
+
+As of the current clean rebuild, only the US-A01 scaffold exists (App, DesignSystem, RootView, Assets, empty folders).
+The rest lands story-by-story per the PRD.
+
+---
+
+## Source of Truth
+
+| Document | Purpose |
+|----------|---------|
+| `.claude/agent/tasks/FitSnack-PRD-v5.md` | Strategic plan - the discipline-first vision, domain concepts, engine design, and phase model. |
+| `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` | Implementation PRD and live progress tracker - 30 user stories (US-A01 … US-J04) with acceptance criteria. |
+| `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants. |
+
+Always check the PRD for the relevant story before building a feature.
 
 ---
 
@@ -163,7 +181,7 @@ FitSnack/
 
 - **Xcode 16.3+**
 - **iOS 17.0+ Simulator or device**
-- **XcodeGen** (for project generation from `project.yml`)
+- **XcodeGen** (to generate the project from `project.yml`)
 
 ```bash
 brew install xcodegen
@@ -172,14 +190,13 @@ brew install xcodegen
 ### Build & Run
 
 ```bash
-# Generate Xcode project
+# Generate the Xcode project
 cd ios/FitSnack && xcodegen generate
 
-# Build for simulator
-xcodebuild -project ios/FitSnack/FitSnack.xcodeproj \
-  -scheme FitSnack \
-  -sdk iphonesimulator \
-  -configuration Debug build
+# Build for the simulator
+xcodebuild -project ios/FitSnack/FitSnack.xcodeproj -scheme FitSnack \
+  -sdk iphonesimulator -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' build
 
 # Or open in Xcode
 open ios/FitSnack/FitSnack.xcodeproj
@@ -187,62 +204,29 @@ open ios/FitSnack/FitSnack.xcodeproj
 
 ### Run Tests
 
+There is a single scheme, `FitSnack`, which builds the app and runs the `FitSnackTests` target.
+
 ```bash
-xcodebuild -project ios/FitSnack/FitSnack.xcodeproj \
-  -scheme FitSnackTests \
-  -sdk iphonesimulator \
-  -configuration Debug test
+xcodebuild -project ios/FitSnack/FitSnack.xcodeproj -scheme FitSnack \
+  -destination 'platform=iOS Simulator,name=iPhone 16' test
 ```
+
+If xcodebuild cannot resolve the destination, list installed simulators with `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`.
 
 ---
 
 ## Design System
 
-FitSnack uses a consistent design token system via `Theme.*`:
+FitSnack uses a consistent design token system via `Theme.*` (`Theme.Colors`, `Theme.Typography`, `Theme.Spacing`) - always use these, never hardcode colors, fonts, or spacing.
 
 | Token | Value |
 |-------|-------|
-| **Brand Color** | `#4F46E5` (Indigo) |
-| **Success** | `#10B981` (Green) |
-| **Fire/Streaks** | `#F97316` (Orange) |
-| **Danger** | `#EF4444` (Red) |
 | **Button Height** | 56pt |
 | **Card Corner Radius** | 16pt |
-| **Min Touch Target** | 44pt (60pt on workout screens) |
-| **Typography** | SF Pro (system) with semantic scale |
+| **Min Touch Target** | 44pt (60pt on active workout screens) |
+| **Typography** | SF Pro (system, rounded) with a semantic scale; Dynamic Type out of the box |
 
-Dark mode is supported via asset catalog color variants.
-
----
-
-## Navigation
-
-```
-Tab Bar (4 tabs)
-├── Home        — Today's workout, quick start, AI insight
-├── Progress    — History, calendar heat map, stats
-├── Challenges  — Badges grid, leaderboard placeholder
-└── Profile     — Settings, subscription, preferences
-```
-
-`AppState` (`@Observable`) manages onboarding vs. main tab navigation, persisted to UserDefaults.
-
----
-
-## Workout Generation Engine
-
-The on-device `WorkoutGenerationEngine` follows this pipeline:
-
-1. **Filter** — Select exercises matching user's equipment, fitness level, and injury constraints
-2. **Time Allocation** — Divide requested duration into warmup, main blocks, and cooldown
-3. **Muscle Balancing** — Avoid muscle groups worked in recent sessions, distribute load across the week
-4. **Set/Rep Fitting** — Calculate sets, reps, and rest periods to fill the time budget precisely
-
-Calorie estimation uses the MET formula:
-
-```
-Calories = MET_value x weight_kg x duration_hours
-```
+Colors resolve from the asset catalog where a named color exists and fall back to a sensible system color otherwise, so the app always renders.
 
 ---
 
@@ -250,37 +234,11 @@ Calories = MET_value x weight_kg x duration_hours
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Phase 1** (MVP) | Core workout loop, streaks, onboarding, subscriptions | In Progress |
-| **Phase 2** (Engagement) | XP system, badges, AI summaries, progress charts, streak freezes | Planned |
-| **Phase 3** (Growth) | Friends, leaderboards, challenges, widgets, Dynamic Island | Planned |
-| **Phase 4** (Advanced AI) | Voice coaching, form checking (Vision), Apple Watch, calendar integration | Future |
+| **MVP** | Discipline-Phase loop: deterministic engine, Consistency Score, PhaseEvaluator, onboarding, CoreData/CloudKit | In Progress |
+| **Phase 2** | Language-only LLM features (template-free summaries, weekly narratives), full Strength-Phase catalog, equipment variants | Planned |
 
----
-
-## Key Metrics
-
-| Metric | Month 3 Target | Month 6 Target |
-|--------|----------------|----------------|
-| Day 7 Retention | 20% | 25% |
-| Onboarding to 1st Workout | 60% | 70% |
-| Free to Paid Conversion | 5% | 8% |
-| Avg Workouts/Week (active) | 2.5 | 3.0 |
-| App Store Rating | 4.5+ | 4.7+ |
-
-**North Star Metric:** Weekly Active Exercisers (WAE) — users completing at least 1 workout per week.
-
----
-
-## Convex Backend Integration
-
-Post-MVP, the backend migrates to [Convex](https://convex.dev):
-
-1. Define TypeScript schema in `convex/` mirroring SwiftData models
-2. Write query/mutation/action functions
-3. Create `Convex*Service` implementations of existing protocols
-4. Swap implementations in `ServiceContainer.swift`
-
-Zero changes to views or view models required.
+The MVP never calls an LLM (summaries are template-based) and ships no gamification, social features, or equipment-based exercises.
+See the PRD's Non-Goals section for the full list.
 
 ---
 
