@@ -11,51 +11,17 @@ Create detailed Product Requirements Documents that are clear, actionable, and s
 
 ## The Job
 
-1. Receive a feature description from the user
-2. Ask 3-5 essential clarifying questions (with lettered options)
-3. Generate a structured PRD based on answers
+1. **Read `memory.md`** (in this skill's folder) and apply every learning it records.
+2. Review the latest discussion after running /grill-me
+3. Generate a structured PRD based on discussion.
 4. Save to `.claude/agent/tasks/prd-[feature-name].md`
+5. **Update `memory.md`** with anything new you learned this session (see "Learning" below).
 
 **Important:** Do NOT start implementing. Just create the PRD.
 
 ---
 
-## Step 1: Clarifying Questions
-
-Ask only critical questions where the initial prompt is ambiguous. Focus on:
-
-- **Problem/Goal:** What problem does this solve?
-- **Core Functionality:** What are the key actions?
-- **Scope/Boundaries:** What should it NOT do?
-- **Success Criteria:** How do we know it's done?
-
-### Format Questions Like This:
-
-```
-1. What is the primary goal of this feature?
-   A. Improve user onboarding experience
-   B. Increase user retention
-   C. Reduce support burden
-   D. Other: [please specify]
-
-2. Who is the target user?
-   A. New users only
-   B. Existing users only
-   C. All users
-   D. Admin users only
-
-3. What is the scope?
-   A. Minimal viable version
-   B. Full-featured implementation
-   C. Just the backend/API
-   D. Just the UI
-```
-
-This lets users respond with "1A, 2C, 3B" for quick iteration.
-
----
-
-## Step 2: PRD Structure
+## Step 1: PRD Structure
 
 Generate the PRD with these sections:
 
@@ -304,6 +270,22 @@ Add priority levels to tasks so users can focus on what matters most. Tasks can 
 
 ---
 
+## Learning (update `memory.md`)
+
+This skill gets better over time by recording what it learns in `memory.md` (same folder as this file).
+
+**After finishing each PRD, ask yourself:**
+
+- Did I use a **new tool, skill, or command** that helped? → Add it under `## Tools`.
+- Did the user **confirm a preference or convention** for how PRDs should be written? → Add it under `## Habits & Conventions`.
+- Did something **go wrong** that a future PRD should avoid? → Add it under `## Mistakes to Avoid`.
+
+**Keep it tight:** one durable lesson per entry, 1-3 lines, only things that generalize to future PRDs.
+Update an existing entry instead of duplicating, and delete anything that turns out to be wrong.
+If nothing new was learned, leave `memory.md` unchanged.
+
+---
+
 ## Checklist
 
 Before saving the PRD:
@@ -315,3 +297,4 @@ Before saving the PRD:
 - [ ] Functional requirements are numbered and unambiguous
 - [ ] Non-goals section defines clear boundaries
 - [ ] Saved to `.claude/agent/tasks/prd-[feature-name].md`
+- [ ] Read `memory.md` at the start, and updated it with any new tools/habits/mistakes learned
