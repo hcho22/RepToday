@@ -73,10 +73,10 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Enums defined in `Models/Enums.swift`: `Pillar` (`strength`/`mobility`/`primal`), `Phase` (`discipline`/`strength`), `MovementPattern` (push/squat/hinge/core/pull/mobility/locomotion), `ExerciseCategory` (strength/mobility/warmup/cooldown/primal), `Equipment`, `FitnessLevel` (beginner/intermediate/advanced), `PrimaryGoal` (stay_active/build_strength/increase_energy/reduce_stress/lose_weight), `SessionShape` (single_focus/blend), `PerceivedDifficulty` (too_easy/just_right/too_hard)
-- [ ] Every enum conforms to `Codable`, `CaseIterable`, `Identifiable` (where it has a stable id), and `Equatable`
-- [ ] Unit tests assert raw values are stable (so persisted data never breaks on rename)
-- [ ] Build and tests pass
+- [x] Enums defined in `Models/Enums.swift`: `Pillar` (`strength`/`mobility`/`primal`), `Phase` (`discipline`/`strength`), `MovementPattern` (push/squat/hinge/core/pull/mobility/locomotion), `ExerciseCategory` (strength/mobility/warmup/cooldown/primal), `Equipment`, `FitnessLevel` (beginner/intermediate/advanced), `PrimaryGoal` (stay_active/build_strength/increase_energy/reduce_stress/lose_weight), `SessionShape` (single_focus/blend), `PerceivedDifficulty` (too_easy/just_right/too_hard)
+- [x] Every enum conforms to `Codable`, `CaseIterable`, `Identifiable` (where it has a stable id), and `Equatable`
+- [x] Unit tests assert raw values are stable (so persisted data never breaks on rename)
+- [x] Build and tests pass
 
 **Validation Test:**
 

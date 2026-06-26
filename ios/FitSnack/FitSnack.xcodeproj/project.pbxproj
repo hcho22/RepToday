@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097FE325486215F1A5A4295D /* Enums.swift */; };
 		4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF9FF0DBD8FC369281E1A88 /* FitSnackApp.swift */; };
+		4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D641BBBE178A9237F0AE4110 /* EnumsTests.swift */; };
 		65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBEBFE2C368100812F7677A /* Theme.swift */; };
 		A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54220C70830316F0B7D14EAA /* ScaffoldTests.swift */; };
 		D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE899F56340A31543CC3E520 /* RootView.swift */; };
@@ -25,6 +27,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		097FE325486215F1A5A4295D /* Enums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enums.swift; sourceTree = "<group>"; };
 		183CE237B95AD74F3517D63E /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1D4BF02AD537AF6F14B588F5 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		4FBEBFE2C368100812F7677A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -35,6 +38,7 @@
 		BC9B47A4C50208A032645354 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		BEDFFB65C34BBA953E570279 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		C7EA6657DAE6AE01E4891CB7 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		D641BBBE178A9237F0AE4110 /* EnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnumsTests.swift; sourceTree = "<group>"; };
 		E93C79F16481D8040E30A1B6 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		EBBD80F1A74634F77B3E43C1 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		FDF17C9F80F098B643285927 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -129,6 +133,7 @@
 			isa = PBXGroup;
 			children = (
 				183CE237B95AD74F3517D63E /* .gitkeep */,
+				097FE325486215F1A5A4295D /* Enums.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -153,6 +158,7 @@
 		B679ACDE39FD6456BC18CADA /* FitSnackTests */ = {
 			isa = PBXGroup;
 			children = (
+				D641BBBE178A9237F0AE4110 /* EnumsTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
 			);
 			path = FitSnackTests;
@@ -266,6 +272,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -274,6 +281,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */,
 				4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */,
 				D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */,
 				65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */,
