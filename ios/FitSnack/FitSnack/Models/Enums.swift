@@ -143,3 +143,38 @@ enum PerceivedDifficulty: String, Codable, CaseIterable, Identifiable, Hashable 
 
     var id: String { rawValue }
 }
+
+// MARK: - Sex
+
+/// Biological sex captured in onboarding, used only to refine energy-expenditure
+/// estimates (e.g. the HealthKit active-energy calculation). Never gates content.
+enum Sex: String, Codable, CaseIterable, Identifiable, Hashable {
+    case male
+    case female
+    case other
+
+    var id: String { rawValue }
+}
+
+// MARK: - SubscriptionTier
+
+/// Entitlement level. `free` is unlimited core workouts forever; `premium` unlocks
+/// the depth layer (full analytics, later Strength Phase / AI). The core loop is
+/// never gated behind `premium`.
+enum SubscriptionTier: String, Codable, CaseIterable, Identifiable, Hashable {
+    case free
+    case premium
+
+    var id: String { rawValue }
+}
+
+// MARK: - SubscriptionProvider
+
+/// Who manages the subscription. The MVP bills exclusively through StoreKit 2, so
+/// `apple` is the only provider; the enum exists so stored data stays forward-
+/// compatible if another billing path is ever added.
+enum SubscriptionProvider: String, Codable, CaseIterable, Identifiable, Hashable {
+    case apple
+
+    var id: String { rawValue }
+}
