@@ -85,6 +85,24 @@ final class EnumsTests: XCTestCase {
         XCTAssertEqual(PerceivedDifficulty.allCases.count, 3)
     }
 
+    func testSexRawValues() {
+        XCTAssertEqual(Sex.male.rawValue, "male")
+        XCTAssertEqual(Sex.female.rawValue, "female")
+        XCTAssertEqual(Sex.other.rawValue, "other")
+        XCTAssertEqual(Sex.allCases.count, 3)
+    }
+
+    func testSubscriptionTierRawValues() {
+        XCTAssertEqual(SubscriptionTier.free.rawValue, "free")
+        XCTAssertEqual(SubscriptionTier.premium.rawValue, "premium")
+        XCTAssertEqual(SubscriptionTier.allCases.count, 2)
+    }
+
+    func testSubscriptionProviderRawValues() {
+        XCTAssertEqual(SubscriptionProvider.apple.rawValue, "apple")
+        XCTAssertEqual(SubscriptionProvider.allCases.count, 1)
+    }
+
     // MARK: - Identifiable
 
     func testIdentifiableIdMatchesRawValue() {
@@ -109,6 +127,9 @@ final class EnumsTests: XCTestCase {
         assertJSONStringRoundTrip(PrimaryGoal.allCases)
         assertJSONStringRoundTrip(SessionShape.allCases)
         assertJSONStringRoundTrip(PerceivedDifficulty.allCases)
+        assertJSONStringRoundTrip(Sex.allCases)
+        assertJSONStringRoundTrip(SubscriptionTier.allCases)
+        assertJSONStringRoundTrip(SubscriptionProvider.allCases)
     }
 
     // MARK: - Helpers

@@ -93,10 +93,10 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Structs in `Models/`: `UserProfile` (age, sex, heightCm, weightKg, fitnessLevel, primaryGoal, sitsLong, injuries, typicalAvailableMinutes), `User` (id, displayName, createdAt, profile, phase, subscription, consistency), `Exercise` (all fields from v5 section 2.3, including `pillar`, `movementPattern`, `category`, `difficulty`, `phase`, `equipment`, `isHold`, `defaultReps`, `defaultDurationSeconds`, `estimatedTimePerSetSeconds`, `metValue`, `progressionChainId`, `progressionOrder`, `regressionId`, `progressionId`, `advancementCriteria`, `apartmentFriendly`), `Workout` (ordered blocks of prescribed exercises with reps/sets/duration/rest), `WorkoutBlock`, `WorkoutLog` (per v5 section 2.3), `Consistency` (weeklyGoal, score, workoutsThisWeek, longestChain, totalWorkoutsCompleted, totalMinutesExercised), `Subscription` (tier, provider, expiresAt, trialEndsAt)
-- [ ] All structs are `Codable` and `Equatable`; `Exercise` and `Workout` are `Identifiable`
-- [ ] Unit tests cover encode/decode round-trips for every struct, including optional fields present and absent
-- [ ] Build and tests pass
+- [x] Structs in `Models/`: `UserProfile` (age, sex, heightCm, weightKg, fitnessLevel, primaryGoal, sitsLong, injuries, typicalAvailableMinutes), `User` (id, displayName, createdAt, profile, phase, subscription, consistency), `Exercise` (all fields from v5 section 2.3, including `pillar`, `movementPattern`, `category`, `difficulty`, `phase`, `equipment`, `isHold`, `defaultReps`, `defaultDurationSeconds`, `estimatedTimePerSetSeconds`, `metValue`, `progressionChainId`, `progressionOrder`, `regressionId`, `progressionId`, `advancementCriteria`, `apartmentFriendly`), `Workout` (ordered blocks of prescribed exercises with reps/sets/duration/rest), `WorkoutBlock`, `WorkoutLog` (per v5 section 2.3), `Consistency` (weeklyGoal, score, workoutsThisWeek, longestChain, totalWorkoutsCompleted, totalMinutesExercised), `Subscription` (tier, provider, expiresAt, trialEndsAt)
+- [x] All structs are `Codable` and `Equatable`; `Exercise` and `Workout` are `Identifiable`
+- [x] Unit tests cover encode/decode round-trips for every struct, including optional fields present and absent
+- [x] Build and tests pass
 
 **Validation Test:**
 
