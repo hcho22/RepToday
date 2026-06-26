@@ -132,7 +132,8 @@ Utilities/      AppState and shared helpers
 Resources/      Exercises.json, Assets.xcassets, animations
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), and the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`) exist; the remaining folders are still empty.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), and the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`) exist; the remaining folders are still empty.
+The CoreData stack is attached at the app root (`FitSnackApp` injects the view context); it is local-only until CloudKit sync lands in US-J02.
 The rest lands story-by-story per the PRD.
 
 ## Testing

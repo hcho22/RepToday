@@ -113,12 +113,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] `FitSnack.xcdatamodeld` defines entities `CDUser` and `CDWorkoutLog` mirroring the domain structs (complex/nested fields stored as JSON-encoded `Data` attributes)
-- [ ] `Persistence/PersistenceController.swift` initializes `NSPersistentCloudKitContainer` with a local-only configuration that does NOT yet require an iCloud account (CloudKit sync wiring lands in US-J02)
-- [ ] Conversion methods: `CDUser.toUser()` / `update(from: User)` and `CDWorkoutLog.toWorkoutLog()` / `update(from: WorkoutLog)`
-- [ ] A `MockPersistence` in-memory store is available for tests and previews
-- [ ] Unit tests: save a `User`, reload, and assert equality; save and query `WorkoutLog`s by date range
-- [ ] Build and tests pass
+- [x] `FitSnack.xcdatamodeld` defines entities `CDUser` and `CDWorkoutLog` mirroring the domain structs (complex/nested fields stored as JSON-encoded `Data` attributes)
+- [x] `Persistence/PersistenceController.swift` initializes `NSPersistentCloudKitContainer` with a local-only configuration that does NOT yet require an iCloud account (CloudKit sync wiring lands in US-J02)
+- [x] Conversion methods: `CDUser.toUser()` / `update(from: User)` and `CDWorkoutLog.toWorkoutLog()` / `update(from: WorkoutLog)`
+- [x] A `MockPersistence` in-memory store is available for tests and previews
+- [x] Unit tests: save a `User`, reload, and assert equality; save and query `WorkoutLog`s by date range
+- [x] Build and tests pass
 
 **Validation Test:**
 
