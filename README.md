@@ -9,7 +9,7 @@ No browsing, no choosing, no thinking.
 
 > **Status:** clean rebuild in progress.
 > The previous app (XP/badges/streaks, AI services, SwiftData) was removed and lives only in git history as reference.
-> Work proceeds story-by-story against the PRD; today the US-A01 scaffold and US-A02 domain enums exist.
+> Work proceeds story-by-story against the PRD; today the US-A01 scaffold, US-A02 domain enums, and US-A03 domain models exist.
 
 ---
 
@@ -158,7 +158,7 @@ FitSnack/
 └── CLAUDE.md                # Repo guidance and architecture reference
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets) and the US-A02 canonical domain enums (`Models/Enums.swift`) exist; the remaining folders are still empty.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), and the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`) exist; the remaining folders are still empty.
 The rest lands story-by-story per the PRD.
 
 ---

@@ -132,7 +132,7 @@ Utilities/      AppState and shared helpers
 Resources/      Exercises.json, Assets.xcassets, animations
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets) and the US-A02 canonical domain enums (`Models/Enums.swift`) exist; the remaining folders are still empty.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), and the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`) exist; the remaining folders are still empty.
 The rest lands story-by-story per the PRD.
 
 ## Testing
