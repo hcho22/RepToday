@@ -9,7 +9,7 @@ No browsing, no choosing, no thinking.
 
 > **Status:** clean rebuild in progress.
 > The previous app (XP/badges/streaks, AI services, SwiftData) was removed and lives only in git history as reference.
-> Work proceeds story-by-story against the PRD; today the US-A01 scaffold, US-A02 domain enums, US-A03 domain models, and the US-A04 CoreData stack exist.
+> Work proceeds story-by-story against the PRD; today the US-A01 scaffold, US-A02 domain enums, US-A03 domain models, the US-A04 CoreData stack, and the US-A05 app shell (service container and app state) exist.
 
 ---
 
@@ -158,8 +158,8 @@ FitSnack/
 └── CLAUDE.md                # Repo guidance and architecture reference
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), and the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`) exist; the remaining folders are still empty.
-The CoreData stack is attached at the app root (`FitSnackApp` injects the view context); it is local-only until CloudKit sync lands in US-J02.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), and the US-A05 app shell (service protocols and mocks, `ServiceContainer`, `AppState`, and onboarding-vs-main-tabs routing in `RootView`) exist; only `ViewModels/` is still empty.
+The app root (`FitSnackApp`) injects the CoreData view context, the `ServiceContainer` (via `\.services`), and `AppState`; the CoreData stack is local-only until CloudKit sync lands in US-J02.
 The rest lands story-by-story per the PRD.
 
 ---
