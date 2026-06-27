@@ -8,24 +8,30 @@
 
 /* Begin PBXBuildFile section */
 		042A853E49170C21D7F188F0 /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42E4B312EBFA72858B793511 /* Workout.swift */; };
+		090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6975414286769AC0083EC51 /* ServiceContainer.swift */; };
 		12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097FE325486215F1A5A4295D /* Enums.swift */; };
 		2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB8F1E3A055E19A13DD51674 /* Exercise.swift */; };
 		33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE82740204F95416749519EE /* PersistenceCoding.swift */; };
 		3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */; };
 		3796B458B3566E68D8524051 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */; };
+		3E613AE157C5D162C971D3C3 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA32171316EB189D11B068A4 /* AppState.swift */; };
 		4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF9FF0DBD8FC369281E1A88 /* FitSnackApp.swift */; };
 		4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */; };
 		4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D641BBBE178A9237F0AE4110 /* EnumsTests.swift */; };
 		56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E25EB351D91F063A9809D5E /* MockPersistence.swift */; };
 		65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBEBFE2C368100812F7677A /* Theme.swift */; };
+		6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */; };
 		9C8F27A808A53D73C791F956 /* WorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E105E18702D4CC93FBA722 /* WorkoutLog.swift */; };
 		9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */; };
 		A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54220C70830316F0B7D14EAA /* ScaffoldTests.swift */; };
+		BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */; };
+		CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB61D583F7AB99CD0FF7838 /* ServiceProtocols.swift */; };
 		CBF639EBC54B6E26F6F0B639 /* CDUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8536946E1002EA63873EF040 /* CDUser.swift */; };
 		D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE899F56340A31543CC3E520 /* RootView.swift */; };
 		D995370F23B924FBF753B317 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FDF17C9F80F098B643285927 /* Assets.xcassets */; };
 		E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = E859C6A36E26C0B92E5D4614 /* FitSnack.xcdatamodeld */; };
 		E983D431A9A450B2A096C2EC /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9638F81CCC8BEEBB803E5D33 /* User.swift */; };
+		EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +60,7 @@
 		8536946E1002EA63873EF040 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
 		9638F81CCC8BEEBB803E5D33 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDWorkoutLog.swift; sourceTree = "<group>"; };
+		A6975414286769AC0083EC51 /* ServiceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainer.swift; sourceTree = "<group>"; };
 		AE899F56340A31543CC3E520 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		B3D066D1A3C0D0557854B89E /* FitSnack.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FitSnack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
@@ -63,8 +70,13 @@
 		D641BBBE178A9237F0AE4110 /* EnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnumsTests.swift; sourceTree = "<group>"; };
 		DB8F1E3A055E19A13DD51674 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
 		DE82740204F95416749519EE /* PersistenceCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoding.swift; sourceTree = "<group>"; };
+		DEB61D583F7AB99CD0FF7838 /* ServiceProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceProtocols.swift; sourceTree = "<group>"; };
+		E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainerTests.swift; sourceTree = "<group>"; };
+		E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockServices.swift; sourceTree = "<group>"; };
 		E93C79F16481D8040E30A1B6 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		EA32171316EB189D11B068A4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		EBBD80F1A74634F77B3E43C1 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		FDF17C9F80F098B643285927 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FEF9FF0DBD8FC369281E1A88 /* FitSnackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitSnackApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -74,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				C7EA6657DAE6AE01E4891CB7 /* .gitkeep */,
+				A6975414286769AC0083EC51 /* ServiceContainer.swift */,
 			);
 			path = DI;
 			sourceTree = "<group>";
@@ -82,6 +95,7 @@
 			isa = PBXGroup;
 			children = (
 				E93C79F16481D8040E30A1B6 /* .gitkeep */,
+				EA32171316EB189D11B068A4 /* AppState.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -106,6 +120,7 @@
 			isa = PBXGroup;
 			children = (
 				EBBD80F1A74634F77B3E43C1 /* .gitkeep */,
+				5DDF650FB8284A0F8A4D160B /* Mock */,
 				3C6BAA792F30CAF2948AA12A /* Protocols */,
 			);
 			path = Services;
@@ -124,6 +139,7 @@
 			isa = PBXGroup;
 			children = (
 				BC9B47A4C50208A032645354 /* .gitkeep */,
+				DEB61D583F7AB99CD0FF7838 /* ServiceProtocols.swift */,
 			);
 			path = Protocols;
 			sourceTree = "<group>";
@@ -151,6 +167,14 @@
 				069D73E7D79B01EA09566E2D /* Views */,
 			);
 			path = FitSnack;
+			sourceTree = "<group>";
+		};
+		5DDF650FB8284A0F8A4D160B /* Mock */ = {
+			isa = PBXGroup;
+			children = (
+				E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */,
+			);
+			path = Mock;
 			sourceTree = "<group>";
 		};
 		6BE28DAD950C9270C31554C1 /* Models */ = {
@@ -192,10 +216,12 @@
 		B679ACDE39FD6456BC18CADA /* FitSnackTests */ = {
 			isa = PBXGroup;
 			children = (
+				EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */,
 				D641BBBE178A9237F0AE4110 /* EnumsTests.swift */,
 				83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */,
 				B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
+				E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */,
 			);
 			path = FitSnackTests;
 			sourceTree = "<group>";
@@ -308,10 +334,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */,
 				4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */,
 				3796B458B3566E68D8524051 /* ModelsTests.swift in Sources */,
 				3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
+				BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -319,6 +347,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3E613AE157C5D162C971D3C3 /* AppState.swift in Sources */,
 				CBF639EBC54B6E26F6F0B639 /* CDUser.swift in Sources */,
 				4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */,
 				12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */,
@@ -326,9 +355,12 @@
 				E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */,
 				4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */,
 				56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */,
+				EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */,
 				33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */,
 				9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */,
 				D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */,
+				090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */,
+				CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */,
 				65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */,
 				E983D431A9A450B2A096C2EC /* User.swift in Sources */,
 				042A853E49170C21D7F188F0 /* Workout.swift in Sources */,

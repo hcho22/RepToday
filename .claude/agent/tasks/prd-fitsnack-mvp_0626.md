@@ -135,12 +135,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Protocols in `Services/Protocols/`: `ExerciseServiceProtocol`, `WorkoutEngineProtocol`, `ConsistencyServiceProtocol`, `PhaseServiceProtocol`, `UserServiceProtocol`, `WorkoutLogServiceProtocol`, `HealthKitServiceProtocol`, `SubscriptionServiceProtocol`, `AuthServiceProtocol`; all methods `async throws` where they touch storage or external systems
-- [ ] `DI/ServiceContainer.swift` composes all service instances; a custom `EnvironmentKey` (`\.services`) injects it at the app root
-- [ ] `Utilities/AppState.swift` is an `@Observable` holding `isOnboarded` and `selectedTab`, persisted to UserDefaults; controls onboarding-vs-main-tabs routing
-- [ ] All view models are `@Observable` (Observation framework), never `ObservableObject`
-- [ ] Swapping a mock for a real service requires changing only one line in `ServiceContainer`
-- [ ] Build passes
+- [x] Protocols in `Services/Protocols/`: `ExerciseServiceProtocol`, `WorkoutEngineProtocol`, `ConsistencyServiceProtocol`, `PhaseServiceProtocol`, `UserServiceProtocol`, `WorkoutLogServiceProtocol`, `HealthKitServiceProtocol`, `SubscriptionServiceProtocol`, `AuthServiceProtocol`; all methods `async throws` where they touch storage or external systems
+- [x] `DI/ServiceContainer.swift` composes all service instances; a custom `EnvironmentKey` (`\.services`) injects it at the app root
+- [x] `Utilities/AppState.swift` is an `@Observable` holding `isOnboarded` and `selectedTab`, persisted to UserDefaults; controls onboarding-vs-main-tabs routing
+- [x] All view models are `@Observable` (Observation framework), never `ObservableObject`
+- [x] Swapping a mock for a real service requires changing only one line in `ServiceContainer`
+- [x] Build passes
 
 **Validation Test:**
 
