@@ -112,7 +112,7 @@ The fragile streak is replaced by a forgiving system:
 - Enums conform to `Codable`, `CaseIterable`, and `Identifiable` where they have a stable id.
 - Design system tokens via `Theme.Colors`, `Theme.Typography`, `Theme.Spacing` - always use these, never hardcode colors/fonts/spacing.
 - Button height: 56pt. Card corner radius: 16pt. Touch targets: 44pt minimum (60pt on active workout screens).
-- Exercise library: ~38 bodyweight movements in `Resources/Exercises.json`, all `equipment == []` (Zero-Equipment Floor), loaded and integrity-checked by `MockExerciseService`.
+- Exercise library: 42 bodyweight movements in `Resources/Exercises.json`, all `equipment == []` (Zero-Equipment Floor); integrity-gated by `ExerciseLibraryTests` today, with loading and load-time validation via `MockExerciseService` landing in US-B02.
 - Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion (static demo fallback), haptics with an audio alternative.
 
 ## Project Structure (ios/FitSnack/FitSnack)
