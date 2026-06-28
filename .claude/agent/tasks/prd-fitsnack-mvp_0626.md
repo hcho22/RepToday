@@ -161,12 +161,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] `Resources/Exercises.json` contains ~38 movements spanning all categories per v5 section 5.1: push (~8), squat (~5), hinge (~4), core (~7), pull/postural (~3), Movement Practice mobility (~12), primal (~3)
-- [ ] Every exercise has all fields from US-A03 fully populated; `equipment` is always `[]` (Zero-Equipment Floor)
-- [ ] Each strength/primal movement has a regression and a progression forming valid progression chains (`progressionChainId` + `progressionOrder` link without gaps)
-- [ ] Strength-Phase-only skills (e.g. L-sit, pistol squat, one-arm push-up) are tagged `phase: "strength"`; all others `phase: "discipline"`
-- [ ] Every exercise sets `apartmentFriendly: true` and a realistic `metValue` and `estimatedTimePerSetSeconds`
-- [ ] Holds set `isHold: true` with `defaultDurationSeconds`; rep-based set `isHold: false` with `defaultReps`
+- [x] `Resources/Exercises.json` contains ~38 movements spanning all categories per v5 section 5.1: push (~8), squat (~5), hinge (~4), core (~7), pull/postural (~3), Movement Practice mobility (~12), primal (~3)
+- [x] Every exercise has all fields from US-A03 fully populated; `equipment` is always `[]` (Zero-Equipment Floor)
+- [x] Each strength/primal movement has a regression and a progression forming valid progression chains (`progressionChainId` + `progressionOrder` link without gaps)
+- [x] Strength-Phase-only skills (e.g. L-sit, pistol squat, one-arm push-up) are tagged `phase: "strength"`; all others `phase: "discipline"`
+- [x] Every exercise sets `apartmentFriendly: true` and a realistic `metValue` and `estimatedTimePerSetSeconds`
+- [x] Holds set `isHold: true` with `defaultDurationSeconds`; rep-based set `isHold: false` with `defaultReps`
 
 **Validation Test:**
 
