@@ -112,7 +112,7 @@ The fragile streak is replaced by a forgiving system:
 - Enums conform to `Codable`, `CaseIterable`, and `Identifiable` where they have a stable id.
 - Design system tokens via `Theme.Colors`, `Theme.Typography`, `Theme.Spacing` - always use these, never hardcode colors/fonts/spacing.
 - Button height: 56pt. Card corner radius: 16pt. Touch targets: 44pt minimum (60pt on active workout screens).
-- Exercise library: 42 bodyweight movements in `Resources/Exercises.json`, all `equipment == []` (Zero-Equipment Floor); integrity-gated by `ExerciseLibraryTests` today, with loading and load-time validation via `MockExerciseService` landing in US-B02.
+- Exercise library: 42 bodyweight movements in `Resources/Exercises.json`, all `equipment == []` (Zero-Equipment Floor); loaded once, cached, and load-time-validated by `MockExerciseService` (US-B02, which throws a descriptive `ExerciseLibraryError` on a malformed library), with the data's shape independently gated by `ExerciseLibraryTests`.
 - Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion (static demo fallback), haptics with an audio alternative.
 
 ## Project Structure (ios/FitSnack/FitSnack)
@@ -132,7 +132,7 @@ Utilities/      AppState and shared helpers
 Resources/      Exercises.json, Assets.xcassets, animations
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), the US-A05 app shell (`Services/Protocols/ServiceProtocols.swift`, `Services/Mock/MockServices.swift`, `DI/ServiceContainer.swift`, `Utilities/AppState.swift`, and onboarding-vs-main-tabs routing in `Views/RootView.swift`), and the US-B01 bundled exercise library (`Resources/Exercises.json`, 42 zero-equipment movements with valid progression chains) exist; only `ViewModels/` is still empty.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), the US-A05 app shell (`Services/Protocols/ServiceProtocols.swift`, `Services/Mock/MockServices.swift`, `DI/ServiceContainer.swift`, `Utilities/AppState.swift`, and onboarding-vs-main-tabs routing in `Views/RootView.swift`), the US-B01 bundled exercise library (`Resources/Exercises.json`, 42 zero-equipment movements with valid progression chains), and the US-B02 exercise service (`Services/Mock/MockExerciseService.swift`: loads/caches/validates the library, throws `ExerciseLibraryError`, and answers the by-pillar/pattern/phase/difficulty-range and next-in-chain queries) exist; only `ViewModels/` is still empty.
 The app root (`FitSnackApp`) injects the CoreData view context, the `ServiceContainer` (via `\.services`), and `AppState`; the CoreData stack is local-only until CloudKit sync lands in US-J02.
 The rest lands story-by-story per the PRD.
 
@@ -148,6 +148,7 @@ Current and planned coverage (added as the owning story lands):
 | Scaffold (`ScaffoldTests`) | Design-token values (button/card/touch sizes) |
 | Models / enums | Codable round-trips, stable raw values |
 | Exercise library (`ExerciseLibraryTests`) | Bundled `Exercises.json` decodes; per-pattern/pillar counts, contiguous progression chains with resolving links, Zero-Equipment Floor, phase gating, hold/rep field contract |
+| Exercise service (`ExerciseServiceTests`) | Real library loads/caches; by-pillar/pattern/phase/difficulty-range and next-in-chain queries; each validation rule (duplicate id, equipment floor, dangling chain link, non-contiguous chain) throws a descriptive `ExerciseLibraryError` from a broken fixture; missing-resource and decode failures |
 | Engine | Session shape, pillar/pattern staleness, filtering, progression chains, Adaptive Overload, timing fit, swap |
 | Consistency Score | Empty history, perfect run, single-miss dent (not zero), 5-min show-up, rolling weighting |
 | PhaseEvaluator | Consistency-only and competence-only stay Discipline; both-met promotes; fresh user Discipline |

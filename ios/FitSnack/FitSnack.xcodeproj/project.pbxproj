@@ -20,8 +20,10 @@
 		4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */; };
 		4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D641BBBE178A9237F0AE4110 /* EnumsTests.swift */; };
 		56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E25EB351D91F063A9809D5E /* MockPersistence.swift */; };
+		5FB8EA256F9A84D2E3D35D20 /* MockExerciseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */; };
 		65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBEBFE2C368100812F7677A /* Theme.swift */; };
 		6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */; };
+		96A261903B09D0C7BCA5FE9F /* ExerciseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2723289C9064488853A7744D /* ExerciseServiceTests.swift */; };
 		9C8F27A808A53D73C791F956 /* WorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E105E18702D4CC93FBA722 /* WorkoutLog.swift */; };
 		9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */; };
 		A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54220C70830316F0B7D14EAA /* ScaffoldTests.swift */; };
@@ -52,6 +54,7 @@
 		1D4BF02AD537AF6F14B588F5 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
 		24E105E18702D4CC93FBA722 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
+		2723289C9064488853A7744D /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
 		42E4B312EBFA72858B793511 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		4E25EB351D91F063A9809D5E /* MockPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPersistence.swift; sourceTree = "<group>"; };
 		4FBEBFE2C368100812F7677A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -71,6 +74,7 @@
 		BC9B47A4C50208A032645354 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		BEDFFB65C34BBA953E570279 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		C7EA6657DAE6AE01E4891CB7 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExerciseService.swift; sourceTree = "<group>"; };
 		D641BBBE178A9237F0AE4110 /* EnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnumsTests.swift; sourceTree = "<group>"; };
 		DB8F1E3A055E19A13DD51674 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
 		DE82740204F95416749519EE /* PersistenceCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoding.swift; sourceTree = "<group>"; };
@@ -177,6 +181,7 @@
 		5DDF650FB8284A0F8A4D160B /* Mock */ = {
 			isa = PBXGroup;
 			children = (
+				D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */,
 				E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */,
 			);
 			path = Mock;
@@ -224,6 +229,7 @@
 				EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */,
 				D641BBBE178A9237F0AE4110 /* EnumsTests.swift */,
 				A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */,
+				2723289C9064488853A7744D /* ExerciseServiceTests.swift */,
 				83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */,
 				B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
@@ -344,6 +350,7 @@
 				6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */,
 				4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */,
 				3039EFC728F8E3C94FDFEA7A /* ExerciseLibraryTests.swift in Sources */,
+				96A261903B09D0C7BCA5FE9F /* ExerciseServiceTests.swift in Sources */,
 				3796B458B3566E68D8524051 /* ModelsTests.swift in Sources */,
 				3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
@@ -362,6 +369,7 @@
 				2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */,
 				E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */,
 				4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */,
+				5FB8EA256F9A84D2E3D35D20 /* MockExerciseService.swift in Sources */,
 				56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */,
 				EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */,
 				33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */,

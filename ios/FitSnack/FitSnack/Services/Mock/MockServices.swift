@@ -4,36 +4,9 @@ import Foundation
 ///
 /// These are intentionally small and deterministic. Later stories replace individual
 /// mocks with real services by changing the corresponding line in `ServiceContainer`.
-
-// MARK: - Exercise
-
-final class MockExerciseService: ExerciseServiceProtocol {
-    private let library: [Exercise]
-
-    init(library: [Exercise] = []) {
-        self.library = library
-    }
-
-    func exercises() async throws -> [Exercise] {
-        library
-    }
-
-    func exercise(id: String) async throws -> Exercise? {
-        library.first { $0.id == id }
-    }
-
-    func exercises(for pillar: Pillar) async throws -> [Exercise] {
-        library.filter { $0.pillar == pillar }
-    }
-
-    func exercises(for movementPattern: MovementPattern) async throws -> [Exercise] {
-        library.filter { $0.movementPattern == movementPattern }
-    }
-
-    func exercises(for phase: Phase) async throws -> [Exercise] {
-        library.filter { $0.phase == phase }
-    }
-}
+///
+/// The exercise service is the exception: the real bundled-library loader already lives in
+/// `MockExerciseService` (US-B02, `Services/Mock/MockExerciseService.swift`).
 
 // MARK: - Workout engine
 
