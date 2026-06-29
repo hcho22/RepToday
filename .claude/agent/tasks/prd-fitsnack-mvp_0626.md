@@ -254,11 +254,11 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Within the chosen pillar, patterns (push/squat/hinge/core/mobility groups) are ranked by staleness
-- [ ] Yesterday's primary pattern is never repeated unless explicitly requested
-- [ ] Selection is deterministic for a given log history
-- [ ] Unit tests cover: stalest-pattern selection and the no-repeat-yesterday rule
-- [ ] Build and tests pass
+- [x] Within the chosen pillar, patterns (push/squat/hinge/core/mobility groups) are ranked by staleness
+- [x] Yesterday's primary pattern is never repeated unless explicitly requested
+- [x] Selection is deterministic for a given log history
+- [x] Unit tests cover: stalest-pattern selection and the no-repeat-yesterday rule
+- [x] Build and tests pass
 
 **Validation Test:**
 
