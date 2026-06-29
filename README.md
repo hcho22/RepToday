@@ -9,7 +9,7 @@ No browsing, no choosing, no thinking.
 
 > **Status:** clean rebuild in progress.
 > The previous app (XP/badges/streaks, AI services, SwiftData) was removed and lives only in git history as reference.
-> Work proceeds story-by-story against the PRD; today the US-A01 scaffold, US-A02 domain enums, US-A03 domain models, the US-A04 CoreData stack, the US-A05 app shell (service container and app state), the US-B01 bundled exercise library, and the US-B02 exercise service (loads, validates, and queries the library) exist.
+> Work proceeds story-by-story against the PRD; today the US-A01 scaffold, US-A02 domain enums, US-A03 domain models, the US-A04 CoreData stack, the US-A05 app shell (service container and app state), the US-B01 bundled exercise library, the US-B02 exercise service (loads, validates, and queries the library), and the US-C01 engine Step 1 (session-shape selection from requested minutes) exist.
 
 ---
 
@@ -147,7 +147,8 @@ FitSnack/
 │   ├── Persistence/         # CoreData stack (NSPersistentCloudKitContainer) + conversions
 │   ├── Services/
 │   │   ├── Protocols/       # Service protocol definitions
-│   │   └── Mock/            # Mock implementations wired in ServiceContainer
+│   │   ├── Mock/            # Mock implementations wired in ServiceContainer
+│   │   └── Engine/          # Deterministic workout-engine pipeline steps (pure, on-device)
 │   ├── DI/                  # ServiceContainer + environment injection
 │   ├── ViewModels/          # @Observable view models
 │   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
@@ -158,7 +159,7 @@ FitSnack/
 └── CLAUDE.md                # Repo guidance and architecture reference
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), the US-A05 app shell (service protocols and mocks, `ServiceContainer`, `AppState`, and onboarding-vs-main-tabs routing in `RootView`), the US-B01 bundled exercise library (`Resources/Exercises.json`, 42 zero-equipment movements with valid progression chains), and the US-B02 exercise service (`Services/Mock/MockExerciseService.swift`: loads/caches/validates the library, throws `ExerciseLibraryError`, and answers the by-pillar/pattern/phase/difficulty-range and next-in-chain queries) exist; only `ViewModels/` is still empty.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), the US-A05 app shell (service protocols and mocks, `ServiceContainer`, `AppState`, and onboarding-vs-main-tabs routing in `RootView`), the US-B01 bundled exercise library (`Resources/Exercises.json`, 42 zero-equipment movements with valid progression chains), the US-B02 exercise service (`Services/Mock/MockExerciseService.swift`: loads/caches/validates the library, throws `ExerciseLibraryError`, and answers the by-pillar/pattern/phase/difficulty-range and next-in-chain queries), and the US-C01 engine Step 1 (`Services/Engine/SessionShapeSelection.swift`: the pure `SessionShapeTemplate.select(requestedMinutes:)` that maps minutes to single-focus / blend-light / blend-full and resolves back to the canonical `SessionShape`) exist; only `ViewModels/` is still empty.
 The app root (`FitSnackApp`) injects the CoreData view context, the `ServiceContainer` (via `\.services`), and `AppState`; the CoreData stack is local-only until CloudKit sync lands in US-J02.
 The rest lands story-by-story per the PRD.
 

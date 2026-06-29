@@ -16,11 +16,14 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
         user: User,
         recentLogs: [WorkoutLog]
     ) async throws -> Workout {
-        Workout(
+        // Pipeline Step 1 (US-C01): derive the shape from the requested minutes via the
+        // canonical selector so the mock and the real engine stay in lockstep.
+        let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
+        return Workout(
             id: UUID(),
             createdAt: Date(),
-            shape: requestedMinutes <= 10 ? .singleFocus : .blend,
-            focusPillar: requestedMinutes <= 10 ? defaultPillar(for: user) : nil,
+            shape: template.shape,
+            focusPillar: template == .singleFocus ? defaultPillar(for: user) : nil,
             requestedMinutes: requestedMinutes,
             blocks: []
         )

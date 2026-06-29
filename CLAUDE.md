@@ -125,6 +125,7 @@ Persistence/    CoreData stack (NSPersistentCloudKitContainer) + conversions
 Services/       Service implementations
   Protocols/    Service protocol definitions
   Mock/         Mock implementations wired in ServiceContainer
+  Engine/       Deterministic workout-engine pipeline steps (pure, on-device)
 DI/             ServiceContainer + environment injection
 ViewModels/     @Observable view models
 Views/          SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
@@ -132,7 +133,7 @@ Utilities/      AppState and shared helpers
 Resources/      Exercises.json, Assets.xcassets, animations
 ```
 
-As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), the US-A05 app shell (`Services/Protocols/ServiceProtocols.swift`, `Services/Mock/MockServices.swift`, `DI/ServiceContainer.swift`, `Utilities/AppState.swift`, and onboarding-vs-main-tabs routing in `Views/RootView.swift`), the US-B01 bundled exercise library (`Resources/Exercises.json`, 42 zero-equipment movements with valid progression chains), and the US-B02 exercise service (`Services/Mock/MockExerciseService.swift`: loads/caches/validates the library, throws `ExerciseLibraryError`, and answers the by-pillar/pattern/phase/difficulty-range and next-in-chain queries) exist; only `ViewModels/` is still empty.
+As of the current clean rebuild, the US-A01 scaffold (App, DesignSystem, RootView, Assets), the US-A02 canonical domain enums (`Models/Enums.swift`), the US-A03 domain model structs (`Models/Exercise.swift`, `User.swift`, `Workout.swift`, `WorkoutLog.swift`), the US-A04 CoreData stack (`Persistence/`: `FitSnack.xcdatamodeld`, `PersistenceController`, `CDUser`/`CDWorkoutLog` + conversions, `MockPersistence`), the US-A05 app shell (`Services/Protocols/ServiceProtocols.swift`, `Services/Mock/MockServices.swift`, `DI/ServiceContainer.swift`, `Utilities/AppState.swift`, and onboarding-vs-main-tabs routing in `Views/RootView.swift`), the US-B01 bundled exercise library (`Resources/Exercises.json`, 42 zero-equipment movements with valid progression chains), the US-B02 exercise service (`Services/Mock/MockExerciseService.swift`: loads/caches/validates the library, throws `ExerciseLibraryError`, and answers the by-pillar/pattern/phase/difficulty-range and next-in-chain queries), and the US-C01 engine Step 1 (`Services/Engine/SessionShapeSelection.swift`: the pure `SessionShapeTemplate.select(requestedMinutes:)` that maps minutes to single-focus / blend-light / blend-full and resolves back to the canonical `SessionShape`) exist; only `ViewModels/` is still empty.
 The app root (`FitSnackApp`) injects the CoreData view context, the `ServiceContainer` (via `\.services`), and `AppState`; the CoreData stack is local-only until CloudKit sync lands in US-J02.
 The rest lands story-by-story per the PRD.
 
@@ -149,7 +150,8 @@ Current and planned coverage (added as the owning story lands):
 | Models / enums | Codable round-trips, stable raw values |
 | Exercise library (`ExerciseLibraryTests`) | Bundled `Exercises.json` decodes; per-pattern/pillar counts, contiguous progression chains with resolving links, Zero-Equipment Floor, phase gating, hold/rep field contract |
 | Exercise service (`ExerciseServiceTests`) | Real library loads/caches; by-pillar/pattern/phase/difficulty-range and next-in-chain queries; each validation rule (duplicate id, equipment floor, dangling chain link, non-contiguous chain) throws a descriptive `ExerciseLibraryError` from a broken fixture; missing-resource and decode failures |
-| Engine | Session shape, pillar/pattern staleness, filtering, progression chains, Adaptive Overload, timing fit, swap |
+| Engine - session shape (`SessionShapeSelectionTests`) | `SessionShapeTemplate.select` maps 5/10/15/20/30 and the 10/15/20 boundaries to single-focus / blend-light / blend-full, is deterministic, and resolves to the canonical `SessionShape` |
+| Engine - remaining steps | Pillar/pattern staleness, filtering, progression chains, Adaptive Overload, timing fit, swap |
 | Consistency Score | Empty history, perfect run, single-miss dent (not zero), 5-min show-up, rolling weighting |
 | PhaseEvaluator | Consistency-only and competence-only stay Discipline; both-met promotes; fresh user Discipline |
 | Persistence | Save/fetch round-trips for `CDUser` and `CDWorkoutLog` |
