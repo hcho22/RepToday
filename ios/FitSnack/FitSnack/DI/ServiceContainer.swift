@@ -40,8 +40,12 @@ struct ServiceContainer {
     }
 
     static func mock() -> ServiceContainer {
+        // The bundled exercise library is integrity-gated by `ExerciseLibraryTests` and
+        // `ExerciseServiceTests`, so a load/validation failure here is a build-time defect,
+        // not a runtime condition - `try!` makes that surface loudly instead of silently
+        // shipping an empty catalog.
         ServiceContainer(
-            exerciseService: MockExerciseService(),
+            exerciseService: try! MockExerciseService(),
             workoutEngine: MockWorkoutEngine(),
             consistencyService: MockConsistencyService(),
             phaseService: MockPhaseService(),

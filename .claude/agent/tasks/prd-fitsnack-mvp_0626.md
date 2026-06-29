@@ -184,12 +184,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] `MockExerciseService` implements `ExerciseServiceProtocol`, loading `Exercises.json` once and caching it
-- [ ] On load it validates: unique ids, every `regressionId`/`progressionId` resolves, every chain is contiguous, all `equipment == []`
-- [ ] Query helpers: by pillar, by movement pattern, by phase, by difficulty range, and resolve-next-in-chain
-- [ ] A validation failure throws a descriptive error (which exercise, which rule)
-- [ ] Unit tests cover each query helper and each validation rule (with a deliberately broken fixture)
-- [ ] Build and tests pass
+- [x] `MockExerciseService` implements `ExerciseServiceProtocol`, loading `Exercises.json` once and caching it
+- [x] On load it validates: unique ids, every `regressionId`/`progressionId` resolves, every chain is contiguous, all `equipment == []`
+- [x] Query helpers: by pillar, by movement pattern, by phase, by difficulty range, and resolve-next-in-chain
+- [x] A validation failure throws a descriptive error (which exercise, which rule)
+- [x] Unit tests cover each query helper and each validation rule (with a deliberately broken fixture)
+- [x] Build and tests pass
 
 **Validation Test:**
 

@@ -11,12 +11,21 @@ enum HealthKitAuthorizationStatus: Equatable {
 }
 
 /// Loads and queries the bundled exercise catalog.
+///
+/// The implementation loads `Exercises.json` once, integrity-checks it (US-B02), and caches
+/// the result; a malformed library fails loudly at load rather than producing subtly wrong
+/// sessions later. The query helpers are the surface the engine (Epic C) builds sessions from.
 protocol ExerciseServiceProtocol {
     func exercises() async throws -> [Exercise]
     func exercise(id: String) async throws -> Exercise?
     func exercises(for pillar: Pillar) async throws -> [Exercise]
     func exercises(for movementPattern: MovementPattern) async throws -> [Exercise]
     func exercises(for phase: Phase) async throws -> [Exercise]
+    /// Movements whose `difficulty` falls inside `range` (used to apply a fitness-level cap).
+    func exercises(inDifficultyRange range: ClosedRange<Int>) async throws -> [Exercise]
+    /// The next movement up the progression chain from the exercise with `id`, or `nil` when
+    /// `id` is unknown or already sits at the top of its chain.
+    func nextInChain(after id: String) async throws -> Exercise?
 }
 
 /// Generates complete workouts and deterministic in-session swaps.
