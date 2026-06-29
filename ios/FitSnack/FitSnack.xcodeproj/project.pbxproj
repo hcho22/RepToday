@@ -27,6 +27,7 @@
 		9C8F27A808A53D73C791F956 /* WorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E105E18702D4CC93FBA722 /* WorkoutLog.swift */; };
 		9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */; };
 		A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54220C70830316F0B7D14EAA /* ScaffoldTests.swift */; };
+		AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */; };
 		BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */; };
 		C3C49D659FC4DBE14CBFD35B /* Exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = A6F30CB7678F6F34F7B8262C /* Exercises.json */; };
 		CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB61D583F7AB99CD0FF7838 /* ServiceProtocols.swift */; };
@@ -36,6 +37,7 @@
 		E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = E859C6A36E26C0B92E5D4614 /* FitSnack.xcdatamodeld */; };
 		E983D431A9A450B2A096C2EC /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9638F81CCC8BEEBB803E5D33 /* User.swift */; };
 		EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */; };
+		FA92EF45D21DA58F4D039022 /* SessionShapeSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +52,7 @@
 
 /* Begin PBXFileReference section */
 		097FE325486215F1A5A4295D /* Enums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enums.swift; sourceTree = "<group>"; };
+		0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelection.swift; sourceTree = "<group>"; };
 		183CE237B95AD74F3517D63E /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1D4BF02AD537AF6F14B588F5 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
@@ -61,6 +64,7 @@
 		54220C70830316F0B7D14EAA /* ScaffoldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaffoldTests.swift; sourceTree = "<group>"; };
 		58C8E87DCE232242DB67AE62 /* FitSnack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = FitSnack.xcdatamodel; sourceTree = "<group>"; };
 		5B463FE988D7B52B95FF01E7 /* FitSnackTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FitSnackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelectionTests.swift; sourceTree = "<group>"; };
 		83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		8536946E1002EA63873EF040 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
 		9638F81CCC8BEEBB803E5D33 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
@@ -129,6 +133,7 @@
 			isa = PBXGroup;
 			children = (
 				EBBD80F1A74634F77B3E43C1 /* .gitkeep */,
+				5F1D4730785352945947B87F /* Engine */,
 				5DDF650FB8284A0F8A4D160B /* Mock */,
 				3C6BAA792F30CAF2948AA12A /* Protocols */,
 			);
@@ -187,6 +192,14 @@
 			path = Mock;
 			sourceTree = "<group>";
 		};
+		5F1D4730785352945947B87F /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
 		6BE28DAD950C9270C31554C1 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -234,6 +247,7 @@
 				B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
 				E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */,
+				66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */,
 			);
 			path = FitSnackTests;
 			sourceTree = "<group>";
@@ -355,6 +369,7 @@
 				3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
 				BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */,
+				AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -377,6 +392,7 @@
 				D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */,
 				090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */,
 				CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */,
+				FA92EF45D21DA58F4D039022 /* SessionShapeSelection.swift in Sources */,
 				65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */,
 				E983D431A9A450B2A096C2EC /* User.swift in Sources */,
 				042A853E49170C21D7F188F0 /* Workout.swift in Sources */,

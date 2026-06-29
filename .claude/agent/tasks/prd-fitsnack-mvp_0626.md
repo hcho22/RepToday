@@ -213,11 +213,11 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Given `requestedMinutes`, the engine selects: 5-10 min -> `SINGLE_FOCUS`; 15 min -> `BLEND` (light: warm-up + one real block + small second block); 20-30 min -> `BLEND` (full: warm-up + strength block + mobility block + cooldown)
-- [ ] Boundary minutes (10, 15, 20) map to the documented shape deterministically
-- [ ] Pure function: same input always yields the same shape
-- [ ] Unit tests cover 5/10/15/20/30 and the boundaries
-- [ ] Build and tests pass
+- [x] Given `requestedMinutes`, the engine selects: 5-10 min -> `SINGLE_FOCUS`; 15 min -> `BLEND` (light: warm-up + one real block + small second block); 20-30 min -> `BLEND` (full: warm-up + strength block + mobility block + cooldown)
+- [x] Boundary minutes (10, 15, 20) map to the documented shape deterministically
+- [x] Pure function: same input always yields the same shape
+- [x] Unit tests cover 5/10/15/20/30 and the boundaries
+- [x] Build and tests pass
 
 **Validation Test:**
 
