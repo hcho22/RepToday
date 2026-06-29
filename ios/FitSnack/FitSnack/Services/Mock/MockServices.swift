@@ -16,14 +16,27 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
         user: User,
         recentLogs: [WorkoutLog]
     ) async throws -> Workout {
-        // Pipeline Step 1 (US-C01): derive the shape from the requested minutes via the
-        // canonical selector so the mock and the real engine stay in lockstep.
+        // Pipeline Step 1 (US-C01): derive the shape from the requested minutes, then
+        // Step 2 (US-C02): balance pillars by staleness. Both flow through the canonical
+        // engine selectors so the mock and the real engine stay in lockstep.
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
+        let pillarPlan = PillarPlan.select(
+            template: template,
+            recentLogs: recentLogs,
+            profile: user.profile,
+            asOf: Date()
+        )
+        let focusPillar: Pillar?
+        switch pillarPlan {
+        case .single(let pillar): focusPillar = pillar
+        case .blend: focusPillar = nil
+        }
+
         return Workout(
             id: UUID(),
             createdAt: Date(),
             shape: template.shape,
-            focusPillar: template == .singleFocus ? defaultPillar(for: user) : nil,
+            focusPillar: focusPillar,
             requestedMinutes: requestedMinutes,
             blocks: []
         )
@@ -36,10 +49,6 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
         recentLogs: [WorkoutLog]
     ) async throws -> PrescribedExercise {
         prescription
-    }
-
-    private func defaultPillar(for user: User) -> Pillar {
-        user.profile.sitsLong ? .mobility : .strength
     }
 }
 
