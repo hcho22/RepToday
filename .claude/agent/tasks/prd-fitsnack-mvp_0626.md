@@ -233,12 +233,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] From `recentLogs`, the engine computes days-since-worked per pillar (strength, mobility)
-- [ ] For single-focus, it chooses the stalest pillar; it biases toward mobility when `profile.sitsLong` AND `requestedMinutes <= 10` AND strength is not strongly stale
-- [ ] For blend, it includes both pillars and weights time by relative staleness
-- [ ] With no history, it applies a documented default (mobility-first if `sitsLong`, else strength)
-- [ ] Unit tests cover: empty history, strength-stale, mobility-stale, sitsLong tie-break
-- [ ] Build and tests pass
+- [x] From `recentLogs`, the engine computes days-since-worked per pillar (strength, mobility)
+- [x] For single-focus, it chooses the stalest pillar; it biases toward mobility when `profile.sitsLong` AND `requestedMinutes <= 10` AND strength is not strongly stale
+- [x] For blend, it includes both pillars and weights time by relative staleness
+- [x] With no history, it applies a documented default (mobility-first if `sitsLong`, else strength)
+- [x] Unit tests cover: empty history, strength-stale, mobility-stale, sitsLong tie-break
+- [x] Build and tests pass
 
 **Validation Test:**
 
