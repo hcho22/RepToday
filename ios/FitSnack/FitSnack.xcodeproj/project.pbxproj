@@ -11,6 +11,7 @@
 		07611EF80B3EC66A91059CE3 /* PillarBalance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091209B1B5A46FF7392DECF6 /* PillarBalance.swift */; };
 		090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6975414286769AC0083EC51 /* ServiceContainer.swift */; };
 		12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097FE325486215F1A5A4295D /* Enums.swift */; };
+		2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */; };
 		2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB8F1E3A055E19A13DD51674 /* Exercise.swift */; };
 		3039EFC728F8E3C94FDFEA7A /* ExerciseLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */; };
 		33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE82740204F95416749519EE /* PersistenceCoding.swift */; };
@@ -21,6 +22,7 @@
 		4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */; };
 		4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D641BBBE178A9237F0AE4110 /* EnumsTests.swift */; };
 		56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E25EB351D91F063A9809D5E /* MockPersistence.swift */; };
+		57540F4158981BAFC73FB0C3 /* MovementPatternFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */; };
 		5FB8EA256F9A84D2E3D35D20 /* MockExerciseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */; };
 		65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBEBFE2C368100812F7677A /* Theme.swift */; };
 		6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */; };
@@ -61,6 +63,7 @@
 		1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
 		24E105E18702D4CC93FBA722 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
 		2723289C9064488853A7744D /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
+		4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocusTests.swift; sourceTree = "<group>"; };
 		42E4B312EBFA72858B793511 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		4E25EB351D91F063A9809D5E /* MockPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPersistence.swift; sourceTree = "<group>"; };
 		4FBEBFE2C368100812F7677A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -75,6 +78,7 @@
 		A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDWorkoutLog.swift; sourceTree = "<group>"; };
 		A6975414286769AC0083EC51 /* ServiceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainer.swift; sourceTree = "<group>"; };
 		A6F30CB7678F6F34F7B8262C /* Exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Exercises.json; sourceTree = "<group>"; };
+		A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocus.swift; sourceTree = "<group>"; };
 		AE899F56340A31543CC3E520 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		B3D066D1A3C0D0557854B89E /* FitSnack.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FitSnack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
@@ -199,6 +203,7 @@
 		5F1D4730785352945947B87F /* Engine */ = {
 			isa = PBXGroup;
 			children = (
+				A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */,
 				091209B1B5A46FF7392DECF6 /* PillarBalance.swift */,
 				0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */,
 			);
@@ -249,6 +254,7 @@
 				A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */,
 				2723289C9064488853A7744D /* ExerciseServiceTests.swift */,
 				83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */,
+				4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */,
 				B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */,
 				BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
@@ -372,6 +378,7 @@
 				3039EFC728F8E3C94FDFEA7A /* ExerciseLibraryTests.swift in Sources */,
 				96A261903B09D0C7BCA5FE9F /* ExerciseServiceTests.swift in Sources */,
 				3796B458B3566E68D8524051 /* ModelsTests.swift in Sources */,
+				2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */,
 				3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */,
 				66A9889E4D9667B6762D57E7 /* PillarBalanceTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
@@ -394,6 +401,7 @@
 				5FB8EA256F9A84D2E3D35D20 /* MockExerciseService.swift in Sources */,
 				56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */,
 				EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */,
+				57540F4158981BAFC73FB0C3 /* MovementPatternFocus.swift in Sources */,
 				33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */,
 				9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */,
 				07611EF80B3EC66A91059CE3 /* PillarBalance.swift in Sources */,
