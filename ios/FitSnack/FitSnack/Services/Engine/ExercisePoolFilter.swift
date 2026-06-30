@@ -44,9 +44,19 @@ import Foundation
 /// Tags are normalized (lower-cased, stripped to letters, de-pluralized) before lookup, so
 /// `"Knees"`, `"knee"`, and `"knees "` all resolve the same. An unrecognized tag contributes no
 /// contraindication - a safe default that never silently empties the pool on an unknown string.
+///
+/// - Important: That fail-open default is intentional but a latent safety gap. There is **no
+///   compile-time binding** between the canonical keys here (`knee` / `back` / `lowerback` /
+///   `shoulder` / `wrist` / `ankle` / `hip`) and the onboarding injury-tag vocabulary, which is
+///   defined later in US-E01. If onboarding emits a tag that does not normalize onto a key (e.g.
+///   `"neck"`, or a full phrase like `"lower back pain"` -> `"lowerbackpain"`), injury protection
+///   for that tag silently disappears with no error. When US-E01 lands it **must** reconcile the
+///   tags it emits with these keys - ideally by sharing a single closed vocabulary - so a mismatch
+///   cannot quietly disable the filter.
 enum InjuryContraindication {
 
-    /// Normalized injury tag -> the patterns it contraindicates.
+    /// Normalized injury tag -> the patterns it contraindicates. Keys must be stored in
+    /// de-pluralized (singular) form because `normalize` strips a trailing `s` (see its note).
     private static let patternsByInjury: [String: Set<MovementPattern>] = [
         "knee": [.squat],
         "back": [.hinge],
@@ -71,6 +81,10 @@ enum InjuryContraindication {
 
     /// Lower-cases, drops everything but letters (so `"lower_back"` / `"lower back"` collapse to
     /// `"lowerback"`), and removes a trailing plural `s` so `"knees"` matches the `"knee"` key.
+    ///
+    /// - Note: Because the trailing `s` is stripped unconditionally, `patternsByInjury` keys must be
+    ///   stored de-pluralized; a legitimately-singular future key ending in `s` (e.g. `"abs"`) would
+    ///   normalize to `"ab"` and be unreachable.
     private static func normalize(_ injury: String) -> String {
         var key = injury.lowercased().filter { $0.isLetter }
         if key.count > 1, key.hasSuffix("s") { key.removeLast() }
