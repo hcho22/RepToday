@@ -310,6 +310,64 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(pool.fallback, .noSafeOption)
     }
 
+    // MARK: - Real bundled library (PRD US-C04 validation test, over the shipped data)
+
+    /// The PRD's own validation test, run end-to-end over the real bundled `Exercises.json` (the
+    /// 42 movements an end user actually receives) rather than a synthetic fixture:
+    ///
+    ///   Setup:  Beginner user in discipline phase with `injuries: ["knees"]`
+    ///   Steps:  Run the filter over the full library
+    ///   Expect: No strength-phase exercises, no difficulty 3+ exercises, and no knee-flagged
+    ///           (squat-pattern) exercises remain in the pool.
+    ///   Fail:   A gated exercise survives the filter, or the pool becomes empty without a fallback.
+    ///
+    /// Prints a human-readable transcript of the resulting pool so the safe-pool behavior is
+    /// reviewable as a product-level artifact, not just an assertion.
+    func testPRDValidationOverRealBundledLibrary() async throws {
+        let library = try await MockExerciseService().exercises()
+        XCTAssertEqual(library.count, 42, "should run over the full shipped library")
+
+        let validationUser = user(level: .beginner, phase: .discipline, injuries: ["knees"])
+        let pool = ExercisePoolFilter.eligiblePool(from: library, user: validationUser, recentLogs: [])
+
+        // PRD expected result.
+        XCTAssertFalse(pool.isEmpty, "pool must not be empty (failure indicator)")
+        XCTAssertFalse(pool.contains { $0.phase == .strength }, "no strength-phase exercise survives")
+        XCTAssertFalse(pool.contains { $0.difficulty > 2 }, "no difficulty 3+ exercise survives (beginner cap)")
+        XCTAssertFalse(pool.contains { $0.movementPattern == .squat }, "no knee-flagged (squat) exercise survives")
+        XCTAssertTrue(pool.allSatisfy { $0.equipment.isEmpty }, "Zero-Equipment Floor holds")
+
+        // ---- Evidence transcript ----
+        let kept = Set(pool.map(\.id))
+        func reasons(_ e: Exercise) -> [String] {
+            var r: [String] = []
+            if !ExercisePoolFilter.isPhaseAllowed(e, for: validationUser) { r.append("phase-gated(strength)") }
+            if !ExercisePoolFilter.isInjurySafe(e, injuries: validationUser.profile.injuries) { r.append("injury(knees->\(e.movementPattern.rawValue))") }
+            if !ExercisePoolFilter.isWithinDifficultyCap(e, for: .beginner) { r.append("over-cap(d\(e.difficulty)>2)") }
+            if !ExercisePoolFilter.isBodyweight(e) { r.append("non-bodyweight") }
+            return r
+        }
+        let removed = library.filter { !kept.contains($0.id) }
+
+        print("=== US-C04 exercise pool filter — PRD validation over real Exercises.json ===")
+        print("User: beginner · discipline phase · injuries: [\"knees\"] · no recent logs")
+        print("Library: \(library.count) movements  ->  Eligible pool: \(pool.count)  ·  Removed: \(removed.count)")
+        print("")
+        print("SAFE POOL (\(pool.count)) by pattern:")
+        for pattern in MovementPattern.allCases {
+            let inPattern = pool.filter { $0.movementPattern == pattern }
+            guard !inPattern.isEmpty else { continue }
+            let names = inPattern.map { "\($0.id) (d\($0.difficulty))" }.joined(separator: ", ")
+            print("  \(pattern.rawValue): \(names)")
+        }
+        print("")
+        print("REMOVED (\(removed.count)) with reason(s):")
+        for e in removed {
+            print("  \(e.id) [\(e.movementPattern.rawValue), d\(e.difficulty), \(e.phase.rawValue)] -> \(reasons(e).joined(separator: " + "))")
+        }
+        print("=== end ===")
+    }
+
     // MARK: - Determinism
 
     func testEligiblePoolIsDeterministicAndPreservesLibraryOrder() {
