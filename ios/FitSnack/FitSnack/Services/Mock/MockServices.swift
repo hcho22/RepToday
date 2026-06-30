@@ -11,34 +11,29 @@ import Foundation
 // MARK: - Workout engine
 
 final class MockWorkoutEngine: WorkoutEngineProtocol {
+    /// The validated catalog is the engine's exercise source; pulling it from the exercise service
+    /// keeps a single, integrity-checked source of truth rather than re-loading the library here.
+    private let exerciseService: any ExerciseServiceProtocol
+
+    init(exerciseService: any ExerciseServiceProtocol) {
+        self.exerciseService = exerciseService
+    }
+
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog]
     ) async throws -> Workout {
-        // Pipeline Step 1 (US-C01): derive the shape from the requested minutes, then
-        // Step 2 (US-C02): balance pillars by staleness. Both flow through the canonical
-        // engine selectors so the mock and the real engine stay in lockstep.
-        let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        let pillarPlan = PillarPlan.select(
-            template: template,
-            recentLogs: recentLogs,
-            profile: user.profile,
-            asOf: Date()
-        )
-        let focusPillar: Pillar?
-        switch pillarPlan {
-        case .single(let pillar): focusPillar = pillar
-        case .blend: focusPillar = nil
-        }
-
-        return Workout(
-            id: UUID(),
-            createdAt: Date(),
-            shape: template.shape,
-            focusPillar: focusPillar,
+        // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
+        // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`. Routing the mock
+        // through the canonical assembler keeps it in lockstep with the real engine.
+        let library = try await exerciseService.exercises()
+        return SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
-            blocks: []
+            user: user,
+            library: library,
+            recentLogs: recentLogs,
+            asOf: Date()
         )
     }
 
