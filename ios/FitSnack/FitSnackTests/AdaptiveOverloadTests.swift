@@ -166,7 +166,15 @@ final class AdaptiveOverloadTests: XCTestCase {
         let logs = [repsLog(id: "ex", reps: [10, 10], daysAgo: 1, difficulty: .justRight)]
         let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
         XCTAssertEqual(target.sets, 2)
-        XCTAssertGreaterThanOrEqual(target.reps!, 10)
+        XCTAssertGreaterThan(target.reps!, 10) // round(10 * 1.05) = 11, strictly above capacity
+    }
+
+    /// A just-right rating on a small capacity that rounding would otherwise stall (round(8 * 1.05)
+    /// == 8) still climbs by at least one, matching the directional guarantee on too_easy/too_hard.
+    func testSmallCapacityJustRightStillClimbs() {
+        let logs = [repsLog(id: "ex", reps: [8, 8], daysAgo: 1, difficulty: .justRight)]
+        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
+        XCTAssertEqual(target.reps, 9) // forced to capacity + 1
     }
 
     // MARK: - too_hard / too_easy within one cycle
@@ -237,7 +245,7 @@ final class AdaptiveOverloadTests: XCTestCase {
             for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)]
         )
         XCTAssertNotEqual(low.reps, high.reps)
-        XCTAssertEqual(low.reps, 8)  // round(8 * 1.05)
+        XCTAssertEqual(low.reps, 9)  // round(8 * 1.05) = 8, forced to capacity + 1
         XCTAssertEqual(high.reps, 21) // round(20 * 1.05)
     }
 

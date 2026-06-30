@@ -14,8 +14,8 @@ import Foundation
 ///   its own, so it falls back to the exercise's `defaultReps`/`defaultDurationSeconds`.
 /// - **Feedback within one cycle** - that same log's `perceivedDifficulty` steers the next target:
 ///   `tooHard` eases it below capacity, `tooEasy` pushes it above, `justRight`/no rating nudges it
-///   progressively up. The step per signal is a small percentage (see the tuning constants), so
-///   the change is a nudge, never a leap.
+///   progressively up by at least one. The step per signal is a small percentage (see the tuning
+///   constants), so the change is a nudge, never a leap.
 /// - **Safety rails** - per-set targets and set counts are clamped to sane floors and ceilings, so
 ///   even a runaway log can never produce an absurd ("heroic") prescription.
 ///
@@ -48,8 +48,9 @@ enum AdaptiveOverload {
     // MARK: Tuning constants
 
     /// The per-cycle bump curve (the PRD's open question made concrete). Each multiplier is applied
-    /// to demonstrated capacity, then rounded; direction is then guaranteed (an easier/harder
-    /// signal always moves the target by at least one), so a small capacity can never stall.
+    /// to demonstrated capacity, then rounded; direction is then guaranteed (every signal - easier,
+    /// harder, or the progressive nudge - always moves the target by at least one), so a small
+    /// capacity can never stall.
     ///
     /// - `progressiveStep` (`justRight` / no rating): nudge just above capacity.
     /// - `easyStep` (`tooEasy`): intensify.
@@ -145,8 +146,8 @@ enum AdaptiveOverload {
 
     /// Applies the perceived-difficulty bump to demonstrated `capacity` and clamps to the per-set
     /// rails. `tooEasy` always lands at least one above capacity, `tooHard` at least one below (down
-    /// to the floor), and `justRight`/no-rating nudges progressively up - so the direction of a
-    /// signal is never lost to rounding.
+    /// to the floor), and `justRight`/no-rating nudges progressively up by at least one (until the
+    /// ceiling) - so the direction of a signal is never lost to rounding.
     private static func adjusted(_ capacity: Int, feedback: PerceivedDifficulty?, isHold: Bool) -> Int {
         let scaled: Int
         switch feedback {
@@ -155,7 +156,7 @@ enum AdaptiveOverload {
         case .tooEasy:
             scaled = max(rounded(capacity, by: easyStep), capacity + 1)
         case .justRight, .none:
-            scaled = rounded(capacity, by: progressiveStep)
+            scaled = max(rounded(capacity, by: progressiveStep), capacity + 1)
         }
         return clampPerSet(scaled, isHold: isHold)
     }
