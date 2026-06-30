@@ -36,12 +36,14 @@ protocol WorkoutEngineProtocol {
         recentLogs: [WorkoutLog]
     ) async throws -> Workout
 
+    /// Resolves a deterministic substitute for one prescribed slot (US-C08), or `.noAlternative`
+    /// when no safe, equivalent, in-budget movement exists - never an unsafe or off-pattern pick.
     func swapExercise(
         _ prescription: PrescribedExercise,
         in workout: Workout,
         user: User,
         recentLogs: [WorkoutLog]
-    ) async throws -> PrescribedExercise
+    ) async throws -> SwapOutcome
 }
 
 /// Calculates the forgiving consistency score from completed workouts.
