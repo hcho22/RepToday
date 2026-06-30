@@ -244,6 +244,72 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count, "an exercise appeared in more than one block")
     }
 
+    // MARK: - Blend honors the Step 2 pillar weights
+
+    /// Planned wall-clock of a single materialized block (`Σ sets × est + (sets - 1) × rest`), used to
+    /// compare how much session time each pillar block actually owns.
+    private func plannedSeconds(_ block: WorkoutBlock) -> Int {
+        block.exercises.reduce(0) { sum, p in
+            sum + p.sets * p.exercise.estimatedTimePerSetSeconds + max(0, p.sets - 1) * p.restSeconds
+        }
+    }
+
+    func testBlendSizesTrainingBlocksByPillarStaleness() async throws {
+        let library = try await library()
+
+        // Mobility never worked, strength worked yesterday -> mobility is the staler, heavier pillar,
+        // so its Movement Practice block should own more session time than the strength block.
+        let mobilityStaleLogs = [
+            log([
+                ("push_standard", .strength, .push, 12),
+                ("squat_bodyweight", .strength, .squat, 15),
+            ], daysAgo: 1)
+        ]
+        let mobilityStale = assemble(minutes: 20, user: user(), library: library, logs: mobilityStaleLogs)
+        let mobBlock = try XCTUnwrap(mobilityStale.blocks.first { $0.category == .mobility })
+        let strBlock = try XCTUnwrap(mobilityStale.blocks.first { $0.category == .strength })
+        XCTAssertGreaterThan(
+            plannedSeconds(mobBlock), plannedSeconds(strBlock),
+            "a strongly mobility-stale blend should give the mobility block more planned time"
+        )
+
+        // Strength never worked, mobility worked yesterday -> the weights flip and strength is heavier.
+        let strengthStaleLogs = [log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 1)]
+        let strengthStale = assemble(minutes: 20, user: user(), library: library, logs: strengthStaleLogs)
+        let mob2 = try XCTUnwrap(strengthStale.blocks.first { $0.category == .mobility })
+        let str2 = try XCTUnwrap(strengthStale.blocks.first { $0.category == .strength })
+        XCTAssertGreaterThan(
+            plannedSeconds(str2), plannedSeconds(mob2),
+            "a strongly strength-stale blend should give the strength block more planned time"
+        )
+    }
+
+    // MARK: - Cooldown keeps real static holds in a blend
+
+    func testBlendCooldownReservesMultipleStaticHolds() async throws {
+        let library = try await library()
+        // The pre-fit plan is where block reserves are intact: a blend's cooldown must keep more than a
+        // single leftover stretch, and every movement it draws (active or reserve) must be a static hold.
+        let blocks = SessionAssembly.planBlocks(
+            requestedMinutes: 20,
+            user: user(),
+            library: library,
+            recentLogs: someHistory(),
+            asOf: asOf,
+            calendar: calendar
+        )
+        let cooldown = try XCTUnwrap(blocks.first { $0.category == .cooldown })
+        let cooldownMovements = cooldown.items + cooldown.reserve
+        XCTAssertGreaterThan(
+            cooldownMovements.count, 1,
+            "a blend cooldown should have more than one static stretch available, not be starved to one"
+        )
+        XCTAssertTrue(
+            cooldownMovements.allSatisfy { $0.exercise.isHold },
+            "the cooldown's holds-only static-stretch preference must actually be honored"
+        )
+    }
+
     // MARK: - Determinism (content, not ids)
 
     func testAssemblyIsDeterministic() async throws {

@@ -8,7 +8,8 @@ import Foundation
 /// active-session player renders:
 /// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend.
 /// - **Pillars** (Step 2, `PillarPlan`) decide which pillar a single-focus trains, or - for a blend -
-///   which pillar leads and which is the smaller second block.
+///   how the training time splits across both: the staleness `PillarWeights` size the two blocks, so
+///   the staler pillar both leads and gets the larger share of the session.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
 ///   exercise in each, and that exercise's capacity-relative reps/sets/hold.
@@ -49,9 +50,11 @@ enum SessionAssembly {
     static let minTrainingSets = 1
     static let maxTrainingSets = 4
 
-    /// Caps on how many distinct movements each mobility-sourced block may draw, so the 12-movement
-    /// mobility pool is shared across warm-up, an optional Movement Practice block, and the cooldown
-    /// without one block starving the others.
+    /// Per-block ceilings on how many distinct movements each mobility-sourced block may draw from the
+    /// shared 12-movement pool. The warm-up and the cooldown reserve their movements first (the
+    /// cooldown before any Movement Practice block - see `buildBlocks`); the elastic Movement Practice
+    /// block then takes whatever remains and makes up any shortfall with its set-count lever, so no
+    /// block ever starves the cooldown of its static holds.
     static let maxWarmupExercises = 3
     static let maxMobilityTrainingExercises = 8
     static let maxCooldownExercises = 4
@@ -88,16 +91,18 @@ enum SessionAssembly {
             asOf: asOf,
             calendar: calendar
         )
-        let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs)
 
-        var builder = Builder(
+        var blocks = planBlocks(
+            requestedMinutes: requestedMinutes,
+            user: user,
             library: library,
-            pool: pool,
             recentLogs: recentLogs,
             asOf: asOf,
             calendar: calendar
         )
-        var blocks = builder.buildBlocks(pillarPlan: pillarPlan, requestedMinutes: requestedMinutes)
+        // Shape the blend's two training blocks toward their staleness-weighted shares first, then let
+        // the global timing fit land the overall total within tolerance.
+        shapeTowardTargets(&blocks)
         fit(&blocks, targetSeconds: requestedMinutes * 60)
 
         let focusPillar: Pillar?
@@ -114,6 +119,37 @@ enum SessionAssembly {
             requestedMinutes: requestedMinutes,
             blocks: blocks.compactMap { $0.materialize() }
         )
+    }
+
+    /// Builds the seeded block skeleton (warm-up, the pillar plan's training block(s) with their
+    /// weight targets, and an optional cooldown) before the timing fit - the structural output of
+    /// Steps 1-6. Exposed internally so tests can inspect block reserves and per-block weight targets
+    /// prior to the global fit consuming them.
+    static func planBlocks(
+        requestedMinutes: Int,
+        user: User,
+        library: [Exercise],
+        recentLogs: [WorkoutLog],
+        asOf: Date,
+        calendar: Calendar = .current
+    ) -> [PlannedBlock] {
+        let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
+        let pillarPlan = PillarPlan.select(
+            template: template,
+            recentLogs: recentLogs,
+            profile: user.profile,
+            asOf: asOf,
+            calendar: calendar
+        )
+        let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs)
+        var builder = Builder(
+            library: library,
+            pool: pool,
+            recentLogs: recentLogs,
+            asOf: asOf,
+            calendar: calendar
+        )
+        return builder.buildBlocks(pillarPlan: pillarPlan, requestedMinutes: requestedMinutes)
     }
 
     // MARK: - Planned wall-clock
@@ -168,13 +204,54 @@ enum SessionAssembly {
         return work + max(0, items.count - 1) * transitionSeconds
     }
 
+    /// Planned wall-clock of a single block in isolation: its items' work + rests + the transitions
+    /// *between* those items. Because every timing-fit adjustment touches exactly one block, the same
+    /// add/drop deltas the global fit uses also describe this per-block measure exactly, so the
+    /// weight-shaping pass and the global fit stay consistent.
+    static func blockSeconds(_ block: PlannedBlock) -> Int {
+        let work = block.items.reduce(0) { $0 + $1.seconds }
+        return work + max(0, block.items.count - 1) * transitionSeconds
+    }
+
+    // MARK: - Weighted shaping
+
+    /// Grows each block that carries a `targetSeconds` toward that share (a best-fit greedy scoped to
+    /// the single block), so a blend's training time is split by the Step 2 pillar weights *before*
+    /// `fit` lands the overall total. It uses the same levers as the global fit - set counts within the
+    /// rails and reserve promotion - and never touches the capacity-relative per-set target from Step 6.
+    static func shapeTowardTargets(_ blocks: inout [PlannedBlock]) {
+        for index in blocks.indices {
+            guard let target = blocks[index].targetSeconds else { continue }
+            for _ in 0..<maxFitIterations {
+                let error = blockSeconds(blocks[index]) - target
+                if error == 0 { break }
+
+                let candidates = error < 0
+                    ? additions(in: blocks, restrictedTo: index)
+                    : removals(in: blocks, restrictedTo: index)
+                var best: (adjustment: Adjustment, resultError: Int)?
+                for (adjustment, delta) in candidates {
+                    let resultError = abs(error + delta)
+                    guard resultError < abs(error) else { continue }
+                    if best == nil || resultError < best!.resultError {
+                        best = (adjustment, resultError)
+                    }
+                }
+                guard let chosen = best?.adjustment else { break }
+                apply(chosen, to: &blocks)
+            }
+        }
+    }
+
     /// Every time-increasing adjustment available, with the seconds it would add: one per
     /// set-adjustable item below the set cap (add a set), and one per block holding a reserve exercise
     /// (promote the next reserve exercise). Enumerated in a fixed block/item order so ties resolve
-    /// deterministically.
-    private static func additions(in blocks: [PlannedBlock]) -> [(Adjustment, Int)] {
+    /// deterministically. `restrictedTo`, when set, limits the enumeration to a single block (used by
+    /// the weight-shaping pass to grow one training block toward its own share).
+    private static func additions(in blocks: [PlannedBlock], restrictedTo only: Int? = nil) -> [(Adjustment, Int)] {
         var result: [(Adjustment, Int)] = []
         for (blockIndex, block) in blocks.enumerated() {
+            if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
                 for (itemIndex, item) in block.items.enumerated() where item.sets < maxTrainingSets {
                     let delta = item.exercise.estimatedTimePerSetSeconds + item.restSeconds
@@ -190,10 +267,12 @@ enum SessionAssembly {
 
     /// Every time-decreasing adjustment available, with the (negative) seconds it would remove: one
     /// per set-adjustable item above the set floor (drop a set), and one per block holding more than
-    /// its required minimum exercises (drop the last exercise).
-    private static func removals(in blocks: [PlannedBlock]) -> [(Adjustment, Int)] {
+    /// its required minimum exercises (drop the last exercise). `restrictedTo`, when set, limits the
+    /// enumeration to a single block (used by the weight-shaping pass).
+    private static func removals(in blocks: [PlannedBlock], restrictedTo only: Int? = nil) -> [(Adjustment, Int)] {
         var result: [(Adjustment, Int)] = []
         for (blockIndex, block) in blocks.enumerated() {
+            if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
                 for (itemIndex, item) in block.items.enumerated() where item.sets > minTrainingSets {
                     let delta = -(item.exercise.estimatedTimePerSetSeconds + item.restSeconds)
@@ -274,6 +353,10 @@ struct PlannedBlock {
     let allowSetAdjust: Bool
     /// The minimum exercises this block must retain (timing fit never trims below it).
     let minItems: Int
+    /// The planned-seconds share this block should be shaped toward before the global timing fit, set
+    /// for a blend's two training blocks from the Step 2 pillar weights. `nil` leaves the block to the
+    /// global fit alone (warm-up, cooldown, and single-focus training).
+    var targetSeconds: Int? = nil
 
     /// The playable block, or `nil` when assembly left it empty (so empties never reach the player).
     func materialize() -> WorkoutBlock? {
@@ -304,32 +387,59 @@ private struct Builder {
 
     /// Builds the ordered block skeleton for the session: warm-up first, the training block(s) the
     /// pillar plan calls for, and a cooldown when the session runs past `cooldownThresholdMinutes`.
+    ///
+    /// The cooldown's static holds are *reserved before* the Movement Practice block draws from the
+    /// shared mobility pool (it is constructed here, up front, and appended last only at output time),
+    /// so a blend's cooldown keeps real holds plus reserves instead of the single leftover stretch it
+    /// would get if the training block claimed the pool first.
     mutating func buildBlocks(pillarPlan: PillarPlan, requestedMinutes: Int) -> [PlannedBlock] {
-        var blocks: [PlannedBlock] = [warmupBlock()]
+        let warmup = warmupBlock()
+        let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock() : nil
 
+        var middle: [PlannedBlock] = []
         switch pillarPlan {
         case .single(let pillar):
             if pillar == .mobility {
                 if let block = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises) {
-                    blocks.append(block)
+                    middle.append(block)
                 }
             } else if let block = strengthBlock() {
-                blocks.append(block)
+                middle.append(block)
             }
         case .blend(let weights):
-            // Lead with the staler pillar's block; the other becomes the smaller second block.
-            let strengthLeads = weights.strength >= weights.mobility
-            let strength = strengthBlock()
-            let mobility = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
-            for block in (strengthLeads ? [strength, mobility] : [mobility, strength]) {
-                if let block { blocks.append(block) }
-            }
+            middle = blendBlocks(
+                weights: weights,
+                warmup: warmup,
+                cooldown: cooldown,
+                requestedMinutes: requestedMinutes
+            )
         }
 
-        if requestedMinutes > SessionAssembly.cooldownThresholdMinutes, let cooldown = cooldownBlock() {
-            blocks.append(cooldown)
-        }
-        return blocks
+        return [warmup] + middle + (cooldown.map { [$0] } ?? [])
+    }
+
+    /// The two training blocks of a blend, ordered staler-pillar-first and each tagged with the
+    /// planned-seconds share it should be shaped toward. The share is the remaining training budget
+    /// (request minus the warm-up and cooldown the bookends already cost) split in proportion to the
+    /// Step 2 staleness weights, so the staler pillar ends up the *larger* block, not merely the lead.
+    private mutating func blendBlocks(
+        weights: PillarWeights,
+        warmup: PlannedBlock,
+        cooldown: PlannedBlock?,
+        requestedMinutes: Int
+    ) -> [PlannedBlock] {
+        var strength = strengthBlock()
+        var mobility = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
+
+        let bookendSeconds = SessionAssembly.blockSeconds(warmup)
+            + (cooldown.map(SessionAssembly.blockSeconds) ?? 0)
+        let trainingBudget = max(0, requestedMinutes * 60 - bookendSeconds)
+        strength?.targetSeconds = Int((Double(trainingBudget) * weights.strength).rounded())
+        mobility?.targetSeconds = Int((Double(trainingBudget) * weights.mobility).rounded())
+
+        // Lead with the staler pillar's block; the other becomes the smaller second block.
+        let strengthLeads = weights.strength >= weights.mobility
+        return (strengthLeads ? [strength, mobility] : [mobility, strength]).compactMap { $0 }
     }
 
     // MARK: Blocks
