@@ -845,7 +845,7 @@ From v5 section 7. North Star: Weekly Active Exercisers (users completing >=1 se
 ## Open Questions
 
 - What exact Consistency Score thresholds and rolling-window length should the PhaseEvaluator use (v5 suggests >=80% over ~8 weeks)? Needs a concrete constant before US-D02.
-- What is the precise rep/set bump curve for Adaptive Overload (percentage step per cycle, caps)? Needs tuning constants before US-C06.
+- ~~What is the precise rep/set bump curve for Adaptive Overload (percentage step per cycle, caps)?~~ Resolved in US-C06: per-cycle multipliers are progressive 1.05 / too-easy 1.15 / too-hard 0.85, clamped to per-set rails (reps 3-50, holds 10-180s) and set bounds 1-4 (default 3), all tunable constants in `AdaptiveOverload`.
 - For CloudKit conflicts, is last-writer-wins acceptable for MVP, or is a field-level merge needed for `WorkoutLog`s?
 - Which Lottie source/library is used for the launch demos (sourcing is deferred to Phase 2, but the player in US-G01 needs a placeholder strategy)?
 - Should the first onboarding session be hardcoded as a Movement Practice reset in MVP, or left to the engine? (v5 recommends the reset but defers detailed onboarding to Phase 2.)
