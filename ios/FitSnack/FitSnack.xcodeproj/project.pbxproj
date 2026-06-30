@@ -11,6 +11,7 @@
 		07611EF80B3EC66A91059CE3 /* PillarBalance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091209B1B5A46FF7392DECF6 /* PillarBalance.swift */; };
 		090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6975414286769AC0083EC51 /* ServiceContainer.swift */; };
 		12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097FE325486215F1A5A4295D /* Enums.swift */; };
+		28A46C3A28D69EF61CF35BC8 /* ExercisePoolFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */; };
 		2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */; };
 		2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB8F1E3A055E19A13DD51674 /* Exercise.swift */; };
 		3039EFC728F8E3C94FDFEA7A /* ExerciseLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */; };
@@ -38,6 +39,7 @@
 		CBF639EBC54B6E26F6F0B639 /* CDUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8536946E1002EA63873EF040 /* CDUser.swift */; };
 		D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE899F56340A31543CC3E520 /* RootView.swift */; };
 		D995370F23B924FBF753B317 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FDF17C9F80F098B643285927 /* Assets.xcassets */; };
+		DF8560F0C541ACA1C94C6B27 /* ExercisePoolFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22C88B26B4A461674595EB7 /* ExercisePoolFilterTests.swift */; };
 		E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = E859C6A36E26C0B92E5D4614 /* FitSnack.xcdatamodeld */; };
 		E983D431A9A450B2A096C2EC /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9638F81CCC8BEEBB803E5D33 /* User.swift */; };
 		EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */; };
@@ -65,6 +67,7 @@
 		2723289C9064488853A7744D /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
 		4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocusTests.swift; sourceTree = "<group>"; };
 		42E4B312EBFA72858B793511 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
+		43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePoolFilter.swift; sourceTree = "<group>"; };
 		4E25EB351D91F063A9809D5E /* MockPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPersistence.swift; sourceTree = "<group>"; };
 		4FBEBFE2C368100812F7677A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		54220C70830316F0B7D14EAA /* ScaffoldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaffoldTests.swift; sourceTree = "<group>"; };
@@ -91,6 +94,7 @@
 		DB8F1E3A055E19A13DD51674 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
 		DE82740204F95416749519EE /* PersistenceCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoding.swift; sourceTree = "<group>"; };
 		DEB61D583F7AB99CD0FF7838 /* ServiceProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceProtocols.swift; sourceTree = "<group>"; };
+		E22C88B26B4A461674595EB7 /* ExercisePoolFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePoolFilterTests.swift; sourceTree = "<group>"; };
 		E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainerTests.swift; sourceTree = "<group>"; };
 		E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockServices.swift; sourceTree = "<group>"; };
 		E93C79F16481D8040E30A1B6 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
@@ -203,6 +207,7 @@
 		5F1D4730785352945947B87F /* Engine */ = {
 			isa = PBXGroup;
 			children = (
+				43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */,
 				A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */,
 				091209B1B5A46FF7392DECF6 /* PillarBalance.swift */,
 				0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */,
@@ -252,6 +257,7 @@
 				EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */,
 				D641BBBE178A9237F0AE4110 /* EnumsTests.swift */,
 				A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */,
+				E22C88B26B4A461674595EB7 /* ExercisePoolFilterTests.swift */,
 				2723289C9064488853A7744D /* ExerciseServiceTests.swift */,
 				83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */,
 				4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */,
@@ -376,6 +382,7 @@
 				6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */,
 				4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */,
 				3039EFC728F8E3C94FDFEA7A /* ExerciseLibraryTests.swift in Sources */,
+				DF8560F0C541ACA1C94C6B27 /* ExercisePoolFilterTests.swift in Sources */,
 				96A261903B09D0C7BCA5FE9F /* ExerciseServiceTests.swift in Sources */,
 				3796B458B3566E68D8524051 /* ModelsTests.swift in Sources */,
 				2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */,
@@ -396,6 +403,7 @@
 				4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */,
 				12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */,
 				2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */,
+				28A46C3A28D69EF61CF35BC8 /* ExercisePoolFilter.swift in Sources */,
 				E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */,
 				4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */,
 				5FB8EA256F9A84D2E3D35D20 /* MockExerciseService.swift in Sources */,

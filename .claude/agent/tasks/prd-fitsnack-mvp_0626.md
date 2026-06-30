@@ -274,11 +274,11 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Starting from the full library, the engine removes: `phase == strength` exercises when `user.phase == discipline`; exercises flagged for the user's injuries; difficulty above the user's level cap (beginner 1-2, intermediate 1-3, advanced 1-5); exercises skipped more than 3 times recently
-- [ ] All remaining exercises are bodyweight (`equipment == []`)
-- [ ] If filtering empties a needed pattern, it falls back to the safest available bodyweight option and records why
-- [ ] Unit tests cover each filter rule independently and the fallback
-- [ ] Build and tests pass
+- [x] Starting from the full library, the engine removes: `phase == strength` exercises when `user.phase == discipline`; exercises flagged for the user's injuries; difficulty above the user's level cap (beginner 1-2, intermediate 1-3, advanced 1-5); exercises skipped more than 3 times recently
+- [x] All remaining exercises are bodyweight (`equipment == []`)
+- [x] If filtering empties a needed pattern, it falls back to the safest available bodyweight option and records why
+- [x] Unit tests cover each filter rule independently and the fallback
+- [x] Build and tests pass
 
 **Validation Test:**
 
