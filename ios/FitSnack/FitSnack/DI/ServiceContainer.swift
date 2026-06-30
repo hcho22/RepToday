@@ -44,9 +44,10 @@ struct ServiceContainer {
         // `ExerciseServiceTests`, so a load/validation failure here is a build-time defect,
         // not a runtime condition - `try!` makes that surface loudly instead of silently
         // shipping an empty catalog.
-        ServiceContainer(
-            exerciseService: try! MockExerciseService(),
-            workoutEngine: MockWorkoutEngine(),
+        let exerciseService = try! MockExerciseService()
+        return ServiceContainer(
+            exerciseService: exerciseService,
+            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
             consistencyService: MockConsistencyService(),
             phaseService: MockPhaseService(),
             userService: MockUserService(),

@@ -337,13 +337,13 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Every session opens with a warm-up; in a short mobility-led session the opening flow doubles as warm-up + training
-- [ ] Blocks are assembled per the Step 1 shape; sessions over 10 minutes end with a cooldown stretch
-- [ ] `totalTime = Σ(sets × estTimePerSet) + rests + transitions`; the engine trims or extends to land within ±1 minute of `requestedMinutes`
-- [ ] End-to-end generation latency is under 100ms on a modern device/simulator
-- [ ] Output is a fully-formed `Workout` ready to play
-- [ ] Unit tests assert: warm-up present, cooldown present only when >10 min, total time within ±1 min for 5/10/15/20/30, and a measured latency assertion
-- [ ] Build and tests pass
+- [x] Every session opens with a warm-up; in a short mobility-led session the opening flow doubles as warm-up + training
+- [x] Blocks are assembled per the Step 1 shape; sessions over 10 minutes end with a cooldown stretch
+- [x] `totalTime = Σ(sets × estTimePerSet) + rests + transitions`; the engine trims or extends to land within ±1 minute of `requestedMinutes`
+- [x] End-to-end generation latency is under 100ms on a modern device/simulator
+- [x] Output is a fully-formed `Workout` ready to play
+- [x] Unit tests assert: warm-up present, cooldown present only when >10 min, total time within ±1 min for 5/10/15/20/30, and a measured latency assertion
+- [x] Build and tests pass
 
 **Validation Test:**
 
