@@ -315,13 +315,13 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] The engine pulls the user's logged capacity for the selected exercise and prescribes reps/sets at or just above demonstrated capacity (progressive)
-- [ ] It NEVER prescribes a fixed heroic number (e.g. "100 squats"); every target is capacity-relative
-- [ ] A `perceivedDifficulty` of `too_hard` last time reduces the next target; `too_easy` increases it (within one cycle)
-- [ ] For holds, the same logic applies to duration in seconds
-- [ ] With no prior capacity, it uses the exercise's `defaultReps`/`defaultDurationSeconds`
-- [ ] Unit tests cover: progressive bump, too_hard reduction, too_easy increase, default fallback, and absence of any fixed heroic number
-- [ ] Build and tests pass
+- [x] The engine pulls the user's logged capacity for the selected exercise and prescribes reps/sets at or just above demonstrated capacity (progressive)
+- [x] It NEVER prescribes a fixed heroic number (e.g. "100 squats"); every target is capacity-relative
+- [x] A `perceivedDifficulty` of `too_hard` last time reduces the next target; `too_easy` increases it (within one cycle)
+- [x] For holds, the same logic applies to duration in seconds
+- [x] With no prior capacity, it uses the exercise's `defaultReps`/`defaultDurationSeconds`
+- [x] Unit tests cover: progressive bump, too_hard reduction, too_easy increase, default fallback, and absence of any fixed heroic number
+- [x] Build and tests pass
 
 **Validation Test:**
 
