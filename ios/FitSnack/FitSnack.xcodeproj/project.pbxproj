@@ -28,6 +28,7 @@
 		65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBEBFE2C368100812F7677A /* Theme.swift */; };
 		6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */; };
 		66A9889E4D9667B6762D57E7 /* PillarBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */; };
+		7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */; };
 		96A261903B09D0C7BCA5FE9F /* ExerciseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2723289C9064488853A7744D /* ExerciseServiceTests.swift */; };
 		9C8F27A808A53D73C791F956 /* WorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E105E18702D4CC93FBA722 /* WorkoutLog.swift */; };
 		9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */; };
@@ -44,6 +45,7 @@
 		E983D431A9A450B2A096C2EC /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9638F81CCC8BEEBB803E5D33 /* User.swift */; };
 		EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */; };
 		FA92EF45D21DA58F4D039022 /* SessionShapeSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */; };
+		FD3BFA9C2C27066FEAC83404 /* ProgressionChainSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 416F458E9F3C354B08D06470 /* ProgressionChainSelection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,6 +68,7 @@
 		24E105E18702D4CC93FBA722 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
 		2723289C9064488853A7744D /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
 		4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocusTests.swift; sourceTree = "<group>"; };
+		416F458E9F3C354B08D06470 /* ProgressionChainSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelection.swift; sourceTree = "<group>"; };
 		42E4B312EBFA72858B793511 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePoolFilter.swift; sourceTree = "<group>"; };
 		4E25EB351D91F063A9809D5E /* MockPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPersistence.swift; sourceTree = "<group>"; };
@@ -73,6 +76,7 @@
 		54220C70830316F0B7D14EAA /* ScaffoldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaffoldTests.swift; sourceTree = "<group>"; };
 		58C8E87DCE232242DB67AE62 /* FitSnack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = FitSnack.xcdatamodel; sourceTree = "<group>"; };
 		5B463FE988D7B52B95FF01E7 /* FitSnackTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FitSnackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelectionTests.swift; sourceTree = "<group>"; };
 		66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelectionTests.swift; sourceTree = "<group>"; };
 		83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		8536946E1002EA63873EF040 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
@@ -210,6 +214,7 @@
 				43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */,
 				A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */,
 				091209B1B5A46FF7392DECF6 /* PillarBalance.swift */,
+				416F458E9F3C354B08D06470 /* ProgressionChainSelection.swift */,
 				0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */,
 			);
 			path = Engine;
@@ -263,6 +268,7 @@
 				4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */,
 				B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */,
 				BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */,
+				657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
 				E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */,
 				66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */,
@@ -388,6 +394,7 @@
 				2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */,
 				3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */,
 				66A9889E4D9667B6762D57E7 /* PillarBalanceTests.swift in Sources */,
+				7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
 				BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */,
 				AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */,
@@ -413,6 +420,7 @@
 				33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */,
 				9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */,
 				07611EF80B3EC66A91059CE3 /* PillarBalance.swift in Sources */,
+				FD3BFA9C2C27066FEAC83404 /* ProgressionChainSelection.swift in Sources */,
 				D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */,
 				090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */,
 				CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */,

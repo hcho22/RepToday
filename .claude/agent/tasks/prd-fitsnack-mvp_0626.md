@@ -294,12 +294,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] For each chosen pattern, the engine finds the user's current chain position from logged performance
-- [ ] It selects that exercise; if `advancementCriteria` are met from logs, it offers the next exercise in the chain
-- [ ] It avoids exercises used in the last 3 sessions for variety
-- [ ] A user with no history starts at the chain entry (`progressionOrder` 0)
-- [ ] Unit tests cover: entry position, advancement when criteria met, no-advancement when not met, no-repeat-last-3
-- [ ] Build and tests pass
+- [x] For each chosen pattern, the engine finds the user's current chain position from logged performance
+- [x] It selects that exercise; if `advancementCriteria` are met from logs, it offers the next exercise in the chain
+- [x] It avoids exercises used in the last 3 sessions for variety
+- [x] A user with no history starts at the chain entry (`progressionOrder` 0)
+- [x] Unit tests cover: entry position, advancement when criteria met, no-advancement when not met, no-repeat-last-3
+- [x] Build and tests pass
 
 **Validation Test:**
 
