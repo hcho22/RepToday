@@ -42,8 +42,17 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
         in workout: Workout,
         user: User,
         recentLogs: [WorkoutLog]
-    ) async throws -> PrescribedExercise {
-        prescription
+    ) async throws -> SwapOutcome {
+        // The deterministic swap (US-C08) runs through `ExerciseSwap`, drawing substitutes from the
+        // same validated library the assembler uses so the swap stays in lockstep with the engine.
+        let library = try await exerciseService.exercises()
+        return ExerciseSwap.swap(
+            prescription,
+            in: workout,
+            user: user,
+            library: library,
+            recentLogs: recentLogs
+        )
     }
 }
 

@@ -360,12 +360,12 @@ The problem it solves: time- and bandwidth-poor adults feel stiff and guilty, ha
 
 **Acceptance Criteria:**
 
-- [ ] Given a workout and a target exercise, the engine returns a substitute within the same pillar, movement pattern, and difficulty band, fitting the same time budget
-- [ ] The substitute is bodyweight and respects the user's injuries and phase
-- [ ] Substitution is deterministic and does not change total session time by more than the swapped slot's tolerance
-- [ ] If no valid substitute exists, it returns a clear "no alternative" result rather than an unsafe pick
-- [ ] Unit tests cover: valid swap within constraints, injury-respecting swap, and the no-alternative case
-- [ ] Build and tests pass
+- [x] Given a workout and a target exercise, the engine returns a substitute within the same pillar, movement pattern, and difficulty band, fitting the same time budget
+- [x] The substitute is bodyweight and respects the user's injuries and phase
+- [x] Substitution is deterministic and does not change total session time by more than the swapped slot's tolerance
+- [x] If no valid substitute exists, it returns a clear "no alternative" result rather than an unsafe pick
+- [x] Unit tests cover: valid swap within constraints, injury-respecting swap, and the no-alternative case
+- [x] Build and tests pass
 
 **Validation Test:**
 
