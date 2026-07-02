@@ -46,7 +46,10 @@ enum MockPersistence {
         consistency: Consistency(
             weeklyGoal: 3, score: 78.0, workoutsThisWeek: 2,
             longestChain: 6, totalWorkoutsCompleted: 38, totalMinutesExercised: 540
-        )
+        ),
+        why: User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility),
+        duration: User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 15, completedDurationEWMA: 13.5),
+        coldStart: User.ColdStart(sessionsLogged: 2, active: true)
     )
 
     static let sampleLogs: [WorkoutLog] = {

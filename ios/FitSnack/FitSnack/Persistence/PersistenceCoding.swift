@@ -3,9 +3,10 @@ import Foundation
 /// Shared coding support for the CoreData layer (US-A04).
 ///
 /// The domain structs are plain `Codable` value types; the CoreData entities store their
-/// complex/nested fields (profile, subscription, consistency, logged exercises) as
-/// JSON-encoded `Data`. A single encoder/decoder pair is reused so the encode and decode
-/// sides always agree on strategy - the round-trip is only lossless when both match.
+/// complex/nested fields (profile, subscription, consistency, the v6 why/duration/coldStart,
+/// and logged exercises) as JSON-encoded `Data`. A single encoder/decoder pair is reused so
+/// the encode and decode sides always agree on strategy - the round-trip is only lossless
+/// when both match.
 
 // MARK: - PersistenceCoder
 

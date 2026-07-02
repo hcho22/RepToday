@@ -56,6 +56,49 @@ final class ModelsTests: XCTestCase {
         assertRoundTrip(makeConsistency())
     }
 
+    // MARK: - Why / Duration / ColdStart (v6, US-D01)
+
+    func testWhyRoundTripWithBias() {
+        assertRoundTrip(User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility))
+    }
+
+    func testWhyRoundTripEmpty() {
+        assertRoundTrip(User.Why.empty)
+    }
+
+    /// A skipped/absent `openingBias` is omitted from JSON, not written as `null` - the same
+    /// `encodeIfPresent` contract the `Subscription` dates rely on.
+    func testWhyNilBiasOmittedFromJSON() throws {
+        let json = String(decoding: try encoder.encode(User.Why.empty), as: UTF8.self)
+        XCTAssertFalse(json.contains("openingBias"))
+    }
+
+    func testDurationRoundTripWithEWMA() {
+        assertRoundTrip(User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 20, completedDurationEWMA: 12.4))
+    }
+
+    func testDurationRoundTripWithoutEWMA() {
+        // `seeded` leaves `completedDurationEWMA` nil and `defaultMinutes == onboardingSeedMinutes`.
+        let duration = User.Duration.seeded(minutes: 15)
+        XCTAssertEqual(duration.defaultMinutes, duration.onboardingSeedMinutes)
+        XCTAssertNil(duration.completedDurationEWMA)
+        assertRoundTrip(duration)
+    }
+
+    func testDurationNilEWMAOmittedFromJSON() throws {
+        let json = String(decoding: try encoder.encode(User.Duration.seeded(minutes: 15)), as: UTF8.self)
+        XCTAssertFalse(json.contains("completedDurationEWMA"))
+    }
+
+    func testColdStartRoundTrip() {
+        assertRoundTrip(User.ColdStart(sessionsLogged: 3, active: false))
+    }
+
+    /// `fresh` is the documented brand-new/legacy default: cold-start active, nothing logged.
+    func testColdStartFreshDefault() {
+        XCTAssertEqual(User.ColdStart.fresh, User.ColdStart(sessionsLogged: 0, active: true))
+    }
+
     // MARK: - User (nested optionals present and absent)
 
     func testUserRoundTripFullyPopulated() {
@@ -178,7 +221,10 @@ final class ModelsTests: XCTestCase {
             profile: makeProfile(injuries: injuries),
             phase: .discipline,
             subscription: subscription,
-            consistency: makeConsistency()
+            consistency: makeConsistency(),
+            why: User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility),
+            duration: User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 20, completedDurationEWMA: 12.4),
+            coldStart: User.ColdStart(sessionsLogged: 3, active: false)
         )
     }
 

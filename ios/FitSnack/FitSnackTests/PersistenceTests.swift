@@ -61,6 +61,55 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(reloaded.subscription.trialEndsAt)
     }
 
+    /// US-D01 validation test: the v6 `why`/`duration`/`coldStart` fields round-trip
+    /// identically through the CoreData layer.
+    func testSaveAndReloadUserPreservesV6Fields() throws {
+        var user = makeUser(
+            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+            injuries: []
+        )
+        user.why = User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility)
+        user.duration = User.Duration(defaultMinutes: 10, onboardingSeedMinutes: 15, completedDurationEWMA: 11.2)
+        user.coldStart = User.ColdStart(sessionsLogged: 0, active: true)
+
+        try insert(user)
+        let reloaded = try XCTUnwrap(fetchUser(id: user.id)).toUser()
+
+        XCTAssertEqual(reloaded, user)
+        XCTAssertEqual(reloaded.why.statement, "get on the floor with my grandkids")
+        XCTAssertEqual(reloaded.why.openingBias, .mobility)
+        XCTAssertEqual(reloaded.duration.onboardingSeedMinutes, 15)
+        XCTAssertTrue(reloaded.coldStart.active)
+    }
+
+    /// A pre-v6 record - one whose `why`/`duration`/`coldStart` columns are nil because it
+    /// was written before those fields existed - decodes to the documented defaults rather
+    /// than crashing: empty `why`, `duration` seeded from `profile.typicalAvailableMinutes`
+    /// (so `defaultMinutes == onboardingSeedMinutes`), and a fresh cold-start.
+    func testLegacyUserRecordDecodesV6Defaults() throws {
+        let user = makeUser(
+            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+            injuries: []
+        )
+        // profile.typicalAvailableMinutes in the factory is 15.
+        let cd = CDUser(context: context)
+        try cd.update(from: user)
+        // Simulate a legacy record: clear the additive v6 columns.
+        cd.whyData = nil
+        cd.durationData = nil
+        cd.coldStartData = nil
+
+        let reloaded = try cd.toUser()
+
+        XCTAssertEqual(reloaded.why, .empty)
+        XCTAssertEqual(reloaded.duration.defaultMinutes, reloaded.duration.onboardingSeedMinutes)
+        XCTAssertEqual(reloaded.duration.defaultMinutes, user.profile.typicalAvailableMinutes)
+        XCTAssertNil(reloaded.duration.completedDurationEWMA)
+        XCTAssertEqual(reloaded.coldStart, .fresh)
+        XCTAssertTrue(reloaded.coldStart.active)
+        XCTAssertEqual(reloaded.coldStart.sessionsLogged, 0)
+    }
+
     func testUpdatingExistingUserOverwritesInPlace() throws {
         let user = makeUser(
             subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
@@ -191,7 +240,10 @@ final class PersistenceTests: XCTestCase {
             consistency: Consistency(
                 weeklyGoal: 3, score: 82.5, workoutsThisWeek: 2,
                 longestChain: 7, totalWorkoutsCompleted: 41, totalMinutesExercised: 615
-            )
+            ),
+            why: User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility),
+            duration: User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 20, completedDurationEWMA: 12.4),
+            coldStart: User.ColdStart(sessionsLogged: 3, active: false)
         )
     }
 

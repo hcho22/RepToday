@@ -1,5 +1,8 @@
 # PRD: FitSnack Phase 1 MVP - The Discipline Loop
 
+> **SUPERSEDED (2026-07-02).** This v5 implementation PRD is superseded by `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md`, the comprehensive v6 implementation PRD.
+> Its Epics A-C (built) are carried forward there and its Epics D-J are reframed under v6. Kept for reference and git history.
+
 **Source plan:** `.claude/agent/tasks/FitSnack-PRD-v5.md` (v5.0, reconciled to ADRs 0001-0013)
 **Build approach:** Clean rebuild (existing codebase is reference only)
 **Scope:** Full Phase 1 MVP

@@ -8,6 +8,9 @@
         <attribute name="profileData" optional="YES" attributeType="Binary"/>
         <attribute name="subscriptionData" optional="YES" attributeType="Binary"/>
         <attribute name="consistencyData" optional="YES" attributeType="Binary"/>
+        <attribute name="whyData" optional="YES" attributeType="Binary"/>
+        <attribute name="durationData" optional="YES" attributeType="Binary"/>
+        <attribute name="coldStartData" optional="YES" attributeType="Binary"/>
     </entity>
     <entity name="CDWorkoutLog" representedClassName="CDWorkoutLog" syncable="YES">
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
