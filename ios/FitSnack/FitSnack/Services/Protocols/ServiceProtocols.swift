@@ -32,7 +32,8 @@ protocol ExerciseServiceProtocol {
 protocol WorkoutEngineProtocol {
     /// Assembles a complete session. `sessionPolicy` is the per-user program the engine runs
     /// on (US-D04 seam): `SessionPolicy.default` reproduces pre-policy behavior exactly, and
-    /// the policy's levers are threaded into the pipeline's Steps 2/5/6 in US-E03.
+    /// the policy's levers are threaded into the pipeline's Steps 2/5/6 by
+    /// `SessionAssembly.assemble` (US-E03).
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
