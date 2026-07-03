@@ -22,11 +22,16 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
     ) async throws -> Workout {
         // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
         // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`. Routing the mock
         // through the canonical assembler keeps it in lockstep with the real engine.
+        //
+        // `sessionPolicy` is accepted at the US-D04 seam but not yet threaded into the pipeline;
+        // its levers reach Steps 2/5/6 in US-E03. With `SessionPolicy.default` (every lever
+        // neutral) that is a no-op, so today's output is identical to pre-policy behavior.
         let library = try await exerciseService.exercises()
         return SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
@@ -53,6 +58,37 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
             library: library,
             recentLogs: recentLogs
         )
+    }
+}
+
+// MARK: - Session policy
+
+/// The MVP-shell session-policy service: always hands back the neutral `SessionPolicy.default`
+/// and never reports a due trigger, so the engine runs exactly as it did before policies
+/// existed. The real, persistence-backed deterministic Programmer (trigger detection in US-F01,
+/// re-weighting in US-F03) replaces this by swapping one line in `ServiceContainer`.
+final class MockSessionPolicyService: SessionPolicyServiceProtocol {
+    func currentPolicy(for user: User) async throws -> SessionPolicy {
+        .default
+    }
+
+    func reprogram(
+        user: User,
+        recentLogs: [WorkoutLog],
+        trigger: ReprogramTrigger
+    ) async throws -> SessionPolicy {
+        // The mock never re-programs; it returns the neutral default so behavior is unchanged.
+        // Real deterministic re-weighting (version bump, `updatedBy == .deterministic`) is US-F03.
+        .default
+    }
+
+    func dueTriggers(
+        user: User,
+        recentLogs: [WorkoutLog],
+        asOf: Date
+    ) async throws -> [ReprogramTrigger] {
+        // No triggers ever fire in the mock - real detection lands in US-F01.
+        []
     }
 }
 
