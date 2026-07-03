@@ -24,4 +24,8 @@
         <attribute name="perceivedDifficultyRaw" optional="YES" attributeType="String"/>
         <attribute name="exercisesData" optional="YES" attributeType="Binary"/>
     </entity>
+    <entity name="CDSessionPolicy" representedClassName="CDSessionPolicy" syncable="YES">
+        <attribute name="userId" optional="YES" attributeType="String"/>
+        <attribute name="policyData" optional="YES" attributeType="Binary"/>
+    </entity>
 </model>

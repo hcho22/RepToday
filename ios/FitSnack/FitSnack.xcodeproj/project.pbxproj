@@ -16,6 +16,7 @@
 		2FA7F3AC568F1398703F452E /* SessionAssemblyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB59EA4B2D8F1A2D084D7EB /* SessionAssemblyTests.swift */; };
 		2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB8F1E3A055E19A13DD51674 /* Exercise.swift */; };
 		3039EFC728F8E3C94FDFEA7A /* ExerciseLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */; };
+		30876E3D75E91139E3CFD299 /* CDSessionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ED42B9B6FE8C3F4ADE1B2F0 /* CDSessionPolicy.swift */; };
 		33932CCDAFF9E413D0259734 /* PersistenceCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE82740204F95416749519EE /* PersistenceCoding.swift */; };
 		3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */; };
 		3796B458B3566E68D8524051 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */; };
@@ -47,11 +48,13 @@
 		D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE899F56340A31543CC3E520 /* RootView.swift */; };
 		D995370F23B924FBF753B317 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FDF17C9F80F098B643285927 /* Assets.xcassets */; };
 		DF8560F0C541ACA1C94C6B27 /* ExercisePoolFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22C88B26B4A461674595EB7 /* ExercisePoolFilterTests.swift */; };
+		E25A04BCAF9CA6C02A7C75B5 /* SessionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE5808E9C9D1F93D9096C60 /* SessionPolicy.swift */; };
 		E3B83CBCB81B582C11176556 /* FitSnack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = E859C6A36E26C0B92E5D4614 /* FitSnack.xcdatamodeld */; };
 		E983D431A9A450B2A096C2EC /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9638F81CCC8BEEBB803E5D33 /* User.swift */; };
 		EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */; };
 		FA92EF45D21DA58F4D039022 /* SessionShapeSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */; };
 		FD3BFA9C2C27066FEAC83404 /* ProgressionChainSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 416F458E9F3C354B08D06470 /* ProgressionChainSelection.swift */; };
+		FEC7E29015504CCA1700F94C /* SessionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5AE64A69BC77A3611817BE /* SessionPolicyTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,6 +94,7 @@
 		84D59E64471E6566D7C21A99 /* SessionAssembly.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAssembly.swift; sourceTree = "<group>"; };
 		8536946E1002EA63873EF040 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
 		9638F81CCC8BEEBB803E5D33 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		9ED42B9B6FE8C3F4ADE1B2F0 /* CDSessionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDSessionPolicy.swift; sourceTree = "<group>"; };
 		A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLibraryTests.swift; sourceTree = "<group>"; };
 		A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDWorkoutLog.swift; sourceTree = "<group>"; };
 		A6975414286769AC0083EC51 /* ServiceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainer.swift; sourceTree = "<group>"; };
@@ -101,6 +105,7 @@
 		B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
 		BC9B47A4C50208A032645354 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalanceTests.swift; sourceTree = "<group>"; };
+		BE5AE64A69BC77A3611817BE /* SessionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyTests.swift; sourceTree = "<group>"; };
 		BEDFFB65C34BBA953E570279 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		C7EA6657DAE6AE01E4891CB7 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExerciseService.swift; sourceTree = "<group>"; };
@@ -118,6 +123,7 @@
 		EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
 		F56F0545CCF8634618229AD5 /* ExerciseSwapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwapTests.swift; sourceTree = "<group>"; };
 		FDF17C9F80F098B643285927 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FEE5808E9C9D1F93D9096C60 /* SessionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicy.swift; sourceTree = "<group>"; };
 		FEF9FF0DBD8FC369281E1A88 /* FitSnackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitSnackApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -241,6 +247,7 @@
 				183CE237B95AD74F3517D63E /* .gitkeep */,
 				097FE325486215F1A5A4295D /* Enums.swift */,
 				DB8F1E3A055E19A13DD51674 /* Exercise.swift */,
+				FEE5808E9C9D1F93D9096C60 /* SessionPolicy.swift */,
 				9638F81CCC8BEEBB803E5D33 /* User.swift */,
 				42E4B312EBFA72858B793511 /* Workout.swift */,
 				24E105E18702D4CC93FBA722 /* WorkoutLog.swift */,
@@ -252,6 +259,7 @@
 			isa = PBXGroup;
 			children = (
 				1D4BF02AD537AF6F14B588F5 /* .gitkeep */,
+				9ED42B9B6FE8C3F4ADE1B2F0 /* CDSessionPolicy.swift */,
 				8536946E1002EA63873EF040 /* CDUser.swift */,
 				A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */,
 				4E25EB351D91F063A9809D5E /* MockPersistence.swift */,
@@ -289,6 +297,7 @@
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
 				E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */,
 				DCB59EA4B2D8F1A2D084D7EB /* SessionAssemblyTests.swift */,
+				BE5AE64A69BC77A3611817BE /* SessionPolicyTests.swift */,
 				66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */,
 			);
 			path = FitSnackTests;
@@ -418,6 +427,7 @@
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
 				BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */,
 				2FA7F3AC568F1398703F452E /* SessionAssemblyTests.swift in Sources */,
+				FEC7E29015504CCA1700F94C /* SessionPolicyTests.swift in Sources */,
 				AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -428,6 +438,7 @@
 			files = (
 				549827B470E8067A0E28ECB5 /* AdaptiveOverload.swift in Sources */,
 				3E613AE157C5D162C971D3C3 /* AppState.swift in Sources */,
+				30876E3D75E91139E3CFD299 /* CDSessionPolicy.swift in Sources */,
 				CBF639EBC54B6E26F6F0B639 /* CDUser.swift in Sources */,
 				4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */,
 				12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */,
@@ -448,6 +459,7 @@
 				090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */,
 				CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */,
 				6BC55104116EFD0AC49BD284 /* SessionAssembly.swift in Sources */,
+				E25A04BCAF9CA6C02A7C75B5 /* SessionPolicy.swift in Sources */,
 				FA92EF45D21DA58F4D039022 /* SessionShapeSelection.swift in Sources */,
 				65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */,
 				E983D431A9A450B2A096C2EC /* User.swift in Sources */,

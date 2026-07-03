@@ -192,6 +192,77 @@ final class PersistenceTests: XCTestCase {
         XCTAssertFalse(reloaded.wasReturn)
     }
 
+    // MARK: - SessionPolicy save / reload (US-D03)
+
+    /// The always-valid default policy round-trips identically through the CoreData layer, so
+    /// the last-written policy survives relaunch and offline use.
+    func testSaveAndReloadDefaultSessionPolicy() throws {
+        let policy = SessionPolicy.default
+
+        try insert(policy, userId: "apple-user-abc123")
+        let reloaded = try XCTUnwrap(fetchPolicy(userId: "apple-user-abc123")).toSessionPolicy()
+
+        XCTAssertEqual(reloaded, policy)
+    }
+
+    /// A fully-populated policy - every optional present, an unequal weighting, a note -
+    /// round-trips with no data loss.
+    func testSaveAndReloadFullyPopulatedSessionPolicy() throws {
+        let policy = SessionPolicy(
+            version: 3,
+            updatedAt: dateB,
+            updatedBy: .deterministic,
+            progressionRate: 1.2,
+            pillarWeighting: [.strength: 1.0, .mobility: 2.0, .primal: 0.5],
+            varietyWindow: 4,
+            coldStartContract: SessionPolicy.ColdStartContract(forceContrastSpread: true, cappedMaxDifficulty: 2),
+            reentry: SessionPolicy.Reentry(rampSessionsRemaining: 3),
+            note: SessionPolicy.Note(text: "Nudged your progression up.", source: .template)
+        )
+
+        try insert(policy, userId: "apple-user-abc123")
+        let reloaded = try XCTUnwrap(fetchPolicy(userId: "apple-user-abc123")).toSessionPolicy()
+
+        XCTAssertEqual(reloaded, policy)
+    }
+
+    /// Re-programming overwrites the user's single policy in place (fetch by `userId`, update),
+    /// never accumulating a history - the latest version wins.
+    func testUpdatingSessionPolicyOverwritesInPlace() throws {
+        try insert(SessionPolicy.default, userId: "apple-user-abc123")
+
+        var reprogrammed = SessionPolicy.default
+        reprogrammed.version = 2
+        reprogrammed.updatedBy = .deterministic
+        reprogrammed.progressionRate = 1.3
+        let existing = try XCTUnwrap(fetchPolicy(userId: "apple-user-abc123"))
+        try existing.update(from: reprogrammed, userId: "apple-user-abc123")
+        try context.save()
+
+        let all = try context.fetch(CDSessionPolicy.fetchRequest())
+        XCTAssertEqual(all.count, 1, "re-programming must overwrite, not insert a duplicate")
+        XCTAssertEqual(try XCTUnwrap(all.first).toSessionPolicy(), reprogrammed)
+    }
+
+    /// Policies are keyed by owner: a second user's policy is fetched independently.
+    func testSessionPolicyIsScopedByUserId() throws {
+        var other = SessionPolicy.default
+        other.varietyWindow = 5
+        try insert(SessionPolicy.default, userId: "user-a", save: false)
+        try insert(other, userId: "user-b")
+
+        XCTAssertEqual(try XCTUnwrap(fetchPolicy(userId: "user-a")).toSessionPolicy(), SessionPolicy.default)
+        XCTAssertEqual(try XCTUnwrap(fetchPolicy(userId: "user-b")).toSessionPolicy().varietyWindow, 5)
+    }
+
+    func testToSessionPolicyThrowsWhenDataMissing() throws {
+        let bare = CDSessionPolicy(context: context)
+
+        XCTAssertThrowsError(try bare.toSessionPolicy()) { error in
+            XCTAssertEqual(error as? PersistenceError, .missingField("CDSessionPolicy.policyData"))
+        }
+    }
+
     // MARK: - WorkoutLog date-range query
 
     func testQueryWorkoutLogsByDateRange() throws {
@@ -252,6 +323,11 @@ final class PersistenceTests: XCTestCase {
         if save { try context.save() }
     }
 
+    private func insert(_ policy: SessionPolicy, userId: String, save: Bool = true) throws {
+        try CDSessionPolicy(context: context).update(from: policy, userId: userId)
+        if save { try context.save() }
+    }
+
     private func fetchUser(id: String) throws -> CDUser? {
         let request = CDUser.fetchRequest()
         request.predicate = NSPredicate(format: "id == %@", id)
@@ -260,6 +336,10 @@ final class PersistenceTests: XCTestCase {
 
     private func fetchAllLogs() throws -> [CDWorkoutLog] {
         try context.fetch(CDWorkoutLog.fetchRequest())
+    }
+
+    private func fetchPolicy(userId: String) throws -> CDSessionPolicy? {
+        try context.fetch(CDSessionPolicy.fetchRequest(userId: userId)).first
     }
 
     // MARK: - Factories
