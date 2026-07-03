@@ -5,8 +5,8 @@ import Foundation
 ///
 /// These are plain `Codable` value types, deliberately decoupled from persistence -
 /// the CoreData layer (US-A04) converts to/from `CDUser`, storing the nested
-/// `profile`/`subscription`/`consistency` as JSON-encoded `Data`. The engine and
-/// views work only with these structs.
+/// `profile`/`subscription`/`consistency` (and the v6 `why`/`duration`/`coldStart`) as
+/// JSON-encoded `Data`. The engine and views work only with these structs.
 
 // MARK: - User
 
