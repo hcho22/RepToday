@@ -8,12 +8,17 @@
         <attribute name="profileData" optional="YES" attributeType="Binary"/>
         <attribute name="subscriptionData" optional="YES" attributeType="Binary"/>
         <attribute name="consistencyData" optional="YES" attributeType="Binary"/>
+        <attribute name="whyData" optional="YES" attributeType="Binary"/>
+        <attribute name="durationData" optional="YES" attributeType="Binary"/>
+        <attribute name="coldStartData" optional="YES" attributeType="Binary"/>
     </entity>
     <entity name="CDWorkoutLog" representedClassName="CDWorkoutLog" syncable="YES">
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="workoutId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="completedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="durationMinutes" optional="NO" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="requestedMinutes" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="wasReturn" optional="YES" attributeType="Boolean" usesScalarValueType="NO"/>
         <attribute name="shapeRaw" optional="YES" attributeType="String"/>
         <attribute name="focusPillarRaw" optional="YES" attributeType="String"/>
         <attribute name="perceivedDifficultyRaw" optional="YES" attributeType="String"/>

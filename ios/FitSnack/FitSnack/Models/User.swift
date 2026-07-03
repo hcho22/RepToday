@@ -5,8 +5,8 @@ import Foundation
 ///
 /// These are plain `Codable` value types, deliberately decoupled from persistence -
 /// the CoreData layer (US-A04) converts to/from `CDUser`, storing the nested
-/// `profile`/`subscription`/`consistency` as JSON-encoded `Data`. The engine and
-/// views work only with these structs.
+/// `profile`/`subscription`/`consistency` (and the v6 `why`/`duration`/`coldStart`) as
+/// JSON-encoded `Data`. The engine and views work only with these structs.
 
 // MARK: - User
 
@@ -23,6 +23,73 @@ struct User: Codable, Equatable, Identifiable {
     var phase: Phase
     var subscription: Subscription
     var consistency: Consistency
+    /// The user's stated motivation and its single allowed programming lever (US-D01).
+    var why: Why = .empty
+    /// The learned Default Duration surfaced on the Ready Screen (US-D01). A neutral
+    /// placeholder here; onboarding (US-I01) seeds it from the user's answer.
+    var duration: Duration = .seeded(minutes: 15)
+    /// Cold-start state driving the First-Week Contrast rules (US-D01). Fresh users start
+    /// cold; the engine retires it after ~5 logged sessions (US-G04).
+    var coldStart: ColdStart = .fresh
+}
+
+// MARK: - User.Why / Duration / ColdStart (v6, US-D01)
+
+extension User {
+
+    /// The user's stated motivation, captured once in onboarding (US-D01).
+    ///
+    /// `statement` is free text ("get on the floor with my grandkids"). `openingBias` is the
+    /// **single** allowed *programming* effect of `why`: an optional pillar the engine may
+    /// lean a session's opening toward. `why` never generates or otherwise overrides a
+    /// session - the deterministic engine still assembles everything.
+    struct Why: Codable, Equatable {
+        /// Free-text motivation; empty for a skipped answer or a legacy (pre-v6) record.
+        var statement: String
+        /// The one lever `why` may move: an optional opening pillar bias.
+        var openingBias: Pillar?
+
+        /// A fresh/empty motivation: no statement, no bias. The documented default for a
+        /// legacy user record that predates the `why` field.
+        static let empty = Why(statement: "", openingBias: nil)
+    }
+
+    /// The user's learned session length (US-D01).
+    ///
+    /// `defaultMinutes` is what the Ready Screen offers and converges toward what the user
+    /// actually completes; `onboardingSeedMinutes` is the one-time answer from onboarding;
+    /// `completedDurationEWMA` is the exponentially-weighted average of completed durations
+    /// the AI Programmer maintains (US-F04) and is nil until at least one session is logged.
+    struct Duration: Codable, Equatable {
+        /// Shown on the Ready Screen; set to the duration the user actually completes.
+        var defaultMinutes: Int
+        /// The duration answered once during onboarding; the starting seed for `defaultMinutes`.
+        var onboardingSeedMinutes: Int
+        /// EWMA of completed durations; nil until at least one session is logged.
+        var completedDurationEWMA: Double?
+
+        /// Seeds a fresh Duration from an onboarding answer, so `defaultMinutes ==
+        /// onboardingSeedMinutes` and there is no completed-duration history yet. Also the
+        /// documented default for a legacy record (seeded from `profile.typicalAvailableMinutes`).
+        static func seeded(minutes: Int) -> Duration {
+            Duration(defaultMinutes: minutes, onboardingSeedMinutes: minutes, completedDurationEWMA: nil)
+        }
+    }
+
+    /// Cold-start state (US-D01). While `active`, the engine applies the First-Week Contrast
+    /// and capped Starting Difficulty overrides (US-E04/US-G01/US-G02); `sessionsLogged`
+    /// increments per completed session and the engine flips `active` off after the handoff
+    /// threshold (US-G04), after which staleness and Adaptive Overload drive sessions unassisted.
+    struct ColdStart: Codable, Equatable {
+        /// Count of completed sessions during the cold-start window.
+        var sessionsLogged: Int
+        /// Whether cold-start overrides are still in effect.
+        var active: Bool
+
+        /// A brand-new user: no sessions logged yet, cold-start active. The documented
+        /// default for a legacy record that predates the `coldStart` field.
+        static let fresh = ColdStart(sessionsLogged: 0, active: true)
+    }
 }
 
 // MARK: - UserProfile

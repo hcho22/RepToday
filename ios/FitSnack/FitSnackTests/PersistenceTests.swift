@@ -61,6 +61,55 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(reloaded.subscription.trialEndsAt)
     }
 
+    /// US-D01 validation test: the v6 `why`/`duration`/`coldStart` fields round-trip
+    /// identically through the CoreData layer.
+    func testSaveAndReloadUserPreservesV6Fields() throws {
+        var user = makeUser(
+            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+            injuries: []
+        )
+        user.why = User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility)
+        user.duration = User.Duration(defaultMinutes: 10, onboardingSeedMinutes: 15, completedDurationEWMA: 11.2)
+        user.coldStart = User.ColdStart(sessionsLogged: 0, active: true)
+
+        try insert(user)
+        let reloaded = try XCTUnwrap(fetchUser(id: user.id)).toUser()
+
+        XCTAssertEqual(reloaded, user)
+        XCTAssertEqual(reloaded.why.statement, "get on the floor with my grandkids")
+        XCTAssertEqual(reloaded.why.openingBias, .mobility)
+        XCTAssertEqual(reloaded.duration.onboardingSeedMinutes, 15)
+        XCTAssertTrue(reloaded.coldStart.active)
+    }
+
+    /// A pre-v6 record - one whose `why`/`duration`/`coldStart` columns are nil because it
+    /// was written before those fields existed - decodes to the documented defaults rather
+    /// than crashing: empty `why`, `duration` seeded from `profile.typicalAvailableMinutes`
+    /// (so `defaultMinutes == onboardingSeedMinutes`), and a fresh cold-start.
+    func testLegacyUserRecordDecodesV6Defaults() throws {
+        let user = makeUser(
+            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+            injuries: []
+        )
+        // profile.typicalAvailableMinutes in the factory is 15.
+        let cd = CDUser(context: context)
+        try cd.update(from: user)
+        // Simulate a legacy record: clear the additive v6 columns.
+        cd.whyData = nil
+        cd.durationData = nil
+        cd.coldStartData = nil
+
+        let reloaded = try cd.toUser()
+
+        XCTAssertEqual(reloaded.why, .empty)
+        XCTAssertEqual(reloaded.duration.defaultMinutes, reloaded.duration.onboardingSeedMinutes)
+        XCTAssertEqual(reloaded.duration.defaultMinutes, user.profile.typicalAvailableMinutes)
+        XCTAssertNil(reloaded.duration.completedDurationEWMA)
+        XCTAssertEqual(reloaded.coldStart, .fresh)
+        XCTAssertTrue(reloaded.coldStart.active)
+        XCTAssertEqual(reloaded.coldStart.sessionsLogged, 0)
+    }
+
     func testUpdatingExistingUserOverwritesInPlace() throws {
         let user = makeUser(
             subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
@@ -102,6 +151,45 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(reloaded, log)
         XCTAssertNil(reloaded.focusPillar)
         XCTAssertNil(reloaded.perceivedDifficulty)
+    }
+
+    /// US-D02 validation test: a log requested at 20 min, completed in 12, and served as a
+    /// Return round-trips all three fields identically through the CoreData layer.
+    func testSaveAndReloadWorkoutLogPreservesV6Fields() throws {
+        let log = makeWorkoutLog(
+            focusPillar: .strength, difficulty: .tooHard, completedAt: dateB,
+            requestedMinutes: 20, durationMinutes: 12, wasReturn: true
+        )
+
+        try insert(log)
+        let reloaded = try XCTUnwrap(fetchAllLogs().first).toWorkoutLog()
+
+        XCTAssertEqual(reloaded, log)
+        XCTAssertEqual(reloaded.requestedMinutes, 20)
+        XCTAssertEqual(reloaded.durationMinutes, 12)
+        XCTAssertTrue(reloaded.wasReturn)
+    }
+
+    /// A pre-v6 log - one whose `requestedMinutes`/`wasReturn` columns are nil because it was
+    /// written before those fields existed - decodes to the documented defaults rather than
+    /// crashing: `requestedMinutes` falls back to the completed `durationMinutes`, `wasReturn`
+    /// to false.
+    func testLegacyWorkoutLogRecordDecodesV6Defaults() throws {
+        let log = makeWorkoutLog(
+            focusPillar: .strength, difficulty: .tooHard, completedAt: dateB,
+            requestedMinutes: 20, durationMinutes: 12, wasReturn: true
+        )
+        let cd = CDWorkoutLog(context: context)
+        try cd.update(from: log)
+        // Simulate a legacy record: clear the additive v6 columns.
+        cd.requestedMinutes = nil
+        cd.wasReturn = nil
+
+        let reloaded = try cd.toWorkoutLog()
+
+        XCTAssertEqual(reloaded.requestedMinutes, reloaded.durationMinutes)
+        XCTAssertEqual(reloaded.requestedMinutes, 12)
+        XCTAssertFalse(reloaded.wasReturn)
     }
 
     // MARK: - WorkoutLog date-range query
@@ -191,7 +279,10 @@ final class PersistenceTests: XCTestCase {
             consistency: Consistency(
                 weeklyGoal: 3, score: 82.5, workoutsThisWeek: 2,
                 longestChain: 7, totalWorkoutsCompleted: 41, totalMinutesExercised: 615
-            )
+            ),
+            why: User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility),
+            duration: User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 20, completedDurationEWMA: 12.4),
+            coldStart: User.ColdStart(sessionsLogged: 3, active: false)
         )
     }
 
@@ -199,13 +290,18 @@ final class PersistenceTests: XCTestCase {
         focusPillar: Pillar?,
         difficulty: PerceivedDifficulty?,
         completedAt: Date,
-        id: UUID? = nil
+        id: UUID? = nil,
+        requestedMinutes: Int = 20,
+        durationMinutes: Int = 15,
+        wasReturn: Bool = false
     ) -> WorkoutLog {
         WorkoutLog(
             id: id ?? uuidA,
             workoutId: uuidB,
             completedAt: completedAt,
-            durationMinutes: 15,
+            requestedMinutes: requestedMinutes,
+            durationMinutes: durationMinutes,
+            wasReturn: wasReturn,
             shape: focusPillar == nil ? .blend : .singleFocus,
             focusPillar: focusPillar,
             perceivedDifficulty: difficulty,

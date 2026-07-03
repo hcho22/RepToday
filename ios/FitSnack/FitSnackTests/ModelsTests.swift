@@ -56,6 +56,49 @@ final class ModelsTests: XCTestCase {
         assertRoundTrip(makeConsistency())
     }
 
+    // MARK: - Why / Duration / ColdStart (v6, US-D01)
+
+    func testWhyRoundTripWithBias() {
+        assertRoundTrip(User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility))
+    }
+
+    func testWhyRoundTripEmpty() {
+        assertRoundTrip(User.Why.empty)
+    }
+
+    /// A skipped/absent `openingBias` is omitted from JSON, not written as `null` - the same
+    /// `encodeIfPresent` contract the `Subscription` dates rely on.
+    func testWhyNilBiasOmittedFromJSON() throws {
+        let json = String(decoding: try encoder.encode(User.Why.empty), as: UTF8.self)
+        XCTAssertFalse(json.contains("openingBias"))
+    }
+
+    func testDurationRoundTripWithEWMA() {
+        assertRoundTrip(User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 20, completedDurationEWMA: 12.4))
+    }
+
+    func testDurationRoundTripWithoutEWMA() {
+        // `seeded` leaves `completedDurationEWMA` nil and `defaultMinutes == onboardingSeedMinutes`.
+        let duration = User.Duration.seeded(minutes: 15)
+        XCTAssertEqual(duration.defaultMinutes, duration.onboardingSeedMinutes)
+        XCTAssertNil(duration.completedDurationEWMA)
+        assertRoundTrip(duration)
+    }
+
+    func testDurationNilEWMAOmittedFromJSON() throws {
+        let json = String(decoding: try encoder.encode(User.Duration.seeded(minutes: 15)), as: UTF8.self)
+        XCTAssertFalse(json.contains("completedDurationEWMA"))
+    }
+
+    func testColdStartRoundTrip() {
+        assertRoundTrip(User.ColdStart(sessionsLogged: 3, active: false))
+    }
+
+    /// `fresh` is the documented brand-new/legacy default: cold-start active, nothing logged.
+    func testColdStartFreshDefault() {
+        XCTAssertEqual(User.ColdStart.fresh, User.ColdStart(sessionsLogged: 0, active: true))
+    }
+
     // MARK: - User (nested optionals present and absent)
 
     func testUserRoundTripFullyPopulated() {
@@ -136,6 +179,31 @@ final class ModelsTests: XCTestCase {
         assertRoundTrip(makeWorkoutLog(focusPillar: nil, difficulty: nil))
     }
 
+    /// US-D02: the requested-vs-completed durations and the `wasReturn` flag survive a
+    /// round-trip. Here the session was requested at 20 min, completed at 15, and served as
+    /// a Return - the exact shape the Re-entry Ramp and Default Duration learning read back.
+    func testWorkoutLogRoundTripReturnWithDurationGap() {
+        let log = makeWorkoutLog(
+            focusPillar: .strength, difficulty: .tooHard,
+            requestedMinutes: 20, wasReturn: true
+        )
+        XCTAssertEqual(log.requestedMinutes, 20)
+        XCTAssertEqual(log.durationMinutes, 15)
+        XCTAssertTrue(log.wasReturn)
+        assertRoundTrip(log)
+    }
+
+    /// `wasReturn` defaults to `false` when omitted, so an ordinary logged session is never
+    /// mistaken for a Return.
+    func testWorkoutLogWasReturnDefaultsFalse() {
+        let log = WorkoutLog(
+            id: uuidA, workoutId: uuidB, completedAt: dateB,
+            requestedMinutes: 15, durationMinutes: 15,
+            shape: .blend, focusPillar: nil, perceivedDifficulty: nil, exercises: []
+        )
+        XCTAssertFalse(log.wasReturn)
+    }
+
     // MARK: - Round-trip helper
 
     /// Encodes then decodes `value` and asserts the result equals the original.
@@ -178,7 +246,10 @@ final class ModelsTests: XCTestCase {
             profile: makeProfile(injuries: injuries),
             phase: .discipline,
             subscription: subscription,
-            consistency: makeConsistency()
+            consistency: makeConsistency(),
+            why: User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility),
+            duration: User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 20, completedDurationEWMA: 12.4),
+            coldStart: User.ColdStart(sessionsLogged: 3, active: false)
         )
     }
 
@@ -229,12 +300,19 @@ final class ModelsTests: XCTestCase {
         )
     }
 
-    private func makeWorkoutLog(focusPillar: Pillar?, difficulty: PerceivedDifficulty?) -> WorkoutLog {
+    private func makeWorkoutLog(
+        focusPillar: Pillar?,
+        difficulty: PerceivedDifficulty?,
+        requestedMinutes: Int = 20,
+        wasReturn: Bool = false
+    ) -> WorkoutLog {
         WorkoutLog(
             id: uuidA,
             workoutId: uuidB,
             completedAt: dateB,
+            requestedMinutes: requestedMinutes,
             durationMinutes: 15,
+            wasReturn: wasReturn,
             shape: focusPillar == nil ? .blend : .singleFocus,
             focusPillar: focusPillar,
             perceivedDifficulty: difficulty,

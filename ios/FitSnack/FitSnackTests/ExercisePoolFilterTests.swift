@@ -94,6 +94,7 @@ final class ExercisePoolFilterTests: XCTestCase {
             id: UUID(),
             workoutId: UUID(),
             completedAt: calendar.date(byAdding: .day, value: -daysAgo, to: asOf)!,
+            requestedMinutes: 10,
             durationMinutes: 10,
             shape: .singleFocus,
             focusPillar: .strength,

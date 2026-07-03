@@ -77,6 +77,7 @@ final class SessionAssemblyTests: XCTestCase {
             id: UUID(),
             workoutId: UUID(),
             completedAt: date(daysAgo: daysAgo),
+            requestedMinutes: 20,
             durationMinutes: 20,
             shape: .blend,
             focusPillar: nil,

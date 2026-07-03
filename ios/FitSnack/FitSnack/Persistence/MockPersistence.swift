@@ -46,7 +46,10 @@ enum MockPersistence {
         consistency: Consistency(
             weeklyGoal: 3, score: 78.0, workoutsThisWeek: 2,
             longestChain: 6, totalWorkoutsCompleted: 38, totalMinutesExercised: 540
-        )
+        ),
+        why: User.Why(statement: "get on the floor with my grandkids", openingBias: .mobility),
+        duration: User.Duration(defaultMinutes: 15, onboardingSeedMinutes: 15, completedDurationEWMA: 13.5),
+        coldStart: User.ColdStart(sessionsLogged: 2, active: true)
     )
 
     static let sampleLogs: [WorkoutLog] = {
@@ -55,7 +58,8 @@ enum MockPersistence {
         return [
             WorkoutLog(
                 id: UUID(), workoutId: UUID(),
-                completedAt: base - 2 * day, durationMinutes: 15, shape: .blend,
+                completedAt: base - 2 * day, requestedMinutes: 15, durationMinutes: 15,
+                wasReturn: false, shape: .blend,
                 focusPillar: nil, perceivedDifficulty: .justRight,
                 exercises: [
                     LoggedExercise(
@@ -69,7 +73,8 @@ enum MockPersistence {
             ),
             WorkoutLog(
                 id: UUID(), workoutId: UUID(),
-                completedAt: base, durationMinutes: 10, shape: .singleFocus,
+                completedAt: base, requestedMinutes: 15, durationMinutes: 10,
+                wasReturn: false, shape: .singleFocus,
                 focusPillar: .mobility, perceivedDifficulty: .tooEasy,
                 exercises: [
                     LoggedExercise(

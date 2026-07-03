@@ -15,8 +15,18 @@ struct WorkoutLog: Codable, Equatable, Identifiable {
     /// The `Workout` this log records.
     var workoutId: UUID
     var completedAt: Date
-    /// Actual minutes exercised; a 5-minute session still counts as a full show-up.
+    /// The minutes the Ready Screen offered or the user set for this session (US-D02).
+    /// Paired with `durationMinutes` (requested vs. actually completed): the gap between the
+    /// two is how Default Duration learning and the Disengagement signal see shrinking sessions.
+    var requestedMinutes: Int
+    /// The actually-completed minutes exercised; a 5-minute session still counts as a full
+    /// show-up. This - not `requestedMinutes` - is what feeds `duration.completedDurationEWMA`
+    /// so the learned Default Duration tracks what the user finishes, never what they asked for.
     var durationMinutes: Int
+    /// True when this session was served as a Return after a gap (US-D02/US-E06). A Return is
+    /// celebrated and never penalizes the Consistency Score; the readjustment for lost time
+    /// lives in the following Re-entry Ramp, never in the Return itself. Defaults to `false`.
+    var wasReturn: Bool = false
     var shape: SessionShape
     /// Set for single-focus sessions.
     var focusPillar: Pillar?

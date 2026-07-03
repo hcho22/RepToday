@@ -35,6 +35,7 @@ final class MovementPatternFocusTests: XCTestCase {
             id: UUID(),
             workoutId: UUID(),
             completedAt: date(daysAgo: daysAgo),
+            requestedMinutes: 10,
             durationMinutes: 10,
             shape: .singleFocus,
             focusPillar: .strength,
