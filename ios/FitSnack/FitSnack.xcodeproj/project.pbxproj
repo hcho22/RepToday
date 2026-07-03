@@ -23,6 +23,7 @@
 		3E613AE157C5D162C971D3C3 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA32171316EB189D11B068A4 /* AppState.swift */; };
 		4A1E7F804F876B660601C35A /* FitSnackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF9FF0DBD8FC369281E1A88 /* FitSnackApp.swift */; };
 		4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EE94999F5BD556DC9617E9 /* CDWorkoutLog.swift */; };
+		4B9EA5EA44B463B4D3D884B9 /* USE01RangeEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564AAF6885AFFD5DA2BFDA0E /* USE01RangeEvidenceTests.swift */; };
 		4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D641BBBE178A9237F0AE4110 /* EnumsTests.swift */; };
 		549827B470E8067A0E28ECB5 /* AdaptiveOverload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4371FC39A0C4315D7F96A7FF /* AdaptiveOverload.swift */; };
 		56ACE22E76123F4CD6E81C76 /* MockPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E25EB351D91F063A9809D5E /* MockPersistence.swift */; };
@@ -91,6 +92,7 @@
 		4FBEBFE2C368100812F7677A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		54220C70830316F0B7D14EAA /* ScaffoldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaffoldTests.swift; sourceTree = "<group>"; };
 		5526927A4FF1986151B6CCFB /* AdaptiveOverloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveOverloadTests.swift; sourceTree = "<group>"; };
+		564AAF6885AFFD5DA2BFDA0E /* USE01RangeEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USE01RangeEvidenceTests.swift; sourceTree = "<group>"; };
 		58C8E87DCE232242DB67AE62 /* FitSnack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = FitSnack.xcdatamodel; sourceTree = "<group>"; };
 		5B463FE988D7B52B95FF01E7 /* FitSnackTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FitSnackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelectionTests.swift; sourceTree = "<group>"; };
@@ -308,6 +310,7 @@
 				417D9579634284740E59C4F9 /* SessionPolicyServiceTests.swift */,
 				BE5AE64A69BC77A3611817BE /* SessionPolicyTests.swift */,
 				66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */,
+				564AAF6885AFFD5DA2BFDA0E /* USE01RangeEvidenceTests.swift */,
 			);
 			path = FitSnackTests;
 			sourceTree = "<group>";
@@ -440,6 +443,7 @@
 				A88A9355E1EF01559DDF58C4 /* SessionPolicyServiceTests.swift in Sources */,
 				FEC7E29015504CCA1700F94C /* SessionPolicyTests.swift in Sources */,
 				AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */,
+				4B9EA5EA44B463B4D3D884B9 /* USE01RangeEvidenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
