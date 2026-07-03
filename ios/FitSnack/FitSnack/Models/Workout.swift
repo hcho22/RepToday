@@ -15,7 +15,7 @@ struct Workout: Codable, Equatable, Identifiable {
     var createdAt: Date
     /// The shape selected from requested minutes (single-focus vs blend).
     var shape: SessionShape
-    /// Set for single-focus sessions; nil for blends that span both pillars.
+    /// Set for single-focus sessions; nil for blends that span multiple pillars.
     var focusPillar: Pillar?
     /// The minutes the user asked for; the assembled session lands within ±1 of this.
     var requestedMinutes: Int

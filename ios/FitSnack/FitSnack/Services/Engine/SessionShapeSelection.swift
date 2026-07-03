@@ -29,7 +29,7 @@ enum SessionShapeTemplate: CaseIterable, Equatable {
     case blendFull
     /// 41-60 min: a full blend with room for a dedicated third (primal) block; the extended
     /// end of the range unlocked in US-E01. Resolves to the same canonical `.blend` shape;
-    /// the dedicated primal block itself lands in US-E02.
+    /// the dedicated primal block itself is carved out in assembly (US-E02).
     case blendExtended
 
     /// The canonical, persisted session shape this template resolves to on the `Workout`.

@@ -78,11 +78,11 @@ struct PillarStaleness: Equatable {
 // MARK: - PillarPlan
 
 /// The pillar makeup Step 2 selects for a session: one pillar for single-focus, or a
-/// staleness-weighted split across both for a blend.
+/// staleness-weighted split across the pillars for a blend.
 enum PillarPlan: Equatable {
     /// Single-focus: train exactly this one pillar.
     case single(Pillar)
-    /// Blend: train both pillars, with time apportioned by `weights`.
+    /// Blend: train two pillars - or all three for an extended blend - with time apportioned by `weights`.
     case blend(PillarWeights)
 
     // MARK: Tuning constants
