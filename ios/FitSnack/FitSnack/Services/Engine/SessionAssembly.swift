@@ -8,8 +8,9 @@ import Foundation
 /// active-session player renders:
 /// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend.
 /// - **Pillars** (Step 2, `PillarPlan`) decide which pillar a single-focus trains, or - for a blend -
-///   how the training time splits across both: the staleness `PillarWeights` size the two blocks, so
-///   the staler pillar both leads and gets the larger share of the session.
+///   how the training time splits: the staleness `PillarWeights` size the blocks, so the staler pillar
+///   both leads and gets the larger share. A short/full blend sizes strength (primal folded in) and
+///   mobility; an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
 ///   exercise in each, and that exercise's capacity-relative reps/sets/hold.
@@ -149,7 +150,11 @@ enum SessionAssembly {
             asOf: asOf,
             calendar: calendar
         )
-        return builder.buildBlocks(pillarPlan: pillarPlan, requestedMinutes: requestedMinutes)
+        return builder.buildBlocks(
+            pillarPlan: pillarPlan,
+            template: template,
+            requestedMinutes: requestedMinutes
+        )
     }
 
     // MARK: - Planned wall-clock
@@ -392,7 +397,14 @@ private struct Builder {
     /// shared mobility pool (it is constructed here, up front, and appended last only at output time),
     /// so a blend's cooldown keeps real holds plus reserves instead of the single leftover stretch it
     /// would get if the training block claimed the pool first.
-    mutating func buildBlocks(pillarPlan: PillarPlan, requestedMinutes: Int) -> [PlannedBlock] {
+    ///
+    /// `template` distinguishes an extended blend (US-E02), which promotes primal to its own block,
+    /// from the shorter blends that keep folding primal into strength.
+    mutating func buildBlocks(
+        pillarPlan: PillarPlan,
+        template: SessionShapeTemplate,
+        requestedMinutes: Int
+    ) -> [PlannedBlock] {
         let warmup = warmupBlock()
         let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock() : nil
 
@@ -411,6 +423,7 @@ private struct Builder {
                 weights: weights,
                 warmup: warmup,
                 cooldown: cooldown,
+                template: template,
                 requestedMinutes: requestedMinutes
             )
         }
@@ -418,28 +431,47 @@ private struct Builder {
         return [warmup] + middle + (cooldown.map { [$0] } ?? [])
     }
 
-    /// The two training blocks of a blend, ordered staler-pillar-first and each tagged with the
+    /// The training blocks of a blend, ordered staler-pillar-first and each tagged with the
     /// planned-seconds share it should be shaped toward. The share is the remaining training budget
     /// (request minus the warm-up and cooldown the bookends already cost) split in proportion to the
     /// Step 2 staleness weights, so the staler pillar ends up the *larger* block, not merely the lead.
+    ///
+    /// A short or full blend produces the two co-primary blocks (strength - which still folds primal
+    /// in - and mobility). An extended blend (US-E02) promotes primal to its own `locomotion`-driven
+    /// block: the strength block sheds primal, and a dedicated primal block joins the split, ordered
+    /// among the three by its weighted share.
     private mutating func blendBlocks(
         weights: PillarWeights,
         warmup: PlannedBlock,
         cooldown: PlannedBlock?,
+        template: SessionShapeTemplate,
         requestedMinutes: Int
     ) -> [PlannedBlock] {
-        var strength = strengthBlock()
+        let extended = template == .blendExtended
+
+        // In an extended blend primal earns its own block, so the strength block must not also fold
+        // primal in (that would double-book the same locomotion movement).
+        var strength = strengthBlock(includePrimal: !extended)
         var mobility = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
+        var primal = extended ? primalBlock() : nil
 
         let bookendSeconds = SessionAssembly.blockSeconds(warmup)
             + (cooldown.map(SessionAssembly.blockSeconds) ?? 0)
         let trainingBudget = max(0, requestedMinutes * 60 - bookendSeconds)
         strength?.targetSeconds = Int((Double(trainingBudget) * weights.strength).rounded())
         mobility?.targetSeconds = Int((Double(trainingBudget) * weights.mobility).rounded())
+        primal?.targetSeconds = Int((Double(trainingBudget) * weights.primal).rounded())
 
-        // Lead with the staler pillar's block; the other becomes the smaller second block.
-        let strengthLeads = weights.strength >= weights.mobility
-        return (strengthLeads ? [strength, mobility] : [mobility, strength]).compactMap { $0 }
+        // Order the blocks staler-pillar-first (heavier weight leads); a fixed pillar order breaks
+        // ties deterministically, matching the prior two-block strength-leads-on-tie behavior.
+        let entries: [(weight: Double, tieBreak: Int, block: PlannedBlock?)] = [
+            (weights.strength, 0, strength),
+            (weights.mobility, 1, mobility),
+            (weights.primal, 2, primal),
+        ]
+        return entries
+            .sorted { $0.weight != $1.weight ? $0.weight > $1.weight : $0.tieBreak < $1.tieBreak }
+            .compactMap { $0.block }
     }
 
     // MARK: Blocks
@@ -494,12 +526,14 @@ private struct Builder {
         )
     }
 
-    /// The strength training block: one ability-matched exercise per strength/primal pattern, stalest
+    /// The strength training block: one ability-matched exercise per strength pattern, stalest
     /// pattern first (and never repeating the most recent session's lead pattern), each at its Step 6
-    /// capacity-relative target. `nil` when the pool has no strength/primal movement.
-    private mutating func strengthBlock() -> PlannedBlock? {
+    /// capacity-relative target. When `includePrimal` is set (every shape but an extended blend), the
+    /// primal `locomotion` pattern is folded in here as before; an extended blend passes `false` so
+    /// primal instead earns its own dedicated block. `nil` when the pool has no eligible movement.
+    private mutating func strengthBlock(includePrimal: Bool = true) -> PlannedBlock? {
         var items: [PlannedItem] = []
-        for pattern in orderedStrengthPatterns() {
+        for pattern in orderedStrengthPatterns(includePrimal: includePrimal) {
             guard
                 let selection = ProgressionChainSelection.select(
                     pattern: pattern,
@@ -533,6 +567,43 @@ private struct Builder {
         )
     }
 
+    /// The dedicated primal block for an extended blend (US-E02): the ability-matched movement from
+    /// the primal `locomotion` chain at its Step 6 capacity-relative target, sets adjustable for
+    /// timing. Draws only `pillar == .primal` movements from the eligible pool, so the Zero-Equipment
+    /// Floor and difficulty gating still hold. `nil` when the pool has no eligible primal movement
+    /// (e.g. a difficulty cap or injury filtered them out) - the session then degrades gracefully to
+    /// strength + mobility rather than emitting an empty block.
+    private mutating func primalBlock() -> PlannedBlock? {
+        guard
+            let selection = ProgressionChainSelection.select(
+                pattern: .locomotion,
+                library: library,
+                pool: pool,
+                recentLogs: recentLogs
+            ),
+            selection.exercise.pillar == .primal,
+            !usedIds.contains(selection.exercise.id)
+        else { return nil }
+
+        let target = AdaptiveOverload.target(for: selection.exercise, recentLogs: recentLogs)
+        usedIds.insert(selection.exercise.id)
+        let item = PlannedItem(
+            exercise: selection.exercise,
+            reps: target.reps,
+            durationSeconds: target.durationSeconds,
+            sets: target.sets,
+            restSeconds: SessionAssembly.strengthRestSeconds
+        )
+        return PlannedBlock(
+            title: "Primal Movement",
+            category: .primal,
+            items: [item],
+            reserve: [],
+            allowSetAdjust: true,
+            minItems: 1
+        )
+    }
+
     // MARK: Candidate generation
 
     /// Turns ordered mobility exercises into one-set planned items (per-set value from Step 6),
@@ -551,13 +622,15 @@ private struct Builder {
         }
     }
 
-    /// The strength/primal patterns present in the pool, ordered stalest-first via `PatternFocus`,
-    /// with the most recent session's lead pattern held out of the lead slot (Step 3's no-repeat rule).
-    private func orderedStrengthPatterns() -> [MovementPattern] {
+    /// The strength patterns present in the pool, ordered stalest-first via `PatternFocus`, with the
+    /// most recent session's lead pattern held out of the lead slot (Step 3's no-repeat rule). Primal
+    /// `locomotion` patterns are included only when `includePrimal` is set (folded into strength for
+    /// every shape but an extended blend, which gives primal its own block instead).
+    private func orderedStrengthPatterns(includePrimal: Bool) -> [MovementPattern] {
         let patterns = Array(
             Set(
                 pool
-                    .filter { $0.pillar == .strength || $0.pillar == .primal }
+                    .filter { $0.pillar == .strength || (includePrimal && $0.pillar == .primal) }
                     .map(\.movementPattern)
             )
         )

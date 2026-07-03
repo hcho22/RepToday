@@ -212,10 +212,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `Services/Engine/PillarBalance.swift` reasons about all three pillars: `PillarStaleness` and `PillarPlan`/`PillarWeights` include `primal` (not just `strength`/`mobility`)
-- [ ] `Services/Engine/SessionAssembly.swift` builds a dedicated primal block for `blendExtended` sessions, driven by the `locomotion` pattern and `pillar == .primal`; shorter shapes may still fold primal in as before
-- [ ] Primal selection respects staleness and `sessionPolicy.pillarWeighting[.primal]`; the Zero-Equipment Floor and difficulty gating still hold
-- [ ] `PillarBalanceTests` and `SessionAssemblyTests` extended: a 50-min session produces a distinct primal block; a short session does not regress; build and tests pass
+- [x] `Services/Engine/PillarBalance.swift` reasons about all three pillars: `PillarStaleness` and `PillarPlan`/`PillarWeights` include `primal` (not just `strength`/`mobility`)
+- [x] `Services/Engine/SessionAssembly.swift` builds a dedicated primal block for `blendExtended` sessions, driven by the `locomotion` pattern and `pillar == .primal`; shorter shapes may still fold primal in as before
+- [x] Primal selection respects staleness and `sessionPolicy.pillarWeighting[.primal]`; the Zero-Equipment Floor and difficulty gating still hold
+- [x] `PillarBalanceTests` and `SessionAssemblyTests` extended: a 50-min session produces a distinct primal block; a short session does not regress; build and tests pass
 
 **Validation Test:**
 
