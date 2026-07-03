@@ -29,15 +29,16 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
         // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`. Routing the mock
         // through the canonical assembler keeps it in lockstep with the real engine.
         //
-        // `sessionPolicy` is accepted at the US-D04 seam but not yet threaded into the pipeline;
-        // its levers reach Steps 2/5/6 in US-E03. With `SessionPolicy.default` (every lever
-        // neutral) that is a no-op, so today's output is identical to pre-policy behavior.
+        // `sessionPolicy` is threaded through the assembler (US-E03): its `pillarWeighting`,
+        // `varietyWindow`, and `progressionRate` levers reach Steps 2/5/6. With `SessionPolicy.default`
+        // (every lever neutral) that is a no-op, so output is identical to pre-policy behavior.
         let library = try await exerciseService.exercises()
         return SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
             user: user,
             library: library,
             recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
             asOf: Date()
         )
     }

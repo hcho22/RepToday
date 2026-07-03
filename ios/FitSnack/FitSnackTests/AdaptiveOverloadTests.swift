@@ -234,6 +234,67 @@ final class AdaptiveOverloadTests: XCTestCase {
         XCTAssertLessThan(target.durationSeconds!, 40)
     }
 
+    // MARK: - progressionRate lever (US-E03)
+
+    /// A higher `progressionRate` advances a too-easy target faster; the neutral rate reproduces
+    /// the prior curve exactly.
+    func testProgressionRateAdvancesTooEasyFaster() {
+        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooEasy)]
+        let neutral = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 1.0)
+        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 2.0)
+        XCTAssertEqual(neutral.reps, 14) // round(12 * 1.15)
+        XCTAssertEqual(fast.reps, 16)    // round(12 * (1 + 0.15*2)) = round(15.6)
+        XCTAssertGreaterThan(fast.reps!, neutral.reps!)
+    }
+
+    /// The progressive (unrated / just-right) nudge is paced by the rate too.
+    func testProgressionRateAdvancesProgressiveNudgeFaster() {
+        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)] // unrated
+        let neutral = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 1.0)
+        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 3.0)
+        XCTAssertEqual(neutral.reps, 21) // round(20 * 1.05)
+        XCTAssertEqual(fast.reps, 23)    // round(20 * (1 + 0.05*3)) = round(23.0)
+    }
+
+    /// The default rate parameter equals an explicit neutral `1.0`, so no caller that omits it
+    /// changes behavior (the no-regression guarantee at the unit level).
+    func testDefaultProgressionRateIsNeutral() {
+        let logs = [repsLog(id: "ex", reps: [12, 12], daysAgo: 1, difficulty: .tooEasy)]
+        XCTAssertEqual(
+            AdaptiveOverload.target(for: repsExercise(), recentLogs: logs),
+            AdaptiveOverload.target(
+                for: repsExercise(), recentLogs: logs, progressionRate: AdaptiveOverload.neutralProgressionRate
+            )
+        )
+    }
+
+    /// The rate never scales the `too_hard` ease: a faster program must not back off harder (the
+    /// eager down-step is the Asymmetric Ramp's job in US-E05, not `progressionRate`'s).
+    func testProgressionRateDoesNotScaleTooHardEase() {
+        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooHard)]
+        let neutral = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 1.0)
+        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 3.0)
+        XCTAssertEqual(neutral.reps, 10) // round(12 * 0.85)
+        XCTAssertEqual(fast.reps, neutral.reps, "the too_hard ease is rate-independent")
+    }
+
+    /// A high rate still clamps to the rep safety rail.
+    func testProgressionRateStaysWithinRails() {
+        let logs = [repsLog(id: "ex", reps: [45, 45], daysAgo: 1, difficulty: .tooEasy)]
+        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 5.0)
+        XCTAssertEqual(fast.reps, AdaptiveOverload.maxReps) // round(45 * 1.75)=79, clamped to 50
+    }
+
+    /// Holds advance faster under a higher rate too, in seconds.
+    func testProgressionRateAdvancesHoldsFaster() {
+        let logs = [holdLog(id: "ex", seconds: [30, 30], daysAgo: 1, difficulty: .tooEasy)]
+        let neutral = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs, progressionRate: 1.0)
+        let fast = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs, progressionRate: 2.0)
+        XCTAssertEqual(neutral.durationSeconds, 35) // round(30 * 1.15)
+        XCTAssertEqual(fast.durationSeconds, 39)    // round(30 * 1.30)
+        XCTAssertGreaterThan(fast.durationSeconds!, neutral.durationSeconds!)
+    }
+
     // MARK: - Capacity, not a fixed number
 
     /// Every target is capacity-relative: different demonstrated capacities yield different targets,

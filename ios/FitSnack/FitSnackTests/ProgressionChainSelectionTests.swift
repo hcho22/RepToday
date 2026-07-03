@@ -396,6 +396,51 @@ final class ProgressionChainSelectionTests: XCTestCase {
         )
     }
 
+    // MARK: - select(pattern:): tunable varietyWindow (US-E03)
+
+    /// The `varietyWindow` lever tunes how many recent sessions the no-repeat rule looks back over.
+    /// a0 was worked two sessions ago (not cleared, so chain A's pick stays a0) with a newer,
+    /// unrelated session on top. A window of 1 does not reach a0's session, so the actively-worked
+    /// chain A wins with a0; a window of 2 reaches it, marking a0 recently used, so the fresh chain
+    /// B is preferred instead.
+    func testVarietyWindowControlsHowManyRecentSessionsAreAvoided() {
+        let library = makeChain("a", [(id: "a0", difficulty: 1, criteria: "3x12 clean reps")])
+            + makeChain("b", [(id: "b0", difficulty: 1, criteria: "3x12 clean reps")])
+        let logs = [
+            repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 2), // a0 used, not cleared
+            repsLog(id: "unrelated", reps: [10, 10], pattern: .core, daysAgo: 1), // newer, distinct
+        ]
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs, varietyWindow: 1
+            )?.exercise.id,
+            "a0"
+        )
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs, varietyWindow: 2
+            )?.exercise.id,
+            "b0"
+        )
+    }
+
+    /// The default `varietyWindow` parameter equals an explicit `recentSessionWindow`, so a caller
+    /// that omits it keeps the pre-policy behavior exactly.
+    func testDefaultVarietyWindowMatchesRecentSessionWindow() {
+        let library = makeChain("a", [(id: "a0", difficulty: 1, criteria: "3x12 clean reps")])
+            + makeChain("b", [(id: "b0", difficulty: 1, criteria: "3x12 clean reps")])
+        let logs = [repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 1)]
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs
+            ),
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs,
+                varietyWindow: ProgressionChainSelection.recentSessionWindow
+            )
+        )
+    }
+
     // MARK: - Determinism
 
     func testSelectionIsDeterministic() {

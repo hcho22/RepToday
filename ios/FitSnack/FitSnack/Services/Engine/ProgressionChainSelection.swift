@@ -136,9 +136,10 @@ struct ChainSelection: Equatable {
 /// Selects the right progression-chain exercise for a pattern (pipeline Step 5).
 enum ProgressionChainSelection {
 
-    /// How many of the most recent sessions count toward the variety rule: an exercise worked in
-    /// any of the last `recentSessionWindow` sessions is avoided when a fresher candidate exists.
-    /// Tunable.
+    /// The default no-repeat variety window: an exercise worked in any of the last this-many
+    /// sessions is avoided when a fresher candidate exists. This is the neutral value the Session
+    /// Policy carries (`SessionPolicy.default.varietyWindow == 3`); callers pass a per-user window
+    /// through `select(pattern:...)` (US-E03), and it stays the fallback when none is supplied.
     static let recentSessionWindow = 3
 
     // MARK: Per-chain selection
@@ -197,14 +198,19 @@ enum ProgressionChainSelection {
     /// `library` is the full catalog (so each chain is reasoned about end-to-end); `pool` is the
     /// eligible pool from Step 4 (so only safe, level-appropriate tiers are prescribable). Each
     /// chain present for the pattern is resolved by `selectInChain`; among the resulting
-    /// candidates a fresh one (not used in the last `recentSessionWindow` sessions) is preferred,
+    /// candidates a fresh one (not used in the last `varietyWindow` sessions) is preferred,
     /// and ties break toward the chain the user is actively progressing, then the gentler option,
     /// deterministically. Returns `nil` when the pattern has no eligible tier in any chain.
+    ///
+    /// `varietyWindow` is the Session Policy lever (US-E03) replacing the previously hardcoded
+    /// no-repeat window; it defaults to `recentSessionWindow` so a caller that does not pass a
+    /// policy keeps the pre-policy behavior exactly.
     static func select(
         pattern: MovementPattern,
         library: [Exercise],
         pool: [Exercise],
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        varietyWindow: Int = recentSessionWindow
     ) -> ChainSelection? {
         let eligibleIds = Set(pool.map(\.id))
         let chains = Dictionary(
@@ -219,7 +225,7 @@ enum ProgressionChainSelection {
             }
         guard !candidates.isEmpty else { return nil }
 
-        let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs)
+        let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs, window: varietyWindow)
         let lastWorked = lastWorkedByChain(recentLogs: recentLogs, library: library)
 
         // Prefer candidates whose chosen exercise was not used in the last few sessions; fall back
@@ -294,13 +300,13 @@ enum ProgressionChainSelection {
         }
     }
 
-    /// Ids worked (non-skipped) in the most recent `recentSessionWindow` sessions, used to avoid
-    /// repeating an exercise for variety. The window is by distinct session recency, not by how
-    /// many logs the caller happened to pass.
-    private static func recentlyUsedExerciseIds(recentLogs: [WorkoutLog]) -> Set<String> {
+    /// Ids worked (non-skipped) in the most recent `window` sessions, used to avoid repeating an
+    /// exercise for variety. The window is by distinct session recency, not by how many logs the
+    /// caller happened to pass.
+    private static func recentlyUsedExerciseIds(recentLogs: [WorkoutLog], window: Int) -> Set<String> {
         let recentSessions = recentLogs
             .sorted { $0.completedAt > $1.completedAt }
-            .prefix(recentSessionWindow)
+            .prefix(max(0, window))
         return recentSessions.reduce(into: Set<String>()) { ids, log in
             for logged in log.exercises where !logged.skipped {
                 ids.insert(logged.exerciseId)

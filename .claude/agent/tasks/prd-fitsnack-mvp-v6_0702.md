@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01 done); Epics F-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01-E03 done); Epics F-N not started (`[ ]`).
 
 ---
 
@@ -231,11 +231,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `SessionAssembly.assemble(...)` accepts a `sessionPolicy:` parameter and threads it through Steps 2, 5, and 6
-- [ ] `pillarWeighting` scales pillar staleness in Step 2 (`PillarBalance`); a heavier weight on a pillar measurably increases its share of session time
-- [ ] `progressionRate` scales the Adaptive Overload bump in Step 6 (`AdaptiveOverload.target`); a higher rate advances reps/holds faster, still clamped to the existing safety rails
-- [ ] `varietyWindow` replaces the hardcoded no-repeat window in Step 5 (`ProgressionChainSelection`, currently `recentSessionWindow = 3`) so it is tunable per user
-- [ ] With `SessionPolicy.default`, output is identical to pre-policy behavior (no regression); `SessionAssemblyTests`/`AdaptiveOverloadTests`/`ProgressionChainSelectionTests` extended; build and tests pass
+- [x] `SessionAssembly.assemble(...)` accepts a `sessionPolicy:` parameter and threads it through Steps 2, 5, and 6
+- [x] `pillarWeighting` scales pillar staleness in Step 2 (`PillarBalance`); a heavier weight on a pillar measurably increases its share of session time
+- [x] `progressionRate` scales the Adaptive Overload bump in Step 6 (`AdaptiveOverload.target`); a higher rate advances reps/holds faster, still clamped to the existing safety rails
+- [x] `varietyWindow` replaces the hardcoded no-repeat window in Step 5 (`ProgressionChainSelection`, currently `recentSessionWindow = 3`) so it is tunable per user
+- [x] With `SessionPolicy.default`, output is identical to pre-policy behavior (no regression); `SessionAssemblyTests`/`AdaptiveOverloadTests`/`ProgressionChainSelectionTests` extended; build and tests pass
 
 **Validation Test:**
 

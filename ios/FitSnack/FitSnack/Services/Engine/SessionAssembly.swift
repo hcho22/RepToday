@@ -76,11 +76,18 @@ enum SessionAssembly {
     /// warm-up / training / cooldown blocks per the Step 1 shape, and timing-fits it to within
     /// `toleranceSeconds` of the request. `asOf` is the reference "now" (used for `createdAt` and all
     /// staleness math) so the function stays a pure function of its inputs.
+    ///
+    /// `sessionPolicy` is the per-user program the engine runs on (US-E03): its `pillarWeighting`
+    /// scales Step 2's staleness split, its `varietyWindow` sets Step 5's no-repeat window, and its
+    /// `progressionRate` paces Step 6's overload bump. It defaults to `SessionPolicy.default` (every
+    /// lever neutral), which reproduces pre-policy behavior exactly, so an unpolicied caller is
+    /// unchanged.
     static func assemble(
         requestedMinutes: Int,
         user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy = .default,
         asOf: Date,
         calendar: Calendar = .current
     ) -> Workout {
@@ -89,6 +96,7 @@ enum SessionAssembly {
             template: template,
             recentLogs: recentLogs,
             profile: user.profile,
+            pillarWeighting: sessionPolicy.pillarWeighting,
             asOf: asOf,
             calendar: calendar
         )
@@ -98,6 +106,7 @@ enum SessionAssembly {
             user: user,
             library: library,
             recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
             asOf: asOf,
             calendar: calendar
         )
@@ -125,12 +134,14 @@ enum SessionAssembly {
     /// Builds the seeded block skeleton (warm-up, the pillar plan's training block(s) with their
     /// weight targets, and an optional cooldown) before the timing fit - the structural output of
     /// Steps 1-6. Exposed internally so tests can inspect block reserves and per-block weight targets
-    /// prior to the global fit consuming them.
+    /// prior to the global fit consuming them. `sessionPolicy` threads the US-E03 levers into
+    /// Steps 2/5/6 (see `assemble`); it defaults to `SessionPolicy.default` (neutral, no regression).
     static func planBlocks(
         requestedMinutes: Int,
         user: User,
         library: [Exercise],
         recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy = .default,
         asOf: Date,
         calendar: Calendar = .current
     ) -> [PlannedBlock] {
@@ -139,6 +150,7 @@ enum SessionAssembly {
             template: template,
             recentLogs: recentLogs,
             profile: user.profile,
+            pillarWeighting: sessionPolicy.pillarWeighting,
             asOf: asOf,
             calendar: calendar
         )
@@ -147,6 +159,8 @@ enum SessionAssembly {
             library: library,
             pool: pool,
             recentLogs: recentLogs,
+            progressionRate: sessionPolicy.progressionRate,
+            varietyWindow: sessionPolicy.varietyWindow,
             asOf: asOf,
             calendar: calendar
         )
@@ -385,6 +399,11 @@ private struct Builder {
     let library: [Exercise]
     let pool: [Exercise]
     let recentLogs: [WorkoutLog]
+    /// Session Policy lever (US-E03): paces Step 6's overload bump. `1.0` is neutral.
+    let progressionRate: Double
+    /// Session Policy lever (US-E03): Step 5's no-repeat variety window, also mirrored by the
+    /// mobility variety ordering so both use the same per-user window.
+    let varietyWindow: Int
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -539,12 +558,17 @@ private struct Builder {
                     pattern: pattern,
                     library: library,
                     pool: pool,
-                    recentLogs: recentLogs
+                    recentLogs: recentLogs,
+                    varietyWindow: varietyWindow
                 ),
                 !usedIds.contains(selection.exercise.id)
             else { continue }
 
-            let target = AdaptiveOverload.target(for: selection.exercise, recentLogs: recentLogs)
+            let target = AdaptiveOverload.target(
+                for: selection.exercise,
+                recentLogs: recentLogs,
+                progressionRate: progressionRate
+            )
             usedIds.insert(selection.exercise.id)
             items.append(
                 PlannedItem(
@@ -579,13 +603,18 @@ private struct Builder {
                 pattern: .locomotion,
                 library: library,
                 pool: pool,
-                recentLogs: recentLogs
+                recentLogs: recentLogs,
+                varietyWindow: varietyWindow
             ),
             selection.exercise.pillar == .primal,
             !usedIds.contains(selection.exercise.id)
         else { return nil }
 
-        let target = AdaptiveOverload.target(for: selection.exercise, recentLogs: recentLogs)
+        let target = AdaptiveOverload.target(
+            for: selection.exercise,
+            recentLogs: recentLogs,
+            progressionRate: progressionRate
+        )
         usedIds.insert(selection.exercise.id)
         let item = PlannedItem(
             exercise: selection.exercise,
@@ -610,7 +639,11 @@ private struct Builder {
     /// claiming each id so no later block reuses it.
     private mutating func mobilityItems(from exercises: [Exercise], cap: Int) -> [PlannedItem] {
         exercises.prefix(cap).map { exercise in
-            let target = AdaptiveOverload.target(for: exercise, recentLogs: recentLogs)
+            let target = AdaptiveOverload.target(
+                for: exercise,
+                recentLogs: recentLogs,
+                progressionRate: progressionRate
+            )
             usedIds.insert(exercise.id)
             return PlannedItem(
                 exercise: exercise,
@@ -695,11 +728,12 @@ private struct Builder {
     }
 
     /// Ids worked (non-skipped) in the most recent few sessions, pushed back in variety ordering so
-    /// the user is not handed the same stretch two sessions running. Window mirrors Step 5's.
+    /// the user is not handed the same stretch two sessions running. The window is the policy's
+    /// `varietyWindow`, mirroring Step 5's no-repeat window per user (US-E03).
     private func recentlyUsedIds() -> Set<String> {
         let recentSessions = recentLogs
             .sorted { $0.completedAt > $1.completedAt }
-            .prefix(ProgressionChainSelection.recentSessionWindow)
+            .prefix(max(0, varietyWindow))
         return recentSessions.reduce(into: Set<String>()) { ids, log in
             for logged in log.exercises where !logged.skipped {
                 ids.insert(logged.exerciseId)

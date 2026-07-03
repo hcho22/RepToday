@@ -392,6 +392,100 @@ final class SessionAssemblyTests: XCTestCase {
         )
     }
 
+    // MARK: - Session Policy levers (US-E03)
+
+    /// Passing `SessionPolicy.default` reproduces the unpoliced assembly exactly - wiring the policy
+    /// through the pipeline is a no-op at the neutral levers (no regression).
+    func testDefaultPolicyReproducesUnpolicedOutput() async throws {
+        let library = try await library()
+        let user = user()
+        let logs = someHistory()
+        for minutes in [10, 20, 30, 50] {
+            let unpoliced = assemble(minutes: minutes, user: user, library: library, logs: logs)
+            let defaulted = SessionAssembly.assemble(
+                requestedMinutes: minutes, user: user, library: library,
+                recentLogs: logs, sessionPolicy: .default, asOf: asOf, calendar: calendar
+            )
+            XCTAssertEqual(
+                structuralSignature(defaulted), structuralSignature(unpoliced),
+                "\(minutes) min: passing SessionPolicy.default must match the unpoliced call"
+            )
+        }
+    }
+
+    /// The PRD validation: doubling `pillarWeighting[.mobility]` gives the mobility block a larger
+    /// share of session time than the neutral default policy does. Strength and mobility are equally
+    /// stale here, so the neutral split is even and the weighting lever is the only mover.
+    func testPillarWeightingIncreasesMobilityTimeShare() async throws {
+        let library = try await library()
+        let logs = [log([
+            ("push_standard", .strength, .push, 12),
+            ("mobility_cat_cow", .mobility, .mobility, 10),
+        ], daysAgo: 2)]
+
+        func mobilitySeconds(_ policy: SessionPolicy) throws -> Int {
+            let workout = SessionAssembly.assemble(
+                requestedMinutes: 30, user: user(), library: library,
+                recentLogs: logs, sessionPolicy: policy, asOf: asOf, calendar: calendar
+            )
+            return plannedSeconds(try XCTUnwrap(workout.blocks.first { $0.category == .mobility }))
+        }
+
+        var heavyMobility = SessionPolicy.default
+        heavyMobility.pillarWeighting[.mobility] = 2.0
+
+        let neutral = try mobilitySeconds(.default)
+        let weighted = try mobilitySeconds(heavyMobility)
+        XCTAssertGreaterThan(
+            weighted, neutral,
+            "doubling mobility weighting must give the mobility block more planned time"
+        )
+    }
+
+    /// A higher `progressionRate` paces Step 6's overload bump end-to-end: the squat lead of this
+    /// single-focus strength session (worked six days ago at capacity 15, below its 3x20 criteria so
+    /// it stays on tier) carries a heavier rep target under a faster program, still within the rails.
+    func testProgressionRatePacesTheOverloadBumpInAssembly() async throws {
+        let library = try await library()
+        // Squat is the stalest strength/primal pattern (worked 6 days ago); every other pattern is
+        // fresh (worked yesterday) and mobility was worked today, so a not-sits-long single-focus
+        // session trains strength and leads with squat_bodyweight.
+        let logs = [
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 0),
+            log([
+                ("push_standard", .strength, .push, 10),
+                ("hinge_glute_bridge", .strength, .hinge, 10),
+                ("core_bird_dog", .strength, .core, 10),
+                ("pull_superman", .strength, .pull, 10),
+                ("primal_bear_crawl", .primal, .locomotion, 10),
+            ], daysAgo: 1),
+            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 6, difficulty: .justRight),
+        ]
+
+        func squatReps(rate: Double) throws -> Int {
+            var policy = SessionPolicy.default
+            policy.progressionRate = rate
+            // Pin the variety window to 1 so both runs select identically (squat_bodyweight, worked
+            // six days ago, is outside a 1-session no-repeat window and stays the active-chain pick)
+            // - isolating progressionRate as the only difference between the two targets.
+            policy.varietyWindow = 1
+            let workout = SessionAssembly.assemble(
+                requestedMinutes: 10, user: user(), library: library,
+                recentLogs: logs, sessionPolicy: policy, asOf: asOf, calendar: calendar
+            )
+            let squat = try XCTUnwrap(
+                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
+                "squat_bodyweight should lead this single-focus strength session"
+            )
+            return try XCTUnwrap(squat.reps)
+        }
+
+        let neutral = try squatReps(rate: 1.0)
+        let fast = try squatReps(rate: 4.0)
+        XCTAssertGreaterThan(fast, neutral, "a higher progressionRate must advance the rep target faster")
+        XCTAssertLessThanOrEqual(fast, AdaptiveOverload.maxReps, "still clamped to the safety rail")
+    }
+
     // MARK: - Determinism (content, not ids)
 
     func testAssemblyIsDeterministic() async throws {
