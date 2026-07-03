@@ -179,6 +179,31 @@ final class ModelsTests: XCTestCase {
         assertRoundTrip(makeWorkoutLog(focusPillar: nil, difficulty: nil))
     }
 
+    /// US-D02: the requested-vs-completed durations and the `wasReturn` flag survive a
+    /// round-trip. Here the session was requested at 20 min, completed at 15, and served as
+    /// a Return - the exact shape the Re-entry Ramp and Default Duration learning read back.
+    func testWorkoutLogRoundTripReturnWithDurationGap() {
+        let log = makeWorkoutLog(
+            focusPillar: .strength, difficulty: .tooHard,
+            requestedMinutes: 20, wasReturn: true
+        )
+        XCTAssertEqual(log.requestedMinutes, 20)
+        XCTAssertEqual(log.durationMinutes, 15)
+        XCTAssertTrue(log.wasReturn)
+        assertRoundTrip(log)
+    }
+
+    /// `wasReturn` defaults to `false` when omitted, so an ordinary logged session is never
+    /// mistaken for a Return.
+    func testWorkoutLogWasReturnDefaultsFalse() {
+        let log = WorkoutLog(
+            id: uuidA, workoutId: uuidB, completedAt: dateB,
+            requestedMinutes: 15, durationMinutes: 15,
+            shape: .blend, focusPillar: nil, perceivedDifficulty: nil, exercises: []
+        )
+        XCTAssertFalse(log.wasReturn)
+    }
+
     // MARK: - Round-trip helper
 
     /// Encodes then decodes `value` and asserts the result equals the original.
@@ -275,12 +300,19 @@ final class ModelsTests: XCTestCase {
         )
     }
 
-    private func makeWorkoutLog(focusPillar: Pillar?, difficulty: PerceivedDifficulty?) -> WorkoutLog {
+    private func makeWorkoutLog(
+        focusPillar: Pillar?,
+        difficulty: PerceivedDifficulty?,
+        requestedMinutes: Int = 20,
+        wasReturn: Bool = false
+    ) -> WorkoutLog {
         WorkoutLog(
             id: uuidA,
             workoutId: uuidB,
             completedAt: dateB,
+            requestedMinutes: requestedMinutes,
             durationMinutes: 15,
+            wasReturn: wasReturn,
             shape: focusPillar == nil ? .blend : .singleFocus,
             focusPillar: focusPillar,
             perceivedDifficulty: difficulty,

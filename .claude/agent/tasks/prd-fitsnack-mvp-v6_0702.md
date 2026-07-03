@@ -126,10 +126,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `Models/WorkoutLog.swift` adds `requestedMinutes: Int` (what the Ready Screen offered or the user set) and `wasReturn: Bool`
-- [ ] `durationMinutes` (already present) is documented as the actually-completed duration that feeds `completedDurationEWMA`
-- [ ] `Persistence/CDWorkoutLog.swift` and `PersistenceCoding.swift` persist both new fields; a legacy log without them decodes to `requestedMinutes == durationMinutes` and `wasReturn == false`
-- [ ] `ModelsTests`/`PersistenceTests` extended for round-trip stability; build and tests pass
+- [x] `Models/WorkoutLog.swift` adds `requestedMinutes: Int` (what the Ready Screen offered or the user set) and `wasReturn: Bool`
+- [x] `durationMinutes` (already present) is documented as the actually-completed duration that feeds `completedDurationEWMA`
+- [x] `Persistence/CDWorkoutLog.swift` and `PersistenceCoding.swift` persist both new fields; a legacy log without them decodes to `requestedMinutes == durationMinutes` and `wasReturn == false`
+- [x] `ModelsTests`/`PersistenceTests` extended for round-trip stability; build and tests pass
 
 **Validation Test:**
 

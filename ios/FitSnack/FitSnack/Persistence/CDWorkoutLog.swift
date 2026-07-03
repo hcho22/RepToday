@@ -8,7 +8,10 @@ import Foundation
 /// stored as JSON-encoded `Data`. `completedAt` is a native `Date` precisely so logs can
 /// be fetched by date range (staleness windows, the Progress calendar) without decoding
 /// every record. As with `CDUser`, attributes are optional for CloudKit (US-J02) and
-/// `toWorkoutLog()` re-imposes the non-optional domain contract.
+/// `toWorkoutLog()` re-imposes the non-optional domain contract - except the additive v6
+/// `requestedMinutes`/`wasReturn` columns (US-D02), which are stored as optional `NSNumber`
+/// so a legacy log written before they existed reads back as `nil` and decodes to the
+/// documented defaults (`requestedMinutes == durationMinutes`, `wasReturn == false`).
 @objc(CDWorkoutLog)
 final class CDWorkoutLog: NSManagedObject {
     @nonobjc class func fetchRequest() -> NSFetchRequest<CDWorkoutLog> {
@@ -23,6 +26,10 @@ final class CDWorkoutLog: NSManagedObject {
     @NSManaged var focusPillarRaw: String?
     @NSManaged var perceivedDifficultyRaw: String?
     @NSManaged var exercisesData: Data?
+    // v6 additive columns (US-D02). Optional `NSNumber` so absence is detectable: nil on a
+    // legacy record, which `toWorkoutLog()` fills with documented defaults instead of throwing.
+    @NSManaged var requestedMinutes: NSNumber?
+    @NSManaged var wasReturn: NSNumber?
 }
 
 // MARK: - Domain conversion
@@ -54,11 +61,19 @@ extension CDWorkoutLog {
             return difficulty
         }
 
+        // Additive v6 columns (US-D02) decode with backward-compatible defaults: a legacy log
+        // has nil columns, so `requestedMinutes` falls back to the completed `durationMinutes`
+        // and `wasReturn` to false rather than failing to load.
+        let requestedMinutes = self.requestedMinutes?.intValue ?? durationMinutes
+        let wasReturn = self.wasReturn?.boolValue ?? false
+
         return WorkoutLog(
             id: id,
             workoutId: workoutId,
             completedAt: completedAt,
+            requestedMinutes: requestedMinutes,
             durationMinutes: durationMinutes,
+            wasReturn: wasReturn,
             shape: shape,
             focusPillar: focusPillar,
             perceivedDifficulty: perceivedDifficulty,
@@ -71,7 +86,9 @@ extension CDWorkoutLog {
         id = log.id
         workoutId = log.workoutId
         completedAt = log.completedAt
+        requestedMinutes = NSNumber(value: log.requestedMinutes)
         durationMinutes = log.durationMinutes
+        wasReturn = NSNumber(value: log.wasReturn)
         shapeRaw = log.shape.rawValue
         focusPillarRaw = log.focusPillar?.rawValue
         perceivedDifficultyRaw = log.perceivedDifficulty?.rawValue

@@ -34,6 +34,7 @@ final class PillarBalanceTests: XCTestCase {
             id: UUID(),
             workoutId: UUID(),
             completedAt: date(daysAgo: daysAgo),
+            requestedMinutes: 10,
             durationMinutes: 10,
             shape: pillars.count > 1 ? .blend : .singleFocus,
             focusPillar: pillars.count == 1 ? pillars.first : nil,

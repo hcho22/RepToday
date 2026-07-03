@@ -153,6 +153,45 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(reloaded.perceivedDifficulty)
     }
 
+    /// US-D02 validation test: a log requested at 20 min, completed in 12, and served as a
+    /// Return round-trips all three fields identically through the CoreData layer.
+    func testSaveAndReloadWorkoutLogPreservesV6Fields() throws {
+        let log = makeWorkoutLog(
+            focusPillar: .strength, difficulty: .tooHard, completedAt: dateB,
+            requestedMinutes: 20, durationMinutes: 12, wasReturn: true
+        )
+
+        try insert(log)
+        let reloaded = try XCTUnwrap(fetchAllLogs().first).toWorkoutLog()
+
+        XCTAssertEqual(reloaded, log)
+        XCTAssertEqual(reloaded.requestedMinutes, 20)
+        XCTAssertEqual(reloaded.durationMinutes, 12)
+        XCTAssertTrue(reloaded.wasReturn)
+    }
+
+    /// A pre-v6 log - one whose `requestedMinutes`/`wasReturn` columns are nil because it was
+    /// written before those fields existed - decodes to the documented defaults rather than
+    /// crashing: `requestedMinutes` falls back to the completed `durationMinutes`, `wasReturn`
+    /// to false.
+    func testLegacyWorkoutLogRecordDecodesV6Defaults() throws {
+        let log = makeWorkoutLog(
+            focusPillar: .strength, difficulty: .tooHard, completedAt: dateB,
+            requestedMinutes: 20, durationMinutes: 12, wasReturn: true
+        )
+        let cd = CDWorkoutLog(context: context)
+        try cd.update(from: log)
+        // Simulate a legacy record: clear the additive v6 columns.
+        cd.requestedMinutes = nil
+        cd.wasReturn = nil
+
+        let reloaded = try cd.toWorkoutLog()
+
+        XCTAssertEqual(reloaded.requestedMinutes, reloaded.durationMinutes)
+        XCTAssertEqual(reloaded.requestedMinutes, 12)
+        XCTAssertFalse(reloaded.wasReturn)
+    }
+
     // MARK: - WorkoutLog date-range query
 
     func testQueryWorkoutLogsByDateRange() throws {
@@ -251,13 +290,18 @@ final class PersistenceTests: XCTestCase {
         focusPillar: Pillar?,
         difficulty: PerceivedDifficulty?,
         completedAt: Date,
-        id: UUID? = nil
+        id: UUID? = nil,
+        requestedMinutes: Int = 20,
+        durationMinutes: Int = 15,
+        wasReturn: Bool = false
     ) -> WorkoutLog {
         WorkoutLog(
             id: id ?? uuidA,
             workoutId: uuidB,
             completedAt: completedAt,
-            durationMinutes: 15,
+            requestedMinutes: requestedMinutes,
+            durationMinutes: durationMinutes,
+            wasReturn: wasReturn,
             shape: focusPillar == nil ? .blend : .singleFocus,
             focusPillar: focusPillar,
             perceivedDifficulty: difficulty,

@@ -58,7 +58,8 @@ enum MockPersistence {
         return [
             WorkoutLog(
                 id: UUID(), workoutId: UUID(),
-                completedAt: base - 2 * day, durationMinutes: 15, shape: .blend,
+                completedAt: base - 2 * day, requestedMinutes: 15, durationMinutes: 15,
+                wasReturn: false, shape: .blend,
                 focusPillar: nil, perceivedDifficulty: .justRight,
                 exercises: [
                     LoggedExercise(
@@ -72,7 +73,8 @@ enum MockPersistence {
             ),
             WorkoutLog(
                 id: UUID(), workoutId: UUID(),
-                completedAt: base, durationMinutes: 10, shape: .singleFocus,
+                completedAt: base, requestedMinutes: 15, durationMinutes: 10,
+                wasReturn: false, shape: .singleFocus,
                 focusPillar: .mobility, perceivedDifficulty: .tooEasy,
                 exercises: [
                     LoggedExercise(
