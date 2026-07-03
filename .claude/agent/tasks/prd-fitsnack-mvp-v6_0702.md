@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epics D-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D in progress (US-D01-D03 done, US-D04 pending); Epics E-N not started (`[ ]`).
 
 ---
 
@@ -146,10 +146,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] New `Models/SessionPolicy.swift` defines `SessionPolicy` with: `version: Int`, `updatedAt: Date`, `updatedBy` (`default`/`deterministic`/`llm`), `progressionRate: Double`, `pillarWeighting: [Pillar: Double]`, `varietyWindow: Int`, optional `coldStartContract` (`forceContrastSpread: Bool`, `cappedMaxDifficulty: Int` in 1...5), optional `reentry` (`rampSessionsRemaining: Int`), optional `note` (`text: String`, `source`: `template`/`llm`)
-- [ ] A `SessionPolicy.default(for:)` (or `static let default`) produces a sensible policy for a fresh user: `progressionRate == 1.0`, equal `pillarWeighting` across `strength`/`mobility`/`primal`, `varietyWindow == 3`, `updatedBy == .default`
-- [ ] The type is `Codable`/`Equatable` and persists (CoreData or a dedicated store) so the last-written policy survives relaunch and offline use
-- [ ] Unit tests assert the default policy is valid and deterministic; build and tests pass
+- [x] New `Models/SessionPolicy.swift` defines `SessionPolicy` with: `version: Int`, `updatedAt: Date`, `updatedBy` (`default`/`deterministic`/`llm`), `progressionRate: Double`, `pillarWeighting: [Pillar: Double]`, `varietyWindow: Int`, optional `coldStartContract` (`forceContrastSpread: Bool`, `cappedMaxDifficulty: Int` in 1...5), optional `reentry` (`rampSessionsRemaining: Int`), optional `note` (`text: String`, `source`: `template`/`llm`)
+- [x] A `SessionPolicy.default(for:)` (or `static let default`) produces a sensible policy for a fresh user: `progressionRate == 1.0`, equal `pillarWeighting` across `strength`/`mobility`/`primal`, `varietyWindow == 3`, `updatedBy == .default`
+- [x] The type is `Codable`/`Equatable` and persists (CoreData or a dedicated store) so the last-written policy survives relaunch and offline use
+- [x] Unit tests assert the default policy is valid and deterministic; build and tests pass
 
 **Validation Test:**
 
