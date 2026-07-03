@@ -30,10 +30,14 @@ protocol ExerciseServiceProtocol {
 
 /// Generates complete workouts and deterministic in-session swaps.
 protocol WorkoutEngineProtocol {
+    /// Assembles a complete session. `sessionPolicy` is the per-user program the engine runs
+    /// on (US-D04 seam): `SessionPolicy.default` reproduces pre-policy behavior exactly, and
+    /// the policy's levers are threaded into the pipeline's Steps 2/5/6 in US-E03.
     func generateWorkout(
         requestedMinutes: Int,
         user: User,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
     ) async throws -> Workout
 
     /// Resolves a deterministic substitute for one prescribed slot (US-C08), or `.noAlternative`
@@ -44,6 +48,38 @@ protocol WorkoutEngineProtocol {
         user: User,
         recentLogs: [WorkoutLog]
     ) async throws -> SwapOutcome
+}
+
+/// Reads, re-programs, and detects triggers for the per-user Session Policy - the single seam
+/// between the AI Programmer (Epic F) and the engine (Epic E).
+///
+/// The Programmer *writes* a policy and the engine *reads* one; they never otherwise touch, so
+/// swapping the mock for the real deterministic Programmer is a one-line change in
+/// `ServiceContainer`. The policy is always valid: before the Programmer has ever run,
+/// `currentPolicy(for:)` returns `SessionPolicy.default`, so the engine generates sessions
+/// offline from day one.
+protocol SessionPolicyServiceProtocol {
+    /// The policy currently in force for `user` - always valid, `SessionPolicy.default` until
+    /// the Programmer has written one (US-D03).
+    func currentPolicy(for user: User) async throws -> SessionPolicy
+
+    /// Writes and returns a fresh policy in response to `trigger`, reading `recentLogs` for
+    /// context (US-F03). The version increments and the change is felt on the next open, never
+    /// mid-session.
+    func reprogram(
+        user: User,
+        recentLogs: [WorkoutLog],
+        trigger: ReprogramTrigger
+    ) async throws -> SessionPolicy
+
+    /// The re-program triggers due as of `asOf`, in precedence order (US-F01). Pure and
+    /// deterministic for a given `(user, recentLogs, asOf)` - the clock is passed in, never
+    /// read inside the logic.
+    func dueTriggers(
+        user: User,
+        recentLogs: [WorkoutLog],
+        asOf: Date
+    ) async throws -> [ReprogramTrigger]
 }
 
 /// Calculates the forgiving consistency score from completed workouts.

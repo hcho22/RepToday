@@ -9,6 +9,7 @@ import SwiftUI
 struct ServiceContainer {
     let exerciseService: any ExerciseServiceProtocol
     let workoutEngine: any WorkoutEngineProtocol
+    let sessionPolicyService: any SessionPolicyServiceProtocol
     let consistencyService: any ConsistencyServiceProtocol
     let phaseService: any PhaseServiceProtocol
     let userService: any UserServiceProtocol
@@ -20,6 +21,7 @@ struct ServiceContainer {
     init(
         exerciseService: any ExerciseServiceProtocol,
         workoutEngine: any WorkoutEngineProtocol,
+        sessionPolicyService: any SessionPolicyServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol,
         phaseService: any PhaseServiceProtocol,
         userService: any UserServiceProtocol,
@@ -30,6 +32,7 @@ struct ServiceContainer {
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
+        self.sessionPolicyService = sessionPolicyService
         self.consistencyService = consistencyService
         self.phaseService = phaseService
         self.userService = userService
@@ -48,6 +51,7 @@ struct ServiceContainer {
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
+            sessionPolicyService: MockSessionPolicyService(),
             consistencyService: MockConsistencyService(),
             phaseService: MockPhaseService(),
             userService: MockUserService(),

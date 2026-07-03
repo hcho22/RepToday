@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D in progress (US-D01-D03 done, US-D04 pending); Epics E-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epics E-N not started (`[ ]`).
 
 ---
 
@@ -166,11 +166,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] New `ReprogramTrigger` type with `kind` (`weekly_boundary`/`return`/`physical_stall`/`disengagement`) and `detectedAt: Date`
-- [ ] `Services/Protocols/ServiceProtocols.swift` adds `SessionPolicyServiceProtocol` with `async throws` methods: `currentPolicy(for:) -> SessionPolicy`, `reprogram(user:recentLogs:trigger:) -> SessionPolicy`, and `dueTriggers(user:recentLogs:asOf:) -> [ReprogramTrigger]`
-- [ ] A `MockSessionPolicyService` returns `SessionPolicy.default` and no due triggers; it is wired into `DI/ServiceContainer.swift` (`ServiceContainer` and `.mock()`)
-- [ ] `WorkoutEngineProtocol.generateWorkout(...)` gains a `sessionPolicy:` parameter (or the engine reads it via the container); the mock engine still generates correctly
-- [ ] `ServiceContainerTests` extended to resolve the new service; build and tests pass
+- [x] New `ReprogramTrigger` type with `kind` (`weekly_boundary`/`return`/`physical_stall`/`disengagement`) and `detectedAt: Date`
+- [x] `Services/Protocols/ServiceProtocols.swift` adds `SessionPolicyServiceProtocol` with `async throws` methods: `currentPolicy(for:) -> SessionPolicy`, `reprogram(user:recentLogs:trigger:) -> SessionPolicy`, and `dueTriggers(user:recentLogs:asOf:) -> [ReprogramTrigger]`
+- [x] A `MockSessionPolicyService` returns `SessionPolicy.default` and no due triggers; it is wired into `DI/ServiceContainer.swift` (`ServiceContainer` and `.mock()`)
+- [x] `WorkoutEngineProtocol.generateWorkout(...)` gains a `sessionPolicy:` parameter (or the engine reads it via the container); the mock engine still generates correctly
+- [x] `ServiceContainerTests` extended to resolve the new service; build and tests pass
 
 **Validation Test:**
 
