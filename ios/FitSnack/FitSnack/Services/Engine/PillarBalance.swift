@@ -109,7 +109,7 @@ enum PillarPlan: Equatable {
         switch template {
         case .singleFocus:
             return .single(singlePillar(staleness: staleness, sitsLong: profile.sitsLong))
-        case .blendLight, .blendFull:
+        case .blendLight, .blendFull, .blendExtended:
             return .blend(blendWeights(staleness: staleness))
         }
     }

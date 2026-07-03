@@ -123,7 +123,7 @@ enum PrimaryGoal: String, Codable, CaseIterable, Identifiable, Hashable {
 // MARK: - SessionShape
 
 /// The structural shape the engine selects from requested minutes:
-/// `singleFocus` for 5-10 min (one pillar, done well) and `blend` for 15+ min
+/// `singleFocus` for 5-10 min (one pillar, done well) and `blend` for 11-60 min
 /// (both pillars, warm-up always, cooldown over 10 min).
 enum SessionShape: String, Codable, CaseIterable, Identifiable, Hashable {
     case singleFocus = "single_focus"

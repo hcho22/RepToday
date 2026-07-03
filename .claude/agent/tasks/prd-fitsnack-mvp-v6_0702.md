@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epics E-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01 done); Epics F-N not started (`[ ]`).
 
 ---
 
@@ -193,10 +193,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `Services/Engine/SessionShapeSelection.swift` maps the full 5-60 range using the provisional thresholds: `5-10 -> singleFocus`, `11-20 -> blendLight`, `21-40 -> blendFull`, `41-60 -> blendExtended`
-- [ ] A new `blendExtended` case is added to `SessionShapeTemplate` and resolves to a `SessionShape` (`single_focus`/`blend`) - `blendExtended` resolves to `.blend`
-- [ ] `select(requestedMinutes:)` is clamped to 5...60 and remains a pure, deterministic function
-- [ ] `SessionShapeSelectionTests` covers 5/10/15/20/30/45/60 and the 10/20/40 boundaries; build and tests pass
+- [x] `Services/Engine/SessionShapeSelection.swift` maps the full 5-60 range using the provisional thresholds: `5-10 -> singleFocus`, `11-20 -> blendLight`, `21-40 -> blendFull`, `41-60 -> blendExtended`
+- [x] A new `blendExtended` case is added to `SessionShapeTemplate` and resolves to a `SessionShape` (`single_focus`/`blend`) - `blendExtended` resolves to `.blend`
+- [x] `select(requestedMinutes:)` is clamped to 5...60 and remains a pure, deterministic function
+- [x] `SessionShapeSelectionTests` covers 5/10/15/20/30/45/60 and the 10/20/40 boundaries; build and tests pass
 
 **Validation Test:**
 
