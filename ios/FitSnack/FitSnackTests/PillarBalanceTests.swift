@@ -263,6 +263,88 @@ final class PillarBalanceTests: XCTestCase {
         )
     }
 
+    // MARK: - Extended blend: primal as a first-class pillar (US-E02)
+
+    /// An extended blend splits all three pillars. With no history every pillar is equally (maximally)
+    /// stale, so the split is even across strength/mobility/primal and sums to 1.
+    func testExtendedBlendSplitsAllThreePillarsEvenlyWithNoHistory() {
+        let weights = weights(plan(.blendExtended, logs: [], sitsLong: false))
+        XCTAssertEqual(weights.strength, 1.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(weights.mobility, 1.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(weights.primal, 1.0 / 3.0, accuracy: 1e-9)
+        XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 1e-9)
+    }
+
+    /// The staler pillar earns the larger share, even when that pillar is primal.
+    func testExtendedBlendLeansTowardStalerPrimal() {
+        // Strength and mobility worked yesterday; primal never worked -> primal is the stalest.
+        let logs = [
+            log(pillars: [.strength], daysAgo: 1),
+            log(pillars: [.mobility], daysAgo: 1),
+        ]
+        let weights = weights(plan(.blendExtended, logs: logs, sitsLong: false))
+        XCTAssertGreaterThan(weights.primal, weights.strength)
+        XCTAssertGreaterThan(weights.primal, weights.mobility)
+        XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 1e-9)
+    }
+
+    /// No pillar is ever starved: even a pillar worked today keeps at least its floor share, and the
+    /// three shares still sum to 1.
+    func testExtendedBlendNeverStarvesAPillar() {
+        // Strength worked today; mobility and primal never worked -> strength leans light but keeps
+        // the extended floor.
+        let logs = [log(pillars: [.strength], daysAgo: 0)]
+        let weights = weights(plan(.blendExtended, logs: logs, sitsLong: false))
+        XCTAssertGreaterThanOrEqual(weights.strength, PillarPlan.minExtendedBlendShare)
+        XCTAssertGreaterThanOrEqual(weights.mobility, PillarPlan.minExtendedBlendShare)
+        XCTAssertGreaterThanOrEqual(weights.primal, PillarPlan.minExtendedBlendShare)
+        XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 1e-9)
+    }
+
+    /// The Session Policy `pillarWeighting` lever measurably increases a pillar's share (US-E02): with
+    /// all three equally stale, doubling primal's weight gives it a larger share than the neutral split.
+    func testExtendedBlendRespectsPrimalPillarWeighting() {
+        let logs = [
+            log(pillars: [.strength], daysAgo: 3),
+            log(pillars: [.mobility], daysAgo: 3),
+            log(pillars: [.primal], daysAgo: 3),
+        ]
+        let neutral = weights(
+            PillarPlan.select(
+                template: .blendExtended,
+                recentLogs: logs,
+                profile: profile(sitsLong: false),
+                asOf: asOf,
+                calendar: calendar
+            )
+        )
+        var heavyPrimal = SessionPolicy.neutralPillarWeighting
+        heavyPrimal[.primal] = 2.0
+        let weighted = weights(
+            PillarPlan.select(
+                template: .blendExtended,
+                recentLogs: logs,
+                profile: profile(sitsLong: false),
+                pillarWeighting: heavyPrimal,
+                asOf: asOf,
+                calendar: calendar
+            )
+        )
+        XCTAssertGreaterThan(weighted.primal, neutral.primal)
+        XCTAssertEqual(weighted.strength + weighted.mobility + weighted.primal, 1.0, accuracy: 1e-9)
+    }
+
+    /// Short and full blends keep folding primal into strength - their weights carry no primal share,
+    /// so nothing downstream changes for them (no regression).
+    func testShortAndFullBlendsCarryNoPrimalShare() {
+        let logs = [
+            log(pillars: [.strength], daysAgo: 1),
+            log(pillars: [.mobility], daysAgo: 6),
+        ]
+        XCTAssertEqual(weights(plan(.blendLight, logs: logs, sitsLong: false)).primal, 0, accuracy: 1e-9)
+        XCTAssertEqual(weights(plan(.blendFull, logs: logs, sitsLong: false)).primal, 0, accuracy: 1e-9)
+    }
+
     // MARK: - Determinism
 
     func testSelectionIsDeterministic() {

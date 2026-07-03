@@ -285,6 +285,87 @@ final class SessionAssemblyTests: XCTestCase {
         )
     }
 
+    // MARK: - Extended blend promotes primal to its own block (US-E02)
+
+    /// A few days of mixed history that leaves primal stale: strength/mobility worked recently, the
+    /// last primal session was long ago.
+    private func stalePrimalHistory() -> [WorkoutLog] {
+        [
+            log([
+                ("push_standard", .strength, .push, 12),
+                ("squat_bodyweight", .strength, .squat, 15),
+            ], daysAgo: 2, difficulty: .justRight),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 3),
+            log([("primal_bear_crawl", .primal, .locomotion, 10)], daysAgo: 12),
+        ]
+    }
+
+    /// The validation test: a 50-min session for a user with stale primal history contains a dedicated
+    /// primal block (a `WorkoutBlock` of `pillar == .primal` movements) alongside strength and mobility.
+    func testExtendedSessionProducesADedicatedPrimalBlock() async throws {
+        let library = try await library()
+        let workout = assemble(minutes: 50, user: user(level: .intermediate), library: library, logs: stalePrimalHistory())
+
+        let primalBlock = try XCTUnwrap(
+            workout.blocks.first { $0.category == .primal },
+            "a 50-min session must contain a dedicated primal block"
+        )
+        XCTAssertFalse(primalBlock.exercises.isEmpty, "the primal block must hold at least one movement")
+        for prescription in primalBlock.exercises {
+            XCTAssertEqual(prescription.exercise.pillar, .primal, "the primal block holds only primal movements")
+            XCTAssertEqual(prescription.exercise.movementPattern, .locomotion, "primal is driven by the locomotion pattern")
+            XCTAssertTrue(prescription.exercise.equipment.isEmpty, "Zero-Equipment Floor still holds")
+            XCTAssertGreaterThanOrEqual(prescription.sets, 1, "every prescription needs >=1 set")
+        }
+
+        // The primal block joins strength and mobility rather than replacing them.
+        XCTAssertTrue(workout.blocks.contains { $0.category == .strength }, "strength block still present")
+        XCTAssertTrue(workout.blocks.contains { $0.category == .mobility }, "mobility block still present")
+
+        // With primal carved out, the strength block must not also fold a primal movement in (no
+        // double-booking the same locomotion exercise across two blocks).
+        let strengthBlock = try XCTUnwrap(workout.blocks.first { $0.category == .strength })
+        XCTAssertFalse(
+            strengthBlock.exercises.contains { $0.exercise.pillar == .primal },
+            "an extended blend sheds primal from the strength block"
+        )
+
+        // The extended session is still well-structured: warm-up opens it, cooldown closes it.
+        XCTAssertEqual(workout.blocks.first?.category, .warmup, "opens with a warm-up")
+        XCTAssertEqual(workout.blocks.last?.category, .cooldown, "closes with a cooldown")
+    }
+
+    /// Short and full blends do not regress: primal is still folded into strength, so no dedicated
+    /// `.primal` block appears even when primal is the stalest pillar.
+    func testShorterSessionsDoNotCarveOutAPrimalBlock() async throws {
+        let library = try await library()
+        // Primal stale, strength/mobility fresh - the shape, not staleness, gates the dedicated block.
+        let logs = [
+            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 1),
+            log([("primal_bear_crawl", .primal, .locomotion, 10)], daysAgo: 20),
+        ]
+        for minutes in [10, 20, 30] {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: logs)
+            XCTAssertFalse(
+                workout.blocks.contains { $0.category == .primal },
+                "\(minutes) min must not carve out a dedicated primal block"
+            )
+        }
+    }
+
+    /// Extended assembly is deterministic run to run, just like the shorter shapes.
+    func testExtendedAssemblyIsDeterministic() async throws {
+        let library = try await library()
+        let user = user()
+        let logs = stalePrimalHistory()
+        let first = structuralSignature(assemble(minutes: 50, user: user, library: library, logs: logs))
+        for _ in 0..<10 {
+            let next = structuralSignature(assemble(minutes: 50, user: user, library: library, logs: logs))
+            XCTAssertEqual(next, first, "extended assembly is not deterministic")
+        }
+    }
+
     // MARK: - Cooldown keeps real static holds in a blend
 
     func testBlendCooldownReservesMultipleStaticHolds() async throws {

@@ -21,8 +21,8 @@ import Foundation
 /// The training pillars a session can draw from.
 ///
 /// `strength` and `mobility` are co-primary (Movement Practice is not a warm-up).
-/// `primal` (bear crawl, crab walk, ground-to-standing) is a small movement-quality
-/// category folded in alongside them.
+/// `primal` (bear crawl, crab walk, ground-to-standing) is a first-class pillar that earns
+/// its own block in extended (41-60 min) sessions and folds into strength in shorter blends (US-E02).
 enum Pillar: String, Codable, CaseIterable, Identifiable, Hashable {
     case strength
     case mobility
@@ -124,7 +124,7 @@ enum PrimaryGoal: String, Codable, CaseIterable, Identifiable, Hashable {
 
 /// The structural shape the engine selects from requested minutes:
 /// `singleFocus` for 5-10 min (one pillar, done well) and `blend` for 11-60 min
-/// (both pillars, warm-up always, cooldown over 10 min).
+/// (multiple pillars, warm-up always, cooldown over 10 min).
 enum SessionShape: String, Codable, CaseIterable, Identifiable, Hashable {
     case singleFocus = "single_focus"
     case blend
