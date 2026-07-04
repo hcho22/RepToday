@@ -55,9 +55,19 @@ enum AdaptiveOverload {
     /// - `progressiveStep` (`justRight` / no rating): nudge just above capacity.
     /// - `easyStep` (`tooEasy`): intensify.
     /// - `hardStep` (`tooHard`): ease.
+    ///
+    /// The two *advancing* steps (`progressiveStep`/`easyStep`) are scaled by the Session Policy's
+    /// `progressionRate` (US-E03): the deviation-from-capacity grows with the rate, so a higher rate
+    /// advances reps/holds faster while still clamping to the safety rails. The neutral rate `1.0`
+    /// leaves the curve exactly as it was, so `SessionPolicy.default` is a no-op. `hardStep` is a
+    /// safety response to a `tooHard` session, so the rate never scales the ease (a faster program
+    /// must not back off harder); the Asymmetric Ramp owns the down-step in US-E05.
     static let progressiveStep = 1.05
     static let easyStep = 1.15
     static let hardStep = 0.85
+
+    /// The neutral progression rate: the Session Policy default, reproducing the pre-policy curve.
+    static let neutralProgressionRate = 1.0
 
     /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
     /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
@@ -80,11 +90,25 @@ enum AdaptiveOverload {
     /// The capacity-relative target for `exercise`, derived from the user's most recent usable
     /// performance of it in `recentLogs` and that session's `perceivedDifficulty`. With no usable
     /// history the exercise's own defaults are used (clamped to the safety rails).
-    static func target(for exercise: Exercise, recentLogs: [WorkoutLog]) -> OverloadTarget {
+    ///
+    /// `progressionRate` is the Session Policy lever (US-E03) scaling the advancing bump: `1.0` is
+    /// neutral (pre-policy behavior), a higher rate advances reps/holds faster. It only affects the
+    /// step *up* from demonstrated capacity, so a no-history default (which has no bump to scale) is
+    /// unchanged by it.
+    static func target(
+        for exercise: Exercise,
+        recentLogs: [WorkoutLog],
+        progressionRate: Double = neutralProgressionRate
+    ) -> OverloadTarget {
         guard let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs) else {
             return defaultTarget(for: exercise)
         }
-        let perSet = adjusted(capacity.perSetValue, feedback: capacity.feedback, isHold: exercise.isHold)
+        let perSet = adjusted(
+            capacity.perSetValue,
+            feedback: capacity.feedback,
+            isHold: exercise.isHold,
+            progressionRate: progressionRate
+        )
         return OverloadTarget(
             sets: clampSets(capacity.sets),
             reps: exercise.isHold ? nil : perSet,
@@ -147,18 +171,31 @@ enum AdaptiveOverload {
     /// Applies the perceived-difficulty bump to demonstrated `capacity` and clamps to the per-set
     /// rails. `tooEasy` always lands at least one above capacity, `tooHard` at least one below (down
     /// to the floor), and `justRight`/no-rating nudges progressively up by at least one (until the
-    /// ceiling) - so the direction of a signal is never lost to rounding.
-    private static func adjusted(_ capacity: Int, feedback: PerceivedDifficulty?, isHold: Bool) -> Int {
+    /// ceiling) - so the direction of a signal is never lost to rounding. The two advancing steps
+    /// are scaled by `progressionRate` (US-E03); the `tooHard` ease is not (see `hardStep`).
+    private static func adjusted(
+        _ capacity: Int,
+        feedback: PerceivedDifficulty?,
+        isHold: Bool,
+        progressionRate: Double
+    ) -> Int {
         let scaled: Int
         switch feedback {
         case .tooHard:
             scaled = min(rounded(capacity, by: hardStep), capacity - 1)
         case .tooEasy:
-            scaled = max(rounded(capacity, by: easyStep), capacity + 1)
+            scaled = max(rounded(capacity, by: paced(easyStep, rate: progressionRate)), capacity + 1)
         case .justRight, .none:
-            scaled = max(rounded(capacity, by: progressiveStep), capacity + 1)
+            scaled = max(rounded(capacity, by: paced(progressiveStep, rate: progressionRate)), capacity + 1)
         }
         return clampPerSet(scaled, isHold: isHold)
+    }
+
+    /// Scales an advancing multiplier by `progressionRate` around `1.0`: the deviation from
+    /// no-change (`step - 1`) grows with the rate, so a faster program advances by more each cycle
+    /// while the neutral rate `1.0` reproduces `step` exactly. Only advancing steps (>= 1) are paced.
+    private static func paced(_ step: Double, rate: Double) -> Double {
+        1.0 + (step - 1.0) * rate
     }
 
     private static func rounded(_ value: Int, by factor: Double) -> Int {

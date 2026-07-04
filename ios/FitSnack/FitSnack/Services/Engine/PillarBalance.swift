@@ -110,7 +110,7 @@ enum PillarPlan: Equatable {
     ///   - profile: supplies `sitsLong`, the desk-worker mobility lean.
     ///   - pillarWeighting: the Session Policy per-pillar staleness multiplier (US-E02/US-E03);
     ///     defaults to neutral (`1.0` each) so pre-policy behavior is reproduced exactly. The
-    ///     engine passes the live policy's weighting once US-E03 threads it through `assemble`.
+    ///     engine threads the live policy's weighting through `SessionAssembly.assemble` (US-E03).
     ///   - asOf: the reference "today" staleness is measured against (injected for purity).
     ///   - calendar: calendar used for day-difference math; defaults to the current calendar.
     static func select(
