@@ -486,6 +486,199 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertLessThanOrEqual(fast, AdaptiveOverload.maxReps, "still clamped to the safety rail")
     }
 
+    // MARK: - Step 0 cold-start override (US-E04)
+
+    /// A cold-start user: the shared fixture user plus an explicit cold-start state (and optional
+    /// `why.openingBias`), so tests can advance the First-Week day (`sessionsLogged`) and retire
+    /// cold-start (`active == false`).
+    private func coldStartUser(
+        level: FitnessLevel = .beginner,
+        sessionsLogged: Int = 0,
+        active: Bool = true,
+        sitsLong: Bool = false,
+        openingBias: Pillar? = nil
+    ) -> User {
+        var user = user(level: level, sitsLong: sitsLong)
+        user.coldStart = User.ColdStart(sessionsLogged: sessionsLogged, active: active)
+        user.why = User.Why(statement: "", openingBias: openingBias)
+        return user
+    }
+
+    /// A `SessionPolicy.default` carrying a cold-start contract with the given levers.
+    private func coldStartPolicy(forceContrastSpread: Bool, cappedMaxDifficulty: Int) -> SessionPolicy {
+        var policy = SessionPolicy.default
+        policy.coldStartContract = SessionPolicy.ColdStartContract(
+            forceContrastSpread: forceContrastSpread,
+            cappedMaxDifficulty: cappedMaxDifficulty
+        )
+        return policy
+    }
+
+    private func assemble(minutes: Int, user: User, library: [Exercise], logs: [WorkoutLog], policy: SessionPolicy) -> Workout {
+        SessionAssembly.assemble(
+            requestedMinutes: minutes, user: user, library: library,
+            recentLogs: logs, sessionPolicy: policy, asOf: asOf, calendar: calendar
+        )
+    }
+
+    /// The capped pool removes every over-cap movement while Step 0 is active, and is a no-op once
+    /// cold-start is retired or the policy carries no contract.
+    func testColdStartCappedPoolRemovesTooHardMovements() async throws {
+        let library = try await library()
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+
+        // Guard: the library actually contains movements the cap should remove.
+        XCTAssertTrue(library.contains { $0.difficulty > 2 }, "library must have >2-difficulty movements")
+
+        let active = coldStartUser(level: .advanced, sessionsLogged: 0, active: true)
+        let capped = ColdStartOverride.cappedPool(library, user: active, sessionPolicy: policy)
+        XCTAssertFalse(capped.isEmpty, "the cap must never empty the pool")
+        XCTAssertTrue(capped.allSatisfy { $0.difficulty <= 2 }, "every capped movement is at or below the cap")
+
+        // Warmed-up user: the cap is a no-op even with the contract still present.
+        let warm = coldStartUser(level: .advanced, sessionsLogged: 6, active: false)
+        XCTAssertEqual(
+            ColdStartOverride.cappedPool(library, user: warm, sessionPolicy: policy).count,
+            library.count, "a retired cold-start user's pool is never capped"
+        )
+        // No contract: also a no-op even while active.
+        XCTAssertEqual(
+            ColdStartOverride.cappedPool(library, user: active, sessionPolicy: .default).count,
+            library.count, "no contract means no cap"
+        )
+    }
+
+    /// End-to-end difficulty cap: an advanced user whose history advances push onto a difficulty-3
+    /// movement gets it in the plain engine, but the cold-start cap (contrast off, so the cap is the
+    /// only override) keeps every prescribed movement at or below the cap.
+    func testColdStartSessionRespectsTheDifficultyCap() async throws {
+        let library = try await library()
+        // push_standard cleared long ago -> push is the stalest strength pattern (leads a strength
+        // single-focus) and is advanceable to push_diamond (difficulty 3); every other pattern was
+        // worked yesterday, so push leads.
+        let logs = [
+            log([
+                ("squat_bodyweight", .strength, .squat, 15),
+                ("hinge_glute_bridge", .strength, .hinge, 15),
+                ("core_bird_dog", .strength, .core, 12),
+                ("pull_superman", .strength, .pull, 12),
+                ("mobility_cat_cow", .mobility, .mobility, 10),
+                ("primal_bear_crawl", .primal, .locomotion, 10),
+            ], daysAgo: 1),
+            log([("push_standard", .strength, .push, 12)], daysAgo: 10, difficulty: .justRight),
+        ]
+        let advanced = coldStartUser(level: .advanced, sessionsLogged: 0)
+
+        // Baseline (no contract): push advances onto push_diamond (difficulty 3).
+        let baseline = assemble(minutes: 10, user: advanced, library: library, logs: logs, policy: .default)
+        XCTAssertTrue(
+            baseline.blocks.flatMap(\.exercises).contains { $0.exercise.difficulty >= 3 },
+            "without the cap an advanced user advances onto a difficulty-3 movement (guards the test)"
+        )
+
+        // Cold-start cap 2 (contrast off): nothing exceeds difficulty 2.
+        let capped = assemble(
+            minutes: 10, user: advanced, library: library, logs: logs,
+            policy: coldStartPolicy(forceContrastSpread: false, cappedMaxDifficulty: 2)
+        )
+        XCTAssertTrue(
+            capped.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= 2 },
+            "a cold-start session must cap difficulty at the contract's cappedMaxDifficulty"
+        )
+        XCTAssertFalse(
+            capped.blocks.flatMap(\.exercises).contains { $0.exercise.id == "push_diamond" },
+            "the capped session never reaches the over-cap advancement"
+        )
+    }
+
+    /// Consecutive First-Week single-focus days rotate the pillar, so the week never collapses to a
+    /// single theme and no pillar repeats back-to-back - even for a desk worker whose bias is mobility.
+    func testConsecutiveColdStartDaysDifferInPillar() async throws {
+        let library = try await library()
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+
+        var pillars: [Pillar] = []
+        for day in 0..<4 {
+            let user = coldStartUser(level: .beginner, sessionsLogged: day, sitsLong: true)
+            let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
+            pillars.append(try XCTUnwrap(workout.focusPillar, "a single-focus day must have a focus pillar"))
+        }
+        XCTAssertGreaterThan(Set(pillars).count, 1, "the first week must span more than one pillar")
+        for index in 1..<pillars.count {
+            XCTAssertNotEqual(pillars[index], pillars[index - 1], "no pillar repeats back-to-back in cold start")
+        }
+    }
+
+    /// The `why.openingBias` sets where the First-Week rotation opens; a mobility-biased user opens on
+    /// a mobility day, then rotates off it.
+    func testColdStartRotationOpensOnTheWhyOpeningBias() async throws {
+        let library = try await library()
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+
+        let day0 = coldStartUser(level: .beginner, sessionsLogged: 0, openingBias: .mobility)
+        let day1 = coldStartUser(level: .beginner, sessionsLogged: 1, openingBias: .mobility)
+        XCTAssertEqual(
+            assemble(minutes: 8, user: day0, library: library, logs: [], policy: policy).focusPillar,
+            .mobility, "the first cold-start day opens on the stated why.openingBias"
+        )
+        XCTAssertNotEqual(
+            assemble(minutes: 8, user: day1, library: library, logs: [], policy: policy).focusPillar,
+            .mobility, "the rotation moves off the opening pillar the next day"
+        )
+    }
+
+    /// The PRD validation: a beginner's three First-Week sessions never exceed the difficulty cap and
+    /// span different pillars.
+    func testColdStartValidationCapsDifficultyAndSpreadsPillars() async throws {
+        let library = try await library()
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+
+        var focusPillars: [Pillar] = []
+        for day in 0..<3 {
+            let user = coldStartUser(level: .beginner, sessionsLogged: day)
+            let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
+            for prescription in workout.blocks.flatMap(\.exercises) {
+                XCTAssertLessThanOrEqual(
+                    prescription.exercise.difficulty, 2,
+                    "cold-start day \(day) prescribed \(prescription.exercise.id) above the difficulty-2 cap"
+                )
+            }
+            focusPillars.append(try XCTUnwrap(workout.focusPillar))
+        }
+        XCTAssertGreaterThan(Set(focusPillars).count, 1, "three cold-start days must span different pillars")
+    }
+
+    /// A warmed-up user (cold-start retired) is unaffected by Step 0: even a lingering contract in the
+    /// policy is a no-op, so the session matches the plain US-E03 engine exactly.
+    func testWarmedUpUserIsUnaffectedByColdStart() async throws {
+        let library = try await library()
+        let logs = someHistory()
+        let warm = coldStartUser(level: .intermediate, sessionsLogged: 6, active: false)
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+
+        for minutes in [8, 20, 50] {
+            let withContract = assemble(minutes: minutes, user: warm, library: library, logs: logs, policy: policy)
+            let withoutContract = assemble(minutes: minutes, user: warm, library: library, logs: logs, policy: .default)
+            XCTAssertEqual(
+                structuralSignature(withContract), structuralSignature(withoutContract),
+                "\(minutes) min: a retired cold-start user must run exactly the US-E03 pipeline"
+            )
+        }
+    }
+
+    /// Cold-start assembly is deterministic run to run, including on a forced single-focus primal day.
+    func testColdStartAssemblyIsDeterministic() async throws {
+        let library = try await library()
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+        let user = coldStartUser(level: .beginner, sessionsLogged: 2) // rotates onto a primal day
+        let signature = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
+        XCTAssertEqual(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy).focusPillar, .primal)
+        for _ in 0..<10 {
+            let next = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
+            XCTAssertEqual(next, signature, "cold-start assembly is not deterministic")
+        }
+    }
+
     // MARK: - Determinism (content, not ids)
 
     func testAssemblyIsDeterministic() async throws {

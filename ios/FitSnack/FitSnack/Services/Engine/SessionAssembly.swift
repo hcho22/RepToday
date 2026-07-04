@@ -92,13 +92,21 @@ enum SessionAssembly {
         calendar: Calendar = .current
     ) -> Workout {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        let pillarPlan = PillarPlan.select(
+        // Step 0 (US-E04): the cold-start override reshapes the pillar plan (First-Week Contrast)
+        // before the reported `focusPillar` is read from it, so a cold-start session's focus matches
+        // the block `planBlocks` actually builds. A no-op once the engine retires cold-start.
+        let pillarPlan = ColdStartOverride.overridePlan(
+            PillarPlan.select(
+                template: template,
+                recentLogs: recentLogs,
+                profile: user.profile,
+                pillarWeighting: sessionPolicy.pillarWeighting,
+                asOf: asOf,
+                calendar: calendar
+            ),
             template: template,
-            recentLogs: recentLogs,
-            profile: user.profile,
-            pillarWeighting: sessionPolicy.pillarWeighting,
-            asOf: asOf,
-            calendar: calendar
+            user: user,
+            sessionPolicy: sessionPolicy
         )
 
         var blocks = planBlocks(
@@ -146,15 +154,28 @@ enum SessionAssembly {
         calendar: Calendar = .current
     ) -> [PlannedBlock] {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        let pillarPlan = PillarPlan.select(
+        // Step 0 (US-E04): the cold-start override runs before Steps 1-6. It forces First-Week
+        // Contrast onto the pillar plan and caps the eligible pool at the contract's Starting
+        // Difficulty; both are no-ops once the engine retires cold-start (US-G04), so a warmed-up
+        // user runs exactly the US-E03 pipeline.
+        let pillarPlan = ColdStartOverride.overridePlan(
+            PillarPlan.select(
+                template: template,
+                recentLogs: recentLogs,
+                profile: user.profile,
+                pillarWeighting: sessionPolicy.pillarWeighting,
+                asOf: asOf,
+                calendar: calendar
+            ),
             template: template,
-            recentLogs: recentLogs,
-            profile: user.profile,
-            pillarWeighting: sessionPolicy.pillarWeighting,
-            asOf: asOf,
-            calendar: calendar
+            user: user,
+            sessionPolicy: sessionPolicy
         )
-        let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs)
+        let pool = ColdStartOverride.cappedPool(
+            ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+            user: user,
+            sessionPolicy: sessionPolicy
+        )
         var builder = Builder(
             library: library,
             pool: pool,
@@ -430,12 +451,23 @@ private struct Builder {
         var middle: [PlannedBlock] = []
         switch pillarPlan {
         case .single(let pillar):
-            if pillar == .mobility {
+            switch pillar {
+            case .mobility:
                 if let block = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises) {
                     middle.append(block)
                 }
-            } else if let block = strengthBlock() {
-                middle.append(block)
+            case .primal:
+                // A single-focus primal day (only reached under the Step 0 First-Week Contrast, US-E04)
+                // builds a dedicated locomotion block, degrading gracefully to strength then mobility if
+                // the capped pool leaves no eligible primal movement so the day is never empty.
+                let block = primalBlock()
+                    ?? strengthBlock()
+                    ?? mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
+                if let block { middle.append(block) }
+            case .strength:
+                if let block = strengthBlock() {
+                    middle.append(block)
+                }
             }
         case .blend(let weights):
             middle = blendBlocks(

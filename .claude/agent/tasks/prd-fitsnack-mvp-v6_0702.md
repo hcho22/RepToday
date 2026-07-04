@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01-E03 done); Epics F-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01-E04 done); Epics F-N not started (`[ ]`).
 
 ---
 
@@ -252,11 +252,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A Step 0 runs in `SessionAssembly` only while `user.coldStart.active` and `sessionPolicy.coldStartContract != nil`
-- [ ] When `coldStartContract.forceContrastSpread` is set, the day's pillar/pattern is derived from onboarding inputs but forced to a vivid day-to-day spread across pillars (First-Week Contrast), overriding the single-theme bias that `why`/`sitsLong` alone would produce
-- [ ] Difficulty is capped at `coldStartContract.cappedMaxDifficulty` and served at the gentle end of the eligible band
-- [ ] When `coldStart.active` is false, Step 0 is a no-op and the engine behaves exactly as US-E03; determinism preserved
-- [ ] `SessionAssemblyTests` covers: cold-start caps difficulty; consecutive cold-start days differ in pillar; a warmed-up user is unaffected; build and tests pass
+- [x] A Step 0 runs in `SessionAssembly` only while `user.coldStart.active` and `sessionPolicy.coldStartContract != nil`
+- [x] When `coldStartContract.forceContrastSpread` is set, the day's pillar/pattern is derived from onboarding inputs but forced to a vivid day-to-day spread across pillars (First-Week Contrast), overriding the single-theme bias that `why`/`sitsLong` alone would produce
+- [x] Difficulty is capped at `coldStartContract.cappedMaxDifficulty` and served at the gentle end of the eligible band
+- [x] When `coldStart.active` is false, Step 0 is a no-op and the engine behaves exactly as US-E03; determinism preserved
+- [x] `SessionAssemblyTests` covers: cold-start caps difficulty; consecutive cold-start days differ in pillar; a warmed-up user is unaffected; build and tests pass
 
 **Validation Test:**
 

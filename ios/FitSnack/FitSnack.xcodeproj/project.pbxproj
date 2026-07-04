@@ -44,6 +44,7 @@
 		A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54220C70830316F0B7D14EAA /* ScaffoldTests.swift */; };
 		A88A9355E1EF01559DDF58C4 /* SessionPolicyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 417D9579634284740E59C4F9 /* SessionPolicyServiceTests.swift */; };
 		AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */; };
+		ADC8BF8154D72A7303610149 /* ColdStartOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCD1124D37936968D4C523D0 /* ColdStartOverride.swift */; };
 		BA09C70FABE768B89DE124E8 /* ReprogramTriggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F363F231254CCB39577F9B /* ReprogramTriggerTests.swift */; };
 		BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */; };
 		C3C49D659FC4DBE14CBFD35B /* Exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = A6F30CB7678F6F34F7B8262C /* Exercises.json */; };
@@ -111,6 +112,7 @@
 		B3D066D1A3C0D0557854B89E /* FitSnack.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FitSnack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
 		BC9B47A4C50208A032645354 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		BCD1124D37936968D4C523D0 /* ColdStartOverride.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartOverride.swift; sourceTree = "<group>"; };
 		BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalanceTests.swift; sourceTree = "<group>"; };
 		BE5AE64A69BC77A3611817BE /* SessionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyTests.swift; sourceTree = "<group>"; };
 		BEDFFB65C34BBA953E570279 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
@@ -238,6 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				4371FC39A0C4315D7F96A7FF /* AdaptiveOverload.swift */,
+				BCD1124D37936968D4C523D0 /* ColdStartOverride.swift */,
 				43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */,
 				24EF9748E7717931176A1378 /* ExerciseSwap.swift */,
 				A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */,
@@ -456,6 +459,7 @@
 				30876E3D75E91139E3CFD299 /* CDSessionPolicy.swift in Sources */,
 				CBF639EBC54B6E26F6F0B639 /* CDUser.swift in Sources */,
 				4AA0381493052AA2BC68DAE6 /* CDWorkoutLog.swift in Sources */,
+				ADC8BF8154D72A7303610149 /* ColdStartOverride.swift in Sources */,
 				12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */,
 				2FBA69D3EEA7CFE0358AF4F2 /* Exercise.swift in Sources */,
 				28A46C3A28D69EF61CF35BC8 /* ExercisePoolFilter.swift in Sources */,
