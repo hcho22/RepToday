@@ -92,22 +92,6 @@ enum SessionAssembly {
         calendar: Calendar = .current
     ) -> Workout {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        // Step 0 (US-E04): the cold-start override reshapes the pillar plan (First-Week Contrast)
-        // before the reported `focusPillar` is read from it, so a cold-start session's focus matches
-        // the block `planBlocks` actually builds. A no-op once the engine retires cold-start.
-        let pillarPlan = ColdStartOverride.overridePlan(
-            PillarPlan.select(
-                template: template,
-                recentLogs: recentLogs,
-                profile: user.profile,
-                pillarWeighting: sessionPolicy.pillarWeighting,
-                asOf: asOf,
-                calendar: calendar
-            ),
-            template: template,
-            user: user,
-            sessionPolicy: sessionPolicy
-        )
 
         var blocks = planBlocks(
             requestedMinutes: requestedMinutes,
@@ -123,17 +107,11 @@ enum SessionAssembly {
         shapeTowardTargets(&blocks)
         fit(&blocks, targetSeconds: requestedMinutes * 60)
 
-        let focusPillar: Pillar?
-        switch pillarPlan {
-        case .single(let pillar): focusPillar = pillar
-        case .blend: focusPillar = nil
-        }
-
         return Workout(
             id: UUID(),
             createdAt: asOf,
             shape: template.shape,
-            focusPillar: focusPillar,
+            focusPillar: focusPillar(of: blocks),
             requestedMinutes: requestedMinutes,
             blocks: blocks.compactMap { $0.materialize() }
         )
@@ -190,6 +168,30 @@ enum SessionAssembly {
             template: template,
             requestedMinutes: requestedMinutes
         )
+    }
+
+    // MARK: - Focus pillar
+
+    /// The pillar a training block trains, or `nil` for the structural bookends (`warmup`/`cooldown`).
+    static func pillar(of category: ExerciseCategory) -> Pillar? {
+        switch category {
+        case .strength: return .strength
+        case .mobility: return .mobility
+        case .primal: return .primal
+        case .warmup, .cooldown: return nil
+        }
+    }
+
+    /// The session's reported `focusPillar`, read from the training blocks the assembly *actually*
+    /// produced rather than the pre-assembly pillar plan. A single-focus session leaves exactly one
+    /// non-empty training block, and its pillar is the focus; a blend leaves two or three (no single
+    /// focus, so `nil`), and a degenerate warmup-only session leaves none. Reading it from the built
+    /// blocks keeps the label truthful when a cold-start primal day degrades to a strength/mobility
+    /// block because the capped pool left no eligible locomotion movement (US-E04).
+    static func focusPillar(of blocks: [PlannedBlock]) -> Pillar? {
+        let training = blocks.filter { !$0.items.isEmpty && pillar(of: $0.category) != nil }
+        guard training.count == 1 else { return nil }
+        return pillar(of: training[0].category)
     }
 
     // MARK: - Planned wall-clock

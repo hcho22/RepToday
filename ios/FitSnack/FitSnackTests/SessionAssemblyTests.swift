@@ -496,9 +496,10 @@ final class SessionAssemblyTests: XCTestCase {
         sessionsLogged: Int = 0,
         active: Bool = true,
         sitsLong: Bool = false,
-        openingBias: Pillar? = nil
+        openingBias: Pillar? = nil,
+        injuries: [String] = []
     ) -> User {
-        var user = user(level: level, sitsLong: sitsLong)
+        var user = user(level: level, sitsLong: sitsLong, injuries: injuries)
         user.coldStart = User.ColdStart(sessionsLogged: sessionsLogged, active: active)
         user.why = User.Why(statement: "", openingBias: openingBias)
         return user
@@ -677,6 +678,41 @@ final class SessionAssemblyTests: XCTestCase {
             let next = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
             XCTAssertEqual(next, signature, "cold-start assembly is not deterministic")
         }
+    }
+
+    /// When a First-Week Contrast day rotates onto primal but the primal block cannot be built (an
+    /// `ankle` injury contraindicates the whole `locomotion` pattern, so no eligible primal movement
+    /// survives), the `.single(.primal)` plan degrades to a strength/mobility block. `focusPillar` must
+    /// report the pillar the session actually delivers, not the aspirational `.primal` from the plan.
+    func testColdStartPrimalDegradationReportsTheActualPillar() async throws {
+        let library = try await library()
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+        // Beginner, no desk bias, no openingBias -> rotation starts at strength; sessionsLogged 2 lands
+        // on the primal slot. The ankle injury then strips every locomotion movement from the pool.
+        let user = coldStartUser(level: .beginner, sessionsLogged: 2, injuries: ["ankle"])
+
+        // Guard: the plan really does rotate onto primal here (so this exercises the degradation path).
+        XCTAssertEqual(
+            ColdStartOverride.contrastPillar(user: user, available: Pillar.allCases), .primal,
+            "sessionsLogged 2 must rotate onto the primal slot for this test to mean anything"
+        )
+
+        let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
+
+        let focus = try XCTUnwrap(workout.focusPillar, "a single-focus day must still report a focus pillar")
+        XCTAssertNotEqual(focus, .primal, "a degraded primal day must not falsely advertise a primal focus")
+
+        // The reported focus is the single training block the session actually built.
+        let trainingBlocks = workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
+        XCTAssertEqual(trainingBlocks.count, 1, "a single-focus session has exactly one training block")
+        XCTAssertEqual(
+            SessionAssembly.pillar(of: trainingBlocks[0].category), focus,
+            "focusPillar must equal the actually-built training block's pillar"
+        )
+        XCTAssertFalse(
+            trainingBlocks[0].exercises.contains { $0.exercise.movementPattern == .locomotion },
+            "the ankle injury leaves no locomotion movement in the degraded block"
+        )
     }
 
     // MARK: - Determinism (content, not ids)
