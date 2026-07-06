@@ -86,7 +86,7 @@ The pipeline (one step per Epic C story in the PRD):
 3. **Movement-pattern focus** - rank patterns by staleness; never repeat yesterday's primary pattern.
 4. **Filter pool** - drop by phase, injuries, difficulty cap, recent skips; everything is bodyweight (Zero-Equipment Floor).
 5. **Progression-chain selection** - pick the user's current chain position; offer the next when advancement criteria are met; avoid the last few sessions (a policy-tunable `varietyWindow`, default 3).
-6. **Adaptive Overload** - prescribe capacity-relative reps/sets/holds, never a fixed heroic number; feedback (`too_easy`/`too_hard`) adjusts within one cycle, the advancing bump paced by the policy's `progressionRate`.
+6. **Adaptive Overload** - prescribe capacity-relative reps/sets/holds, never a fixed heroic number; feedback (`too_easy`/`too_hard`) or a skip adjusts within one cycle via an asymmetric ramp (back off fast, climb slow), the advancing bump paced by the policy's `progressionRate`.
 7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, land within ±1 min of requested time.
 
 In-session **swap** substitutes deterministically within the same pillar, pattern, difficulty band, and time budget.
