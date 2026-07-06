@@ -92,14 +92,6 @@ enum SessionAssembly {
         calendar: Calendar = .current
     ) -> Workout {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        let pillarPlan = PillarPlan.select(
-            template: template,
-            recentLogs: recentLogs,
-            profile: user.profile,
-            pillarWeighting: sessionPolicy.pillarWeighting,
-            asOf: asOf,
-            calendar: calendar
-        )
 
         var blocks = planBlocks(
             requestedMinutes: requestedMinutes,
@@ -115,17 +107,11 @@ enum SessionAssembly {
         shapeTowardTargets(&blocks)
         fit(&blocks, targetSeconds: requestedMinutes * 60)
 
-        let focusPillar: Pillar?
-        switch pillarPlan {
-        case .single(let pillar): focusPillar = pillar
-        case .blend: focusPillar = nil
-        }
-
         return Workout(
             id: UUID(),
             createdAt: asOf,
             shape: template.shape,
-            focusPillar: focusPillar,
+            focusPillar: focusPillar(of: blocks),
             requestedMinutes: requestedMinutes,
             blocks: blocks.compactMap { $0.materialize() }
         )
@@ -146,15 +132,28 @@ enum SessionAssembly {
         calendar: Calendar = .current
     ) -> [PlannedBlock] {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        let pillarPlan = PillarPlan.select(
+        // Step 0 (US-E04): the cold-start override runs before Steps 1-6. It forces First-Week
+        // Contrast onto the pillar plan and caps the eligible pool at the contract's Starting
+        // Difficulty; both are no-ops once the engine retires cold-start (US-G04), so a warmed-up
+        // user runs exactly the US-E03 pipeline.
+        let pillarPlan = ColdStartOverride.overridePlan(
+            PillarPlan.select(
+                template: template,
+                recentLogs: recentLogs,
+                profile: user.profile,
+                pillarWeighting: sessionPolicy.pillarWeighting,
+                asOf: asOf,
+                calendar: calendar
+            ),
             template: template,
-            recentLogs: recentLogs,
-            profile: user.profile,
-            pillarWeighting: sessionPolicy.pillarWeighting,
-            asOf: asOf,
-            calendar: calendar
+            user: user,
+            sessionPolicy: sessionPolicy
         )
-        let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs)
+        let pool = ColdStartOverride.cappedPool(
+            ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+            user: user,
+            sessionPolicy: sessionPolicy
+        )
         var builder = Builder(
             library: library,
             pool: pool,
@@ -169,6 +168,30 @@ enum SessionAssembly {
             template: template,
             requestedMinutes: requestedMinutes
         )
+    }
+
+    // MARK: - Focus pillar
+
+    /// The pillar a training block trains, or `nil` for the structural bookends (`warmup`/`cooldown`).
+    static func pillar(of category: ExerciseCategory) -> Pillar? {
+        switch category {
+        case .strength: return .strength
+        case .mobility: return .mobility
+        case .primal: return .primal
+        case .warmup, .cooldown: return nil
+        }
+    }
+
+    /// The session's reported `focusPillar`, read from the training blocks the assembly *actually*
+    /// produced rather than the pre-assembly pillar plan. A single-focus session leaves exactly one
+    /// non-empty training block, and its pillar is the focus; a blend leaves two or three (no single
+    /// focus, so `nil`), and a degenerate warmup-only session leaves none. Reading it from the built
+    /// blocks keeps the label truthful when a cold-start primal day degrades to a strength/mobility
+    /// block because the capped pool left no eligible locomotion movement (US-E04).
+    static func focusPillar(of blocks: [PlannedBlock]) -> Pillar? {
+        let training = blocks.filter { !$0.items.isEmpty && pillar(of: $0.category) != nil }
+        guard training.count == 1 else { return nil }
+        return pillar(of: training[0].category)
     }
 
     // MARK: - Planned wall-clock
@@ -430,12 +453,23 @@ private struct Builder {
         var middle: [PlannedBlock] = []
         switch pillarPlan {
         case .single(let pillar):
-            if pillar == .mobility {
+            switch pillar {
+            case .mobility:
                 if let block = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises) {
                     middle.append(block)
                 }
-            } else if let block = strengthBlock() {
-                middle.append(block)
+            case .primal:
+                // A single-focus primal day (only reached under the Step 0 First-Week Contrast, US-E04)
+                // builds a dedicated locomotion block, degrading gracefully to strength then mobility if
+                // the capped pool leaves no eligible primal movement so the day is never empty.
+                let block = primalBlock()
+                    ?? strengthBlock()
+                    ?? mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
+                if let block { middle.append(block) }
+            case .strength:
+                if let block = strengthBlock() {
+                    middle.append(block)
+                }
             }
         case .blend(let weights):
             middle = blendBlocks(
