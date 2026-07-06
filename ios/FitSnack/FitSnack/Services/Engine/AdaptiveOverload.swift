@@ -12,10 +12,13 @@ import Foundation
 ///   logged performance of this exact exercise: the number of sets worked and the rounded average
 ///   per-set value. A freshly-advanced exercise (Step 5 moved the user up a tier) has no history of
 ///   its own, so it falls back to the exercise's `defaultReps`/`defaultDurationSeconds`.
-/// - **Feedback within one cycle** - that same log's `perceivedDifficulty` steers the next target:
-///   `tooHard` eases it below capacity, `tooEasy` pushes it above, `justRight`/no rating nudges it
-///   progressively up by at least one. The step per signal is a small percentage (see the tuning
-///   constants), so the change is a nudge, never a leap.
+/// - **The Asymmetric Ramp (US-E05)** - that same log's `perceivedDifficulty` (or a skip) steers the
+///   next target, and it does so *asymmetrically*: it backs off fast and climbs slow. A single recent
+///   `tooHard` **or a skip** of this exercise pulls the next target down eagerly (the larger step),
+///   `tooEasy` nudges it up only patiently (a smaller step), and `justRight`/no rating nudges it
+///   progressively up by the gentlest step. Every signal moves the target by at least one so its
+///   direction is never lost to rounding, and the down-step magnitude is always >= the up-step, so a
+///   user is never overwhelmed by a too-hard day and never bored by a too-easy one.
 /// - **Safety rails** - per-set targets and set counts are clamped to sane floors and ceilings, so
 ///   even a runaway log can never produce an absurd ("heroic") prescription.
 ///
@@ -47,24 +50,32 @@ enum AdaptiveOverload {
 
     // MARK: Tuning constants
 
-    /// The per-cycle bump curve (the PRD's open question made concrete). Each multiplier is applied
-    /// to demonstrated capacity, then rounded; direction is then guaranteed (every signal - easier,
-    /// harder, or the progressive nudge - always moves the target by at least one), so a small
-    /// capacity can never stall.
+    /// The per-cycle bump curve (the PRD's open question made concrete), tuned as the **Asymmetric
+    /// Ramp** (US-E05): back off fast, climb slow. Each multiplier is applied to demonstrated
+    /// capacity, then rounded; direction is then guaranteed (every signal - easier, harder, or the
+    /// progressive nudge - always moves the target by at least one), so a small capacity can never
+    /// stall.
     ///
-    /// - `progressiveStep` (`justRight` / no rating): nudge just above capacity.
-    /// - `easyStep` (`tooEasy`): intensify.
-    /// - `hardStep` (`tooHard`): ease.
+    /// - `progressiveStep` (`justRight` / no rating): the gentlest nudge just above capacity.
+    /// - `easyStep` (`tooEasy`): a patient climb above capacity.
+    /// - `hardStep` (`tooHard` or a **skip**): an eager back-off below capacity.
+    ///
+    /// The asymmetry invariant is `(1 - hardStep) >= (easyStep - 1)`: the down-step is at least as
+    /// large as the up-step (here twice as large - a 20% eager back-off against a 10% patient climb),
+    /// so a too-hard day is corrected decisively while a too-easy day advances only gradually. A skip
+    /// is treated as an eager down-signal exactly like `tooHard` (the user bailed; that was too much).
     ///
     /// The two *advancing* steps (`progressiveStep`/`easyStep`) are scaled by the Session Policy's
     /// `progressionRate` (US-E03): the deviation-from-capacity grows with the rate, so a higher rate
     /// advances reps/holds faster while still clamping to the safety rails. The neutral rate `1.0`
     /// leaves the curve exactly as it was, so `SessionPolicy.default` is a no-op. `hardStep` is a
-    /// safety response to a `tooHard` session, so the rate never scales the ease (a faster program
-    /// must not back off harder); the Asymmetric Ramp owns the down-step in US-E05.
+    /// safety response to a too-hard/skip signal, so the rate never scales the ease (a faster program
+    /// must not back off harder): the eager down-step is a fixed property of the ramp. (Because only
+    /// the up-steps are paced, a deliberately aggressive `progressionRate` can climb faster than the
+    /// fixed back-off - the asymmetry is a property of the base ramp at the neutral rate, by design.)
     static let progressiveStep = 1.05
-    static let easyStep = 1.15
-    static let hardStep = 0.85
+    static let easyStep = 1.10
+    static let hardStep = 0.80
 
     /// The neutral progression rate: the Session Policy default, reproducing the pre-policy curve.
     static let neutralProgressionRate = 1.0
@@ -105,7 +116,7 @@ enum AdaptiveOverload {
         }
         let perSet = adjusted(
             capacity.perSetValue,
-            feedback: capacity.feedback,
+            signal: capacity.signal,
             isHold: exercise.isHold,
             progressionRate: progressionRate
         )
@@ -118,28 +129,44 @@ enum AdaptiveOverload {
 
     // MARK: Capacity
 
+    /// The direction the Asymmetric Ramp (US-E05) moves the next target, resolved from the most
+    /// recent signal: `eased` (an eager down-step on `tooHard` or a **skip**), `intensify` (a patient
+    /// up-step on `tooEasy`), or `progress` (the gentlest nudge up on `justRight`/no rating).
+    private enum RampSignal {
+        case eased
+        case intensify
+        case progress
+    }
+
     /// What the user demonstrated on an exercise: how many sets they worked, the representative
-    /// per-set value, and the session's perceived-difficulty feedback.
+    /// per-set value, and the resolved ramp signal for the next target.
     private struct Capacity {
         let sets: Int
         let perSetValue: Int
-        let feedback: PerceivedDifficulty?
+        let signal: RampSignal
     }
 
     /// The user's demonstrated capacity for `exercise`: scan `recentLogs` newest-first and take the
     /// first session that worked it non-skipped with at least one usable set, reading the set count,
-    /// the rounded average per-set value (reps for a rep-based movement, seconds for a hold), and
-    /// that session's `perceivedDifficulty`. Returns `nil` when no such performance exists, so the
-    /// caller falls back to the exercise defaults.
+    /// the rounded average per-set value (reps for a rep-based movement, seconds for a hold), and the
+    /// resolved ramp signal. A **more-recent skip** of this exercise (encountered before the worked
+    /// session) is the Asymmetric Ramp's eager down-signal (US-E05): it overrides the worked session's
+    /// own rating so the next target eases, regardless of how that earlier session felt. Returns `nil`
+    /// when no worked performance exists, so the caller falls back to the exercise defaults.
     private static func demonstratedCapacity(
         for exercise: Exercise,
         recentLogs: [WorkoutLog]
     ) -> Capacity? {
         let newestFirst = recentLogs.sorted { $0.completedAt > $1.completedAt }
+        var sawRecentSkip = false
         for log in newestFirst {
-            guard let logged = log.exercises.first(where: {
-                $0.exerciseId == exercise.id && !$0.skipped
-            }) else { continue }
+            guard let logged = log.exercises.first(where: { $0.exerciseId == exercise.id }) else {
+                continue
+            }
+            if logged.skipped {
+                sawRecentSkip = true
+                continue
+            }
 
             let values = logged.completedSets.compactMap { set -> Int? in
                 let value = exercise.isHold ? set.durationSeconds : set.reps
@@ -149,9 +176,20 @@ enum AdaptiveOverload {
             guard !values.isEmpty else { continue }
 
             let average = (Double(values.reduce(0, +)) / Double(values.count)).rounded()
-            return Capacity(sets: values.count, perSetValue: Int(average), feedback: log.perceivedDifficulty)
+            let signal: RampSignal = sawRecentSkip ? .eased : rampSignal(for: log.perceivedDifficulty)
+            return Capacity(sets: values.count, perSetValue: Int(average), signal: signal)
         }
         return nil
+    }
+
+    /// Maps a session's `perceivedDifficulty` to the ramp direction. A skip is handled upstream in
+    /// `demonstratedCapacity` (it forces `.eased` before this is consulted).
+    private static func rampSignal(for difficulty: PerceivedDifficulty?) -> RampSignal {
+        switch difficulty {
+        case .tooHard: return .eased
+        case .tooEasy: return .intensify
+        case .justRight, .none: return .progress
+        }
     }
 
     /// The starting target when there is no usable history: the exercise's own per-set default over
@@ -168,24 +206,25 @@ enum AdaptiveOverload {
 
     // MARK: Adjustment
 
-    /// Applies the perceived-difficulty bump to demonstrated `capacity` and clamps to the per-set
-    /// rails. `tooEasy` always lands at least one above capacity, `tooHard` at least one below (down
-    /// to the floor), and `justRight`/no-rating nudges progressively up by at least one (until the
-    /// ceiling) - so the direction of a signal is never lost to rounding. The two advancing steps
-    /// are scaled by `progressionRate` (US-E03); the `tooHard` ease is not (see `hardStep`).
+    /// Applies the Asymmetric Ramp (US-E05) to demonstrated `capacity` and clamps to the per-set
+    /// rails. `.eased` (a `tooHard` or a skip) lands at least one below capacity via the eager
+    /// `hardStep` (down to the floor), `.intensify` (`tooEasy`) at least one above via the patient
+    /// `easyStep`, and `.progress` (`justRight`/no rating) at least one above via the gentlest
+    /// `progressiveStep` - so the direction of a signal is never lost to rounding. The two advancing
+    /// steps are scaled by `progressionRate` (US-E03); the eager down-step is not (see `hardStep`).
     private static func adjusted(
         _ capacity: Int,
-        feedback: PerceivedDifficulty?,
+        signal: RampSignal,
         isHold: Bool,
         progressionRate: Double
     ) -> Int {
         let scaled: Int
-        switch feedback {
-        case .tooHard:
+        switch signal {
+        case .eased:
             scaled = min(rounded(capacity, by: hardStep), capacity - 1)
-        case .tooEasy:
+        case .intensify:
             scaled = max(rounded(capacity, by: paced(easyStep, rate: progressionRate)), capacity + 1)
-        case .justRight, .none:
+        case .progress:
             scaled = max(rounded(capacity, by: paced(progressiveStep, rate: progressionRate)), capacity + 1)
         }
         return clampPerSet(scaled, isHold: isHold)
