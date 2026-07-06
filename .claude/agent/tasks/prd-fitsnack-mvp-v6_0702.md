@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01-E04 done); Epics F-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01-E05 done); Epics F-N not started (`[ ]`).
 
 ---
 
@@ -272,10 +272,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `Services/Engine/AdaptiveOverload.swift` applies the Asymmetric Ramp: a single recent `too_hard` or a skip pulls the next target down immediately (eager), while `too_easy` nudges up only gradually (patient) - the down-step magnitude is >= the up-step magnitude
-- [ ] The behavior is expressed as tunable constants (extending the existing `easyStep`/`hardStep`) and stays within the existing rails (`minReps 3`/`maxReps 50`, `minHoldSeconds 10`/`maxHoldSeconds 180`, `minSets 1`/`maxSets 4`)
-- [ ] The ramp composes with `sessionPolicy.progressionRate` from US-E03
-- [ ] `AdaptiveOverloadTests` covers: immediate drop on one `too_hard`; gradual rise on `too_easy`; asymmetry (down >= up); rails honored; build and tests pass
+- [x] `Services/Engine/AdaptiveOverload.swift` applies the Asymmetric Ramp: a single recent `too_hard` or a skip pulls the next target down immediately (eager), while `too_easy` nudges up only gradually (patient) - the down-step magnitude is >= the up-step magnitude
+- [x] The behavior is expressed as tunable constants (extending the existing `easyStep`/`hardStep`) and stays within the existing rails (`minReps 3`/`maxReps 50`, `minHoldSeconds 10`/`maxHoldSeconds 180`, `minSets 1`/`maxSets 4`)
+- [x] The ramp composes with `sessionPolicy.progressionRate` from US-E03
+- [x] `AdaptiveOverloadTests` covers: immediate drop on one `too_hard`; gradual rise on `too_easy`; asymmetry (down >= up); rails honored; build and tests pass
 
 **Validation Test:**
 
