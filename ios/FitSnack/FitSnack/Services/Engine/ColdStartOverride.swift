@@ -90,7 +90,7 @@ enum ColdStartOverride {
                 ? [.strength, .mobility, .primal]
                 : [.strength, .mobility]
             let lead = contrastPillar(user: user, available: available)
-            return .blend(favoring(lead, in: weights))
+            return .blend(weights.favoring(lead))
         }
     }
 
@@ -117,35 +117,4 @@ enum ColdStartOverride {
         return user.profile.sitsLong ? .mobility : .strength
     }
 
-    // MARK: - Blend lead
-
-    /// Re-points a blend's time shares so `lead` owns the largest share (its block leads and gets the
-    /// most time), by swapping the lead's share with whichever pillar currently holds the max. This
-    /// preserves the exact multiset of shares, so they still sum to 1 and every pillar keeps its
-    /// floor - the contrast only reorders the emphasis, it never starves a pillar. Ties for the max
-    /// resolve by canonical pillar order for determinism. A no-op when `lead` is not part of this
-    /// blend (share 0, e.g. primal in a short blend) or already leads.
-    private static func favoring(_ lead: Pillar, in weights: PillarWeights) -> PillarWeights {
-        let shares: [Pillar: Double] = [
-            .strength: weights.strength,
-            .mobility: weights.mobility,
-            .primal: weights.primal,
-        ]
-        guard (shares[lead] ?? 0) > 0 else { return weights }
-
-        var maxPillar = rotation[0]
-        for pillar in rotation where (shares[pillar] ?? 0) > (shares[maxPillar] ?? 0) {
-            maxPillar = pillar
-        }
-        guard maxPillar != lead else { return weights }
-
-        var result = shares
-        result[lead] = shares[maxPillar]
-        result[maxPillar] = shares[lead]
-        return PillarWeights(
-            strength: result[.strength] ?? 0,
-            mobility: result[.mobility] ?? 0,
-            primal: result[.primal] ?? 0
-        )
-    }
 }

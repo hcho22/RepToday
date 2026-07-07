@@ -226,3 +226,36 @@ struct PillarWeights: Equatable {
     var mobility: Double
     var primal: Double = 0
 }
+
+extension PillarWeights {
+    /// The canonical pillar order the share swaps below iterate in, so ties for the max share resolve
+    /// deterministically (strength, then mobility, then primal).
+    private static let order: [Pillar] = [.strength, .mobility, .primal]
+
+    /// Re-points the shares so `lead` owns the largest share (its block leads and gets the most time),
+    /// by swapping the lead's share with whichever pillar currently holds the max. This preserves the
+    /// exact multiset of shares, so they still sum to 1 and every pillar keeps its floor - the emphasis
+    /// is reordered, never a pillar starved. Used by both the cold-start First-Week Contrast
+    /// (`ColdStartOverride`) and the Return override (`ReturnOverride`) to lead a blend with a chosen
+    /// pillar. A no-op when `lead` is not part of this blend (share 0, e.g. primal in a short blend) or
+    /// already leads.
+    func favoring(_ lead: Pillar) -> PillarWeights {
+        let shares: [Pillar: Double] = [.strength: strength, .mobility: mobility, .primal: primal]
+        guard (shares[lead] ?? 0) > 0 else { return self }
+
+        var maxPillar = PillarWeights.order[0]
+        for pillar in PillarWeights.order where (shares[pillar] ?? 0) > (shares[maxPillar] ?? 0) {
+            maxPillar = pillar
+        }
+        guard maxPillar != lead else { return self }
+
+        var result = shares
+        result[lead] = shares[maxPillar]
+        result[maxPillar] = shares[lead]
+        return PillarWeights(
+            strength: result[.strength] ?? 0,
+            mobility: result[.mobility] ?? 0,
+            primal: result[.primal] ?? 0
+        )
+    }
+}

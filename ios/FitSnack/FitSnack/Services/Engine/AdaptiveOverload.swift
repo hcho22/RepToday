@@ -80,6 +80,11 @@ enum AdaptiveOverload {
     /// The neutral progression rate: the Session Policy default, reproducing the pre-policy curve.
     static let neutralProgressionRate = 1.0
 
+    /// The neutral Re-entry Ramp scale (US-E06): `1.0` holds nothing back, so the default reproduces
+    /// the pre-ramp target exactly. A Return and its Re-entry Ramp pass a scale `< 1.0`
+    /// (`ReturnOverride.reentryScale`) to hold the per-set target below normal and walk it back up.
+    static let neutralReentryScale = 1.0
+
     /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
     /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
     /// keep a target meaningful after repeated easing.
@@ -106,10 +111,18 @@ enum AdaptiveOverload {
     /// neutral (pre-policy behavior), a higher rate advances reps/holds faster. It only affects the
     /// step *up* from demonstrated capacity, so a no-history default (which has no bump to scale) is
     /// unchanged by it.
+    ///
+    /// `reentryScale` is the Return / Re-entry Ramp lever (US-E06): `1.0` is neutral (no-op), while a
+    /// value `< 1.0` (`ReturnOverride.reentryScale`) holds the *capacity-derived* per-set target below
+    /// what the signal and `progressionRate` would otherwise prescribe, so a returning user is eased
+    /// back gradually. It is applied only to capacity-derived targets - a no-history default is already
+    /// the gentle starting value and is left untouched - and it always lands at least one below the
+    /// un-held target (down to the safety floor) so the ease is never lost to rounding.
     static func target(
         for exercise: Exercise,
         recentLogs: [WorkoutLog],
-        progressionRate: Double = neutralProgressionRate
+        progressionRate: Double = neutralProgressionRate,
+        reentryScale: Double = neutralReentryScale
     ) -> OverloadTarget {
         guard let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs) else {
             return defaultTarget(for: exercise)
@@ -118,7 +131,8 @@ enum AdaptiveOverload {
             capacity.perSetValue,
             signal: capacity.signal,
             isHold: exercise.isHold,
-            progressionRate: progressionRate
+            progressionRate: progressionRate,
+            reentryScale: reentryScale
         )
         return OverloadTarget(
             sets: clampSets(capacity.sets),
@@ -206,17 +220,24 @@ enum AdaptiveOverload {
 
     // MARK: Adjustment
 
-    /// Applies the Asymmetric Ramp (US-E05) to demonstrated `capacity` and clamps to the per-set
-    /// rails. `.eased` (a `tooHard` or a skip) lands at least one below capacity via the eager
-    /// `hardStep` (down to the floor), `.intensify` (`tooEasy`) at least one above via the patient
-    /// `easyStep`, and `.progress` (`justRight`/no rating) at least one above via the gentlest
-    /// `progressiveStep` - so the direction of a signal is never lost to rounding. The two advancing
-    /// steps are scaled by `progressionRate` (US-E03); the eager down-step is not (see `hardStep`).
+    /// Applies the Asymmetric Ramp (US-E05) to demonstrated `capacity`, then the Return / Re-entry Ramp
+    /// hold (US-E06), and clamps to the per-set rails. `.eased` (a `tooHard` or a skip) lands at least
+    /// one below capacity via the eager `hardStep` (down to the floor), `.intensify` (`tooEasy`) at
+    /// least one above via the patient `easyStep`, and `.progress` (`justRight`/no rating) at least one
+    /// above via the gentlest `progressiveStep` - so the direction of a signal is never lost to
+    /// rounding. The two advancing steps are scaled by `progressionRate` (US-E03); the eager down-step
+    /// is not (see `hardStep`).
+    ///
+    /// A `reentryScale < 1.0` (US-E06) then holds that result below the normal target: it scales the
+    /// otherwise-prescribed value and lands at least one below it (down to the floor), so a Return /
+    /// Re-entry Ramp session is always gentler than the un-held session while remaining within the
+    /// rails. The neutral `1.0` is a no-op, so the pre-ramp curve is reproduced exactly.
     private static func adjusted(
         _ capacity: Int,
         signal: RampSignal,
         isHold: Bool,
-        progressionRate: Double
+        progressionRate: Double,
+        reentryScale: Double
     ) -> Int {
         let scaled: Int
         switch signal {
@@ -227,7 +248,10 @@ enum AdaptiveOverload {
         case .progress:
             scaled = max(rounded(capacity, by: paced(progressiveStep, rate: progressionRate)), capacity + 1)
         }
-        return clampPerSet(scaled, isHold: isHold)
+        let held = reentryScale < neutralReentryScale
+            ? min(rounded(scaled, by: reentryScale), scaled - 1)
+            : scaled
+        return clampPerSet(held, isHold: isHold)
     }
 
     /// Scales an advancing multiplier by `progressionRate` around `1.0`: the deviation from
