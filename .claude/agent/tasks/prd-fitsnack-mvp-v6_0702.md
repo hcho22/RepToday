@@ -377,10 +377,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] Each re-program writes a templated `note` (`source == 'template'`) describing the real change ("what I changed and why"); the note may never invoke a `why` or claim a change the sessions will not reflect
-- [ ] The service updates `user.duration.completedDurationEWMA` from logged `durationMinutes` (what the user completed, not requested) and sets `duration.defaultMinutes` from that EWMA
-- [ ] `defaultMinutes` is snapped to a valid chip value (5/10/15/20/30/45/60)
-- [ ] Unit tests cover: the note reflects the actual lever moved; EWMA tracks completed durations; `defaultMinutes` snaps correctly; build and tests pass
+- [x] Each re-program writes a templated `note` (`source == 'template'`) describing the real change ("what I changed and why"); the note may never invoke a `why` or claim a change the sessions will not reflect
+- [x] The service updates `user.duration.completedDurationEWMA` from logged `durationMinutes` (what the user completed, not requested) and sets `duration.defaultMinutes` from that EWMA
+- [x] `defaultMinutes` is snapped to a valid chip value (5/10/15/20/30/45/60)
+- [x] Unit tests cover: the note reflects the actual lever moved; EWMA tracks completed durations; `defaultMinutes` snaps correctly; build and tests pass
 
 **Validation Test:**
 
