@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epic F in progress (US-F01 done); Epics G-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epic F in progress (US-F01, US-F02 done); Epics G-N not started (`[ ]`).
 
 ---
 
@@ -337,10 +337,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A pure diagnosis function classifies recent history as `physical_stall` (advancement criteria cleared repeatedly but not advanced -> more challenge) or `disengagement` (declining session length, rising skips, longer gaps -> less friction)
-- [ ] The diagnosis is deterministic and reads only `WorkoutLog` history plus consistency signals
-- [ ] The mapping from diagnosis to policy levers is explicit: `physical_stall` raises `progressionRate`/variety; `disengagement` lowers difficulty and shortens sessions
-- [ ] Unit tests cover a clear stall case, a clear disengagement case, and a mixed case (resolved by precedence); build and tests pass
+- [x] A pure diagnosis function classifies recent history as `physical_stall` (advancement criteria cleared repeatedly but not advanced -> more challenge) or `disengagement` (declining session length, rising skips, longer gaps -> less friction)
+- [x] The diagnosis is deterministic and reads only `WorkoutLog` history plus consistency signals
+- [x] The mapping from diagnosis to policy levers is explicit: `physical_stall` raises `progressionRate`/variety; `disengagement` lowers difficulty and shortens sessions
+- [x] Unit tests cover a clear stall case, a clear disengagement case, and a mixed case (resolved by precedence); build and tests pass
 
 **Validation Test:**
 

@@ -25,6 +25,12 @@ import Foundation
 ///   minutes - keeps a user who deliberately requests shorter sessions and finishes them (Default
 ///   Duration learning) from being misread as pulling away.
 ///
+/// The two *plateau* signals - Physical Stall and Disengagement - are detected by
+/// `PlateauDiagnosis` (US-F02), the single seam that owns plateau logic and maps each plateau to
+/// the policy levers the re-weighting service writes. This module composes those predicates so
+/// detection and diagnosis can never disagree; it owns only the Weekly Boundary and delegates the
+/// Return to `ReturnOverride`.
+///
 /// **Trigger Precedence.** When both `physicalStall` and `disengagement` apply, `disengagement` wins
 /// and `physicalStall` is suppressed: a user who is pulling away is never handed more challenge. This
 /// is the one precedence rule the PRD pins, and it is enforced here at the source so no downstream
@@ -36,32 +42,6 @@ import Foundation
 /// concrete `SessionPolicyServiceProtocol` (US-F03) supplies the validated `library` from its
 /// exercise service and adapts this to the protocol's library-free `dueTriggers(user:recentLogs:asOf:)`.
 enum ReprogramTriggerDetection {
-
-    // MARK: - Tuning constants
-
-    /// Distinct recent sessions in which the user must clear their frontier tier's advancement
-    /// criteria - without the frontier ever rising - for a Physical Stall to register. Two is
-    /// "repeatedly": if the engine could have advanced the user, the second clear would already sit on
-    /// a higher tier, so a still-unchanged frontier after two clears means the (existing) next tier is
-    /// gated rather than an advance about to happen. A frontier with no next tier at all never stalls
-    /// (see `isPhysicallyStalled`).
-    static let stallClearedSessions = 2
-
-    /// The window of most-recent completed sessions the Disengagement signal reads. A trend needs a
-    /// few sessions to be real, so fewer than this many logs never reads as disengagement.
-    static let disengagementWindow = 3
-
-    /// The completion ratio (completed `durationMinutes` over `requestedMinutes`) at or below which
-    /// the newest session in a declining run reads as pulling back. Reading the requested-vs-completed
-    /// *gap* rather than absolute completed minutes is deliberate (US-D02): a busy-but-engaged user who
-    /// deliberately requests shorter sessions and finishes them fully is doing Default Duration
-    /// learning, not disengaging, and must not be handed reduced friction.
-    static let disengagementCompletionRatio = 0.6
-
-    /// Skip rate across the disengagement window at or above which skips read as "rising". Skips are
-    /// counted over the window so one skipped movement in an otherwise-complete session does not
-    /// register as pulling away.
-    static let disengagementSkipRate = 0.5
 
     // MARK: - Detection entry point
 
@@ -88,8 +68,10 @@ enum ReprogramTriggerDetection {
             kinds.append(.return)
         }
 
-        let disengaged = isDisengaging(recentLogs: recentLogs)
-        let stalled = isPhysicallyStalled(recentLogs: recentLogs, library: library)
+        // The plateau signals are owned by `PlateauDiagnosis` (US-F02), the single seam so
+        // detection and diagnosis can never disagree about what a stall or disengagement is.
+        let disengaged = PlateauDiagnosis.isDisengaging(recentLogs: recentLogs)
+        let stalled = PlateauDiagnosis.isPhysicallyStalled(recentLogs: recentLogs, library: library)
 
         if disengaged {
             kinds.append(.disengagement)
@@ -125,104 +107,6 @@ enum ReprogramTriggerDetection {
             let nowWeekStart = calendar.dateInterval(of: .weekOfYear, for: asOf)?.start
         else { return false }
         return nowWeekStart > lastWeekStart
-    }
-
-    // MARK: - Disengagement
-
-    /// Whether recent history reads as the user pulling away: over the most recent
-    /// `disengagementWindow` completed sessions, either completion is falling short of what was
-    /// requested or the skip rate is elevated. Fewer than a full window of sessions is not enough of a
-    /// trend to judge, so it reads as engaged. (Lengthening gaps, the third disengagement cue, are
-    /// already surfaced by the Return trigger, so this reads the requested-vs-completed gap and rising
-    /// skips.)
-    private static func isDisengaging(recentLogs: [WorkoutLog]) -> Bool {
-        let window = Array(
-            recentLogs
-                .sorted { $0.completedAt < $1.completedAt }
-                .suffix(disengagementWindow)
-        )
-        guard window.count >= disengagementWindow else { return false }
-        return isCompletionFalling(window) || hasElevatedSkips(window)
-    }
-
-    /// Whether the user is completing progressively less of what they ask for across `window`
-    /// (oldest -> newest): the per-session completion ratio (`durationMinutes / requestedMinutes`,
-    /// clamped to `1` so finishing more than requested is fully engaged) forms a non-increasing run
-    /// that actually declines and whose newest value has fallen to at most
-    /// `disengagementCompletionRatio`.
-    ///
-    /// This reads the requested-vs-completed *gap*, not absolute completed minutes (US-D02): a user
-    /// who deliberately requests shorter sessions (15 -> 10 -> 5 min) and finishes each fully holds a
-    /// ratio of `1.0` and never reads as disengaging - that is Default Duration learning. Only a user
-    /// bailing on a widening share of what they set out to do pulls this trigger.
-    private static func isCompletionFalling(_ window: [WorkoutLog]) -> Bool {
-        let ratios = window.map { log -> Double in
-            guard log.requestedMinutes > 0 else { return 1.0 }
-            return min(1.0, Double(log.durationMinutes) / Double(log.requestedMinutes))
-        }
-        guard let first = ratios.first, let last = ratios.last else { return false }
-        let nonIncreasing = zip(ratios, ratios.dropFirst()).allSatisfy { $0 >= $1 }
-        return nonIncreasing && last < first && last <= disengagementCompletionRatio
-    }
-
-    /// Whether the fraction of skipped exercises across `window` reaches `disengagementSkipRate`.
-    private static func hasElevatedSkips(_ window: [WorkoutLog]) -> Bool {
-        let total = window.reduce(0) { $0 + $1.exercises.count }
-        guard total > 0 else { return false }
-        let skipped = window.reduce(0) { $0 + $1.exercises.filter(\.skipped).count }
-        return Double(skipped) / Double(total) >= disengagementSkipRate
-    }
-
-    // MARK: - Physical Stall
-
-    /// Whether the user has cleared a frontier tier's advancement criteria repeatedly while a real
-    /// next tier they *could* progress to sits just out of reach - "cleared to advance but hasn't"
-    /// (US-F02).
-    ///
-    /// For each chain the user has worked, the *frontier* is the highest-order tier they have worked
-    /// (non-skipped) - the same notion Step 5 uses. A stall requires two things:
-    /// - The frontier has an **existing next tier** (`progressionId != nil`). A single-tier chain or a
-    ///   maxed top-of-chain movement has nothing to advance to, so it is *not* a stall - this is the
-    ///   crucial guard that keeps routine mobility (the library's single-tier deep-squat-hold, pigeon,
-    ///   cat-cow, ... chains, all with easily-met criteria) from reading as a plateau demanding more
-    ///   challenge for a perfectly engaged user.
-    /// - That frontier's criteria are cleared in `stallClearedSessions` or more distinct sessions while
-    ///   the frontier never rises. Because Step 5 advances a user the session after their criteria are
-    ///   met *when the next tier is eligible*, a next tier that exists yet was never reached across two
-    ///   clears must be **gated** (phase- or difficulty-locked): the user is genuinely stuck behind a
-    ///   gate and warrants more challenge within the tier, not a fresh skill they cannot yet receive.
-    ///
-    /// Unparseable criteria are never "met", so such a tier never reads as a stall.
-    private static func isPhysicallyStalled(recentLogs: [WorkoutLog], library: [Exercise]) -> Bool {
-        let byId = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-
-        // The frontier exercise per chain: the highest-order tier the user has worked (non-skipped).
-        var frontierByChain: [String: Exercise] = [:]
-        for log in recentLogs {
-            for logged in log.exercises where !logged.skipped {
-                guard let exercise = byId[logged.exerciseId] else { continue }
-                if let current = frontierByChain[exercise.progressionChainId],
-                   current.progressionOrder >= exercise.progressionOrder { continue }
-                frontierByChain[exercise.progressionChainId] = exercise
-            }
-        }
-
-        return frontierByChain.values.contains { frontier in
-            // Only a frontier with a real (but unreached, therefore gated) next tier can stall; a
-            // single-tier or top-of-chain movement has nowhere to advance and is never a plateau.
-            guard frontier.progressionId != nil else { return false }
-            guard let criteria = AdvancementCriteria(parsing: frontier.advancementCriteria) else {
-                return false
-            }
-            let clearedSessions = recentLogs.filter { log in
-                log.exercises.contains { logged in
-                    logged.exerciseId == frontier.id
-                        && !logged.skipped
-                        && criteria.isMet(by: logged, isHold: frontier.isHold)
-                }
-            }.count
-            return clearedSessions >= stallClearedSessions
-        }
     }
 }
 
