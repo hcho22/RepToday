@@ -126,6 +126,7 @@ Services/       Service implementations
   Protocols/    Service protocol definitions
   Mock/         Mock implementations wired in ServiceContainer
   Engine/       Deterministic workout-engine pipeline steps (pure, on-device)
+  Programmer/   Deterministic AI Programmer (re-program trigger detection, pure, on-device)
 DI/             ServiceContainer + environment injection
 ViewModels/     @Observable view models
 Views/          SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
