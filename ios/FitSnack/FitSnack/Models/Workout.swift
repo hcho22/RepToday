@@ -19,6 +19,12 @@ struct Workout: Codable, Equatable, Identifiable {
     var focusPillar: Pillar?
     /// The minutes the user asked for; the assembled session lands within ±1 of this.
     var requestedMinutes: Int
+    /// True when the engine served this session as a Return after a gap (US-E06): the gap since
+    /// the last logged session crossed the Return threshold, so the session was made easy and
+    /// winnable regardless of staleness. The Return decision is made once, here at generation; the
+    /// post-session flow (US-L01) copies it onto `WorkoutLog.wasReturn` (US-D02) rather than
+    /// re-deriving detection at a different `asOf`. Defaults to `false` (a normal session).
+    var wasReturn: Bool = false
     /// Ordered blocks; the first is always a warm-up, and a cooldown closes sessions over 10 min.
     var blocks: [WorkoutBlock]
 }

@@ -752,6 +752,8 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertTrue(ReturnOverride.isReturn(recentLogs: returnLogs, asOf: asOf, calendar: calendar), "a 10-day gap is a Return")
 
         let returned = assemble(minutes: 20, user: user(), library: library, logs: returnLogs)
+        XCTAssertTrue(returned.wasReturn, "the engine stamps the Return decision on the Workout")
+        XCTAssertFalse(baseline.wasReturn, "a present user's session is not flagged as a Return")
         XCTAssertTrue(
             returned.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= ReturnOverride.returnMaxDifficulty },
             "a Return caps every movement at or below returnMaxDifficulty"
@@ -843,6 +845,7 @@ final class SessionAssemblyTests: XCTestCase {
             workout.focusPillar, .strength,
             "cold start owns the first sessions: its rotation (strength on day 0) wins over the Return's mobility lead"
         )
+        XCTAssertFalse(workout.wasReturn, "a cold-start session is not flagged as a Return (the two are mutually exclusive)")
     }
 
     /// A Return session is deterministic run to run, like every other engine path.

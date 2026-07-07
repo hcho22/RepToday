@@ -114,8 +114,32 @@ enum SessionAssembly {
             shape: template.shape,
             focusPillar: focusPillar(of: blocks),
             requestedMinutes: requestedMinutes,
+            wasReturn: isReturnSession(
+                user: user,
+                recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
+                asOf: asOf,
+                calendar: calendar
+            ),
             blocks: blocks.compactMap { $0.materialize() }
         )
+    }
+
+    /// Whether this generation is a Return (US-E06): a real gap since the last logged session, but
+    /// only in the steady state - a Return is suppressed while cold-start still owns the first
+    /// sessions (the two overrides are mutually exclusive). Computed here as the single source of
+    /// truth so the pillar/pool/volume overrides in `planBlocks` and the `Workout.wasReturn` flag the
+    /// assembler stamps always agree, and the post-session log-writer (US-L01) records the same
+    /// decision the engine acted on rather than re-deriving it at a different `asOf`.
+    static func isReturnSession(
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        asOf: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        !ColdStartOverride.isActive(user: user, sessionPolicy: sessionPolicy)
+            && ReturnOverride.isReturn(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
     }
 
     /// Builds the seeded block skeleton (warm-up, the pillar plan's training block(s) with their
@@ -141,8 +165,13 @@ enum SessionAssembly {
         // cold-start is active, since cold-start already serves gentle, capped, contrast sessions - so
         // the pillar-plan and pool overrides never fight over the same inputs. Both are no-ops in the
         // steady state, so a warmed-up, present user runs exactly the US-E03 pipeline.
-        let isReturn = !ColdStartOverride.isActive(user: user, sessionPolicy: sessionPolicy)
-            && ReturnOverride.isReturn(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
+        let isReturn = isReturnSession(
+            user: user,
+            recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
+            asOf: asOf,
+            calendar: calendar
+        )
 
         let coldStartPlan = ColdStartOverride.overridePlan(
             PillarPlan.select(
