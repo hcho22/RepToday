@@ -715,6 +715,150 @@ final class SessionAssemblyTests: XCTestCase {
         )
     }
 
+    // MARK: - Return override and Re-entry Ramp (US-E06)
+
+    /// A strong history that, without a Return, advances push onto push_diamond (difficulty 3). `shift`
+    /// ages every session uniformly: `shift == 0` leaves the most recent session 1 day ago (a present
+    /// user, no Return), while a larger shift pushes the whole history back so the last session crosses
+    /// the Return threshold - the *relative* staleness ranking (and so the pattern selection and
+    /// advancement) is preserved, isolating the Return override as the only behavioral change.
+    private func advancingHistory(shift: Int) -> [WorkoutLog] {
+        [
+            log([
+                ("squat_bodyweight", .strength, .squat, 15),
+                ("hinge_glute_bridge", .strength, .hinge, 15),
+                ("core_bird_dog", .strength, .core, 12),
+                ("pull_superman", .strength, .pull, 12),
+                ("mobility_cat_cow", .mobility, .mobility, 10),
+                ("primal_bear_crawl", .primal, .locomotion, 10),
+            ], daysAgo: 1 + shift),
+            log([("push_standard", .strength, .push, 12)], daysAgo: 10 + shift, difficulty: .justRight),
+        ]
+    }
+
+    /// A Return caps the eligible difficulty at the gentle end, so a strong pre-gap history that would
+    /// otherwise advance onto a hard tier can't make the first session back feel punishing - the Return
+    /// is measurably easier than the pre-gap norm.
+    func testReturnCapsDifficultyBelowThePreGapTier() async throws {
+        let library = try await library()
+
+        // Baseline (present user, most recent session 1 day ago): push advances onto push_diamond (3).
+        let baseline = assemble(minutes: 20, user: user(), library: library, logs: advancingHistory(shift: 0))
+        let baselineMax = baseline.blocks.flatMap(\.exercises).map(\.exercise.difficulty).max() ?? 0
+        XCTAssertGreaterThanOrEqual(baselineMax, 3, "without a Return an advancing history reaches difficulty 3 (guards the test)")
+
+        // The same history aged so the last session is 10 days ago -> a Return, capped at the gentle end.
+        let returnLogs = advancingHistory(shift: 9)
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: returnLogs, asOf: asOf, calendar: calendar), "a 10-day gap is a Return")
+
+        let returned = assemble(minutes: 20, user: user(), library: library, logs: returnLogs)
+        XCTAssertTrue(returned.wasReturn, "the engine stamps the Return decision on the Workout")
+        XCTAssertFalse(baseline.wasReturn, "a present user's session is not flagged as a Return")
+        XCTAssertTrue(
+            returned.blocks.flatMap(\.exercises).allSatisfy { $0.exercise.difficulty <= ReturnOverride.returnMaxDifficulty },
+            "a Return caps every movement at or below returnMaxDifficulty"
+        )
+        XCTAssertFalse(
+            returned.blocks.flatMap(\.exercises).contains { $0.exercise.id == "push_diamond" },
+            "the Return never reaches the over-cap advancement"
+        )
+        let returnedMax = returned.blocks.flatMap(\.exercises).map(\.exercise.difficulty).max() ?? 0
+        XCTAssertLessThan(returnedMax, baselineMax, "the Return is easier than the pre-gap norm")
+    }
+
+    /// Step 2 discipline-overrides-optimization: a Return leads with mobility (same-day relief)
+    /// regardless of staleness, even when the optimizer would train the stalest pillar instead.
+    func testReturnLeadsWithMobilityOverStaleness() async throws {
+        let library = try await library()
+        // Strength worked longest ago, mobility more recently but still past the Return threshold.
+        let logs = [
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 8),
+            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 15),
+        ]
+        // Guard: staleness optimization alone would train strength (the stalest pillar).
+        let optimized = PillarPlan.select(template: .singleFocus, recentLogs: logs, profile: user().profile, asOf: asOf, calendar: calendar)
+        XCTAssertEqual(optimized, .single(.strength), "optimization alone trains the stalest pillar")
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "an 8-day gap is a Return")
+
+        let workout = assemble(minutes: 8, user: user(), library: library, logs: logs)
+        XCTAssertEqual(workout.focusPillar, .mobility, "a Return serves mobility regardless of staleness")
+    }
+
+    /// The Re-entry Ramp walks Step 6's volume back up over the sessions after a Return: the lead
+    /// exercise's rep target climbs from the gentle floor toward normal as `rampSessionsRemaining`
+    /// decrements, and the readjustment lands here (never in the Return itself).
+    func testReentryRampClimbsRepTargetAcrossSessions() async throws {
+        let library = try await library()
+        // A present user (most recent session today, so no new Return): squat leads a single-focus
+        // strength session, last worked six days ago at capacity 15 (below its 3x20 criteria, so it
+        // stays on tier).
+        let logs = [
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 0),
+            log([
+                ("push_standard", .strength, .push, 10),
+                ("hinge_glute_bridge", .strength, .hinge, 10),
+                ("core_bird_dog", .strength, .core, 10),
+                ("pull_superman", .strength, .pull, 10),
+                ("primal_bear_crawl", .primal, .locomotion, 10),
+            ], daysAgo: 1),
+            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 6, difficulty: .justRight),
+        ]
+        XCTAssertFalse(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "a present user is not returning")
+
+        func squatReps(rampRemaining: Int?) throws -> Int {
+            var policy = SessionPolicy.default
+            // Pin the variety window to 1 so every run selects squat_bodyweight identically, isolating
+            // the reentry ramp as the only mover.
+            policy.varietyWindow = 1
+            if let rampRemaining { policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: rampRemaining) }
+            let workout = assemble(minutes: 10, user: user(), library: library, logs: logs, policy: policy)
+            let squat = try XCTUnwrap(
+                workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
+                "squat_bodyweight should lead this single-focus strength session"
+            )
+            return try XCTUnwrap(squat.reps)
+        }
+
+        let ramp3 = try squatReps(rampRemaining: 3) // first session back: most eased (floor)
+        let ramp2 = try squatReps(rampRemaining: 2)
+        let ramp1 = try squatReps(rampRemaining: 1)
+        let normal = try squatReps(rampRemaining: nil) // ramp retired: back to normal
+
+        XCTAssertEqual([ramp3, ramp2, ramp1, normal], [11, 13, 14, 16], "the rep target climbs back over the ramp")
+        XCTAssertLessThan(ramp3, normal, "the ramp holds difficulty below normal, then walks it back up")
+    }
+
+    /// The Return override is suppressed while cold-start is active: cold-start already serves gentle,
+    /// capped, contrast sessions, so a "Return" during the First-Week window defers to the cold-start
+    /// rotation rather than forcing mobility.
+    func testReturnSuppressedDuringColdStart() async throws {
+        let library = try await library()
+        // A cold-start user (day 0: rotation starts at strength for a non-desk worker with no bias)
+        // whose lone prior session was 10 days ago - the raw gap would read as a Return.
+        let coldUser = coldStartUser(level: .beginner, sessionsLogged: 0, active: true)
+        let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
+        let logs = [log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 10)]
+        XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "the raw gap is a Return")
+
+        let workout = assemble(minutes: 8, user: coldUser, library: library, logs: logs, policy: policy)
+        XCTAssertEqual(
+            workout.focusPillar, .strength,
+            "cold start owns the first sessions: its rotation (strength on day 0) wins over the Return's mobility lead"
+        )
+        XCTAssertFalse(workout.wasReturn, "a cold-start session is not flagged as a Return (the two are mutually exclusive)")
+    }
+
+    /// A Return session is deterministic run to run, like every other engine path.
+    func testReturnAssemblyIsDeterministic() async throws {
+        let library = try await library()
+        let logs = advancingHistory(shift: 9)
+        let signature = structuralSignature(assemble(minutes: 20, user: user(), library: library, logs: logs))
+        for _ in 0..<10 {
+            let next = structuralSignature(assemble(minutes: 20, user: user(), library: library, logs: logs))
+            XCTAssertEqual(next, signature, "Return assembly is not deterministic")
+        }
+    }
+
     // MARK: - Determinism (content, not ids)
 
     func testAssemblyIsDeterministic() async throws {

@@ -169,6 +169,11 @@ final class ModelsTests: XCTestCase {
         assertRoundTrip(makeWorkout(shape: .blend, focusPillar: nil))
     }
 
+    /// The Return flag (US-E06) round-trips, so a persisted/resumed session preserves the decision.
+    func testWorkoutRoundTripReturnFlag() {
+        assertRoundTrip(makeWorkout(shape: .singleFocus, focusPillar: .mobility, wasReturn: true))
+    }
+
     // MARK: - WorkoutLog / LoggedExercise (optional feedback present and absent)
 
     func testWorkoutLogRoundTripWithFeedback() {
@@ -277,7 +282,7 @@ final class ModelsTests: XCTestCase {
         )
     }
 
-    private func makeWorkout(shape: SessionShape, focusPillar: Pillar?) -> Workout {
+    private func makeWorkout(shape: SessionShape, focusPillar: Pillar?, wasReturn: Bool = false) -> Workout {
         let warmup = WorkoutBlock(
             id: uuidA, title: "Warm-up", category: .warmup,
             exercises: [PrescribedExercise(
@@ -296,7 +301,7 @@ final class ModelsTests: XCTestCase {
         )
         return Workout(
             id: uuidC, createdAt: dateA, shape: shape,
-            focusPillar: focusPillar, requestedMinutes: 15, blocks: [warmup, main]
+            focusPillar: focusPillar, requestedMinutes: 15, wasReturn: wasReturn, blocks: [warmup, main]
         )
     }
 

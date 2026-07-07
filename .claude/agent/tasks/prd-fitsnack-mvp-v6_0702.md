@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E in progress (US-E01-E05 done); Epics F-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epics F-N not started (`[ ]`).
 
 ---
 
@@ -291,11 +291,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A Return is detected when the gap since the last completed session exceeds a threshold (tunable, e.g. >= 7 days); the resulting log records `wasReturn == true` (US-D02)
-- [ ] On a Return, Step 2 discipline-overrides-optimization: the engine serves an easy, winnable session regardless of staleness or the policy's optimization levers
-- [ ] After a Return, `sessionPolicy.reentry.rampSessionsRemaining` is set (provisional 3) and Step 6 holds difficulty below normal, walking it back up over those sessions
-- [ ] The Return itself never carries the readjustment; readjustment lives only in the Re-entry Ramp
-- [ ] `SessionAssemblyTests`/`AdaptiveOverloadTests` cover: a Return produces a gentler session than the pre-gap norm; the ramp decrements and difficulty climbs back; build and tests pass
+- [x] A Return is detected when the gap since the last completed session exceeds a threshold (tunable, e.g. >= 7 days); the resulting log records `wasReturn == true` (US-D02)
+- [x] On a Return, Step 2 discipline-overrides-optimization: the engine serves an easy, winnable session regardless of staleness or the policy's optimization levers
+- [x] After a Return, `sessionPolicy.reentry.rampSessionsRemaining` is set (provisional 3) and Step 6 holds difficulty below normal, walking it back up over those sessions
+- [x] The Return itself never carries the readjustment; readjustment lives only in the Re-entry Ramp
+- [x] `SessionAssemblyTests`/`AdaptiveOverloadTests` cover: a Return produces a gentler session than the pre-gap norm; the ramp decrements and difficulty climbs back; build and tests pass
 
 **Validation Test:**
 

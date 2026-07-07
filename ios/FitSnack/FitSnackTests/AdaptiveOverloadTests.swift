@@ -366,6 +366,80 @@ final class AdaptiveOverloadTests: XCTestCase {
         XCTAssertGreaterThan(fast.durationSeconds!, neutral.durationSeconds!)
     }
 
+    // MARK: - Re-entry Ramp scale (US-E06)
+
+    /// A `reentryScale < 1.0` holds a capacity-derived target below the normal (neutral-scale) target,
+    /// so a Return / Re-entry Ramp session is gentler than the un-held one.
+    func testReentryScaleHoldsCapacityTargetBelowNormal() {
+        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)] // unrated -> progress from capacity 20
+        let normal = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
+        let held = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.7)
+        XCTAssertEqual(normal.reps, 21) // round(20 * 1.05)
+        XCTAssertLessThan(held.reps!, normal.reps!, "the reentry hold must land below the normal target")
+        XCTAssertEqual(held.reps, 15) // min(round(21 * 0.7), 20)
+        XCTAssertEqual(held.sets, normal.sets, "the set count still tracks demonstrated capacity")
+    }
+
+    /// The hold climbs back toward normal as the scale relaxes from the floor to neutral - the shape of
+    /// the Re-entry Ramp walking difficulty back up over its sessions.
+    func testReentryScaleClimbsAsItRelaxes() {
+        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)]
+        let targets = [0.7, 0.8, 0.9, 1.0].map {
+            AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: $0).reps!
+        }
+        XCTAssertEqual(targets, [15, 17, 19, 21], "the target climbs monotonically as the ramp relaxes")
+        for index in 1..<targets.count {
+            XCTAssertGreaterThan(targets[index], targets[index - 1], "each ramp step is above the last")
+        }
+    }
+
+    /// The neutral scale reproduces the pre-ramp target exactly, so no caller that omits it changes
+    /// behavior (the no-regression guarantee at the unit level).
+    func testNeutralReentryScaleIsNoOp() {
+        let logs = [repsLog(id: "ex", reps: [12, 12], daysAgo: 1, difficulty: .tooEasy)]
+        XCTAssertEqual(
+            AdaptiveOverload.target(for: repsExercise(), recentLogs: logs),
+            AdaptiveOverload.target(
+                for: repsExercise(), recentLogs: logs, reentryScale: AdaptiveOverload.neutralReentryScale
+            )
+        )
+    }
+
+    /// The hold never drops below the rep floor, so even a small capacity stays a meaningful target.
+    func testReentryScaleHonorsRepFloor() {
+        let logs = [repsLog(id: "ex", reps: [3, 3], daysAgo: 1)] // capacity at the floor
+        let held = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.7)
+        XCTAssertGreaterThanOrEqual(held.reps!, AdaptiveOverload.minReps)
+    }
+
+    /// The Re-entry Ramp holds eased holds too, in seconds.
+    func testReentryScaleEasesHolds() {
+        let logs = [holdLog(id: "ex", seconds: [40, 40], daysAgo: 1, difficulty: .justRight)]
+        let normal = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs)
+        let held = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs, reentryScale: 0.7)
+        XCTAssertEqual(normal.durationSeconds, 42) // round(40 * 1.05)
+        XCTAssertLessThan(held.durationSeconds!, normal.durationSeconds!)
+        XCTAssertGreaterThanOrEqual(held.durationSeconds!, AdaptiveOverload.minHoldSeconds)
+    }
+
+    /// A no-history default is already the gentle starting value, so the Re-entry Ramp leaves it
+    /// untouched (the hold applies only to capacity-derived targets).
+    func testReentryScaleDoesNotEaseNoHistoryDefault() {
+        let held = AdaptiveOverload.target(for: repsExercise(defaultReps: 12), recentLogs: [], reentryScale: 0.7)
+        XCTAssertEqual(held.reps, 12, "a no-history default is not eased by the reentry ramp")
+    }
+
+    /// The Re-entry Ramp composes with `progressionRate`: it holds the target below whatever the
+    /// (possibly faster) program would otherwise prescribe.
+    func testReentryScaleComposesWithProgressionRate() {
+        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1, difficulty: .tooEasy)]
+        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 2.0)
+        let fastHeld = AdaptiveOverload.target(
+            for: repsExercise(), recentLogs: logs, progressionRate: 2.0, reentryScale: 0.7
+        )
+        XCTAssertLessThan(fastHeld.reps!, fast.reps!, "the reentry hold still lands below the faster target")
+    }
+
     // MARK: - Capacity, not a fixed number
 
     /// Every target is capacity-relative: different demonstrated capacities yield different targets,

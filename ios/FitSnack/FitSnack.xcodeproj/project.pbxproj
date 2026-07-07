@@ -45,6 +45,8 @@
 		A88A9355E1EF01559DDF58C4 /* SessionPolicyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 417D9579634284740E59C4F9 /* SessionPolicyServiceTests.swift */; };
 		AA442776522E0F4B39981482 /* SessionShapeSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */; };
 		ADC8BF8154D72A7303610149 /* ColdStartOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCD1124D37936968D4C523D0 /* ColdStartOverride.swift */; };
+		B283B26C743D4FDCF864D536 /* ReturnOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BE6717FFEB2A263B810B2C /* ReturnOverride.swift */; };
+		B996721DB87CA137E42FDFB6 /* ReturnOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34636A14C8E8535569E7635 /* ReturnOverrideTests.swift */; };
 		BA09C70FABE768B89DE124E8 /* ReprogramTriggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F363F231254CCB39577F9B /* ReprogramTriggerTests.swift */; };
 		BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */; };
 		C3C49D659FC4DBE14CBFD35B /* Exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = A6F30CB7678F6F34F7B8262C /* Exercises.json */; };
@@ -116,6 +118,7 @@
 		BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalanceTests.swift; sourceTree = "<group>"; };
 		BE5AE64A69BC77A3611817BE /* SessionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyTests.swift; sourceTree = "<group>"; };
 		BEDFFB65C34BBA953E570279 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		C2BE6717FFEB2A263B810B2C /* ReturnOverride.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnOverride.swift; sourceTree = "<group>"; };
 		C7EA6657DAE6AE01E4891CB7 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		D2F363F231254CCB39577F9B /* ReprogramTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerTests.swift; sourceTree = "<group>"; };
 		D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExerciseService.swift; sourceTree = "<group>"; };
@@ -125,6 +128,7 @@
 		DE82740204F95416749519EE /* PersistenceCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoding.swift; sourceTree = "<group>"; };
 		DEB61D583F7AB99CD0FF7838 /* ServiceProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceProtocols.swift; sourceTree = "<group>"; };
 		E22C88B26B4A461674595EB7 /* ExercisePoolFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePoolFilterTests.swift; sourceTree = "<group>"; };
+		E34636A14C8E8535569E7635 /* ReturnOverrideTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnOverrideTests.swift; sourceTree = "<group>"; };
 		E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainerTests.swift; sourceTree = "<group>"; };
 		E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockServices.swift; sourceTree = "<group>"; };
 		E93C79F16481D8040E30A1B6 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
@@ -246,6 +250,7 @@
 				A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */,
 				091209B1B5A46FF7392DECF6 /* PillarBalance.swift */,
 				416F458E9F3C354B08D06470 /* ProgressionChainSelection.swift */,
+				C2BE6717FFEB2A263B810B2C /* ReturnOverride.swift */,
 				84D59E64471E6566D7C21A99 /* SessionAssembly.swift */,
 				0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */,
 			);
@@ -307,6 +312,7 @@
 				BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */,
 				657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */,
 				D2F363F231254CCB39577F9B /* ReprogramTriggerTests.swift */,
+				E34636A14C8E8535569E7635 /* ReturnOverrideTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
 				E7DCF7BAFDA59D5C443738DA /* ServiceContainerTests.swift */,
 				DCB59EA4B2D8F1A2D084D7EB /* SessionAssemblyTests.swift */,
@@ -440,6 +446,7 @@
 				66A9889E4D9667B6762D57E7 /* PillarBalanceTests.swift in Sources */,
 				7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */,
 				BA09C70FABE768B89DE124E8 /* ReprogramTriggerTests.swift in Sources */,
+				B996721DB87CA137E42FDFB6 /* ReturnOverrideTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
 				BBED41A70FE8A560D5D30010 /* ServiceContainerTests.swift in Sources */,
 				2FA7F3AC568F1398703F452E /* SessionAssemblyTests.swift in Sources */,
@@ -475,6 +482,7 @@
 				07611EF80B3EC66A91059CE3 /* PillarBalance.swift in Sources */,
 				FD3BFA9C2C27066FEAC83404 /* ProgressionChainSelection.swift in Sources */,
 				7963EFDF3AC7288382F33A8C /* ReprogramTrigger.swift in Sources */,
+				B283B26C743D4FDCF864D536 /* ReturnOverride.swift in Sources */,
 				D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */,
 				090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */,
 				CA4EA03C78B1E3F00DB6AE18 /* ServiceProtocols.swift in Sources */,

@@ -79,9 +79,10 @@ enum SessionAssembly {
     ///
     /// `sessionPolicy` is the per-user program the engine runs on (US-E03): its `pillarWeighting`
     /// scales Step 2's staleness split, its `varietyWindow` sets Step 5's no-repeat window, and its
-    /// `progressionRate` paces Step 6's overload bump. It defaults to `SessionPolicy.default` (every
-    /// lever neutral), which reproduces pre-policy behavior exactly, so an unpolicied caller is
-    /// unchanged.
+    /// `progressionRate` paces Step 6's overload bump. It also carries the situational overrides the
+    /// engine reads: the `coldStartContract` for a brand-new user (US-E04) and the `reentry` ramp for a
+    /// returning one (US-E06). It defaults to `SessionPolicy.default` (every lever neutral, no
+    /// overrides), which reproduces pre-policy behavior exactly, so an unpolicied caller is unchanged.
     static func assemble(
         requestedMinutes: Int,
         user: User,
@@ -113,15 +114,40 @@ enum SessionAssembly {
             shape: template.shape,
             focusPillar: focusPillar(of: blocks),
             requestedMinutes: requestedMinutes,
+            wasReturn: isReturnSession(
+                user: user,
+                recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
+                asOf: asOf,
+                calendar: calendar
+            ),
             blocks: blocks.compactMap { $0.materialize() }
         )
+    }
+
+    /// Whether this generation is a Return (US-E06): a real gap since the last logged session, but
+    /// only in the steady state - a Return is suppressed while cold-start still owns the first
+    /// sessions (the two overrides are mutually exclusive). Computed here as the single source of
+    /// truth so the pillar/pool/volume overrides in `planBlocks` and the `Workout.wasReturn` flag the
+    /// assembler stamps always agree, and the post-session log-writer (US-L01) records the same
+    /// decision the engine acted on rather than re-deriving it at a different `asOf`.
+    static func isReturnSession(
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        asOf: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        !ColdStartOverride.isActive(user: user, sessionPolicy: sessionPolicy)
+            && ReturnOverride.isReturn(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
     }
 
     /// Builds the seeded block skeleton (warm-up, the pillar plan's training block(s) with their
     /// weight targets, and an optional cooldown) before the timing fit - the structural output of
     /// Steps 1-6. Exposed internally so tests can inspect block reserves and per-block weight targets
     /// prior to the global fit consuming them. `sessionPolicy` threads the US-E03 levers into
-    /// Steps 2/5/6 (see `assemble`); it defaults to `SessionPolicy.default` (neutral, no regression).
+    /// Steps 2/5/6 (see `assemble`) and the situational Step 0 cold-start (US-E04) and Step 0.5 Return
+    /// (US-E06) overrides; it defaults to `SessionPolicy.default` (neutral, no regression).
     static func planBlocks(
         requestedMinutes: Int,
         user: User,
@@ -132,11 +158,22 @@ enum SessionAssembly {
         calendar: Calendar = .current
     ) -> [PlannedBlock] {
         let template = SessionShapeTemplate.select(requestedMinutes: requestedMinutes)
-        // Step 0 (US-E04): the cold-start override runs before Steps 1-6. It forces First-Week
-        // Contrast onto the pillar plan and caps the eligible pool at the contract's Starting
-        // Difficulty; both are no-ops once the engine retires cold-start (US-G04), so a warmed-up
-        // user runs exactly the US-E03 pipeline.
-        let pillarPlan = ColdStartOverride.overridePlan(
+
+        // Step 0 (US-E04): the cold-start override runs before Steps 1-6 while a brand-new user is
+        // still finding their footing. Step 0.5 (US-E06): the Return override serves a returning user
+        // an easy, winnable session. The two are mutually exclusive - a Return is suppressed while
+        // cold-start is active, since cold-start already serves gentle, capped, contrast sessions - so
+        // the pillar-plan and pool overrides never fight over the same inputs. Both are no-ops in the
+        // steady state, so a warmed-up, present user runs exactly the US-E03 pipeline.
+        let isReturn = isReturnSession(
+            user: user,
+            recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
+            asOf: asOf,
+            calendar: calendar
+        )
+
+        let coldStartPlan = ColdStartOverride.overridePlan(
             PillarPlan.select(
                 template: template,
                 recentLogs: recentLogs,
@@ -149,17 +186,32 @@ enum SessionAssembly {
             user: user,
             sessionPolicy: sessionPolicy
         )
-        let pool = ColdStartOverride.cappedPool(
-            ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
-            user: user,
-            sessionPolicy: sessionPolicy
+        // On a Return, discipline overrides optimization: mobility leads regardless of staleness.
+        let pillarPlan = ReturnOverride.overridePlan(coldStartPlan, isReturn: isReturn)
+
+        // On a Return, cap the eligible difficulty so a strong pre-gap history can't serve a punishing
+        // tier (layered after the cold-start cap; only one is ever active).
+        let pool = ReturnOverride.returnPool(
+            ColdStartOverride.cappedPool(
+                ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+                user: user,
+                sessionPolicy: sessionPolicy
+            ),
+            isReturn: isReturn
         )
+
+        // The Return / Re-entry Ramp holds Step 6's volume below normal: the gentle floor on the Return
+        // itself, climbing back over the following ramp sessions (`sessionPolicy.reentry`). Neutral in
+        // the steady state, so it is a no-op.
+        let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
+
         var builder = Builder(
             library: library,
             pool: pool,
             recentLogs: recentLogs,
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
+            reentryScale: reentryScale,
             asOf: asOf,
             calendar: calendar
         )
@@ -427,6 +479,9 @@ private struct Builder {
     /// Session Policy lever (US-E03): Step 5's no-repeat variety window, also mirrored by the
     /// mobility variety ordering so both use the same per-user window.
     let varietyWindow: Int
+    /// Return / Re-entry Ramp lever (US-E06): holds Step 6's capacity-derived per-set targets below
+    /// normal (`< 1.0`) on a Return and its ramp, neutral (`1.0`) otherwise.
+    let reentryScale: Double
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -601,7 +656,8 @@ private struct Builder {
             let target = AdaptiveOverload.target(
                 for: selection.exercise,
                 recentLogs: recentLogs,
-                progressionRate: progressionRate
+                progressionRate: progressionRate,
+                reentryScale: reentryScale
             )
             usedIds.insert(selection.exercise.id)
             items.append(
@@ -647,7 +703,8 @@ private struct Builder {
         let target = AdaptiveOverload.target(
             for: selection.exercise,
             recentLogs: recentLogs,
-            progressionRate: progressionRate
+            progressionRate: progressionRate,
+            reentryScale: reentryScale
         )
         usedIds.insert(selection.exercise.id)
         let item = PlannedItem(
@@ -676,7 +733,8 @@ private struct Builder {
             let target = AdaptiveOverload.target(
                 for: exercise,
                 recentLogs: recentLogs,
-                progressionRate: progressionRate
+                progressionRate: progressionRate,
+                reentryScale: reentryScale
             )
             usedIds.insert(exercise.id)
             return PlannedItem(
