@@ -30,7 +30,9 @@
 		57540F4158981BAFC73FB0C3 /* MovementPatternFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88C186DB3E4D460DB2406E3 /* MovementPatternFocus.swift */; };
 		5FB8EA256F9A84D2E3D35D20 /* MockExerciseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A8A2106A7E78A9BE1CA30B /* MockExerciseService.swift */; };
 		603C0331116E1A755CB8A1B6 /* ExerciseSwap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EF9748E7717931176A1378 /* ExerciseSwap.swift */; };
+		611D18019B8B9D726DE61A43 /* ReprogramTriggerDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D4549EAA351DAA5F673F9E /* ReprogramTriggerDetection.swift */; };
 		62069971AFFFD5DF2D596C5E /* AdaptiveOverloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5526927A4FF1986151B6CCFB /* AdaptiveOverloadTests.swift */; };
+		629AF1D38DB053DB6974D80A /* ReprogramTriggerDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C6E836404F8F9FBD3625D7 /* ReprogramTriggerDetectionTests.swift */; };
 		65B30A27EBC5CB1CACBA6C33 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FBEBFE2C368100812F7677A /* Theme.swift */; };
 		6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */; };
 		66A9889E4D9667B6762D57E7 /* PillarBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */; };
@@ -82,6 +84,7 @@
 		183CE237B95AD74F3517D63E /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1D4BF02AD537AF6F14B588F5 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+		20D4549EAA351DAA5F673F9E /* ReprogramTriggerDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerDetection.swift; sourceTree = "<group>"; };
 		24E105E18702D4CC93FBA722 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
 		24EF9748E7717931176A1378 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
 		2723289C9064488853A7744D /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
@@ -98,6 +101,7 @@
 		564AAF6885AFFD5DA2BFDA0E /* USE01RangeEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USE01RangeEvidenceTests.swift; sourceTree = "<group>"; };
 		58C8E87DCE232242DB67AE62 /* FitSnack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = FitSnack.xcdatamodel; sourceTree = "<group>"; };
 		5B463FE988D7B52B95FF01E7 /* FitSnackTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FitSnackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		64C6E836404F8F9FBD3625D7 /* ReprogramTriggerDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerDetectionTests.swift; sourceTree = "<group>"; };
 		657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelectionTests.swift; sourceTree = "<group>"; };
 		66CCB3EC1727401AC554AFFB /* SessionShapeSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelectionTests.swift; sourceTree = "<group>"; };
 		83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
@@ -183,6 +187,7 @@
 				EBBD80F1A74634F77B3E43C1 /* .gitkeep */,
 				5F1D4730785352945947B87F /* Engine */,
 				5DDF650FB8284A0F8A4D160B /* Mock */,
+				62E0C82D91CD505BEDCB05E3 /* Programmer */,
 				3C6BAA792F30CAF2948AA12A /* Protocols */,
 			);
 			path = Services;
@@ -257,6 +262,14 @@
 			path = Engine;
 			sourceTree = "<group>";
 		};
+		62E0C82D91CD505BEDCB05E3 /* Programmer */ = {
+			isa = PBXGroup;
+			children = (
+				20D4549EAA351DAA5F673F9E /* ReprogramTriggerDetection.swift */,
+			);
+			path = Programmer;
+			sourceTree = "<group>";
+		};
 		6BE28DAD950C9270C31554C1 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -311,6 +324,7 @@
 				B7700923EBF15CCFA71D03F2 /* PersistenceTests.swift */,
 				BDE7B5C8DE78200827F1A928 /* PillarBalanceTests.swift */,
 				657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */,
+				64C6E836404F8F9FBD3625D7 /* ReprogramTriggerDetectionTests.swift */,
 				D2F363F231254CCB39577F9B /* ReprogramTriggerTests.swift */,
 				E34636A14C8E8535569E7635 /* ReturnOverrideTests.swift */,
 				54220C70830316F0B7D14EAA /* ScaffoldTests.swift */,
@@ -445,6 +459,7 @@
 				3513401F60C0E15E83B8966C /* PersistenceTests.swift in Sources */,
 				66A9889E4D9667B6762D57E7 /* PillarBalanceTests.swift in Sources */,
 				7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */,
+				629AF1D38DB053DB6974D80A /* ReprogramTriggerDetectionTests.swift in Sources */,
 				BA09C70FABE768B89DE124E8 /* ReprogramTriggerTests.swift in Sources */,
 				B996721DB87CA137E42FDFB6 /* ReturnOverrideTests.swift in Sources */,
 				A65E0383DC18360A4F1A3264 /* ScaffoldTests.swift in Sources */,
@@ -482,6 +497,7 @@
 				07611EF80B3EC66A91059CE3 /* PillarBalance.swift in Sources */,
 				FD3BFA9C2C27066FEAC83404 /* ProgressionChainSelection.swift in Sources */,
 				7963EFDF3AC7288382F33A8C /* ReprogramTrigger.swift in Sources */,
+				611D18019B8B9D726DE61A43 /* ReprogramTriggerDetection.swift in Sources */,
 				B283B26C743D4FDCF864D536 /* ReturnOverride.swift in Sources */,
 				D82A7E8789A11C0DAC1B6AF8 /* RootView.swift in Sources */,
 				090B889E5B861570BA17591C /* ServiceContainer.swift in Sources */,

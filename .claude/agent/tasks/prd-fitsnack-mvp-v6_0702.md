@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epics F-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epic F in progress (US-F01 done); Epics G-N not started (`[ ]`).
 
 ---
 
@@ -318,10 +318,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `SessionPolicyServiceProtocol.dueTriggers(user:recentLogs:asOf:)` returns the triggers currently due: `weekly_boundary` (aligned to the Consistency Score week), `return` (post-gap), `physical_stall` (cleared to advance but hasn't), `disengagement` (shrinking or skipped sessions)
-- [ ] Trigger Precedence is enforced: when `physical_stall` and `disengagement` both apply, `disengagement` wins and `physical_stall` is suppressed
-- [ ] Detection is pure and deterministic for a given `(user, recentLogs, asOf)`; no wall-clock reads inside the logic (time is passed in)
-- [ ] Unit tests cover each trigger firing independently and the precedence case; build and tests pass
+- [x] `SessionPolicyServiceProtocol.dueTriggers(user:recentLogs:asOf:)` returns the triggers currently due: `weekly_boundary` (aligned to the Consistency Score week), `return` (post-gap), `physical_stall` (cleared to advance but hasn't), `disengagement` (shrinking or skipped sessions)
+- [x] Trigger Precedence is enforced: when `physical_stall` and `disengagement` both apply, `disengagement` wins and `physical_stall` is suppressed
+- [x] Detection is pure and deterministic for a given `(user, recentLogs, asOf)`; no wall-clock reads inside the logic (time is passed in)
+- [x] Unit tests cover each trigger firing independently and the precedence case; build and tests pass
 
 **Validation Test:**
 
