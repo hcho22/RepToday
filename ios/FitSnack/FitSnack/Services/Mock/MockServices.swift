@@ -94,24 +94,9 @@ final class MockSessionPolicyService: SessionPolicyServiceProtocol {
 }
 
 // MARK: - Consistency
-
-final class MockConsistencyService: ConsistencyServiceProtocol {
-    func consistency(for logs: [WorkoutLog], weeklyGoal: Int) async throws -> Consistency {
-        let completedMinutes = logs.reduce(0) { $0 + $1.durationMinutes }
-        return Consistency(
-            weeklyGoal: weeklyGoal,
-            score: logs.isEmpty ? 0 : 100,
-            workoutsThisWeek: logs.count,
-            longestChain: logs.isEmpty ? 0 : 1,
-            totalWorkoutsCompleted: logs.count,
-            totalMinutesExercised: completedMinutes
-        )
-    }
-
-    func updatedConsistency(after log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws -> Consistency {
-        try await consistency(for: recentLogs + [log], weeklyGoal: user.consistency.weeklyGoal)
-    }
-}
+//
+// The real Consistency Score is `ConsistencyScoreService` (US-H01, `Services/Consistency/`); the
+// mock was retired once the forgiving evaluator replaced it.
 
 // MARK: - Phase
 
