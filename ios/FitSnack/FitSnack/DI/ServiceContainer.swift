@@ -48,13 +48,24 @@ struct ServiceContainer {
         // not a runtime condition - `try!` makes that surface loudly instead of silently
         // shipping an empty catalog.
         let exerciseService = try! MockExerciseService()
+        // A single user service is shared so the deterministic Programmer (US-F03) can persist its
+        // learned Default Duration back onto the same user aggregate the rest of the app reads.
+        let userService = MockUserService()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
-            sessionPolicyService: MockSessionPolicyService(),
+            // The real on-device deterministic Programmer (US-F03), backed by an in-memory policy
+            // store so the mock container stays deterministic and disk-free. It returns
+            // `SessionPolicy.default` until it has written a policy, so pre-programming behavior
+            // (and `ServiceContainerTests`) is unchanged.
+            sessionPolicyService: DeterministicSessionPolicyService(
+                store: InMemorySessionPolicyStore(),
+                exerciseService: exerciseService,
+                userService: userService
+            ),
             consistencyService: MockConsistencyService(),
             phaseService: MockPhaseService(),
-            userService: MockUserService(),
+            userService: userService,
             workoutLogService: MockWorkoutLogService(),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
