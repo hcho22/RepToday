@@ -506,10 +506,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A real `PhaseEvaluator` replaces `MockPhaseService`: returns `.strength` only when both hold - Consistency Score sustained above threshold over a rolling window (e.g. >= 80% over ~8 weeks) and the foundational chains' entry tiers cleared (push/squat/hinge/core)
-- [ ] Consistency-only or competence-only stays `.discipline`; a fresh user is `.discipline`
-- [ ] Phase is never user-selectable; the transition is a gradual ramp, framed as honest stewardship (never failure) for a consistent-but-not-advancing user
-- [ ] New `PhaseEvaluatorTests` cover: consistency-only stays Discipline, competence-only stays Discipline, both-met promotes, fresh user Discipline; build and tests pass
+- [x] A real `PhaseEvaluator` replaces `MockPhaseService`: returns `.strength` only when both hold - Consistency Score sustained above threshold over a rolling window (e.g. >= 80% over ~8 weeks) and the foundational chains' entry tiers cleared (push/squat/hinge/core)
+- [x] Consistency-only or competence-only stays `.discipline`; a fresh user is `.discipline`
+- [x] Phase is never user-selectable; the transition is a gradual ramp, framed as honest stewardship (never failure) for a consistent-but-not-advancing user
+- [x] New `PhaseEvaluatorTests` cover: consistency-only stays Discipline, competence-only stays Discipline, both-met promotes, fresh user Discipline; build and tests pass
 
 **Validation Test:**
 

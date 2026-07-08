@@ -67,7 +67,11 @@ struct ServiceContainer {
             // `MockConsistencyService`; it is a pure evaluator over the log history, so it needs no
             // dependencies and stays deterministic given a fixed clock.
             consistencyService: ConsistencyScoreService(),
-            phaseService: MockPhaseService(),
+            // The real deterministic `PhaseEvaluator` (US-H02) in place of `MockPhaseService`; it
+            // reads the validated library from the exercise service to gate competence and stays
+            // deterministic given a fixed clock. All MVP users resolve to `.discipline` until they
+            // earn Strength (sustained consistency + cleared foundational entry tiers).
+            phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
             userService: userService,
             workoutLogService: MockWorkoutLogService(),
             healthKitService: MockHealthKitService(),

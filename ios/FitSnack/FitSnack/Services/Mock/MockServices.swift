@@ -99,12 +99,9 @@ final class MockSessionPolicyService: SessionPolicyServiceProtocol {
 // mock was retired once the forgiving evaluator replaced it.
 
 // MARK: - Phase
-
-final class MockPhaseService: PhaseServiceProtocol {
-    func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase {
-        .discipline
-    }
-}
+//
+// The real `PhaseEvaluator` is `PhaseEvaluatorService` (US-H02, `Services/Consistency/`); the mock
+// was retired once the deterministic evaluator replaced it.
 
 // MARK: - User
 
