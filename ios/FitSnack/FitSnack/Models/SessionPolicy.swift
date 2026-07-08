@@ -144,3 +144,52 @@ extension SessionPolicy {
         note: nil
     )
 }
+
+// MARK: - Cold-start seeding (US-G01/US-G02)
+
+extension SessionPolicy.ColdStartContract {
+
+    /// The provisional cold-start Starting Difficulty cap seeded from the user's self-reported
+    /// fitness level (US-G01): **beginner 2, intermediate 3, advanced 4**.
+    ///
+    /// This is a deliberately conservative band, at or below the steady-state difficulty cap the
+    /// pool filter applies (`ExercisePoolFilter.difficultyCap`: beginner 1-2, intermediate 1-3,
+    /// advanced 1-5) - it tightens only the advanced user (5 -> 4), and matches the others.
+    /// The point is not the ceiling alone: the engine serves the *gentle end* of the eligible
+    /// band first (US-E04, via Step 5's no-history entry-tier selection), so an over-rated
+    /// self-report still yields a winnable first session. Correction is left to the Asymmetric
+    /// Ramp (US-E05) - a too-easy day self-corrects upward as the user returns, while a too-hard
+    /// day is prevented up front.
+    static func cappedMaxDifficulty(for level: FitnessLevel) -> Int {
+        switch level {
+        case .beginner: return 2
+        case .intermediate: return 3
+        case .advanced: return 4
+        }
+    }
+
+    /// The cold-start contract seeded at onboarding (US-G01/US-G02): First-Week Contrast forced on
+    /// so the first week visibly spans strength/mobility/primal (US-G02), and Starting Difficulty
+    /// capped from the self-reported fitness level (US-G01). The engine reads this in Step 0 and
+    /// retires it after the handoff (US-G04).
+    static func seeded(for level: FitnessLevel) -> Self {
+        Self(
+            forceContrastSpread: true,
+            cappedMaxDifficulty: cappedMaxDifficulty(for: level)
+        )
+    }
+}
+
+extension SessionPolicy {
+
+    /// The starting policy for a freshly onboarded user (US-G01/US-I01): the neutral `default`
+    /// levers with a cold-start contract layered on - capping Starting Difficulty from the
+    /// self-reported fitness level and forcing First-Week Contrast. Every other lever stays
+    /// neutral, so once cold-start retires (US-G04 clears the contract) the engine behaves exactly
+    /// as `default`. Onboarding calls this with `profile.fitnessLevel`.
+    static func seeded(forFitnessLevel level: FitnessLevel) -> SessionPolicy {
+        var policy = SessionPolicy.default
+        policy.coldStartContract = .seeded(for: level)
+        return policy
+    }
+}
