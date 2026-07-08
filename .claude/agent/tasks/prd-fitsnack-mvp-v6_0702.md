@@ -402,10 +402,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] Onboarding seeds `sessionPolicy.coldStartContract.cappedMaxDifficulty` from `profile.fitnessLevel` using a capped band (provisional: beginner 2, intermediate 3, advanced 4)
-- [ ] The engine serves cold-start sessions at the gentle end of the eligible band (lowest eligible difficulty first), per US-E04
-- [ ] Correction is left to the Asymmetric Ramp (US-E05): too-easy self-corrects as the user returns; too-hard is prevented up front
-- [ ] Unit tests assert the cap per fitness level and gentle-end selection; build and tests pass
+- [x] Onboarding seeds `sessionPolicy.coldStartContract.cappedMaxDifficulty` from `profile.fitnessLevel` using a capped band (provisional: beginner 2, intermediate 3, advanced 4)
+- [x] The engine serves cold-start sessions at the gentle end of the eligible band (lowest eligible difficulty first), per US-E04
+- [x] Correction is left to the Asymmetric Ramp (US-E05): too-easy self-corrects as the user returns; too-hard is prevented up front
+- [x] Unit tests assert the cap per fitness level and gentle-end selection; build and tests pass
 
 **Validation Test:**
 

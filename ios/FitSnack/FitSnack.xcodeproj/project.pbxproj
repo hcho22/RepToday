@@ -13,6 +13,7 @@
 		12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097FE325486215F1A5A4295D /* Enums.swift */; };
 		17B380CAE95DB0913BD29237 /* PolicyNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD9B7673226F77147653900 /* PolicyNote.swift */; };
 		1EF0770DC07230E331375E07 /* PlateauDiagnosis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939D3C7C9240D310489F4F50 /* PlateauDiagnosis.swift */; };
+		1F3F4AE451DE5F567C42424C /* ColdStartSeedingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DB71C842D4B5068D0BE2A24 /* ColdStartSeedingTests.swift */; };
 		28A46C3A28D69EF61CF35BC8 /* ExercisePoolFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */; };
 		2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */; };
 		2E071AD16D4ED94C69811876 /* DeterministicSessionPolicyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DFAF1D54CBC37B12F586C5 /* DeterministicSessionPolicyService.swift */; };
@@ -121,6 +122,7 @@
 		8536946E1002EA63873EF040 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
 		939D3C7C9240D310489F4F50 /* PlateauDiagnosis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateauDiagnosis.swift; sourceTree = "<group>"; };
 		9638F81CCC8BEEBB803E5D33 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		9DB71C842D4B5068D0BE2A24 /* ColdStartSeedingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartSeedingTests.swift; sourceTree = "<group>"; };
 		9ED42B9B6FE8C3F4ADE1B2F0 /* CDSessionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDSessionPolicy.swift; sourceTree = "<group>"; };
 		A174A7E890FE558B00228E37 /* DeterministicSessionPolicyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterministicSessionPolicyServiceTests.swift; sourceTree = "<group>"; };
 		A49146F340F6CB397E03C10E /* ExerciseLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLibraryTests.swift; sourceTree = "<group>"; };
@@ -337,6 +339,7 @@
 			children = (
 				5526927A4FF1986151B6CCFB /* AdaptiveOverloadTests.swift */,
 				EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */,
+				9DB71C842D4B5068D0BE2A24 /* ColdStartSeedingTests.swift */,
 				C6E7BDD71296A4789C71F412 /* DefaultDurationLearningTests.swift */,
 				A174A7E890FE558B00228E37 /* DeterministicSessionPolicyServiceTests.swift */,
 				D641BBBE178A9237F0AE4110 /* EnumsTests.swift */,
@@ -476,6 +479,7 @@
 			files = (
 				62069971AFFFD5DF2D596C5E /* AdaptiveOverloadTests.swift in Sources */,
 				6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */,
+				1F3F4AE451DE5F567C42424C /* ColdStartSeedingTests.swift in Sources */,
 				BFF9D402B05ACEBE3A4EB970 /* DefaultDurationLearningTests.swift in Sources */,
 				5FD94CEF02C4F03894F303FE /* DeterministicSessionPolicyServiceTests.swift in Sources */,
 				4D7C2C0C79B38C22E6145D99 /* EnumsTests.swift in Sources */,
