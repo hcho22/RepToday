@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epic F in progress (US-F01, US-F02 done); Epics G-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epic F complete (US-F01-F04 done); Epics G-N not started (`[ ]`).
 
 ---
 
@@ -356,11 +356,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A real `DeterministicSessionPolicyService` implements `reprogram(user:recentLogs:trigger:)` and writes a new `SessionPolicy` with `version` incremented and `updatedBy == .deterministic`
-- [ ] Re-program is invoked by the client on app open only when `dueTriggers` is non-empty; the app renders from the existing policy immediately and the new policy applies on the next open (new programming lands one session later)
-- [ ] The service never generates or returns a workout; it only writes policy
-- [ ] `disengagement` never increases challenge (Trigger Precedence upheld end-to-end); `return` sets the `reentry` ramp (US-E06)
-- [ ] Unit tests cover: version increments; each trigger moves the expected levers; a disengagement re-program does not raise difficulty; build and tests pass
+- [x] A real `DeterministicSessionPolicyService` implements `reprogram(user:recentLogs:trigger:)` and writes a new `SessionPolicy` with `version` incremented and `updatedBy == .deterministic`
+- [ ] Re-program is invoked by the client on app open only when `dueTriggers` is non-empty; the app renders from the existing policy immediately and the new policy applies on the next open (new programming lands one session later) - *service and seam ready (real service wired into `ServiceContainer`); the on-open client invocation lands with the Ready Screen (US-J02)*
+- [x] The service never generates or returns a workout; it only writes policy
+- [x] `disengagement` never increases challenge (Trigger Precedence upheld end-to-end); `return` sets the `reentry` ramp (US-E06)
+- [x] Unit tests cover: version increments; each trigger moves the expected levers; a disengagement re-program does not raise difficulty; build and tests pass
 
 **Validation Test:**
 
