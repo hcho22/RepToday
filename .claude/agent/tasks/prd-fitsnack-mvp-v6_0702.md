@@ -421,10 +421,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] While `coldStart.active`, `coldStartContract.forceContrastSpread` is true and drives the Step 0 spread from US-E04
-- [ ] The First-Week Contrast rule guarantees no pillar repeats back-to-back across the first several cold-start sessions, even when `why`/`sitsLong` would bias toward one theme (e.g. a desk worker toward all mobility)
-- [ ] The spread is deterministic given the onboarding inputs
-- [ ] Unit tests assert a desk-worker cold start still spans multiple pillars in week one; build and tests pass
+- [x] While `coldStart.active`, `coldStartContract.forceContrastSpread` is true and drives the Step 0 spread from US-E04
+- [x] The First-Week Contrast rule guarantees no pillar repeats back-to-back across the first several cold-start sessions, even when `why`/`sitsLong` would bias toward one theme (e.g. a desk worker toward all mobility)
+- [x] The spread is deterministic given the onboarding inputs
+- [x] Unit tests assert a desk-worker cold start still spans multiple pillars in week one; build and tests pass
 
 **Validation Test:**
 
