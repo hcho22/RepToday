@@ -485,12 +485,12 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A real `ConsistencyScore`/evaluator replaces `MockConsistencyService`: `weeklyAdherence(week) = min(1, workoutsCompleted / weeklyGoal)`; `score = weightedRollingAverage(weeklyAdherence, recentWeeks) * 100` with recent weeks weighted more (`weeklyGoal` default 3)
-- [ ] A 5-minute session counts as a full show-up; a single miss dents the score but never zeroes it
-- [ ] `longestChain` is tracked and surfaced as an earned point of pride; a broken chain reduces the chain counter but only dents the score
-- [ ] A Return (US-E06) protects the Score - it is celebrated, never penalized
-- [ ] Copy contracts are identity-framed ("you're someone who moves"), never loss-framed
-- [ ] New `ConsistencyScoreTests` cover: empty history, perfect run, single-miss dent (not zero), 5-min show-up, rolling weighting, Return protection; build and tests pass
+- [x] A real `ConsistencyScore`/evaluator replaces `MockConsistencyService`: `weeklyAdherence(week) = min(1, workoutsCompleted / weeklyGoal)`; `score = weightedRollingAverage(weeklyAdherence, recentWeeks) * 100` with recent weeks weighted more (`weeklyGoal` default 3)
+- [x] A 5-minute session counts as a full show-up; a single miss dents the score but never zeroes it
+- [x] `longestChain` is tracked and surfaced as an earned point of pride; a broken chain reduces the chain counter but only dents the score
+- [x] A Return (US-E06) protects the Score - it is celebrated, never penalized
+- [x] Copy contracts are identity-framed ("you're someone who moves"), never loss-framed
+- [x] New `ConsistencyScoreTests` cover: empty history, perfect run, single-miss dent (not zero), 5-min show-up, rolling weighting, Return protection; build and tests pass
 
 **Validation Test:**
 

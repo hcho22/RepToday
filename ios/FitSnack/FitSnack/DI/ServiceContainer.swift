@@ -63,7 +63,10 @@ struct ServiceContainer {
                 exerciseService: exerciseService,
                 userService: userService
             ),
-            consistencyService: MockConsistencyService(),
+            // The real forgiving, Return-protected Consistency Score (US-H01) in place of
+            // `MockConsistencyService`; it is a pure evaluator over the log history, so it needs no
+            // dependencies and stays deterministic given a fixed clock.
+            consistencyService: ConsistencyScoreService(),
             phaseService: MockPhaseService(),
             userService: userService,
             workoutLogService: MockWorkoutLogService(),
