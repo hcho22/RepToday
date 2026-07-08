@@ -127,6 +127,7 @@ Services/       Service implementations
   Mock/         Mock implementations wired in ServiceContainer
   Engine/       Deterministic workout-engine pipeline steps (pure, on-device)
   Programmer/   Deterministic AI Programmer (re-program trigger detection, plateau diagnosis, Default Duration learning, templated policy note, and the persistence-backed re-weighting service that composes them; pure logic on-device)
+  Language/     Variety Language (deterministic contrast-line template + the resolver's optional, deferred LLM upgrade seam)
 DI/             ServiceContainer + environment injection
 ViewModels/     @Observable view models
 Views/          SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
