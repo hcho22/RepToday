@@ -460,10 +460,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `user.coldStart.sessionsLogged` increments on each completed session
-- [ ] `coldStart.active` flips to false once `sessionsLogged` reaches the provisional threshold of 5 (tunable; v6 range 5-7)
-- [ ] When `coldStart.active` becomes false, `coldStartContract` is cleared from the policy and Step 0 becomes a no-op, so staleness rotation and Adaptive Overload drive sessions unassisted
-- [ ] Unit tests cover the flip at the threshold and the no-op Step 0 afterward; build and tests pass
+- [x] `user.coldStart.sessionsLogged` increments on each completed session
+- [x] `coldStart.active` flips to false once `sessionsLogged` reaches the provisional threshold of 5 (tunable; v6 range 5-7)
+- [x] When `coldStart.active` becomes false, `coldStartContract` is cleared from the policy and Step 0 becomes a no-op, so staleness rotation and Adaptive Overload drive sessions unassisted
+- [x] Unit tests cover the flip at the threshold and the no-op Step 0 afterward; build and tests pass
 
 **Validation Test:**
 
