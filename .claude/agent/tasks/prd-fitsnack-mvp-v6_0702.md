@@ -440,11 +440,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A `VarietyLanguage` component produces a short line for the session ("Today's a mobility day - yesterday was strength")
-- [ ] When online and cold-start-active, it may call the LLM once through the thin stateless proxy (US-N05) and set `note.source == 'llm'`
-- [ ] It is always backed by a deterministic template: on any failure, timeout, or offline state it falls back to the template and sets `note.source == 'template'`; the app never blocks on the call
-- [ ] The language may only name a contrast the engine actually produced (no hollow callbacks)
-- [ ] Unit tests cover: template output offline; graceful fallback on a simulated proxy failure; the produced contrast matches the assembled session; build and tests pass
+- [x] A `VarietyLanguage` component produces a short line for the session ("Today's a mobility day - yesterday was strength")
+- [x] When online and cold-start-active, it may call the LLM once through the thin stateless proxy (US-N05) and set `note.source == 'llm'`
+- [x] It is always backed by a deterministic template: on any failure, timeout, or offline state it falls back to the template and sets `note.source == 'template'`; the app never blocks on the call
+- [x] The language may only name a contrast the engine actually produced (no hollow callbacks)
+- [x] Unit tests cover: template output offline; graceful fallback on a simulated proxy failure; the produced contrast matches the assembled session; build and tests pass
 
 **Validation Test:**
 
