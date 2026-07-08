@@ -133,13 +133,17 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
         next.updatedAt = trigger.detectedAt
         next.note = note
 
-        // 5. Persist the policy, and the learned duration onto the user aggregate when it moved.
-        try await store.save(next, for: user.id)
+        // 5. Persist the learned duration onto the user aggregate first, then the policy. The
+        //    policy's `updatedAt` is the dedup boundary for `newlyCompletedLogs`, so it must only
+        //    advance after the duration derived from those sessions is durably saved. If the policy
+        //    write then fails, the next re-program re-folds those sessions (a minor, self-correcting
+        //    EWMA smoothing artifact) rather than permanently losing them to Default Duration learning.
         if learnedDuration != user.duration {
             var updated = user
             updated.duration = learnedDuration
             try await userService.save(updated)
         }
+        try await store.save(next, for: user.id)
         return next
     }
 
@@ -184,8 +188,12 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
     ///
     /// `SessionPolicy.default`'s sentinel epoch (2001) predates every real log, so the first
     /// re-program folds the full history; each later re-program folds only what accrued since it.
+    ///
+    /// Return sessions (`wasReturn`) are excluded: they are deliberately short, easy, and capped
+    /// (US-E06), so folding their `durationMinutes` would drag the learned Default Duration down and
+    /// soft-penalize a comeback - and a Return is celebrated, never penalizing (US-D02/US-E06).
     private func newlyCompletedLogs(_ logs: [WorkoutLog], since policy: SessionPolicy) -> [WorkoutLog] {
-        logs.filter { $0.completedAt > policy.updatedAt }
+        logs.filter { $0.completedAt > policy.updatedAt && !$0.wasReturn }
     }
 }
 
