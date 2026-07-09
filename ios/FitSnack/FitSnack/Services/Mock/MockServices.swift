@@ -73,6 +73,12 @@ final class MockSessionPolicyService: SessionPolicyServiceProtocol {
         .default
     }
 
+    func seedInitialPolicy(for user: User) async throws -> SessionPolicy {
+        // The stateless mock persists nothing; it just hands back the seeded policy so callers and
+        // tests see the cold-start contract onboarding would install (US-I01/US-G01).
+        .seeded(forFitnessLevel: user.profile.fitnessLevel)
+    }
+
     func reprogram(
         user: User,
         recentLogs: [WorkoutLog],

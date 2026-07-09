@@ -531,11 +531,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] Onboarding collects: name and basic profile (age/sex/height/weight), `fitnessLevel`, the free-text `why` statement, "do you sit 6+ hours most days?" (`sitsLong`), optional injuries, and exactly one duration question ("how long do you usually have?") that seeds `duration.onboardingSeedMinutes` and `duration.defaultMinutes`
-- [ ] Onboarding seeds the capped Starting Difficulty (US-G01) and initializes `coldStart` (`active == true`, `sessionsLogged == 0`) and `SessionPolicy.default` with a `coldStartContract`
-- [ ] On completion the app routes straight to the Ready Screen with the first session already generated (no picker to clear); `AppState` records onboarded
-- [ ] The flow uses `Theme` tokens (56pt buttons, 16pt card radius, >= 44pt targets); no XP/levels/badges anywhere
-- [ ] Uses `@Observable` view models; verify in iOS Simulator
+- [x] Onboarding collects: name and basic profile (age/sex/height/weight), `fitnessLevel`, the free-text `why` statement, "do you sit 6+ hours most days?" (`sitsLong`), optional injuries, and exactly one duration question ("how long do you usually have?") that seeds `duration.onboardingSeedMinutes` and `duration.defaultMinutes`
+- [x] Onboarding seeds the capped Starting Difficulty (US-G01) and initializes `coldStart` (`active == true`, `sessionsLogged == 0`) and `SessionPolicy.default` with a `coldStartContract`
+- [x] On completion the app routes straight to the Ready Screen with the first session already generated (no picker to clear); `AppState` records onboarded
+- [x] The flow uses `Theme` tokens (56pt buttons, 16pt card radius, >= 44pt targets); no XP/levels/badges anywhere
+- [x] Uses `@Observable` view models; verify in iOS Simulator (simulator run blocked by the environment's CoreSimulator/SDK mismatch; compile-verified against the real SDK and the pure onboarding logic executed via SwiftPM)
 
 **Validation Test:**
 

@@ -12,7 +12,9 @@ struct RootView: View {
             if appState.isOnboarded {
                 MainTabsView(selectedTab: $appState.selectedTab)
             } else {
-                OnboardingPlaceholderView {
+                // The minimal v6 onboarding flow (US-I01). On completion it has already saved the
+                // user and seeded the cold-start policy, so the router only flips into the main app.
+                OnboardingView(services: services) {
                     appState.isOnboarded = true
                     appState.selectedTab = .home
                 }
@@ -21,58 +23,19 @@ struct RootView: View {
     }
 }
 
-private struct OnboardingPlaceholderView: View {
-    let completeOnboarding: () -> Void
-
-    var body: some View {
-        ZStack {
-            Theme.Colors.background
-                .ignoresSafeArea()
-
-            VStack(spacing: Theme.Spacing.lg) {
-                Image(systemName: "figure.run")
-                    .font(.system(size: 48, weight: .bold))
-                    .foregroundStyle(Theme.Colors.accent)
-
-                VStack(spacing: Theme.Spacing.sm) {
-                    Text("FitSnack")
-                        .font(Theme.Typography.largeTitle)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-
-                    Text("A few minutes is enough.")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-
-                Button(action: completeOnboarding) {
-                    Text("Start")
-                        .font(Theme.Typography.button)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.buttonHeight)
-                }
-                .buttonStyle(.borderedProminent)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-                .padding(.top, Theme.Spacing.sm)
-            }
-            .padding(Theme.Spacing.lg)
-        }
-    }
-}
-
 private struct MainTabsView: View {
+    @Environment(\.services) private var services
     @Binding var selectedTab: AppTab
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            PlaceholderTabView(
-                icon: "house.fill",
-                title: "Today",
-                subtitle: "A short session is ready when you are."
-            )
-            .tag(AppTab.home)
-            .tabItem {
-                Label("Today", systemImage: "house.fill")
-            }
+            // The Ready Screen the app opens to (US-I01), with today's session already generated.
+            // Epic J layers the duration chip and personalization surfaces onto this same view.
+            ReadyView(services: services)
+                .tag(AppTab.home)
+                .tabItem {
+                    Label("Today", systemImage: "house.fill")
+                }
 
             PlaceholderTabView(
                 icon: "chart.line.uptrend.xyaxis",
