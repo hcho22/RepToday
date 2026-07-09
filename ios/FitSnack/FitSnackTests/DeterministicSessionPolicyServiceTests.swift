@@ -127,6 +127,34 @@ final class DeterministicSessionPolicyServiceTests: XCTestCase {
         XCTAssertEqual(policy, .default)
     }
 
+    // MARK: - Cold-start seeding (US-I01)
+
+    /// Onboarding's `seedInitialPolicy` persists a policy that layers a cold-start contract (capped
+    /// from the user's fitness level, First-Week Contrast forced on) onto the neutral default, and it
+    /// reads back through `currentPolicy` so the engine's Step 0 overrides apply from session one.
+    func testSeedInitialPolicyPersistsColdStartContract() async throws {
+        let users = MockUserService()
+        let store = InMemorySessionPolicyStore()
+        let svc = service(store: store, userService: users)
+        let onboarded = user()  // intermediate fitness level
+
+        let seeded = try await svc.seedInitialPolicy(for: onboarded)
+        XCTAssertEqual(seeded, .seeded(forFitnessLevel: onboarded.profile.fitnessLevel))
+        XCTAssertNotNil(seeded.coldStartContract)
+        XCTAssertEqual(seeded.coldStartContract?.forceContrastSpread, true)
+        XCTAssertEqual(
+            seeded.coldStartContract?.cappedMaxDifficulty,
+            SessionPolicy.ColdStartContract.cappedMaxDifficulty(for: onboarded.profile.fitnessLevel)
+        )
+        // Persisted: a fresh read returns the seeded policy, not the bare default.
+        let readBack = try await svc.currentPolicy(for: onboarded)
+        XCTAssertEqual(readBack, seeded)
+        // A seed is not a re-program: it keeps the default's provenance so the first real re-program
+        // reads a clean starting point.
+        XCTAssertEqual(readBack.version, SessionPolicy.default.version)
+        XCTAssertEqual(readBack.updatedBy, .default)
+    }
+
     // MARK: - Provenance
 
     /// Every re-program increments `version` and stamps `updatedBy == .deterministic` and the

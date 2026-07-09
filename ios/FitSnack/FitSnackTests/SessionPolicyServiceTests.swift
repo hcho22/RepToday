@@ -31,4 +31,12 @@ final class SessionPolicyServiceTests: XCTestCase {
         let triggers = try await service.dueTriggers(user: user, recentLogs: [], asOf: Date())
         XCTAssertTrue(triggers.isEmpty)
     }
+
+    /// `seedInitialPolicy` hands back the cold-start-seeded policy for the user's fitness level
+    /// (US-I01/US-G01), so onboarding can generate the first session against a capped contract.
+    func testSeedInitialPolicyReturnsSeededContract() async throws {
+        let seeded = try await service.seedInitialPolicy(for: user)
+        XCTAssertEqual(seeded, .seeded(forFitnessLevel: user.profile.fitnessLevel))
+        XCTAssertNotNil(seeded.coldStartContract)
+    }
 }

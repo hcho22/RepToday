@@ -63,6 +63,18 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
         try await store.policy(for: user.id) ?? .default
     }
 
+    /// Seed and persist the freshly-onboarded user's starting policy (US-I01/US-G01): the neutral
+    /// default with a cold-start contract capped from the self-reported fitness level and First-Week
+    /// Contrast forced on. Written through the same `SessionPolicyStore` as a re-program so it
+    /// survives relaunch and offline use, and the engine's Step 0 overrides (US-E04) apply from the
+    /// very first session. This is a *seed*, not a re-program: it keeps `default`'s `version`/
+    /// `updatedBy == .default`, so the first actual re-program still reads a clean starting point.
+    func seedInitialPolicy(for user: User) async throws -> SessionPolicy {
+        let policy = SessionPolicy.seeded(forFitnessLevel: user.profile.fitnessLevel)
+        try await store.save(policy, for: user.id)
+        return policy
+    }
+
     /// The re-program triggers due as of `asOf`, in precedence order (US-F01). Adapts the
     /// library-taking `ReprogramTriggerDetection.dueTriggers` to the protocol's library-free
     /// signature by supplying the validated catalog from the exercise service.

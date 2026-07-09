@@ -64,6 +64,15 @@ protocol SessionPolicyServiceProtocol {
     /// the Programmer has written one (US-D03).
     func currentPolicy(for user: User) async throws -> SessionPolicy
 
+    /// Seeds and persists the starting policy for a freshly onboarded user (US-I01/US-G01):
+    /// the neutral `SessionPolicy.default` with a cold-start contract layered on - Starting
+    /// Difficulty capped from `user.profile.fitnessLevel` and First-Week Contrast forced on.
+    /// Onboarding calls this once, before the first session is generated, so the engine's Step 0
+    /// cold-start overrides (US-E04) apply from session one and the contract survives to the next
+    /// open. Returns the seeded policy so the caller can generate the first session against it
+    /// without a second read.
+    func seedInitialPolicy(for user: User) async throws -> SessionPolicy
+
     /// Writes and returns a fresh policy in response to `trigger`, reading `recentLogs` for
     /// context (US-F03). The version increments and the change is felt on the next open, never
     /// mid-session.
