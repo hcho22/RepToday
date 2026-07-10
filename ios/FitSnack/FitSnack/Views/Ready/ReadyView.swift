@@ -89,7 +89,7 @@ struct ReadyView: View {
 
     private var greeting: String {
         let name = viewModel.user?.displayName ?? ""
-        return name.isEmpty ? "You're someone who moves." : "Ready when you are, \(name)."
+        return name.isEmpty ? "Ready when you are." : "Ready when you are, \(name)."
     }
 
     /// The header subtitle *is* the Variety Language line when there is one - the honest "what today

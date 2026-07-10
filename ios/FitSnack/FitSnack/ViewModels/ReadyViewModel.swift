@@ -71,6 +71,11 @@ final class ReadyViewModel {
     /// Ensures the on-open re-program check fires once per app open, not on every tab re-appear.
     private var hasCheckedReprogramOnOpen = false
 
+    /// Ensures the full-history Consistency Score read fires once per app open. The score only
+    /// changes when a workout completes, and none completes on the Ready Screen, so re-scanning the
+    /// entire log table on every tab re-appear is redundant.
+    private var hasComputedConsistency = false
+
     /// Engine inputs cached from `load()` so a chip tap regenerates the session on-device without
     /// re-fetching the user, logs, or policy - keeping regeneration well inside the sub-100ms budget
     /// so Start is never left waiting on an answer.
@@ -140,9 +145,14 @@ final class ReadyViewModel {
             //
             // Consistency reads all history, not the bounded engine window: `longestChain` ("Best
             // run") is a historical maximum, so a run older than the 70-day lookback must still count.
-            // The engine inputs keep the bounded `recentLogs` for staleness / Adaptive Overload.
-            let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
-            await refreshInsights(for: user, logs: allLogs)
+            // The engine inputs keep the bounded `recentLogs` for staleness / Adaptive Overload. The
+            // full-history scan runs once per app open: the score only changes when a workout
+            // completes, and none completes on the Ready Screen, so a tab re-appear reuses the result.
+            if !hasComputedConsistency {
+                hasComputedConsistency = true
+                let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
+                await refreshInsights(for: user, logs: allLogs)
+            }
 
             // Re-program-on-open fires once per app open (not on every tab re-appear). It runs fully
             // in the background: the app renders from the existing policy now, and any newly written

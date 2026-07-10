@@ -307,6 +307,25 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertEqual(recording.receivedLogCount, 2, "consistency sees the 100-day-old log, not just the 70-day window")
     }
 
+    /// The full-history Consistency Score read fires once per app open, not on every tab re-appear:
+    /// the score only changes when a workout completes, and none completes on the Ready Screen (US-J02).
+    func testConsistencyComputedOncePerOpen() async {
+        let recording = RecordingConsistencyService(value: consistencyValue(score: 90, longestChain: 6, total: 40))
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: CapturingWorkoutEngine(focusPillar: .mobility),
+            workoutLogService: MockWorkoutLogService(logs: [strengthLog(daysAgo: 1)]),
+            consistencyService: recording,
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        await vm.load()
+
+        XCTAssertEqual(recording.callCount, 1, "the full-history consistency read is not re-run on a tab re-appear")
+    }
+
     /// A duration chip that shifts today's lead pillar recomputes the Variety Language line, so the
     /// header never describes a contrast the currently-displayed session does not produce (US-J02).
     func testSelectDurationRecomputesVarietyLine() async {
@@ -553,11 +572,13 @@ private struct StubConsistencyService: ConsistencyServiceProtocol {
 private final class RecordingConsistencyService: ConsistencyServiceProtocol {
     let value: Consistency
     private(set) var receivedLogCount = 0
+    private(set) var callCount = 0
 
     init(value: Consistency) { self.value = value }
 
     func consistency(for logs: [WorkoutLog], weeklyGoal: Int) async throws -> Consistency {
         receivedLogCount = logs.count
+        callCount += 1
         return value
     }
     func updatedConsistency(after log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws -> Consistency { value }
