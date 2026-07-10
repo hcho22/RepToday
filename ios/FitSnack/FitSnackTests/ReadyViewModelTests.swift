@@ -90,6 +90,99 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertFalse(workout.blocks.isEmpty)
         XCTAssertEqual(workout.blocks.first?.category, ExerciseCategory.warmup, "a session always opens with a warm-up")
     }
+
+    // MARK: - Duration chip (US-J01)
+
+    /// The offered chips are the canonical ascending vocabulary (5/10/15/20/30/45/60).
+    func testDurationChipsAreCanonicalVocabulary() {
+        let vm = makeViewModel(user: onboardedUser())
+        XCTAssertEqual(vm.durationChips, [5, 10, 15, 20, 30, 45, 60])
+    }
+
+    /// Tapping a chip regenerates the session at the new duration and updates the selection, while
+    /// the existing session stays present (Start is never left waiting).
+    func testSelectDurationRegeneratesAtNewDuration() async {
+        let engine = CapturingWorkoutEngine()
+        let vm = makeViewModel(user: onboardedUser(defaultMinutes: 15), engine: engine)
+
+        await vm.load()
+        XCTAssertEqual(vm.selectedMinutes, 15)
+
+        await vm.selectDuration(30)
+
+        XCTAssertEqual(vm.selectedMinutes, 30)
+        XCTAssertEqual(vm.requestedMinutes, 30)
+        XCTAssertEqual(engine.capturedRequestedMinutes, 30)
+        XCTAssertNotNil(vm.workout, "the session stays present through a regeneration")
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    /// Regeneration reuses the cached engine inputs - it never re-fetches the user, so a chip tap
+    /// stays on-device and instant.
+    func testSelectDurationDoesNotRefetchUser() async {
+        let users = CountingUserService(user: onboardedUser())
+        let engine = CapturingWorkoutEngine()
+        let vm = ReadyViewModel(
+            userService: users,
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: engine,
+            workoutLogService: MockWorkoutLogService(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        await vm.selectDuration(45)
+
+        let userFetches = await users.currentUserCallCount
+        XCTAssertEqual(userFetches, 1, "the user is fetched once on load, not per chip tap")
+        XCTAssertEqual(engine.generateCallCount, 2, "one generation on load, one per chip tap")
+    }
+
+    /// Tapping the already-selected chip is a no-op - no wasted regeneration.
+    func testSelectDurationSameValueIsNoOp() async {
+        let engine = CapturingWorkoutEngine()
+        let vm = makeViewModel(user: onboardedUser(defaultMinutes: 20), engine: engine)
+
+        await vm.load()
+        XCTAssertEqual(engine.generateCallCount, 1)
+
+        await vm.selectDuration(20)
+
+        XCTAssertEqual(engine.generateCallCount, 1, "re-selecting the current duration does not regenerate")
+    }
+
+    /// Selecting a duration before any user has loaded is a no-op (nothing to generate against).
+    func testSelectDurationWithNoUserIsNoOp() async {
+        let engine = CapturingWorkoutEngine()
+        let vm = makeViewModel(user: nil, engine: engine)
+
+        await vm.load()
+        await vm.selectDuration(30)
+
+        XCTAssertNil(engine.capturedRequestedMinutes, "the engine is never called without a user")
+    }
+
+    /// End-to-end (real engine): tapping 30 after a 15-min load produces a ~30-min session, matching
+    /// the US-J01 validation.
+    func testEndToEndChipRegeneratesToRequestedLength() async throws {
+        let exercises = try MockExerciseService()
+        let engine = MockWorkoutEngine(exerciseService: exercises)
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser(defaultMinutes: 15)),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: engine,
+            workoutLogService: MockWorkoutLogService(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        XCTAssertEqual(vm.workout?.requestedMinutes, 15)
+
+        await vm.selectDuration(30)
+
+        XCTAssertEqual(vm.workout?.requestedMinutes, 30)
+        XCTAssertEqual(vm.workout?.blocks.first?.category, ExerciseCategory.warmup)
+    }
 }
 
 // MARK: - Test doubles
@@ -98,6 +191,7 @@ final class ReadyViewModelTests: XCTestCase {
 private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
     private(set) var capturedRequestedMinutes: Int?
     private(set) var capturedPolicy: SessionPolicy?
+    private(set) var generateCallCount = 0
 
     func generateWorkout(
         requestedMinutes: Int,
@@ -107,6 +201,7 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
     ) async throws -> Workout {
         capturedRequestedMinutes = requestedMinutes
         capturedPolicy = sessionPolicy
+        generateCallCount += 1
         return Workout(
             id: UUID(),
             createdAt: Date(timeIntervalSinceReferenceDate: 0),
@@ -126,6 +221,23 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
     ) async throws -> SwapOutcome {
         .noAlternative
     }
+}
+
+/// A user service that counts `currentUser()` calls, proving a chip regeneration reuses cached
+/// inputs rather than re-fetching.
+private actor CountingUserService: UserServiceProtocol {
+    private let user: User?
+    private(set) var currentUserCallCount = 0
+
+    init(user: User?) { self.user = user }
+
+    func currentUser() async throws -> User? {
+        currentUserCallCount += 1
+        return user
+    }
+
+    func save(_ user: User) async throws {}
+    func deleteCurrentUser() async throws {}
 }
 
 /// A policy service that returns a fixed policy and no-ops the write paths.
