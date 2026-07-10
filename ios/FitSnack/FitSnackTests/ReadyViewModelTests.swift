@@ -225,6 +225,210 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertEqual(vm.workout?.requestedMinutes, 30)
         XCTAssertEqual(vm.workout?.blocks.first?.category, ExerciseCategory.warmup)
     }
+
+    // MARK: - Variety Language, Consistency, note, re-program (US-J02)
+
+    /// A single-focus strength log completed `daysAgo` before the fixed date, for the "yesterday"
+    /// side of the Variety Language contrast.
+    private func strengthLog(daysAgo: Int) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: Calendar.current.date(byAdding: .day, value: -daysAgo, to: fixedDate)!,
+            requestedMinutes: 15,
+            durationMinutes: 15,
+            shape: .singleFocus,
+            focusPillar: .strength,
+            perceivedDifficulty: nil,
+            exercises: []
+        )
+    }
+
+    private func consistencyValue(score: Double, longestChain: Int, total: Int) -> Consistency {
+        Consistency(
+            weeklyGoal: 3,
+            score: score,
+            workoutsThisWeek: 1,
+            longestChain: longestChain,
+            totalWorkoutsCompleted: total,
+            totalMinutesExercised: total * 15
+        )
+    }
+
+    /// The screen surfaces the session's Variety Language line - the honest contrast between today's
+    /// lead pillar and the previous session's - as a template-sourced note.
+    func testLoadSurfacesVarietyLanguageLine() async {
+        let engine = CapturingWorkoutEngine(focusPillar: .mobility)
+        let vm = makeViewModel(user: onboardedUser(), engine: engine, logs: [strengthLog(daysAgo: 1)])
+
+        await vm.load()
+
+        let note = vm.varietyNote
+        XCTAssertNotNil(note)
+        XCTAssertEqual(note?.source, .template)
+        XCTAssertTrue(note?.text.contains("mobility") ?? false, "names today's lead pillar")
+        XCTAssertTrue(note?.text.contains("strength") ?? false, "names yesterday's contrasting pillar")
+    }
+
+    /// The forgiving Consistency Score is surfaced from the log history.
+    func testLoadSurfacesConsistencyScore() async {
+        let engine = CapturingWorkoutEngine(focusPillar: .mobility)
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: engine,
+            workoutLogService: MockWorkoutLogService(),
+            consistencyService: StubConsistencyService(value: consistencyValue(score: 82, longestChain: 4, total: 30)),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+
+        XCTAssertEqual(vm.consistency?.score, 82)
+        XCTAssertEqual(vm.consistency?.longestChain, 4)
+    }
+
+    /// The Consistency Score reads the full log history, not the bounded engine window, so
+    /// `longestChain` ("Best run") reflects runs older than the 70-day lookback.
+    func testConsistencyReadsFullHistory() async {
+        let recording = RecordingConsistencyService(value: consistencyValue(score: 90, longestChain: 6, total: 40))
+        let logs = [strengthLog(daysAgo: 1), strengthLog(daysAgo: 100)]
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: CapturingWorkoutEngine(focusPillar: .mobility),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            consistencyService: recording,
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+
+        XCTAssertEqual(recording.receivedLogCount, 2, "consistency sees the 100-day-old log, not just the 70-day window")
+    }
+
+    /// The full-history Consistency Score read fires once per app open, not on every tab re-appear:
+    /// the score only changes when a workout completes, and none completes on the Ready Screen (US-J02).
+    func testConsistencyComputedOncePerOpen() async {
+        let recording = RecordingConsistencyService(value: consistencyValue(score: 90, longestChain: 6, total: 40))
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: CapturingWorkoutEngine(focusPillar: .mobility),
+            workoutLogService: MockWorkoutLogService(logs: [strengthLog(daysAgo: 1)]),
+            consistencyService: recording,
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        await vm.load()
+
+        XCTAssertEqual(recording.callCount, 1, "the full-history consistency read is not re-run on a tab re-appear")
+    }
+
+    /// A duration chip that shifts today's lead pillar recomputes the Variety Language line, so the
+    /// header never describes a contrast the currently-displayed session does not produce (US-J02).
+    func testSelectDurationRecomputesVarietyLine() async {
+        // Yesterday was strength; today is strength at 15 (no contrast) but mobility at 30 (a contrast).
+        let engine = PillarByDurationEngine(pillarByMinutes: [15: .strength, 30: .mobility])
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser(defaultMinutes: 15)),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: engine,
+            workoutLogService: MockWorkoutLogService(logs: [strengthLog(daysAgo: 1)]),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        XCTAssertFalse(vm.varietyNote?.text.contains("yesterday") ?? false,
+                       "same-pillar day drops the contrast clause")
+
+        await vm.selectDuration(30)
+
+        let note = vm.varietyNote
+        XCTAssertTrue(note?.text.contains("mobility") ?? false, "the note follows the regenerated session's lead pillar")
+        XCTAssertTrue(note?.text.contains("strength") ?? false, "and names yesterday's contrasting pillar")
+    }
+
+    /// The policy `note` is surfaced when the in-force policy carries one, and is `nil` otherwise.
+    func testPolicyNoteSurfacedWhenPresent() async {
+        var policy = SessionPolicy.default
+        policy.note = SessionPolicy.Note(text: "Stepping up the challenge - you've earned it.", source: .template)
+        let vm = makeViewModel(user: onboardedUser(), policy: policy)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.policyNote?.text, "Stepping up the challenge - you've earned it.")
+
+        let plain = makeViewModel(user: onboardedUser(), policy: .default)
+        await plain.load()
+        XCTAssertNil(plain.policyNote, "no note when the policy carries none")
+    }
+
+    /// On open, a due trigger kicks off a background re-program against the highest-precedence one,
+    /// while the session renders immediately from the existing policy (Start never waits).
+    func testReprogramFiresWhenTriggerDue() async {
+        let trigger = ReprogramTrigger(kind: .weeklyBoundary, detectedAt: fixedDate)
+        let policyService = RecordingPolicyService(policy: .seeded(forFitnessLevel: .beginner), triggers: [trigger])
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: policyService,
+            workoutEngine: CapturingWorkoutEngine(focusPillar: .mobility),
+            workoutLogService: MockWorkoutLogService(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+
+        // The session is present the moment load returns - rendering never waited on the re-program.
+        XCTAssertNotNil(vm.workout)
+        XCTAssertNil(vm.errorMessage)
+
+        // The background re-program is fire-and-forget; await it to assert it ran with the trigger.
+        await vm.reprogramTask?.value
+        let recorded = await policyService.reprogrammedWith
+        XCTAssertEqual(recorded, [trigger])
+    }
+
+    /// With no trigger due, no re-program is written.
+    func testNoReprogramWhenNoTriggerDue() async {
+        let policyService = RecordingPolicyService(policy: .seeded(forFitnessLevel: .beginner), triggers: [])
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: policyService,
+            workoutEngine: CapturingWorkoutEngine(focusPillar: .mobility),
+            workoutLogService: MockWorkoutLogService(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        await vm.reprogramTask?.value
+
+        let recorded = await policyService.reprogrammedWith
+        XCTAssertTrue(recorded.isEmpty)
+    }
+
+    /// The on-open re-program check fires once per open, not on every tab re-appear.
+    func testReprogramFiresOncePerOpen() async {
+        let trigger = ReprogramTrigger(kind: .weeklyBoundary, detectedAt: fixedDate)
+        let policyService = RecordingPolicyService(policy: .seeded(forFitnessLevel: .beginner), triggers: [trigger])
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: policyService,
+            workoutEngine: CapturingWorkoutEngine(focusPillar: .mobility),
+            workoutLogService: MockWorkoutLogService(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        await vm.reprogramTask?.value
+        // Simulate the Today tab re-appearing.
+        await vm.load()
+        await vm.reprogramTask?.value
+
+        let recorded = await policyService.reprogrammedWith
+        XCTAssertEqual(recorded.count, 1, "a tab re-appear does not re-fire the on-open re-program")
+    }
 }
 
 // MARK: - Test doubles
@@ -234,6 +438,11 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
     private(set) var capturedRequestedMinutes: Int?
     private(set) var capturedPolicy: SessionPolicy?
     private(set) var generateCallCount = 0
+    /// Lets a test give the canned session a lead pillar so the Variety Language line has a real
+    /// contrast to name (US-J02); `nil` keeps the pre-J02 warm-up-only behavior.
+    var focusPillar: Pillar?
+
+    init(focusPillar: Pillar? = nil) { self.focusPillar = focusPillar }
 
     func generateWorkout(
         requestedMinutes: Int,
@@ -247,8 +456,8 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
         return Workout(
             id: UUID(),
             createdAt: Date(timeIntervalSinceReferenceDate: 0),
-            shape: .blend,
-            focusPillar: nil,
+            shape: focusPillar == nil ? .blend : .singleFocus,
+            focusPillar: focusPillar,
             requestedMinutes: requestedMinutes,
             wasReturn: false,
             blocks: []
@@ -323,4 +532,89 @@ private struct StubPolicyService: SessionPolicyServiceProtocol {
     func seedInitialPolicy(for user: User) async throws -> SessionPolicy { policy }
     func reprogram(user: User, recentLogs: [WorkoutLog], trigger: ReprogramTrigger) async throws -> SessionPolicy { policy }
     func dueTriggers(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> [ReprogramTrigger] { [] }
+}
+
+/// A policy service that reports configurable due triggers and records every re-program (US-J02).
+/// An actor so the background re-program task records safely off the main thread.
+private actor RecordingPolicyService: SessionPolicyServiceProtocol {
+    let policy: SessionPolicy
+    let triggers: [ReprogramTrigger]
+    private(set) var reprogrammedWith: [ReprogramTrigger] = []
+
+    init(policy: SessionPolicy, triggers: [ReprogramTrigger] = []) {
+        self.policy = policy
+        self.triggers = triggers
+    }
+
+    func currentPolicy(for user: User) async throws -> SessionPolicy { policy }
+    func seedInitialPolicy(for user: User) async throws -> SessionPolicy { policy }
+
+    func reprogram(user: User, recentLogs: [WorkoutLog], trigger: ReprogramTrigger) async throws -> SessionPolicy {
+        reprogrammedWith.append(trigger)
+        return policy
+    }
+
+    func dueTriggers(user: User, recentLogs: [WorkoutLog], asOf: Date) async throws -> [ReprogramTrigger] {
+        triggers
+    }
+}
+
+/// A consistency service that hands back a fixed score, so the Ready Screen surfacing is testable
+/// without depending on the real evaluator's clock.
+private struct StubConsistencyService: ConsistencyServiceProtocol {
+    let value: Consistency
+    func consistency(for logs: [WorkoutLog], weeklyGoal: Int) async throws -> Consistency { value }
+    func updatedConsistency(after log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws -> Consistency { value }
+}
+
+/// A consistency service that records the logs it was handed, proving the Ready Screen reads the
+/// full history (not the bounded engine window) so `longestChain` reflects all-time runs (US-J02).
+private final class RecordingConsistencyService: ConsistencyServiceProtocol {
+    let value: Consistency
+    private(set) var receivedLogCount = 0
+    private(set) var callCount = 0
+
+    init(value: Consistency) { self.value = value }
+
+    func consistency(for logs: [WorkoutLog], weeklyGoal: Int) async throws -> Consistency {
+        receivedLogCount = logs.count
+        callCount += 1
+        return value
+    }
+    func updatedConsistency(after log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws -> Consistency { value }
+}
+
+/// A workout engine whose canned session's lead pillar depends on the requested minutes, so a chip
+/// tap that changes the session shape also changes today's lead pillar - letting a test prove the
+/// Variety Language line is recomputed on regeneration (US-J02).
+private final class PillarByDurationEngine: WorkoutEngineProtocol {
+    let pillarByMinutes: [Int: Pillar]
+
+    init(pillarByMinutes: [Int: Pillar]) { self.pillarByMinutes = pillarByMinutes }
+
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
+    ) async throws -> Workout {
+        Workout(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 0),
+            shape: .singleFocus,
+            focusPillar: pillarByMinutes[requestedMinutes],
+            requestedMinutes: requestedMinutes,
+            wasReturn: false,
+            blocks: []
+        )
+    }
+
+    func swapExercise(
+        _ prescription: PrescribedExercise,
+        in workout: Workout,
+        user: User,
+        recentLogs: [WorkoutLog]
+    ) async throws -> SwapOutcome {
+        .noAlternative
+    }
 }
