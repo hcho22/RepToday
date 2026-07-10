@@ -1,0 +1,339 @@
+import SwiftUI
+
+/// The active-session player (US-K01) - a focused, one-exercise-at-a-time screen that walks the user
+/// through the generated session so they never lose their place.
+///
+/// It renders the current exercise's demo, target, and set tracking, keeps the elapsed time always
+/// visible, and advances as each set is completed. Every interactive control meets the 60pt active-
+/// screen touch target; every color, font, and dimension comes from `Theme`. The rest timer between
+/// sets (US-K02), the in-session swap (US-K03), background/resume (US-K04), and the post-session
+/// summary + log write (US-L01/L02) build on this same view and view model.
+struct ActiveSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var viewModel: ActiveSessionViewModel
+
+    init(workout: Workout) {
+        _viewModel = State(initialValue: ActiveSessionViewModel(workout: workout))
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.Colors.background.ignoresSafeArea()
+
+            if viewModel.isComplete {
+                completionState
+            } else {
+                player
+            }
+        }
+        .onAppear { viewModel.start() }
+    }
+
+    // MARK: - Player
+
+    private var player: some View {
+        VStack(spacing: 0) {
+            topBar
+
+            ProgressView(value: viewModel.progress)
+                .tint(Theme.Colors.accent)
+                .padding(.horizontal, Theme.Spacing.lg)
+
+            if let step = viewModel.currentStep {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                        blockContext(step)
+                        ExerciseDemoView(prescription: step.prescription)
+                        exerciseHeadline(step)
+                        setTracker(step)
+                    }
+                    .padding(Theme.Spacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            controls
+        }
+    }
+
+    /// Top bar: a close control and the always-visible elapsed time. The clock re-reads once a second
+    /// through a `TimelineView`, so it stays accurate without the view model owning a ticking counter.
+    private var topBar: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+            }
+            .accessibilityLabel("End session")
+
+            Spacer()
+
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(Self.elapsedText(viewModel.elapsed(asOf: context.date)))
+                    .font(Theme.Typography.title)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .accessibilityLabel("Elapsed time \(Self.elapsedAccessibilityText(viewModel.elapsed(asOf: context.date)))")
+            }
+
+            Spacer()
+
+            // Balances the leading close control so the clock stays centered; empty but non-interactive.
+            Color.clear
+                .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+    }
+
+    /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
+    private func blockContext(_ step: ActiveSessionViewModel.Step) -> some View {
+        Text("\(step.blockTitle) · \(step.position) of \(step.total)")
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .accessibilityLabel("\(step.blockTitle), exercise \(step.position) of \(step.total)")
+    }
+
+    private func exerciseHeadline(_ step: ActiveSessionViewModel.Step) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text(step.prescription.exercise.displayName)
+                .font(Theme.Typography.largeTitle)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text(Self.targetText(step.prescription))
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.Colors.accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(step.prescription.exercise.displayName), \(Self.targetAccessibilityText(step.prescription))")
+    }
+
+    /// Set tracking: which set of how many, with a dot per set filled as they are completed.
+    private func setTracker(_ step: ActiveSessionViewModel.Step) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Set \(viewModel.currentSet) of \(step.prescription.sets)")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(0..<step.prescription.sets, id: \.self) { index in
+                    Circle()
+                        .fill(index < viewModel.currentSet - 1 ? Theme.Colors.accent : Theme.Colors.surface)
+                        .frame(width: Theme.Spacing.md, height: Theme.Spacing.md)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement()
+        .accessibilityLabel("Set \(viewModel.currentSet) of \(step.prescription.sets)")
+    }
+
+    /// The primary "complete set" action plus a quieter "skip" - both meeting the 60pt active-screen
+    /// touch target. Completing the last set of the last exercise finishes the session.
+    private var controls: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Button {
+                viewModel.completeSet()
+            } label: {
+                Text(completeButtonTitle)
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityLabel(completeButtonTitle)
+
+            Button {
+                viewModel.skipExercise()
+            } label: {
+                Text("Skip exercise")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .accessibilityLabel("Skip this exercise")
+        }
+        .padding(Theme.Spacing.lg)
+        .background(Theme.Colors.background)
+    }
+
+    /// "Complete set" mid-exercise, "Finish exercise" on the last set, "Finish session" on the very
+    /// last set - so the user always knows what the action does.
+    private var completeButtonTitle: String {
+        guard let step = viewModel.currentStep else { return "Complete set" }
+        let onLastSet = viewModel.currentSet >= step.prescription.sets
+        guard onLastSet else { return "Complete set" }
+        return step.position >= step.total ? "Finish session" : "Finish exercise"
+    }
+
+    // MARK: - Completion
+
+    /// A minimal end-of-session confirmation. The celebration, template summary, log write, and
+    /// perceived-difficulty rating are US-L01/US-L02; this story just closes the loop cleanly.
+    private var completionState: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 72, weight: .semibold))
+                .foregroundStyle(Theme.Colors.accent)
+            Text("Session complete")
+                .font(Theme.Typography.largeTitle)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text("You showed up. That's the whole game.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                dismiss()
+            } label: {
+                Text("Done")
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityLabel("Done")
+        }
+        .padding(Theme.Spacing.lg)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Formatting
+
+    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds.
+    static func targetText(_ prescription: PrescribedExercise) -> String {
+        if let reps = prescription.reps {
+            return "\(prescription.sets) × \(reps)"
+        }
+        if let seconds = prescription.durationSeconds {
+            return "\(prescription.sets) × \(clockText(seconds))"
+        }
+        return "\(prescription.sets) sets"
+    }
+
+    private static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
+        if let reps = prescription.reps {
+            return "\(prescription.sets) sets of \(reps) reps"
+        }
+        if let seconds = prescription.durationSeconds {
+            return "\(prescription.sets) sets of \(seconds) second holds"
+        }
+        return "\(prescription.sets) sets"
+    }
+
+    /// "M:SS" (or "H:MM:SS" past an hour) for the elapsed clock.
+    static func elapsedText(_ totalSeconds: Int) -> String {
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private static func elapsedAccessibilityText(_ totalSeconds: Int) -> String {
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return "\(minutes) minutes \(seconds) seconds"
+    }
+
+    /// "0:30" for a hold duration in seconds.
+    private static func clockText(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+// MARK: - Exercise demo
+
+/// The auto-playing exercise demonstration for the player (US-K01).
+///
+/// It renders a large, movement-appropriate glyph that pulses continuously to signal "this is the
+/// live demo". Under Reduce Motion the pulse is dropped for a static glyph - the required accessible
+/// fallback - so the screen never animates against the user's preference. The glyph is chosen by the
+/// exercise's movement pattern; this is the seam where a richer Lottie/video demo drops in later,
+/// keeping the same auto-play + static-fallback contract.
+struct ExerciseDemoView: View {
+    let prescription: PrescribedExercise
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+                .fill(Theme.Colors.secondaryBackground)
+            glyph
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 220)
+        .accessibilityElement()
+        .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
+    }
+
+    @ViewBuilder
+    private var glyph: some View {
+        let base = Image(systemName: symbolName)
+            .font(.system(size: 92, weight: .semibold))
+            .foregroundStyle(Theme.Colors.accent)
+
+        if reduceMotion {
+            base // static fallback - no animation against the user's Reduce Motion preference
+        } else {
+            base.symbolEffect(.pulse, options: .repeating) // auto-plays continuously
+        }
+    }
+
+    /// A movement-appropriate SF Symbol so the demo reads as the right kind of exercise.
+    private var symbolName: String {
+        switch prescription.exercise.movementPattern {
+        case .push: return "figure.strengthtraining.traditional"
+        case .squat: return "figure.cross.training"
+        case .hinge: return "figure.strengthtraining.functional"
+        case .core: return "figure.core.training"
+        case .pull: return "figure.climbing"
+        case .mobility: return "figure.flexibility"
+        case .locomotion: return "figure.run"
+        }
+    }
+}
+
+#Preview {
+    ActiveSessionView(workout: .previewSample)
+}
+
+private extension Workout {
+    /// A small two-block session for the player preview: a warm-up hold plus two strength moves.
+    static var previewSample: Workout {
+        func exercise(_ id: String, pattern: MovementPattern, isHold: Bool) -> Exercise {
+            Exercise(
+                id: id, displayName: id.replacingOccurrences(of: "_", with: " ").capitalized,
+                pillar: .strength, movementPattern: pattern, category: .strength, difficulty: 2,
+                phase: .discipline, equipment: [], isHold: isHold,
+                defaultReps: isHold ? nil : 10, defaultDurationSeconds: isHold ? 30 : nil,
+                estimatedTimePerSetSeconds: 40, metValue: 4, progressionChainId: "\(id)_chain",
+                progressionOrder: 0, regressionId: nil, progressionId: nil,
+                advancementCriteria: "3x12", apartmentFriendly: true
+            )
+        }
+        return Workout(
+            id: UUID(), createdAt: Date(), shape: .blend, focusPillar: nil, requestedMinutes: 15,
+            wasReturn: false,
+            blocks: [
+                WorkoutBlock(id: UUID(), title: "Warm-up", category: .warmup, exercises: [
+                    PrescribedExercise(id: UUID(), exercise: exercise("cat_cow", pattern: .mobility, isHold: true), sets: 1, reps: nil, durationSeconds: 30, restSeconds: 20)
+                ]),
+                WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [
+                    PrescribedExercise(id: UUID(), exercise: exercise("push_up", pattern: .push, isHold: false), sets: 3, reps: 12, durationSeconds: nil, restSeconds: 45),
+                    PrescribedExercise(id: UUID(), exercise: exercise("air_squat", pattern: .squat, isHold: false), sets: 2, reps: 15, durationSeconds: nil, restSeconds: 45)
+                ])
+            ]
+        )
+    }
+}

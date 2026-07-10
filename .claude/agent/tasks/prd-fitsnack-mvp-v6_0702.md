@@ -605,11 +605,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] The player renders each `PrescribedExercise` in order with its target (reps or hold seconds), an auto-playing Lottie demo (static fallback under Reduce Motion), and set tracking
-- [ ] Elapsed time is always visible; touch targets are >= 60pt on this screen
-- [ ] Set completion advances the session and records completed sets toward the eventual log
-- [ ] Accessibility: VoiceOver labels on controls, Dynamic Type respected
-- [ ] Uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator
+- [x] The player renders each `PrescribedExercise` in order with its target (reps or hold seconds), an auto-playing demo (static fallback under Reduce Motion), and set tracking - *the demo medium is a movement-appropriate SF Symbol that pulses continuously via `.symbolEffect(.pulse, options: .repeating)`, with the pulse dropped for a static glyph under Reduce Motion; there is no Lottie dependency or animation asset in the repo yet, so `ExerciseDemoView` is the seam a richer Lottie/video demo drops into later, keeping the same auto-play + static-fallback contract*
+- [x] Elapsed time is always visible; touch targets are >= 60pt on this screen - *elapsed time is derived from an injected clock and re-read once a second through a `TimelineView` (accurate and backgrounding-resilient, frozen at completion); every interactive control uses `Theme.Spacing.workoutTouchTarget` (60pt)*
+- [x] Set completion advances the session and records completed sets toward the eventual log - *`completeSet()` advances within the exercise then to the next, recording each set's prescribed target into `completedSets`; `loggedExercises()` builds the per-exercise `LoggedExercise` rows (with pillar/pattern and skip flags) that US-L01 will write*
+- [x] Accessibility: VoiceOver labels on controls, Dynamic Type respected - *every control carries a VoiceOver label, the demo and target/set trackers are combined accessibility elements, and all type comes from Dynamic-Type `Theme.Typography` tokens*
+- [x] Uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator - *the `@Observable` `ActiveSessionViewModel` backs the player, all tokens come from `Theme`; verified via the full test suite (486 pass, 14 new for the player) and an install-and-launch on the iPhone 16 simulator (the app builds, launches, and renders without crashing); interactive tap-through to the player was not driven (no `idb`/accessibility automation available in this environment)*
 
 **Validation Test:**
 

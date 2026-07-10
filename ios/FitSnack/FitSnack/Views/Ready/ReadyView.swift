@@ -15,6 +15,9 @@ import SwiftUI
 /// while an on-open Re-program runs in the background. The Start action opens the player in US-K01.
 struct ReadyView: View {
     @State private var viewModel: ReadyViewModel
+    /// The session handed to the active-session player (US-K01). Set when Start is tapped; the
+    /// `.fullScreenCover` presents the player for it and clears it on dismiss.
+    @State private var playingWorkout: Workout?
 
     init(services: ServiceContainer) {
         _viewModel = State(
@@ -41,6 +44,9 @@ struct ReadyView: View {
             }
         }
         .task { await viewModel.load() }
+        .fullScreenCover(item: $playingWorkout) { workout in
+            ActiveSessionView(workout: workout)
+        }
     }
 
     // MARK: - Session
@@ -120,9 +126,10 @@ struct ReadyView: View {
     }
 
     /// The pinned, visually dominant Start action. It is always present and enabled - the Ready
-    /// Screen never gates Start behind an unanswered question. The active-session player is US-K01.
+    /// Screen never gates Start behind an unanswered question. Tapping it opens the active-session
+    /// player (US-K01) for the already-generated session.
     private var startBar: some View {
-        Button(action: {}) {
+        Button(action: { playingWorkout = viewModel.workout }) {
             Text("Start")
                 .font(Theme.Typography.button)
                 .frame(maxWidth: .infinity)
