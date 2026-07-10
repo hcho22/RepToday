@@ -134,9 +134,15 @@ final class ReadyViewModel {
             try await generate()
 
             // The session is now generated and rendering (the view prioritizes the workout over the
-            // loading state), so Start is interactive from here on. The three read-only surfaces
-            // below and the on-open re-program are best-effort and never gate the session.
-            await refreshInsights(for: user)
+            // loading state), so Start is interactive from here on. The Variety Language line is
+            // recomputed inside `generate()` with the session; the Consistency Score and the on-open
+            // re-program are best-effort and never gate the session.
+            //
+            // Consistency reads all history, not the bounded engine window: `longestChain` ("Best
+            // run") is a historical maximum, so a run older than the 70-day lookback must still count.
+            // The engine inputs keep the bounded `recentLogs` for staleness / Adaptive Overload.
+            let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
+            await refreshInsights(for: user, logs: allLogs)
 
             // Re-program-on-open fires once per app open (not on every tab re-appear). It runs fully
             // in the background: the app renders from the existing policy now, and any newly written
@@ -150,17 +156,14 @@ final class ReadyViewModel {
         }
     }
 
-    /// Compute the two read-only insight surfaces - the Variety Language line and the Consistency
-    /// Score - from the generated session and the log history. Both are best-effort and independent
-    /// of the session render: a failure leaves the surface `nil` rather than failing the already
-    /// rendered workout, and neither ever blocks Start. In the MVP the Variety Language resolver is
-    /// template-only (instant, offline-safe); the consistency read is a pure calculation.
-    private func refreshInsights(for user: User) async {
-        if let workout {
-            varietyNote = await varietyLanguageResolver.note(for: workout, recentLogs: recentLogs, user: user)
-        }
+    /// Compute the Consistency Score from the full log history. Best-effort and independent of the
+    /// session render: a failure leaves it `nil` rather than failing the already-rendered workout,
+    /// and it never blocks Start. Duration-independent, so it lives here rather than in `generate()`
+    /// (which owns the duration-sensitive Variety Language line). The consistency read is a pure
+    /// calculation over the passed-in logs.
+    private func refreshInsights(for user: User, logs: [WorkoutLog]) async {
         consistency = try? await consistencyService.consistency(
-            for: recentLogs,
+            for: logs,
             weeklyGoal: user.consistency.weeklyGoal
         )
     }
@@ -226,6 +229,14 @@ final class ReadyViewModel {
         )
         guard requested == selectedMinutes else { return }
         workout = generated
+
+        // Recompute the Variety Language line from the freshly generated session, so a duration chip
+        // that shifts today's lead pillar never leaves the header describing a contrast this session
+        // does not produce. Re-check the guard after the resolver await so a superseded, slower
+        // generation cannot overwrite a newer selection's note.
+        let note = await varietyLanguageResolver.note(for: generated, recentLogs: recentLogs, user: user)
+        guard requested == selectedMinutes else { return }
+        varietyNote = note
     }
 
     /// How far back the Ready Screen reads logs for engine context. Covers the Consistency Score
