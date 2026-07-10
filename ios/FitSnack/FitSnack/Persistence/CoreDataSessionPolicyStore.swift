@@ -8,7 +8,9 @@ import Foundation
 /// on the supplied context. The running app injects the shared stack's context (US-J02 will sync it
 /// through CloudKit alongside the user and logs); the deterministic service is otherwise unit-tested
 /// against `InMemorySessionPolicyStore`, keeping its logic free of CoreData.
-final class CoreDataSessionPolicyStore: SessionPolicyStore {
+final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable {
+    // Safe: the only state is this immutable reference, and every access to the
+    // context happens inside `context.perform`, which serializes onto its queue.
     private let context: NSManagedObjectContext
 
     init(context: NSManagedObjectContext) {
