@@ -8,9 +8,11 @@ import Observation
 /// then asks the deterministic engine for a complete session at the learned Default Duration. The
 /// engine is on-device and sub-100ms, so the session is present the moment the screen renders.
 ///
-/// This is the seam US-I01 lands on. US-J01 layers on the non-blocking duration chip with instant
-/// on-device regeneration; the Variety Language line, Consistency Score, policy note, and
-/// re-program-on-open (US-J02) build on this same view model next.
+/// US-I01 lands the seam; US-J01 layers on the non-blocking duration chip with instant on-device
+/// regeneration. US-J02 adds the three read-only surfaces the personalization is *felt* through -
+/// the session's Variety Language line ("what today is"), the forgiving Consistency Score ("how I'm
+/// doing", identity-framed), and the policy note ("what the app changed") - and kicks off the
+/// on-open Re-program in the background, so the change lands next open and the user never waits.
 @Observable
 final class ReadyViewModel {
 
@@ -22,6 +24,23 @@ final class ReadyViewModel {
     private(set) var isLoading = false
     /// Set only when loading fails (no user, or the engine threw); `nil` in the happy path.
     private(set) var errorMessage: String?
+
+    /// Today's Variety Language line (US-G03) - the honest, engine-derived contrast between today's
+    /// lead pillar and the previous session's ("Today's a mobility day - yesterday was strength").
+    /// `nil` for a degenerate warm-up-only session or before load. Template-sourced in the MVP (the
+    /// optional LLM upgrade is deferred, US-N05); either way it can only name a contrast the session
+    /// actually produced.
+    private(set) var varietyNote: SessionPolicy.Note?
+
+    /// The forgiving, identity-framed Consistency Score (US-H01) - the "how I'm doing" surface.
+    /// `nil` before load. A best-effort read: a failure leaves it `nil` rather than failing the
+    /// already-rendered session.
+    private(set) var consistency: Consistency?
+
+    /// The policy's honest note about the last real change (US-F04/US-G03) - the "what the app
+    /// changed" surface - or `nil` when there is nothing observable to say. Read straight off the
+    /// in-force policy, so it can only claim a change the sessions reflect.
+    var policyNote: SessionPolicy.Note? { policy.note }
 
     /// The duration today's session is currently generated at. Starts at the user's learned Default
     /// Duration on `load()`, then follows whichever duration chip the user taps (US-J01). Distinct
@@ -37,8 +56,20 @@ final class ReadyViewModel {
     private let sessionPolicyService: any SessionPolicyServiceProtocol
     private let workoutEngine: any WorkoutEngineProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
+    private let consistencyService: any ConsistencyServiceProtocol
+    /// Composes the deterministic Variety Language template with the optional, deferred LLM slice
+    /// (US-G03/US-N05). Template-only in the MVP (no provider wired), so it never blocks.
+    private let varietyLanguageResolver: VarietyLanguageResolver
     /// Injected clock so the recent-log lookback window is testable.
     private let now: () -> Date
+
+    /// The background re-program kicked off on open (US-J02), exposed only so tests can await it.
+    /// The UI never awaits this: the screen is fully interactive while it runs, any newly written
+    /// policy applies only on the next open, and a failure is silent.
+    private(set) var reprogramTask: Task<Void, Never>?
+
+    /// Ensures the on-open re-program check fires once per app open, not on every tab re-appear.
+    private var hasCheckedReprogramOnOpen = false
 
     /// Engine inputs cached from `load()` so a chip tap regenerates the session on-device without
     /// re-fetching the user, logs, or policy - keeping regeneration well inside the sub-100ms budget
@@ -56,12 +87,16 @@ final class ReadyViewModel {
         sessionPolicyService: any SessionPolicyServiceProtocol,
         workoutEngine: any WorkoutEngineProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
+        consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
+        varietyLanguageResolver: VarietyLanguageResolver = VarietyLanguageResolver(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.userService = userService
         self.sessionPolicyService = sessionPolicyService
         self.workoutEngine = workoutEngine
         self.workoutLogService = workoutLogService
+        self.consistencyService = consistencyService
+        self.varietyLanguageResolver = varietyLanguageResolver
         self.now = now
     }
 
@@ -97,8 +132,60 @@ final class ReadyViewModel {
             policy = try await sessionPolicyService.currentPolicy(for: user)
 
             try await generate()
+
+            // The session is now generated and rendering (the view prioritizes the workout over the
+            // loading state), so Start is interactive from here on. The three read-only surfaces
+            // below and the on-open re-program are best-effort and never gate the session.
+            await refreshInsights(for: user)
+
+            // Re-program-on-open fires once per app open (not on every tab re-appear). It runs fully
+            // in the background: the app renders from the existing policy now, and any newly written
+            // policy applies on the next open (US-F03), never mid-session.
+            if !hasCheckedReprogramOnOpen {
+                hasCheckedReprogramOnOpen = true
+                reprogramTask = reprogramIfDue(user: user, recentLogs: recentLogs, asOf: now())
+            }
         } catch {
             errorMessage = "We couldn't load today's session."
+        }
+    }
+
+    /// Compute the two read-only insight surfaces - the Variety Language line and the Consistency
+    /// Score - from the generated session and the log history. Both are best-effort and independent
+    /// of the session render: a failure leaves the surface `nil` rather than failing the already
+    /// rendered workout, and neither ever blocks Start. In the MVP the Variety Language resolver is
+    /// template-only (instant, offline-safe); the consistency read is a pure calculation.
+    private func refreshInsights(for user: User) async {
+        if let workout {
+            varietyNote = await varietyLanguageResolver.note(for: workout, recentLogs: recentLogs, user: user)
+        }
+        consistency = try? await consistencyService.consistency(
+            for: recentLogs,
+            weeklyGoal: user.consistency.weeklyGoal
+        )
+    }
+
+    /// On open, check whether any re-program trigger is due (US-F01) and, if so, write a fresh policy
+    /// in the background against the highest-precedence one (US-F03). Fire-and-forget: the returned
+    /// task never blocks the UI, the newly written policy applies only on the next open, and any
+    /// failure is silent - the existing policy stays in force.
+    private func reprogramIfDue(user: User, recentLogs: [WorkoutLog], asOf: Date) -> Task<Void, Never> {
+        Task { [sessionPolicyService] in
+            do {
+                let triggers = try await sessionPolicyService.dueTriggers(
+                    user: user,
+                    recentLogs: recentLogs,
+                    asOf: asOf
+                )
+                guard let trigger = triggers.first else { return }
+                _ = try await sessionPolicyService.reprogram(
+                    user: user,
+                    recentLogs: recentLogs,
+                    trigger: trigger
+                )
+            } catch {
+                // Best-effort: the existing policy remains in force and the user never waits on this.
+            }
         }
     }
 

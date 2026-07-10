@@ -8,9 +8,11 @@ import SwiftUI
 /// comes from `Theme`.
 ///
 /// US-J01 adds the non-blocking duration chip: a one-tap row offering 5/10/15/20/30/45/60 that
-/// regenerates the session in place while Start stays present and enabled. The Variety Language
-/// line, Consistency Score, policy note, and re-program-on-open (US-J02) build on this same
-/// view/view model next. The Start action opens the active-session player in US-K01.
+/// regenerates the session in place while Start stays present and enabled. US-J02 surfaces the three
+/// read-only ways the personalization is *felt* - the Variety Language line ("what today is"), the
+/// forgiving Consistency Score ("how I'm doing", always identity-framed), and the policy note ("what
+/// the app changed") - all rendered from the existing policy with no spinner ever blocking Start,
+/// while an on-open Re-program runs in the background. The Start action opens the player in US-K01.
 struct ReadyView: View {
     @State private var viewModel: ReadyViewModel
 
@@ -20,7 +22,8 @@ struct ReadyView: View {
                 userService: services.userService,
                 sessionPolicyService: services.sessionPolicyService,
                 workoutEngine: services.workoutEngine,
-                workoutLogService: services.workoutLogService
+                workoutLogService: services.workoutLogService,
+                consistencyService: services.consistencyService
             )
         )
     }
@@ -48,6 +51,14 @@ struct ReadyView: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     header
 
+                    if let consistency = viewModel.consistency {
+                        ConsistencyCard(consistency: consistency)
+                    }
+
+                    if let note = viewModel.policyNote {
+                        PolicyNoteCard(note: note)
+                    }
+
                     durationChips
 
                     ForEach(workout.blocks) { block in
@@ -69,7 +80,7 @@ struct ReadyView: View {
             Text("Today: \(viewModel.requestedMinutes) min")
                 .font(Theme.Typography.largeTitle)
                 .foregroundStyle(Theme.Colors.textPrimary)
-            Text("A complete session, ready to go.")
+            Text(subtitle)
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
@@ -79,6 +90,13 @@ struct ReadyView: View {
     private var greeting: String {
         let name = viewModel.user?.displayName ?? ""
         return name.isEmpty ? "You're someone who moves." : "Ready when you are, \(name)."
+    }
+
+    /// The header subtitle *is* the Variety Language line when there is one - the honest "what today
+    /// is" contrast the engine produced (US-G03). It falls back to a neutral line for a degenerate
+    /// warm-up-only session that has no lead pillar to name.
+    private var subtitle: String {
+        viewModel.varietyNote?.text ?? "A complete session, ready to go."
     }
 
     // MARK: - Duration chips
@@ -157,6 +175,91 @@ private struct DurationChip: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(minutes) minute session")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+// MARK: - Consistency card
+
+/// The "how I'm doing" surface (US-J02): the forgiving Consistency Score, framed by identity and
+/// pride, never by loss. The copy leads with who the user *is* ("You're someone who moves.") and
+/// surfaces their best on-goal run as earned pride; the score is shown only once there is history,
+/// so a brand-new user is never greeted with a discouraging zero. There is no streak-to-break, no
+/// "you missed" language, no XP.
+private struct ConsistencyCard: View {
+    let consistency: Consistency
+
+    private var hasHistory: Bool { consistency.totalWorkoutsCompleted > 0 }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("You're someone who moves.")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text(pride)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            if hasHistory {
+                Spacer(minLength: Theme.Spacing.md)
+                VStack(spacing: 0) {
+                    Text("\(Int(consistency.score.rounded()))")
+                        .font(Theme.Typography.largeTitle)
+                        .foregroundStyle(Theme.Colors.accent)
+                    Text("consistency")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    /// The earned point of pride - the longest on-goal run ever achieved - or an encouraging,
+    /// never-loss-framed line for a user without a run yet.
+    private var pride: String {
+        guard consistency.longestChain > 0 else {
+            return "Every time you show up counts - even five minutes."
+        }
+        let unit = consistency.longestChain == 1 ? "week" : "weeks"
+        return "Best run: \(consistency.longestChain) \(unit) on goal."
+    }
+
+    private var accessibilityText: String {
+        hasHistory
+            ? "You're someone who moves. Consistency \(Int(consistency.score.rounded())). \(pride)"
+            : "You're someone who moves. \(pride)"
+    }
+}
+
+// MARK: - Policy note card
+
+/// The "what the app changed" surface (US-J02): the honest, templated note the Programmer attached
+/// to the last real change (US-F04/US-G03). It only ever appears when a note exists, and only ever
+/// names a change the sessions actually reflect. Rendered as a light accent callout, never a nag.
+private struct PolicyNoteCard: View {
+    let note: SessionPolicy.Note
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            Image(systemName: "sparkles")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.accent)
+            Text(note.text)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Spacer(minLength: 0)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("What changed: \(note.text)")
     }
 }
 

@@ -357,7 +357,7 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 **Acceptance Criteria:**
 
 - [x] A real `DeterministicSessionPolicyService` implements `reprogram(user:recentLogs:trigger:)` and writes a new `SessionPolicy` with `version` incremented and `updatedBy == .deterministic`
-- [ ] Re-program is invoked by the client on app open only when `dueTriggers` is non-empty; the app renders from the existing policy immediately and the new policy applies on the next open (new programming lands one session later) - *service and seam ready (real service wired into `ServiceContainer`); the on-open client invocation lands with the Ready Screen (US-J02)*
+- [x] Re-program is invoked by the client on app open only when `dueTriggers` is non-empty; the app renders from the existing policy immediately and the new policy applies on the next open (new programming lands one session later) - *the on-open client invocation lands in the Ready Screen (US-J02): `ReadyViewModel.load` checks `dueTriggers` once per open and fires a fire-and-forget background `reprogram` against the highest-precedence trigger*
 - [x] The service never generates or returns a workout; it only writes policy
 - [x] `disengagement` never increases challenge (Trigger Precedence upheld end-to-end); `return` sets the `reentry` ramp (US-E06)
 - [x] Unit tests cover: version increments; each trigger moves the expected levers; a disengagement re-program does not raise difficulty; build and tests pass
@@ -579,10 +579,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] The screen surfaces the session's Variety Language line (US-G03), the forgiving Consistency Score (identity-framed, never loss-framed), and the policy `note` when present
-- [ ] On open, the app checks `dueTriggers` (US-F01) and, if any are due, triggers a Re-program in the background while rendering from the existing policy; the new policy applies next open
-- [ ] The user never waits on the Re-program or the LLM slice; the screen is fully interactive immediately
-- [ ] No XP/levels/badges; uses `Theme` tokens; verify in iOS Simulator
+- [x] The screen surfaces the session's Variety Language line (US-G03), the forgiving Consistency Score (identity-framed, never loss-framed), and the policy `note` when present
+- [x] On open, the app checks `dueTriggers` (US-F01) and, if any are due, triggers a Re-program in the background while rendering from the existing policy; the new policy applies next open
+- [x] The user never waits on the Re-program or the LLM slice; the screen is fully interactive immediately
+- [x] No XP/levels/badges; uses `Theme` tokens; verify in iOS Simulator
 
 **Validation Test:**
 
