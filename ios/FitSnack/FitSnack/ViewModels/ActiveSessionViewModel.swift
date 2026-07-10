@@ -130,11 +130,14 @@ final class ActiveSessionViewModel {
         }
     }
 
-    /// Skip the current exercise without recording any sets, marking it skipped for the eventual log,
-    /// and advance to the next exercise. A no-op once complete. (Swapping to a peer instead is
-    /// US-K03; this is the plain "move past it" path.)
+    /// Skip the current exercise, marking it skipped for the eventual log, and advance to the next
+    /// exercise. A skip means the user is abandoning the exercise entirely, so any sets already
+    /// recorded for it are discarded - a skipped exercise never carries completed sets in
+    /// `loggedExercises()`. A no-op once complete. (Swapping to a peer instead is US-K03; this is
+    /// the plain "move past it" path.)
     func skipExercise() {
         guard !isComplete, let step = currentStep else { return }
+        completedSets.removeValue(forKey: step.id)
         skippedStepIDs.insert(step.id)
         advanceExercise()
     }

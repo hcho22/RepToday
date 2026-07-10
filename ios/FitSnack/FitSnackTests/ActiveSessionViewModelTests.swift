@@ -205,6 +205,25 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(vm.completedSets[pushUpID], "a skipped exercise records no sets")
     }
 
+    /// Skipping after completing part of an exercise discards the partial sets, so a skipped
+    /// exercise never carries completed sets into the eventual log.
+    func testSkipAfterPartialSetsDiscardsRecordedSets() {
+        let vm = makeViewModel(clock: { self.start })
+        vm.completeSet() // cat_cow done -> push_up
+        let pushUpID = vm.currentStep!.id
+        vm.completeSet() // push_up set 1 of 3 recorded
+        XCTAssertEqual(vm.completedSets[pushUpID]?.count, 1)
+
+        vm.skipExercise() // abandon push_up mid-exercise
+
+        XCTAssertTrue(vm.skippedStepIDs.contains(pushUpID))
+        XCTAssertNil(vm.completedSets[pushUpID], "partial sets are discarded on skip")
+
+        let pushUp = vm.loggedExercises().first { $0.exerciseId == "push_up" }
+        XCTAssertTrue(pushUp?.skipped ?? false)
+        XCTAssertEqual(pushUp?.completedSets.count, 0)
+    }
+
     /// Skipping the last exercise finishes the session.
     func testSkipLastExerciseFinishes() {
         let vm = makeViewModel(clock: { self.start })
