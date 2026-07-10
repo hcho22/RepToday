@@ -8,9 +8,9 @@ import Observation
 /// then asks the deterministic engine for a complete session at the learned Default Duration. The
 /// engine is on-device and sub-100ms, so the session is present the moment the screen renders.
 ///
-/// This is the seam US-I01 lands on. The richer Ready Screen behavior - the non-blocking duration
-/// chip with instant regeneration (US-J01) and the Variety Language line, Consistency Score, policy
-/// note, and re-program-on-open (US-J02) - layers onto this same view model in Epic J.
+/// This is the seam US-I01 lands on. US-J01 layers on the non-blocking duration chip with instant
+/// on-device regeneration; the Variety Language line, Consistency Score, policy note, and
+/// re-program-on-open (US-J02) build on this same view model next.
 @Observable
 final class ReadyViewModel {
 
@@ -23,12 +23,33 @@ final class ReadyViewModel {
     /// Set only when loading fails (no user, or the engine threw); `nil` in the happy path.
     private(set) var errorMessage: String?
 
+    /// The duration today's session is currently generated at. Starts at the user's learned Default
+    /// Duration on `load()`, then follows whichever duration chip the user taps (US-J01). Distinct
+    /// from `user.duration.defaultMinutes` (the persisted learned default): tapping a chip changes
+    /// the session in the moment without rewriting the learned default.
+    private(set) var selectedMinutes = ReadyViewModel.fallbackMinutes
+
+    /// The duration chips the Ready Screen offers (5/10/15/20/30/45/60), reusing the canonical,
+    /// ascending chip vocabulary the learned Default Duration always snaps to.
+    let durationChips = DefaultDurationLearning.chipValues
+
     private let userService: any UserServiceProtocol
     private let sessionPolicyService: any SessionPolicyServiceProtocol
     private let workoutEngine: any WorkoutEngineProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
     /// Injected clock so the recent-log lookback window is testable.
     private let now: () -> Date
+
+    /// Engine inputs cached from `load()` so a chip tap regenerates the session on-device without
+    /// re-fetching the user, logs, or policy - keeping regeneration well inside the sub-100ms budget
+    /// so Start is never left waiting on an answer.
+    private var recentLogs: [WorkoutLog] = []
+    private var policy: SessionPolicy = .default
+
+    /// True once the first successful load has seeded `selectedMinutes` from the learned default.
+    /// A re-appear (the Today tab's `.task` re-fires on every return) refreshes the engine inputs
+    /// but preserves the user's in-session chip choice rather than snapping back to the default.
+    private var hasSeededSelection = false
 
     init(
         userService: any UserServiceProtocol,
@@ -44,11 +65,9 @@ final class ReadyViewModel {
         self.now = now
     }
 
-    /// The duration the session is generated at - the user's learned Default Duration, or a neutral
-    /// fallback before a user has loaded.
-    var requestedMinutes: Int {
-        user?.duration.defaultMinutes ?? 15
-    }
+    /// The duration the session is generated at - the currently selected chip. Retained as
+    /// `requestedMinutes` because it is exactly what the engine and log record as requested minutes.
+    var requestedMinutes: Int { selectedMinutes }
 
     /// Load the user, policy, and today's session. Idempotent enough to call on every appear; a
     /// second call refreshes rather than duplicating work.
@@ -63,27 +82,69 @@ final class ReadyViewModel {
                 return
             }
             self.user = user
+            // Seed the selection from the learned default only on the first successful load; a
+            // later refresh keeps whatever chip the user has since tapped.
+            if !hasSeededSelection {
+                selectedMinutes = user.duration.defaultMinutes
+                hasSeededSelection = true
+            }
 
             // Recent logs feed the engine's staleness and Adaptive Overload steps; a freshly
             // onboarded user simply has none. The lookback is generous so the engine sees the full
             // relevant history without loading everything.
             let lookback = Calendar.current.date(byAdding: .day, value: -recentLogLookbackDays, to: now())
-            let recentLogs = try await workoutLogService.workoutLogs(from: lookback, to: nil)
+            recentLogs = try await workoutLogService.workoutLogs(from: lookback, to: nil)
+            policy = try await sessionPolicyService.currentPolicy(for: user)
 
-            let policy = try await sessionPolicyService.currentPolicy(for: user)
-            let workout = try await workoutEngine.generateWorkout(
-                requestedMinutes: user.duration.defaultMinutes,
-                user: user,
-                recentLogs: recentLogs,
-                sessionPolicy: policy
-            )
-            self.workout = workout
+            try await generate()
         } catch {
             errorMessage = "We couldn't load today's session."
         }
     }
 
+    /// Adjust the session length to a tapped duration chip and regenerate in place. Non-blocking:
+    /// the existing session stays on screen (Start never disabled) while the on-device engine
+    /// produces the new one, which lands well under 100ms. A tap on the already-selected chip, or
+    /// before a user has loaded, is a no-op.
+    func selectDuration(_ minutes: Int) async {
+        guard user != nil, minutes != selectedMinutes else { return }
+        let previous = selectedMinutes
+        selectedMinutes = minutes
+        errorMessage = nil
+        do {
+            try await generate()
+        } catch {
+            // Regeneration failed: keep the still-displayed session and roll the selection back so
+            // the header and highlighted chip stay consistent with it, rather than surfacing an
+            // error the session screen never renders while a workout is present. Only roll back if
+            // this tap is still the current selection, so a later tap's choice is never clobbered.
+            if selectedMinutes == minutes {
+                selectedMinutes = previous
+            }
+        }
+    }
+
+    /// Generate today's session at `selectedMinutes` from the cached engine inputs. Shared by the
+    /// initial load and every chip regeneration so both take the identical path. The requested
+    /// minutes are captured before the await so a superseded, slower generation (an older chip tap
+    /// still in flight) can never overwrite the session the latest selection produced.
+    private func generate() async throws {
+        guard let user else { return }
+        let requested = selectedMinutes
+        let generated = try await workoutEngine.generateWorkout(
+            requestedMinutes: requested,
+            user: user,
+            recentLogs: recentLogs,
+            sessionPolicy: policy
+        )
+        guard requested == selectedMinutes else { return }
+        workout = generated
+    }
+
     /// How far back the Ready Screen reads logs for engine context. Covers the Consistency Score
     /// window (8 weeks) with headroom.
     private let recentLogLookbackDays = 70
+
+    /// The duration shown before a user has loaded - a neutral mid-range default.
+    private static let fallbackMinutes = 15
 }

@@ -7,10 +7,10 @@ import SwiftUI
 /// never a picker to clear before moving. There is no XP, no levels, and no badges; every token
 /// comes from `Theme`.
 ///
-/// This is the landing surface US-I01 needs. The richer Ready Screen - the non-blocking duration
-/// chip with instant regeneration (US-J01) and the Variety Language line, Consistency Score, policy
-/// note, and re-program-on-open (US-J02) - builds on this same view/view model in Epic J. The Start
-/// action opens the active-session player in US-K01.
+/// US-J01 adds the non-blocking duration chip: a one-tap row offering 5/10/15/20/30/45/60 that
+/// regenerates the session in place while Start stays present and enabled. The Variety Language
+/// line, Consistency Score, policy note, and re-program-on-open (US-J02) build on this same
+/// view/view model next. The Start action opens the active-session player in US-K01.
 struct ReadyView: View {
     @State private var viewModel: ReadyViewModel
 
@@ -48,6 +48,8 @@ struct ReadyView: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     header
 
+                    durationChips
+
                     ForEach(workout.blocks) { block in
                         BlockCard(block: block)
                     }
@@ -79,6 +81,26 @@ struct ReadyView: View {
         return name.isEmpty ? "You're someone who moves." : "Ready when you are, \(name)."
     }
 
+    // MARK: - Duration chips
+
+    /// A non-blocking, one-tap duration selector. Tapping a chip regenerates the session in place on
+    /// the sub-100ms engine; the current session and Start stay put while it swaps, so the screen
+    /// never gates entry behind a duration question.
+    private var durationChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(viewModel.durationChips, id: \.self) { minutes in
+                    DurationChip(
+                        minutes: minutes,
+                        isSelected: minutes == viewModel.selectedMinutes
+                    ) {
+                        Task { await viewModel.selectDuration(minutes) }
+                    }
+                }
+            }
+        }
+    }
+
     /// The pinned, visually dominant Start action. It is always present and enabled - the Ready
     /// Screen never gates Start behind an unanswered question. The active-session player is US-K01.
     private var startBar: some View {
@@ -108,6 +130,33 @@ struct ReadyView: View {
                 .frame(minHeight: Theme.Spacing.minTouchTarget)
         }
         .padding(Theme.Spacing.lg)
+    }
+}
+
+// MARK: - Duration chip
+
+/// A single, compact duration pill in the Ready Screen's one-tap selector. The selected chip fills
+/// with the accent color; the touch target meets the 44pt minimum.
+private struct DurationChip: View {
+    let minutes: Int
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("\(minutes) min")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
+                .padding(.horizontal, Theme.Spacing.md)
+                .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
+                .background(
+                    isSelected ? Theme.Colors.accent : Theme.Colors.surface,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(minutes) minute session")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 

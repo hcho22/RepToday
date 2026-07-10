@@ -558,11 +558,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] On open, the app shows a complete session pre-generated at `duration.defaultMinutes` with one visually dominant "Start" action
-- [ ] Duration is a non-blocking, one-tap-adjustable chip offering 5/10/15/20/30/45/60; tapping a value regenerates the session in under 100ms; Start is never disabled waiting for an answer
-- [ ] The screen shows "Today: N min - Start", never "How long do you have today?" with Start gated
-- [ ] The session preview lists today's blocks; no XP/levels/badges appear
-- [ ] Uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator
+- [x] On open, the app shows a complete session pre-generated at `duration.defaultMinutes` with one visually dominant "Start" action
+- [x] Duration is a non-blocking, one-tap-adjustable chip offering 5/10/15/20/30/45/60; tapping a value regenerates the session in under 100ms; Start is never disabled waiting for an answer
+- [x] The screen shows "Today: N min - Start", never "How long do you have today?" with Start gated
+- [x] The session preview lists today's blocks; no XP/levels/badges appear
+- [x] Uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator
 
 **Validation Test:**
 
