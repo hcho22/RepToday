@@ -162,6 +162,48 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertNil(engine.capturedRequestedMinutes, "the engine is never called without a user")
     }
 
+    /// A re-appear (load re-fires) preserves an in-session chip choice rather than snapping back to
+    /// the learned default, and regenerates at the chosen duration.
+    func testReappearPreservesSelectedDuration() async {
+        let engine = CapturingWorkoutEngine()
+        let vm = makeViewModel(user: onboardedUser(defaultMinutes: 15), engine: engine)
+
+        await vm.load()
+        await vm.selectDuration(30)
+        XCTAssertEqual(vm.selectedMinutes, 30)
+
+        // Simulate the Today tab re-appearing (its `.task` re-fires).
+        await vm.load()
+
+        XCTAssertEqual(vm.selectedMinutes, 30, "a refresh keeps the user's chip choice")
+        XCTAssertEqual(engine.capturedRequestedMinutes, 30, "regeneration uses the preserved selection")
+    }
+
+    /// A chip-tap regeneration failure reverts the selection to the prior value and keeps the
+    /// previously displayed session, so the header and highlighted chip never contradict the screen.
+    func testSelectDurationFailureRevertsSelection() async {
+        let engine = FlakyWorkoutEngine()
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser(defaultMinutes: 15)),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: engine,
+            workoutLogService: MockWorkoutLogService(),
+            now: { self.fixedDate }
+        )
+
+        await vm.load()
+        let loaded = vm.workout
+        XCTAssertNotNil(loaded)
+        XCTAssertEqual(vm.selectedMinutes, 15)
+
+        engine.shouldFail = true
+        await vm.selectDuration(30)
+
+        XCTAssertEqual(vm.selectedMinutes, 15, "a failed regeneration rolls the selection back")
+        XCTAssertEqual(vm.requestedMinutes, 15)
+        XCTAssertEqual(vm.workout?.requestedMinutes, loaded?.requestedMinutes, "the previous session stays displayed")
+    }
+
     /// End-to-end (real engine): tapping 30 after a 15-min load produces a ~30-min session, matching
     /// the US-J01 validation.
     func testEndToEndChipRegeneratesToRequestedLength() async throws {
@@ -202,6 +244,40 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
         capturedRequestedMinutes = requestedMinutes
         capturedPolicy = sessionPolicy
         generateCallCount += 1
+        return Workout(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 0),
+            shape: .blend,
+            focusPillar: nil,
+            requestedMinutes: requestedMinutes,
+            wasReturn: false,
+            blocks: []
+        )
+    }
+
+    func swapExercise(
+        _ prescription: PrescribedExercise,
+        in workout: Workout,
+        user: User,
+        recentLogs: [WorkoutLog]
+    ) async throws -> SwapOutcome {
+        .noAlternative
+    }
+}
+
+/// A workout engine that can be flipped to throw, exercising the failure/revert path.
+private final class FlakyWorkoutEngine: WorkoutEngineProtocol {
+    var shouldFail = false
+
+    struct GenerationError: Error {}
+
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
+    ) async throws -> Workout {
+        if shouldFail { throw GenerationError() }
         return Workout(
             id: UUID(),
             createdAt: Date(timeIntervalSinceReferenceDate: 0),

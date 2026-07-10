@@ -46,6 +46,11 @@ final class ReadyViewModel {
     private var recentLogs: [WorkoutLog] = []
     private var policy: SessionPolicy = .default
 
+    /// True once the first successful load has seeded `selectedMinutes` from the learned default.
+    /// A re-appear (the Today tab's `.task` re-fires on every return) refreshes the engine inputs
+    /// but preserves the user's in-session chip choice rather than snapping back to the default.
+    private var hasSeededSelection = false
+
     init(
         userService: any UserServiceProtocol,
         sessionPolicyService: any SessionPolicyServiceProtocol,
@@ -77,7 +82,12 @@ final class ReadyViewModel {
                 return
             }
             self.user = user
-            selectedMinutes = user.duration.defaultMinutes
+            // Seed the selection from the learned default only on the first successful load; a
+            // later refresh keeps whatever chip the user has since tapped.
+            if !hasSeededSelection {
+                selectedMinutes = user.duration.defaultMinutes
+                hasSeededSelection = true
+            }
 
             // Recent logs feed the engine's staleness and Adaptive Overload steps; a freshly
             // onboarded user simply has none. The lookback is generous so the engine sees the full
@@ -98,25 +108,37 @@ final class ReadyViewModel {
     /// before a user has loaded, is a no-op.
     func selectDuration(_ minutes: Int) async {
         guard user != nil, minutes != selectedMinutes else { return }
+        let previous = selectedMinutes
         selectedMinutes = minutes
         errorMessage = nil
         do {
             try await generate()
         } catch {
-            errorMessage = "We couldn't update today's session."
+            // Regeneration failed: keep the still-displayed session and roll the selection back so
+            // the header and highlighted chip stay consistent with it, rather than surfacing an
+            // error the session screen never renders while a workout is present. Only roll back if
+            // this tap is still the current selection, so a later tap's choice is never clobbered.
+            if selectedMinutes == minutes {
+                selectedMinutes = previous
+            }
         }
     }
 
     /// Generate today's session at `selectedMinutes` from the cached engine inputs. Shared by the
-    /// initial load and every chip regeneration so both take the identical path.
+    /// initial load and every chip regeneration so both take the identical path. The requested
+    /// minutes are captured before the await so a superseded, slower generation (an older chip tap
+    /// still in flight) can never overwrite the session the latest selection produced.
     private func generate() async throws {
         guard let user else { return }
-        workout = try await workoutEngine.generateWorkout(
-            requestedMinutes: selectedMinutes,
+        let requested = selectedMinutes
+        let generated = try await workoutEngine.generateWorkout(
+            requestedMinutes: requested,
             user: user,
             recentLogs: recentLogs,
             sessionPolicy: policy
         )
+        guard requested == selectedMinutes else { return }
+        workout = generated
     }
 
     /// How far back the Ready Screen reads logs for engine context. Covers the Consistency Score
