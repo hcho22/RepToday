@@ -702,4 +702,212 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(swapped.reps != nil || swapped.durationSeconds != nil, "a fresh capacity-relative target")
         XCTAssertFalse(vm.noSwapAlternative)
     }
+
+    // MARK: - Background & resume (US-K04)
+
+    /// A helper VM wired to persist to `store` under `userId`, so the background/resume tests can
+    /// drive the player and then inspect what was saved.
+    private func persistingViewModel(
+        _ store: InMemoryActiveSessionStore,
+        userId: String = "u1",
+        workout: Workout? = nil,
+        clock: @escaping () -> Date
+    ) -> ActiveSessionViewModel {
+        ActiveSessionViewModel(workout: workout ?? sampleWorkout(), store: store, userId: userId, now: clock)
+    }
+
+    /// The snapshot captures the exact play state - current position, completed work, and the
+    /// session-clock origin - so it can be restored later.
+    func testSnapshotCapturesPlayState() {
+        let vm = makeViewModel(clock: { self.start })
+        vm.start()
+        vm.completeSet() // finish the 1-set warm-up -> onto push_up, set 1
+
+        let snapshot = vm.snapshot()
+
+        XCTAssertEqual(snapshot.currentStepIndex, 1)
+        XCTAssertEqual(snapshot.currentSet, 1)
+        XCTAssertEqual(snapshot.slots.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"])
+        XCTAssertEqual(snapshot.startedAt, start)
+        XCTAssertEqual(snapshot.completedSets.values.reduce(0) { $0 + $1.count }, 1)
+    }
+
+    /// Every meaningful change is persisted, so a session interrupted by a relaunch is recoverable.
+    func testCompleteSetPersistsSnapshot() async throws {
+        let store = InMemoryActiveSessionStore()
+        let vm = persistingViewModel(store, clock: { self.start })
+        vm.start()
+        vm.completeSet() // onto push_up, set 1
+
+        await vm.persistenceTask?.value
+        let saved = try await store.load(for: "u1")
+
+        XCTAssertEqual(saved?.currentStepIndex, 1)
+        XCTAssertEqual(saved?.currentSet, 1)
+        XCTAssertEqual(saved?.completedSets.values.reduce(0) { $0 + $1.count }, 1)
+    }
+
+    /// Restoring from a saved snapshot resumes the exact position and preserves completed work.
+    func testRestoreResumesExactPosition() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet() // warm-up done -> push_up set 1 (rest opens)
+        original.completeSet() // push_up set 1 done -> set 2
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start })
+
+        XCTAssertFalse(resumed.isComplete)
+        XCTAssertEqual(resumed.currentStepIndex, 1)
+        XCTAssertEqual(resumed.currentSet, 2)
+        XCTAssertEqual(resumed.currentStep?.prescription.exercise.id, "push_up")
+        XCTAssertEqual(resumed.completedSetCount, 2, "cat_cow set + push_up set 1 carry over")
+        XCTAssertEqual(resumed.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"])
+    }
+
+    /// Elapsed time is measured from the persisted origin, so it survives a relaunch that happened at
+    /// an unknown-later moment rather than restarting from zero.
+    func testRestorePreservesElapsedAcrossRelaunch() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet()
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        // Relaunch 90 seconds later.
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(90) })
+        resumed.start() // idempotent: keeps the restored origin rather than resetting
+
+        XCTAssertEqual(resumed.elapsed(asOf: start.addingTimeInterval(90)), 90)
+    }
+
+    /// A rest that was still running when the app was killed resumes counting from its absolute
+    /// deadline after a relaunch.
+    func testRestoreResumesRunningRest() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet() // opens a 30s rest, deadline start+30
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(5) })
+
+        XCTAssertTrue(resumed.isResting)
+        XCTAssertFalse(resumed.isRestPaused)
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(5)), 25)
+    }
+
+    /// A rest paused on backgrounding is persisted with its frozen remainder, so a relaunch resumes it
+    /// from exactly where it stopped rather than blowing past.
+    func testRestoreResumesPausedRest() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet() // 30s rest, deadline start+30
+        original.pauseRest(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(60) })
+        XCTAssertTrue(resumed.isResting)
+        XCTAssertTrue(resumed.isRestPaused)
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(60)), 20, "frozen remainder held across relaunch")
+
+        // Foregrounding reschedules from the remainder.
+        resumed.resumeRest(asOf: start.addingTimeInterval(100))
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(105)), 15)
+    }
+
+    /// When a resumed player is presented while the app is already active, no scene-phase change fires,
+    /// so the player's on-appear (start() then resumeRest) is the only thing that un-freezes a restored
+    /// paused rest. Proves that path reschedules the deadline and the countdown resumes.
+    func testOnAppearResumeUnfreezesRestoredPausedRest() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet() // 30s rest, deadline start+30
+        original.pauseRest(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(200) })
+        XCTAssertTrue(resumed.isRestPaused, "restored rest starts frozen")
+
+        // Mirror ActiveSessionView.onAppear on an already-active app: start() then resumeRest.
+        resumed.start()
+        resumed.resumeRest(asOf: start.addingTimeInterval(200))
+
+        XCTAssertFalse(resumed.isRestPaused, "on-appear resume un-freezes the rest")
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(205)), 15, "countdown resumes rather than holding the frozen remainder")
+    }
+
+    /// Completing the session clears the persisted snapshot - a finished session is not resumable.
+    func testCompletionClearsPersistedSession() async throws {
+        let store = InMemoryActiveSessionStore()
+        let vm = persistingViewModel(store, clock: { self.start })
+        vm.start()
+        while !vm.isComplete { vm.completeSet() }
+        await vm.persistenceTask?.value
+
+        XCTAssertTrue(vm.isComplete)
+        let saved = try await store.load(for: "u1")
+        XCTAssertNil(saved, "a completed session is cleared, not left resumable")
+    }
+
+    /// A swap persists the new lineup, so a resume after a swap restores the substitute rather than
+    /// the movement the user replaced.
+    func testSwapPersistsNewLineup() async throws {
+        let store = InMemoryActiveSessionStore()
+        let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
+        let engine = StubSwapEngine(outcome: .substituted(substitute))
+        let vm = ActiveSessionViewModel(
+            workout: sampleWorkout(), swapEngine: engine, user: makeUser(), recentLogs: [],
+            store: store, userId: "u1", now: { self.start }
+        )
+        vm.completeSet() // onto push_up
+
+        await vm.swapCurrentExercise()
+        await vm.persistenceTask?.value
+
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+        XCTAssertEqual(saved.slots.map(\.prescription.exercise.id), ["cat_cow", "dips", "squat"])
+        XCTAssertEqual(saved.currentStepIndex, 1)
+        XCTAssertEqual(saved.currentSet, 1)
+    }
+
+    /// Without a store wired (previews), persistence is a harmless no-op and never traps.
+    func testNoPersistenceWithoutStore() {
+        let vm = makeViewModel(clock: { self.start }) // no store/userId
+        vm.start()
+        vm.completeSet()
+
+        XCTAssertNil(vm.persistenceTask, "no store means no persistence task is launched")
+    }
+
+    /// A truncated or corrupt snapshot (an out-of-range index) resumes safely, clamped into range,
+    /// rather than trapping on an out-of-bounds access.
+    func testRestoreClampsOutOfRangeIndex() {
+        let base = ActiveSessionState(fresh: sampleWorkout())
+        let corrupt = ActiveSessionState(
+            workout: base.workout, slots: base.slots,
+            currentStepIndex: 99, currentSet: 0,
+            completedSets: [:], skippedStepIDs: [], startedAt: start, rest: nil
+        )
+
+        let resumed = ActiveSessionViewModel(state: corrupt, now: { self.start })
+
+        XCTAssertEqual(resumed.currentStepIndex, resumed.steps.count - 1)
+        XCTAssertEqual(resumed.currentSet, 1, "a non-positive set clamps up to the first set")
+        XCTAssertFalse(resumed.isComplete)
+    }
 }

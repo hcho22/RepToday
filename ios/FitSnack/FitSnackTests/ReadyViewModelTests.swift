@@ -27,8 +27,126 @@ final class ReadyViewModelTests: XCTestCase {
             sessionPolicyService: StubPolicyService(policy: policy),
             workoutEngine: engine,
             workoutLogService: MockWorkoutLogService(logs: logs),
+            activeSessionStore: InMemoryActiveSessionStore(),
             now: { self.fixedDate }
         )
+    }
+
+    /// A view model backed by a specific active-session store, so the resume/discard tests can
+    /// pre-seed the store and inspect it (US-K04).
+    private func makeViewModel(user: User?, store: any ActiveSessionStore) -> ReadyViewModel {
+        ReadyViewModel(
+            userService: MockUserService(user: user),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: CapturingWorkoutEngine(),
+            workoutLogService: MockWorkoutLogService(logs: []),
+            activeSessionStore: store,
+            now: { self.fixedDate }
+        )
+    }
+
+    /// A minimal in-progress session snapshot parked mid-session, for the resume/discard tests.
+    private func resumableState() -> ActiveSessionState {
+        let exercise = Exercise(
+            id: "push_up", displayName: "Push-up", pillar: .strength, movementPattern: .push,
+            category: .strength, difficulty: 2, phase: .discipline, equipment: [],
+            isHold: false, defaultReps: 10, defaultDurationSeconds: nil,
+            estimatedTimePerSetSeconds: 40, metValue: 4, progressionChainId: "push_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "3x12", apartmentFriendly: true
+        )
+        let prescription = PrescribedExercise(id: UUID(), exercise: exercise, sets: 3, reps: 12, durationSeconds: nil, restSeconds: 45)
+        let workout = Workout(
+            id: UUID(), createdAt: fixedDate, shape: .singleFocus, focusPillar: .strength,
+            requestedMinutes: 15, wasReturn: false,
+            blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [prescription])]
+        )
+        return ActiveSessionState(fresh: workout)
+    }
+
+    // MARK: - Background & resume (US-K04)
+
+    /// On load, an abandoned session saved under the user's id is surfaced for Resume/Discard.
+    func testLoadSurfacesResumableSession() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.save(resumableState(), for: "preview-user")
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+
+        await vm.load()
+
+        XCTAssertNotNil(vm.resumableSession, "a saved session is offered back")
+        XCTAssertEqual(vm.resumableSession?.slots.first?.prescription.exercise.id, "push_up")
+    }
+
+    /// With nothing saved, there is no resumable session to offer.
+    func testLoadNoResumableSessionWhenNoneSaved() async {
+        let vm = makeViewModel(user: onboardedUser(), store: InMemoryActiveSessionStore())
+
+        await vm.load()
+
+        XCTAssertNil(vm.resumableSession)
+    }
+
+    /// Discarding clears the stored session and the surfaced state, so it is no longer offered.
+    func testDiscardResumableSessionClearsIt() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.save(resumableState(), for: "preview-user")
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+        await vm.load()
+        XCTAssertNotNil(vm.resumableSession)
+
+        await vm.discardResumableSession()
+
+        XCTAssertNil(vm.resumableSession)
+        let stillSaved = try await store.load(for: "preview-user")
+        XCTAssertNil(stillSaved, "the store is cleared, not just the surfaced copy")
+    }
+
+    /// Refreshing after the player closes picks up a session the player just saved (abandoned) without
+    /// a full reload.
+    func testRefreshResumableSessionPicksUpNewlySaved() async throws {
+        let store = InMemoryActiveSessionStore()
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+        await vm.load()
+        XCTAssertNil(vm.resumableSession)
+
+        // The player persists an abandoned session, then the Ready Screen re-checks on dismiss.
+        try await store.save(resumableState(), for: "preview-user")
+        await vm.refreshResumableSession()
+
+        XCTAssertNotNil(vm.resumableSession)
+    }
+
+    /// A completed session leaves nothing resumable on the Ready Screen. The player clears the store on
+    /// completion and reports it completed; the dismiss handler drops the surfaced state directly rather
+    /// than re-reading the store, so a not-yet-landed clear can never resurface the finished session.
+    func testHandlePlayerDismissCompletedLeavesNothingResumable() async throws {
+        // The store still holds the just-completed snapshot (the player's fire-and-forget clear has
+        // not landed yet) - the dismiss handler must not surface it back.
+        let store = InMemoryActiveSessionStore()
+        try await store.save(resumableState(), for: "preview-user")
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+        await vm.load()
+        XCTAssertNotNil(vm.resumableSession)
+
+        await vm.handlePlayerDismiss(completed: true)
+
+        XCTAssertNil(vm.resumableSession, "a completed session is never offered as resumable")
+    }
+
+    /// An abandoned (not completed) session is re-read on dismiss, so the player's saved snapshot is
+    /// surfaced back for Resume/Discard.
+    func testHandlePlayerDismissAbandonedSurfacesSavedSession() async throws {
+        let store = InMemoryActiveSessionStore()
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+        await vm.load()
+        XCTAssertNil(vm.resumableSession)
+
+        // The player saved an abandoned session before dismissing.
+        try await store.save(resumableState(), for: "preview-user")
+        await vm.handlePlayerDismiss(completed: false)
+
+        XCTAssertNotNil(vm.resumableSession, "an abandoned session is offered back")
     }
 
     /// On load the session is generated at the user's Default Duration and exposed, with no error.

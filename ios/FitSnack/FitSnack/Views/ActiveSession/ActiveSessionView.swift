@@ -13,20 +13,65 @@ struct ActiveSessionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: ActiveSessionViewModel
 
+    /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
+    /// this to refresh the resumable session *without* racing the store's completion clear: a completed
+    /// session leaves nothing resumable, while an abandoned one is re-read from the store.
+    private let onFinish: ((Bool) -> Void)?
+
+    /// Start a fresh session for `workout`. When `store` and `userId` are supplied, the player
+    /// persists its progress so it survives backgrounding and relaunch (US-K04).
     init(
         workout: Workout,
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
-        recentLogs: [WorkoutLog] = []
+        recentLogs: [WorkoutLog] = [],
+        store: (any ActiveSessionStore)? = nil,
+        userId: String? = nil,
+        onFinish: ((Bool) -> Void)? = nil
     ) {
+        self.onFinish = onFinish
         _viewModel = State(
             initialValue: ActiveSessionViewModel(
                 workout: workout,
                 swapEngine: workoutEngine,
                 user: user,
-                recentLogs: recentLogs
+                recentLogs: recentLogs,
+                store: store,
+                userId: userId
             )
         )
+    }
+
+    /// Resume an abandoned session from its persisted snapshot (US-K04), restoring the exact position,
+    /// completed work, elapsed-time origin, and rest timer.
+    init(
+        resuming state: ActiveSessionState,
+        workoutEngine: (any WorkoutEngineProtocol)? = nil,
+        user: User? = nil,
+        recentLogs: [WorkoutLog] = [],
+        store: (any ActiveSessionStore)? = nil,
+        userId: String? = nil,
+        onFinish: ((Bool) -> Void)? = nil
+    ) {
+        self.onFinish = onFinish
+        _viewModel = State(
+            initialValue: ActiveSessionViewModel(
+                state: state,
+                swapEngine: workoutEngine,
+                user: user,
+                recentLogs: recentLogs,
+                store: store,
+                userId: userId
+            )
+        )
+    }
+
+    /// Dismiss the player, first reporting whether the session completed so the Ready Screen can
+    /// refresh deterministically rather than racing the store (US-K04). Every dismiss path routes
+    /// through here, so the completion signal is never missed.
+    private func close() {
+        onFinish?(viewModel.isComplete)
+        dismiss()
     }
 
     var body: some View {
@@ -36,12 +81,19 @@ struct ActiveSessionView: View {
             if viewModel.isComplete {
                 completionState
             } else if viewModel.isResting {
-                RestView(viewModel: viewModel) { dismiss() }
+                RestView(viewModel: viewModel) { close() }
             } else {
                 player
             }
         }
-        .onAppear { viewModel.start() }
+        .onAppear {
+            viewModel.start()
+            // A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a
+            // scene-phase change when the resumed player is presented on an already-active app, so
+            // resume it here too. A no-op unless a rest is currently paused, leaving a fresh session
+            // and a resumed running rest untouched.
+            viewModel.resumeRest(asOf: Date())
+        }
         // Pause the rest countdown while the app is away so it never blows past; resume on return.
         // The elapsed session clock is wall-clock derived (US-K01) and intentionally keeps running.
         .onChange(of: scenePhase) { _, phase in
@@ -85,7 +137,7 @@ struct ActiveSessionView: View {
     private var topBar: some View {
         HStack {
             Button {
-                dismiss()
+                close()
             } label: {
                 Image(systemName: "xmark")
                     .font(Theme.Typography.button)
@@ -250,7 +302,7 @@ struct ActiveSessionView: View {
                 .multilineTextAlignment(.center)
 
             Button {
-                dismiss()
+                close()
             } label: {
                 Text("Done")
                     .font(Theme.Typography.button)

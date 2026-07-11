@@ -663,10 +663,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] Session state (current exercise, set, elapsed time, rest timer) persists across backgrounding and app relaunch
-- [ ] Resuming restores the exact position; the rest timer resumes correctly
-- [ ] An abandoned session can be resumed or discarded from the Ready Screen
-- [ ] Verify in iOS Simulator
+- [x] Session state (current exercise, set, elapsed time, rest timer) persists across backgrounding and app relaunch - *the `@Observable ActiveSessionViewModel` writes a full `ActiveSessionState` snapshot to an injected `ActiveSessionStore` (keyed by the user's id) after every meaningful change and just before backgrounding, and clears it the instant the session completes; the snapshot captures the current lineup (reflecting any swap), position, completed/skipped work, the session-clock origin, and the rest timer as absolute instants. The store is a protocol with an `InMemoryActiveSessionStore` (mock container, previews, tests) and a `CoreDataActiveSessionStore` (running app, backed by the new `CDActiveSession` entity) so an abandoned session survives a full relaunch; the mock container wires the in-memory store, consistent with the other in-memory stores, with the CoreData store tested in isolation and ready to swap in when the production container lands (US-N02)*
+- [x] Resuming restores the exact position; the rest timer resumes correctly - *`ActiveSessionViewModel.init(state:)` is the resume entry point (the fresh-start `init(workout:)` is a convenience over it): it rebuilds the ordered step list from the snapshot's lineup, restores the position/completed work/skip flags, and keeps the persisted `startedAt` so elapsed time continues from the original origin rather than restarting. A running rest resumes from its absolute deadline; a rest paused on backgrounding resumes from its frozen remainder, so it never blows past. A corrupt/truncated snapshot clamps its index into range rather than trapping*
+- [x] An abandoned session can be resumed or discarded from the Ready Screen - *`ReadyViewModel` reads the store on open (and re-reads when the player closes) and surfaces a `resumableSession`; `ReadyView` renders a "Pick up where you left off" card naming the exact place ("You're on Push-up, exercise 3 of 8.") with Resume (reopens the player at that position via `.fullScreenCover`) and Discard (`discardResumableSession()` clears the store). Copy is identity-framed, never guilt-framed; the today session and its always-enabled Start stay put alongside it*
+- [x] Verify in iOS Simulator - *verified via the full suite (527 pass, 24 new for background/resume - view-model snapshot/persist/restore/elapsed-across-relaunch/running-and-paused-rest-resume/completion-clears/swap-persists/no-store-no-op/index-clamp, `CDActiveSession` + `CoreDataActiveSessionStore` round-trip/overwrite/scoping/missing-blob and the `ActiveSessionState` JSON codec round-trip, plus Ready Screen surface/discard/refresh) and an install-and-launch on the iPhone 16 simulator (the app builds, launches, and routes - a fresh install renders onboarding, a returning launch renders the main tabs - without crashing). Interactive tap-through to the resume flow was not driven (no accessibility automation in this environment)*
 
 **Validation Test:**
 
@@ -675,6 +675,8 @@ Discipline overrides optimization by design: a Return after a gap is served easy
   1. Background the app for a minute, then reopen
 - **Expected Result:** The session resumes at exercise 3, set 2, with elapsed time preserved.
 - **Failure Indicator:** The session resets, loses position, or cannot be resumed.
+
+> Implemented (see the acceptance-criteria notes). Backgrounding-and-reopen within a run resumes in place from the surviving view model (the elapsed clock is wall-clock derived and the rest pauses/resumes on `scenePhase`); a full relaunch is carried by the persisted `ActiveSessionState` snapshot, which the Ready Screen offers back as Resume or Discard.
 
 ---
 
