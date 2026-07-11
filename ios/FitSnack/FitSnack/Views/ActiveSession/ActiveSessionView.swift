@@ -10,6 +10,7 @@ import SwiftUI
 /// summary + log write (US-L01/L02) build on this same view and view model.
 struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: ActiveSessionViewModel
 
     init(workout: Workout) {
@@ -22,11 +23,22 @@ struct ActiveSessionView: View {
 
             if viewModel.isComplete {
                 completionState
+            } else if viewModel.isResting {
+                RestView(viewModel: viewModel) { dismiss() }
             } else {
                 player
             }
         }
         .onAppear { viewModel.start() }
+        // Pause the rest countdown while the app is away so it never blows past; resume on return.
+        // The elapsed session clock is wall-clock derived (US-K01) and intentionally keeps running.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: viewModel.resumeRest(asOf: Date())
+            case .inactive, .background: viewModel.pauseRest(asOf: Date())
+            @unknown default: break
+            }
+        }
     }
 
     // MARK: - Player
@@ -247,6 +259,164 @@ struct ActiveSessionView: View {
     }
 
     /// "0:30" for a hold duration in seconds.
+    private static func clockText(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+// MARK: - Rest timer
+
+/// The rest overlay between sets (US-K02).
+///
+/// After a set, the player advances to the next effort but shows this focused countdown first so the
+/// user paces the work without watching the clock. A ring counts `restSeconds` down; when it reaches
+/// zero the session auto-advances (the overlay dismisses to reveal the already-current next set) and
+/// an accessible haptic/audio cue fires. The user can skip the rest or extend it by 15s; the parent
+/// pauses the countdown on backgrounding. Every color, font, and dimension comes from `Theme`, and
+/// every control meets the 60pt active-screen touch target.
+private struct RestView: View {
+    let viewModel: ActiveSessionViewModel
+    let onClose: () -> Void
+
+    /// Drives the countdown display and the auto-advance/cue check. Kept off the view body so the
+    /// mutation happens in an action closure, never during a render pass.
+    @State private var currentDate = Date()
+    private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        let remaining = viewModel.restRemaining(asOf: currentDate)
+        let total = max(viewModel.restTotalSeconds, 1)
+        let fraction = min(1, max(0, Double(remaining) / Double(total)))
+
+        VStack(spacing: 0) {
+            topBar
+
+            Spacer()
+
+            VStack(spacing: Theme.Spacing.lg) {
+                Text("Rest")
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+
+                ring(remaining: remaining, fraction: fraction)
+
+                nextUp
+            }
+
+            Spacer()
+
+            controls
+        }
+        .onReceive(ticker) { date in
+            currentDate = date
+            viewModel.completeRestIfElapsed(asOf: date)
+        }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button {
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+            }
+            .accessibilityLabel("End session")
+
+            Spacer()
+
+            Text(ActiveSessionView.elapsedText(viewModel.elapsed(asOf: currentDate)))
+                .font(Theme.Typography.title)
+                .monospacedDigit()
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .accessibilityHidden(true)
+
+            Spacer()
+
+            Color.clear
+                .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+    }
+
+    /// The countdown ring: a track plus an accent arc that empties as the rest runs out.
+    private func ring(remaining: Int, fraction: Double) -> some View {
+        ZStack {
+            Circle()
+                .stroke(Theme.Colors.surface, lineWidth: 12)
+
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 0.5), value: fraction)
+
+            Text(Self.clockText(remaining))
+                .font(Theme.Typography.largeTitle)
+                .monospacedDigit()
+                .foregroundStyle(Theme.Colors.textPrimary)
+        }
+        .frame(width: 200, height: 200)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .accessibilityElement()
+        .accessibilityLabel("Rest, \(remaining) seconds remaining")
+    }
+
+    /// A preview of the effort the rest is pacing toward, so the user knows what is next.
+    @ViewBuilder
+    private var nextUp: some View {
+        if let step = viewModel.currentStep {
+            VStack(spacing: Theme.Spacing.xs) {
+                Text("Next up")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                Text(step.prescription.exercise.displayName)
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text("Set \(viewModel.currentSet) of \(step.prescription.sets)")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Next up, \(step.prescription.exercise.displayName), set \(viewModel.currentSet) of \(step.prescription.sets)")
+        }
+    }
+
+    /// Extend (+15s) and Skip - both meeting the 60pt active-screen touch target.
+    private var controls: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            Button {
+                viewModel.extendRest()
+            } label: {
+                Text("+\(ActiveSessionViewModel.restExtension)s")
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityLabel("Extend rest by \(ActiveSessionViewModel.restExtension) seconds")
+
+            Button {
+                viewModel.skipRest()
+            } label: {
+                Text("Skip rest")
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityLabel("Skip rest")
+        }
+        .padding(Theme.Spacing.lg)
+    }
+
+    /// "0:30" for the remaining rest in seconds.
     private static func clockText(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
     }

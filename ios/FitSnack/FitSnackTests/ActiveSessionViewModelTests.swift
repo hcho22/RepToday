@@ -97,8 +97,19 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
-    private func makeViewModel(_ workout: Workout? = nil, clock: @escaping () -> Date) -> ActiveSessionViewModel {
-        ActiveSessionViewModel(workout: workout ?? sampleWorkout(), now: clock)
+    private func makeViewModel(
+        _ workout: Workout? = nil,
+        clock: @escaping () -> Date,
+        feedback: RestTimerFeedback = SpyRestFeedback()
+    ) -> ActiveSessionViewModel {
+        ActiveSessionViewModel(workout: workout ?? sampleWorkout(), now: clock, feedback: feedback)
+    }
+
+    /// Counts rest-completion cues so the tests can assert the haptic/audio fires exactly when a rest
+    /// runs out - and never on a skip.
+    private final class SpyRestFeedback: RestTimerFeedback {
+        private(set) var completions = 0
+        func restDidComplete() { completions += 1 }
     }
 
     // MARK: - Flattening
@@ -312,5 +323,149 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeSet() // 2/6
         vm.completeSet() // 3/6
         XCTAssertEqual(vm.progress, 0.5, accuracy: 0.0001)
+    }
+
+    // MARK: - Rest timer (US-K02)
+
+    /// Completing a set opens a rest for the just-completed prescription's `restSeconds`, counting
+    /// down from that value against the injected clock.
+    func testCompleteSetStartsRest() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+
+        vm.completeSet() // cat_cow done -> push_up; the 30s rest begins
+        XCTAssertTrue(vm.isResting)
+        XCTAssertEqual(vm.restTotalSeconds, 30)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 30)
+
+        clock = start.addingTimeInterval(10)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "counts down with the clock")
+    }
+
+    /// When the rest reaches zero the session auto-advances (the rest ends) and the completion cue
+    /// fires exactly once - not before it elapses, and not again on repeated ticks.
+    func testRestCompletionFiresCueOnce() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        vm.completeSet() // 30s rest
+
+        clock = start.addingTimeInterval(10)
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isResting, "still resting - 20s to go")
+        XCTAssertEqual(spy.completions, 0)
+
+        clock = start.addingTimeInterval(30)
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isResting, "rest ended at zero")
+        XCTAssertEqual(spy.completions, 1)
+
+        vm.completeRestIfElapsed(asOf: clock) // idempotent - the overlay ticks repeatedly
+        XCTAssertEqual(spy.completions, 1, "the cue fires once, not per tick")
+    }
+
+    /// Skipping the rest ends it immediately and does not fire the completion cue (the user chose to
+    /// move on), revealing the already-advanced next set.
+    func testSkipRestEndsWithoutCue() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        vm.completeSet()
+        XCTAssertTrue(vm.isResting)
+
+        vm.skipRest()
+        XCTAssertFalse(vm.isResting)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 0)
+        XCTAssertEqual(spy.completions, 0, "skipping is not a completion")
+    }
+
+    /// Extending the rest adds time to both the remaining countdown and the total the ring measures.
+    func testExtendRestAddsTime() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+        vm.completeSet() // 30s rest, deadline at t+30
+
+        clock = start.addingTimeInterval(10) // 20s remaining
+        vm.extendRest(by: 15)
+        XCTAssertEqual(vm.restTotalSeconds, 45)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 35)
+    }
+
+    /// Backgrounding pauses the rest: the remaining freezes while away and resumes from that remainder
+    /// on return, so the countdown never blows past.
+    func testPauseFreezesAndResumeReschedules() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+        vm.completeSet() // 30s rest, deadline at t+30
+
+        clock = start.addingTimeInterval(10) // 20s remaining
+        vm.pauseRest(asOf: clock)
+        XCTAssertTrue(vm.isRestPaused)
+
+        clock = start.addingTimeInterval(120) // two minutes in the background
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "frozen while paused")
+
+        vm.resumeRest(asOf: clock)
+        XCTAssertFalse(vm.isRestPaused)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "resumes from the captured remainder")
+
+        clock = start.addingTimeInterval(125) // 5s after resuming
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 15)
+    }
+
+    /// A paused rest never auto-completes even once its captured remainder would have hit zero in
+    /// wall-clock terms - the app is away, so the countdown is frozen.
+    func testPausedRestDoesNotAutoComplete() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        vm.completeSet() // 30s rest
+
+        clock = start.addingTimeInterval(10)
+        vm.pauseRest(asOf: clock)
+        clock = start.addingTimeInterval(600)
+        vm.completeRestIfElapsed(asOf: clock)
+
+        XCTAssertTrue(vm.isResting, "paused rest stays up")
+        XCTAssertEqual(spy.completions, 0)
+    }
+
+    /// No rest opens after the final set of the session - the session is over, not paced.
+    func testNoRestAfterFinalSet() {
+        let vm = makeViewModel(clock: { self.start })
+        for _ in 0..<6 { vm.completeSet() }
+
+        XCTAssertTrue(vm.isComplete)
+        XCTAssertFalse(vm.isResting)
+    }
+
+    /// A prescription with no configured rest opens no rest overlay - the next set shows immediately.
+    func testZeroRestSecondsOpensNoRest() {
+        let prescription = PrescribedExercise(
+            id: UUID(), exercise: repExercise(id: "push_up"), sets: 2, reps: 10, durationSeconds: nil, restSeconds: 0
+        )
+        let block = WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [prescription])
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .singleFocus, focusPillar: .strength,
+            requestedMinutes: 5, wasReturn: false, blocks: [block]
+        )
+        let vm = ActiveSessionViewModel(workout: workout, now: { self.start })
+
+        vm.completeSet() // set 1 -> set 2, no rest configured
+        XCTAssertFalse(vm.isResting)
+        XCTAssertEqual(vm.currentSet, 2)
+    }
+
+    /// Skipping the exercise drops any active rest without firing its cue.
+    func testSkipExerciseEndsActiveRest() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        vm.completeSet() // cat_cow -> push_up, rest active
+        XCTAssertTrue(vm.isResting)
+
+        vm.skipExercise()
+        XCTAssertFalse(vm.isResting)
+        XCTAssertEqual(spy.completions, 0)
     }
 }

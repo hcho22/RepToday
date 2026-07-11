@@ -625,10 +625,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] After a set, a rest timer counts down `restSeconds` and auto-advances when done
-- [ ] Completion fires a haptic, with an audio alternative for accessibility
-- [ ] The timer can be skipped or extended; it pauses correctly if the app is backgrounded
-- [ ] Uses `Theme` tokens; verify in iOS Simulator (haptics verified on device where possible)
+- [x] After a set, a rest timer counts down `restSeconds` and auto-advances when done - *`completeSet()` opens a rest for the just-completed prescription's `restSeconds` (none after the final set, none when `restSeconds == 0`); the countdown is derived from the injected clock via the pure `restRemaining(asOf:)`, and the player's per-second timeline calls `completeRestIfElapsed(asOf:)`, which ends the rest (revealing the already-advanced next set) exactly when it hits zero*
+- [x] Completion fires a haptic, with an audio alternative for accessibility - *a `RestTimerFeedback` seam fires once on rest completion (never on a skip); the real `SystemRestTimerFeedback` fires a `.success` `UINotificationFeedbackGenerator` haptic plus a short system sound as the accessible audio alternative*
+- [x] The timer can be skipped or extended; it pauses correctly if the app is backgrounded - *`skipRest()` ends it without the cue, `extendRest(by:)` adds 15s to both the remaining and the ring total, and `pauseRest`/`resumeRest` (wired to `scenePhase`) capture and reschedule the remainder so a backgrounded countdown freezes instead of blowing past - the elapsed session clock (US-K01) intentionally keeps running*
+- [x] Uses `Theme` tokens; verify in iOS Simulator (haptics verified on device where possible) - *the focused `RestView` overlay (ring countdown + next-up preview + extend/skip) is fully `Theme`-tokened with 60pt touch targets and VoiceOver labels; verified via the full suite (496 pass, 10 new for the rest timer) and an install-and-launch on the iPhone 16 simulator (builds, launches, renders without crashing); haptics/audio and interactive tap-through were not driven (no device/accessibility automation in this environment)*
 
 **Validation Test:**
 
