@@ -65,14 +65,7 @@ struct ReadyView: View {
             }
         }
         .task { await viewModel.load() }
-        .fullScreenCover(
-            item: $presentedPlayer,
-            onDismiss: {
-                // The player may have saved an abandoned session or cleared a completed one, so
-                // re-read whether anything is resumable (US-K04).
-                Task { await viewModel.refreshResumableSession() }
-            }
-        ) { presentation in
+        .fullScreenCover(item: $presentedPlayer) { presentation in
             switch presentation {
             case .fresh(let workout):
                 ActiveSessionView(
@@ -81,7 +74,8 @@ struct ReadyView: View {
                     user: viewModel.user,
                     recentLogs: viewModel.recentLogs,
                     store: viewModel.sessionStore,
-                    userId: viewModel.user?.id
+                    userId: viewModel.user?.id,
+                    onFinish: { completed in Task { await viewModel.handlePlayerDismiss(completed: completed) } }
                 )
             case .resume(let state):
                 ActiveSessionView(
@@ -90,7 +84,8 @@ struct ReadyView: View {
                     user: viewModel.user,
                     recentLogs: viewModel.recentLogs,
                     store: viewModel.sessionStore,
-                    userId: viewModel.user?.id
+                    userId: viewModel.user?.id,
+                    onFinish: { completed in Task { await viewModel.handlePlayerDismiss(completed: completed) } }
                 )
             }
         }

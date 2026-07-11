@@ -117,6 +117,38 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.resumableSession)
     }
 
+    /// A completed session leaves nothing resumable on the Ready Screen. The player clears the store on
+    /// completion and reports it completed; the dismiss handler drops the surfaced state directly rather
+    /// than re-reading the store, so a not-yet-landed clear can never resurface the finished session.
+    func testHandlePlayerDismissCompletedLeavesNothingResumable() async throws {
+        // The store still holds the just-completed snapshot (the player's fire-and-forget clear has
+        // not landed yet) - the dismiss handler must not surface it back.
+        let store = InMemoryActiveSessionStore()
+        try await store.save(resumableState(), for: "preview-user")
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+        await vm.load()
+        XCTAssertNotNil(vm.resumableSession)
+
+        await vm.handlePlayerDismiss(completed: true)
+
+        XCTAssertNil(vm.resumableSession, "a completed session is never offered as resumable")
+    }
+
+    /// An abandoned (not completed) session is re-read on dismiss, so the player's saved snapshot is
+    /// surfaced back for Resume/Discard.
+    func testHandlePlayerDismissAbandonedSurfacesSavedSession() async throws {
+        let store = InMemoryActiveSessionStore()
+        let vm = makeViewModel(user: onboardedUser(), store: store)
+        await vm.load()
+        XCTAssertNil(vm.resumableSession)
+
+        // The player saved an abandoned session before dismissing.
+        try await store.save(resumableState(), for: "preview-user")
+        await vm.handlePlayerDismiss(completed: false)
+
+        XCTAssertNotNil(vm.resumableSession, "an abandoned session is offered back")
+    }
+
     /// On load the session is generated at the user's Default Duration and exposed, with no error.
     func testLoadGeneratesSessionAtDefaultDuration() async {
         let engine = CapturingWorkoutEngine()

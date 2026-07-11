@@ -246,6 +246,19 @@ final class ReadyViewModel {
     /// player so a fresh session it starts writes to the same place the Ready Screen reads.
     var sessionStore: any ActiveSessionStore { activeSessionStore }
 
+    /// Reconcile the resumable session after the player dismisses (US-K04), driven by whether the
+    /// session *completed*. A completed session is dropped directly: the player already enqueued the
+    /// store clear, so re-reading the store here would race that clear and could momentarily resurrect
+    /// the just-finished snapshot as resumable. An abandoned session is re-read so the player's saved
+    /// snapshot is surfaced back. This replaces the earlier store-load-on-dismiss, removing the race.
+    func handlePlayerDismiss(completed: Bool) async {
+        if completed {
+            resumableSession = nil
+        } else {
+            await refreshResumableSession()
+        }
+    }
+
     /// Re-read whether an abandoned session is resumable (US-K04). Called after the player closes, so
     /// a session the user just finished (the player cleared it) or abandoned (the player saved it) is
     /// reflected without a full reload. A no-op before a user has loaded.

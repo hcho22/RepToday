@@ -13,6 +13,11 @@ struct ActiveSessionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: ActiveSessionViewModel
 
+    /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
+    /// this to refresh the resumable session *without* racing the store's completion clear: a completed
+    /// session leaves nothing resumable, while an abandoned one is re-read from the store.
+    private let onFinish: ((Bool) -> Void)?
+
     /// Start a fresh session for `workout`. When `store` and `userId` are supplied, the player
     /// persists its progress so it survives backgrounding and relaunch (US-K04).
     init(
@@ -21,8 +26,10 @@ struct ActiveSessionView: View {
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
         store: (any ActiveSessionStore)? = nil,
-        userId: String? = nil
+        userId: String? = nil,
+        onFinish: ((Bool) -> Void)? = nil
     ) {
+        self.onFinish = onFinish
         _viewModel = State(
             initialValue: ActiveSessionViewModel(
                 workout: workout,
@@ -43,8 +50,10 @@ struct ActiveSessionView: View {
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
         store: (any ActiveSessionStore)? = nil,
-        userId: String? = nil
+        userId: String? = nil,
+        onFinish: ((Bool) -> Void)? = nil
     ) {
+        self.onFinish = onFinish
         _viewModel = State(
             initialValue: ActiveSessionViewModel(
                 state: state,
@@ -57,6 +66,14 @@ struct ActiveSessionView: View {
         )
     }
 
+    /// Dismiss the player, first reporting whether the session completed so the Ready Screen can
+    /// refresh deterministically rather than racing the store (US-K04). Every dismiss path routes
+    /// through here, so the completion signal is never missed.
+    private func close() {
+        onFinish?(viewModel.isComplete)
+        dismiss()
+    }
+
     var body: some View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
@@ -64,7 +81,7 @@ struct ActiveSessionView: View {
             if viewModel.isComplete {
                 completionState
             } else if viewModel.isResting {
-                RestView(viewModel: viewModel) { dismiss() }
+                RestView(viewModel: viewModel) { close() }
             } else {
                 player
             }
@@ -113,7 +130,7 @@ struct ActiveSessionView: View {
     private var topBar: some View {
         HStack {
             Button {
-                dismiss()
+                close()
             } label: {
                 Image(systemName: "xmark")
                     .font(Theme.Typography.button)
@@ -278,7 +295,7 @@ struct ActiveSessionView: View {
                 .multilineTextAlignment(.center)
 
             Button {
-                dismiss()
+                close()
             } label: {
                 Text("Done")
                     .font(Theme.Typography.button)
