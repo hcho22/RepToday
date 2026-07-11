@@ -610,6 +610,32 @@ final class ActiveSessionViewModelTests: XCTestCase {
                        "the stale substitute never enters the lineup")
     }
 
+    /// If the user finishes the session on the final exercise while its swap is in flight (Complete
+    /// set stays tappable, and finishing the last exercise leaves `currentStepIndex` unchanged so the
+    /// slot's id still matches), the stale substitute is discarded - it never overwrites the completed
+    /// final exercise's recorded sets or mutates state after the session ended.
+    func testSwapDiscardsStaleResultWhenSessionFinishesMidFlight() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up
+        vm.completeSet(); vm.completeSet(); vm.completeSet() // push_up (3 sets) -> squat, the final slot
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+
+        // Mid-await, the user completes squat's two sets, finishing the session.
+        engine.onSwap = { vm.completeSet(); vm.completeSet() }
+        await vm.swapCurrentExercise()
+
+        XCTAssertTrue(vm.isComplete, "the session stays finished")
+        XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"],
+                       "no substituted slot - the stale result is dropped")
+        XCTAssertFalse(vm.steps.contains { $0.prescription.exercise.id == "dips" },
+                       "the stale substitute never enters the lineup")
+        let squatLog = vm.loggedExercises().first { $0.exerciseId == "squat" }
+        XCTAssertEqual(squatLog?.completedSets.count, 2,
+                       "the finished exercise's recorded sets are intact - not wiped by an un-performed substitute")
+        XCTAssertEqual(squatLog?.skipped, false)
+    }
+
     /// When the engine finds no safe, in-budget peer, the original slot stays and the honest
     /// "no alternative" flag flips so the UI can say so rather than forcing an unsafe substitution.
     func testSwapNoAlternativeKeepsSlotAndFlags() async {

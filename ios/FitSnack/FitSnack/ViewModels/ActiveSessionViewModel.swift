@@ -279,10 +279,12 @@ final class ActiveSessionViewModel {
             return
         }
 
-        // If the user advanced off this exercise during the await (Complete set / Skip stay tappable),
-        // the swap result is stale - discard it entirely rather than relocating it, so it can never
-        // reset another exercise's set counter or resurrect an already-passed slot.
-        guard steps.indices.contains(currentStepIndex), steps[currentStepIndex].id == step.id else { return }
+        // If the user advanced off this exercise or finished the session during the await (Complete set
+        // / Skip stay tappable, and finishing the final exercise leaves currentStepIndex unchanged), the
+        // swap result is stale - discard it entirely rather than relocating it, so it can never reset
+        // another exercise's set counter, resurrect an already-passed slot, or overwrite the completed
+        // final exercise after the session ended.
+        guard !isComplete, steps.indices.contains(currentStepIndex), steps[currentStepIndex].id == step.id else { return }
 
         switch outcome {
         case .substituted(let substitute):
