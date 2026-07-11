@@ -254,9 +254,26 @@ final class ReadyViewModel {
     func handlePlayerDismiss(completed: Bool) async {
         if completed {
             resumableSession = nil
+            // A completed session writes a log and refreshes the user aggregate (US-L01), so the
+            // Consistency Score the Ready Screen shows is now stale. Re-read the user and full history
+            // and recompute the score, so returning from the player reflects the win without waiting
+            // for the next genuine open. Best-effort: a failure just leaves the prior surfaces up.
+            await refreshAfterCompletion()
         } else {
             await refreshResumableSession()
         }
+    }
+
+    /// Refresh the insight surfaces after a completed session (US-L01). Re-fetches the user (whose
+    /// cold-start state and consistency the completion recorder advanced) and recomputes the displayed
+    /// Consistency Score from the full, now-longer history. Deliberately does not regenerate today's
+    /// session or re-fire the on-open re-program - those belong to a genuine open.
+    private func refreshAfterCompletion() async {
+        guard let existing = user else { return }
+        let refreshed = (try? await userService.currentUser()) ?? existing
+        user = refreshed
+        let allLogs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? recentLogs
+        await refreshInsights(for: refreshed, logs: allLogs)
     }
 
     /// Re-read whether an abandoned session is resumable (US-K04). Called after the player closes, so

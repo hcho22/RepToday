@@ -910,4 +910,111 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(resumed.currentSet, 1, "a non-positive set clamps up to the first set")
         XCTAssertFalse(resumed.isComplete)
     }
+
+    // MARK: - Completion recording & summary (US-L01)
+
+    /// Captures the completion recordings so a test can assert the written log and its context.
+    private actor SpyCompletionService: SessionCompletionServiceProtocol {
+        private(set) var recorded: [WorkoutLog] = []
+        private(set) var lastRecentLogs: [WorkoutLog] = []
+
+        func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws {
+            recorded.append(log)
+            lastRecentLogs = recentLogs
+        }
+    }
+
+    /// A session tagged as a single-focus Return at 20 requested minutes, so the completion log's
+    /// copied shape/focus/return facts are all assertable and distinct from the defaults.
+    private func completionWorkout() -> Workout {
+        Workout(
+            id: UUID(), createdAt: start, shape: .singleFocus, focusPillar: .strength,
+            requestedMinutes: 20, wasReturn: true, blocks: sampleWorkout().blocks
+        )
+    }
+
+    /// On completion the player writes a `WorkoutLog` with the requested-vs-completed minutes and the
+    /// session facts copied straight off the played `Workout` (US-L01 validation: requested 20,
+    /// completed ~14).
+    func testCompletionWritesLogWithSessionFacts() async throws {
+        var clock = start
+        let spy = SpyCompletionService()
+        let priorLog = completionWorkout() // reused only for its id below; a throwaway context log
+        let context = [WorkoutLog(
+            id: UUID(), workoutId: priorLog.id, completedAt: start, requestedMinutes: 10,
+            durationMinutes: 10, wasReturn: false, shape: .blend, focusPillar: nil,
+            perceivedDifficulty: nil, exercises: []
+        )]
+        let vm = ActiveSessionViewModel(
+            workout: completionWorkout(), user: makeUser(), recentLogs: context,
+            completionService: spy, now: { clock }
+        )
+        vm.start()
+
+        clock = start.addingTimeInterval(14 * 60) // finish 14 minutes after starting
+        while !vm.isComplete { vm.completeSet() }
+        await vm.completionTask?.value
+
+        let recorded = await spy.recorded
+        XCTAssertEqual(recorded.count, 1, "the completion is recorded exactly once")
+        let log = try XCTUnwrap(recorded.first)
+        XCTAssertEqual(log.workoutId, vm.workout.id)
+        XCTAssertEqual(log.requestedMinutes, 20)
+        XCTAssertEqual(log.durationMinutes, 14, "the actually-completed duration, not the requested 20")
+        XCTAssertEqual(log.shape, .singleFocus)
+        XCTAssertEqual(log.focusPillar, .strength)
+        XCTAssertTrue(log.wasReturn, "the Return flag is copied off the session, not re-derived")
+        XCTAssertEqual(log.exercises.count, 3)
+        XCTAssertNil(log.perceivedDifficulty, "the rating is collected by US-L02")
+
+        let seenRecentLogs = await spy.lastRecentLogs
+        XCTAssertEqual(seenRecentLogs.count, 1, "the recorder is handed the history for the consistency fold")
+    }
+
+    /// With no completion service wired (previews), completing the session records nothing and never
+    /// traps.
+    func testNoCompletionRecordingWithoutService() async {
+        let vm = makeViewModel(clock: { self.start }) // no completion service / user
+        vm.start()
+        while !vm.isComplete { vm.completeSet() }
+
+        XCTAssertTrue(vm.isComplete)
+        XCTAssertNil(vm.completionTask, "no completion service means no recording task is launched")
+    }
+
+    /// The template summary reflects the finished session: its completed duration, set count, and the
+    /// muscle/mobility coverage it actually produced.
+    func testSummaryReflectsCompletedSession() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+        XCTAssertNil(vm.summary, "no summary before completion")
+
+        vm.start()
+        clock = start.addingTimeInterval(10 * 60) // ten minutes
+        while !vm.isComplete { vm.completeSet() }
+
+        let summary = vm.summary
+        XCTAssertEqual(summary?.durationMinutes, 10)
+        XCTAssertEqual(summary?.completedSetCount, 6)
+        XCTAssertEqual(summary?.completedExerciseCount, 3)
+        // sampleWorkout is all strength (cat_cow core-hold, push_up push, squat push).
+        XCTAssertEqual(summary?.pillars, [.strength])
+        XCTAssertEqual(summary?.movementPatterns, [.push, .core])
+    }
+
+    /// A skipped exercise is excluded from the summary's coverage but the session still records and
+    /// completes.
+    func testSummaryExcludesSkippedFromCoverage() {
+        let vm = makeViewModel(clock: { self.start })
+        vm.start()
+        vm.completeSet() // cat_cow (core) done -> push_up
+        vm.skipExercise() // skip push_up -> squat
+        while !vm.isComplete { vm.completeSet() } // finish squat
+
+        let summary = vm.summary
+        XCTAssertEqual(summary?.skippedExerciseCount, 1)
+        // push_up (push) was skipped; cat_cow (core) and squat (push) remain -> patterns push, core.
+        XCTAssertEqual(summary?.completedExerciseCount, 2)
+        XCTAssertEqual(summary?.movementPatterns, [.push, .core])
+    }
 }

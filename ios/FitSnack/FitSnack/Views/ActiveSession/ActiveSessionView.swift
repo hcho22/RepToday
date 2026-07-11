@@ -27,6 +27,7 @@ struct ActiveSessionView: View {
         recentLogs: [WorkoutLog] = [],
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
+        completionService: (any SessionCompletionServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
@@ -37,7 +38,8 @@ struct ActiveSessionView: View {
                 user: user,
                 recentLogs: recentLogs,
                 store: store,
-                userId: userId
+                userId: userId,
+                completionService: completionService
             )
         )
     }
@@ -51,6 +53,7 @@ struct ActiveSessionView: View {
         recentLogs: [WorkoutLog] = [],
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
+        completionService: (any SessionCompletionServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
@@ -61,7 +64,8 @@ struct ActiveSessionView: View {
                 user: user,
                 recentLogs: recentLogs,
                 store: store,
-                userId: userId
+                userId: userId,
+                completionService: completionService
             )
         )
     }
@@ -284,37 +288,100 @@ struct ActiveSessionView: View {
         return step.position >= step.total ? "Finish session" : "Finish exercise"
     }
 
-    // MARK: - Completion
+    // MARK: - Completion (US-L01)
 
-    /// A minimal end-of-session confirmation. The celebration, template summary, log write, and
-    /// perceived-difficulty rating are US-L01/US-L02; this story just closes the loop cleanly.
+    /// The post-session celebration and template summary. The win is framed by identity, never by a
+    /// score or streak: it leads with the show-up, then names the muscle/mobility coverage and the
+    /// session's effort (duration, sets). The `WorkoutLog` is written by the view model the moment the
+    /// session finished (US-L01); this screen just reflects it. The perceived-difficulty rating is
+    /// US-L02. Every token comes from `Theme`; there is no XP/levels/badges.
     private var completionState: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 72, weight: .semibold))
-                .foregroundStyle(Theme.Colors.accent)
-            Text("Session complete")
-                .font(Theme.Typography.largeTitle)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Text("You showed up. That's the whole game.")
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
+        ScrollView {
+            VStack(spacing: Theme.Spacing.lg) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 72, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.accent)
+                    .accessibilityHidden(true)
 
-            Button {
-                close()
-            } label: {
-                Text("Done")
-                    .font(Theme.Typography.button)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                VStack(spacing: Theme.Spacing.xs) {
+                    Text("You showed up.")
+                        .font(Theme.Typography.largeTitle)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text("That's the whole game.")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("You showed up. That's the whole game.")
+
+                if let summary = viewModel.summary {
+                    summaryCard(summary)
+                }
+
+                Button {
+                    close()
+                } label: {
+                    Text("Done")
+                        .font(Theme.Typography.button)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: Theme.Spacing.workoutTouchTarget)
+                }
+                .buttonStyle(.borderedProminent)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .accessibilityLabel("Done")
             }
-            .buttonStyle(.borderedProminent)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-            .accessibilityLabel("Done")
+            .padding(Theme.Spacing.lg)
+            .frame(maxWidth: .infinity)
         }
-        .padding(Theme.Spacing.lg)
-        .frame(maxWidth: .infinity)
+    }
+
+    /// The template summary card: the effort (duration + sets) and the muscle/mobility coverage the
+    /// session produced, derived entirely from what the user actually did (US-L01).
+    private func summaryCard(_ summary: SessionSummary) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(spacing: Theme.Spacing.lg) {
+                statTile(value: "\(summary.durationMinutes)", unit: summary.durationMinutes == 1 ? "minute" : "minutes")
+                statTile(value: "\(summary.completedSetCount)", unit: summary.completedSetCount == 1 ? "set" : "sets")
+            }
+
+            if !summary.coverageText.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("You trained")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text(summary.coverageText)
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    if !summary.focusText.isEmpty {
+                        Text(summary.focusText)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("You trained \(summary.coverageText).")
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+
+    /// One labelled metric (a value over its unit) in the summary card.
+    private func statTile(value: String, unit: String) -> some View {
+        VStack(spacing: 0) {
+            Text(value)
+                .font(Theme.Typography.largeTitle)
+                .foregroundStyle(Theme.Colors.accent)
+                .monospacedDigit()
+            Text(unit)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(value) \(unit)")
     }
 
     // MARK: - Formatting

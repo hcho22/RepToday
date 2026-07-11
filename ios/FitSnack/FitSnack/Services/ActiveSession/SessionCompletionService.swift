@@ -1,0 +1,79 @@
+import Foundation
+
+/// Records a finished session (US-L01): the single seam the active-session player calls the moment a
+/// session completes, so the win is durable even if the user force-quits on the completion screen.
+///
+/// It writes the `WorkoutLog` (the durable record the whole app reads back) and then performs the
+/// post-session bookkeeping that hangs off a completion:
+///
+/// - **Consistency Score refresh (US-H01).** The forgiving score is recomputed with the new log
+///   folded in exactly once and stored back on the user aggregate, so the number stays honest to the
+///   history without re-deriving it everywhere it is read.
+/// - **Cold-start handoff (US-G04).** This is the single caller of `ColdStartHandoff`: it advances
+///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, then
+///   reconciles the policy (clearing the now-inert `coldStartContract`). The user and policy are
+///   separate aggregates, so they are persisted separately.
+///
+/// It deliberately does **not** fold Default Duration learning here: that is the Programmer's job
+/// (US-F03), which folds each completed session's `durationMinutes` into the EWMA exactly once, keyed
+/// off the policy's `updatedAt` dedup boundary. Folding here too would double-count. This service only
+/// makes sure the log carries the actually-completed `durationMinutes` so the Programmer can learn
+/// from it on the next open.
+protocol SessionCompletionServiceProtocol {
+    /// Persist a completed session and its post-session bookkeeping. `recentLogs` is the history *not
+    /// yet* including `log`, so the Consistency Score folds the new session in exactly once.
+    func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws
+}
+
+/// The real `SessionCompletionServiceProtocol` backing the app. Every dependency is a protocol/seam,
+/// so the whole flow is testable without CoreData.
+final class SessionCompletionService: SessionCompletionServiceProtocol {
+
+    private let workoutLogService: any WorkoutLogServiceProtocol
+    private let userService: any UserServiceProtocol
+    private let consistencyService: any ConsistencyServiceProtocol
+    /// The same policy store the deterministic Programmer writes through (US-F03), shared so the
+    /// cold-start handoff's reconciled policy lands where the engine reads it on the next open.
+    private let policyStore: any SessionPolicyStore
+
+    init(
+        workoutLogService: any WorkoutLogServiceProtocol,
+        userService: any UserServiceProtocol,
+        consistencyService: any ConsistencyServiceProtocol,
+        policyStore: any SessionPolicyStore
+    ) {
+        self.workoutLogService = workoutLogService
+        self.userService = userService
+        self.consistencyService = consistencyService
+        self.policyStore = policyStore
+    }
+
+    func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws {
+        // 1. Persist the log first - the durable record of the session, and the data Default Duration
+        //    learning (US-F04) and the Consistency Score (US-H01) both read back.
+        try await workoutLogService.save(log)
+
+        // 2. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
+        //    The policy read falls back to the neutral default until the Programmer has ever written
+        //    one, exactly as `currentPolicy(for:)` does.
+        let currentPolicy = try await policyStore.policy(for: user.id) ?? .default
+        let handoff = ColdStartHandoff.afterCompletedSession(user: user, sessionPolicy: currentPolicy)
+
+        // 3. Refresh the forgiving Consistency Score onto the user aggregate. `recentLogs` does not yet
+        //    contain `log`, so `updatedConsistency` folds it in exactly once.
+        var updatedUser = handoff.user
+        updatedUser.consistency = try await consistencyService.updatedConsistency(
+            after: log,
+            user: user,
+            recentLogs: recentLogs
+        )
+
+        // 4. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
+        //    only when the handoff actually changed it (i.e. cold-start just retired and cleared the
+        //    contract). The two aggregates are saved separately, matching US-F03.
+        try await userService.save(updatedUser)
+        if handoff.sessionPolicy != currentPolicy {
+            try await policyStore.save(handoff.sessionPolicy, for: user.id)
+        }
+    }
+}

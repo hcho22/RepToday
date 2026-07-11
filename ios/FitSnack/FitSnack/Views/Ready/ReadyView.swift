@@ -75,6 +75,7 @@ struct ReadyView: View {
                     recentLogs: viewModel.recentLogs,
                     store: viewModel.sessionStore,
                     userId: viewModel.user?.id,
+                    completionService: services.sessionCompletionService,
                     onFinish: { completed in Task { await viewModel.handlePlayerDismiss(completed: completed) } }
                 )
             case .resume(let state):
@@ -85,6 +86,7 @@ struct ReadyView: View {
                     recentLogs: viewModel.recentLogs,
                     store: viewModel.sessionStore,
                     userId: viewModel.user?.id,
+                    completionService: services.sessionCompletionService,
                     onFinish: { completed in Task { await viewModel.handlePlayerDismiss(completed: completed) } }
                 )
             }

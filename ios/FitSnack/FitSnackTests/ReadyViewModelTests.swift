@@ -134,6 +134,34 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertNil(vm.resumableSession, "a completed session is never offered as resumable")
     }
 
+    /// After a completed session the Ready Screen refreshes its Consistency Score (US-L01): the
+    /// completion recorder has written a new log, so returning from the player reflects the win without
+    /// waiting for the next genuine open.
+    func testHandlePlayerDismissCompletedRefreshesConsistency() async throws {
+        let logService = MockWorkoutLogService(logs: [])
+        let vm = ReadyViewModel(
+            userService: MockUserService(user: onboardedUser()),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: CapturingWorkoutEngine(),
+            workoutLogService: logService,
+            activeSessionStore: InMemoryActiveSessionStore(),
+            now: { self.fixedDate }
+        )
+        await vm.load()
+        XCTAssertEqual(vm.consistency?.totalWorkoutsCompleted, 0, "no history on the first open")
+
+        // The player completed a session; the completion recorder wrote a log.
+        let log = WorkoutLog(
+            id: UUID(), workoutId: UUID(), completedAt: fixedDate, requestedMinutes: 15,
+            durationMinutes: 14, wasReturn: false, shape: .blend, focusPillar: nil,
+            perceivedDifficulty: nil, exercises: []
+        )
+        try await logService.save(log)
+        await vm.handlePlayerDismiss(completed: true)
+
+        XCTAssertEqual(vm.consistency?.totalWorkoutsCompleted, 1, "the completed session is reflected on return")
+    }
+
     /// An abandoned (not completed) session is re-read on dismiss, so the player's saved snapshot is
     /// surfaced back for Resume/Discard.
     func testHandlePlayerDismissAbandonedSurfacesSavedSession() async throws {

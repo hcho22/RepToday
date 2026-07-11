@@ -7,9 +7,15 @@ import Observation
 /// The view model flattens the session's blocks into a single ordered list of `Step`s (warm-up ->
 /// training -> cooldown, in the engine's order) and tracks exactly where the user is: the current
 /// step, the set they are on, and the elapsed wall-clock time. Completing a set advances the
-/// session and records what was done toward the eventual `WorkoutLog` (US-L01 writes it; US-L02
-/// collects the perceived-difficulty rating). After each set a rest timer (US-K02) counts down the
-/// prescription's `restSeconds` and, when it elapses, fires an accessible haptic/audio cue.
+/// session and records what was done toward the `WorkoutLog`. After each set a rest timer (US-K02)
+/// counts down the prescription's `restSeconds` and, when it elapses, fires an accessible
+/// haptic/audio cue.
+///
+/// When the session completes (US-L01) the view model writes the `WorkoutLog` through the injected
+/// `SessionCompletionServiceProtocol` - fire-and-forget at the `finish()` transition, so the record is
+/// durable even if the user quits on the completion screen - and exposes a template-based `summary`
+/// (duration + muscle/mobility coverage) for the celebration screen. The perceived-difficulty rating
+/// is collected on that screen by US-L02.
 ///
 /// Background/resume (US-K04) is delivered by a persistence seam: after every meaningful change - and
 /// just before backgrounding - the view model writes a full `ActiveSessionState` snapshot to an
@@ -142,6 +148,18 @@ final class ActiveSessionViewModel {
     /// player never stalls on a disk write.
     private(set) var persistenceTask: Task<Void, Never>?
 
+    // MARK: - Completion recording (US-L01)
+
+    /// The seam that writes the `WorkoutLog` and does the post-session bookkeeping (Consistency Score
+    /// refresh, cold-start handoff) the instant the session completes. `nil` in previews / when no
+    /// user is wired, where completion simply records nothing.
+    private let completionService: (any SessionCompletionServiceProtocol)?
+
+    /// The fire-and-forget completion write launched at `finish()`, exposed only so tests can await
+    /// the recording settling. The UI never awaits it: like persistence, the write is best-effort and
+    /// the player never stalls on it.
+    private(set) var completionTask: Task<Void, Never>?
+
     /// Restore-capable designated initializer (US-K04): builds the player from a persisted - or
     /// freshly-seeded - `ActiveSessionState`, so a fresh start, a resume-after-relaunch, and a resume
     /// from the Ready Screen all funnel through one representation of the play state. When `store` and
@@ -154,6 +172,7 @@ final class ActiveSessionViewModel {
         recentLogs: [WorkoutLog] = [],
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
+        completionService: (any SessionCompletionServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
@@ -163,6 +182,7 @@ final class ActiveSessionViewModel {
         self.recentLogs = recentLogs
         self.store = store
         self.userId = userId
+        self.completionService = completionService
         self.now = now
         self.feedback = feedback
 
@@ -192,6 +212,7 @@ final class ActiveSessionViewModel {
         recentLogs: [WorkoutLog] = [],
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
+        completionService: (any SessionCompletionServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
@@ -202,6 +223,7 @@ final class ActiveSessionViewModel {
             recentLogs: recentLogs,
             store: store,
             userId: userId,
+            completionService: completionService,
             now: now,
             feedback: feedback
         )
@@ -306,6 +328,56 @@ final class ActiveSessionViewModel {
                 completedSets: completedSets[step.id] ?? [],
                 skipped: skippedStepIDs.contains(step.id)
             )
+        }
+    }
+
+    // MARK: - Completion (US-L01)
+
+    /// The template-based post-session summary shown on the completion screen: what the user did and
+    /// the muscle/mobility coverage the session produced. `nil` until the session is complete. Pure
+    /// over the completed state (elapsed time freezes at `finishedAt`), so it is stable across renders.
+    var summary: SessionSummary? {
+        guard isComplete else { return nil }
+        return SessionSummary.from(loggedExercises: loggedExercises(), durationMinutes: completedDurationMinutes())
+    }
+
+    /// The `WorkoutLog` to write for the finished session (US-L01): what was requested vs. actually
+    /// completed, the shape/focus/return flags copied straight off the played `Workout` (never
+    /// re-derived), and the per-exercise completed/skipped rows. `nil` unless the session is complete.
+    /// The perceived-difficulty rating is `nil` here; US-L02 collects it on the completion screen.
+    func completionLog() -> WorkoutLog? {
+        guard isComplete else { return nil }
+        return WorkoutLog(
+            id: UUID(),
+            workoutId: workout.id,
+            completedAt: finishedAt ?? now(),
+            requestedMinutes: workout.requestedMinutes,
+            durationMinutes: completedDurationMinutes(),
+            wasReturn: workout.wasReturn,
+            shape: workout.shape,
+            focusPillar: workout.focusPillar,
+            perceivedDifficulty: nil,
+            exercises: loggedExercises()
+        )
+    }
+
+    /// Whole minutes actually exercised, wall-clock from start to finish, floored at 1 so a genuinely
+    /// completed session always records a positive duration. This is the completed - not requested -
+    /// duration Default Duration learning (US-F04) and the Consistency Score (US-H01) read.
+    private func completedDurationMinutes() -> Int {
+        let end = finishedAt ?? now()
+        return max(1, Int((Double(elapsed(asOf: end)) / 60.0).rounded()))
+    }
+
+    /// Fire the completion recording once, at the `finish()` transition (US-L01). Fire-and-forget and
+    /// best-effort: the UI renders the celebration immediately and never awaits the write; a nil
+    /// service/user (previews) records nothing. Chained behind any prior write so it lands in order.
+    private func recordCompletion() {
+        guard let completionService, let user, let log = completionLog() else { return }
+        let previous = completionTask
+        completionTask = Task {
+            _ = await previous?.value
+            try? await completionService.recordCompletedSession(log, user: user, recentLogs: recentLogs)
         }
     }
 
@@ -511,6 +583,10 @@ final class ActiveSessionViewModel {
         guard !isComplete else { return }
         isComplete = true
         finishedAt = now()
+        // Record the completed session (US-L01) at the completion transition - the single point every
+        // finishing path (last set, final skip, a swap that finishes mid-flight) routes through - so
+        // the win is durable even if the user quits on the completion screen.
+        recordCompletion()
     }
 
     // MARK: - Snapshot & persistence (US-K04)
