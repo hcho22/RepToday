@@ -971,6 +971,28 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(seenRecentLogs.count, 1, "the recorder is handed the history for the consistency fold")
     }
 
+    /// A long backgrounded stretch keeps the wall-clock session clock running (US-K01/K04), but the
+    /// logged completed duration is capped at the session's requestedMinutes so a distraction can't
+    /// inflate Default Duration learning's EWMA (US-F04) toward the 60-min cap.
+    func testCompletedDurationCappedAtRequestedMinutes() async throws {
+        var clock = start
+        let spy = SpyCompletionService()
+        let vm = ActiveSessionViewModel(
+            workout: completionWorkout(), user: makeUser(), recentLogs: [],
+            completionService: spy, now: { clock }
+        )
+        vm.start()
+
+        clock = start.addingTimeInterval(80 * 60) // finish 80 minutes after starting (backgrounded)
+        while !vm.isComplete { vm.completeSet() }
+        await vm.completionTask?.value
+
+        let recorded = await spy.recorded
+        let log = try XCTUnwrap(recorded.first)
+        XCTAssertEqual(log.durationMinutes, 20, "capped at the requested 20, not the raw 80 wall-clock minutes")
+        XCTAssertEqual(vm.summary?.durationMinutes, 20, "the celebration summary is capped too")
+    }
+
     /// With no completion service wired (previews), completing the session records nothing and never
     /// traps.
     func testNoCompletionRecordingWithoutService() async {

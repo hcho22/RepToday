@@ -362,11 +362,20 @@ final class ActiveSessionViewModel {
     }
 
     /// Whole minutes actually exercised, wall-clock from start to finish, floored at 1 so a genuinely
-    /// completed session always records a positive duration. This is the completed - not requested -
-    /// duration Default Duration learning (US-F04) and the Consistency Score (US-H01) read.
+    /// completed session always records a positive duration and capped at the session's
+    /// `requestedMinutes`. This is the completed - not requested - duration Default Duration learning
+    /// (US-F04) and the Consistency Score (US-H01) read.
+    ///
+    /// The session clock intentionally keeps running as wall-clock time while backgrounded (US-K01/K04),
+    /// and mid-session backgrounding is a supported flow, so an unbounded value would let a long
+    /// background stretch inflate the logged duration - which would drift Default Duration learning's
+    /// EWMA (US-F04) and `totalMinutesExercised` upward. The session was fit to ±1 min of
+    /// `requestedMinutes`, so a completed session cannot meaningfully have taken longer than that; the
+    /// cap bounds backgrounding inflation while a bail-early stays under the cap.
     private func completedDurationMinutes() -> Int {
         let end = finishedAt ?? now()
-        return max(1, Int((Double(elapsed(asOf: end)) / 60.0).rounded()))
+        let raw = Int((Double(elapsed(asOf: end)) / 60.0).rounded())
+        return max(1, min(raw, workout.requestedMinutes))
     }
 
     /// Fire the completion recording once, at the `finish()` transition (US-L01). Fire-and-forget and
