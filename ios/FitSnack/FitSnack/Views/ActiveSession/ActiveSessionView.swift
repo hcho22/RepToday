@@ -86,7 +86,14 @@ struct ActiveSessionView: View {
                 player
             }
         }
-        .onAppear { viewModel.start() }
+        .onAppear {
+            viewModel.start()
+            // A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a
+            // scene-phase change when the resumed player is presented on an already-active app, so
+            // resume it here too. A no-op unless a rest is currently paused, leaving a fresh session
+            // and a resumed running rest untouched.
+            viewModel.resumeRest(asOf: Date())
+        }
         // Pause the rest countdown while the app is away so it never blows past; resume on return.
         // The elapsed session clock is wall-clock derived (US-K01) and intentionally keeps running.
         .onChange(of: scenePhase) { _, phase in

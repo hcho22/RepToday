@@ -826,6 +826,30 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(105)), 15)
     }
 
+    /// When a resumed player is presented while the app is already active, no scene-phase change fires,
+    /// so the player's on-appear (start() then resumeRest) is the only thing that un-freezes a restored
+    /// paused rest. Proves that path reschedules the deadline and the countdown resumes.
+    func testOnAppearResumeUnfreezesRestoredPausedRest() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet() // 30s rest, deadline start+30
+        original.pauseRest(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(200) })
+        XCTAssertTrue(resumed.isRestPaused, "restored rest starts frozen")
+
+        // Mirror ActiveSessionView.onAppear on an already-active app: start() then resumeRest.
+        resumed.start()
+        resumed.resumeRest(asOf: start.addingTimeInterval(200))
+
+        XCTAssertFalse(resumed.isRestPaused, "on-appear resume un-freezes the rest")
+        XCTAssertEqual(resumed.restRemaining(asOf: start.addingTimeInterval(205)), 15, "countdown resumes rather than holding the frozen remainder")
+    }
+
     /// Completing the session clears the persisted snapshot - a finished session is not resumable.
     func testCompletionClearsPersistedSession() async throws {
         let store = InMemoryActiveSessionStore()
