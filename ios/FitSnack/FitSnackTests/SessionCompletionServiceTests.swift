@@ -75,8 +75,8 @@ final class SessionCompletionServiceTests: XCTestCase {
 
     // MARK: - Consistency refresh (US-H01)
 
-    /// The forgiving Consistency Score is refreshed onto the user aggregate, folding the new log in
-    /// exactly once (recentLogs does not yet contain it).
+    /// The forgiving Consistency Score is refreshed onto the user aggregate over the full persisted
+    /// history (which now includes the just-saved log), counting the new session exactly once.
     func testRecordRefreshesConsistency() async throws {
         let userService = MockUserService(user: makeUser())
         let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: InMemorySessionPolicyStore())

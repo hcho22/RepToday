@@ -6,9 +6,9 @@ import Foundation
 /// It writes the `WorkoutLog` (the durable record the whole app reads back) and then performs the
 /// post-session bookkeeping that hangs off a completion:
 ///
-/// - **Consistency Score refresh (US-H01).** The forgiving score is recomputed with the new log
-///   folded in exactly once and stored back on the user aggregate, so the number stays honest to the
-///   history without re-deriving it everywhere it is read.
+/// - **Consistency Score refresh (US-H01).** The forgiving score is recomputed over the full
+///   persisted history (including the just-saved log) and stored back on the user aggregate, so the
+///   all-time `longestChain` stays honest and is never understated by a bounded log window.
 /// - **Cold-start handoff (US-G04).** This is the single caller of `ColdStartHandoff`: it advances
 ///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, then
 ///   reconciles the policy (clearing the now-inert `coldStartContract`). The user and policy are
@@ -20,8 +20,9 @@ import Foundation
 /// makes sure the log carries the actually-completed `durationMinutes` so the Programmer can learn
 /// from it on the next open.
 protocol SessionCompletionServiceProtocol {
-    /// Persist a completed session and its post-session bookkeeping. `recentLogs` is the history *not
-    /// yet* including `log`, so the Consistency Score folds the new session in exactly once.
+    /// Persist a completed session and its post-session bookkeeping. `recentLogs` is retained for
+    /// caller stability, but the Consistency Score is recomputed over the full persisted history so the
+    /// all-time `longestChain` (US-H01) is never understated by a bounded window.
     func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws
 }
 
@@ -59,13 +60,15 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         let currentPolicy = try await policyStore.policy(for: user.id) ?? .default
         let handoff = ColdStartHandoff.afterCompletedSession(user: user, sessionPolicy: currentPolicy)
 
-        // 3. Refresh the forgiving Consistency Score onto the user aggregate. `recentLogs` does not yet
-        //    contain `log`, so `updatedConsistency` folds it in exactly once.
+        // 3. Refresh the forgiving Consistency Score onto the user aggregate over the *full* persisted
+        //    history (which now includes the just-saved `log`), not the caller's bounded `recentLogs`.
+        //    `longestChain` is an all-time historical maximum (US-H01: "a later break never lowers it"),
+        //    so scoring over a bounded window would understate and overwrite the earned best run.
+        let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
         var updatedUser = handoff.user
-        updatedUser.consistency = try await consistencyService.updatedConsistency(
-            after: log,
-            user: user,
-            recentLogs: recentLogs
+        updatedUser.consistency = try await consistencyService.consistency(
+            for: allLogs,
+            weeklyGoal: user.consistency.weeklyGoal
         )
 
         // 4. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
