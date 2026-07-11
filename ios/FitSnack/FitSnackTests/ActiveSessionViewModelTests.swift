@@ -367,7 +367,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// Skipping the rest ends it immediately and does not fire the completion cue (the user chose to
     /// move on), revealing the already-advanced next set.
     func testSkipRestEndsWithoutCue() {
-        var clock = start
+        let clock = start
         let spy = SpyRestFeedback()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.completeSet()
@@ -458,7 +458,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
     /// Skipping the exercise drops any active rest without firing its cue.
     func testSkipExerciseEndsActiveRest() {
-        var clock = start
+        let clock = start
         let spy = SpyRestFeedback()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.completeSet() // cat_cow -> push_up, rest active
