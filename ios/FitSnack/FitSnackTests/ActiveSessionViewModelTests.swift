@@ -479,6 +479,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
         private(set) var swapCallCount = 0
         private(set) var lastPrescriptionID: UUID?
         private(set) var lastSnapshotExerciseIDs: [String] = []
+        /// Runs inside `swapExercise` before the outcome returns, so a test can mutate the view model
+        /// mid-await (e.g. advance off the exercise) and exercise the stale-result guard.
+        var onSwap: (() -> Void)?
 
         init(outcome: SwapOutcome) { self.outcome = outcome }
 
@@ -494,6 +497,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
             swapCallCount += 1
             lastPrescriptionID = prescription.id
             lastSnapshotExerciseIDs = workout.blocks.flatMap(\.exercises).map(\.exercise.id)
+            onSwap?()
             return outcome
         }
     }
@@ -584,6 +588,26 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isResting, "the swap ends any lingering rest")
         let dips = vm.loggedExercises().first { $0.exerciseId == "dips" }
         XCTAssertEqual(dips?.completedSets.count, 0)
+    }
+
+    /// If the user advances off the exercise while the swap is in flight (Complete set / Skip stay
+    /// tappable during the await), the stale substitute is discarded entirely - it never resets the
+    /// now-current exercise's set counter or resurrects the already-passed slot into the lineup.
+    func testSwapDiscardsStaleResultWhenUserAdvancesMidFlight() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up (the slot being swapped)
+
+        // Mid-await, the user skips past push_up onto squat.
+        engine.onSwap = { vm.skipExercise() }
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "the user's advance stands")
+        XCTAssertEqual(vm.currentSet, 1, "squat's set counter is untouched by the stale swap")
+        XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"],
+                       "no resurrected or substituted slot - the stale result is dropped")
+        XCTAssertFalse(vm.steps.contains { $0.prescription.exercise.id == "dips" },
+                       "the stale substitute never enters the lineup")
     }
 
     /// When the engine finds no safe, in-budget peer, the original slot stays and the honest

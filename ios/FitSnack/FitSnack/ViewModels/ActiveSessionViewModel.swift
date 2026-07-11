@@ -279,16 +279,17 @@ final class ActiveSessionViewModel {
             return
         }
 
-        // Re-resolve the slot by id: the deterministic engine yields the same result synchronously in
-        // practice, but re-finding the index keeps the replacement correct even if state shifted.
-        guard let index = steps.firstIndex(where: { $0.id == step.id }) else { return }
+        // If the user advanced off this exercise during the await (Complete set / Skip stay tappable),
+        // the swap result is stale - discard it entirely rather than relocating it, so it can never
+        // reset another exercise's set counter or resurrect an already-passed slot.
+        guard steps.indices.contains(currentStepIndex), steps[currentStepIndex].id == step.id else { return }
 
         switch outcome {
         case .substituted(let substitute):
-            let previous = steps[index]
+            let previous = steps[currentStepIndex]
             completedSets.removeValue(forKey: previous.id)
             skippedStepIDs.remove(previous.id)
-            steps[index] = Step(
+            steps[currentStepIndex] = Step(
                 id: substitute.id,
                 blockTitle: previous.blockTitle,
                 blockCategory: previous.blockCategory,
