@@ -15,12 +15,14 @@ import SwiftUI
 /// while an on-open Re-program runs in the background. The Start action opens the player in US-K01.
 struct ReadyView: View {
     @State private var viewModel: ReadyViewModel
-    /// The session handed to the active-session player (US-K01). Set when Start is tapped; the
-    /// `.fullScreenCover` presents the player for it and clears it on dismiss.
-    @State private var playingWorkout: Workout?
+    /// What the active-session player is presented for (US-K01/US-K04): a fresh session started from
+    /// Start, or an abandoned session resumed from the Ready Screen. The `.fullScreenCover` presents
+    /// the player for it and clears it on dismiss.
+    @State private var presentedPlayer: PlayerPresentation?
 
     /// Held so the active-session player can be handed the engine seam for the in-session swap
-    /// (US-K03); the user and recent logs it also needs come from the loaded `viewModel`.
+    /// (US-K03) and the store it persists to (US-K04); the user and recent logs it also needs come
+    /// from the loaded `viewModel`.
     private let services: ServiceContainer
 
     init(services: ServiceContainer) {
@@ -31,9 +33,23 @@ struct ReadyView: View {
                 sessionPolicyService: services.sessionPolicyService,
                 workoutEngine: services.workoutEngine,
                 workoutLogService: services.workoutLogService,
-                consistencyService: services.consistencyService
+                consistencyService: services.consistencyService,
+                activeSessionStore: services.activeSessionStore
             )
         )
+    }
+
+    /// What the player is presented for: a fresh start or a resumed abandoned session (US-K04).
+    private enum PlayerPresentation: Identifiable {
+        case fresh(Workout)
+        case resume(ActiveSessionState)
+
+        var id: UUID {
+            switch self {
+            case .fresh(let workout): return workout.id
+            case .resume(let state): return state.workout.id
+            }
+        }
     }
 
     var body: some View {
@@ -49,13 +65,34 @@ struct ReadyView: View {
             }
         }
         .task { await viewModel.load() }
-        .fullScreenCover(item: $playingWorkout) { workout in
-            ActiveSessionView(
-                workout: workout,
-                workoutEngine: services.workoutEngine,
-                user: viewModel.user,
-                recentLogs: viewModel.recentLogs
-            )
+        .fullScreenCover(
+            item: $presentedPlayer,
+            onDismiss: {
+                // The player may have saved an abandoned session or cleared a completed one, so
+                // re-read whether anything is resumable (US-K04).
+                Task { await viewModel.refreshResumableSession() }
+            }
+        ) { presentation in
+            switch presentation {
+            case .fresh(let workout):
+                ActiveSessionView(
+                    workout: workout,
+                    workoutEngine: services.workoutEngine,
+                    user: viewModel.user,
+                    recentLogs: viewModel.recentLogs,
+                    store: viewModel.sessionStore,
+                    userId: viewModel.user?.id
+                )
+            case .resume(let state):
+                ActiveSessionView(
+                    resuming: state,
+                    workoutEngine: services.workoutEngine,
+                    user: viewModel.user,
+                    recentLogs: viewModel.recentLogs,
+                    store: viewModel.sessionStore,
+                    userId: viewModel.user?.id
+                )
+            }
         }
     }
 
@@ -66,6 +103,14 @@ struct ReadyView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     header
+
+                    if let state = viewModel.resumableSession {
+                        ResumeSessionCard(
+                            state: state,
+                            onResume: { presentedPlayer = .resume(state) },
+                            onDiscard: { Task { await viewModel.discardResumableSession() } }
+                        )
+                    }
 
                     if let consistency = viewModel.consistency {
                         ConsistencyCard(consistency: consistency)
@@ -139,7 +184,7 @@ struct ReadyView: View {
     /// Screen never gates Start behind an unanswered question. Tapping it opens the active-session
     /// player (US-K01) for the already-generated session.
     private var startBar: some View {
-        Button(action: { playingWorkout = viewModel.workout }) {
+        Button(action: { presentedPlayer = viewModel.workout.map(PlayerPresentation.fresh) }) {
             Text("Start")
                 .font(Theme.Typography.button)
                 .frame(maxWidth: .infinity)
@@ -192,6 +237,70 @@ private struct DurationChip: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(minutes) minute session")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+// MARK: - Resume session card
+
+/// The Resume-or-Discard surface for an abandoned session (US-K04): when the user backgrounded out of
+/// - or a relaunch interrupted - a session before finishing, it is offered back here rather than
+/// silently lost. Resume reopens the player at the exact position; Discard lets the session go. Copy
+/// is identity-framed and never guilt-framed. Every control meets the 44pt minimum touch target.
+private struct ResumeSessionCard: View {
+    let state: ActiveSessionState
+    let onResume: () -> Void
+    let onDiscard: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Pick up where you left off")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text(positionText)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            HStack(spacing: Theme.Spacing.md) {
+                Button(action: onResume) {
+                    Text("Resume")
+                        .font(Theme.Typography.button)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .buttonStyle(.borderedProminent)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .accessibilityLabel("Resume session")
+
+                Button(action: onDiscard) {
+                    Text("Discard")
+                        .font(Theme.Typography.button)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .buttonStyle(.bordered)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .accessibilityLabel("Discard session")
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Session in progress. \(positionText)")
+    }
+
+    /// "You're on Push-up, exercise 3 of 8." - the exact place the player will reopen to. Falls back
+    /// to a neutral line for a degenerate (empty) snapshot that names no current exercise.
+    private var positionText: String {
+        let total = state.slots.count
+        guard total > 0, state.slots.indices.contains(state.currentStepIndex) else {
+            return "You have a session in progress."
+        }
+        let name = state.slots[state.currentStepIndex].prescription.exercise.displayName
+        return "You're on \(name), exercise \(state.currentStepIndex + 1) of \(total)."
     }
 }
 

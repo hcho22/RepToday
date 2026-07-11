@@ -14,6 +14,7 @@ struct ServiceContainer {
     let phaseService: any PhaseServiceProtocol
     let userService: any UserServiceProtocol
     let workoutLogService: any WorkoutLogServiceProtocol
+    let activeSessionStore: any ActiveSessionStore
     let healthKitService: any HealthKitServiceProtocol
     let subscriptionService: any SubscriptionServiceProtocol
     let authService: any AuthServiceProtocol
@@ -26,6 +27,7 @@ struct ServiceContainer {
         phaseService: any PhaseServiceProtocol,
         userService: any UserServiceProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
+        activeSessionStore: any ActiveSessionStore,
         healthKitService: any HealthKitServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
         authService: any AuthServiceProtocol
@@ -37,6 +39,7 @@ struct ServiceContainer {
         self.phaseService = phaseService
         self.userService = userService
         self.workoutLogService = workoutLogService
+        self.activeSessionStore = activeSessionStore
         self.healthKitService = healthKitService
         self.subscriptionService = subscriptionService
         self.authService = authService
@@ -74,6 +77,12 @@ struct ServiceContainer {
             phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
             userService: userService,
             workoutLogService: MockWorkoutLogService(),
+            // In-memory active-session store (US-K04), consistent with the other in-memory stores in
+            // the mock container: an abandoned session is resumable within a run and can be resumed or
+            // discarded from the Ready Screen. `CoreDataActiveSessionStore` (tested in isolation) is
+            // ready to be swapped in for true cross-relaunch survival when the production CoreData
+            // container is wired (US-N02), alongside the CoreData user/log/policy stores.
+            activeSessionStore: InMemoryActiveSessionStore(),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
             authService: MockAuthService()

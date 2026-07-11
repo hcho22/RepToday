@@ -42,6 +42,12 @@ final class ReadyViewModel {
     /// in-force policy, so it can only claim a change the sessions reflect.
     var policyNote: SessionPolicy.Note? { policy.note }
 
+    /// An abandoned in-progress session the user can resume or discard (US-K04), or `nil` when none
+    /// is saved. Read from the `ActiveSessionStore` on open and after the player closes, so a session
+    /// the user backgrounded out of - or that a relaunch interrupted - is offered back rather than
+    /// silently lost.
+    private(set) var resumableSession: ActiveSessionState?
+
     /// The duration today's session is currently generated at. Starts at the user's learned Default
     /// Duration on `load()`, then follows whichever duration chip the user taps (US-J01). Distinct
     /// from `user.duration.defaultMinutes` (the persisted learned default): tapping a chip changes
@@ -60,6 +66,9 @@ final class ReadyViewModel {
     /// Composes the deterministic Variety Language template with the optional, deferred LLM slice
     /// (US-G03/US-N05). Template-only in the MVP (no provider wired), so it never blocks.
     private let varietyLanguageResolver: VarietyLanguageResolver
+    /// Where an in-progress session is read from (US-K04) so an abandoned session can be resumed or
+    /// discarded from the Ready Screen. The player writes to this same store while a session is live.
+    private let activeSessionStore: any ActiveSessionStore
     /// Injected clock so the recent-log lookback window is testable.
     private let now: () -> Date
 
@@ -95,6 +104,7 @@ final class ReadyViewModel {
         workoutLogService: any WorkoutLogServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
         varietyLanguageResolver: VarietyLanguageResolver = VarietyLanguageResolver(),
+        activeSessionStore: any ActiveSessionStore = InMemoryActiveSessionStore(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.userService = userService
@@ -103,6 +113,7 @@ final class ReadyViewModel {
         self.workoutLogService = workoutLogService
         self.consistencyService = consistencyService
         self.varietyLanguageResolver = varietyLanguageResolver
+        self.activeSessionStore = activeSessionStore
         self.now = now
     }
 
@@ -129,6 +140,12 @@ final class ReadyViewModel {
                 selectedMinutes = user.duration.defaultMinutes
                 hasSeededSelection = true
             }
+
+            // Surface any abandoned in-progress session so the screen can offer Resume or Discard
+            // (US-K04). Best-effort and independent of today's generated session: a read failure
+            // just leaves nothing to resume. Refreshed on every appear so a session the user
+            // backgrounded out of - and the player persisted - is offered back on return.
+            resumableSession = try? await activeSessionStore.load(for: user.id)
 
             // Recent logs feed the engine's staleness and Adaptive Overload steps; a freshly
             // onboarded user simply has none. The lookback is generous so the engine sees the full
@@ -223,6 +240,26 @@ final class ReadyViewModel {
                 selectedMinutes = previous
             }
         }
+    }
+
+    /// The store the active-session player persists to and resumes from (US-K04), handed to the
+    /// player so a fresh session it starts writes to the same place the Ready Screen reads.
+    var sessionStore: any ActiveSessionStore { activeSessionStore }
+
+    /// Re-read whether an abandoned session is resumable (US-K04). Called after the player closes, so
+    /// a session the user just finished (the player cleared it) or abandoned (the player saved it) is
+    /// reflected without a full reload. A no-op before a user has loaded.
+    func refreshResumableSession() async {
+        guard let user else { return }
+        resumableSession = try? await activeSessionStore.load(for: user.id)
+    }
+
+    /// Discard the abandoned session so it is no longer offered (US-K04) - the user chose to let it
+    /// go. Clears the store and the surfaced state. A no-op before a user has loaded.
+    func discardResumableSession() async {
+        guard let user else { return }
+        try? await activeSessionStore.clear(for: user.id)
+        resumableSession = nil
     }
 
     /// Generate today's session at `selectedMinutes` from the cached engine inputs. Shared by the

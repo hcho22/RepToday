@@ -9,8 +9,16 @@ import Observation
 /// step, the set they are on, and the elapsed wall-clock time. Completing a set advances the
 /// session and records what was done toward the eventual `WorkoutLog` (US-L01 writes it; US-L02
 /// collects the perceived-difficulty rating). After each set a rest timer (US-K02) counts down the
-/// prescription's `restSeconds` and, when it elapses, fires an accessible haptic/audio cue - the
-/// in-session swap (US-K03) and background/resume (US-K04) build on this same view model.
+/// prescription's `restSeconds` and, when it elapses, fires an accessible haptic/audio cue.
+///
+/// Background/resume (US-K04) is delivered by a persistence seam: after every meaningful change - and
+/// just before backgrounding - the view model writes a full `ActiveSessionState` snapshot to an
+/// injected `ActiveSessionStore` (keyed by the user's id) and clears it the instant the session
+/// completes. Because the snapshot captures the current lineup, position, completed work, the
+/// session-clock origin, and the rest timer as absolute instants, the player restores the *exact*
+/// position after a relaunch, and the Ready Screen can offer an abandoned session as Resume or
+/// Discard. The `init(state:)` designated initializer is the resume entry point; the fresh-start
+/// `init(workout:)` is a convenience over it.
 ///
 /// The rest timer is derived from the same injected clock as elapsed time, but with pause semantics:
 /// it is scheduled against a wall-clock `restDeadline`, and backgrounding the app pauses it (capturing
@@ -120,23 +128,83 @@ final class ActiveSessionViewModel {
     private let user: User?
     private let recentLogs: [WorkoutLog]
 
+    // MARK: - Persistence (US-K04)
+
+    /// The store the in-progress session is written to after every meaningful change and cleared on
+    /// completion, so backgrounding or a relaunch never costs the user their place. `nil` (with a nil
+    /// `userId`) in previews, where the player simply persists nothing.
+    private let store: (any ActiveSessionStore)?
+    /// The id the session is persisted under - the owning user's id.
+    private let userId: String?
+
+    /// The most recently launched persistence write, exposed only so tests can await the store
+    /// settling. The UI never awaits it: persistence is fire-and-forget and best-effort, so the
+    /// player never stalls on a disk write.
+    private(set) var persistenceTask: Task<Void, Never>?
+
+    /// Restore-capable designated initializer (US-K04): builds the player from a persisted - or
+    /// freshly-seeded - `ActiveSessionState`, so a fresh start, a resume-after-relaunch, and a resume
+    /// from the Ready Screen all funnel through one representation of the play state. When `store` and
+    /// `userId` are supplied the player persists a fresh snapshot after every meaningful change and
+    /// clears it on completion; without them (previews) it persists nothing.
     init(
+        state: ActiveSessionState,
+        swapEngine: (any WorkoutEngineProtocol)? = nil,
+        user: User? = nil,
+        recentLogs: [WorkoutLog] = [],
+        store: (any ActiveSessionStore)? = nil,
+        userId: String? = nil,
+        now: @escaping () -> Date = { Date() },
+        feedback: RestTimerFeedback = SystemRestTimerFeedback()
+    ) {
+        self.workout = state.workout
+        self.swapEngine = swapEngine
+        self.user = user
+        self.recentLogs = recentLogs
+        self.store = store
+        self.userId = userId
+        self.now = now
+        self.feedback = feedback
+
+        let steps = Self.steps(from: state.slots)
+        self.steps = steps
+        self.isComplete = steps.isEmpty
+        // Clamp the restored position into range so a corrupt or truncated snapshot resumes safely
+        // rather than trapping on an out-of-bounds index.
+        self.currentStepIndex = steps.isEmpty ? 0 : min(max(state.currentStepIndex, 0), steps.count - 1)
+        self.currentSet = max(1, state.currentSet)
+        self.completedSets = state.completedSets
+        self.skippedStepIDs = state.skippedStepIDs
+        self.startedAt = state.startedAt
+        if let rest = state.rest {
+            self.isResting = true
+            self.restTotalSeconds = rest.totalSeconds
+            self.restDeadline = rest.deadline
+            self.restRemainingWhenPaused = rest.remainingWhenPaused
+        }
+    }
+
+    /// Fresh-start convenience: play `workout` from its first set, with no completed work yet.
+    convenience init(
         workout: Workout,
         swapEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        store: (any ActiveSessionStore)? = nil,
+        userId: String? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
-        self.workout = workout
-        self.swapEngine = swapEngine
-        self.user = user
-        self.recentLogs = recentLogs
-        self.now = now
-        self.feedback = feedback
-        let flattened = Self.flatten(workout)
-        self.steps = flattened
-        self.isComplete = flattened.isEmpty
+        self.init(
+            state: ActiveSessionState(fresh: workout),
+            swapEngine: swapEngine,
+            user: user,
+            recentLogs: recentLogs,
+            store: store,
+            userId: userId,
+            now: now,
+            feedback: feedback
+        )
     }
 
     // MARK: - Derived state
@@ -166,10 +234,13 @@ final class ActiveSessionViewModel {
     // MARK: - Timing
 
     /// Begin the session clock. Idempotent: a second call (e.g. the view re-appearing) keeps the
-    /// original start, so elapsed time never resets. US-K04 will persist `startedAt` across relaunch.
+    /// original start, so elapsed time never resets. `startedAt` is persisted (US-K04) so elapsed
+    /// time survives a relaunch - a resumed session keeps its already-set origin rather than restarting.
     func start() {
         guard startedAt == nil else { return }
         startedAt = now()
+        // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
+        persist()
     }
 
     /// Elapsed whole seconds from the start to `date`, frozen at `finishedAt` once complete. A pure
@@ -203,6 +274,7 @@ final class ActiveSessionViewModel {
         if !isComplete {
             startRest(seconds: restSeconds)
         }
+        persist()
     }
 
     /// Skip the current exercise, marking it skipped for the eventual log, and advance to the next
@@ -217,6 +289,7 @@ final class ActiveSessionViewModel {
         completedSets.removeValue(forKey: step.id)
         skippedStepIDs.insert(step.id)
         advanceExercise()
+        persist()
     }
 
     /// Build the per-exercise log rows for the eventual `WorkoutLog` (US-L01) from what was actually
@@ -300,6 +373,9 @@ final class ActiveSessionViewModel {
                 total: previous.total
             )
             currentSet = 1
+            // The lineup changed - persist so a resume after a swap restores the substitute, not the
+            // movement the user replaced.
+            persist()
         case .noAlternative:
             noSwapAlternative = true
         }
@@ -359,12 +435,15 @@ final class ActiveSessionViewModel {
     func completeRestIfElapsed(asOf date: Date) {
         guard isResting, restRemainingWhenPaused == nil, restRemaining(asOf: date) == 0 else { return }
         endRest(fireFeedback: true)
+        persist()
     }
 
     /// Skip the remaining rest and reveal the next set immediately, without firing the completion cue
     /// (the user chose to move on). A no-op when no rest is active.
     func skipRest() {
+        guard isResting else { return }
         endRest(fireFeedback: false)
+        persist()
     }
 
     /// Add `seconds` to the running rest, extending both the deadline (or the paused remainder) and
@@ -377,14 +456,18 @@ final class ActiveSessionViewModel {
         } else if let deadline = restDeadline {
             restDeadline = deadline.addingTimeInterval(TimeInterval(seconds))
         }
+        persist()
     }
 
     /// Pause the running rest (the app is backgrounding), capturing the remaining seconds so the
     /// countdown freezes instead of blowing past while the user is away. A no-op if not running.
+    /// The paused remainder is persisted, so a rest that was mid-countdown when the app was killed
+    /// resumes from exactly where it stopped after a relaunch (US-K04).
     func pauseRest(asOf date: Date) {
         guard isResting, restRemainingWhenPaused == nil else { return }
         restRemainingWhenPaused = restRemaining(asOf: date)
         restDeadline = nil
+        persist()
     }
 
     /// Resume a paused rest (the app is foregrounding again), rescheduling the deadline from the
@@ -393,6 +476,7 @@ final class ActiveSessionViewModel {
         guard isResting, let remaining = restRemainingWhenPaused else { return }
         restDeadline = date.addingTimeInterval(TimeInterval(remaining))
         restRemainingWhenPaused = nil
+        persist()
     }
 
     private func endRest(fireFeedback: Bool) {
@@ -429,20 +513,59 @@ final class ActiveSessionViewModel {
         finishedAt = now()
     }
 
-    /// Flatten the session's blocks into a single ordered list, tagging each exercise with its block
-    /// and its overall position so the player can render block context and "N of M" progress.
-    private static func flatten(_ workout: Workout) -> [Step] {
-        let pairs = workout.blocks.flatMap { block in
-            block.exercises.map { (block, $0) }
+    // MARK: - Snapshot & persistence (US-K04)
+
+    /// A snapshot of the current play state for persistence - the current lineup (reflecting any
+    /// swap), the position, what has been done, the session-clock origin, and the rest timer. Pure
+    /// over the view model's state; timing is captured as absolute instants (`startedAt`, the rest
+    /// `deadline`), so restoring at an unknown-later moment recomputes elapsed time and a running
+    /// rest countdown correctly.
+    func snapshot() -> ActiveSessionState {
+        let slots = steps.map {
+            ActiveSessionState.Slot(blockTitle: $0.blockTitle, blockCategory: $0.blockCategory, prescription: $0.prescription)
         }
-        let total = pairs.count
-        return pairs.enumerated().map { index, pair in
-            let (block, prescription) = pair
-            return Step(
-                id: prescription.id,
-                blockTitle: block.title,
-                blockCategory: block.category,
-                prescription: prescription,
+        let rest: ActiveSessionState.Rest? = isResting
+            ? ActiveSessionState.Rest(totalSeconds: restTotalSeconds, deadline: restDeadline, remainingWhenPaused: restRemainingWhenPaused)
+            : nil
+        return ActiveSessionState(
+            workout: workout,
+            slots: slots,
+            currentStepIndex: currentStepIndex,
+            currentSet: currentSet,
+            completedSets: completedSets,
+            skippedStepIDs: skippedStepIDs,
+            startedAt: startedAt,
+            rest: rest
+        )
+    }
+
+    /// Persist the current play state, or clear it once the session is complete (US-K04). Writes are
+    /// chained behind the previous one so they land in call order even though each is fire-and-forget,
+    /// and the whole thing is a no-op when no store/userId is wired (previews). Best-effort: a failed
+    /// write never disrupts the session, and the UI never awaits it.
+    private func persist() {
+        guard let store, let userId else { return }
+        let previous = persistenceTask
+        if isComplete {
+            // A completed session is no longer resumable, so it is cleared rather than saved.
+            persistenceTask = Task { _ = await previous?.value; try? await store.clear(for: userId) }
+        } else {
+            let snapshot = snapshot()
+            persistenceTask = Task { _ = await previous?.value; try? await store.save(snapshot, for: userId) }
+        }
+    }
+
+    /// Rebuild the ordered step list from a lineup snapshot, tagging each slot with its 1-based
+    /// overall position so the player can render block context and "N of M" progress. Position and
+    /// total are rederived from the slot order rather than stored, so they always agree with the list.
+    private static func steps(from slots: [ActiveSessionState.Slot]) -> [Step] {
+        let total = slots.count
+        return slots.enumerated().map { index, slot in
+            Step(
+                id: slot.prescription.id,
+                blockTitle: slot.blockTitle,
+                blockCategory: slot.blockCategory,
+                prescription: slot.prescription,
                 position: index + 1,
                 total: total
             )

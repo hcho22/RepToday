@@ -342,6 +342,150 @@ final class PersistenceTests: XCTestCase {
         try context.fetch(CDSessionPolicy.fetchRequest(userId: userId)).first
     }
 
+    // MARK: - Active session (US-K04)
+
+    /// An in-progress session round-trips identically through the CoreData layer, so an abandoned
+    /// session survives a full relaunch and can be resumed or discarded from the Ready Screen.
+    func testSaveAndReloadActiveSessionRoundTrips() throws {
+        let state = makeActiveSessionState()
+
+        try insert(state, userId: "apple-user-abc123")
+        let reloaded = try XCTUnwrap(fetchActiveSession(userId: "apple-user-abc123")).toActiveSessionState()
+
+        XCTAssertEqual(reloaded, state)
+    }
+
+    /// A running rest is stored as its absolute deadline, so the countdown restores correctly.
+    func testSaveAndReloadActiveSessionWithRunningRest() throws {
+        let state = makeActiveSessionState(rest: ActiveSessionState.Rest(totalSeconds: 45, deadline: dateB, remainingWhenPaused: nil))
+
+        try insert(state, userId: "u")
+        let reloaded = try XCTUnwrap(fetchActiveSession(userId: "u")).toActiveSessionState()
+
+        XCTAssertEqual(reloaded, state)
+        XCTAssertEqual(reloaded.rest?.deadline, dateB)
+    }
+
+    /// A rest paused on backgrounding is stored with its frozen remainder, so it resumes from where
+    /// it stopped after a relaunch.
+    func testSaveAndReloadActiveSessionWithPausedRest() throws {
+        let state = makeActiveSessionState(rest: ActiveSessionState.Rest(totalSeconds: 45, deadline: nil, remainingWhenPaused: 18))
+
+        try insert(state, userId: "u")
+        let reloaded = try XCTUnwrap(fetchActiveSession(userId: "u")).toActiveSessionState()
+
+        XCTAssertEqual(reloaded.rest?.remainingWhenPaused, 18)
+        XCTAssertNil(reloaded.rest?.deadline)
+    }
+
+    /// Persisting again overwrites the user's single in-progress session in place, never accumulating.
+    func testUpdatingActiveSessionOverwritesInPlace() throws {
+        try insert(makeActiveSessionState(), userId: "u")
+
+        var advanced = makeActiveSessionState()
+        advanced.currentStepIndex = 0
+        advanced.currentSet = 1
+        let existing = try XCTUnwrap(fetchActiveSession(userId: "u"))
+        try existing.update(from: advanced, userId: "u")
+        try context.save()
+
+        let all = try context.fetch(CDActiveSession.fetchRequest())
+        XCTAssertEqual(all.count, 1, "saving must overwrite, not insert a duplicate")
+        XCTAssertEqual(try XCTUnwrap(all.first).toActiveSessionState(), advanced)
+    }
+
+    /// In-progress sessions are keyed by owner: a second user's session is fetched independently.
+    func testActiveSessionScopedByUserId() throws {
+        var other = makeActiveSessionState()
+        other.currentStepIndex = 0
+        try insert(makeActiveSessionState(), userId: "user-a", save: false)
+        try insert(other, userId: "user-b")
+
+        XCTAssertEqual(try XCTUnwrap(fetchActiveSession(userId: "user-a")).toActiveSessionState().currentStepIndex, 1)
+        XCTAssertEqual(try XCTUnwrap(fetchActiveSession(userId: "user-b")).toActiveSessionState().currentStepIndex, 0)
+    }
+
+    func testToActiveSessionStateThrowsWhenDataMissing() throws {
+        let bare = CDActiveSession(context: context)
+
+        XCTAssertThrowsError(try bare.toActiveSessionState()) { error in
+            XCTAssertEqual(error as? PersistenceError, .missingField("CDActiveSession.stateData"))
+        }
+    }
+
+    /// The snapshot survives a JSON round-trip through the shared coder with no data loss - including
+    /// the `[UUID: [CompletedSet]]` completed-set map, whose non-string keys must round-trip exactly.
+    func testActiveSessionStateCodecRoundTrips() throws {
+        let state = makeActiveSessionState(rest: ActiveSessionState.Rest(totalSeconds: 30, deadline: nil, remainingWhenPaused: 12))
+
+        let data = try PersistenceCoder.encoder.encode(state)
+        let decoded = try PersistenceCoder.decoder.decode(ActiveSessionState.self, from: data)
+
+        XCTAssertEqual(decoded, state)
+        XCTAssertEqual(decoded.completedSets[uuidA], [CompletedSet(reps: 12, durationSeconds: nil)])
+    }
+
+    /// The CoreData-backed store saves, loads, and clears an in-progress session (US-K04), so the
+    /// Ready Screen can offer Resume then Discard.
+    func testCoreDataActiveSessionStoreSaveLoadClear() async throws {
+        let store = CoreDataActiveSessionStore(context: context)
+        let state = makeActiveSessionState()
+
+        let beforeSave = try await store.load(for: "u")
+        XCTAssertNil(beforeSave, "nothing saved yet")
+
+        try await store.save(state, for: "u")
+        let afterSave = try await store.load(for: "u")
+        XCTAssertEqual(afterSave, state)
+
+        try await store.clear(for: "u")
+        let afterClear = try await store.load(for: "u")
+        XCTAssertNil(afterClear, "cleared session is no longer resumable")
+    }
+
+    private func insert(_ state: ActiveSessionState, userId: String, save: Bool = true) throws {
+        try CDActiveSession(context: context).update(from: state, userId: userId)
+        if save { try context.save() }
+    }
+
+    private func fetchActiveSession(userId: String) throws -> CDActiveSession? {
+        try context.fetch(CDActiveSession.fetchRequest(userId: userId)).first
+    }
+
+    private func makeExercise(id: String, isHold: Bool = false) -> Exercise {
+        Exercise(
+            id: id, displayName: id.capitalized, pillar: .strength, movementPattern: .push,
+            category: .strength, difficulty: 2, phase: .discipline, equipment: [],
+            isHold: isHold, defaultReps: isHold ? nil : 10, defaultDurationSeconds: isHold ? 30 : nil,
+            estimatedTimePerSetSeconds: 40, metValue: 4, progressionChainId: "\(id)_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "3x12", apartmentFriendly: true
+        )
+    }
+
+    private func makeActiveSessionState(rest: ActiveSessionState.Rest? = nil) -> ActiveSessionState {
+        let p1 = PrescribedExercise(id: uuidA, exercise: makeExercise(id: "push_up"), sets: 3, reps: 12, durationSeconds: nil, restSeconds: 45)
+        let p2 = PrescribedExercise(id: uuidB, exercise: makeExercise(id: "plank", isHold: true), sets: 2, reps: nil, durationSeconds: 30, restSeconds: 30)
+        let workout = Workout(
+            id: uuidC, createdAt: dateA, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false,
+            blocks: [WorkoutBlock(id: uuidA, title: "Strength", category: .strength, exercises: [p1, p2])]
+        )
+        return ActiveSessionState(
+            workout: workout,
+            slots: [
+                ActiveSessionState.Slot(blockTitle: "Strength", blockCategory: .strength, prescription: p1),
+                ActiveSessionState.Slot(blockTitle: "Strength", blockCategory: .strength, prescription: p2)
+            ],
+            currentStepIndex: 1,
+            currentSet: 2,
+            completedSets: [uuidA: [CompletedSet(reps: 12, durationSeconds: nil)]],
+            skippedStepIDs: [],
+            startedAt: dateB,
+            rest: rest
+        )
+    }
+
     // MARK: - Factories
 
     private func makeUser(subscription: Subscription, injuries: [String]) -> User {

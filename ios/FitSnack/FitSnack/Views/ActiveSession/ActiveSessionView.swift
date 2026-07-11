@@ -13,18 +13,46 @@ struct ActiveSessionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: ActiveSessionViewModel
 
+    /// Start a fresh session for `workout`. When `store` and `userId` are supplied, the player
+    /// persists its progress so it survives backgrounding and relaunch (US-K04).
     init(
         workout: Workout,
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
-        recentLogs: [WorkoutLog] = []
+        recentLogs: [WorkoutLog] = [],
+        store: (any ActiveSessionStore)? = nil,
+        userId: String? = nil
     ) {
         _viewModel = State(
             initialValue: ActiveSessionViewModel(
                 workout: workout,
                 swapEngine: workoutEngine,
                 user: user,
-                recentLogs: recentLogs
+                recentLogs: recentLogs,
+                store: store,
+                userId: userId
+            )
+        )
+    }
+
+    /// Resume an abandoned session from its persisted snapshot (US-K04), restoring the exact position,
+    /// completed work, elapsed-time origin, and rest timer.
+    init(
+        resuming state: ActiveSessionState,
+        workoutEngine: (any WorkoutEngineProtocol)? = nil,
+        user: User? = nil,
+        recentLogs: [WorkoutLog] = [],
+        store: (any ActiveSessionStore)? = nil,
+        userId: String? = nil
+    ) {
+        _viewModel = State(
+            initialValue: ActiveSessionViewModel(
+                state: state,
+                swapEngine: workoutEngine,
+                user: user,
+                recentLogs: recentLogs,
+                store: store,
+                userId: userId
             )
         )
     }
