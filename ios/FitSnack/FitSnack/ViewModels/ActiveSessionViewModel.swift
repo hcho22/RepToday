@@ -76,7 +76,8 @@ final class ActiveSessionViewModel {
     private(set) var currentSet = 1
 
     /// True once every exercise has been completed or skipped. The player shows its completion state
-    /// and freezes the elapsed clock; the rich post-session summary and log write are US-L01.
+    /// and freezes the elapsed clock; the post-session `summary` and the fire-and-forget log write
+    /// (US-L01) hang off this transition.
     private(set) var isComplete: Bool
 
     /// What the user actually did, accumulated toward the eventual `WorkoutLog` (US-L01), keyed by
