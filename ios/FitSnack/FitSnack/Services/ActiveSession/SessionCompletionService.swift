@@ -14,6 +14,11 @@ import Foundation
 ///   reconciles the policy (clearing the now-inert `coldStartContract`). The user and policy are
 ///   separate aggregates, so they are persisted separately.
 ///
+/// The user aggregate has a second writer - the on-open reprogram (US-J02/US-F03), which can persist a
+/// learned `user.duration` between Ready-Screen open and session completion. So the cold-start/consistency
+/// read-modify-write is based on the *freshest* persisted user (`currentUser()`), not the caller's
+/// open-time snapshot, which would otherwise clobber that learned duration.
+///
 /// It deliberately does **not** fold Default Duration learning here: that is the Programmer's job
 /// (US-F03), which folds each completed session's `durationMinutes` into the EWMA exactly once, keyed
 /// off the policy's `updatedAt` dedup boundary. Folding here too would double-count. This service only
@@ -54,13 +59,19 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         //    learning (US-F04) and the Consistency Score (US-H01) both read back.
         try await workoutLogService.save(log)
 
-        // 2. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
+        // 2. Read the *freshest* persisted user, not the Ready-Screen snapshot. The on-open reprogram
+        //    (US-J02/US-F03) is a second writer of the user aggregate and may have persisted a learned
+        //    `user.duration` since this session's snapshot was captured; read-modifying-writing the stale
+        //    snapshot would clobber it. Fall back to the snapshot only if the read is unavailable.
+        let latest = (try? await userService.currentUser()) ?? user
+
+        // 3. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
         //    The policy read falls back to the neutral default until the Programmer has ever written
         //    one, exactly as `currentPolicy(for:)` does.
-        let currentPolicy = try await policyStore.policy(for: user.id) ?? .default
-        let handoff = ColdStartHandoff.afterCompletedSession(user: user, sessionPolicy: currentPolicy)
+        let currentPolicy = try await policyStore.policy(for: latest.id) ?? .default
+        let handoff = ColdStartHandoff.afterCompletedSession(user: latest, sessionPolicy: currentPolicy)
 
-        // 3. Refresh the forgiving Consistency Score onto the user aggregate over the *full* persisted
+        // 4. Refresh the forgiving Consistency Score onto the user aggregate over the *full* persisted
         //    history (which now includes the just-saved `log`), not the caller's bounded `recentLogs`.
         //    `longestChain` is an all-time historical maximum (US-H01: "a later break never lowers it"),
         //    so scoring over a bounded window would understate and overwrite the earned best run.
@@ -68,15 +79,15 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         var updatedUser = handoff.user
         updatedUser.consistency = try await consistencyService.consistency(
             for: allLogs,
-            weeklyGoal: user.consistency.weeklyGoal
+            weeklyGoal: latest.consistency.weeklyGoal
         )
 
-        // 4. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
+        // 5. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
         //    only when the handoff actually changed it (i.e. cold-start just retired and cleared the
         //    contract). The two aggregates are saved separately, matching US-F03.
         try await userService.save(updatedUser)
         if handoff.sessionPolicy != currentPolicy {
-            try await policyStore.save(handoff.sessionPolicy, for: user.id)
+            try await policyStore.save(handoff.sessionPolicy, for: latest.id)
         }
     }
 }

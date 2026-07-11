@@ -137,6 +137,27 @@ final class SessionCompletionServiceTests: XCTestCase {
         XCTAssertNotNil(savedPolicy?.coldStartContract, "an active cold-start keeps its contract")
     }
 
+    // MARK: - Freshest-user read (second-writer safety)
+
+    /// The user aggregate has a second writer - the on-open reprogram (US-J02/US-F03) can persist a
+    /// learned `user.duration` between the Ready-Screen snapshot and session completion. The recorder
+    /// must read-modify-write from the *freshest* persisted user, not the stale snapshot, so that
+    /// learned duration survives rather than being clobbered.
+    func testRecordPreservesDurationWrittenAfterSnapshot() async throws {
+        let snapshot = makeUser()
+        // The reprogram persisted a shorter learned default after the snapshot was captured.
+        var fresher = snapshot
+        fresher.duration = User.Duration(defaultMinutes: 10, onboardingSeedMinutes: 20, completedDurationEWMA: 11)
+        let userService = MockUserService(user: fresher)
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: InMemorySessionPolicyStore())
+
+        try await service.recordCompletedSession(makeLog(), user: snapshot, recentLogs: [])
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.duration.defaultMinutes, 10, "the learned duration written after the snapshot is preserved, not clobbered")
+        XCTAssertEqual(saved?.duration.completedDurationEWMA, 11)
+    }
+
     /// A user already warmed up (cold-start inactive) advances no counter and the policy stays put.
     func testRecordNoOpColdStartWhenAlreadyRetired() async throws {
         let store = InMemorySessionPolicyStore()
