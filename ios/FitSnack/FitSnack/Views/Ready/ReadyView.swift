@@ -19,7 +19,12 @@ struct ReadyView: View {
     /// `.fullScreenCover` presents the player for it and clears it on dismiss.
     @State private var playingWorkout: Workout?
 
+    /// Held so the active-session player can be handed the engine seam for the in-session swap
+    /// (US-K03); the user and recent logs it also needs come from the loaded `viewModel`.
+    private let services: ServiceContainer
+
     init(services: ServiceContainer) {
+        self.services = services
         _viewModel = State(
             initialValue: ReadyViewModel(
                 userService: services.userService,
@@ -45,7 +50,12 @@ struct ReadyView: View {
         }
         .task { await viewModel.load() }
         .fullScreenCover(item: $playingWorkout) { workout in
-            ActiveSessionView(workout: workout)
+            ActiveSessionView(
+                workout: workout,
+                workoutEngine: services.workoutEngine,
+                user: viewModel.user,
+                recentLogs: viewModel.recentLogs
+            )
         }
     }
 

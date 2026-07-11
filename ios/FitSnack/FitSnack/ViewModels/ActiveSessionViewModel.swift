@@ -18,6 +18,14 @@ import Observation
 /// pure over the injected clock, so the tests drive the countdown, skip, extend, pause, and resume
 /// without real time passing.
 ///
+/// The in-session swap (US-K03) lets the user replace the current exercise with a deterministic
+/// same-pillar/pattern peer so one movement they can't or won't do never derails the session. It
+/// calls the engine's swap step (US-C08, `ExerciseSwap.swap` behind `WorkoutEngineProtocol`), which
+/// substitutes within the same pillar, pattern, difficulty band, and time budget and never duplicates
+/// a movement already in the session; when no safe in-budget peer exists it returns `.noAlternative`
+/// and the original slot stays. The swap dependencies are injected and optional, so the player still
+/// constructs (e.g. in previews) without an engine - swap simply stays unavailable then.
+///
 /// Elapsed time is derived from an injected clock rather than an internal ticking counter: the view
 /// re-reads `elapsed(asOf:)` once a second via a `TimelineView`, so the value is accurate, resilient
 /// to backgrounding, and a pure function the tests can drive without real time passing.
@@ -72,6 +80,17 @@ final class ActiveSessionViewModel {
     /// When the session completed, so elapsed time freezes instead of ticking past the finish.
     private(set) var finishedAt: Date?
 
+    // MARK: - Swap (US-K03)
+
+    /// True while a swap request is in flight, so the UI can disable the swap control and never fire
+    /// two overlapping swaps of the same slot.
+    private(set) var isSwapping = false
+
+    /// True when the most recent swap request found no safe, in-budget peer (`.noAlternative`): the
+    /// original slot stays and the UI shows an honest "no alternative" state rather than an unsafe
+    /// substitution. Cleared when the user advances off the exercise or requests another swap.
+    private(set) var noSwapAlternative = false
+
     // MARK: - Rest timer (US-K02)
 
     /// True while a rest period is in force between sets - running or paused. The player shows the
@@ -93,12 +112,26 @@ final class ActiveSessionViewModel {
     private let now: () -> Date
     private let feedback: RestTimerFeedback
 
+    /// The engine seam the swap runs through (US-C08). `nil` when the player is built without an
+    /// engine (previews), which simply leaves swap unavailable.
+    private let swapEngine: (any WorkoutEngineProtocol)?
+    /// The user and recent logs the swap step needs to filter and size a substitute. Captured at
+    /// construction from the Ready Screen's already-loaded state, so a swap adds no fetch.
+    private let user: User?
+    private let recentLogs: [WorkoutLog]
+
     init(
         workout: Workout,
+        swapEngine: (any WorkoutEngineProtocol)? = nil,
+        user: User? = nil,
+        recentLogs: [WorkoutLog] = [],
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
         self.workout = workout
+        self.swapEngine = swapEngine
+        self.user = user
+        self.recentLogs = recentLogs
         self.now = now
         self.feedback = feedback
         let flattened = Self.flatten(workout)
@@ -203,6 +236,94 @@ final class ActiveSessionViewModel {
         }
     }
 
+    // MARK: - Swap (US-K03)
+
+    /// Whether the current exercise can be swapped: an engine and user are wired and there is an
+    /// exercise on screen. The UI hides the swap control when this is false (e.g. in previews with no
+    /// engine, or on the completion state).
+    var canSwap: Bool {
+        swapEngine != nil && user != nil && currentStep != nil
+    }
+
+    /// Swap the current exercise for a deterministic same-pillar/pattern peer (US-K03), so one
+    /// movement the user can't or won't do never derails the session. Runs the engine's swap step
+    /// (US-C08), which substitutes within the same pillar, pattern, difficulty band, and time budget
+    /// and never duplicates a movement already in the session (including one already swapped in this
+    /// session - the request is built from the *current* lineup, not the original).
+    ///
+    /// On `.substituted` the current slot is replaced in place: the substitute carries a fresh
+    /// capacity-relative target with the original slot's set count and rest preserved, the set counter
+    /// resets to 1, and any sets already recorded for the replaced movement are discarded (the
+    /// exercise is being abandoned, mirroring a skip). On `.noAlternative` the original slot stays and
+    /// `noSwapAlternative` flips so the UI shows an honest "no alternative" state. A no-op once the
+    /// session is complete, while a swap is already in flight, or when swap is unavailable.
+    func swapCurrentExercise() async {
+        guard canSwap, !isSwapping, let engine = swapEngine, let user, let step = currentStep else { return }
+        isSwapping = true
+        noSwapAlternative = false
+        defer { isSwapping = false }
+
+        // A swap reshapes the slot, so any lingering rest ends without firing its completion cue.
+        endRest(fireFeedback: false)
+
+        let outcome: SwapOutcome
+        do {
+            outcome = try await engine.swapExercise(
+                step.prescription,
+                in: snapshotForSwap(),
+                user: user,
+                recentLogs: recentLogs
+            )
+        } catch {
+            // An unexpected engine failure leaves the original slot untouched; the user can retry.
+            return
+        }
+
+        // Re-resolve the slot by id: the deterministic engine yields the same result synchronously in
+        // practice, but re-finding the index keeps the replacement correct even if state shifted.
+        guard let index = steps.firstIndex(where: { $0.id == step.id }) else { return }
+
+        switch outcome {
+        case .substituted(let substitute):
+            let previous = steps[index]
+            completedSets.removeValue(forKey: previous.id)
+            skippedStepIDs.remove(previous.id)
+            steps[index] = Step(
+                id: substitute.id,
+                blockTitle: previous.blockTitle,
+                blockCategory: previous.blockCategory,
+                prescription: substitute,
+                position: previous.position,
+                total: previous.total
+            )
+            currentSet = 1
+        case .noAlternative:
+            noSwapAlternative = true
+        }
+    }
+
+    /// A snapshot of the session as it stands now - every current step's prescription in one block -
+    /// so the swap step's duplicate check sees the exercises actually in play (including earlier
+    /// swaps), not the original lineup. Only the flat exercise set matters to `ExerciseSwap`; the
+    /// block grouping is collapsed and the shape metadata carried through unchanged.
+    private func snapshotForSwap() -> Workout {
+        let block = WorkoutBlock(
+            id: workout.id,
+            title: "Session",
+            category: .strength,
+            exercises: steps.map(\.prescription)
+        )
+        return Workout(
+            id: workout.id,
+            createdAt: workout.createdAt,
+            shape: workout.shape,
+            focusPillar: workout.focusPillar,
+            requestedMinutes: workout.requestedMinutes,
+            wasReturn: workout.wasReturn,
+            blocks: [block]
+        )
+    }
+
     // MARK: - Rest timer (US-K02)
 
     /// Whether the active rest is paused (the app is backgrounded). Distinct from `isResting`, which
@@ -289,6 +410,9 @@ final class ActiveSessionViewModel {
 
     private func advanceExercise() {
         currentSet = 1
+        // A fresh exercise starts with no "no alternative" notice - that verdict was about the slot
+        // the user just left.
+        noSwapAlternative = false
         if currentStepIndex + 1 < steps.count {
             currentStepIndex += 1
         } else {

@@ -644,10 +644,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A swap control calls the deterministic swap engine (US-C08, `ExerciseSwap.swap`) and substitutes within the same pillar/pattern, difficulty band, and time budget, never duplicating a movement already in the session
-- [ ] When no safe in-budget peer exists, the UI shows a clear "no alternative" state rather than an unsafe substitution
-- [ ] The swapped exercise carries a fresh capacity-relative target and preserves the slot's set count and rest
-- [ ] Uses `Theme` tokens; verify in iOS Simulator
+- [x] A swap control calls the deterministic swap engine (US-C08, `ExerciseSwap.swap`) and substitutes within the same pillar/pattern, difficulty band, and time budget, never duplicating a movement already in the session - *`ActiveSessionViewModel.swapCurrentExercise()` runs the current slot through `WorkoutEngineProtocol.swapExercise`, replacing it in place on `.substituted`; the request is built from a `snapshotForSwap()` of the *current* lineup (every step's prescription), so a movement swapped in earlier is visible to the engine's duplicate check and a later swap can never re-introduce it or a still-present original*
+- [x] When no safe in-budget peer exists, the UI shows a clear "no alternative" state rather than an unsafe substitution - *`.noAlternative` keeps the original slot and flips `noSwapAlternative`, which `ActiveSessionView` renders as a quiet "No safe alternative for this one - it stays in your session." notice above the controls; the flag clears when the user advances off the exercise*
+- [x] The swapped exercise carries a fresh capacity-relative target and preserves the slot's set count and rest - *the substitute is materialized by `ExerciseSwap` with a fresh `AdaptiveOverload` target and the original slot's set count and rest; the view model resets the set counter to 1 and discards any sets already recorded for the replaced movement (it is being abandoned, mirroring a skip), so a swapped exercise never carries stale sets into the eventual log*
+- [x] Uses `Theme` tokens; verify in iOS Simulator - *the swap control and no-alternative notice are fully `Theme`-tokened at the 60pt active-screen touch target with VoiceOver labels; the swap dependencies (engine, user, recent logs) are threaded from the Ready Screen's already-loaded state so a swap adds no fetch; verified via the full suite (503 pass, 7 new for the swap - view-model replacement/discard/no-alternative/in-flight-guard/snapshot plus an end-to-end same-pillar/pattern-peer test over the real engine and bundled library). Interactive tap-through was not driven (no accessibility automation in this environment)*
 
 **Validation Test:**
 

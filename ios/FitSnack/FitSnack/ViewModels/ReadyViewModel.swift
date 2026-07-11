@@ -78,8 +78,9 @@ final class ReadyViewModel {
 
     /// Engine inputs cached from `load()` so a chip tap regenerates the session on-device without
     /// re-fetching the user, logs, or policy - keeping regeneration well inside the sub-100ms budget
-    /// so Start is never left waiting on an answer.
-    private var recentLogs: [WorkoutLog] = []
+    /// so Start is never left waiting on an answer. Also handed to the active-session player so an
+    /// in-session swap (US-K03) filters and sizes a substitute without a fresh fetch.
+    private(set) var recentLogs: [WorkoutLog] = []
     private var policy: SessionPolicy = .default
 
     /// True once the first successful load has seeded `selectedMinutes` from the learned default.
