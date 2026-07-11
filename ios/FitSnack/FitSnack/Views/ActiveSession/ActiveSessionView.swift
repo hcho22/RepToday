@@ -13,8 +13,20 @@ struct ActiveSessionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: ActiveSessionViewModel
 
-    init(workout: Workout) {
-        _viewModel = State(initialValue: ActiveSessionViewModel(workout: workout))
+    init(
+        workout: Workout,
+        workoutEngine: (any WorkoutEngineProtocol)? = nil,
+        user: User? = nil,
+        recentLogs: [WorkoutLog] = []
+    ) {
+        _viewModel = State(
+            initialValue: ActiveSessionViewModel(
+                workout: workout,
+                swapEngine: workoutEngine,
+                user: user,
+                recentLogs: recentLogs
+            )
+        )
     }
 
     var body: some View {
@@ -145,10 +157,16 @@ struct ActiveSessionView: View {
         .accessibilityLabel("Set \(viewModel.currentSet) of \(step.prescription.sets)")
     }
 
-    /// The primary "complete set" action plus a quieter "skip" - both meeting the 60pt active-screen
-    /// touch target. Completing the last set of the last exercise finishes the session.
+    /// The primary "complete set" action plus quieter "swap" and "skip" - all meeting the 60pt
+    /// active-screen touch target. Completing the last set of the last exercise finishes the session;
+    /// swapping (US-K03) replaces the current movement with a same-pillar/pattern peer, or, when none
+    /// is safe and in budget, surfaces an honest "no alternative" notice above the actions.
     private var controls: some View {
         VStack(spacing: Theme.Spacing.sm) {
+            if viewModel.noSwapAlternative {
+                noAlternativeNotice
+            }
+
             Button {
                 viewModel.completeSet()
             } label: {
@@ -161,19 +179,48 @@ struct ActiveSessionView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(completeButtonTitle)
 
-            Button {
-                viewModel.skipExercise()
-            } label: {
-                Text("Skip exercise")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            HStack(spacing: Theme.Spacing.md) {
+                if viewModel.canSwap {
+                    Button {
+                        Task { await viewModel.swapCurrentExercise() }
+                    } label: {
+                        Text(viewModel.isSwapping ? "Swapping…" : "Swap")
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: Theme.Spacing.workoutTouchTarget)
+                    }
+                    .disabled(viewModel.isSwapping)
+                    .accessibilityLabel("Swap this exercise")
+                    .accessibilityHint("Replaces it with a similar movement")
+                }
+
+                Button {
+                    viewModel.skipExercise()
+                } label: {
+                    Text("Skip")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: Theme.Spacing.workoutTouchTarget)
+                }
+                .accessibilityLabel("Skip this exercise")
             }
-            .accessibilityLabel("Skip this exercise")
         }
         .padding(Theme.Spacing.lg)
         .background(Theme.Colors.background)
+    }
+
+    /// The honest "no alternative" state (US-K03): when the swap engine finds no safe, same-kind peer
+    /// within the time budget, the original movement stays and this quiet line says so, rather than
+    /// the app forcing an unsafe or off-pattern substitution.
+    private var noAlternativeNotice: some View {
+        Text("No safe alternative for this one - it stays in your session.")
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("No safe alternative for this exercise. It stays in your session.")
     }
 
     /// "Complete set" mid-exercise, "Finish exercise" on the last set, "Finish session" on the very

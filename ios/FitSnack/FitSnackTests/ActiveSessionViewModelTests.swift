@@ -468,4 +468,238 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isResting)
         XCTAssertEqual(spy.completions, 0)
     }
+
+    // MARK: - Swap (US-K03)
+
+    /// A stub engine so the swap's view-model behavior is driven deterministically, decoupled from the
+    /// deterministic swap step (which `ExerciseSwapTests` owns). It records what it was handed - the
+    /// slot and the session snapshot - and returns a configurable outcome.
+    private final class StubSwapEngine: WorkoutEngineProtocol {
+        var outcome: SwapOutcome
+        private(set) var swapCallCount = 0
+        private(set) var lastPrescriptionID: UUID?
+        private(set) var lastSnapshotExerciseIDs: [String] = []
+        /// Runs inside `swapExercise` before the outcome returns, so a test can mutate the view model
+        /// mid-await (e.g. advance off the exercise) and exercise the stale-result guard.
+        var onSwap: (() -> Void)?
+
+        init(outcome: SwapOutcome) { self.outcome = outcome }
+
+        func generateWorkout(
+            requestedMinutes: Int, user: User, recentLogs: [WorkoutLog], sessionPolicy: SessionPolicy
+        ) async throws -> Workout {
+            fatalError("the swap tests never generate")
+        }
+
+        func swapExercise(
+            _ prescription: PrescribedExercise, in workout: Workout, user: User, recentLogs: [WorkoutLog]
+        ) async throws -> SwapOutcome {
+            swapCallCount += 1
+            lastPrescriptionID = prescription.id
+            lastSnapshotExerciseIDs = workout.blocks.flatMap(\.exercises).map(\.exercise.id)
+            onSwap?()
+            return outcome
+        }
+    }
+
+    /// A minimal discipline-phase user for the swap seam (the stub ignores it; the end-to-end test
+    /// exercises the real engine's filtering with it).
+    private func makeUser() -> User {
+        User(
+            id: "u1",
+            displayName: "Test",
+            createdAt: start,
+            profile: UserProfile(
+                age: 35, sex: .other, heightCm: 175, weightKg: 75,
+                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                sitsLong: false, injuries: [], typicalAvailableMinutes: 15
+            ),
+            phase: .discipline,
+            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+            consistency: Consistency(
+                weeklyGoal: 3, score: 50, workoutsThisWeek: 1,
+                longestChain: 0, totalWorkoutsCompleted: 0, totalMinutesExercised: 0
+            )
+        )
+    }
+
+    /// A substitute prescription the stub can hand back, so a swap's replacement is assertable.
+    private func substitutePrescription(_ id: String, sets: Int = 3, reps: Int = 10, rest: Int = 45) -> PrescribedExercise {
+        PrescribedExercise(
+            id: UUID(), exercise: repExercise(id: id), sets: sets, reps: reps, durationSeconds: nil, restSeconds: rest
+        )
+    }
+
+    private func makeSwapViewModel(engine: StubSwapEngine) -> ActiveSessionViewModel {
+        ActiveSessionViewModel(
+            workout: sampleWorkout(), swapEngine: engine, user: makeUser(), recentLogs: [], now: { self.start }
+        )
+    }
+
+    /// A substitute replaces the current slot in place: the current step becomes the substitute, its
+    /// set count and rest are preserved by the engine, and the set counter resets to 1.
+    func testSwapReplacesCurrentExercise() async {
+        let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
+        let engine = StubSwapEngine(outcome: .substituted(substitute))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow done -> push_up is current
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(engine.swapCallCount, 1)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "dips")
+        XCTAssertEqual(vm.currentStep?.prescription.sets, 3, "the substitute keeps the slot's set count")
+        XCTAssertEqual(vm.currentStep?.prescription.restSeconds, 45, "the substitute keeps the slot's rest")
+        XCTAssertEqual(vm.currentSet, 1)
+        XCTAssertFalse(vm.noSwapAlternative)
+        // The rest of the session is untouched.
+        XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "dips", "squat"])
+    }
+
+    /// The view model hands the swap step the *current* lineup, so a movement swapped in earlier is
+    /// visible to the duplicate check and a later swap can never re-introduce it (or a still-present
+    /// original) as a duplicate.
+    func testSwapSnapshotReflectsCurrentLineup() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // onto push_up
+
+        await vm.swapCurrentExercise() // push_up -> dips
+        engine.outcome = .substituted(substitutePrescription("pike_push"))
+        await vm.swapCurrentExercise() // dips -> pike_push
+
+        XCTAssertTrue(engine.lastSnapshotExerciseIDs.contains("dips"), "the swapped-in movement is in the snapshot")
+        XCTAssertFalse(engine.lastSnapshotExerciseIDs.contains("push_up"), "the replaced movement is gone from the snapshot")
+    }
+
+    /// Swapping after completing part of an exercise discards the recorded sets - the movement is
+    /// being replaced entirely, so it never carries completed sets into the eventual log.
+    func testSwapDiscardsPartialSets() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up
+        let pushUpID = vm.currentStep!.id
+        vm.completeSet() // push_up set 1 recorded; a rest opens
+        XCTAssertEqual(vm.completedSets[pushUpID]?.count, 1)
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertNil(vm.completedSets[pushUpID], "the replaced movement's partial sets are discarded")
+        XCTAssertFalse(vm.isResting, "the swap ends any lingering rest")
+        let dips = vm.loggedExercises().first { $0.exerciseId == "dips" }
+        XCTAssertEqual(dips?.completedSets.count, 0)
+    }
+
+    /// If the user advances off the exercise while the swap is in flight (Complete set / Skip stay
+    /// tappable during the await), the stale substitute is discarded entirely - it never resets the
+    /// now-current exercise's set counter or resurrects the already-passed slot into the lineup.
+    func testSwapDiscardsStaleResultWhenUserAdvancesMidFlight() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up (the slot being swapped)
+
+        // Mid-await, the user skips past push_up onto squat.
+        engine.onSwap = { vm.skipExercise() }
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "the user's advance stands")
+        XCTAssertEqual(vm.currentSet, 1, "squat's set counter is untouched by the stale swap")
+        XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"],
+                       "no resurrected or substituted slot - the stale result is dropped")
+        XCTAssertFalse(vm.steps.contains { $0.prescription.exercise.id == "dips" },
+                       "the stale substitute never enters the lineup")
+    }
+
+    /// If the user finishes the session on the final exercise while its swap is in flight (Complete
+    /// set stays tappable, and finishing the last exercise leaves `currentStepIndex` unchanged so the
+    /// slot's id still matches), the stale substitute is discarded - it never overwrites the completed
+    /// final exercise's recorded sets or mutates state after the session ended.
+    func testSwapDiscardsStaleResultWhenSessionFinishesMidFlight() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up
+        vm.completeSet(); vm.completeSet(); vm.completeSet() // push_up (3 sets) -> squat, the final slot
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+
+        // Mid-await, the user completes squat's two sets, finishing the session.
+        engine.onSwap = { vm.completeSet(); vm.completeSet() }
+        await vm.swapCurrentExercise()
+
+        XCTAssertTrue(vm.isComplete, "the session stays finished")
+        XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"],
+                       "no substituted slot - the stale result is dropped")
+        XCTAssertFalse(vm.steps.contains { $0.prescription.exercise.id == "dips" },
+                       "the stale substitute never enters the lineup")
+        let squatLog = vm.loggedExercises().first { $0.exerciseId == "squat" }
+        XCTAssertEqual(squatLog?.completedSets.count, 2,
+                       "the finished exercise's recorded sets are intact - not wiped by an un-performed substitute")
+        XCTAssertEqual(squatLog?.skipped, false)
+    }
+
+    /// When the engine finds no safe, in-budget peer, the original slot stays and the honest
+    /// "no alternative" flag flips so the UI can say so rather than forcing an unsafe substitution.
+    func testSwapNoAlternativeKeepsSlotAndFlags() async {
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // onto push_up
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertTrue(vm.noSwapAlternative)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up", "the original slot is kept")
+        XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"])
+    }
+
+    /// The "no alternative" notice is about the slot the user is on, so advancing off it clears the flag.
+    func testNoAlternativeClearsOnAdvance() async {
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // onto push_up
+        await vm.swapCurrentExercise()
+        XCTAssertTrue(vm.noSwapAlternative)
+
+        vm.skipExercise() // move to squat
+        XCTAssertFalse(vm.noSwapAlternative)
+    }
+
+    /// With no engine wired (e.g. a preview), swap is unavailable and calling it is a harmless no-op.
+    func testSwapUnavailableWithoutEngine() async {
+        let vm = makeViewModel(clock: { self.start }) // no swap engine
+        vm.completeSet() // onto push_up
+
+        XCTAssertFalse(vm.canSwap)
+        await vm.swapCurrentExercise()
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up", "unchanged - swap is a no-op")
+    }
+
+    /// End-to-end through the real deterministic engine and bundled library (the PRD validation at the
+    /// player level): swapping a real movement yields a same-pillar, same-pattern peer that preserves
+    /// the slot's set count and rest, never the same movement.
+    func testSwapEndToEndYieldsSamePillarPatternPeer() async throws {
+        let exerciseService = try MockExerciseService()
+        let library = try await exerciseService.exercises()
+        let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let slot = PrescribedExercise(
+            id: UUID(), exercise: target, sets: 3, reps: 12, durationSeconds: nil,
+            restSeconds: SessionAssembly.strengthRestSeconds
+        )
+        let block = WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .singleFocus, focusPillar: .strength,
+            requestedMinutes: 15, wasReturn: false, blocks: [block]
+        )
+        let engine = MockWorkoutEngine(exerciseService: exerciseService)
+        let vm = ActiveSessionViewModel(workout: workout, swapEngine: engine, user: makeUser(), recentLogs: [], now: { self.start })
+
+        await vm.swapCurrentExercise()
+
+        let swapped = try XCTUnwrap(vm.currentStep?.prescription)
+        XCTAssertNotEqual(swapped.exercise.id, "push_standard", "a swap returns a different movement")
+        XCTAssertEqual(swapped.exercise.pillar, .strength, "same pillar")
+        XCTAssertEqual(swapped.exercise.movementPattern, .push, "same movement pattern")
+        XCTAssertEqual(swapped.sets, slot.sets, "set count preserved")
+        XCTAssertEqual(swapped.restSeconds, slot.restSeconds, "rest preserved")
+        XCTAssertTrue(swapped.reps != nil || swapped.durationSeconds != nil, "a fresh capacity-relative target")
+        XCTAssertFalse(vm.noSwapAlternative)
+    }
 }
