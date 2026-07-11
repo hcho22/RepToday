@@ -67,7 +67,7 @@ Target: iOS 17.0+, Swift 5.9, Xcode 16.3. Bundle ID: `com.fitsnack.app`.
 
 To swap a mock for a real implementation, change one line in `ServiceContainer` - views and viewmodels remain untouched.
 
-**Persistence:** CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`).
+**Persistence:** CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`).
 Domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`.
 The core loop works fully offline and with no iCloud account; CloudKit handles sync and backup when available.
 
