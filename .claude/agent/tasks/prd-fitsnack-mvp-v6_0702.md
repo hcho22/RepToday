@@ -709,10 +709,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] The post-session screen collects `perceivedDifficulty` (`too_easy`/`just_right`/`too_hard`) and stores it on the `WorkoutLog`
-- [ ] The value feeds the Asymmetric Ramp (US-E05) so the next session adjusts within one cycle
-- [ ] The control is optional and non-blocking; skipping it is treated as unrated
-- [ ] Uses `Theme` tokens; verify in iOS Simulator
+- [x] The post-session screen collects `perceivedDifficulty` (`too_easy`/`just_right`/`too_hard`) and stores it on the `WorkoutLog` - *`ActiveSessionView.completionState` renders a three-pill `ratingControl` ("How did that feel?" -> Too easy / Just right / Too hard, easy-to-hard order); tapping one calls `ActiveSessionViewModel.rate(_:)`, which sets the surfaced `perceivedDifficulty` and persists it onto the already-written log via the new `SessionCompletionServiceProtocol.recordPerceivedDifficulty(_:forLog:)`. The completion log is now built once at the `finish()` transition with a stable id (`completedLog`), so the rating updates that same record (an upsert by id) rather than writing a second, un-linked log*
+- [x] The value feeds the Asymmetric Ramp (US-E05) so the next session adjusts within one cycle - *the rating lands on the persisted `WorkoutLog.perceivedDifficulty`, which `AdaptiveOverload.demonstratedCapacity` reads off the most-recent usable log to pick the ramp signal (`tooHard` -> `.eased`, `tooEasy` -> `.intensify`); the next Ready-Screen generation reads that log, so tomorrow's targets adjust within one cycle*
+- [x] The control is optional and non-blocking; skipping it is treated as unrated - *the rating pills never gate the always-enabled Done action; a session left un-tapped keeps its `nil` rating (the initial completion write is unrated) and persists nothing extra; re-tapping a different pill overwrites the last, newest value wins; the rating re-save is fire-and-forget and chained behind the initial completion write so it can never be clobbered, and re-saving does not re-run the cold-start handoff (no double-advance)*
+- [x] Uses `Theme` tokens; verify in iOS Simulator - *all `Theme`-tokened at the 60pt active-screen touch target with VoiceOver labels and `.isSelected` traits, no XP/levels/badges; 556 tests pass (10 new: 5 view-model rating tests, 1 completion-service in-place-update test, plus the existing US-L01 assertions still hold) and the app builds, installs, and launches on the iPhone 16 simulator without crashing. Interactive tap-through to the rating flow was not driven (no accessibility automation in this environment)*
 
 **Validation Test:**
 
@@ -722,6 +722,8 @@ Discipline overrides optimization by design: a Return after a gap is served easy
   2. Generate the next session
 - **Expected Result:** The log records `too_hard`, and the next session's targets ease immediately per the Asymmetric Ramp.
 - **Failure Indicator:** The rating is not stored, or the next session ignores it.
+
+> Implemented (see the acceptance-criteria notes). The rating is collected on the completion screen, stored on the same `WorkoutLog` the completion write produced (stable id, in-place update, no cold-start double-advance), and read back by the Asymmetric Ramp on the next generation, so `too_hard` eases the following session within one cycle.
 
 ---
 

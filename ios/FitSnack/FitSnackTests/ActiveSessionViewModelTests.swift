@@ -913,14 +913,21 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
     // MARK: - Completion recording & summary (US-L01)
 
-    /// Captures the completion recordings so a test can assert the written log and its context.
+    /// Captures the completion recordings so a test can assert the written log and its context. Also
+    /// records perceived-difficulty rating updates (US-L02) - keyed by log id, in call order - so a test
+    /// can assert the rating landed on the right record.
     private actor SpyCompletionService: SessionCompletionServiceProtocol {
         private(set) var recorded: [WorkoutLog] = []
         private(set) var lastRecentLogs: [WorkoutLog] = []
+        private(set) var ratings: [(logId: UUID, difficulty: PerceivedDifficulty?)] = []
 
         func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws {
             recorded.append(log)
             lastRecentLogs = recentLogs
+        }
+
+        func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {
+            ratings.append((log.id, difficulty))
         }
     }
 
@@ -1038,5 +1045,105 @@ final class ActiveSessionViewModelTests: XCTestCase {
         // push_up (push) was skipped; cat_cow (core) and squat (push) remain -> patterns push, core.
         XCTAssertEqual(summary?.completedExerciseCount, 2)
         XCTAssertEqual(summary?.movementPatterns, [.push, .core])
+    }
+
+    // MARK: - Perceived-difficulty rating (US-L02)
+
+    /// Rating the finished session records the value on the view model and persists it - via the
+    /// completion service - onto the *same* log id the initial completion write used, so the next
+    /// session's Asymmetric Ramp reads it (US-L02 validation).
+    func testRatingPersistsOntoTheCompletedLog() async throws {
+        var clock = start
+        let spy = SpyCompletionService()
+        let vm = ActiveSessionViewModel(
+            workout: completionWorkout(), user: makeUser(), recentLogs: [],
+            completionService: spy, now: { clock }
+        )
+        vm.start()
+        clock = start.addingTimeInterval(14 * 60)
+        while !vm.isComplete { vm.completeSet() }
+        await vm.completionTask?.value
+
+        let recorded = await spy.recorded
+        let writtenLog = try XCTUnwrap(recorded.first)
+        XCTAssertNil(writtenLog.perceivedDifficulty, "the initial completion write is unrated")
+
+        vm.rate(.tooHard)
+        await vm.completionTask?.value
+
+        XCTAssertEqual(vm.perceivedDifficulty, .tooHard)
+        let ratings = await spy.ratings
+        XCTAssertEqual(ratings.count, 1, "the rating is persisted exactly once")
+        XCTAssertEqual(ratings.first?.logId, writtenLog.id, "onto the same log the completion wrote")
+        XCTAssertEqual(ratings.first?.difficulty, .tooHard)
+        let recordedCount = await spy.recorded.count
+        XCTAssertEqual(recordedCount, 1, "rating does not re-run the full completion recording")
+    }
+
+    /// Re-tapping a different rating overwrites the last; the newest value is what persists.
+    func testRatingCanBeChanged() async throws {
+        let spy = SpyCompletionService()
+        let vm = ActiveSessionViewModel(
+            workout: completionWorkout(), user: makeUser(), recentLogs: [],
+            completionService: spy, now: { self.start }
+        )
+        vm.start()
+        while !vm.isComplete { vm.completeSet() }
+        await vm.completionTask?.value
+
+        vm.rate(.tooEasy)
+        vm.rate(.justRight)
+        await vm.completionTask?.value
+
+        XCTAssertEqual(vm.perceivedDifficulty, .justRight)
+        let ratings = await spy.ratings
+        XCTAssertEqual(ratings.map(\.difficulty), [.tooEasy, .justRight], "both taps persist, newest last")
+    }
+
+    /// Rating is only possible once the session completes - a mid-session call is a no-op.
+    func testRatingBeforeCompletionIsNoOp() async {
+        let spy = SpyCompletionService()
+        let vm = ActiveSessionViewModel(
+            workout: completionWorkout(), user: makeUser(), recentLogs: [],
+            completionService: spy, now: { self.start }
+        )
+        vm.start()
+
+        vm.rate(.tooHard)
+
+        XCTAssertNil(vm.perceivedDifficulty, "no rating is recorded before the session is complete")
+        await vm.completionTask?.value
+        let ratings = await spy.ratings
+        XCTAssertTrue(ratings.isEmpty)
+    }
+
+    /// Skipping the rating leaves the session unrated - the log the completion wrote keeps its nil
+    /// rating and nothing extra is persisted.
+    func testUnratedSessionPersistsNothingExtra() async throws {
+        let spy = SpyCompletionService()
+        let vm = ActiveSessionViewModel(
+            workout: completionWorkout(), user: makeUser(), recentLogs: [],
+            completionService: spy, now: { self.start }
+        )
+        vm.start()
+        while !vm.isComplete { vm.completeSet() }
+        await vm.completionTask?.value
+
+        XCTAssertNil(vm.perceivedDifficulty)
+        let ratings = await spy.ratings
+        XCTAssertTrue(ratings.isEmpty, "no rating write without a tap")
+    }
+
+    /// With no completion service wired (previews), rating is kept in memory for the UI but persists
+    /// nothing and never traps.
+    func testRatingWithoutServiceIsMemoryOnly() {
+        let vm = makeViewModel(clock: { self.start }) // no completion service / user
+        vm.start()
+        while !vm.isComplete { vm.completeSet() }
+
+        vm.rate(.justRight)
+
+        XCTAssertEqual(vm.perceivedDifficulty, .justRight, "the UI still reflects the tap")
+        XCTAssertNil(vm.completionTask, "but nothing is persisted")
     }
 }

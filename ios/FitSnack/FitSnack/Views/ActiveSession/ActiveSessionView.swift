@@ -293,8 +293,9 @@ struct ActiveSessionView: View {
     /// The post-session celebration and template summary. The win is framed by identity, never by a
     /// score or streak: it leads with the show-up, then names the muscle/mobility coverage and the
     /// session's effort (duration, sets). The `WorkoutLog` is written by the view model the moment the
-    /// session finished (US-L01); this screen just reflects it. The perceived-difficulty rating is
-    /// US-L02. Every token comes from `Theme`; there is no XP/levels/badges.
+    /// session finished (US-L01); this screen just reflects it. It then collects the optional
+    /// perceived-difficulty rating (US-L02), which feeds tomorrow's session. Every token comes from
+    /// `Theme`; there is no XP/levels/badges.
     private var completionState: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.lg) {
@@ -319,6 +320,8 @@ struct ActiveSessionView: View {
                     summaryCard(summary)
                 }
 
+                ratingControl
+
                 Button {
                     close()
                 } label: {
@@ -333,6 +336,58 @@ struct ActiveSessionView: View {
             }
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The optional, non-blocking perceived-difficulty rating (US-L02): three pills from easy to hard.
+    /// Tapping one records it (and persists it onto the just-written log so the next session adjusts via
+    /// the Asymmetric Ramp); the user can re-tap to change it or simply hit Done without rating, in which
+    /// case the session stays unrated. Nothing here gates the Done action. Every control meets the 60pt
+    /// active-screen touch target and every token comes from `Theme`.
+    private var ratingControl: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            Text("How did that feel?")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+
+            HStack(spacing: Theme.Spacing.sm) {
+                ForEach(PerceivedDifficulty.allCases) { difficulty in
+                    ratingPill(difficulty)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// One selectable rating pill. The selected pill fills with the accent; the rest sit on the surface.
+    private func ratingPill(_ difficulty: PerceivedDifficulty) -> some View {
+        let isSelected = viewModel.perceivedDifficulty == difficulty
+        return Button {
+            viewModel.rate(difficulty)
+        } label: {
+            Text(Self.ratingLabel(difficulty))
+                .font(Theme.Typography.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+                .padding(.horizontal, Theme.Spacing.xs)
+                .background(
+                    isSelected ? Theme.Colors.accent : Theme.Colors.surface,
+                    in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+                )
+        }
+        .accessibilityLabel(Self.ratingLabel(difficulty))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    /// The user-facing label for a perceived-difficulty rating.
+    private static func ratingLabel(_ difficulty: PerceivedDifficulty) -> String {
+        switch difficulty {
+        case .tooEasy: return "Too easy"
+        case .justRight: return "Just right"
+        case .tooHard: return "Too hard"
         }
     }
 
