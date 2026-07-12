@@ -19,6 +19,7 @@ final class ServiceContainerTests: XCTestCase {
         _ = try await services.userService.currentUser()
         _ = try await services.workoutLogService.workoutLogs(from: nil, to: nil)
         _ = try await services.activeSessionStore.load(for: user.id)
+        _ = services.sessionCompletionService
         _ = try await services.healthKitService.authorizationStatus()
         _ = try await services.subscriptionService.currentSubscription()
         _ = try await services.authService.currentUserIdentifier()

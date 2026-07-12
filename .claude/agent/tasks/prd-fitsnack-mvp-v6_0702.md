@@ -690,10 +690,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] On completion the app writes a `WorkoutLog` with `requestedMinutes`, the actually-completed `durationMinutes`, `shape`, `focusPillar`, `wasReturn`, and per-exercise `completedSets`/`skipped`
-- [ ] `durationMinutes` feeds `duration.completedDurationEWMA` (US-F04); the Consistency Score updates (US-H01)
-- [ ] The screen shows a completion celebration and a template-based summary with muscle/mobility coverage; copy is identity-framed
-- [ ] No XP/levels/badges; uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator
+- [x] On completion the app writes a `WorkoutLog` with `requestedMinutes`, the actually-completed `durationMinutes`, `shape`, `focusPillar`, `wasReturn`, and per-exercise `completedSets`/`skipped` - *`ActiveSessionViewModel.finish()` builds the log (facts copied off the played `Workout`, per-exercise rows from `loggedExercises()`) and fires `SessionCompletionService.recordCompletedSession` fire-and-forget, so the record is durable even if the user quits on the completion screen*
+- [x] `durationMinutes` feeds `duration.completedDurationEWMA` (US-F04); the Consistency Score updates (US-H01) - *the log carries the actually-completed `durationMinutes` the Programmer's Default Duration learning reads; the completion recorder refreshes the forgiving Consistency Score onto the user (folding the new log exactly once), and the Ready Screen re-reads it on return*
+- [x] The screen shows a completion celebration and a template-based summary with muscle/mobility coverage; copy is identity-framed - *`ActiveSessionView.completionState` leads with "You showed up. That's the whole game." and renders the pure `SessionSummary` (duration, sets, covered pillars/patterns)*
+- [x] No XP/levels/badges; uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator - *all `Theme`-tokened, no XP/levels/badges; 548 tests pass and the app boots cleanly with the rewired container*
 
 **Validation Test:**
 
