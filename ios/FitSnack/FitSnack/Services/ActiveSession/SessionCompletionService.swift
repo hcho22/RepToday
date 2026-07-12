@@ -29,6 +29,17 @@ protocol SessionCompletionServiceProtocol {
     /// caller stability, but the Consistency Score is recomputed over the full persisted history so the
     /// all-time `longestChain` (US-H01) is never understated by a bounded window.
     func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws
+
+    /// Attach the user's perceived-difficulty rating to an already-recorded log (US-L02).
+    ///
+    /// The rating is collected on the completion screen, *after* `recordCompletedSession` has already
+    /// written the durable record (US-L01), so this is a minimal, idempotent re-save of that one log by
+    /// its stable id: it sets `perceivedDifficulty` and persists, and deliberately does **not** repeat
+    /// the Consistency refresh or the cold-start handoff. Those don't depend on the rating, and re-running
+    /// the handoff would advance `coldStart.sessionsLogged` a second time for the same session. The rating
+    /// is what the Asymmetric Ramp (US-E05) reads on the next session, so it only needs to land on the log
+    /// record before the next generation. A `nil` difficulty is a valid "unrated" value.
+    func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws
 }
 
 /// The real `SessionCompletionServiceProtocol` backing the app. Every dependency is a protocol/seam,
@@ -89,5 +100,14 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         if handoff.sessionPolicy != currentPolicy {
             try await policyStore.save(handoff.sessionPolicy, for: latest.id)
         }
+    }
+
+    func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {
+        // A minimal re-save of the one log by its stable id (`save` is an upsert), setting only the
+        // rating. No Consistency refresh, no cold-start handoff - the rating changes neither, and
+        // re-running the handoff would double-advance cold-start for a session already recorded.
+        var rated = log
+        rated.perceivedDifficulty = difficulty
+        try await workoutLogService.save(rated)
     }
 }

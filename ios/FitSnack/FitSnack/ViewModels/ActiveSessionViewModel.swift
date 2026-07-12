@@ -158,8 +158,21 @@ final class ActiveSessionViewModel {
 
     /// The fire-and-forget completion write launched at `finish()`, exposed only so tests can await
     /// the recording settling. The UI never awaits it: like persistence, the write is best-effort and
-    /// the player never stalls on it.
+    /// the player never stalls on it. A rating given on the completion screen (US-L02) chains behind it
+    /// so the rating's re-save always lands after the initial write of the same log.
     private(set) var completionTask: Task<Void, Never>?
+
+    // MARK: - Rating (US-L02)
+
+    /// The perceived-difficulty rating the user gave on the completion screen, or `nil` if they haven't
+    /// rated (skipping the control is treated as unrated). Feeds the Asymmetric Ramp (US-E05) on the
+    /// next session: `tooHard` eases the next target, `tooEasy` intensifies it.
+    private(set) var perceivedDifficulty: PerceivedDifficulty?
+
+    /// The durable `WorkoutLog` built once at the `finish()` transition and kept so a later rating
+    /// updates the *same* record (stable id) rather than writing a second, un-linked log. `nil` until
+    /// the session completes.
+    private var completedLog: WorkoutLog?
 
     /// Restore-capable designated initializer (US-K04): builds the player from a persisted - or
     /// freshly-seeded - `ActiveSessionState`, so a fresh start, a resume-after-relaunch, and a resume
@@ -342,13 +355,17 @@ final class ActiveSessionViewModel {
         return SessionSummary.from(loggedExercises: loggedExercises(), durationMinutes: completedDurationMinutes())
     }
 
-    /// The `WorkoutLog` to write for the finished session (US-L01): what was requested vs. actually
+    /// The durable `WorkoutLog` for the finished session (US-L01): what was requested vs. actually
     /// completed, the shape/focus/return flags copied straight off the played `Workout` (never
-    /// re-derived), and the per-exercise completed/skipped rows. `nil` unless the session is complete.
-    /// The perceived-difficulty rating is `nil` here; US-L02 collects it on the completion screen.
-    func completionLog() -> WorkoutLog? {
-        guard isComplete else { return nil }
-        return WorkoutLog(
+    /// re-derived), the per-exercise completed/skipped rows, and any perceived-difficulty rating
+    /// (US-L02). `nil` unless the session is complete. This is the same record - stable id - that both
+    /// the initial completion write and a later rating update target.
+    func completionLog() -> WorkoutLog? { completedLog }
+
+    /// Build the durable log once, at the `finish()` transition. The id is generated here (not per
+    /// call) so a rating given afterward re-saves this exact record rather than a second, un-linked log.
+    private func buildCompletionLog() -> WorkoutLog {
+        WorkoutLog(
             id: UUID(),
             workoutId: workout.id,
             completedAt: finishedAt ?? now(),
@@ -357,7 +374,7 @@ final class ActiveSessionViewModel {
             wasReturn: workout.wasReturn,
             shape: workout.shape,
             focusPillar: workout.focusPillar,
-            perceivedDifficulty: nil,
+            perceivedDifficulty: perceivedDifficulty,
             exercises: loggedExercises()
         )
     }
@@ -383,11 +400,35 @@ final class ActiveSessionViewModel {
     /// best-effort: the UI renders the celebration immediately and never awaits the write; a nil
     /// service/user (previews) records nothing. Chained behind any prior write so it lands in order.
     private func recordCompletion() {
-        guard let completionService, let user, let log = completionLog() else { return }
+        guard let completionService, let user, let log = completedLog else { return }
         let previous = completionTask
         completionTask = Task {
             _ = await previous?.value
             try? await completionService.recordCompletedSession(log, user: user, recentLogs: recentLogs)
+        }
+    }
+
+    /// Record the user's perceived-difficulty rating for the finished session (US-L02) and persist it
+    /// onto the already-written log so tomorrow's session adjusts to it via the Asymmetric Ramp
+    /// (US-E05). Optional and non-blocking: it only applies once the session is complete, re-tapping a
+    /// different rating simply overwrites the last, and skipping it entirely leaves the session unrated.
+    /// The persist is fire-and-forget and chained *behind* the initial completion write (they target the
+    /// same log id), so the rating's re-save can never be clobbered by an initial write still in flight.
+    func rate(_ difficulty: PerceivedDifficulty) {
+        guard isComplete else { return }
+        perceivedDifficulty = difficulty
+        completedLog?.perceivedDifficulty = difficulty
+        recordRating(difficulty)
+    }
+
+    private func recordRating(_ difficulty: PerceivedDifficulty) {
+        // Only meaningful when the completion was actually recorded (a log was written). Without a
+        // service/user (previews), the rating is kept in memory for the UI but persists nothing.
+        guard let completionService, user != nil, let log = completedLog else { return }
+        let previous = completionTask
+        completionTask = Task {
+            _ = await previous?.value
+            try? await completionService.recordPerceivedDifficulty(difficulty, forLog: log)
         }
     }
 
@@ -593,9 +634,11 @@ final class ActiveSessionViewModel {
         guard !isComplete else { return }
         isComplete = true
         finishedAt = now()
-        // Record the completed session (US-L01) at the completion transition - the single point every
-        // finishing path (last set, final skip, a swap that finishes mid-flight) routes through - so
-        // the win is durable even if the user quits on the completion screen.
+        // Build the durable log once here (stable id) so a rating given on the completion screen (US-L02)
+        // updates this same record. Then record the completed session (US-L01) at the completion
+        // transition - the single point every finishing path (last set, final skip, a swap that finishes
+        // mid-flight) routes through - so the win is durable even if the user quits on the completion screen.
+        completedLog = buildCompletionLog()
         recordCompletion()
     }
 

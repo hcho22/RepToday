@@ -158,6 +158,29 @@ final class SessionCompletionServiceTests: XCTestCase {
         XCTAssertEqual(saved?.duration.completedDurationEWMA, 11)
     }
 
+    // MARK: - Perceived-difficulty rating (US-L02)
+
+    /// The rating is written onto the existing log by its stable id (an upsert, not a second record),
+    /// and it does not re-run the cold-start handoff - the counter the completion write already advanced
+    /// stays put, so a rating given afterward never double-advances cold-start.
+    func testRecordPerceivedDifficultyUpdatesLogInPlace() async throws {
+        let logService = MockWorkoutLogService()
+        let userService = MockUserService(user: makeUser(sessionsLogged: 1, active: true))
+        let service = makeService(logService: logService, userService: userService, store: InMemorySessionPolicyStore())
+        let log = makeLog()
+
+        try await service.recordCompletedSession(log, user: makeUser(sessionsLogged: 1, active: true), recentLogs: [])
+        try await service.recordPerceivedDifficulty(.tooHard, forLog: log)
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1, "the rating updates the same record rather than writing a second log")
+        XCTAssertEqual(saved.first?.id, log.id)
+        XCTAssertEqual(saved.first?.perceivedDifficulty, .tooHard)
+
+        let savedUser = try await userService.currentUser()
+        XCTAssertEqual(savedUser?.coldStart.sessionsLogged, 2, "rating does not re-advance the cold-start counter")
+    }
+
     /// A user already warmed up (cold-start inactive) advances no counter and the policy stays put.
     func testRecordNoOpColdStartWhenAlreadyRetired() async throws {
         let store = InMemorySessionPolicyStore()
