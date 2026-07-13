@@ -29,31 +29,35 @@ final class ProgressAnalyticsTests: XCTestCase {
         calendar.date(byAdding: .day, value: -(weeksAgo * 7 + dayOffset), to: asOf)!
     }
 
-    /// A three-tier push chain, a single-tier squat, a two-tier core hold chain, a single mobility
-    /// hold, and a two-tier primal chain. Enough to exercise every surface.
+    /// A push chain whose three discipline tiers top out under a strength-gated fourth tier, a
+    /// single-tier squat, a two-tier core hold chain whose top tier is strength-gated, a single
+    /// mobility hold, and a two-tier primal chain. Enough to exercise every surface, including the
+    /// phase-reachability of chain position.
     private var library: [Exercise] {
         [
-            Self.ex("push_a", .strength, .push, chain: "pushc", order: 0, prog: "push_b", name: "Wall Push-up"),
-            Self.ex("push_b", .strength, .push, chain: "pushc", order: 1, prog: "push_c", name: "Knee Push-up"),
-            Self.ex("push_c", .strength, .push, chain: "pushc", order: 2, prog: nil, name: "Standard Push-up"),
-            Self.ex("squat_a", .strength, .squat, chain: "squatc", order: 0, prog: nil, name: "Bodyweight Squat"),
-            Self.ex("plank_a", .strength, .core, chain: "corec", order: 0, prog: "plank_b", isHold: true, name: "Forearm Plank"),
-            Self.ex("plank_b", .strength, .core, chain: "corec", order: 1, prog: nil, isHold: true, name: "Side Plank"),
-            Self.ex("mob_a", .mobility, .mobility, chain: "mobc", order: 0, prog: nil, isHold: true, name: "Cat-Cow"),
-            Self.ex("prim_a", .primal, .locomotion, chain: "primc", order: 0, prog: "prim_b", name: "Bear Crawl"),
-            Self.ex("prim_b", .primal, .locomotion, chain: "primc", order: 1, prog: nil, name: "Crab Walk"),
+            Self.ex("push_a", .discipline, .push, chain: "pushc", order: 0, prog: "push_b", name: "Wall Push-up"),
+            Self.ex("push_b", .discipline, .push, chain: "pushc", order: 1, prog: "push_c", name: "Knee Push-up"),
+            Self.ex("push_c", .discipline, .push, chain: "pushc", order: 2, prog: "push_d", name: "Standard Push-up"),
+            Self.ex("push_d", .strength, .push, chain: "pushc", order: 3, prog: nil, name: "One-Arm Push-up"),
+            Self.ex("squat_a", .discipline, .squat, chain: "squatc", order: 0, prog: nil, name: "Bodyweight Squat"),
+            Self.ex("plank_a", .discipline, .core, chain: "corec", order: 0, prog: "plank_b", isHold: true, name: "Forearm Plank"),
+            Self.ex("plank_b", .strength, .core, chain: "corec", order: 1, prog: nil, isHold: true, name: "L-Sit"),
+            Self.ex("mob_a", .discipline, .mobility, chain: "mobc", order: 0, prog: nil, isHold: true, name: "Cat-Cow"),
+            Self.ex("prim_a", .discipline, .locomotion, chain: "primc", order: 0, prog: "prim_b", name: "Bear Crawl"),
+            Self.ex("prim_b", .discipline, .locomotion, chain: "primc", order: 1, prog: nil, name: "Crab Walk"),
         ]
     }
 
     private static func ex(
-        _ id: String, _ pillar: Pillar, _ pattern: MovementPattern,
+        _ id: String, _ phase: Phase, _ pattern: MovementPattern,
         chain: String, order: Int, prog: String?, isHold: Bool = false,
         difficulty: Int = 2, name: String
     ) -> Exercise {
-        Exercise(
+        let pillar: Pillar = pattern == .mobility ? .mobility : (pattern == .locomotion ? .primal : .strength)
+        return Exercise(
             id: id, displayName: name, pillar: pillar, movementPattern: pattern,
             category: pillar == .mobility ? .mobility : .strength,
-            difficulty: difficulty, phase: .discipline, equipment: [], isHold: isHold,
+            difficulty: difficulty, phase: phase, equipment: [], isHold: isHold,
             defaultReps: isHold ? nil : 10, defaultDurationSeconds: isHold ? 30 : nil,
             estimatedTimePerSetSeconds: 40, metValue: 4,
             progressionChainId: chain, progressionOrder: order,
@@ -75,8 +79,8 @@ final class ProgressAnalyticsTests: XCTestCase {
         )
     }
 
-    private func analytics(_ logs: [WorkoutLog]) -> ProgressAnalytics {
-        ProgressAnalytics.from(logs: logs, library: library, asOf: asOf, calendar: calendar)
+    private func analytics(_ logs: [WorkoutLog], phase: Phase = .discipline) -> ProgressAnalytics {
+        ProgressAnalytics.from(logs: logs, library: library, phase: phase, asOf: asOf, calendar: calendar)
     }
 
     // MARK: - Pillar balance
@@ -154,6 +158,24 @@ final class ProgressAnalyticsTests: XCTestCase {
         XCTAssertEqual(push?.currentExercise?.id, "push_c")
         XCTAssertEqual(push?.tier, 3)
         XCTAssertEqual(push?.hasNextTier, false)
+    }
+
+    /// A Discipline user sitting at the top *discipline* tier of a chain that continues into a locked
+    /// Strength tier never over-claims: the length counts only reachable tiers and no next tier is "in
+    /// reach". A Strength user on the same history sees the extra tier counted and reachable.
+    func testChainPositionIsPhaseAware() {
+        let logs = [log(weeksAgo: 0, [logged("push_c", .strength, .push, reps: [15])])]
+
+        let disciplinePush = analytics(logs, phase: .discipline).chainPositions.first { $0.pattern == .push }
+        XCTAssertEqual(disciplinePush?.currentExercise?.id, "push_c")
+        XCTAssertEqual(disciplinePush?.tier, 3)          // frontier at the top of the 3 discipline tiers
+        XCTAssertEqual(disciplinePush?.chainLength, 3)   // push_d (strength) is not counted
+        XCTAssertEqual(disciplinePush?.hasNextTier, false) // the only tier above is still locked
+
+        let strengthPush = analytics(logs, phase: .strength).chainPositions.first { $0.pattern == .push }
+        XCTAssertEqual(strengthPush?.tier, 3)
+        XCTAssertEqual(strengthPush?.chainLength, 4)     // push_d now reachable and counted
+        XCTAssertEqual(strengthPush?.hasNextTier, true)  // one-arm push-up is in reach
     }
 
     // MARK: - Personal bests

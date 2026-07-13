@@ -38,11 +38,14 @@ struct ProgressAnalytics: Equatable {
     ///   - logs: the full `WorkoutLog` history (the Progress tab reads everything, not the engine's
     ///     bounded recent window, so all-time bests and every logged week are represented).
     ///   - library: the validated exercise catalog, needed to resolve chains, hold-vs-rep, and names.
+    ///   - phase: the user's earned phase; chain position only counts tiers this phase can reach, so
+    ///     a Discipline user's chain is never reported against a still-locked Strength tier (US-H02).
     ///   - asOf: the vantage for week bucketing (weekly volume), injected for determinism.
     ///   - calendar: the calendar whose week boundaries match the Consistency Score's.
     static func from(
         logs: [WorkoutLog],
         library: [Exercise],
+        phase: Phase,
         asOf: Date,
         calendar: Calendar = .current
     ) -> ProgressAnalytics {
@@ -51,7 +54,7 @@ struct ProgressAnalytics: Equatable {
 
         return ProgressAnalytics(
             pillarBalance: makePillarBalance(worked: worked),
-            chainPositions: makeChainPositions(worked: worked, exercisesById: exercisesById),
+            chainPositions: makeChainPositions(worked: worked, exercisesById: exercisesById, phase: phase),
             personalBests: makePersonalBests(logs: logs, worked: worked, exercisesById: exercisesById, calendar: calendar),
             deep: DeepAnalytics(
                 patternBalance: makePatternBalance(worked: worked),
@@ -103,13 +106,22 @@ struct ProgressAnalytics: Equatable {
     /// For each foundational pattern, the user's standing in the chain they are *actively* working -
     /// the frontier tier (highest-order worked) within the most recently worked chain for that
     /// pattern. A pattern the user has never trained reports "not started" (`currentExercise == nil`).
+    ///
+    /// The reported tier/length/next-tier are counted only over the tiers this `phase` can actually
+    /// reach: a Discipline user (all MVP users) reaches only `.discipline` tiers, so a chain that tops
+    /// out in a still-locked Strength movement (push_one_arm, pistol, the L-sit) is never reported as
+    /// "next tier in reach" and its length never counts the unreachable tier, mirroring the
+    /// `PhaseEvaluator` principle that Strength movements never surface until earned (US-H02).
     private static func makeChainPositions(
         worked: [WorkedInstance],
-        exercisesById: [String: Exercise]
+        exercisesById: [String: Exercise],
+        phase: Phase
     ) -> [ChainPositionSummary] {
-        // Chain -> its ordered tiers, for length and next-tier lookups.
-        let chainLengths = exercisesById.values.reduce(into: [String: Int]()) { lengths, exercise in
-            lengths[exercise.progressionChainId, default: 0] += 1
+        // Chain -> its tiers, for reachable-length and next-tier lookups.
+        let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
+
+        func isReachable(_ exercise: Exercise) -> Bool {
+            exercise.phase == .discipline || phase == .strength
         }
 
         return foundationalPatterns.map { pattern in
@@ -138,12 +150,21 @@ struct ProgressAnalytics: Equatable {
                 .max { $0.1.progressionOrder < $1.1.progressionOrder }!
                 .1
 
+            // Report against only the reachable tiers of the active chain, so a locked Strength tier
+            // never inflates the length or claims to be "in reach".
+            let reachableTiers = (tiersByChain[activeChainId] ?? []).filter(isReachable)
+            let chainLength = max(reachableTiers.count, 1)
+            // Frontier's 1-based rank among the reachable tiers; `max(_, 1)` defends the case (which
+            // shouldn't occur) where the frontier itself is not reachable, keeping tier valid.
+            let tier = max(reachableTiers.filter { $0.progressionOrder <= frontier.progressionOrder }.count, 1)
+            let hasNextTier = reachableTiers.contains { $0.progressionOrder > frontier.progressionOrder }
+
             return ChainPositionSummary(
                 pattern: pattern,
                 currentExercise: frontier,
-                tier: frontier.progressionOrder + 1,
-                chainLength: chainLengths[activeChainId] ?? 1,
-                hasNextTier: frontier.progressionId != nil
+                tier: tier,
+                chainLength: chainLength,
+                hasNextTier: hasNextTier
             )
         }
     }
