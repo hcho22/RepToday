@@ -737,10 +737,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A calendar shows completed sessions; a chart shows the Consistency Score over time (Swift Charts)
-- [ ] `longestChain` is surfaced as an earned point of pride; all copy is identity-framed, never loss-framed
-- [ ] The view reads real `WorkoutLog` history and the real score (US-H01)
-- [ ] Uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator
+- [x] A calendar shows completed sessions; a chart shows the Consistency Score over time (Swift Charts)
+- [x] `longestChain` is surfaced as an earned point of pride; all copy is identity-framed, never loss-framed
+- [x] The view reads real `WorkoutLog` history and the real score (US-H01)
+- [x] Uses `Theme` tokens and `@Observable` view models; verify in iOS Simulator
 
 **Validation Test:**
 

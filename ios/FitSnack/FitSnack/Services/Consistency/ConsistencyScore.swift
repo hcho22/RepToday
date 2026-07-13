@@ -197,13 +197,17 @@ enum ConsistencyScore {
 
     /// Whole weeks between `date` and `asOf` (0 = same week). Negative when `date` is in a week after
     /// `asOf` (a future-dated log), which callers discard.
-    private static func weeksAgo(_ date: Date, from asOf: Date, _ calendar: Calendar) -> Int {
+    ///
+    /// Internal (not private) so the Consistency Score *trend* (`ConsistencyTrend`, US-M01) buckets by
+    /// exactly the same week boundaries the score does - a single source of truth for "a week" so the
+    /// Progress tab's trajectory can never disagree with the headline number about which week is which.
+    static func weeksAgo(_ date: Date, from asOf: Date, _ calendar: Calendar) -> Int {
         let from = startOfWeek(date, calendar)
         let to = startOfWeek(asOf, calendar)
         return calendar.dateComponents([.weekOfYear], from: from, to: to).weekOfYear ?? 0
     }
 
-    private static func startOfWeek(_ date: Date, _ calendar: Calendar) -> Date {
+    static func startOfWeek(_ date: Date, _ calendar: Calendar) -> Date {
         calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? calendar.startOfDay(for: date)
     }
 }

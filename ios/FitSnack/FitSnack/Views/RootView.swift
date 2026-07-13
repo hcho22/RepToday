@@ -37,15 +37,13 @@ private struct MainTabsView: View {
                     Label("Today", systemImage: "house.fill")
                 }
 
-            PlaceholderTabView(
-                icon: "chart.line.uptrend.xyaxis",
-                title: "Progress",
-                subtitle: "Every show-up counts."
-            )
-            .tag(AppTab.progress)
-            .tabItem {
-                Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
-            }
+            // The reflection surface (US-M01): the calendar, the Consistency Score trend, and the
+            // earned longest-run pride. US-M02 layers pillar balance, chain position, and bests on top.
+            ProgressTabView(services: services)
+                .tag(AppTab.progress)
+                .tabItem {
+                    Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
+                }
 
             PlaceholderTabView(
                 icon: "person.crop.circle.fill",
