@@ -7,7 +7,7 @@ import Foundation
 /// `focusPillarRaw`) are native attributes; the per-exercise outcomes (`exercises`) are
 /// stored as JSON-encoded `Data`. `completedAt` is a native `Date` precisely so logs can
 /// be fetched by date range (staleness windows, the Progress calendar) without decoding
-/// every record. As with `CDUser`, attributes are optional for CloudKit (US-J02) and
+/// every record. As with `CDUser`, attributes are optional for CloudKit (US-N02) and
 /// `toWorkoutLog()` re-imposes the non-optional domain contract - except the additive v6
 /// `requestedMinutes`/`wasReturn` columns (US-D02), which are stored as optional `NSNumber`
 /// so a legacy log written before they existed reads back as `nil` and decodes to the

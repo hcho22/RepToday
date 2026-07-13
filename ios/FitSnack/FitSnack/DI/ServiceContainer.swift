@@ -1,11 +1,12 @@
+import CoreData
 import SwiftUI
 
 /// App-wide service registry.
 ///
 /// Views read this from `@Environment(\.services)`, and view models receive the service
 /// values they need from views. Replacing an implementation is localized here: change the
-/// matching argument in `mock()` (or a future production factory) from `Mock...` to the
-/// real service.
+/// matching argument in `mock()` (or the production `live(context:)` factory) from `Mock...`
+/// to the real service.
 struct ServiceContainer {
     let exerciseService: any ExerciseServiceProtocol
     let workoutEngine: any WorkoutEngineProtocol
@@ -106,6 +107,56 @@ struct ServiceContainer {
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
             authService: MockAuthService()
+        )
+    }
+
+    /// Production wiring (US-N02): the same real services as `mock()`, but backed by the
+    /// CloudKit-enabled CoreData stack rather than in-memory stores, so the user, their
+    /// history, and the in-force policy persist across relaunch and sync across devices, while
+    /// the transient active session stays on-device (the `Local` store configuration).
+    ///
+    /// The one shared `context` (the app's `viewContext`) backs every CoreData store, and a
+    /// single `CoreDataSessionPolicyStore` / user / log / consistency service is shared between
+    /// the Programmer, the Ready Screen, and the completion recorder, so a written session is
+    /// the same history everyone reads back - exactly as `mock()` shares its in-memory stores.
+    ///
+    /// HealthKit and Subscription stay mocked until their own stories (US-N03/US-N04); auth is
+    /// the real Keychain-backed Sign in with Apple (US-N01).
+    static func live(context: NSManagedObjectContext) -> ServiceContainer {
+        // The bundled exercise library is integrity-gated at load; a failure here is a build-time
+        // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
+        let exerciseService = try! MockExerciseService()
+        let userService = CoreDataUserService(context: context)
+        let workoutLogService = CoreDataWorkoutLogService(context: context)
+        // One policy store shared by the Programmer (re-programs) and the completion recorder
+        // (the cold-start handoff's reconciled policy, US-G04).
+        let policyStore = CoreDataSessionPolicyStore(context: context)
+        let consistencyService = ConsistencyScoreService()
+        return ServiceContainer(
+            exerciseService: exerciseService,
+            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
+            sessionPolicyService: DeterministicSessionPolicyService(
+                store: policyStore,
+                exerciseService: exerciseService,
+                userService: userService
+            ),
+            consistencyService: consistencyService,
+            phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
+            userService: userService,
+            workoutLogService: workoutLogService,
+            // The CoreData active-session store: an abandoned session now survives a full
+            // relaunch (it lives in the device-local `Local` store, never synced).
+            activeSessionStore: CoreDataActiveSessionStore(context: context),
+            sessionCompletionService: SessionCompletionService(
+                workoutLogService: workoutLogService,
+                userService: userService,
+                consistencyService: consistencyService,
+                policyStore: policyStore
+            ),
+            healthKitService: MockHealthKitService(),
+            subscriptionService: MockSubscriptionService(),
+            // Real Keychain-backed Sign in with Apple (US-N01).
+            authService: AppleAuthService.live()
         )
     }
 }
