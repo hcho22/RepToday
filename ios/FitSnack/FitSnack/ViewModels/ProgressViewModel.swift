@@ -26,6 +26,15 @@ final class ProgressViewModel {
     /// session - even five minutes - finished on it.
     private(set) var completedDays: Set<Date> = []
 
+    /// The legibility layer (US-M02): pillar balance, chain position, personal bests, and the
+    /// premium-gated deep analytics. `nil` before load or when there is no user. Computed for
+    /// everyone; the view renders the free layers always and gates `deep` behind `isPremium`.
+    private(set) var analytics: ProgressAnalytics?
+
+    /// Whether the user's entitlement unlocks the deep analytics layer (US-N04). `false` for the free
+    /// tier, which sees a clear, non-nagging upsell in its place.
+    private(set) var isPremium = false
+
     /// True while the first load is in flight.
     private(set) var isLoading = false
 
@@ -40,18 +49,24 @@ final class ProgressViewModel {
     private let userService: any UserServiceProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
     private let consistencyService: any ConsistencyServiceProtocol
+    private let exerciseService: any ExerciseServiceProtocol
+    private let subscriptionService: any SubscriptionServiceProtocol
     private let now: () -> Date
     private let calendar: Calendar
 
     init(
         userService: any UserServiceProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
+        exerciseService: any ExerciseServiceProtocol,
+        subscriptionService: any SubscriptionServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
         self.userService = userService
         self.workoutLogService = workoutLogService
+        self.exerciseService = exerciseService
+        self.subscriptionService = subscriptionService
         self.consistencyService = consistencyService
         self.now = now
         self.calendar = calendar
@@ -83,5 +98,20 @@ final class ProgressViewModel {
             asOf: now(),
             calendar: calendar
         )
+
+        // The legibility layer (US-M02) - pillar balance, chain position, bests, and the deep layer -
+        // over the same full history, plus the entitlement that gates the deep layer at render time.
+        // Both are best-effort: a library or entitlement read that fails leaves the free surfaces
+        // rendering and simply omits or gates the deep layer rather than failing the whole tab.
+        if let library = try? await exerciseService.exercises() {
+            analytics = ProgressAnalytics.from(
+                logs: logs,
+                library: library,
+                phase: user.phase,
+                asOf: now(),
+                calendar: calendar
+            )
+        }
+        isPremium = (try? await subscriptionService.currentSubscription().tier) == .premium
     }
 }
