@@ -33,6 +33,13 @@ struct AppleAuthService: AuthServiceProtocol {
         return result.userIdentifier
     }
 
+    /// Persists an identifier obtained outside the programmatic ceremony (the SwiftUI
+    /// `SignInWithAppleButton` runs its own `ASAuthorizationController`), so the button path and
+    /// `signInWithApple()` share one store.
+    func completeSignIn(identifier: String) async throws {
+        try await store.save(identifier)
+    }
+
     func signOut() async throws {
         try await store.clear()
     }

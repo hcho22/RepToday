@@ -47,6 +47,21 @@ final class AppleAuthServiceTests: XCTestCase {
         XCTAssertEqual(persisted, "apple-001", "the signed-in identifier is stored to key the user record")
     }
 
+    func testCompleteSignInPersistsExternallyObtainedIdentifier() async throws {
+        let store = InMemoryAuthCredentialStore()
+        let service = makeService(
+            authorizer: StubAuthorizer(result: .success(AppleSignInResult(userIdentifier: "unused"))),
+            store: store
+        )
+
+        try await service.completeSignIn(identifier: "apple-from-button")
+
+        let current = try await service.currentUserIdentifier()
+        XCTAssertEqual(current, "apple-from-button", "the button-completion identifier reads back locally")
+        let persisted = try await store.loadIdentifier()
+        XCTAssertEqual(persisted, "apple-from-button", "it is persisted to the same store as signInWithApple")
+    }
+
     func testCurrentUserIdentifierIsNilBeforeSignIn() async throws {
         let service = makeService(
             authorizer: StubAuthorizer(result: .success(AppleSignInResult(userIdentifier: "unused")))

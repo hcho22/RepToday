@@ -180,7 +180,34 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(saved?.id, "apple-persisted", "the persisted Apple identifier keys the record")
     }
 
-    /// Signing in with Apple during the flow records the returned identifier and keys the user by it.
+    /// Completing the official Sign in with Apple button during the flow records the identifier
+    /// (through `completeSignIn`, the button-completion path) and keys the user by it.
+    func testCompleteSignInKeysUserByIdentifier() async throws {
+        let users = MockUserService()
+        let auth = MockAuthService()
+        let vm = OnboardingViewModel(
+            userService: users,
+            sessionPolicyService: MockSessionPolicyService(),
+            authService: auth,
+            userIdentifier: { "local-fallback" },
+            now: { self.fixedDate }
+        )
+        fillAnswers(vm)
+        XCTAssertTrue(vm.canSignInWithApple)
+
+        await vm.completeSignIn(identifier: "apple-from-button")
+        XCTAssertEqual(vm.signedInIdentifier, "apple-from-button")
+        XCTAssertFalse(vm.canSignInWithApple, "no re-sign-in once signed in")
+        let persisted = try await auth.currentUserIdentifier()
+        XCTAssertEqual(persisted, "apple-from-button", "the identifier is persisted through the store")
+
+        let finished = await vm.finish()
+        XCTAssertTrue(finished)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved?.id, "apple-from-button")
+    }
+
+    /// The programmatic `signInWithApple()` path still records and keys by the returned identifier.
     func testSignInWithAppleKeysUserByReturnedIdentifier() async throws {
         let users = MockUserService()
         let vm = OnboardingViewModel(
@@ -279,6 +306,7 @@ private struct FailingUserService: UserServiceProtocol {
 private struct FailingAuthService: AuthServiceProtocol {
     func currentUserIdentifier() async throws -> String? { nil }
     func signInWithApple() async throws -> String { throw AuthError.failed("stub failure") }
+    func completeSignIn(identifier: String) async throws { throw AuthError.failed("stub failure") }
     func signOut() async throws {}
 }
 

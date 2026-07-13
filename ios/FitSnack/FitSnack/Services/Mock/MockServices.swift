@@ -228,6 +228,10 @@ actor MockAuthService: AuthServiceProtocol {
         return id
     }
 
+    func completeSignIn(identifier: String) async throws {
+        userIdentifier = identifier
+    }
+
     func signOut() async throws {
         userIdentifier = nil
     }

@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 /// The minimal v6 onboarding flow (US-I01).
@@ -192,22 +193,14 @@ private struct WelcomeStep: View {
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
                     .accessibilityLabel("Signed in with Apple")
             } else if viewModel.canSignInWithApple {
-                Button {
-                    Task { await viewModel.signInWithApple() }
-                } label: {
-                    ZStack {
-                        if viewModel.isSigningIn {
-                            ProgressView().tint(Theme.Colors.onAccent)
-                        } else {
-                            Label("Sign in with Apple", systemImage: "apple.logo")
-                                .font(Theme.Typography.button)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.buttonHeight)
+                SignInWithAppleButton(.signIn) { request in
+                    request.requestedScopes = [.fullName, .email]
+                } onCompletion: { result in
+                    viewModel.handleAppleSignIn(result)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.Colors.textPrimary)
+                .signInWithAppleButtonStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: Theme.Spacing.buttonHeight)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .disabled(viewModel.isSigningIn)
                 .accessibilityHint("Optional. You can start moving without signing in.")

@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 import Observation
 
@@ -117,6 +118,28 @@ final class OnboardingViewModel {
         isSigningIn = true
         defer { isSigningIn = false }
         signedInIdentifier = try? await authService.signInWithApple()
+    }
+
+    /// Handles the official `SignInWithAppleButton`'s completion. A thin extraction shim: it pulls the
+    /// stable identifier off a successful Apple ID credential and hands it to `completeSignIn`. Any
+    /// failure (canceled, offline, missing entitlement) or a non-Apple-ID credential is intentionally
+    /// swallowed - sign-in must never gate the first session.
+    @MainActor
+    func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        guard
+            case .success(let authorization) = result,
+            let credential = authorization.credential as? ASAuthorizationAppleIDCredential
+        else { return }
+        let identifier = credential.user
+        Task { await completeSignIn(identifier: identifier) }
+    }
+
+    /// Records an externally-obtained Sign in with Apple identifier (from the button's completion) so
+    /// `finish()` keys the user by it, persisting it best-effort through the auth service. The persist
+    /// failure is swallowed for the same non-gating reason as `signInWithApple()`.
+    func completeSignIn(identifier: String) async {
+        try? await authService?.completeSignIn(identifier: identifier)
+        signedInIdentifier = identifier
     }
 
     // MARK: - Navigation
