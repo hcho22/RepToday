@@ -79,7 +79,28 @@ final class PersistenceController {
                     fatalError("Failed to load the FitSnack store even local-only: \(error)")
                 }
             } else {
-                // A local store failing to load is a genuine defect, not a runtime condition.
+                // The Local store holds only the transient, device-bound active-session snapshot -
+                // disposable state. A load failure here (a corrupt or half-written sqlite from an
+                // interrupted write or a full disk) must never brick the otherwise-offline-capable
+                // core loop, so recover the standard CoreData way: destroy the store file and
+                // re-add a fresh, empty one. Losing an in-progress session is acceptable; crashing
+                // the whole app over it is not.
+                if description.configuration == "Local", let url = description.url {
+                    do {
+                        try coordinator.destroyPersistentStore(at: url, ofType: description.type, options: description.options)
+                        try coordinator.addPersistentStore(
+                            ofType: description.type,
+                            configurationName: description.configuration,
+                            at: url,
+                            options: description.options
+                        )
+                        return
+                    } catch {
+                        // The recreate also failed - now it is a genuine defect, not a runtime condition.
+                        fatalError("Failed to load or recreate the FitSnack local store: \(error)")
+                    }
+                }
+                // No URL to recover (e.g. the in-memory /dev/null store) is a genuine defect.
                 fatalError("Failed to load the FitSnack persistent store: \(error), \(error.userInfo)")
             }
         }
