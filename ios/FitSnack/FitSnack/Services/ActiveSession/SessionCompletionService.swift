@@ -13,6 +13,10 @@ import Foundation
 ///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, then
 ///   reconciles the policy (clearing the now-inert `coldStartContract`). The user and policy are
 ///   separate aggregates, so they are persisted separately.
+/// - **HealthKit write (US-N03).** When a HealthKit service is wired, the completed session is mirrored
+///   into Health as a workout. The write is fully isolated (its own `try?`) so a denied authorization or
+///   a HealthKit failure never disrupts the essential bookkeeping above or blocks the completion; the
+///   service enforces idempotency by the log id, so a re-record never duplicates the session in Health.
 ///
 /// The user aggregate has a second writer - the on-open reprogram (US-J02/US-F03), which can persist a
 /// learned `user.duration` between Ready-Screen open and session completion. So the cold-start/consistency
@@ -52,17 +56,23 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     /// The same policy store the deterministic Programmer writes through (US-F03), shared so the
     /// cold-start handoff's reconciled policy lands where the engine reads it on the next open.
     private let policyStore: any SessionPolicyStore
+    /// Optional Health mirror (US-N03). `nil` in previews / the in-memory mock, where a completed session
+    /// records nothing to Health. When wired, the completed session is written to Health as a workout,
+    /// fully isolated so it can never disrupt the essential bookkeeping or block the completion.
+    private let healthKitService: (any HealthKitServiceProtocol)?
 
     init(
         workoutLogService: any WorkoutLogServiceProtocol,
         userService: any UserServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol,
-        policyStore: any SessionPolicyStore
+        policyStore: any SessionPolicyStore,
+        healthKitService: (any HealthKitServiceProtocol)? = nil
     ) {
         self.workoutLogService = workoutLogService
         self.userService = userService
         self.consistencyService = consistencyService
         self.policyStore = policyStore
+        self.healthKitService = healthKitService
     }
 
     func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws {
@@ -99,6 +109,13 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         try await userService.save(updatedUser)
         if handoff.sessionPolicy != currentPolicy {
             try await policyStore.save(handoff.sessionPolicy, for: latest.id)
+        }
+
+        // 6. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
+        //    authorization or any HealthKit failure must never disrupt the bookkeeping above or block the
+        //    completion. The service enforces idempotency by the log id, so a re-record never duplicates.
+        if let healthKitService {
+            try? await healthKitService.saveWorkoutLog(log, user: latest)
         }
     }
 

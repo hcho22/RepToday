@@ -29,13 +29,15 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # CloudKit sync (US-N02) delivers changes from other devices via silent push, which
-        # requires the remote-notification background mode. Xcode merges this partial Info.plist
-        # (the one key that has no INFOPLIST_KEY_ build-setting form) with the keys it generates.
+        # A partial Info.plist merged with the keys Xcode generates. It carries the CloudKit
+        # remote-notification background mode (US-N02) and the HealthKit write usage description
+        # (US-N03, NSHealthUpdateUsageDescription) - the privacy string shown when FitSnack first
+        # asks to write sessions to Health.
         INFOPLIST_FILE: FitSnack/Info.plist
-        # CloudKit sync (US-N02) and Sign in with Apple (US-N01) are additive: the store degrades
-        # to local-only and the sign-in falls back gracefully when they are unavailable (e.g. an
-        # unsigned Simulator build with no provisioning), so the core loop is never gated.
+        # CloudKit sync (US-N02), Sign in with Apple (US-N01), and HealthKit (US-N03) are all
+        # additive: the store degrades to local-only, the sign-in falls back gracefully, and the
+        # Health write is best-effort/skipped when unavailable (e.g. an unsigned Simulator build
+        # with no provisioning), so the core loop is never gated.
         CODE_SIGN_ENTITLEMENTS: FitSnack/FitSnack.entitlements
 
   FitSnackTests:

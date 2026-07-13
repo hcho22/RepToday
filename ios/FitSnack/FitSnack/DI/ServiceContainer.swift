@@ -120,8 +120,8 @@ struct ServiceContainer {
     /// the Programmer, the Ready Screen, and the completion recorder, so a written session is
     /// the same history everyone reads back - exactly as `mock()` shares its in-memory stores.
     ///
-    /// HealthKit and Subscription stay mocked until their own stories (US-N03/US-N04); auth is
-    /// the real Keychain-backed Sign in with Apple (US-N01).
+    /// Subscription stays mocked until US-N04; HealthKit is the real write-only integration (US-N03)
+    /// and auth is the real Keychain-backed Sign in with Apple (US-N01).
     static func live(context: NSManagedObjectContext) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
@@ -132,6 +132,10 @@ struct ServiceContainer {
         // (the cold-start handoff's reconciled policy, US-G04).
         let policyStore = CoreDataSessionPolicyStore(context: context)
         let consistencyService = ConsistencyScoreService()
+        // The real write-only HealthKit integration (US-N03): mirrors each completed session into
+        // Health, resolving MET values from the exercise catalog for the energy estimate. Shared so the
+        // completion recorder writes through the same instance exposed on the container.
+        let healthKitService = HealthKitService(exerciseService: exerciseService)
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -151,9 +155,10 @@ struct ServiceContainer {
                 workoutLogService: workoutLogService,
                 userService: userService,
                 consistencyService: consistencyService,
-                policyStore: policyStore
+                policyStore: policyStore,
+                healthKitService: healthKitService
             ),
-            healthKitService: MockHealthKitService(),
+            healthKitService: healthKitService,
             subscriptionService: MockSubscriptionService(),
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: AppleAuthService.live()

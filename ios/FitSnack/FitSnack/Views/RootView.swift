@@ -55,6 +55,13 @@ private struct MainTabsView: View {
                 Label("Profile", systemImage: "person.crop.circle.fill")
             }
         }
+        // Request HealthKit share access once, up front (US-N03), at a calm moment rather than mid-loop.
+        // Best-effort and non-blocking: the prompt only appears the first time (the request is idempotent
+        // once answered), and the core loop never waits on it. `saveWorkoutLog` then writes each completed
+        // session only when access was granted.
+        .task {
+            _ = try? await services.healthKitService.requestAuthorization()
+        }
     }
 }
 
