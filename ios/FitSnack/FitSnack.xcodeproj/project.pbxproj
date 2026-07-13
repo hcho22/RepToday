@@ -14,6 +14,7 @@
 		0E444602C9858D9B371A9037 /* SessionCompletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A84087E2FB0CE51800B2EA /* SessionCompletionService.swift */; };
 		12AD743EF8B9F2EB8F6C818E /* Enums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097FE325486215F1A5A4295D /* Enums.swift */; };
 		17B380CAE95DB0913BD29237 /* PolicyNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD9B7673226F77147653900 /* PolicyNote.swift */; };
+		1B561F60BFA77F75B395CAC1 /* AppleAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 149F5CFE377C67052F3CB3D4 /* AppleAuthService.swift */; };
 		1BD73CAAF550F549E0191E59 /* ProgressAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC0771E8E6FD52B4A46503 /* ProgressAnalytics.swift */; };
 		1EF0770DC07230E331375E07 /* PlateauDiagnosis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939D3C7C9240D310489F4F50 /* PlateauDiagnosis.swift */; };
 		1F3F4AE451DE5F567C42424C /* ColdStartSeedingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DB71C842D4B5068D0BE2A24 /* ColdStartSeedingTests.swift */; };
@@ -58,6 +59,7 @@
 		6BC55104116EFD0AC49BD284 /* SessionAssembly.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D59E64471E6566D7C21A99 /* SessionAssembly.swift */; };
 		701A91114F9934EECE82782D /* CoreDataSessionPolicyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE456FDCA142CD805A212069 /* CoreDataSessionPolicyStore.swift */; };
 		70B218D2C8A8567D311D894B /* ActiveSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E7A92A8E6439F760C8A0B1 /* ActiveSessionState.swift */; };
+		760085EAF091BBFF54D57DD2 /* AppleAuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E0140BB0E5F6854438CF2 /* AppleAuthServiceTests.swift */; };
 		7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */; };
 		7963EFDF3AC7288382F33A8C /* ReprogramTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02516CDAA81E89B035E1159B /* ReprogramTrigger.swift */; };
 		838DF39B5921A49D8E3AA35C /* CDActiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C599EB473282C4CB46D2C3A2 /* CDActiveSession.swift */; };
@@ -68,6 +70,7 @@
 		956119F5EDB46F1354A7B3F9 /* OnboardingViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2527792F8E17F327D0E71850 /* OnboardingViewModelTests.swift */; };
 		96A261903B09D0C7BCA5FE9F /* ExerciseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2723289C9064488853A7744D /* ExerciseServiceTests.swift */; };
 		98E975D4031577FB76028AA4 /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015E168A4BAA7D21D0B6CBA4 /* ActiveSessionView.swift */; };
+		9B107FA153A6688AEB644F11 /* AuthCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FA4A7AC898AC1EC8FA82201 /* AuthCredentialStore.swift */; };
 		9C8F27A808A53D73C791F956 /* WorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E105E18702D4CC93FBA722 /* WorkoutLog.swift */; };
 		9CE895E2C38D07AE42CE8995 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */; };
 		A02D5CE98D06F330380E390C /* ExerciseSwapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F56F0545CCF8634618229AD5 /* ExerciseSwapTests.swift */; };
@@ -103,6 +106,7 @@
 		E983D431A9A450B2A096C2EC /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9638F81CCC8BEEBB803E5D33 /* User.swift */; };
 		EAD37447CEDB0631F5BFABFF /* ConsistencyTrend.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9CC3322A068207109507865 /* ConsistencyTrend.swift */; };
 		EDF008F85D1B0F4194F59D83 /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B9CFBA5DFE088DCF39EE65 /* MockServices.swift */; };
+		F45458CF9BA5F98B33CF6BC0 /* AppleSignInAuthorizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A64170C65958BA11A9AE5EF /* AppleSignInAuthorizing.swift */; };
 		F8BD2A85CC9A19EAE0752E57 /* ActiveSessionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 283A78B928EEFBD460C2893B /* ActiveSessionViewModelTests.swift */; };
 		FA92EF45D21DA58F4D039022 /* SessionShapeSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */; };
 		FC49F98FBDCE6F047F9D1078 /* SessionSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C9173A9C0C430E7A39B5DBB /* SessionSummaryTests.swift */; };
@@ -132,10 +136,13 @@
 		0A2CCAD2AE40DB5A9CDFC995 /* ProgressAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressAnalyticsTests.swift; sourceTree = "<group>"; };
 		0DCDEF43EC9777BB82968748 /* SessionShapeSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelection.swift; sourceTree = "<group>"; };
 		12DE48E4A01BEA9478204AD5 /* ReadyViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModelTests.swift; sourceTree = "<group>"; };
+		149F5CFE377C67052F3CB3D4 /* AppleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthService.swift; sourceTree = "<group>"; };
 		16A6513BE7ADC414ED90485D /* VarietyLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarietyLanguageTests.swift; sourceTree = "<group>"; };
 		183CE237B95AD74F3517D63E /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		1A64170C65958BA11A9AE5EF /* AppleSignInAuthorizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInAuthorizing.swift; sourceTree = "<group>"; };
 		1D4BF02AD537AF6F14B588F5 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1F25B1FB48EFD4A0A7317EEE /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+		1FA4A7AC898AC1EC8FA82201 /* AuthCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentialStore.swift; sourceTree = "<group>"; };
 		20D4549EAA351DAA5F673F9E /* ReprogramTriggerDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerDetection.swift; sourceTree = "<group>"; };
 		24E105E18702D4CC93FBA722 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
 		24EF9748E7717931176A1378 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
@@ -168,6 +175,7 @@
 		73A84087E2FB0CE51800B2EA /* SessionCompletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCompletionService.swift; sourceTree = "<group>"; };
 		746F38F50F6FBD1B95149BA7 /* VarietyLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarietyLanguage.swift; sourceTree = "<group>"; };
 		7863C6D09242E8262C152F35 /* ActiveSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionStore.swift; sourceTree = "<group>"; };
+		786E0140BB0E5F6854438CF2 /* AppleAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthServiceTests.swift; sourceTree = "<group>"; };
 		79EDC655B337EBB5E8C5B8B6 /* PhaseEvaluatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseEvaluatorTests.swift; sourceTree = "<group>"; };
 		7AD01D5E0475B70F74ABB4E9 /* ConsistencyTrendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyTrendTests.swift; sourceTree = "<group>"; };
 		7C9173A9C0C430E7A39B5DBB /* SessionSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummaryTests.swift; sourceTree = "<group>"; };
@@ -291,6 +299,7 @@
 			children = (
 				EBBD80F1A74634F77B3E43C1 /* .gitkeep */,
 				7F7A78A69C34CCF6C7FBD0FC /* ActiveSession */,
+				AC6FC8F42BE1A871A739CCF8 /* Auth */,
 				DBABC18DEE31CA35FC5CD00A /* Consistency */,
 				5F1D4730785352945947B87F /* Engine */,
 				6E1757A17ED4901048C8D707 /* Language */,
@@ -469,6 +478,16 @@
 			path = Persistence;
 			sourceTree = "<group>";
 		};
+		AC6FC8F42BE1A871A739CCF8 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				149F5CFE377C67052F3CB3D4 /* AppleAuthService.swift */,
+				1A64170C65958BA11A9AE5EF /* AppleSignInAuthorizing.swift */,
+				1FA4A7AC898AC1EC8FA82201 /* AuthCredentialStore.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
 		AEEDC6CF87EE2E74A5566690 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -483,6 +502,7 @@
 			children = (
 				283A78B928EEFBD460C2893B /* ActiveSessionViewModelTests.swift */,
 				5526927A4FF1986151B6CCFB /* AdaptiveOverloadTests.swift */,
+				786E0140BB0E5F6854438CF2 /* AppleAuthServiceTests.swift */,
 				EF6A7F5A6A43CDEADEEF65C1 /* AppStateTests.swift */,
 				C520AE3B43532AEE937A9C93 /* ColdStartHandoffTests.swift */,
 				9DB71C842D4B5068D0BE2A24 /* ColdStartSeedingTests.swift */,
@@ -652,6 +672,7 @@
 				F8BD2A85CC9A19EAE0752E57 /* ActiveSessionViewModelTests.swift in Sources */,
 				62069971AFFFD5DF2D596C5E /* AdaptiveOverloadTests.swift in Sources */,
 				6626C9AEA07C347630F117E6 /* AppStateTests.swift in Sources */,
+				760085EAF091BBFF54D57DD2 /* AppleAuthServiceTests.swift in Sources */,
 				FDB7CF5B9B871060E6016C58 /* ColdStartHandoffTests.swift in Sources */,
 				1F3F4AE451DE5F567C42424C /* ColdStartSeedingTests.swift in Sources */,
 				8E247DDDFCCA383AF475DF88 /* ConsistencyScoreTests.swift in Sources */,
@@ -703,6 +724,9 @@
 				92A8137D00E5C8EFEE2CB5E7 /* ActiveSessionViewModel.swift in Sources */,
 				549827B470E8067A0E28ECB5 /* AdaptiveOverload.swift in Sources */,
 				3E613AE157C5D162C971D3C3 /* AppState.swift in Sources */,
+				1B561F60BFA77F75B395CAC1 /* AppleAuthService.swift in Sources */,
+				F45458CF9BA5F98B33CF6BC0 /* AppleSignInAuthorizing.swift in Sources */,
+				9B107FA153A6688AEB644F11 /* AuthCredentialStore.swift in Sources */,
 				838DF39B5921A49D8E3AA35C /* CDActiveSession.swift in Sources */,
 				30876E3D75E91139E3CFD299 /* CDSessionPolicy.swift in Sources */,
 				CBF639EBC54B6E26F6F0B639 /* CDUser.swift in Sources */,

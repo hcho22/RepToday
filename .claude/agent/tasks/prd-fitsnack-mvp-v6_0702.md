@@ -783,10 +783,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A real `AuthService` implements `signInWithApple()`, `currentUserIdentifier()`, and `signOut()` via Sign in with Apple
-- [ ] The core loop works offline and without an iCloud account; sign-in is not a gate to the first session
-- [ ] The signed-in identifier is stored and used to key the user record
-- [ ] Verify in iOS Simulator (full flow verified on device where possible)
+- [x] A real `AuthService` implements `signInWithApple()`, `currentUserIdentifier()`, and `signOut()` via Sign in with Apple
+- [x] The core loop works offline and without an iCloud account; sign-in is not a gate to the first session
+- [x] The signed-in identifier is stored and used to key the user record
+- [x] Verify in iOS Simulator (full flow verified on device where possible)
 
 **Validation Test:**
 
@@ -795,6 +795,8 @@ Discipline overrides optimization by design: a Return after a gap is served easy
   1. Complete Sign in with Apple
 - **Expected Result:** A stable user identifier is returned and persisted; the app remains usable offline afterward.
 - **Failure Indicator:** Sign-in blocks the core loop, or the identifier is not persisted.
+
+> Implemented. The real `AppleAuthService` (`Services/Auth/`) is a stateless, `Sendable` composition of two seams: an `AppleSignInAuthorizing` (the `ASAuthorizationController` + presentation-anchor + delegate ceremony, bridged to `async`/`await` by a self-retaining `@MainActor` coordinator - the real `AppleIDSignInAuthorizer`) and an `AuthCredentialStore` (persistence). `signInWithApple()` runs the programmatic ceremony, persists the returned stable `ASAuthorizationAppleIDCredential.user`, and returns it; `completeSignIn(identifier:)` persists an identifier obtained outside that ceremony (Apple's own `SignInWithAppleButton` runs its own `ASAuthorizationController`) into the same store so both paths share one identity; `currentUserIdentifier()` is a pure local read of the store (no network, no iCloud account) so it resolves instantly and offline; `signOut()` clears it. Persistence has two implementations behind the protocol: `KeychainAuthCredentialStore` (production - the identifier lives in the Keychain, pinned to `ThisDeviceOnly` accessibility, so it survives reinstall, is encrypted at rest, and never leaves the device) and `InMemoryAuthCredentialStore` (tests/previews). `AppleAuthService.live()` assembles the Keychain-backed production service, ready to swap into the production `ServiceContainer` when it lands (US-N02); `mock()` keeps `MockAuthService` so the suite stays Keychain-free and deterministic. Identity is wired into onboarding without gating: `OnboardingViewModel` takes an optional `authService` and the welcome step renders the affordance as Apple's official `SignInWithAppleButton` (App Store Review guideline 4.8 compliance), whose completion routes through `handleAppleSignIn(_:)` -> `completeSignIn(identifier:)` (the programmatic `signInWithApple()` path is retained too); any failure (offline, canceled, missing entitlement) or a non-Apple-ID credential is swallowed so the flow never blocks, and `finish()` keys the saved `User` by the resolved identity (the in-flow sign-in, else a previously-persisted identifier, else a locally-generated fallback), so the first session is never blocked whether or not the user signs in. `AppleAuthServiceTests` (8) cover the real composition end to end (sign-in persists and returns the identifier, `completeSignIn` persists a button-completion identifier into the same store, `currentUserIdentifier` reads it back, `signOut` clears it, a failed authorization leaves the store untouched, the in-memory store round-trips); new `OnboardingViewModelTests` cases pin identity resolution (persisted-identity keying, in-flow keying via both the button-completion `completeSignIn` path and the programmatic `signInWithApple()` path, no-auth and failed-sign-in fall back to the local identifier). The full 601-test suite passes in the simulator. Device note: the live Sign in with Apple ceremony requires the `com.apple.developer.applesignin` entitlement and a signing team (`DEVELOPMENT_TEAM` is currently empty), so the end-to-end Apple sheet is a device/team-provisioned verification; in the simulator the flow exercises the same protocol path through `MockAuthService` and falls back gracefully.
 
 #### US-N02: CloudKit sync and backup
 

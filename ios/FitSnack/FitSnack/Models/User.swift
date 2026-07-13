@@ -11,7 +11,7 @@ import Foundation
 // MARK: - User
 
 /// A FitSnack user. `id` is the stable identity (the Sign in with Apple user
-/// identifier once US-J01 lands); `phase` is computed by the `PhaseEvaluator` and is
+/// identifier once US-N01 lands); `phase` is computed by the `PhaseEvaluator` and is
 /// never user-selectable.
 struct User: Codable, Equatable, Identifiable {
     /// Stable identity - the Sign in with Apple user id string in production.
