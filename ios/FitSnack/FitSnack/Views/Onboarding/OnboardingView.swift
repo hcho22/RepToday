@@ -17,7 +17,8 @@ struct OnboardingView: View {
         _viewModel = State(
             initialValue: OnboardingViewModel(
                 userService: services.userService,
-                sessionPolicyService: services.sessionPolicyService
+                sessionPolicyService: services.sessionPolicyService,
+                authService: services.authService
             )
         )
         self.onComplete = onComplete
@@ -76,7 +77,7 @@ struct OnboardingView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch viewModel.step {
-        case .welcome:      WelcomeStep()
+        case .welcome:      WelcomeStep(viewModel: viewModel)
         case .basics:       BasicsStep(viewModel: viewModel)
         case .fitnessLevel: FitnessLevelStep(viewModel: viewModel)
         case .why:          WhyStep(viewModel: viewModel)
@@ -160,6 +161,8 @@ private struct StepHeader: View {
 // MARK: - Welcome
 
 private struct WelcomeStep: View {
+    @Bindable var viewModel: OnboardingViewModel
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             Image(systemName: "figure.run")
@@ -171,7 +174,50 @@ private struct WelcomeStep: View {
                 title: "Welcome to FitSnack",
                 subtitle: "A few minutes is enough. Tell us a little about you and we'll have a session ready before you know it."
             )
+
+            // Sign in with Apple is optional and never gates the first session (US-N01). When the
+            // user signs in, the record is keyed by their stable Apple identifier; if they skip it
+            // (or it fails offline), onboarding falls back to a local identifier and moves on.
+            signInSection
         }
+    }
+
+    @ViewBuilder
+    private var signInSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            if viewModel.signedInIdentifier != nil {
+                Label("Signed in with Apple", systemImage: "checkmark.seal.fill")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .accessibilityLabel("Signed in with Apple")
+            } else if viewModel.canSignInWithApple {
+                Button {
+                    Task { await viewModel.signInWithApple() }
+                } label: {
+                    ZStack {
+                        if viewModel.isSigningIn {
+                            ProgressView().tint(Theme.Colors.onAccent)
+                        } else {
+                            Label("Sign in with Apple", systemImage: "apple.logo")
+                                .font(Theme.Typography.button)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.buttonHeight)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.Colors.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+                .disabled(viewModel.isSigningIn)
+                .accessibilityHint("Optional. You can start moving without signing in.")
+
+                Text("Optional - keeps your identity private. You can start without it.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+        }
+        .padding(.top, Theme.Spacing.sm)
     }
 }
 

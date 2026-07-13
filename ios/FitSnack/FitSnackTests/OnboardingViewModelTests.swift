@@ -145,6 +145,86 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isFinishing, "the in-flight flag resets after failure")
     }
 
+    // MARK: - Identity (US-N01)
+
+    /// With no auth service wired, identity falls back to the local identifier and the sign-in
+    /// affordance is not offered - the offline-first core loop is never gated on Apple.
+    func testNoAuthServiceFallsBackToLocalIdentifier() async throws {
+        let users = MockUserService()
+        let vm = makeViewModel(userService: users)
+        fillAnswers(vm)
+        XCTAssertFalse(vm.canSignInWithApple)
+
+        let finished = await vm.finish()
+        XCTAssertTrue(finished)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved?.id, "onboarding-test-user", "the local fallback keys the record")
+    }
+
+    /// A previously-persisted Sign in with Apple identity keys the user record without any in-flow
+    /// sign-in - `finish()` reads it from the auth service and keys by it.
+    func testFinishKeysUserByPersistedAppleIdentifier() async throws {
+        let users = MockUserService()
+        let vm = OnboardingViewModel(
+            userService: users,
+            sessionPolicyService: MockSessionPolicyService(),
+            authService: MockAuthService(userIdentifier: "apple-persisted"),
+            userIdentifier: { "local-fallback" },
+            now: { self.fixedDate }
+        )
+        fillAnswers(vm)
+
+        let finished = await vm.finish()
+        XCTAssertTrue(finished)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved?.id, "apple-persisted", "the persisted Apple identifier keys the record")
+    }
+
+    /// Signing in with Apple during the flow records the returned identifier and keys the user by it.
+    func testSignInWithAppleKeysUserByReturnedIdentifier() async throws {
+        let users = MockUserService()
+        let vm = OnboardingViewModel(
+            userService: users,
+            sessionPolicyService: MockSessionPolicyService(),
+            authService: MockAuthService(),
+            userIdentifier: { "local-fallback" },
+            now: { self.fixedDate }
+        )
+        fillAnswers(vm)
+        XCTAssertTrue(vm.canSignInWithApple)
+
+        await vm.signInWithApple()
+        XCTAssertEqual(vm.signedInIdentifier, "mock-apple-user")
+        XCTAssertFalse(vm.canSignInWithApple, "no re-sign-in once signed in")
+
+        let finished = await vm.finish()
+        XCTAssertTrue(finished)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved?.id, "mock-apple-user")
+    }
+
+    /// A failed sign-in is swallowed (non-gating): no identifier is recorded and `finish()` falls
+    /// back to the local identifier, so the first session is never blocked.
+    func testSignInFailureFallsBackToLocalIdentifier() async throws {
+        let users = MockUserService()
+        let vm = OnboardingViewModel(
+            userService: users,
+            sessionPolicyService: MockSessionPolicyService(),
+            authService: FailingAuthService(),
+            userIdentifier: { "onboarding-test-user" },
+            now: { self.fixedDate }
+        )
+        fillAnswers(vm)
+
+        await vm.signInWithApple()
+        XCTAssertNil(vm.signedInIdentifier, "a failed sign-in records nothing")
+
+        let finished = await vm.finish()
+        XCTAssertTrue(finished)
+        let saved = try await users.currentUser()
+        XCTAssertEqual(saved?.id, "onboarding-test-user", "identity falls back to the local identifier")
+    }
+
     // MARK: - Navigation
 
     func testAdvanceAndGoBackWalkTheSteps() {
@@ -193,6 +273,13 @@ private struct FailingUserService: UserServiceProtocol {
     func currentUser() async throws -> User? { nil }
     func save(_ user: User) async throws { throw SaveError() }
     func deleteCurrentUser() async throws {}
+}
+
+/// An auth service whose `signInWithApple()` always fails, to prove sign-in is non-gating.
+private struct FailingAuthService: AuthServiceProtocol {
+    func currentUserIdentifier() async throws -> String? { nil }
+    func signInWithApple() async throws -> String { throw AuthError.failed("stub failure") }
+    func signOut() async throws {}
 }
 
 /// A minimal, empty-library exercise service so the deterministic policy service stays hermetic in

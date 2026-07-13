@@ -48,6 +48,16 @@ final class OnboardingViewModel {
     /// A user-facing message set only when the final save/seed fails; `nil` in the happy path.
     private(set) var errorMessage: String?
 
+    // MARK: - Identity (US-N01)
+
+    /// The Sign in with Apple identifier once the user has signed in, else `nil`. When present it
+    /// keys the saved user record; when absent, `finish()` falls back to a locally-generated stable
+    /// identifier, so sign-in is never a gate to the first session.
+    private(set) var signedInIdentifier: String?
+
+    /// True while the (optional, non-gating) Sign in with Apple sheet is in flight.
+    private(set) var isSigningIn = false
+
     // MARK: - Collected answers
 
     var displayName: String = ""
@@ -68,7 +78,12 @@ final class OnboardingViewModel {
 
     private let userService: any UserServiceProtocol
     private let sessionPolicyService: any SessionPolicyServiceProtocol
-    /// Stable identity source (Sign in with Apple in production, a mock id in the MVP shell).
+    /// Sign in with Apple identity (US-N01). Optional so tests and previews that do not exercise
+    /// sign-in construct the view model without it; when absent, identity falls back to
+    /// `userIdentifier` below.
+    private let authService: (any AuthServiceProtocol)?
+    /// The local fallback identity source, used only when the user has not signed in with Apple, so
+    /// the offline-first core loop always has a stable key without requiring an iCloud account.
     private let userIdentifier: () -> String
     /// Injected clock, so `createdAt` stays testable and the view model has no hidden wall-clock read.
     private let now: () -> Date
@@ -76,13 +91,32 @@ final class OnboardingViewModel {
     init(
         userService: any UserServiceProtocol,
         sessionPolicyService: any SessionPolicyServiceProtocol,
+        authService: (any AuthServiceProtocol)? = nil,
         userIdentifier: @escaping () -> String = { UUID().uuidString },
         now: @escaping () -> Date = { Date() }
     ) {
         self.userService = userService
         self.sessionPolicyService = sessionPolicyService
+        self.authService = authService
         self.userIdentifier = userIdentifier
         self.now = now
+    }
+
+    // MARK: - Sign in with Apple (US-N01)
+
+    /// Whether a sign-in affordance should be offered - only when an auth service is wired and the
+    /// user has not already signed in during this flow.
+    var canSignInWithApple: Bool { authService != nil && signedInIdentifier == nil }
+
+    /// Runs the optional Sign in with Apple ceremony and, on success, records the stable identifier
+    /// so `finish()` keys the user record by it. Any failure (offline, canceled, missing entitlement)
+    /// is intentionally swallowed: sign-in must never gate the first session, so the flow silently
+    /// falls back to a locally-generated identifier.
+    func signInWithApple() async {
+        guard let authService, !isSigningIn else { return }
+        isSigningIn = true
+        defer { isSigningIn = false }
+        signedInIdentifier = try? await authService.signInWithApple()
     }
 
     // MARK: - Navigation
@@ -124,7 +158,7 @@ final class OnboardingViewModel {
         errorMessage = nil
         defer { isFinishing = false }
 
-        let user = buildUser()
+        let user = buildUser(identifier: await resolvedIdentifier())
         do {
             try await userService.save(user)
             // Seed the cold-start policy after the user is saved, so a warmed-up engine never reads
@@ -137,10 +171,29 @@ final class OnboardingViewModel {
         }
     }
 
-    /// Assemble the `User` aggregate from the collected answers. `primaryGoal` defaults to
-    /// `.stayActive`: the v6 flow captures motivation through the free-text `why` instead, and
-    /// `primaryGoal` only informs template tone, never the engine (see `PrimaryGoal`).
+    /// The identity that keys the saved user record: the Sign in with Apple identifier (whether it
+    /// arrived via `signInWithApple()` this session or was persisted from a prior sign-in), else the
+    /// local fallback. A best-effort local read of the auth store - it never calls Apple - so it
+    /// resolves instantly and offline and never blocks `finish()`.
+    private func resolvedIdentifier() async -> String {
+        if let signedInIdentifier { return signedInIdentifier }
+        if let authService, let existing = try? await authService.currentUserIdentifier() {
+            return existing
+        }
+        return userIdentifier()
+    }
+
+    /// Assemble the `User` aggregate from the collected answers, keyed by `userIdentifier()` (the
+    /// local fallback). `finish()` uses `buildUser(identifier:)` with the resolved Sign in with Apple
+    /// identity; this convenience keeps the synchronous, identity-agnostic build available.
     func buildUser() -> User {
+        buildUser(identifier: userIdentifier())
+    }
+
+    /// Assemble the `User` aggregate from the collected answers, keyed by the given identifier.
+    /// `primaryGoal` defaults to `.stayActive`: the v6 flow captures motivation through the free-text
+    /// `why` instead, and `primaryGoal` only informs template tone, never the engine (see `PrimaryGoal`).
+    func buildUser(identifier: String) -> User {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedWhy = whyStatement.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -157,7 +210,7 @@ final class OnboardingViewModel {
         )
 
         return User(
-            id: userIdentifier(),
+            id: identifier,
             displayName: trimmedName,
             createdAt: now(),
             profile: profile,
