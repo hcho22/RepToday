@@ -5,9 +5,10 @@ import Foundation
 /// policy survives relaunch and offline use (US-D03).
 ///
 /// Reads and writes the one `CDSessionPolicy` record per user (`userId`-keyed, overwritten in place),
-/// on the supplied context. The running app injects the shared stack's context (US-J02 will sync it
-/// through CloudKit alongside the user and logs); the deterministic service is otherwise unit-tested
-/// against `InMemorySessionPolicyStore`, keeping its logic free of CoreData.
+/// on the supplied context. The running app injects the shared stack's context; the policy lives in
+/// the CloudKit-synced `Cloud` store configuration alongside the user and logs (US-N02), so it backs
+/// up and follows the user across devices. The deterministic service is otherwise unit-tested against
+/// `InMemorySessionPolicyStore`, keeping its logic free of CoreData.
 final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable {
     // Safe: the only state is this immutable reference, and every access to the
     // context happens inside `context.perform`, which serializes onto its queue.

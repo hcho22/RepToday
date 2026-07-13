@@ -32,4 +32,12 @@
         <attribute name="userId" optional="YES" attributeType="String"/>
         <attribute name="stateData" optional="YES" attributeType="Binary"/>
     </entity>
+    <configuration name="Cloud">
+        <memberEntity name="CDUser"/>
+        <memberEntity name="CDWorkoutLog"/>
+        <memberEntity name="CDSessionPolicy"/>
+    </configuration>
+    <configuration name="Local">
+        <memberEntity name="CDActiveSession"/>
+    </configuration>
 </model>

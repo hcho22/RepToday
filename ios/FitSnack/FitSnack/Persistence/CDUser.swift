@@ -7,7 +7,7 @@ import Foundation
 /// native attributes so they are queryable; the nested value types (`profile`,
 /// `subscription`, `consistency`, and the v6 `why`/`duration`/`coldStart`) are stored as
 /// JSON-encoded `Data`. Every attribute is optional because `NSPersistentCloudKitContainer`
-/// (US-J02) requires it - `toUser()` re-imposes the domain model's non-optional contract and
+/// (US-N02) requires it - `toUser()` re-imposes the domain model's non-optional contract and
 /// throws if a required field is missing, except the additive v6 columns, which decode to
 /// documented defaults when absent so pre-v6 records still load (US-D01).
 @objc(CDUser)

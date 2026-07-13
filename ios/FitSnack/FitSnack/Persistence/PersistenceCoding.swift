@@ -21,7 +21,7 @@ enum PersistenceCoder {
 
 /// Raised when a stored CoreData record cannot be reconstructed into its domain struct.
 ///
-/// CloudKit (US-J02) requires every attribute to be optional or have a default, so the
+/// CloudKit (US-N02) requires every attribute to be optional or have a default, so the
 /// managed-object properties are optional even where the domain model is not. Conversion
 /// back to a domain struct therefore fails loudly - naming the offending field or value -
 /// rather than silently substituting defaults and corrupting the user's history.
