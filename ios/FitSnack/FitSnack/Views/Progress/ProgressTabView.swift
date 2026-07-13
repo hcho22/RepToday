@@ -19,6 +19,8 @@ struct ProgressTabView: View {
             initialValue: ProgressViewModel(
                 userService: services.userService,
                 workoutLogService: services.workoutLogService,
+                exerciseService: services.exerciseService,
+                subscriptionService: services.subscriptionService,
                 consistencyService: services.consistencyService
             )
         )
@@ -56,6 +58,23 @@ struct ProgressTabView: View {
                         completedDays: viewModel.completedDays,
                         now: Date()
                     )
+
+                    if let analytics = viewModel.analytics {
+                        // The free legibility layer (US-M02): everyone sees where their training is
+                        // balanced, where they stand in each foundational pattern, and their bests.
+                        PillarBalanceCard(shares: analytics.pillarBalance)
+                        ChainPositionCard(positions: analytics.chainPositions)
+                        PersonalBestsCard(bests: analytics.personalBests)
+
+                        // The deep layer is entitlement-gated (US-N04): premium users see it, free
+                        // users see a clear, non-nagging upsell in its place. The core loop and the
+                        // basic history above are never gated.
+                        if viewModel.isPremium {
+                            DeepAnalyticsSection(deep: analytics.deep)
+                        } else {
+                            PremiumUpsellCard()
+                        }
+                    }
                 } else {
                     emptyState
                 }
@@ -399,6 +418,420 @@ private struct SessionCalendarCard: View {
     }
 }
 
+// MARK: - Pillar balance (US-M02, free)
+
+/// How the user's training is balanced across the three pillars - a labeled bar per pillar. Shown to
+/// everyone; it is basic legibility, never gated.
+private struct PillarBalanceCard: View {
+    let shares: [PillarShare]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("How you're balanced")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text("The mix across strength, mobility, and primal movement.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+
+            VStack(spacing: Theme.Spacing.sm) {
+                ForEach(shares) { share in
+                    ProgressAnalyticsBar(
+                        label: PillarLabels.name(for: share.pillar),
+                        fraction: share.fraction,
+                        trailing: "\(Int((share.fraction * 100).rounded()))%"
+                    )
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+}
+
+// MARK: - Chain position (US-M02, free)
+
+/// Where the user stands in each foundational pattern's active progression chain. Basic legibility,
+/// shown to everyone.
+private struct ChainPositionCard: View {
+    let positions: [ChainPositionSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("Where you stand")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text("Your current movement in each foundation.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+
+            VStack(spacing: Theme.Spacing.sm) {
+                ForEach(positions) { position in
+                    row(position)
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+
+    private func row(_ position: ChainPositionSummary) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.md) {
+            Text(PatternLabels.name(for: position.pattern))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .frame(width: 88, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                if let exercise = position.currentExercise {
+                    Text(exercise.displayName)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text(subtitle(for: position))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                } else {
+                    Text("Not started yet")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(for: position))
+    }
+
+    private func subtitle(for position: ChainPositionSummary) -> String {
+        var text = "Tier \(position.tier) of \(position.chainLength)"
+        if position.hasNextTier { text += " - next tier in reach" }
+        return text
+    }
+
+    private func accessibilityLabel(for position: ChainPositionSummary) -> String {
+        guard let exercise = position.currentExercise else {
+            return "\(PatternLabels.name(for: position.pattern)), not started yet."
+        }
+        return "\(PatternLabels.name(for: position.pattern)), \(exercise.displayName), \(subtitle(for: position))."
+    }
+}
+
+// MARK: - Personal bests (US-M02, free)
+
+/// The user's headline bests from real history - stat tiles, identity-framed. Basic legibility,
+/// shown to everyone.
+private struct PersonalBestsCard: View {
+    let bests: PersonalBests
+
+    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("Your bests")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            LazyVGrid(columns: columns, spacing: Theme.Spacing.md) {
+                tile(value: "\(bests.totalSessions)", label: "sessions logged")
+                tile(value: "\(bests.longestSessionMinutes) min", label: "longest session")
+                tile(value: "\(bests.mostSessionsInAWeek)", label: "best week")
+                tile(value: "\(bests.totalMinutesMoved) min", label: "total moved")
+                if let reps = bests.bestReps {
+                    tile(value: "\(reps.value) reps", label: "best set - \(reps.displayName)")
+                }
+                if let hold = bests.bestHold {
+                    tile(value: "\(hold.value)s", label: "longest hold - \(hold.displayName)")
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+
+    private func tile(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.Colors.accent)
+            Text(label)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(value), \(label)")
+    }
+}
+
+// MARK: - Deep analytics (US-M02, premium)
+
+/// The premium-only deep layer: finer pattern balance, weekly training volume, and how sessions have
+/// felt. Rendered only when the user's entitlement unlocks it (US-N04).
+private struct DeepAnalyticsSection: View {
+    let deep: DeepAnalytics
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(spacing: Theme.Spacing.xs) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(Theme.Colors.accent)
+                Text("Deeper analytics")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+            }
+
+            PatternBalanceCard(shares: deep.patternBalance)
+            WeeklyVolumeCard(points: deep.weeklyVolume)
+            DifficultyMixCard(mix: deep.difficultyMix)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Finer than pillar balance - the share across every movement pattern the user has trained.
+private struct PatternBalanceCard: View {
+    let shares: [PatternShare]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("Movement patterns")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            VStack(spacing: Theme.Spacing.sm) {
+                ForEach(shares) { share in
+                    ProgressAnalyticsBar(
+                        label: PatternLabels.name(for: share.pattern),
+                        fraction: share.fraction,
+                        trailing: "\(share.exerciseCount)"
+                    )
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+}
+
+/// Completed sets per week over the rolling window, as a bar chart (Swift Charts).
+private struct WeeklyVolumeCard: View {
+    let points: [WeeklyVolumePoint]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("Weekly volume")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text("Sets completed each week.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+
+            Chart(points) { point in
+                BarMark(
+                    x: .value("Week", point.weekStart, unit: .weekOfYear),
+                    y: .value("Sets", point.setsCompleted)
+                )
+                .foregroundStyle(Theme.Colors.accent)
+                .cornerRadius(4)
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading)
+            }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                }
+            }
+            .frame(height: 160)
+            .accessibilityLabel("Weekly training volume")
+            .accessibilityValue(accessibilityValue)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+
+    private var accessibilityValue: String {
+        let total = points.reduce(0) { $0 + $1.setsCompleted }
+        return "\(total) sets over \(points.count) weeks."
+    }
+}
+
+/// How sessions have felt - the too-easy / just-right / too-hard split behind Adaptive Overload.
+private struct DifficultyMixCard: View {
+    let mix: DifficultyMix
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("How it's felt")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            if mix.ratedCount == 0 {
+                Text("Rate a few sessions and your calibration shows up here.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } else {
+                segmentedBar
+                HStack(spacing: Theme.Spacing.md) {
+                    legend(label: "Too easy", count: mix.tooEasy, opacity: 0.35)
+                    legend(label: "Just right", count: mix.justRight, opacity: 1.0)
+                    legend(label: "Too hard", count: mix.tooHard, opacity: 0.6)
+                }
+                Text(calibrationNote)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("How it's felt. \(mix.tooEasy) too easy, \(mix.justRight) just right, \(mix.tooHard) too hard. \(calibrationNote)")
+    }
+
+    private var segmentedBar: some View {
+        GeometryReader { geo in
+            HStack(spacing: 2) {
+                segment(width: geo.size.width, count: mix.tooEasy, opacity: 0.35)
+                segment(width: geo.size.width, count: mix.justRight, opacity: 1.0)
+                segment(width: geo.size.width, count: mix.tooHard, opacity: 0.6)
+            }
+        }
+        .frame(height: 12)
+    }
+
+    private func segment(width: CGFloat, count: Int, opacity: Double) -> some View {
+        let fraction = mix.ratedCount > 0 ? CGFloat(count) / CGFloat(mix.ratedCount) : 0
+        return Capsule()
+            .fill(Theme.Colors.accent.opacity(opacity))
+            .frame(width: max(0, width * fraction))
+    }
+
+    private func legend(label: String, count: Int, opacity: Double) -> some View {
+        HStack(spacing: Theme.Spacing.xs) {
+            Circle()
+                .fill(Theme.Colors.accent.opacity(opacity))
+                .frame(width: 8, height: 8)
+            Text("\(label) \(count)")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+    }
+
+    /// A gentle, non-judgmental read of the calibration - never loss-framed.
+    private var calibrationNote: String {
+        if mix.justRight >= mix.tooEasy && mix.justRight >= mix.tooHard {
+            return "Mostly dialed in - your sessions are landing right."
+        }
+        if mix.tooHard > mix.tooEasy {
+            return "Running a little hard lately - the engine's easing you back."
+        }
+        return "Plenty in the tank - the engine's nudging you up."
+    }
+}
+
+// MARK: - Premium upsell (US-M02, free)
+
+/// The clear, non-nagging upsell shown in place of the deep layer for free users (US-M02 / US-N04).
+/// It states what premium unlocks and reassures that the core loop stays free - a single quiet card,
+/// never a modal or a repeated prompt.
+private struct PremiumUpsellCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.xs) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(Theme.Colors.accent)
+                Text("Go deeper with Premium")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+            }
+            Text("Unlock pattern-by-pattern balance, your weekly training volume, and how your sessions have felt over time.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textSecondary)
+            Text("Your workouts are always free - Premium just adds the deeper view.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+                .strokeBorder(Theme.Colors.accent.opacity(0.25), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Go deeper with Premium. Unlock pattern-by-pattern balance, weekly training volume, and how your sessions have felt. Your workouts are always free.")
+    }
+}
+
+// MARK: - Shared bar + labels
+
+/// A labeled horizontal share bar used by the pillar and pattern balance cards.
+private struct ProgressAnalyticsBar: View {
+    let label: String
+    let fraction: Double
+    let trailing: String
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            Text(label)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .frame(width: 96, alignment: .leading)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.Colors.accent.opacity(0.12))
+                    Capsule()
+                        .fill(Theme.Colors.accent)
+                        .frame(width: max(0, geo.size.width * CGFloat(min(1, max(0, fraction)))))
+                }
+            }
+            .frame(height: 10)
+
+            Text(trailing)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .frame(width: 40, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), \(trailing)")
+    }
+}
+
+/// Presentation-only pillar labels for the Progress tab, matching `SessionSummary`'s wording.
+private enum PillarLabels {
+    static func name(for pillar: Pillar) -> String {
+        switch pillar {
+        case .strength: return "Strength"
+        case .mobility: return "Mobility"
+        case .primal: return "Primal"
+        }
+    }
+}
+
+/// Presentation-only movement-pattern labels for the Progress tab.
+private enum PatternLabels {
+    static func name(for pattern: MovementPattern) -> String {
+        switch pattern {
+        case .push: return "Push"
+        case .squat: return "Squat"
+        case .hinge: return "Hinge"
+        case .core: return "Core"
+        case .pull: return "Pull"
+        case .mobility: return "Mobility"
+        case .locomotion: return "Locomotion"
+        }
+    }
+}
+
 private extension Calendar {
     /// The first instant of the month containing `date`.
     func startOfMonth(for date: Date) -> Date {
@@ -414,34 +847,58 @@ private extension Calendar {
     ProgressTabView(viewModel: PreviewProgressViewModel.empty())
 }
 
+#Preview("Premium") {
+    ProgressTabView(viewModel: PreviewProgressViewModel.populated(premium: true))
+}
+
 /// Preview-only factory so the canvas renders without a running service stack.
 private enum PreviewProgressViewModel {
-    static func populated() -> ProgressViewModel {
-        let vm = ProgressViewModel(
+    static func populated(premium: Bool = false) -> ProgressViewModel {
+        let subscription = Subscription(
+            tier: premium ? .premium : .free,
+            provider: .apple,
+            expiresAt: nil,
+            trialEndsAt: nil
+        )
+        return ProgressViewModel(
             userService: MockUserService(user: MockPersistence.sampleUser),
             workoutLogService: MockWorkoutLogService(logs: sampleLogs()),
+            exerciseService: try! MockExerciseService(),
+            subscriptionService: MockSubscriptionService(subscription: subscription),
             consistencyService: ConsistencyScoreService()
         )
-        return vm
     }
 
     static func empty() -> ProgressViewModel {
         ProgressViewModel(
             userService: MockUserService(user: MockPersistence.sampleUser),
-            workoutLogService: MockWorkoutLogService(logs: [])
+            workoutLogService: MockWorkoutLogService(logs: []),
+            exerciseService: try! MockExerciseService(),
+            subscriptionService: MockSubscriptionService()
         )
     }
 
     private static func sampleLogs() -> [WorkoutLog] {
         let calendar = Calendar.current
         let today = Date()
+        let pillars: [(Pillar, MovementPattern, String)] = [
+            (.strength, .push, "push_knee"),
+            (.mobility, .mobility, "mobility_cat_cow"),
+            (.primal, .locomotion, "primal_bear_crawl"),
+        ]
         return (0..<18).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset * 2, to: today) else { return nil }
+            let (pillar, pattern, exerciseId) = pillars[offset % pillars.count]
+            let logged = LoggedExercise(
+                id: UUID(), exerciseId: exerciseId, pillar: pillar, movementPattern: pattern,
+                completedSets: [CompletedSet(reps: 12, durationSeconds: nil), CompletedSet(reps: 10, durationSeconds: nil)],
+                skipped: false
+            )
             return WorkoutLog(
                 id: UUID(), workoutId: UUID(), completedAt: date,
                 requestedMinutes: 15, durationMinutes: 12, wasReturn: false,
-                shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: .justRight,
-                exercises: []
+                shape: .singleFocus, focusPillar: pillar, perceivedDifficulty: .justRight,
+                exercises: [logged]
             )
         }
     }

@@ -37,10 +37,18 @@ final class ProgressViewModelTests: XCTestCase {
         }
     }
 
-    private func makeViewModel(user: User?, logs: [WorkoutLog]) -> ProgressViewModel {
-        ProgressViewModel(
+    private func makeViewModel(user: User?, logs: [WorkoutLog], premium: Bool = false) -> ProgressViewModel {
+        let subscription = Subscription(
+            tier: premium ? .premium : .free,
+            provider: .apple,
+            expiresAt: nil,
+            trialEndsAt: nil
+        )
+        return ProgressViewModel(
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
+            exerciseService: try! MockExerciseService(),
+            subscriptionService: MockSubscriptionService(subscription: subscription),
             consistencyService: ConsistencyScoreService(now: { self.asOf }, calendar: calendar),
             now: { self.asOf },
             calendar: calendar
@@ -136,5 +144,66 @@ final class ProgressViewModelTests: XCTestCase {
 
         await vm.load()
         XCTAssertEqual(vm.completedDays.count, 2)
+    }
+
+    // MARK: - US-M02: analytics + premium gating
+
+    /// A log carrying a worked strength push so the analytics layer has real content to summarize.
+    private func pushLog(weeksAgo: Int, dayOffset: Int = 0, reps: Int = 12) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(), workoutId: UUID(),
+            completedAt: date(weeksAgo: weeksAgo, dayOffset: dayOffset),
+            requestedMinutes: 15, durationMinutes: 12, wasReturn: false,
+            shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: .justRight,
+            exercises: [
+                LoggedExercise(
+                    id: UUID(), exerciseId: "push_knee", pillar: .strength, movementPattern: .push,
+                    completedSets: [CompletedSet(reps: reps, durationSeconds: nil)], skipped: false
+                )
+            ]
+        )
+    }
+
+    /// `load` computes the legibility layer (US-M02) from real history: pillar balance, chain
+    /// position for the trained pattern, and personal bests.
+    func testLoadPopulatesAnalyticsFromHistory() async {
+        let logs = [pushLog(weeksAgo: 0), pushLog(weeksAgo: 1, reps: 15)]
+        let vm = makeViewModel(user: onboardedUser(), logs: logs)
+
+        await vm.load()
+
+        let analytics = vm.analytics
+        XCTAssertNotNil(analytics)
+        // All the training was push (strength), so strength owns the whole pillar balance.
+        let strength = analytics?.pillarBalance.first { $0.pillar == .strength }
+        XCTAssertEqual(strength?.fraction ?? 0, 1.0, accuracy: 0.0001)
+        // The push foundation reports the worked movement; the untrained ones are "not started".
+        let push = analytics?.chainPositions.first { $0.pattern == .push }
+        XCTAssertEqual(push?.currentExercise?.id, "push_knee")
+        let squat = analytics?.chainPositions.first { $0.pattern == .squat }
+        XCTAssertEqual(squat?.hasStarted, false)
+        // The best single set is the 15-rep set.
+        XCTAssertEqual(analytics?.personalBests.bestReps?.value, 15)
+    }
+
+    /// A free user's entitlement leaves the deep layer gated (`isPremium == false`); the free
+    /// analytics surfaces are still computed.
+    func testFreeUserIsNotPremiumButStillGetsBasicAnalytics() async {
+        let vm = makeViewModel(user: onboardedUser(), logs: [pushLog(weeksAgo: 0)], premium: false)
+
+        await vm.load()
+
+        XCTAssertFalse(vm.isPremium)
+        XCTAssertNotNil(vm.analytics)
+    }
+
+    /// A premium user's entitlement unlocks the deep layer (`isPremium == true`).
+    func testPremiumUserUnlocksDeepLayer() async {
+        let vm = makeViewModel(user: onboardedUser(), logs: [pushLog(weeksAgo: 0)], premium: true)
+
+        await vm.load()
+
+        XCTAssertTrue(vm.isPremium)
+        XCTAssertNotNil(vm.analytics?.deep)
     }
 }

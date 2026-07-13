@@ -756,10 +756,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] The tab shows pillar balance (strength/mobility/primal), progression-chain position, and personal bests from real history
-- [ ] Deeper analytics are gated behind premium (US-N04); the gate is a clear, non-nagging upsell
-- [ ] Free users still see basic balance, chain position, and bests; only the deep-analytics layer is gated
-- [ ] Uses `Theme` tokens; verify in iOS Simulator
+- [x] The tab shows pillar balance (strength/mobility/primal), progression-chain position, and personal bests from real history
+- [x] Deeper analytics are gated behind premium (US-N04); the gate is a clear, non-nagging upsell
+- [x] Free users still see basic balance, chain position, and bests; only the deep-analytics layer is gated
+- [x] Uses `Theme` tokens; verify in iOS Simulator
 
 **Validation Test:**
 
@@ -768,6 +768,8 @@ Discipline overrides optimization by design: a Return after a gap is served easy
   1. Open the Progress tab as each
 - **Expected Result:** Both see basic balance/chain/bests; only the premium user sees the deep-analytics layer; the free user sees a clear upsell in its place.
 - **Failure Indicator:** Deep analytics are free, or basic history is gated behind premium.
+
+> Implemented. The pure, deterministic `ProgressAnalytics.from(logs:library:asOf:calendar:)` derives the free legibility layer - pillar balance (share across strength/mobility/primal), chain position (the frontier tier within each foundational pattern's active chain, with a "next tier in reach" hint), and personal bests (sessions, longest session, best week, best single-set reps/hold naming the movement) - plus a premium deep layer (finer per-movement-pattern balance, weekly training volume as a Swift Charts bar chart, and the too-easy/just-right/too-hard difficulty mix). Coverage is counted the `SessionSummary` way (only non-skipped exercises with a recorded set), so it never over-claims. `ProgressViewModel` computes the analytics over the full history and reads the entitlement from `SubscriptionServiceProtocol` into `isPremium`; `ProgressTabView` renders the free cards for everyone and gates only the deep section behind `isPremium`, showing a single quiet, non-nagging `PremiumUpsellCard` ("Your workouts are always free - Premium just adds the deeper view") in its place. The core loop and the basic US-M01 history are never gated. `ProgressAnalyticsTests` (12) and the new `ProgressViewModelTests` cases pin every surface, the exclusion rules, and the free-vs-premium gate.
 
 ---
 
