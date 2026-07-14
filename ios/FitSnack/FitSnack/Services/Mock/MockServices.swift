@@ -179,18 +179,25 @@ final class MockHealthKitService: HealthKitServiceProtocol {
 
 // MARK: - Subscription
 
+/// Deterministic, StoreKit-free subscription mock for tests and previews.
+///
+/// It starts on whatever `subscription` is injected (free by default) and, unless constructed with
+/// `simulatesPurchase: false`, a `purchase`/`purchasePremium`/`restorePurchases` flips it to a
+/// premium entitlement - so the paywall preview and the US-M02 unlock path work end to end offline.
+/// `premiumPlans()` returns the same sample plans the real `.storekit` config prices.
 final class MockSubscriptionService: SubscriptionServiceProtocol {
-    private let subscription: Subscription
+    private var subscription: Subscription
+    private let plans: [SubscriptionPlan]
+    private let simulatesPurchase: Bool
 
     init(
-        subscription: Subscription = Subscription(
-            tier: .free,
-            provider: .apple,
-            expiresAt: nil,
-            trialEndsAt: nil
-        )
+        subscription: Subscription = .free,
+        plans: [SubscriptionPlan] = SubscriptionPlan.samples,
+        simulatesPurchase: Bool = true
     ) {
         self.subscription = subscription
+        self.plans = plans
+        self.simulatesPurchase = simulatesPurchase
     }
 
     func currentSubscription() async throws -> Subscription {
@@ -201,12 +208,28 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
         subscription
     }
 
+    func premiumPlans() async throws -> [SubscriptionPlan] {
+        plans
+    }
+
+    func purchase(_ plan: SubscriptionPlan) async throws -> Subscription {
+        grantIfSimulating()
+        return subscription
+    }
+
     func purchasePremium() async throws -> Subscription {
-        subscription
+        grantIfSimulating()
+        return subscription
     }
 
     func restorePurchases() async throws -> Subscription {
-        subscription
+        grantIfSimulating()
+        return subscription
+    }
+
+    private func grantIfSimulating() {
+        guard simulatesPurchase else { return }
+        subscription = Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)
     }
 }
 

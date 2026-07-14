@@ -39,6 +39,13 @@ targets:
         # Health write is best-effort/skipped when unavailable (e.g. an unsigned Simulator build
         # with no provisioning), so the core loop is never gated.
         CODE_SIGN_ENTITLEMENTS: FitSnack/FitSnack.entitlements
+    # The generated FitSnack scheme runs the tests and attaches the local StoreKit configuration
+    # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
+    # Connect. The paywall never gates the core loop; the free tier is unlimited forever.
+    scheme:
+      testTargets:
+        - FitSnackTests
+      storeKitConfiguration: FitSnack/Resources/FitSnack.storekit
 
   FitSnackTests:
     type: bundle.unit-test

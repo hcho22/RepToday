@@ -42,7 +42,7 @@ enum MockPersistence {
             sitsLong: true, injuries: ["lower_back"], typicalAvailableMinutes: 15
         ),
         phase: .discipline,
-        subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+        subscription: .free,
         consistency: Consistency(
             weeklyGoal: 3, score: 78.0, workoutsThisWeek: 2,
             longestChain: 6, totalWorkoutsCompleted: 38, totalMinutesExercised: 540

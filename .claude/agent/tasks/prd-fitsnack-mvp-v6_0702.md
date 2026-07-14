@@ -846,11 +846,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A real `SubscriptionService` implements `currentSubscription()`, `refreshEntitlements()`, `purchasePremium()`, and `restorePurchases()` via StoreKit 2
-- [ ] Free tier is unlimited workouts forever; premium (~$7.99/mo or ~$59.99/yr, 14-day trial) unlocks the depth layer (analytics depth, Strength Phase, later AI reports)
-- [ ] The paywall never gates the core loop; entitlement drives the premium gates in US-M02
-- [ ] Subscription state persists and restores; clear disclosure per App Store rules
-- [ ] Verify in iOS Simulator (StoreKit configuration/sandbox)
+- [x] A real `SubscriptionService` implements `currentSubscription()`, `refreshEntitlements()`, `purchasePremium()`, and `restorePurchases()` via StoreKit 2
+- [x] Free tier is unlimited workouts forever; premium (~$7.99/mo or ~$59.99/yr, 14-day trial) unlocks the depth layer (analytics depth, Strength Phase, later AI reports)
+- [x] The paywall never gates the core loop; entitlement drives the premium gates in US-M02
+- [x] Subscription state persists and restores; clear disclosure per App Store rules
+- [x] Verify in iOS Simulator (StoreKit configuration/sandbox)
 
 **Validation Test:**
 
@@ -859,6 +859,8 @@ Discipline overrides optimization by design: a Return after a gap is served easy
   1. Purchase premium in the StoreKit sandbox, then revisit
 - **Expected Result:** The gated depth unlocks; the core loop was never blocked; restore re-grants entitlement.
 - **Failure Indicator:** The core loop is gated, or entitlement does not persist/restore.
+
+> Implemented. The real StoreKit 2 `StoreKitSubscriptionService` composes one seam - a `StoreKitFacade` (the App Store ceremony: `Product.products`, `Transaction.currentEntitlements`, `product.purchase()`, `AppStore.sync()`, behind the real `LiveStoreKitFacade`) - and owns the pure domain mapping from raw store entitlements/products to the app's `Subscription`/`SubscriptionPlan`, so the composition is unit-testable end to end with a stub facade (mirroring `AppleAuthService`, US-N01). It implements the four PRD methods (`currentSubscription`/`refreshEntitlements`/`purchasePremium`/`restorePurchases`) plus the paywall surface (`premiumPlans()` priced from StoreKit, `purchase(_ plan:)` for a selected plan). Only **verified** transactions count (an unverified purchase throws, an unverified entitlement is skipped), transactions are `finish()`ed, and any active premium entitlement grants `.premium` with the latest-expiring one's `expiresAt`/trial state carried through; no entitlement is the free tier. Nothing gates the core loop: the free tier is unlimited workouts forever, and a StoreKit failure anywhere resolves to free rather than blocking. The paywall is a dismissible sheet (`PaywallView` + `@Observable PaywallViewModel`) opened from the Progress tab's now-tappable `PremiumUpsellCard`; it prices the monthly (~$7.99, 14-day free trial) and yearly (~$59.99) plans, buys or restores, carries the App Store-required auto-renewal disclosure, and on a granted entitlement dismisses and refreshes the US-M02 gate. Entitlement drives the existing US-M02 `isPremium` gate unchanged (only the deep analytics layer is gated; the core loop and the basic US-M01 history never are). A local `Resources/FitSnack.storekit` configuration (two auto-renewable subscriptions in one group, monthly carrying the 2-week free trial) is attached to the generated `FitSnack` scheme (`project.yml` target `scheme.storeKitConfiguration`), so purchases/restores run in the Simulator without App Store Connect. `ServiceContainer.live(context:)` swaps `MockSubscriptionService` for `StoreKitSubscriptionService.live()`; `mock()` keeps the mock (now paywall-capable: it returns the sample plans and a purchase flips it to premium) so the suite and previews stay off the App Store and deterministic. New tests: `StoreKitSubscriptionServiceTests` (16) cover the entitlement mapping (free/premium/trial/latest-expiring), plan mapping+ordering, purchase unlock (PRD validation) / cancel-keeps-state, and restore re-grant (PRD validation) / nothing-owned; `PaywallViewModelTests` (12) cover load (plans / gentle empty+failure messages) and the purchase/restore success/cancel/failure paths (`didUnlockPremium`, never a blocking wall). The full 649-test suite passes and the app boots cleanly in the Simulator with the real service wired. Device note: the live purchase sheet against App Store Connect products needs a provisioned team (`DEVELOPMENT_TEAM` is empty), so end-to-end sandbox purchasing is exercised via the local `.storekit` config in Xcode; the unit suite covers the mapping, purchase, and restore logic, and the Simulator confirms clean boot + wiring.
 
 #### US-N05: Thin stateless proxy for the Variety Language slice
 

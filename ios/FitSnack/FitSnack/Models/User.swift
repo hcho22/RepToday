@@ -138,4 +138,9 @@ struct Subscription: Codable, Equatable {
     var provider: SubscriptionProvider
     var expiresAt: Date?
     var trialEndsAt: Date?
+
+    /// The free tier - unlimited core workouts forever, no expiry. The default entitlement for a
+    /// user who has never purchased, and what the real StoreKit service (US-N04) resolves to when
+    /// there is no active premium entitlement.
+    static let free = Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil)
 }

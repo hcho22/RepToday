@@ -124,10 +124,19 @@ protocol HealthKitServiceProtocol {
     func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws
 }
 
-/// Reads and refreshes premium entitlement state.
+/// Reads and refreshes premium entitlement state, and drives the paywall (US-N04).
+///
+/// The entitlement methods (`currentSubscription`/`refreshEntitlements`) resolve the local premium
+/// state that gates the US-M02 depth layer; the free tier is unlimited core workouts forever, so
+/// nothing here ever gates the core loop. The paywall methods load purchasable plans and buy a
+/// selected one; `purchasePremium()` is the plan-agnostic convenience (the primary monthly plan).
 protocol SubscriptionServiceProtocol {
     func currentSubscription() async throws -> Subscription
     func refreshEntitlements() async throws -> Subscription
+    /// The purchasable premium plans for the paywall, priced and ordered (monthly first).
+    func premiumPlans() async throws -> [SubscriptionPlan]
+    /// Purchase a specific plan chosen on the paywall; returns the resulting entitlement.
+    func purchase(_ plan: SubscriptionPlan) async throws -> Subscription
     func purchasePremium() async throws -> Subscription
     func restorePurchases() async throws -> Subscription
 }
