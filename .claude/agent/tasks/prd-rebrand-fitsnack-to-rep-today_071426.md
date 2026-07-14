@@ -57,13 +57,13 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] Folders renamed: `ios/FitSnack/` → `ios/RepToday/`, inner `FitSnack/` → `RepToday/`, `FitSnackTests/` → `RepTodayTests/`
-- [ ] `project.yml`: project `name`, target `FitSnack` → `RepToday`, test target `FitSnackTests` → `RepTodayTests`, and all source/scheme paths updated
-- [ ] `App/FitSnackApp.swift` → `App/RepTodayApp.swift`, and `struct FitSnackApp` → `struct RepTodayApp` (with `@main` intact)
-- [ ] All 47 test files: `@testable import FitSnack` → `@testable import RepToday`
-- [ ] Resource files renamed: `FitSnack.entitlements` → `RepToday.entitlements`, `FitSnack.storekit` → `RepToday.storekit`; `project.yml` `INFOPLIST_FILE`, `CODE_SIGN_ENTITLEMENTS`, `excludes`, and `storeKitConfiguration` paths updated to match
-- [ ] `AppState.swift` UserDefaults suite `FitSnack.Preview` → `RepToday.Preview` (both lines)
-- [ ] `xcodegen generate` succeeds; app builds; full test suite passes
+- [x] Folders renamed: `ios/FitSnack/` → `ios/RepToday/`, inner `FitSnack/` → `RepToday/`, `FitSnackTests/` → `RepTodayTests/`
+- [x] `project.yml`: project `name`, target `FitSnack` → `RepToday`, test target `FitSnackTests` → `RepTodayTests`, and all source/scheme paths updated
+- [x] `App/FitSnackApp.swift` → `App/RepTodayApp.swift`, and `struct FitSnackApp` → `struct RepTodayApp` (with `@main` intact)
+- [x] All 47 test files: `@testable import FitSnack` → `@testable import RepToday`
+- [x] Resource files renamed: `FitSnack.entitlements` → `RepToday.entitlements`, `FitSnack.storekit` → `RepToday.storekit`; `project.yml` `INFOPLIST_FILE`, `CODE_SIGN_ENTITLEMENTS`, `excludes`, and `storeKitConfiguration` paths updated to match
+- [x] `AppState.swift` UserDefaults suite `FitSnack.Preview` → `RepToday.Preview` (both lines)
+- [x] `xcodegen generate` succeeds; app builds; full test suite passes (667/667 green under the `RepToday` module)
 
 **Validation Test:**
 

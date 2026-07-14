@@ -125,5 +125,5 @@ let resolver = VarietyLanguageResolver(
 
 The resolver still attempts the LLM at most once, and only while the user is cold-start-active and
 online; on any failure it falls back to the template.
-See `ios/FitSnack/FitSnack/Services/Language/ProxyVarietyLanguageProvider.swift` and
+See `ios/RepToday/RepToday/Services/Language/ProxyVarietyLanguageProvider.swift` and
 `VarietyLanguageResolver.swift`.
