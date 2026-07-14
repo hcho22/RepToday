@@ -28,7 +28,7 @@ final class PersistenceController {
 
     /// The CloudKit container the Cloud store mirrors into (the user's private database).
     /// Conventionally `iCloud.<bundle id>`; must match the app's iCloud entitlement.
-    static let cloudKitContainerIdentifier = "iCloud.com.fitsnack.app"
+    static let cloudKitContainerIdentifier = "iCloud.com.reptoday.app"
 
     /// The managed object model, loaded exactly once. Creating multiple containers (e.g.
     /// one per test) that each load the model separately triggers CoreData's "multiple

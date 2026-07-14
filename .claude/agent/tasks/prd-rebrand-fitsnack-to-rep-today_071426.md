@@ -102,12 +102,12 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] `project.yml`: `bundleIdPrefix` `com.fitsnack` → `com.reptoday`; app `PRODUCT_BUNDLE_IDENTIFIER` → `com.reptoday.app`; test target → `com.reptoday.app.tests`
-- [ ] `RepToday.entitlements`: iCloud container `iCloud.com.fitsnack.app` → `iCloud.com.reptoday.app`
-- [ ] `PersistenceController.swift:31`: `cloudKitContainerIdentifier` → `iCloud.com.reptoday.app`
-- [ ] StoreKit ids `com.fitsnack.app.premium.{monthly,yearly}` → `com.reptoday.app.premium.*` in **both** `SubscriptionPlan.swift` (`ProductID.monthly`/`.yearly`) and `RepToday.storekit` (`productID` ×2, `_applicationInternalID`) - the two must stay identical
-- [ ] `AuthCredentialStore.swift:44`: Keychain service `com.fitsnack.app.auth` → `com.reptoday.app.auth`
-- [ ] `StoreKitSubscriptionServiceTests` / `PaywallViewModelTests` pass against the new ids; full suite green
+- [x] `project.yml`: `bundleIdPrefix` `com.fitsnack` → `com.reptoday`; app `PRODUCT_BUNDLE_IDENTIFIER` → `com.reptoday.app`; test target → `com.reptoday.app.tests`
+- [x] `RepToday.entitlements`: iCloud container `iCloud.com.fitsnack.app` → `iCloud.com.reptoday.app`
+- [x] `PersistenceController.swift:31`: `cloudKitContainerIdentifier` → `iCloud.com.reptoday.app`
+- [x] StoreKit ids `com.fitsnack.app.premium.{monthly,yearly}` → `com.reptoday.app.premium.*` in **both** `SubscriptionPlan.swift` (`ProductID.monthly`/`.yearly`) and `RepToday.storekit` (`productID` ×2, `_applicationInternalID`) - the two must stay identical
+- [x] `AuthCredentialStore.swift:44`: Keychain service `com.fitsnack.app.auth` → `com.reptoday.app.auth`
+- [x] `StoreKitSubscriptionServiceTests` / `PaywallViewModelTests` pass against the new ids; full suite green
 
 **Validation Test:**
 

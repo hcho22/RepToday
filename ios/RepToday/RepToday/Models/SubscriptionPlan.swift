@@ -47,8 +47,8 @@ struct SubscriptionPlan: Identifiable, Equatable, Hashable {
     /// The canonical FitSnack premium product ids. The `.storekit` configuration and the App Store
     /// Connect products must use exactly these.
     enum ProductID {
-        static let monthly = "com.fitsnack.app.premium.monthly"
-        static let yearly = "com.fitsnack.app.premium.yearly"
+        static let monthly = "com.reptoday.app.premium.monthly"
+        static let yearly = "com.reptoday.app.premium.yearly"
         static let all = [monthly, yearly]
     }
 

@@ -41,7 +41,7 @@ final class KeychainAuthCredentialStore: AuthCredentialStore {
     private let account: String
 
     init(
-        service: String = "com.fitsnack.app.auth",
+        service: String = "com.reptoday.app.auth",
         account: String = "apple.user.identifier"
     ) {
         self.service = service
