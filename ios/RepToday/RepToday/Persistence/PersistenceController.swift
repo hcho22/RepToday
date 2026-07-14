@@ -35,9 +35,9 @@ final class PersistenceController {
     /// NSEntityDescriptions claim the NSManagedObject subclass" warnings, so every
     /// container shares this single instance.
     private static let managedObjectModel: NSManagedObjectModel = {
-        guard let url = Bundle(for: PersistenceController.self).url(forResource: "FitSnack", withExtension: "momd"),
+        guard let url = Bundle(for: PersistenceController.self).url(forResource: "RepToday", withExtension: "momd"),
               let model = NSManagedObjectModel(contentsOf: url) else {
-            fatalError("Failed to locate the FitSnack CoreData model in the app bundle")
+            fatalError("Failed to locate the RepToday CoreData model in the app bundle")
         }
         return model
     }()
@@ -51,7 +51,7 @@ final class PersistenceController {
     ///   `/dev/null` store with no CloudKit - the isolated, disk-free stack tests and previews
     ///   use. When `false`, the production Cloud + Local split described above is loaded.
     init(inMemory: Bool = false) {
-        container = NSPersistentCloudKitContainer(name: "FitSnack", managedObjectModel: Self.managedObjectModel)
+        container = NSPersistentCloudKitContainer(name: "RepToday", managedObjectModel: Self.managedObjectModel)
 
         if inMemory {
             Self.configureInMemoryStore(container)
@@ -76,7 +76,7 @@ final class PersistenceController {
                         options: description.options
                     )
                 } catch {
-                    fatalError("Failed to load the FitSnack store even local-only: \(error)")
+                    fatalError("Failed to load the RepToday store even local-only: \(error)")
                 }
             } else {
                 // The Local store holds only the transient, device-bound active-session snapshot -
@@ -97,11 +97,11 @@ final class PersistenceController {
                         return
                     } catch {
                         // The recreate also failed - now it is a genuine defect, not a runtime condition.
-                        fatalError("Failed to load or recreate the FitSnack local store: \(error)")
+                        fatalError("Failed to load or recreate the RepToday local store: \(error)")
                     }
                 }
                 // No URL to recover (e.g. the in-memory /dev/null store) is a genuine defect.
-                fatalError("Failed to load the FitSnack persistent store: \(error), \(error.userInfo)")
+                fatalError("Failed to load the RepToday persistent store: \(error), \(error.userInfo)")
             }
         }
 
@@ -113,7 +113,7 @@ final class PersistenceController {
     /// CloudKit - the test/preview stack.
     private static func configureInMemoryStore(_ container: NSPersistentCloudKitContainer) {
         guard let description = container.persistentStoreDescriptions.first else {
-            fatalError("FitSnack persistent container has no store description")
+            fatalError("RepToday persistent container has no store description")
         }
         description.url = URL(fileURLWithPath: "/dev/null")
         description.cloudKitContainerOptions = nil
@@ -124,7 +124,7 @@ final class PersistenceController {
     private static func configureCloudAndLocalStores(_ container: NSPersistentCloudKitContainer) {
         let baseURL = NSPersistentContainer.defaultDirectoryURL()
 
-        let cloud = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("FitSnack.sqlite"))
+        let cloud = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("RepToday.sqlite"))
         cloud.configuration = "Cloud"
         // Persistent history + remote-change notifications are prerequisites for CloudKit mirroring
         // and let the view context merge changes synced in from other devices.
@@ -134,7 +134,7 @@ final class PersistenceController {
             containerIdentifier: cloudKitContainerIdentifier
         )
 
-        let local = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("FitSnack-Local.sqlite"))
+        let local = NSPersistentStoreDescription(url: baseURL.appendingPathComponent("RepToday-Local.sqlite"))
         local.configuration = "Local"
         local.cloudKitContainerOptions = nil
 

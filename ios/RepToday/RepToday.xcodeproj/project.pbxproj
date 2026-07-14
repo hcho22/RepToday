@@ -17,6 +17,7 @@
 		0ECC3B349D0E42948312BAFE /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA59450267BE04E5A2E7C68 /* Exercise.swift */; };
 		109585F84AF6D026BAABB21C /* PillarBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D5DD00B5FB84C3C67B4B67 /* PillarBalanceTests.swift */; };
 		123ED2B1EA4BA34B2F71E45C /* ColdStartHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653FDB4A7212A136518C2E28 /* ColdStartHandoff.swift */; };
+		13C67281C031DA2AA04F0EF6 /* RepToday.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 3168C613FAF650BA33681EC5 /* RepToday.xcdatamodeld */; };
 		13EE8434D2EBDDA077DC4F2A /* ExerciseLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200FE49680DC28CFC5348C8E /* ExerciseLibraryTests.swift */; };
 		17B9651FD61BC15EA7274FB9 /* SessionSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FBF10D8838BE9E9E5645471 /* SessionSummaryTests.swift */; };
 		18BB492FFC5825F12658B62B /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B022E6DD36A92F51FAAF800 /* ModelsTests.swift */; };
@@ -109,7 +110,6 @@
 		D3B81A47D3C6847A2A4E15ED /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0535D9A19CD2F1050908D03D /* Workout.swift */; };
 		D69F7061EFC3563C52276823 /* ExercisePoolFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC62A4AB51606C78E9399516 /* ExercisePoolFilter.swift */; };
 		D70D11721F8180BF5888DDE8 /* ReadyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A6859051A8B10CC424CED6 /* ReadyViewModel.swift */; };
-		D78B63458468CE94B691FA6C /* FitSnack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 9198BF77260B0F395D808F69 /* FitSnack.xcdatamodeld */; };
 		D89BA5E63C55DF0FEDCC0F37 /* AdaptiveOverloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E05B92F85695632197BC57D /* AdaptiveOverloadTests.swift */; };
 		DE66AC9AADF0D858AD36AB0D /* ExerciseSwapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53EDE148D70DA7ABEC6D7DF3 /* ExerciseSwapTests.swift */; };
 		DE96FD083D446EEA519C8767 /* ReprogramTriggerDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EC6963D9F5A548E6EAD653 /* ReprogramTriggerDetection.swift */; };
@@ -228,7 +228,6 @@
 		9CA59450267BE04E5A2E7C68 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
 		A0A6859051A8B10CC424CED6 /* ReadyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModel.swift; sourceTree = "<group>"; };
 		A1A5B23D421F3F7367AD71FC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		A1A5E73F054557C2D6E7A900 /* FitSnack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = FitSnack.xcdatamodel; sourceTree = "<group>"; };
 		A57E9ADBCF3C408DE61FBBA8 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		A7B463093E8FF19B4E69179A /* PaywallViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallViewModel.swift; sourceTree = "<group>"; };
 		A93132F4DEAFDC919F194280 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
@@ -246,6 +245,7 @@
 		C342BE08A5755BD21B034C7D /* ConsistencyScoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyScoreTests.swift; sourceTree = "<group>"; };
 		C3FAEA2B49361473360711E8 /* ReprogramTriggerDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerDetectionTests.swift; sourceTree = "<group>"; };
 		C51DE8917BBD65A2987482D9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C84DBB9BF041BB55765C42B6 /* RepToday.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = RepToday.xcdatamodel; sourceTree = "<group>"; };
 		C967382395B520C6462AB386 /* ReprogramTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerTests.swift; sourceTree = "<group>"; };
 		CAB76ACAE7302AC1E1872F78 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		CBFCEEC72CFCE6CDEF6A4CF1 /* HealthKitWorkoutSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutSample.swift; sourceTree = "<group>"; };
@@ -435,7 +435,7 @@
 				FD994E09E340C9DDCC246374 /* MockPersistence.swift */,
 				2908E41F26F4FD41D5C3D1C6 /* PersistenceCoding.swift */,
 				21CB9ED081B1EC44B1D4E7DA /* PersistenceController.swift */,
-				9198BF77260B0F395D808F69 /* FitSnack.xcdatamodeld */,
+				3168C613FAF650BA33681EC5 /* RepToday.xcdatamodeld */,
 			);
 			path = Persistence;
 			sourceTree = "<group>";
@@ -828,7 +828,6 @@
 				0ECC3B349D0E42948312BAFE /* Exercise.swift in Sources */,
 				D69F7061EFC3563C52276823 /* ExercisePoolFilter.swift in Sources */,
 				9F47836A6C6A308A386A24C8 /* ExerciseSwap.swift in Sources */,
-				D78B63458468CE94B691FA6C /* FitSnack.xcdatamodeld in Sources */,
 				E01FD24F3C0913BEFE09AC1C /* HealthKitService.swift in Sources */,
 				EA585A0F882E29C5C97CA1B8 /* HealthKitWorkoutSample.swift in Sources */,
 				FFEFC3956244DDEB9BB8F5C8 /* LiveStoreKitFacade.swift in Sources */,
@@ -853,6 +852,7 @@
 				B60F4B6763B9EA32562A70CD /* ProxyVarietyLanguageProvider.swift in Sources */,
 				F1B4BA89C3100A645F0E8690 /* ReadyView.swift in Sources */,
 				D70D11721F8180BF5888DDE8 /* ReadyViewModel.swift in Sources */,
+				13C67281C031DA2AA04F0EF6 /* RepToday.xcdatamodeld in Sources */,
 				C519FA42C7AEE33C9EE464C1 /* RepTodayApp.swift in Sources */,
 				75EC860E655899772C6179F2 /* ReprogramTrigger.swift in Sources */,
 				DE96FD083D446EEA519C8767 /* ReprogramTriggerDetection.swift in Sources */,
@@ -1127,13 +1127,13 @@
 /* End XCConfigurationList section */
 
 /* Begin XCVersionGroup section */
-		9198BF77260B0F395D808F69 /* FitSnack.xcdatamodeld */ = {
+		3168C613FAF650BA33681EC5 /* RepToday.xcdatamodeld */ = {
 			isa = XCVersionGroup;
 			children = (
-				A1A5E73F054557C2D6E7A900 /* FitSnack.xcdatamodel */,
+				C84DBB9BF041BB55765C42B6 /* RepToday.xcdatamodel */,
 			);
-			currentVersion = A1A5E73F054557C2D6E7A900 /* FitSnack.xcdatamodel */;
-			path = FitSnack.xcdatamodeld;
+			currentVersion = C84DBB9BF041BB55765C42B6 /* RepToday.xcdatamodel */;
+			path = RepToday.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;
 		};
