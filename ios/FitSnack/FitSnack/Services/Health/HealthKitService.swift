@@ -128,9 +128,12 @@ final class HealthKitService: HealthKitServiceProtocol {
             start: sample.start,
             end: sample.end
         )
-        // `add(_:)` has no auto-generated async variant (unlike beginCollection/endCollection/
+        // The active-energy sample is best-effort: the HealthKit prompt lets the user grant workout sharing
+        // while independently denying energy sharing, in which case `add` throws. Swallow only that failure
+        // so the workout itself still lands; the workout-type guard above already confirmed the write is
+        // authorized. `add(_:)` has no auto-generated async variant (unlike beginCollection/endCollection/
         // finishWorkout), so bridge the completion handler.
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        _ = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             builder.add([energySample]) { _, error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume() }
             }
