@@ -1,0 +1,11 @@
+name = "fitsnack-variety-language-proxy"
+main = "src/worker.js"
+# AbortSignal.timeout and modern fetch semantics require a recent compatibility date.
+compatibility_date = "2026-01-01"
+
+# Non-secret config. The API key is a secret, set out-of-band (never committed):
+#   wrangler secret put ANTHROPIC_API_KEY
+[vars]
+# The Claude model the proxy calls. Default is the most capable per Anthropic guidance; override to
+# a Haiku tier here if latency/cost on this best-effort line matter more than prose quality.
+ANTHROPIC_MODEL = "claude-opus-4-8"

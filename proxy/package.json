@@ -1,0 +1,14 @@
+{
+  "name": "fitsnack-variety-language-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Thin stateless key-holding proxy for the FitSnack Variety Language LLM slice (US-N05).",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
