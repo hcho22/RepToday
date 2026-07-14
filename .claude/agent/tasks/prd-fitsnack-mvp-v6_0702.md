@@ -825,10 +825,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A real `HealthKitService` requests authorization and writes each completed session as a workout (on-device only, using `metValue`/duration)
-- [ ] HealthKit data stays on-device; a denied authorization degrades gracefully (no crash, no blocked loop)
-- [ ] Writes are idempotent per session (no duplicates on resume)
-- [ ] Verify in iOS Simulator (write verified on device where possible)
+- [x] A real `HealthKitService` requests authorization and writes each completed session as a workout (on-device only, using `metValue`/duration)
+- [x] HealthKit data stays on-device; a denied authorization degrades gracefully (no crash, no blocked loop)
+- [x] Writes are idempotent per session (no duplicates on resume)
+- [x] Verify in iOS Simulator (write verified on device where possible)
 
 **Validation Test:**
 
@@ -837,6 +837,8 @@ Discipline overrides optimization by design: a Return after a gap is served easy
   1. Complete a session and check Health
 - **Expected Result:** A workout with the correct duration is written once; denying permission still lets the session complete.
 - **Failure Indicator:** No write on grant, a duplicate on resume, or a crash on denial.
+
+> Implemented. The real write-only `HealthKitService` mirrors each completed session into Health as an `HKWorkout` (via `HKWorkoutBuilder`) and degrades gracefully at every step, so the core loop is never gated. It shares (writes) the workout plus an active-energy sample and never reads Health data, so only `NSHealthUpdateUsageDescription` is required and authorization is requested with `read: []`. Authorization is requested once up front when the user enters the main app (`MainTabsView`), not in the write path; `saveWorkoutLog` never itself issues a blocking authorization request (which cannot be presented from a headless/background context) and only writes when share access is already granted - a non-blocking status read - so it stays safe to `await` from the completion recorder. If Health is unavailable (e.g. iPad), the user denies/hasn't answered, or any write fails, the service returns quietly (and the completion recorder also wraps the call in `try?`). Writes are idempotent per session: each workout carries the completed log's id as its `HKMetadataKeyExternalUUID`, and a metadata query short-circuits the write if a workout with that id already exists, so a resume/relaunch/re-save never duplicates the session. Active energy is estimated by the pure, unit-tested `HealthKitWorkoutSample` from the standard MET approximation `kcal = MET x weightKg x hours` - MET is the mean of the session's actually-worked movements (non-skipped, with a recorded set, so a skipped movement never inflates the estimate), resolved from the exercise catalog and falling back to a moderate-calisthenics default when none resolve - and a mobility-focused session maps to `.flexibility`, everything else to `.functionalStrengthTraining`. The write is driven from `SessionCompletionService.recordCompletedSession` (US-L01), the single completion seam, as a fully-isolated final step after the durable log write, Consistency refresh, and cold-start handoff, so a HealthKit failure never disrupts the app's own bookkeeping. The `FitSnack.entitlements` gains `com.apple.developer.healthkit`, the partial `Info.plist` gains the write usage description, `ServiceContainer.live(context:)` swaps `MockHealthKitService` for `HealthKitService(exerciseService:)`, and `MainTabsView` requests share authorization once on appear (Subscription stays mocked until US-N04). New tests: `HealthKitWorkoutSampleTests` (12) cover the pure energy/dates/activity-kind/idempotency-key mapping, and `SessionCompletionServiceTests` gains a HealthKit spy proving the mirror fires against the freshest user, that a HealthKit failure never disrupts completion, and that no-service-wired records nothing. Device note: a live Health write and the authorization sheet need the HealthKit entitlement and a provisioned team (`DEVELOPMENT_TEAM` is empty), so an end-to-end write is device-provisioned; the Simulator exercises the pure mapping, the completion wiring, and the graceful skip when Health is unavailable.
 
 #### US-N04: StoreKit 2 subscriptions and paywall
 

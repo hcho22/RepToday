@@ -47,14 +47,30 @@ final class SessionCompletionServiceTests: XCTestCase {
     private func makeService(
         logService: MockWorkoutLogService,
         userService: MockUserService,
-        store: InMemorySessionPolicyStore
+        store: InMemorySessionPolicyStore,
+        healthKitService: (any HealthKitServiceProtocol)? = nil
     ) -> SessionCompletionService {
         SessionCompletionService(
             workoutLogService: logService,
             userService: userService,
             consistencyService: ConsistencyScoreService(now: { self.now }),
-            policyStore: store
+            policyStore: store,
+            healthKitService: healthKitService
         )
+    }
+
+    /// A HealthKit spy that records the sessions written to Health and can be made to fail, so the tests
+    /// can assert the mirror fires (US-N03) and that a HealthKit failure never disrupts the completion.
+    private final class SpyHealthKitService: HealthKitServiceProtocol {
+        private(set) var written: [(log: WorkoutLog, user: User)] = []
+        var shouldThrow = false
+
+        func authorizationStatus() async throws -> HealthKitAuthorizationStatus { .sharingAuthorized }
+        func requestAuthorization() async throws -> HealthKitAuthorizationStatus { .sharingAuthorized }
+        func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws {
+            if shouldThrow { throw NSError(domain: "health", code: 1) }
+            written.append((log, user))
+        }
     }
 
     // MARK: - Log write
@@ -194,5 +210,57 @@ final class SessionCompletionServiceTests: XCTestCase {
         let savedUser = try await userService.currentUser()
         XCTAssertEqual(savedUser?.coldStart.sessionsLogged, ColdStartHandoff.handoffThreshold, "frozen once retired")
         XCTAssertFalse(savedUser?.coldStart.active ?? true)
+    }
+
+    // MARK: - HealthKit write (US-N03)
+
+    /// When a HealthKit service is wired, the completed session is mirrored into Health as a workout,
+    /// against the freshest persisted user (whose body weight feeds the energy estimate).
+    func testRecordMirrorsSessionToHealthKit() async throws {
+        let health = SpyHealthKitService()
+        let userService = MockUserService(user: makeUser())
+        let service = makeService(
+            logService: MockWorkoutLogService(), userService: userService,
+            store: InMemorySessionPolicyStore(), healthKitService: health
+        )
+        let log = makeLog()
+
+        try await service.recordCompletedSession(log, user: makeUser(), recentLogs: [])
+
+        XCTAssertEqual(health.written.count, 1, "the completed session is written to Health once")
+        XCTAssertEqual(health.written.first?.log.id, log.id, "the same log is mirrored")
+        XCTAssertEqual(health.written.first?.user.id, "u1", "the freshest persisted user is passed for the energy estimate")
+    }
+
+    /// A HealthKit failure is fully isolated: the log, the refreshed Consistency Score, and the cold-start
+    /// handoff all still land, and the completion never throws (US-N03: a denied/failed write never blocks).
+    func testHealthKitFailureDoesNotDisruptCompletion() async throws {
+        let health = SpyHealthKitService()
+        health.shouldThrow = true
+        let logService = MockWorkoutLogService()
+        let userService = MockUserService(user: makeUser())
+        let service = makeService(
+            logService: logService, userService: userService,
+            store: InMemorySessionPolicyStore(), healthKitService: health
+        )
+
+        try await service.recordCompletedSession(makeLog(), user: makeUser(), recentLogs: [])
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1, "the durable log is written despite the HealthKit failure")
+        let savedUser = try await userService.currentUser()
+        XCTAssertEqual(savedUser?.consistency.totalWorkoutsCompleted, 1, "consistency still refreshes")
+    }
+
+    /// With no HealthKit service wired (previews / the in-memory mock), completion records nothing to
+    /// Health and still writes the durable log.
+    func testNoHealthKitServiceRecordsNothingToHealth() async throws {
+        let logService = MockWorkoutLogService()
+        let service = makeService(logService: logService, userService: MockUserService(user: makeUser()), store: InMemorySessionPolicyStore())
+
+        try await service.recordCompletedSession(makeLog(), user: makeUser(), recentLogs: [])
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1)
     }
 }

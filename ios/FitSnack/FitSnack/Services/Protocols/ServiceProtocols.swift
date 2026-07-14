@@ -2,8 +2,8 @@ import Foundation
 
 /// The authorization state FitSnack needs from HealthKit.
 ///
-/// The real HealthKit implementation lands in US-J03. Until then, mock services return
-/// `.notDetermined` so the rest of the app can depend on a stable protocol surface.
+/// FitSnack writes (shares) workouts only, so this mirrors the *sharing* authorization the real
+/// `HealthKitService` (US-N03) reports; `MockHealthKitService` returns `.notDetermined`.
 enum HealthKitAuthorizationStatus: Equatable {
     case notDetermined
     case sharingDenied
