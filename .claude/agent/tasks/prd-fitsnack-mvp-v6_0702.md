@@ -868,10 +868,10 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] A thin stateless proxy (e.g. a Cloudflare Worker) holds the model API key and proxies exactly one Claude call per Variety Language request
-- [ ] It stores no user logs at rest: history is sent transiently from the device and not persisted server-side; no scheduler, no database mirror
-- [ ] The client calls it only for the Variety Language slice (US-G03) and always falls back to the deterministic template on any failure or timeout
-- [ ] The proxy endpoint, request/response contract, and the client fallback are documented; a failing/absent proxy never blocks the app
+- [x] A thin stateless proxy (e.g. a Cloudflare Worker) holds the model API key and proxies exactly one Claude call per Variety Language request
+- [x] It stores no user logs at rest: history is sent transiently from the device and not persisted server-side; no scheduler, no database mirror
+- [x] The client calls it only for the Variety Language slice (US-G03) and always falls back to the deterministic template on any failure or timeout
+- [x] The proxy endpoint, request/response contract, and the client fallback are documented; a failing/absent proxy never blocks the app
 
 **Validation Test:**
 

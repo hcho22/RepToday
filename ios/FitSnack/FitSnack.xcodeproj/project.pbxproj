@@ -19,6 +19,7 @@
 		1BD73CAAF550F549E0191E59 /* ProgressAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7FC0771E8E6FD52B4A46503 /* ProgressAnalytics.swift */; };
 		1EF0770DC07230E331375E07 /* PlateauDiagnosis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939D3C7C9240D310489F4F50 /* PlateauDiagnosis.swift */; };
 		1F3F4AE451DE5F567C42424C /* ColdStartSeedingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DB71C842D4B5068D0BE2A24 /* ColdStartSeedingTests.swift */; };
+		1F6322D52380E23273F8587E /* ProxyVarietyLanguageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8497342E025963A5B26112CE /* ProxyVarietyLanguageProvider.swift */; };
 		28A46C3A28D69EF61CF35BC8 /* ExercisePoolFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DFD3CF27AEE125FBD967E0 /* ExercisePoolFilter.swift */; };
 		29C93798CF32DE1DE8467A90 /* VarietyLanguageResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075ACF6329C238B7F9BC7BE3 /* VarietyLanguageResolver.swift */; };
 		2BBF069538FEA1EE58CE438B /* MovementPatternFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */; };
@@ -65,6 +66,7 @@
 		6BC55104116EFD0AC49BD284 /* SessionAssembly.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D59E64471E6566D7C21A99 /* SessionAssembly.swift */; };
 		701A91114F9934EECE82782D /* CoreDataSessionPolicyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE456FDCA142CD805A212069 /* CoreDataSessionPolicyStore.swift */; };
 		70B218D2C8A8567D311D894B /* ActiveSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E7A92A8E6439F760C8A0B1 /* ActiveSessionState.swift */; };
+		71996E7D2E2440B335CE46F5 /* ProxyVarietyLanguageProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39FC3531E5DE413C53CE6F43 /* ProxyVarietyLanguageProviderTests.swift */; };
 		760085EAF091BBFF54D57DD2 /* AppleAuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786E0140BB0E5F6854438CF2 /* AppleAuthServiceTests.swift */; };
 		7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */; };
 		77F1F308E44FD4776C8D427C /* StoreKitSubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E256A3CC6E18CEED1DB3EE /* StoreKitSubscriptionService.swift */; };
@@ -168,6 +170,7 @@
 		2723289C9064488853A7744D /* ExerciseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseServiceTests.swift; sourceTree = "<group>"; };
 		280D8E2389EDB46AEC61D7FF /* FirstWeekContrastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstWeekContrastTests.swift; sourceTree = "<group>"; };
 		283A78B928EEFBD460C2893B /* ActiveSessionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionViewModelTests.swift; sourceTree = "<group>"; };
+		39FC3531E5DE413C53CE6F43 /* ProxyVarietyLanguageProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProviderTests.swift; sourceTree = "<group>"; };
 		4092748ECF949F0824396527 /* MovementPatternFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocusTests.swift; sourceTree = "<group>"; };
 		416F458E9F3C354B08D06470 /* ProgressionChainSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelection.swift; sourceTree = "<group>"; };
 		417D9579634284740E59C4F9 /* SessionPolicyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyServiceTests.swift; sourceTree = "<group>"; };
@@ -202,6 +205,7 @@
 		825F205142EA7FF546D9EBB4 /* ConsistencyScoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyScoreTests.swift; sourceTree = "<group>"; };
 		82D6688CFE28B5D6372D4253 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		83A6D5A93BFD4B43C1202CA7 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		8497342E025963A5B26112CE /* ProxyVarietyLanguageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProvider.swift; sourceTree = "<group>"; };
 		84D59E64471E6566D7C21A99 /* SessionAssembly.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAssembly.swift; sourceTree = "<group>"; };
 		8536946E1002EA63873EF040 /* CDUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDUser.swift; sourceTree = "<group>"; };
 		877D1A417062B7D80BCE7DAD /* ProgressTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressTabView.swift; sourceTree = "<group>"; };
@@ -485,6 +489,7 @@
 		6E1757A17ED4901048C8D707 /* Language */ = {
 			isa = PBXGroup;
 			children = (
+				8497342E025963A5B26112CE /* ProxyVarietyLanguageProvider.swift */,
 				746F38F50F6FBD1B95149BA7 /* VarietyLanguage.swift */,
 				075ACF6329C238B7F9BC7BE3 /* VarietyLanguageResolver.swift */,
 			);
@@ -598,6 +603,7 @@
 				0A2CCAD2AE40DB5A9CDFC995 /* ProgressAnalyticsTests.swift */,
 				657E2B803714D77AB2D74625 /* ProgressionChainSelectionTests.swift */,
 				AFA7A8676701DF296D506D9A /* ProgressViewModelTests.swift */,
+				39FC3531E5DE413C53CE6F43 /* ProxyVarietyLanguageProviderTests.swift */,
 				12DE48E4A01BEA9478204AD5 /* ReadyViewModelTests.swift */,
 				64C6E836404F8F9FBD3625D7 /* ReprogramTriggerDetectionTests.swift */,
 				D2F363F231254CCB39577F9B /* ReprogramTriggerTests.swift */,
@@ -772,6 +778,7 @@
 				DB2E723D642EE26BA5D315D9 /* ProgressAnalyticsTests.swift in Sources */,
 				531CC631CF466CEC0E490B92 /* ProgressViewModelTests.swift in Sources */,
 				7791FBFB02D513F67F033F10 /* ProgressionChainSelectionTests.swift in Sources */,
+				71996E7D2E2440B335CE46F5 /* ProxyVarietyLanguageProviderTests.swift in Sources */,
 				B7BE6DBD4A1DA15034F31BEA /* ReadyViewModelTests.swift in Sources */,
 				629AF1D38DB053DB6974D80A /* ReprogramTriggerDetectionTests.swift in Sources */,
 				BA09C70FABE768B89DE124E8 /* ReprogramTriggerTests.swift in Sources */,
@@ -844,6 +851,7 @@
 				329CF27C4A7185154F32F374 /* ProgressTabView.swift in Sources */,
 				E3D8AC8FFEA9C9867CD072DC /* ProgressViewModel.swift in Sources */,
 				FD3BFA9C2C27066FEAC83404 /* ProgressionChainSelection.swift in Sources */,
+				1F6322D52380E23273F8587E /* ProxyVarietyLanguageProvider.swift in Sources */,
 				4F77D07E60391076ADF82D36 /* ReadyView.swift in Sources */,
 				660E71AA9AF210A9A2312407 /* ReadyViewModel.swift in Sources */,
 				7963EFDF3AC7288382F33A8C /* ReprogramTrigger.swift in Sources */,
