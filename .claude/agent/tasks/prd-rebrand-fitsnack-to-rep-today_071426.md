@@ -81,10 +81,10 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] `FitSnack.xcdatamodeld` (and inner `FitSnack.xcdatamodel`) → `RepToday.xcdatamodeld` / `RepToday.xcdatamodel`
-- [ ] `PersistenceController.swift`: `NSPersistentCloudKitContainer(name: "FitSnack")` → `"RepToday"`, the `forResource: "FitSnack"` momd lookup → `"RepToday"`, and store filenames `FitSnack.sqlite` / `FitSnack-Local.sqlite` → `RepToday.sqlite` / `RepToday-Local.sqlite`
-- [ ] CoreData **entity** names (`CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) are left unchanged (not brand-named)
-- [ ] Persistence tests and the full suite pass; the in-memory `/dev/null` test path is unaffected
+- [x] `FitSnack.xcdatamodeld` (and inner `FitSnack.xcdatamodel`) → `RepToday.xcdatamodeld` / `RepToday.xcdatamodel`
+- [x] `PersistenceController.swift`: `NSPersistentCloudKitContainer(name: "FitSnack")` → `"RepToday"`, the `forResource: "FitSnack"` momd lookup → `"RepToday"`, and store filenames `FitSnack.sqlite` / `FitSnack-Local.sqlite` → `RepToday.sqlite` / `RepToday-Local.sqlite`
+- [x] CoreData **entity** names (`CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) are left unchanged (not brand-named)
+- [x] Persistence tests and the full suite pass; the in-memory `/dev/null` test path is unaffected
 
 **Validation Test:**
 
