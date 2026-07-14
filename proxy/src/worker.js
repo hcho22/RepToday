@@ -49,11 +49,19 @@ const SYSTEM_PROMPT = [
 export default {
   /**
    * @param {Request} request
-   * @param {{ ANTHROPIC_API_KEY?: string, ANTHROPIC_MODEL?: string }} env
+   * @param {{ ANTHROPIC_API_KEY?: string, ANTHROPIC_MODEL?: string, CLIENT_SHARED_SECRET?: string }} env
    */
   async fetch(request, env) {
     if (request.method !== "POST") {
       return json({ error: "method_not_allowed" }, 405);
+    }
+
+    // Abuse gate: when a client shared secret is configured, reject any request whose
+    // `Authorization: Bearer <secret>` header does not match BEFORE calling (billing) Anthropic, so
+    // an unauthorized caller can never drive a paid Claude call. Left open only when the secret is
+    // unset (local dev); production deploys MUST set it (see ../README.md, "Abuse protection").
+    if (env.CLIENT_SHARED_SECRET && !isAuthorized(request, env.CLIENT_SHARED_SECRET)) {
+      return json({ error: "unauthorized" }, 401);
     }
 
     let payload;
@@ -125,6 +133,32 @@ export default {
     return json({ line }, 200);
   },
 };
+
+/**
+ * Whether the request carries the expected `Authorization: Bearer <secret>` header, compared in
+ * constant time so the check never leaks the secret's length or contents through timing.
+ */
+function isAuthorized(request, expectedSecret) {
+  const header = request.headers.get("authorization") || "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return false;
+  }
+  return constantTimeEquals(match[1], expectedSecret);
+}
+
+/** Length-independent constant-time string comparison. */
+function constantTimeEquals(a, b) {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  // Fold the length difference into the accumulator so mismatched lengths still run to completion.
+  let diff = aBytes.length ^ bBytes.length;
+  const max = Math.max(aBytes.length, bBytes.length);
+  for (let i = 0; i < max; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return diff === 0;
+}
 
 /** Build the one-shot user prompt from the labels the app already produced. */
 function buildPrompt(todayLabel, yesterdayLabel) {

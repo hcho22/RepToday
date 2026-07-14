@@ -57,10 +57,27 @@ Content-Type: application/json
 ```
 
 On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
-(`method_not_allowed`, `invalid_json`, `invalid_today`, `invalid_yesterday`, `not_configured`,
-`upstream_unreachable`, `upstream_error`, `upstream_bad_json`, `empty_line`).
+(`method_not_allowed`, `unauthorized`, `invalid_json`, `invalid_today`, `invalid_yesterday`,
+`not_configured`, `upstream_unreachable`, `upstream_error`, `upstream_bad_json`, `empty_line`).
 The client treats **every** non-2xx and every malformed body identically: discard and fall back to
 the template. A failing or absent proxy never blocks the app.
+
+## Abuse protection
+
+Without a gate, the `/variety-language` route is an **open relay to the billed Anthropic Messages
+API**: anyone who discovers the URL can drive unbounded, paid Claude calls (financial abuse / quota
+exhaustion). The Worker is stateless (no KV), so it cannot self-rate-limit. Before deploying you
+**MUST**:
+
+1. **Set a client shared secret.** `wrangler secret put CLIENT_SHARED_SECRET`, and have the client
+   send it. When the secret is set, the Worker rejects any request whose
+   `Authorization: Bearer <secret>` header does not match with `401 { "error": "unauthorized" }`
+   **before** it calls Anthropic, so unauthorized traffic never bills. (The secret is compared in
+   constant time.) When the env var is unset the route stays open - convenient for local `wrangler
+   dev`, but never acceptable in production. Point the client at it by passing `sharedSecret:` to
+   `ProxyVarietyLanguageProvider` (see the wiring example below).
+2. **Add a Cloudflare rate-limiting / WAF rule** on the route, since a leaked secret or a
+   distributed caller still needs a request-rate ceiling the stateless Worker cannot enforce itself.
 
 ## Model
 
@@ -97,7 +114,8 @@ To enable the LLM upgrade once this proxy is deployed:
 
 ```swift
 let provider = ProxyVarietyLanguageProvider(
-    endpoint: URL(string: "https://<worker-subdomain>/variety-language")!
+    endpoint: URL(string: "https://<worker-subdomain>/variety-language")!,
+    sharedSecret: "<CLIENT_SHARED_SECRET>"  // must match the Worker's abuse gate
 )
 let resolver = VarietyLanguageResolver(
     provider: provider,

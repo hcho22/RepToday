@@ -24,15 +24,22 @@ final class ProxyVarietyLanguageProviderTests: XCTestCase {
         // Captured from the most recent call.
         private(set) var lastURL: URL?
         private(set) var lastBody: Data?
+        private(set) var lastHeaders: [String: String] = [:]
         private(set) var lastTimeout: Double?
         private(set) var callCount = 0
 
         init(_ outcome: Outcome) { self.outcome = outcome }
 
-        func post(to url: URL, jsonBody: Data, timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
+        func post(
+            to url: URL,
+            jsonBody: Data,
+            headers: [String: String],
+            timeoutSeconds: Double
+        ) async throws -> (data: Data, statusCode: Int) {
             callCount += 1
             lastURL = url
             lastBody = jsonBody
+            lastHeaders = headers
             lastTimeout = timeoutSeconds
             switch outcome {
             case let .success(data, status): return (data, status)
@@ -126,6 +133,31 @@ final class ProxyVarietyLanguageProviderTests: XCTestCase {
         XCTAssertEqual(json["today"] as? String, "strength")
         XCTAssertNil(json["yesterday"])
         XCTAssertNil(json["yesterdayLabel"])
+    }
+
+    /// When a shared secret is configured, the request carries `Authorization: Bearer <secret>` so
+    /// the Worker's abuse gate accepts it.
+    func testSendsAuthorizationHeaderWhenSharedSecretConfigured() async throws {
+        let transport = StubTransport(.success(data: okData(line: "ok"), status: 200))
+        let provider = ProxyVarietyLanguageProvider(
+            endpoint: endpoint,
+            sharedSecret: "s3cret",
+            transport: transport
+        )
+
+        _ = try await provider.line(for: contrast(today: .mobility, yesterday: .strength), user: user())
+
+        XCTAssertEqual(transport.lastHeaders["Authorization"], "Bearer s3cret")
+    }
+
+    /// With no shared secret (the default), no `Authorization` header is sent (an open dev Worker).
+    func testOmitsAuthorizationHeaderWhenNoSharedSecret() async throws {
+        let transport = StubTransport(.success(data: okData(line: "ok"), status: 200))
+        let provider = ProxyVarietyLanguageProvider(endpoint: endpoint, transport: transport)
+
+        _ = try await provider.line(for: contrast(today: .mobility, yesterday: .strength), user: user())
+
+        XCTAssertNil(transport.lastHeaders["Authorization"])
     }
 
     func testHonorsInjectedTimeout() async throws {

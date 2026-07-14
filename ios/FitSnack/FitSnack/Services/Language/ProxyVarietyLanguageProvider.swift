@@ -25,7 +25,10 @@ import Foundation
 /// deployed - see `proxy/README.md`:
 ///
 /// ```swift
-/// let provider = ProxyVarietyLanguageProvider(endpoint: URL(string: "https://<worker>/variety-language")!)
+/// let provider = ProxyVarietyLanguageProvider(
+///     endpoint: URL(string: "https://<worker>/variety-language")!,
+///     sharedSecret: "<CLIENT_SHARED_SECRET>"  // matches the Worker's abuse gate
+/// )
 /// let resolver = VarietyLanguageResolver(provider: provider, isOnline: { /* reachability */ })
 /// ```
 struct ProxyVarietyLanguageProvider: VarietyLanguageProvider {
@@ -50,16 +53,23 @@ struct ProxyVarietyLanguageProvider: VarietyLanguageProvider {
     let endpoint: URL
     /// The per-request timeout handed to the transport.
     let timeoutSeconds: Double
+    /// The optional client shared secret that gates the Worker's `/variety-language` route (abuse
+    /// protection). When set, every request sends `Authorization: Bearer <secret>` so the Worker can
+    /// reject unauthenticated traffic before it bills a Claude call; `nil` matches an open (dev)
+    /// Worker. See `proxy/README.md`.
+    let sharedSecret: String?
     /// The HTTP seam, injected so tests exercise the request/response contract without a live network.
     let transport: any VarietyLanguageProxyTransport
 
     init(
         endpoint: URL,
         timeoutSeconds: Double = ProxyVarietyLanguageProvider.defaultTimeoutSeconds,
+        sharedSecret: String? = nil,
         transport: any VarietyLanguageProxyTransport = URLSessionVarietyLanguageProxyTransport()
     ) {
         self.endpoint = endpoint
         self.timeoutSeconds = timeoutSeconds
+        self.sharedSecret = sharedSecret
         self.transport = transport
     }
 
@@ -68,9 +78,14 @@ struct ProxyVarietyLanguageProvider: VarietyLanguageProvider {
     /// line so the resolver can fall back to the template.
     func line(for contrast: VarietyLanguage.SessionContrast, user: User) async throws -> String {
         let requestBody = try JSONEncoder().encode(ProxyRequest(contrast: contrast))
+        var headers: [String: String] = [:]
+        if let sharedSecret, !sharedSecret.isEmpty {
+            headers["Authorization"] = "Bearer \(sharedSecret)"
+        }
         let (data, statusCode) = try await transport.post(
             to: endpoint,
             jsonBody: requestBody,
+            headers: headers,
             timeoutSeconds: timeoutSeconds
         )
         guard (200..<300).contains(statusCode) else { throw ProxyError.badStatus(statusCode) }
@@ -114,9 +129,15 @@ private struct ProxyResponse: Decodable {
 /// without a live network. A conforming transport **must** enforce `timeoutSeconds` so the
 /// provider's `await` is always bounded.
 protocol VarietyLanguageProxyTransport: Sendable {
-    /// POST `jsonBody` to `url` as `application/json` and return the response body plus HTTP status
-    /// code. Throws on transport failure (offline, DNS, TLS, timeout).
-    func post(to url: URL, jsonBody: Data, timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int)
+    /// POST `jsonBody` to `url` as `application/json`, applying any extra `headers` (e.g. an
+    /// `Authorization` bearer for the Worker's abuse gate), and return the response body plus HTTP
+    /// status code. Throws on transport failure (offline, DNS, TLS, timeout).
+    func post(
+        to url: URL,
+        jsonBody: Data,
+        headers: [String: String],
+        timeoutSeconds: Double
+    ) async throws -> (data: Data, statusCode: Int)
 }
 
 /// The production transport: a plain `URLSession` POST with a per-request timeout. No caching, no
@@ -124,12 +145,20 @@ protocol VarietyLanguageProxyTransport: Sendable {
 struct URLSessionVarietyLanguageProxyTransport: VarietyLanguageProxyTransport {
     var session: URLSession = .shared
 
-    func post(to url: URL, jsonBody: Data, timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
+    func post(
+        to url: URL,
+        jsonBody: Data,
+        headers: [String: String],
+        timeoutSeconds: Double
+    ) async throws -> (data: Data, statusCode: Int) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = timeoutSeconds
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         request.httpBody = jsonBody
 
         let (data, response) = try await session.data(for: request)
