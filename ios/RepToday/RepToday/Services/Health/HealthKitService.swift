@@ -5,7 +5,7 @@ import HealthKit
 /// device only, and degrades gracefully whenever Health is unavailable or the user denies access.
 ///
 /// Design:
-/// - **Write-only.** FitSnack *shares* (writes) the workout and its active-energy sample and never reads
+/// - **Write-only.** Rep Today *shares* (writes) the workout and its active-energy sample and never reads
 ///   Health data, so only `NSHealthUpdateUsageDescription` is required and the authorization request asks
 ///   for share access alone (`read: []`).
 /// - **Never gates the loop.** Every method is best-effort: no Health data available (e.g. iPad), a
@@ -28,7 +28,7 @@ final class HealthKitService: HealthKitServiceProtocol {
     private let healthStore: HKHealthStore
     private let exerciseService: any ExerciseServiceProtocol
 
-    /// The types FitSnack writes: the workout itself plus its active-energy sample.
+    /// The types Rep Today writes: the workout itself plus its active-energy sample.
     private var shareTypes: Set<HKSampleType> {
         [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned)]
     }

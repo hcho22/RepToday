@@ -1,8 +1,8 @@
 import Foundation
 
-/// The authorization state FitSnack needs from HealthKit.
+/// The authorization state Rep Today needs from HealthKit.
 ///
-/// FitSnack writes (shares) workouts only, so this mirrors the *sharing* authorization the real
+/// Rep Today writes (shares) workouts only, so this mirrors the *sharing* authorization the real
 /// `HealthKitService` (US-N03) reports; `MockHealthKitService` returns `.notDetermined`.
 enum HealthKitAuthorizationStatus: Equatable {
     case notDetermined

@@ -7,6 +7,6 @@
 		<string>remote-notification</string>
 	</array>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>FitSnack writes your completed sessions to Health so your movement counts where you already track it. It only ever adds workouts and never reads your Health data.</string>
+	<string>Rep Today writes your completed sessions to Health so your movement counts where you already track it. It only ever adds workouts and never reads your Health data.</string>
 </dict>
 </plist>

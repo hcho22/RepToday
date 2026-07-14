@@ -145,7 +145,7 @@ struct PaywallView: View {
 
     /// The Terms of Use (EULA) and Privacy Policy links App Store Review Guideline 3.1.2 requires on an
     /// auto-renewable subscription paywall. Terms points at Apple's standard EULA; the Privacy Policy URL
-    /// is an obvious placeholder to replace with FitSnack's real policy before App Store submission.
+    /// is an obvious placeholder to replace with Rep Today's real policy before App Store submission.
     private var legalLinks: some View {
         HStack(spacing: Theme.Spacing.lg) {
             Link(destination: PaywallView.termsOfUseURL) {
@@ -172,8 +172,8 @@ struct PaywallView: View {
     /// Apple's standard auto-renewable-subscription EULA, the default Terms of Use when the app ships no
     /// custom EULA.
     private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
-    /// PLACEHOLDER - replace with FitSnack's real privacy-policy URL before App Store submission.
-    private static let privacyPolicyURL = URL(string: "https://example.com/fitsnack-privacy-policy-PLACEHOLDER")!
+    /// PLACEHOLDER - replace with Rep Today's real privacy-policy URL before App Store submission.
+    private static let privacyPolicyURL = URL(string: "https://example.com/reptoday-privacy-policy-PLACEHOLDER")!
 }
 
 // MARK: - Benefit row

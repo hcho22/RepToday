@@ -4,7 +4,7 @@ import Foundation
 /// The CoreData-backed `UserServiceProtocol` (US-N02), so the single user aggregate survives
 /// relaunch and syncs through CloudKit (the `Cloud` configuration) across the user's devices.
 ///
-/// FitSnack has exactly one local user, keyed by their stable identity (`User.id`, the Sign in
+/// Rep Today has exactly one local user, keyed by their stable identity (`User.id`, the Sign in
 /// with Apple identifier or a local fallback, US-N01). Reads return that record; `save` upserts
 /// it in place by `id` so re-saving never accumulates duplicates. Every access happens inside
 /// `context.perform`, which serializes onto the context's queue - the running app injects the

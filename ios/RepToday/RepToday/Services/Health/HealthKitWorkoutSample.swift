@@ -1,6 +1,6 @@
 import Foundation
 
-/// A pure, HealthKit-free description of the workout FitSnack writes to Health for one completed
+/// A pure, HealthKit-free description of the workout Rep Today writes to Health for one completed
 /// session (US-N03).
 ///
 /// Keeping the whole mapping - the session's start/end instants, the active-energy estimate, the
