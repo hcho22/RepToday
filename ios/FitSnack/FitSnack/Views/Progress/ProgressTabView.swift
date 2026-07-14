@@ -13,6 +13,11 @@ import SwiftUI
 /// `ProgressView` (the spinner), which the app uses elsewhere.
 struct ProgressTabView: View {
     @State private var viewModel: ProgressViewModel
+    @State private var showPaywall = false
+
+    /// The subscription service the paywall (US-N04) purchases through. Held separately from the view
+    /// model so the upsell can present the paywall sheet; the mock keeps previews rendering.
+    private let subscriptionService: any SubscriptionServiceProtocol
 
     init(services: ServiceContainer) {
         _viewModel = State(
@@ -24,11 +29,16 @@ struct ProgressTabView: View {
                 consistencyService: services.consistencyService
             )
         )
+        self.subscriptionService = services.subscriptionService
     }
 
     /// Test/preview seam so a fixed clock and pre-seeded view model can be injected.
-    init(viewModel: ProgressViewModel) {
+    init(
+        viewModel: ProgressViewModel,
+        subscriptionService: any SubscriptionServiceProtocol = MockSubscriptionService()
+    ) {
         _viewModel = State(initialValue: viewModel)
+        self.subscriptionService = subscriptionService
     }
 
     var body: some View {
@@ -42,6 +52,14 @@ struct ProgressTabView: View {
             }
         }
         .task { await viewModel.load() }
+        .sheet(isPresented: $showPaywall) {
+            // On a successful unlock the paywall dismisses itself and calls this, so the gated depth
+            // layer swaps in without leaving the tab. The reload is best-effort; the core loop and the
+            // free surfaces are never affected.
+            PaywallView(subscriptionService: subscriptionService) {
+                Task { await viewModel.load() }
+            }
+        }
     }
 
     private var content: some View {
@@ -72,7 +90,7 @@ struct ProgressTabView: View {
                         if viewModel.isPremium {
                             DeepAnalyticsSection(deep: analytics.deep)
                         } else {
-                            PremiumUpsellCard()
+                            PremiumUpsellCard(action: { showPaywall = true })
                         }
                     }
                 } else {
@@ -742,31 +760,44 @@ private struct DifficultyMixCard: View {
 /// It states what premium unlocks and reassures that the core loop stays free - a single quiet card,
 /// never a modal or a repeated prompt.
 private struct PremiumUpsellCard: View {
+    /// Opens the paywall (US-N04). The card is the only entry point; nothing here gates the core loop.
+    let action: () -> Void
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(Theme.Colors.accent)
-                Text("Go deeper with Premium")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.xs) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(Theme.Colors.accent)
+                    Text("Go deeper with Premium")
+                        .font(Theme.Typography.headline)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Spacer(minLength: Theme.Spacing.sm)
+                    Image(systemName: "chevron.right")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.accent)
+                }
+                Text("Unlock pattern-by-pattern balance, your weekly training volume, and how your sessions have felt over time.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Your workouts are always free - Premium just adds the deeper view.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("Unlock pattern-by-pattern balance, your weekly training volume, and how your sessions have felt over time.")
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
-            Text("Your workouts are always free - Premium just adds the deeper view.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
+            .padding(Theme.Spacing.md)
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+            .background(Theme.Colors.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+                    .strokeBorder(Theme.Colors.accent.opacity(0.25), lineWidth: 1)
+            )
         }
-        .padding(Theme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Colors.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                .strokeBorder(Theme.Colors.accent.opacity(0.25), lineWidth: 1)
-        )
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Go deeper with Premium. Unlock pattern-by-pattern balance, weekly training volume, and how your sessions have felt. Your workouts are always free.")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

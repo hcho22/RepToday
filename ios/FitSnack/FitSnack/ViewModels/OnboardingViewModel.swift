@@ -238,7 +238,7 @@ final class OnboardingViewModel {
             createdAt: now(),
             profile: profile,
             phase: .discipline,
-            subscription: Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil),
+            subscription: .free,
             consistency: Consistency(
                 weeklyGoal: ConsistencyScore.defaultWeeklyGoal,
                 score: 0,

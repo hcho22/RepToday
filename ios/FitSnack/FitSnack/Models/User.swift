@@ -138,4 +138,22 @@ struct Subscription: Codable, Equatable {
     var provider: SubscriptionProvider
     var expiresAt: Date?
     var trialEndsAt: Date?
+
+    /// The free tier - unlimited core workouts forever, no expiry. The default entitlement for a
+    /// user who has never purchased, and what the real StoreKit service (US-N04) resolves to when
+    /// there is no active premium entitlement.
+    static let free = Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil)
+}
+
+/// The outcome of a paywall purchase attempt (US-N04), surfaced to the view model so it can tell a
+/// resolved purchase (granted, or an unchanged entitlement after a silent user-cancel) apart from a
+/// still-pending one awaiting external approval (e.g. Ask to Buy). Keeping the pending case distinct
+/// lets the paywall reassure the user instead of leaving the Buy tap looking like nothing happened.
+enum PurchaseOutcome: Equatable {
+    /// The purchase flow finished: `subscription` is the resulting entitlement (premium on success,
+    /// unchanged - typically `.free` - after a user-cancel).
+    case resolved(Subscription)
+    /// The purchase is deferred, awaiting external approval; the entitlement is unchanged for now and
+    /// will be picked up out-of-band once approved.
+    case pending
 }

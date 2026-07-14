@@ -120,8 +120,8 @@ struct ServiceContainer {
     /// the Programmer, the Ready Screen, and the completion recorder, so a written session is
     /// the same history everyone reads back - exactly as `mock()` shares its in-memory stores.
     ///
-    /// Subscription stays mocked until US-N04; HealthKit is the real write-only integration (US-N03)
-    /// and auth is the real Keychain-backed Sign in with Apple (US-N01).
+    /// Subscription is the real StoreKit 2 service (US-N04), HealthKit is the real write-only
+    /// integration (US-N03), and auth is the real Keychain-backed Sign in with Apple (US-N01).
     static func live(context: NSManagedObjectContext) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
@@ -159,7 +159,9 @@ struct ServiceContainer {
                 healthKitService: healthKitService
             ),
             healthKitService: healthKitService,
-            subscriptionService: MockSubscriptionService(),
+            // Real StoreKit 2 subscriptions and paywall (US-N04): entitlement drives the US-M02 depth
+            // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
+            subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: AppleAuthService.live()
         )
