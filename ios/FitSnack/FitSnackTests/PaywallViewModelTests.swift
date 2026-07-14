@@ -17,6 +17,7 @@ final class PaywallViewModelTests: XCTestCase {
         var plans: [SubscriptionPlan]
         var plansError: Error?
         var purchaseOutcome: Subscription
+        var purchaseIsPending: Bool
         var purchaseError: Error?
         var restoreOutcome: Subscription
         var restoreError: Error?
@@ -25,6 +26,7 @@ final class PaywallViewModelTests: XCTestCase {
             plans: [SubscriptionPlan] = SubscriptionPlan.samples,
             plansError: Error? = nil,
             purchaseOutcome: Subscription = .free,
+            purchaseIsPending: Bool = false,
             purchaseError: Error? = nil,
             restoreOutcome: Subscription = .free,
             restoreError: Error? = nil
@@ -32,6 +34,7 @@ final class PaywallViewModelTests: XCTestCase {
             self.plans = plans
             self.plansError = plansError
             self.purchaseOutcome = purchaseOutcome
+            self.purchaseIsPending = purchaseIsPending
             self.purchaseError = purchaseError
             self.restoreOutcome = restoreOutcome
             self.restoreError = restoreError
@@ -45,9 +48,9 @@ final class PaywallViewModelTests: XCTestCase {
             return plans
         }
 
-        func purchase(_ plan: SubscriptionPlan) async throws -> Subscription {
+        func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
             if let purchaseError { throw purchaseError }
-            return purchaseOutcome
+            return purchaseIsPending ? .pending : .resolved(purchaseOutcome)
         }
 
         func purchasePremium() async throws -> Subscription {
@@ -109,6 +112,17 @@ final class PaywallViewModelTests: XCTestCase {
 
         XCTAssertFalse(vm.didUnlockPremium)
         XCTAssertNil(vm.message, "a silent cancel does not nag the user")
+    }
+
+    func testPurchasePendingSurfacesWaitingMessageWithoutUnlocking() async {
+        // Ask to Buy / deferred approval: the tap must not look silent (like a cancel), but it also
+        // must not unlock - the entitlement lands out-of-band once approved.
+        let vm = PaywallViewModel(subscriptionService: StubService(purchaseIsPending: true))
+        await vm.purchase(SubscriptionPlan.samples[0])
+
+        XCTAssertFalse(vm.didUnlockPremium, "a pending purchase does not unlock premium yet")
+        XCTAssertNotNil(vm.message, "a pending purchase surfaces a gentle waiting message, not silence")
+        XCTAssertNil(vm.purchasingPlanID, "the in-flight marker clears when done")
     }
 
     func testPurchaseFailureSurfacesMessage() async {

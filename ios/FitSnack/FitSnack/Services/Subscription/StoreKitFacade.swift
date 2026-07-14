@@ -60,4 +60,9 @@ protocol StoreKitFacade: Sendable {
     func purchase(productID: String) async throws -> StorePurchaseResult
     /// Sync with the App Store to restore purchases across devices/reinstalls.
     func sync() async throws
+    /// Begin observing StoreKit's out-of-band `Transaction.updates` (auto-renewals, refunds,
+    /// cross-device purchases, deferred Ask-to-Buy approvals), acknowledging each verified update with
+    /// `finish()` so it never lingers unfinished in the queue. Returns the listener task for the caller
+    /// to retain for the app's lifetime; a StoreKit-free implementation returns a no-op task.
+    func listenForTransactions() -> Task<Void, Never>
 }

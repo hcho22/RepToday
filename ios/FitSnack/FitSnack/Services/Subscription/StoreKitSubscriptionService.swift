@@ -45,13 +45,17 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         return products.map(Self.plan(from:)).sorted(by: SubscriptionPlan.displayOrder)
     }
 
-    func purchase(_ plan: SubscriptionPlan) async throws -> Subscription {
+    func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
         switch try await facade.purchase(productID: plan.id) {
         case .success(let entitlements):
-            return Self.subscription(from: entitlements)
-        case .userCancelled, .pending:
-            // Neither is an error: the entitlement is simply unchanged, so report the current state.
-            return Self.subscription(from: await facade.currentEntitlements())
+            return .resolved(Self.subscription(from: entitlements))
+        case .userCancelled:
+            // A cancel is not an error: the entitlement is simply unchanged, so report current state.
+            return .resolved(Self.subscription(from: await facade.currentEntitlements()))
+        case .pending:
+            // Awaiting external approval (e.g. Ask to Buy). Nothing is granted yet; the paywall
+            // reassures the user and the approval is picked up out-of-band by the transaction listener.
+            return .pending
         }
     }
 
@@ -62,12 +66,23 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         guard let plan = plans.first(where: { $0.period == .monthly }) ?? plans.first else {
             throw SubscriptionError.productsUnavailable
         }
-        return try await purchase(plan)
+        switch try await purchase(plan) {
+        case .resolved(let subscription):
+            return subscription
+        case .pending:
+            // Deferred: report the (unchanged) current entitlement; the approval lands out-of-band.
+            return Self.subscription(from: await facade.currentEntitlements())
+        }
     }
 
     func restorePurchases() async throws -> Subscription {
         try await facade.sync()
         return Self.subscription(from: await facade.currentEntitlements())
+    }
+
+    @discardableResult
+    func startObservingTransactions() -> Task<Void, Never> {
+        facade.listenForTransactions()
     }
 
     // MARK: - Mapping

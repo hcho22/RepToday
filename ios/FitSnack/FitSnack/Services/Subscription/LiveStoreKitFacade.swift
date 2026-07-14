@@ -80,6 +80,19 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
+    func listenForTransactions() -> Task<Void, Never> {
+        // StoreKit 2 delivers transactions that happen outside a direct `purchase()` - auto-renewals,
+        // refunds, cross-device purchases, and deferred Ask-to-Buy approvals - only through
+        // `Transaction.updates`. Finish each verified update so it is acknowledged and never lingers
+        // unfinished; the entitlement-gated surfaces re-read `currentEntitlements()` on their next open.
+        Task.detached {
+            for await verification in Transaction.updates {
+                guard case .verified(let transaction) = verification else { continue }
+                await transaction.finish()
+            }
+        }
+    }
+
     // MARK: - Mapping
 
     private static func storeProduct(from product: Product) -> StoreProduct? {

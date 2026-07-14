@@ -38,6 +38,8 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         func sync() async throws {
             if let syncError { throw syncError }
         }
+
+        func listenForTransactions() -> Task<Void, Never> { Task {} }
     }
 
     private func service(_ facade: StubFacade) -> StoreKitSubscriptionService {
@@ -143,24 +145,34 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             entitlements: [],
             purchaseResult: .success([premiumEntitlement()])
         )
-        let subscription = try await service(facade).purchase(SubscriptionPlan.samples[0])
+        let outcome = try await service(facade).purchase(SubscriptionPlan.samples[0])
 
-        XCTAssertEqual(subscription.tier, .premium, "a completed purchase grants premium")
+        XCTAssertEqual(outcome, .resolved(Subscription(tier: .premium, provider: .apple, expiresAt: premiumEntitlement().expiresAt, trialEndsAt: nil)), "a completed purchase resolves to premium")
     }
 
     func testPurchaseCancelledKeepsFreeTier() async throws {
         let facade = StubFacade(entitlements: [], purchaseResult: .userCancelled)
-        let subscription = try await service(facade).purchase(SubscriptionPlan.samples[0])
+        let outcome = try await service(facade).purchase(SubscriptionPlan.samples[0])
 
-        XCTAssertEqual(subscription, .free, "a user cancel is not an error and grants nothing")
+        XCTAssertEqual(outcome, .resolved(.free), "a user cancel is not an error and grants nothing")
     }
 
     func testPurchaseCancelledKeepsExistingPremium() async throws {
         // A cancel re-reads current entitlements, so an already-premium user stays premium.
         let facade = StubFacade(entitlements: [premiumEntitlement()], purchaseResult: .userCancelled)
-        let subscription = try await service(facade).purchase(SubscriptionPlan.samples[0])
+        let outcome = try await service(facade).purchase(SubscriptionPlan.samples[0])
 
+        guard case .resolved(let subscription) = outcome else { return XCTFail("a cancel resolves") }
         XCTAssertEqual(subscription.tier, .premium)
+    }
+
+    func testPurchasePendingReportsPending() async throws {
+        // Ask to Buy / deferred approval: nothing is granted yet, and the outcome is distinctly pending
+        // (not a silent cancel) so the paywall can reassure the user.
+        let facade = StubFacade(entitlements: [], purchaseResult: .pending)
+        let outcome = try await service(facade).purchase(SubscriptionPlan.samples[0])
+
+        XCTAssertEqual(outcome, .pending, "a deferred purchase reports pending, not a resolved free tier")
     }
 
     func testPurchasePremiumBuysMonthly() async throws {

@@ -73,7 +73,6 @@
 		86684ACA73EC316C94560363 /* DefaultDurationLearning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 610848DE4DAC6E29AD671712 /* DefaultDurationLearning.swift */; };
 		8DAC8D15FC838FD4F7E23AB8 /* ColdStartHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B59449C030DFD3B8D66DBF3 /* ColdStartHandoff.swift */; };
 		8E247DDDFCCA383AF475DF88 /* ConsistencyScoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 825F205142EA7FF546D9EBB4 /* ConsistencyScoreTests.swift */; };
-		9052F14202D379314B595234 /* FitSnack.storekit in Resources */ = {isa = PBXBuildFile; fileRef = B4A4A5453BA64A6968796503 /* FitSnack.storekit */; };
 		92A8137D00E5C8EFEE2CB5E7 /* ActiveSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A17325B6B550595551D6EE /* ActiveSessionViewModel.swift */; };
 		956119F5EDB46F1354A7B3F9 /* OnboardingViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2527792F8E17F327D0E71850 /* OnboardingViewModelTests.swift */; };
 		95E9373133B1CAC1F3D04701 /* PaywallViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA297EF21A4F3CB503798F17 /* PaywallViewModelTests.swift */; };
@@ -732,7 +731,6 @@
 			files = (
 				D995370F23B924FBF753B317 /* Assets.xcassets in Resources */,
 				C3C49D659FC4DBE14CBFD35B /* Exercises.json in Resources */,
-				9052F14202D379314B595234 /* FitSnack.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

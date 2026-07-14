@@ -62,8 +62,9 @@ final class PaywallViewModel {
         }
     }
 
-    /// Purchase the selected plan. A user cancel is silent (no message, no unlock); a real failure
-    /// surfaces a gentle message. On a granted entitlement `didUnlockPremium` flips.
+    /// Purchase the selected plan. A user cancel is silent (no message, no unlock); a purchase left
+    /// awaiting approval (Ask to Buy) surfaces a gentle "waiting" note without unlocking; a real
+    /// failure surfaces a gentle message. On a granted entitlement `didUnlockPremium` flips.
     func purchase(_ plan: SubscriptionPlan) async {
         guard !isBusy else { return }
         purchasingPlanID = plan.id
@@ -71,8 +72,12 @@ final class PaywallViewModel {
         defer { purchasingPlanID = nil }
 
         do {
-            let subscription = try await subscriptionService.purchase(plan)
-            reflect(subscription)
+            switch try await subscriptionService.purchase(plan) {
+            case .resolved(let subscription):
+                reflect(subscription)
+            case .pending:
+                message = "This purchase needs approval before it unlocks. We'll switch on Premium as soon as it's approved - your workouts stay free in the meantime."
+            }
         } catch {
             message = "The purchase didn't go through. No charge was made - your workouts stay free."
         }

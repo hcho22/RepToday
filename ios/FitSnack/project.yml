@@ -18,6 +18,13 @@ targets:
     platform: iOS
     sources:
       - path: FitSnack
+        # The StoreKit config is attached to the scheme (below), not shipped in the app bundle:
+        # exclude it from the target's sources so xcodegen never adds the placeholder prices/ids
+        # to Copy Bundle Resources, then re-add it in no build phase so it stays visible/referenced.
+        excludes:
+          - Resources/FitSnack.storekit
+      - path: FitSnack/Resources/FitSnack.storekit
+        buildPhase: none
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fitsnack.app

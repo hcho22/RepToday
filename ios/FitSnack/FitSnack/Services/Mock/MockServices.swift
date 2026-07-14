@@ -212,9 +212,9 @@ final class MockSubscriptionService: SubscriptionServiceProtocol {
         plans
     }
 
-    func purchase(_ plan: SubscriptionPlan) async throws -> Subscription {
+    func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
         grantIfSimulating()
-        return subscription
+        return .resolved(subscription)
     }
 
     func purchasePremium() async throws -> Subscription {

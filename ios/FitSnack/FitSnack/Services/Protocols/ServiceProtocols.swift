@@ -135,10 +135,25 @@ protocol SubscriptionServiceProtocol {
     func refreshEntitlements() async throws -> Subscription
     /// The purchasable premium plans for the paywall, priced and ordered (monthly first).
     func premiumPlans() async throws -> [SubscriptionPlan]
-    /// Purchase a specific plan chosen on the paywall; returns the resulting entitlement.
-    func purchase(_ plan: SubscriptionPlan) async throws -> Subscription
+    /// Purchase a specific plan chosen on the paywall; returns the outcome so the paywall can tell a
+    /// resolved purchase apart from one still awaiting approval (Ask to Buy).
+    func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome
     func purchasePremium() async throws -> Subscription
     func restorePurchases() async throws -> Subscription
+    /// Begin observing StoreKit's out-of-band transaction updates (auto-renewals, refunds,
+    /// cross-device purchases, deferred Ask-to-Buy approvals), finishing each so it never lingers
+    /// in the queue; the entitlement-gated surfaces pick up the change on their next read. Called
+    /// once at launch, retained for the app's lifetime. Never gates the core loop; the mock and
+    /// any StoreKit-free implementation default to an immediately-completing no-op.
+    @discardableResult
+    func startObservingTransactions() -> Task<Void, Never>
+}
+
+extension SubscriptionServiceProtocol {
+    /// Default no-op listener: only the real StoreKit service (US-N04) overrides this, so mocks,
+    /// previews, and test stubs stay StoreKit-free and deterministic.
+    @discardableResult
+    func startObservingTransactions() -> Task<Void, Never> { Task {} }
 }
 
 /// Handles Sign in with Apple identity.
