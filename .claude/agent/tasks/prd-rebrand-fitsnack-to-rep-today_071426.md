@@ -260,6 +260,6 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 ## Open Questions
 
-- Is `reptoday.com` actually available/owned? If not, what is the fallback reverse-DNS root (blocks US-004)?
+- ~~Is `reptoday.com` actually available/owned? If not, what is the fallback reverse-DNS root (blocks US-004)?~~ **Resolved (US-001, 2026-07-14):** registered and purchasable via HugeDomains ($3,895), purchase deferred; reverse-DNS root locked as `com.reptoday.app` regardless (Apple does not verify domain ownership). US-004 is unblocked.
 - What is the real privacy-policy URL to replace the placeholder in `PaywallView.swift`?
 - Confirm `CFBundleDisplayName` should be "Rep Today" (space) while the App Store listing name is the fuller "Rep Today, Rest Tomorrow".
