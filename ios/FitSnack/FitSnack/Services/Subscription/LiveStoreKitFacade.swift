@@ -26,16 +26,9 @@ final class LiveStoreKitFacade: StoreKitFacade {
         var result: [StoreEntitlement] = []
         for await verification in Transaction.currentEntitlements {
             guard case .verified(let transaction) = verification else { continue }
-            guard transaction.productType == .autoRenewable else { continue }
-            guard transaction.revocationDate == nil else { continue }
-            if let expiry = transaction.expirationDate, expiry <= Date() { continue }
-            result.append(
-                StoreEntitlement(
-                    productID: transaction.productID,
-                    expiresAt: transaction.expirationDate,
-                    isInTrialPeriod: Self.isInTrial(transaction)
-                )
-            )
+            if let entitlement = Self.entitlement(from: transaction) {
+                result.append(entitlement)
+            }
         }
         return result
     }
@@ -62,7 +55,12 @@ final class LiveStoreKitFacade: StoreKitFacade {
                 throw SubscriptionError.notVerified
             }
             await transaction.finish()
-            return .success(await currentEntitlements())
+            // Trust the just-verified transaction as the authoritative source of the grant and merge it
+            // into the current-entitlements read: StoreKit's cached `currentEntitlements` can briefly lag
+            // a just-completed purchase (a documented first-purchase timing quirk), and relying on it
+            // alone would resolve a paying buyer to `.free` - indistinguishable from a silent cancel.
+            let entitlements = await currentEntitlements()
+            return .success(Self.merged(entitlements, with: Self.entitlement(from: transaction)))
         case .userCancelled:
             return .userCancelled
         case .pending:
@@ -94,6 +92,39 @@ final class LiveStoreKitFacade: StoreKitFacade {
     }
 
     // MARK: - Mapping
+
+    /// Project a verified transaction into a premium `StoreEntitlement`, or `nil` when it does not grant
+    /// premium (not auto-renewable, revoked, or lapsed). The single mapping rule both `currentEntitlements`
+    /// and the purchase-success merge share, so a just-purchased transaction is graded exactly like a
+    /// cached entitlement.
+    private static func entitlement(from transaction: Transaction) -> StoreEntitlement? {
+        guard transaction.productType == .autoRenewable else { return nil }
+        guard transaction.revocationDate == nil else { return nil }
+        if let expiry = transaction.expirationDate, expiry <= Date() { return nil }
+        return StoreEntitlement(
+            productID: transaction.productID,
+            expiresAt: transaction.expirationDate,
+            isInTrialPeriod: isInTrial(transaction)
+        )
+    }
+
+    /// Union `fresh` into `entitlements`, de-duplicated by `productID` so a just-purchased entitlement is
+    /// always present even when the current-entitlements read lags. When both carry the same product, the
+    /// later-expiring one wins; ordering is otherwise preserved. `nil` (the transaction did not grant
+    /// premium) is a pass-through. Pure, so it is unit-testable without a live store.
+    static func merged(_ entitlements: [StoreEntitlement], with fresh: StoreEntitlement?) -> [StoreEntitlement] {
+        guard let fresh else { return entitlements }
+        if let index = entitlements.firstIndex(where: { $0.productID == fresh.productID }) {
+            var result = entitlements
+            result[index] = laterExpiring(entitlements[index], fresh)
+            return result
+        }
+        return entitlements + [fresh]
+    }
+
+    private static func laterExpiring(_ lhs: StoreEntitlement, _ rhs: StoreEntitlement) -> StoreEntitlement {
+        (lhs.expiresAt ?? .distantFuture) >= (rhs.expiresAt ?? .distantFuture) ? lhs : rhs
+    }
 
     private static func storeProduct(from product: Product) -> StoreProduct? {
         guard let subscription = product.subscription else { return nil }

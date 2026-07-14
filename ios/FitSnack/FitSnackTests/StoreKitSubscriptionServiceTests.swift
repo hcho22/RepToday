@@ -195,6 +195,39 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Purchase-success entitlement merge (first-purchase timing quirk)
+
+    func testMergedIncludesFreshEntitlementWhenCurrentReadIsEmpty() {
+        // The device's cached currentEntitlements can lag a just-completed purchase, returning empty; the
+        // verified transaction's entitlement must still be present so the buyer resolves to premium.
+        let fresh = premiumEntitlement()
+        let merged = LiveStoreKitFacade.merged([], with: fresh)
+
+        XCTAssertEqual(merged, [fresh], "the just-purchased entitlement is trusted even when the read lags")
+        XCTAssertEqual(StoreKitSubscriptionService.subscription(from: merged).tier, .premium)
+    }
+
+    func testMergedDeduplicatesKeepingLaterExpiry() {
+        let stale = premiumEntitlement(expiresAt: Date(timeIntervalSince1970: 1_000_000))
+        let renewed = premiumEntitlement(expiresAt: Date(timeIntervalSince1970: 9_000_000))
+        let merged = LiveStoreKitFacade.merged([stale], with: renewed)
+
+        XCTAssertEqual(merged, [renewed], "the same product is de-duplicated to its later-expiring entitlement")
+    }
+
+    func testMergedPreservesOtherEntitlements() {
+        let owned = premiumEntitlement(productID: SubscriptionPlan.ProductID.yearly, expiresAt: Date(timeIntervalSince1970: 5_000_000))
+        let fresh = premiumEntitlement(productID: SubscriptionPlan.ProductID.monthly)
+        let merged = LiveStoreKitFacade.merged([owned], with: fresh)
+
+        XCTAssertEqual(merged, [owned, fresh], "a distinct product is appended, existing entitlements preserved")
+    }
+
+    func testMergedNilFreshIsPassThrough() {
+        let owned = premiumEntitlement()
+        XCTAssertEqual(LiveStoreKitFacade.merged([owned], with: nil), [owned], "a non-granting transaction leaves the read untouched")
+    }
+
     // MARK: - Restore
 
     func testRestoreRegrantsEntitlement() async throws {
