@@ -1,0 +1,266 @@
+import XCTest
+@testable import RepToday
+
+/// Tests the post-session recorder (US-L01): the seam the player calls when a session completes.
+///
+/// It must durably write the `WorkoutLog`, refresh the forgiving Consistency Score onto the user
+/// (US-H01), and drive the cold-start handoff (US-G04) - advancing the user's cold-start state and
+/// clearing the now-inert policy contract once cold-start retires. These tests drive it with in-memory
+/// stores and a fixed clock so every effect is observable and deterministic.
+final class SessionCompletionServiceTests: XCTestCase {
+
+    private let now = Date(timeIntervalSinceReferenceDate: 760_000_000)
+
+    // MARK: - Fixtures
+
+    private func makeUser(sessionsLogged: Int = 0, active: Bool = true, weeklyGoal: Int = 3) -> User {
+        var user = MockPersistence.sampleUser
+        user.id = "u1"
+        user.coldStart = User.ColdStart(sessionsLogged: sessionsLogged, active: active)
+        user.consistency = Consistency(
+            weeklyGoal: weeklyGoal, score: 0, workoutsThisWeek: 0,
+            longestChain: 0, totalWorkoutsCompleted: 0, totalMinutesExercised: 0
+        )
+        return user
+    }
+
+    private func makeLog(durationMinutes: Int = 14, requestedMinutes: Int = 20, wasReturn: Bool = false) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: now,
+            requestedMinutes: requestedMinutes,
+            durationMinutes: durationMinutes,
+            wasReturn: wasReturn,
+            shape: .blend,
+            focusPillar: nil,
+            perceivedDifficulty: nil,
+            exercises: [
+                LoggedExercise(
+                    id: UUID(), exerciseId: "push_up", pillar: .strength, movementPattern: .push,
+                    completedSets: [CompletedSet(reps: 12, durationSeconds: nil)], skipped: false
+                )
+            ]
+        )
+    }
+
+    private func makeService(
+        logService: MockWorkoutLogService,
+        userService: MockUserService,
+        store: InMemorySessionPolicyStore,
+        healthKitService: (any HealthKitServiceProtocol)? = nil
+    ) -> SessionCompletionService {
+        SessionCompletionService(
+            workoutLogService: logService,
+            userService: userService,
+            consistencyService: ConsistencyScoreService(now: { self.now }),
+            policyStore: store,
+            healthKitService: healthKitService
+        )
+    }
+
+    /// A HealthKit spy that records the sessions written to Health and can be made to fail, so the tests
+    /// can assert the mirror fires (US-N03) and that a HealthKit failure never disrupts the completion.
+    private final class SpyHealthKitService: HealthKitServiceProtocol {
+        private(set) var written: [(log: WorkoutLog, user: User)] = []
+        var shouldThrow = false
+
+        func authorizationStatus() async throws -> HealthKitAuthorizationStatus { .sharingAuthorized }
+        func requestAuthorization() async throws -> HealthKitAuthorizationStatus { .sharingAuthorized }
+        func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws {
+            if shouldThrow { throw NSError(domain: "health", code: 1) }
+            written.append((log, user))
+        }
+    }
+
+    // MARK: - Log write
+
+    /// The completed session is written to the log service verbatim - the durable record (US-L01).
+    func testRecordWritesLog() async throws {
+        let logService = MockWorkoutLogService()
+        let service = makeService(logService: logService, userService: MockUserService(user: makeUser()), store: InMemorySessionPolicyStore())
+        let log = makeLog(durationMinutes: 14, requestedMinutes: 20)
+
+        try await service.recordCompletedSession(log, user: makeUser(), recentLogs: [])
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.requestedMinutes, 20)
+        XCTAssertEqual(saved.first?.durationMinutes, 14, "the completed - not requested - duration is recorded")
+    }
+
+    // MARK: - Consistency refresh (US-H01)
+
+    /// The forgiving Consistency Score is refreshed onto the user aggregate over the full persisted
+    /// history (which now includes the just-saved log), counting the new session exactly once.
+    func testRecordRefreshesConsistency() async throws {
+        let userService = MockUserService(user: makeUser())
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: InMemorySessionPolicyStore())
+
+        try await service.recordCompletedSession(makeLog(), user: makeUser(), recentLogs: [])
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.consistency.totalWorkoutsCompleted, 1, "the new session counts exactly once")
+        XCTAssertGreaterThan(saved?.consistency.score ?? 0, 0, "showing up moves the score off zero")
+    }
+
+    // MARK: - Cold-start handoff (US-G04)
+
+    /// Recording a completed session advances the user's cold-start counter.
+    func testRecordAdvancesColdStart() async throws {
+        let userService = MockUserService(user: makeUser(sessionsLogged: 1, active: true))
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: InMemorySessionPolicyStore())
+
+        try await service.recordCompletedSession(makeLog(), user: makeUser(sessionsLogged: 1, active: true), recentLogs: [])
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.coldStart.sessionsLogged, 2)
+        XCTAssertTrue(saved?.coldStart.active ?? false, "still in the cold-start window below the threshold")
+    }
+
+    /// The session that reaches the handoff threshold retires cold-start on the user *and* clears the
+    /// now-inert cold-start contract from the stored policy (US-G04), so the engine runs the plain
+    /// pipeline from the next open.
+    func testRecordRetiresColdStartAndReconcilesPolicy() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.save(.seeded(forFitnessLevel: .beginner), for: "u1")
+        // One below the threshold (5), so this completed session flips cold-start off.
+        let user = makeUser(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true)
+        let userService = MockUserService(user: user)
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: store)
+
+        try await service.recordCompletedSession(makeLog(), user: user, recentLogs: [])
+
+        let savedUser = try await userService.currentUser()
+        XCTAssertEqual(savedUser?.coldStart.sessionsLogged, ColdStartHandoff.handoffThreshold)
+        XCTAssertFalse(savedUser?.coldStart.active ?? true, "cold-start retires at the threshold")
+
+        let savedPolicy = try await store.policy(for: "u1")
+        XCTAssertNil(savedPolicy?.coldStartContract, "the retired contract is cleared from the stored policy")
+    }
+
+    /// While cold-start is still active, the policy is left untouched (the handoff is a no-op on it),
+    /// so the contract that drives the First-Week overrides survives.
+    func testRecordKeepsContractWhileColdStartActive() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.save(.seeded(forFitnessLevel: .beginner), for: "u1")
+        let user = makeUser(sessionsLogged: 1, active: true)
+        let service = makeService(logService: MockWorkoutLogService(), userService: MockUserService(user: user), store: store)
+
+        try await service.recordCompletedSession(makeLog(), user: user, recentLogs: [])
+
+        let savedPolicy = try await store.policy(for: "u1")
+        XCTAssertNotNil(savedPolicy?.coldStartContract, "an active cold-start keeps its contract")
+    }
+
+    // MARK: - Freshest-user read (second-writer safety)
+
+    /// The user aggregate has a second writer - the on-open reprogram (US-J02/US-F03) can persist a
+    /// learned `user.duration` between the Ready-Screen snapshot and session completion. The recorder
+    /// must read-modify-write from the *freshest* persisted user, not the stale snapshot, so that
+    /// learned duration survives rather than being clobbered.
+    func testRecordPreservesDurationWrittenAfterSnapshot() async throws {
+        let snapshot = makeUser()
+        // The reprogram persisted a shorter learned default after the snapshot was captured.
+        var fresher = snapshot
+        fresher.duration = User.Duration(defaultMinutes: 10, onboardingSeedMinutes: 20, completedDurationEWMA: 11)
+        let userService = MockUserService(user: fresher)
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: InMemorySessionPolicyStore())
+
+        try await service.recordCompletedSession(makeLog(), user: snapshot, recentLogs: [])
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.duration.defaultMinutes, 10, "the learned duration written after the snapshot is preserved, not clobbered")
+        XCTAssertEqual(saved?.duration.completedDurationEWMA, 11)
+    }
+
+    // MARK: - Perceived-difficulty rating (US-L02)
+
+    /// The rating is written onto the existing log by its stable id (an upsert, not a second record),
+    /// and it does not re-run the cold-start handoff - the counter the completion write already advanced
+    /// stays put, so a rating given afterward never double-advances cold-start.
+    func testRecordPerceivedDifficultyUpdatesLogInPlace() async throws {
+        let logService = MockWorkoutLogService()
+        let userService = MockUserService(user: makeUser(sessionsLogged: 1, active: true))
+        let service = makeService(logService: logService, userService: userService, store: InMemorySessionPolicyStore())
+        let log = makeLog()
+
+        try await service.recordCompletedSession(log, user: makeUser(sessionsLogged: 1, active: true), recentLogs: [])
+        try await service.recordPerceivedDifficulty(.tooHard, forLog: log)
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1, "the rating updates the same record rather than writing a second log")
+        XCTAssertEqual(saved.first?.id, log.id)
+        XCTAssertEqual(saved.first?.perceivedDifficulty, .tooHard)
+
+        let savedUser = try await userService.currentUser()
+        XCTAssertEqual(savedUser?.coldStart.sessionsLogged, 2, "rating does not re-advance the cold-start counter")
+    }
+
+    /// A user already warmed up (cold-start inactive) advances no counter and the policy stays put.
+    func testRecordNoOpColdStartWhenAlreadyRetired() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.save(.default, for: "u1")
+        let user = makeUser(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
+        let userService = MockUserService(user: user)
+        let service = makeService(logService: MockWorkoutLogService(), userService: userService, store: store)
+
+        try await service.recordCompletedSession(makeLog(), user: user, recentLogs: [])
+
+        let savedUser = try await userService.currentUser()
+        XCTAssertEqual(savedUser?.coldStart.sessionsLogged, ColdStartHandoff.handoffThreshold, "frozen once retired")
+        XCTAssertFalse(savedUser?.coldStart.active ?? true)
+    }
+
+    // MARK: - HealthKit write (US-N03)
+
+    /// When a HealthKit service is wired, the completed session is mirrored into Health as a workout,
+    /// against the freshest persisted user (whose body weight feeds the energy estimate).
+    func testRecordMirrorsSessionToHealthKit() async throws {
+        let health = SpyHealthKitService()
+        let userService = MockUserService(user: makeUser())
+        let service = makeService(
+            logService: MockWorkoutLogService(), userService: userService,
+            store: InMemorySessionPolicyStore(), healthKitService: health
+        )
+        let log = makeLog()
+
+        try await service.recordCompletedSession(log, user: makeUser(), recentLogs: [])
+
+        XCTAssertEqual(health.written.count, 1, "the completed session is written to Health once")
+        XCTAssertEqual(health.written.first?.log.id, log.id, "the same log is mirrored")
+        XCTAssertEqual(health.written.first?.user.id, "u1", "the freshest persisted user is passed for the energy estimate")
+    }
+
+    /// A HealthKit failure is fully isolated: the log, the refreshed Consistency Score, and the cold-start
+    /// handoff all still land, and the completion never throws (US-N03: a denied/failed write never blocks).
+    func testHealthKitFailureDoesNotDisruptCompletion() async throws {
+        let health = SpyHealthKitService()
+        health.shouldThrow = true
+        let logService = MockWorkoutLogService()
+        let userService = MockUserService(user: makeUser())
+        let service = makeService(
+            logService: logService, userService: userService,
+            store: InMemorySessionPolicyStore(), healthKitService: health
+        )
+
+        try await service.recordCompletedSession(makeLog(), user: makeUser(), recentLogs: [])
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1, "the durable log is written despite the HealthKit failure")
+        let savedUser = try await userService.currentUser()
+        XCTAssertEqual(savedUser?.consistency.totalWorkoutsCompleted, 1, "consistency still refreshes")
+    }
+
+    /// With no HealthKit service wired (previews / the in-memory mock), completion records nothing to
+    /// Health and still writes the durable log.
+    func testNoHealthKitServiceRecordsNothingToHealth() async throws {
+        let logService = MockWorkoutLogService()
+        let service = makeService(logService: logService, userService: MockUserService(user: makeUser()), store: InMemorySessionPolicyStore())
+
+        try await service.recordCompletedSession(makeLog(), user: makeUser(), recentLogs: [])
+
+        let saved = try await logService.workoutLogs(from: nil, to: nil)
+        XCTAssertEqual(saved.count, 1)
+    }
+}
