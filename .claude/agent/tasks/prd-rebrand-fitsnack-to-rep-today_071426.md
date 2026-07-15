@@ -186,9 +186,9 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] Repo renamed `hcho/FitSnack` → `hcho/reptoday` (via GitHub settings or `gh repo rename`)
-- [ ] The local git remote URL is updated to the new name
-- [ ] The old URL confirmed to auto-redirect (rename is reversible)
+- [x] Repo renamed `hcho22/FitSnack` → `hcho22/reptoday` (via `gh repo rename`)
+- [x] The local git remote URL is updated to the new name
+- [x] The old URL confirmed to auto-redirect (rename is reversible - `git ls-remote` over the old URL resolves to the renamed repo's HEAD; the unauthenticated web URL 404s only because the repo is private)
 
 **Validation Test:**
 
