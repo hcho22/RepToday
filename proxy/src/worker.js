@@ -1,5 +1,5 @@
 /**
- * FitSnack Variety Language proxy (US-N05).
+ * Rep Today Variety Language proxy (US-N05).
  *
  * A thin, stateless key-holding proxy for the deferred Phase 2 Variety Language LLM slice (US-G03).
  * It holds the Anthropic API key (so the key never ships in the app) and makes **exactly one**

@@ -1,4 +1,4 @@
-# FitSnack Variety Language Proxy (US-N05)
+# Rep Today Variety Language Proxy (US-N05)
 
 A thin, stateless, key-holding proxy for the deferred Phase 2 **Variety Language** LLM slice
 (US-G03).
