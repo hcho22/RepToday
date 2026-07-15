@@ -44,7 +44,7 @@ struct SubscriptionPlan: Identifiable, Equatable, Hashable {
     /// The price line the paywall shows, e.g. "$7.99 / month".
     var priceLine: String { "\(displayPrice) / \(period.perUnitLabel)" }
 
-    /// The canonical FitSnack premium product ids. The `.storekit` configuration and the App Store
+    /// The canonical Rep Today premium product ids. The `.storekit` configuration and the App Store
     /// Connect products must use exactly these.
     enum ProductID {
         static let monthly = "com.reptoday.app.premium.monthly"

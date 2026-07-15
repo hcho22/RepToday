@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The single source of truth for FitSnack's visual language.
+/// The single source of truth for Rep Today's visual language.
 ///
 /// Every view pulls colors, fonts, and spacing from `Theme` - never hardcoded
 /// literals. Swapping a value here updates the whole app. This is the scaffold
@@ -63,7 +63,7 @@ enum Theme {
     // MARK: - Spacing
 
     /// Spacing scale and fixed layout constants.
-    /// The named constants below encode FitSnack's design rules from the PRD.
+    /// The named constants below encode Rep Today's design rules from the PRD.
     enum Spacing {
         /// 4pt - hairline gaps.
         static let xs: CGFloat = 4

@@ -172,7 +172,7 @@ private struct WelcomeStep: View {
                 .padding(.top, Theme.Spacing.xl)
 
             StepHeader(
-                title: "Welcome to FitSnack",
+                title: "Welcome to Rep Today",
                 subtitle: "A few minutes is enough. Tell us a little about you and we'll have a session ready before you know it."
             )
 

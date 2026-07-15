@@ -125,11 +125,11 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] `project.yml` adds `INFOPLIST_KEY_CFBundleDisplayName: "Rep Today"` (with the space) - currently unset, so it defaults to the target name
-- [ ] `Info.plist` `NSHealthUpdateUsageDescription` copy: "FitSnack writes…" → "Rep Today writes…"
-- [ ] `PaywallView.swift:176` placeholder privacy URL no longer contains "fitsnack" (real URL value tracked as an Open Question / pre-submission task)
-- [ ] Remaining "FitSnack" mentions in app `.swift` files (Theme, User, SubscriptionPlan, CoreDataUserService, HealthKitService, HealthKitWorkoutSample, ServiceProtocols, OnboardingView, etc.) → "Rep Today"
-- [ ] Verify in iOS Simulator: under-icon label and the Health permission prompt both read "Rep Today"
+- [x] `project.yml` adds `INFOPLIST_KEY_CFBundleDisplayName: "Rep Today"` (with the space) - currently unset, so it defaults to the target name
+- [x] `Info.plist` `NSHealthUpdateUsageDescription` copy: "FitSnack writes…" → "Rep Today writes…"
+- [x] `PaywallView.swift:176` placeholder privacy URL no longer contains "fitsnack" (real URL value tracked as an Open Question / pre-submission task)
+- [x] Remaining "FitSnack" mentions in app `.swift` files (Theme, User, SubscriptionPlan, CoreDataUserService, HealthKitService, HealthKitWorkoutSample, ServiceProtocols, OnboardingView, etc.) → "Rep Today"
+- [x] Verify in iOS Simulator: under-icon label and the Health permission prompt both read "Rep Today"
 
 **Validation Test:**
 
