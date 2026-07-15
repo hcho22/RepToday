@@ -1,5 +1,5 @@
 {
-  "identifier" : "9A5B2C10-0001-4A00-9000-FITSNACK0001",
+  "identifier" : "9A5B2C10-0001-4A00-9000-REPTODAY0001",
   "nonRenewingSubscriptions" : [
 
   ],
@@ -19,11 +19,11 @@
   },
   "subscriptionGroups" : [
     {
-      "id" : "9A5B2C10-0100-4A00-9000-FITSNACKGRP1",
+      "id" : "9A5B2C10-0100-4A00-9000-REPTODAYGRP1",
       "localizations" : [
 
       ],
-      "name" : "FitSnack Premium",
+      "name" : "Rep Today Premium",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -35,9 +35,9 @@
           "displayPrice" : "7.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "9A5B2C10-1001-4A00-9000-FITSNACKMON1",
+          "internalID" : "9A5B2C10-1001-4A00-9000-REPTODAYMON1",
           "introductoryOffer" : {
-            "internalID" : "9A5B2C10-1101-4A00-9000-FITSNACKMTR1",
+            "internalID" : "9A5B2C10-1101-4A00-9000-REPTODAYMTR1",
             "paymentMode" : "free",
             "subscriptionPeriod" : "P2W"
           },
@@ -51,7 +51,7 @@
           "productID" : "com.reptoday.app.premium.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Premium Monthly",
-          "subscriptionGroupID" : "9A5B2C10-0100-4A00-9000-FITSNACKGRP1",
+          "subscriptionGroupID" : "9A5B2C10-0100-4A00-9000-REPTODAYGRP1",
           "type" : "RecurringSubscription"
         },
         {
@@ -64,7 +64,7 @@
           "displayPrice" : "59.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "9A5B2C10-1002-4A00-9000-FITSNACKYR01",
+          "internalID" : "9A5B2C10-1002-4A00-9000-REPTODAYYR01",
           "localizations" : [
             {
               "description" : "The deeper view, billed yearly - pattern balance, weekly volume, and difficulty mix.",
@@ -75,7 +75,7 @@
           "productID" : "com.reptoday.app.premium.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Premium Yearly",
-          "subscriptionGroupID" : "9A5B2C10-0100-4A00-9000-FITSNACKGRP1",
+          "subscriptionGroupID" : "9A5B2C10-0100-4A00-9000-REPTODAYGRP1",
           "type" : "RecurringSubscription"
         }
       ]
