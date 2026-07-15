@@ -166,10 +166,10 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] `proxy/wrangler.toml`: worker `name` `fitsnack-variety-language-proxy` → `reptoday-variety-language-proxy`
-- [ ] `proxy/package.json`: `name` and `description` rebranded
-- [ ] `proxy/README.md` and `proxy/src/worker.js` header comment rebranded (including the `ios/FitSnack/...` path reference in the README → `ios/RepToday/...`)
-- [ ] No functional change to the single-Claude-call behavior
+- [x] `proxy/wrangler.toml`: worker `name` `fitsnack-variety-language-proxy` → `reptoday-variety-language-proxy`
+- [x] `proxy/package.json`: `name` and `description` rebranded
+- [x] `proxy/README.md` and `proxy/src/worker.js` header comment rebranded (including the `ios/FitSnack/...` path reference in the README → `ios/RepToday/...`)
+- [x] No functional change to the single-Claude-call behavior
 
 **Validation Test:**
 

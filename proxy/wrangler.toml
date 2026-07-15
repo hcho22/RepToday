@@ -1,4 +1,4 @@
-name = "fitsnack-variety-language-proxy"
+name = "reptoday-variety-language-proxy"
 main = "src/worker.js"
 # AbortSignal.timeout and modern fetch semantics require a recent compatibility date.
 compatibility_date = "2026-01-01"

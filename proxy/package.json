@@ -1,8 +1,8 @@
 {
-  "name": "fitsnack-variety-language-proxy",
+  "name": "reptoday-variety-language-proxy",
   "version": "1.0.0",
   "private": true,
-  "description": "Thin stateless key-holding proxy for the FitSnack Variety Language LLM slice (US-N05).",
+  "description": "Thin stateless key-holding proxy for the Rep Today Variety Language LLM slice (US-N05).",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
