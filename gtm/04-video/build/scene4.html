@@ -1,0 +1,80 @@
+<title>Scene 4 - One tap</title>
+<style>
+  @font-face { font-family: "RT Rounded"; src: url("file:///System/Library/Fonts/SFNSRounded.ttf"); } /* system SF Rounded; needs --allow-file-access-from-files */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background: #14181C; /* Night */
+    color: #F1EEE8;      /* Bone */
+    font-family: "RT Rounded", ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  .frame {
+    width: 1920px; height: 1080px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 160px;
+  }
+  .headline {
+    font-size: 88px; line-height: 100px; font-weight: 700;
+    color: #F1EEE8;
+  }
+  .chips {
+    margin-top: 72px;
+    display: flex; gap: 24px; align-items: center;
+  }
+  .chip {
+    min-width: 128px; padding: 22px 34px;
+    border-radius: 999px;
+    border: 3px solid #39424A;
+    font-size: 38px; line-height: 44px; font-weight: 600;
+    color: #A7B0B8; /* Mist */
+  }
+  .chip.active {
+    background: #5FA981; /* Fern */
+    border-color: #5FA981;
+    color: #14181C;
+  }
+  .chips-caption {
+    margin-top: 20px;
+    font-size: 26px; line-height: 34px; font-weight: 400;
+    color: #A7B0B8;
+  }
+  .onetap {
+    margin-top: 72px;
+    opacity: 0; /* revealed in keyframe 2 */
+  }
+  .onetap .big {
+    font-size: 64px; line-height: 74px; font-weight: 700;
+    color: #F1EEE8;
+  }
+  .onetap .small {
+    margin-top: 16px;
+    font-size: 34px; line-height: 48px; font-weight: 400;
+    color: #A7B0B8;
+  }
+  /* Keyframe 1: ten is the session on screen. Keyframe 2: one tap later, twenty. */
+  body.k1 .chip-10 { background: #5FA981; border-color: #5FA981; color: #14181C; }
+  body.k1 .chip-20 { background: none; border-color: #39424A; color: #A7B0B8; }
+  body.k2 .onetap { opacity: 1; }
+</style>
+<div class="frame">
+  <div class="headline">Got 20 minutes instead of 10?</div>
+  <div class="chips">
+    <div class="chip">5</div>
+    <div class="chip chip-10">10</div>
+    <div class="chip">15</div>
+    <div class="chip chip-20 active">20</div>
+    <div class="chip">30</div>
+    <div class="chip">45</div>
+    <div class="chip">60</div>
+  </div>
+  <div class="chips-caption">minutes</div>
+  <div class="onetap">
+    <div class="big">One tap.</div>
+    <div class="small">The session rebuilds before your thumb lifts.</div>
+  </div>
+</div>
+<script>
+  var k = new URLSearchParams(location.search).get('k');
+  document.body.classList.add(k === '1' ? 'k1' : 'k2');
+</script>

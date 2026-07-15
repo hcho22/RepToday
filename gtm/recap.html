@@ -1,0 +1,126 @@
+<!-- Rep Today GTM package front door. Self-contained; brand tokens from 02-brand/brand-guidelines.md -->
+<title>Rep Today - GTM Package</title>
+<style>
+  :root{
+    --paper:#FAF7F2; --ink:#1B2228; --slate:#525E66; --moss:#2E6B4E; --clay:#B05C3F;
+    --night:#14181C; --bone:#F1EEE8; --mist:#A7B0B8; --fern:#5FA981;
+  }
+  html{background:var(--paper)}
+  body{margin:0;font-family:ui-rounded,"SF Pro Rounded",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;color:var(--ink);line-height:1.55}
+  .wrap{max-width:960px;margin:0 auto;padding:48px 24px 96px}
+  a{color:var(--moss)}
+  h1{font-size:40px;line-height:1.15;font-weight:700;margin:24px 0 8px}
+  h2{font-size:28px;font-weight:600;margin:64px 0 12px}
+  h3{font-size:19px;font-weight:600;margin:20px 0 6px}
+  p{max-width:34em}
+  .overline{color:var(--moss);font-size:13px;font-weight:600;letter-spacing:.02em}
+  .lockup{display:flex;align-items:center;gap:14px}
+  .lockup svg{width:44px;height:44px}
+  .lockup span{font-weight:700;font-size:26px}
+  .muted{color:var(--slate)}
+  .small{font-size:14px;color:var(--slate)}
+  .card{background:#fff;border:1px solid #e8e2d8;border-radius:16px;padding:24px;box-shadow:0 1px 3px rgba(27,34,40,.08)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .dark{background:var(--night);color:var(--bone);border:none}
+  .dark .small{color:var(--mist)}
+  table{border-collapse:collapse;width:100%;font-size:15px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e8e2d8;vertical-align:top}
+  th{font-weight:600}
+  ul{padding-left:22px}
+  li{margin:6px 0;max-width:36em}
+  .pill{display:inline-block;background:var(--moss);color:#fff;border-radius:999px;padding:2px 12px;font-size:13px;font-weight:600}
+  .warn{border-left:4px solid var(--clay);padding:12px 16px;background:#fff;border-radius:0 12px 12px 0}
+  code{background:#f0ebe2;border-radius:6px;padding:1px 6px;font-size:14px}
+</style>
+<div class="wrap">
+  <div class="lockup">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/><circle cx="50" cy="66" r="12" fill="#2E6B4E"/></svg>
+    <span>Rep Today</span>
+  </div>
+  <p class="overline" style="margin-top:32px">Go-to-market package - built 2026-07-15 - everything local, nothing published</p>
+  <h1>The business, in under five minutes</h1>
+
+  <p><strong>The product.</strong>
+  Rep Today is a discipline-first micro-workout iOS app.
+  Open it and a complete zero-equipment bodyweight session is already on screen, generated on the phone, offline, deterministically, in under 100 milliseconds.
+  One dominant Start button; no questions, no account, no paywall before the first rep.
+  Sessions run 5 to 60 minutes across three pillars: bodyweight strength, mobility (co-primary), and primal movement.
+  An AI Programmer tunes each user's session policy between sessions; it never generates a workout and is never in the way of Start.
+  The Consistency Score is a forgiving rolling average, not a streak: a 5-minute session counts in full, a missed day dents but never zeroes, and a return after a gap is celebrated.
+  No XP, levels, badges, or leaderboards anywhere.
+  Free tier: unlimited workouts forever. Premium (planned $7.99/mo, $59.99/yr, 14-day trial) unlocks depth, never workouts.</p>
+
+  <p><strong>The status, honestly.</strong>
+  Pre-launch. Zero users, zero downloads, zero revenue, zero testimonials.
+  What exists: an implemented MVP (667/667 tests green, StoreKit 2, CloudKit, HealthKit, Sign in with Apple), a completed rebrand to Rep Today with permanent identifiers locked, and this package.</p>
+
+  <p><strong>The bet.</strong>
+  Session-start friction and punishing gamification are real, citable churn drivers in fitness apps; a ready-on-open, forgiving, free-core product converts the tired non-athletes the category ignores; and a solo founder can reach them with zero ad budget through ASO whitespace, communities, and creators.
+  The research found no competitor that combines instant-open, offline generation, a non-streak score, and an ungated free core.
+  The full case, for and against, with kill criteria, is in the <a href="05-thesis/investment-thesis.md">investment thesis</a>.</p>
+
+  <h2>Name recommendation</h2>
+  <div class="card">
+    <p><span class="pill">Rep Today</span>&nbsp; App Store listing name: <strong>"Rep Today, Rest Tomorrow"</strong>, subtitle "Opens to a ready workout".</p>
+    <p>Chosen by a blind 4-pitch tournament scored by 3 judges with different published rubrics; the win was unanimous and all four pitchers independently kept the incumbent name.
+    Cairn (live same-category App Store collision) and Stack (saturated) were rejected.
+    Scorecard and losers: <a href="02-brand/naming-decision.md">naming decision</a>.</p>
+    <p class="warn"><strong>Unverified clearance.</strong>
+    Formal trademark search and App Store Connect name reservation were NOT performed and cannot be from this environment.
+    Both are the founder's next action.
+    Nothing in this package is a clearance claim.</p>
+  </div>
+
+  <h2>Thesis and its strongest surviving objection, side by side</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>The thesis says</h3>
+      <p>The wedge is real and citable: users ask verbatim for zero-decision workout apps, streak loss makes people quit, and hard paywalls are hated in-category.
+      No researched competitor combines Rep Today's four mechanics.
+      The category monetizes well per install, and the falsification plan is cheap: a TestFlight cohort and 90 days of measurement against eight pre-committed kill criteria.</p>
+      <p class="small"><a href="05-thesis/investment-thesis.md">Read the thesis</a> - including its own evidence-against section.</p>
+    </div>
+    <div class="card">
+      <h3>The red team answers</h3>
+      <p>"Nothing in this product is defensible.
+      Every leg of the wedge, a ready session on open, a forgiving non-streak score, and an ungated free tier, is a UX or pricing choice with no data moat, no network effect, and no switching cost behind it; Seven or Bend could copy the entire stack in one release cycle the moment it shows signs of working.
+      The quadrant is empty of competitors, but it is also empty of barriers, and a fully successful 90-day experiment proves a feature set, not a company."</p>
+      <p class="small">That objection survived the rewrite and ships unanswered, alongside 29 others.
+      The red team also forced material changes: raised kill thresholds, recomputed base-case economics, a legal line ruled false and replaced across six assets, and a rebuilt video.
+      The full dossier: <a href="06-redteam/dossier.md">objections, responses, and what changed</a> - plus the <a href="06-redteam/pre-publication-checklist.md">pre-publication checklist</a>.</p>
+    </div>
+  </div>
+
+  <h2>Every deliverable</h2>
+  <table>
+    <tr><th>Deliverable</th><th>Where</th></tr>
+    <tr><td>Naming decision + tournament scorecard (4 pitches, 3 judges)</td><td><a href="02-brand/naming-decision.md">02-brand/naming-decision.md</a> - <a href="02-brand/tournament/">tournament/</a></td></tr>
+    <tr><td>Locked positioning + messaging hierarchy</td><td><a href="02-brand/positioning.md">02-brand/positioning.md</a></td></tr>
+    <tr><td>Brand guidelines (palette, type, logo, voice)</td><td><a href="02-brand/brand-guidelines.md">02-brand/brand-guidelines.md</a></td></tr>
+    <tr><td>Brand gate test: fresh-agent asset + report</td><td><a href="02-brand/gate-test-report.md">gate-test-report.md</a> - <a href="02-brand/gate-test-asset.png">the asset it produced</a></td></tr>
+    <tr><td>Landing page (static, self-contained)</td><td><a href="03-site/index.html">03-site/index.html</a></td></tr>
+    <tr><td>Landing page gate screenshots (inspected)</td><td><a href="03-site/screenshot-mobile-390x844.png">mobile 390x844</a> - <a href="03-site/screenshot-desktop-1440x900.png">desktop 1440x900</a></td></tr>
+    <tr><td>Launch video (52.4s, 1080p, VO)</td><td><a href="04-video/launch-video.mp4">04-video/launch-video.mp4</a> - <a href="04-video/script.md">script</a></td></tr>
+    <tr><td>Video gate: ffprobe + viewed frames + strip</td><td><a href="04-video/gate-report.md">gate-report.md</a> - <a href="04-video/frame-strip.png">frame strip</a></td></tr>
+    <tr><td>Investment thesis with kill criteria</td><td><a href="05-thesis/investment-thesis.md">05-thesis/investment-thesis.md</a></td></tr>
+    <tr><td>Channel plan (ranked, zero budget)</td><td><a href="05-thesis/channel-plan.md">05-thesis/channel-plan.md</a></td></tr>
+    <tr><td>Red team dossier (objections, responses, what changed)</td><td><a href="06-redteam/dossier.md">06-redteam/dossier.md</a></td></tr>
+    <tr><td>Extra: App Store screenshot set (5, inspected)</td><td><a href="07-extras/app-store-screenshots/">07-extras/app-store-screenshots/</a></td></tr>
+    <tr><td>Extra: one-page investor teaser</td><td><a href="07-extras/investor-teaser.html">07-extras/investor-teaser.html</a></td></tr>
+    <tr><td>Extra: first-week social launch kit (drafts only)</td><td><a href="07-extras/social-launch-kit.md">07-extras/social-launch-kit.md</a></td></tr>
+    <tr><td>Invented deliverable: App Store review-response playbook</td><td><a href="07-extras/review-response-playbook.md">07-extras/review-response-playbook.md</a></td></tr>
+    <tr><td>All research (14 files, sourced)</td><td><a href="01-research/">01-research/</a></td></tr>
+    <tr><td>Decisions log (every [DECIDED BY AGENT])</td><td><a href="decisions-log.md">decisions-log.md</a></td></tr>
+    <tr><td>Sources (every fetched URL + timestamp)</td><td><a href="sources.md">sources.md</a></td></tr>
+    <tr><td>Self-grade against the master prompt</td><td><a href="self-grade.md">self-grade.md</a></td></tr>
+    <tr><td>How to run everything (3 commands)</td><td><a href="README.md">README.md</a></td></tr>
+    <tr><td>Execution record: master prompt section -> artifact</td><td><a href="master-prompt-execution-record.md">master-prompt-execution-record.md</a></td></tr>
+  </table>
+
+  <h2>How this was made</h2>
+  <p class="small">Orchestration topology: a 14-agent research fan-out (per-competitor teardowns, review mining, economics, ASO, creators, name collisions), a blind 4-pitch positioning tournament judged by 3 rubric-published judges, a fresh-agent brand gate test, 3 parallel builders (site, video, thesis) plus 4 extras builders, and a 5-persona red team (adversarial skeptic, seed investor, competitor growth head, cynical target user, App Store reviewer/FTC lawyer) whose objections forced rewrites recorded in the <a href="06-redteam/dossier.md">dossier</a> and <a href="decisions-log.md">decisions log</a>.
+  Every factual market claim in the package carries a URL fetched during the run; guesses are labeled [ASSUMPTION]; the app's pre-launch reality (zero users) is stated wherever a stranger might otherwise assume traction.</p>
+
+  <p class="small" style="margin-top:48px">Pre-launch. "Rep Today" has not been trademark-searched or registered, and the App Store name has not been reserved - both are the founder's next action. Nothing in this package has been published, deployed, or purchased.</p>
+</div>

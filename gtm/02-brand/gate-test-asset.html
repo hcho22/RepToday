@@ -1,0 +1,129 @@
+<title>Rep Today - coming soon to iOS</title>
+<style>
+  /* Rep Today launch announcement card - 1080x1350 (4:5), Paper theme.
+     Type scale is the marketing scale from brand guidelines section 5, rendered at 2x
+     for the 1080px canvas (see notes: guidelines give no asset-scale guidance). */
+
+  body {
+    margin: 0;
+    background: #FAF7F2; /* Paper - never pure white per section 4 rules */
+  }
+
+  .card {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1080px;
+    height: 1350px;
+    box-sizing: border-box;
+    padding: 80px; /* base-4 spacing, also satisfies 25% clear space for the 200px mark */
+    background: #FAF7F2; /* Paper */
+    color: #1B2228;      /* Ink */
+    font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Ready Mark, hero size. Construction per section 3:
+     corner radius 22% of side, stroke 7% of side, circle diameter 30% of side,
+     circle center at 70% of height - all encoded in the reference SVG geometry. */
+  .mark-hero {
+    width: 176px;
+    height: 176px;
+    display: block;
+  }
+
+  .overline {
+    margin-top: 48px;
+    font-size: 24px;      /* Micro 12/16 at 2x */
+    line-height: 32px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: #525E66;       /* Slate */
+  }
+
+  .headline {
+    margin: 24px 0 0;
+    font-size: 112px;     /* Display 56/60 at 2x */
+    line-height: 120px;
+    font-weight: 700;
+    color: #1B2228;       /* Ink */
+    max-width: 12em;
+  }
+
+  .body-copy {
+    margin: 32px 0 0;
+    font-size: 34px;      /* Body 17/26 at 2x */
+    line-height: 52px;
+    font-weight: 400;
+    color: #1B2228;       /* Ink - body text is never Moss or Clay */
+    max-width: 26em;      /* under the 34em max measure */
+  }
+
+  .closer {
+    margin: 32px 0 0;
+    font-size: 44px;      /* H3 22/28 at 2x */
+    line-height: 56px;
+    font-weight: 600;
+    color: #1B2228;
+  }
+
+  .footer {
+    margin-top: auto;
+  }
+
+  /* Wordmark lockup per section 3: mark left of the name, Bold, Ink,
+     gap = 50% of the mark's width. */
+  .wordmark {
+    display: flex;
+    align-items: center;
+  }
+  .wordmark .mark-small {
+    width: 72px;
+    height: 72px;
+    display: block;
+  }
+  .wordmark .name {
+    margin-left: 36px;    /* 50% of 72px mark width */
+    font-size: 48px;
+    line-height: 1;
+    font-weight: 700;
+    color: #1B2228;       /* Ink on Paper */
+  }
+
+  .legal {
+    margin: 32px 0 0;
+    font-size: 28px;      /* Small 14/20 at 2x */
+    line-height: 40px;
+    font-weight: 400;
+    color: #525E66;       /* Slate */
+  }
+</style>
+
+<div class="card">
+  <!-- Ready Mark: reference SVG from section 3, Moss on transparent -->
+  <svg class="mark-hero" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-label="Rep Today Ready Mark">
+    <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
+    <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
+  </svg>
+
+  <p class="overline">Coming soon to iOS</p>
+
+  <h1 class="headline">Open the app. Your workout is already there.</h1>
+
+  <p class="body-copy">Rep Today is coming to the App Store. No waitlist, nothing to reserve. When it arrives, a full bodyweight session will already be on screen, built on your phone in under 100 milliseconds.</p>
+
+  <p class="closer">It launches the way it opens: ready.</p>
+
+  <div class="footer">
+    <div class="wordmark">
+      <svg class="mark-small" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
+        <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
+      </svg>
+      <span class="name">Rep Today</span>
+    </div>
+    <p class="legal">Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved.</p>
+  </div>
+</div>
