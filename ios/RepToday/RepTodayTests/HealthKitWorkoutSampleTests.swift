@@ -2,7 +2,7 @@ import XCTest
 @testable import RepToday
 
 /// Tests the pure HealthKit workout mapping (US-N03): the value type that turns a completed `WorkoutLog`
-/// into the workout FitSnack writes to Health. Keeping this HealthKit-free lets the energy estimate, the
+/// into the workout Rep Today writes to Health. Keeping this HealthKit-free lets the energy estimate, the
 /// start/end instants, the activity category, and the idempotency key be verified without a live
 /// `HKHealthStore` (which needs the entitlement and a device).
 final class HealthKitWorkoutSampleTests: XCTestCase {
