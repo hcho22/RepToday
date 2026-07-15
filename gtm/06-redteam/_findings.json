@@ -1,0 +1,393 @@
+{
+ "redteam-investor.md": {
+  "mustFix": [
+   {
+    "target": "07-extras/investor-teaser.html",
+    "objection": "The teaser names no founder, no legal entity, and no contact anywhere; it calls itself a 'watch-this-space teaser' with no address to watch. An anonymous investor document is undiligence-able.",
+    "demand": "Add founder name, one-line background, commitment status (full-time vs nights-and-weekends), and a contact email to the teaser header or footer.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/channel-plan.md + decisions-log.md D-005 + 02-brand/naming-decision.md",
+    "objection": "The 'micro workout' whitespace bet has zero presence in the shipped metadata: title 'Rep Today, Rest Tomorrow' lacks both words, D-005 chose subtitle 'Opens to a ready workout', and the quoted 94-char keyword field contains neither 'micro' nor 'equipment' - despite D-005 claiming those terms 'move to the keyword field'. Channel plan also calls the subtitle 'the open decision' while decisions-log marks D-005 DECIDED.",
+    "demand": "Revise the keyword field to include the micro and equipment terms, and reconcile channel-plan.md with decisions-log.md on whether the subtitle decision is open or decided.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 7",
+    "objection": "'There is something real here that money could then accelerate' contradicts channel-plan.md's 'paid acquisition is underwater before the first dollar is spent' ($50-190 CAC vs $35.64 LTV); nothing in the package states what capital would actually buy.",
+    "demand": "Either name what a check would fund (hire, Android, creator budget) or delete the accelerate clause and state plainly that the business as modeled cannot absorb money.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md + 07-extras/investor-teaser.html",
+    "objection": "Solo-founder execution risk is never addressed: no full-time/side-project statement, no runway, opportunity cost 'deliberately ignored', and every channel, kill-criterion measurement, and fix iteration routes through one unnamed person's 8-12 spare hours a week.",
+    "demand": "Add an explicit founder-commitment and sustainability statement (total hours/week, months of runway, what breaks first) to the thesis, with a one-line version in the teaser.",
+    "severity": "high"
+   },
+   {
+    "target": "07-extras/investor-teaser.html 'The ask'",
+    "objection": "'No round is being raised in this document, and no check is being solicited' pre-markets a future raise while dodging accountability for a use-of-funds story; the raise trigger is never stated.",
+    "demand": "Add one sentence stating which kill-criteria outcomes would open a round and what it would fund, or retitle the document as a build log.",
+    "severity": "medium"
+   },
+   {
+    "target": "02-brand/naming-decision.md",
+    "objection": "The 'blind tournament' ('The win was unanimous') is four AI pitch agents graded by three AI judges from the same package, presented in a way a cold reader will mistake for market validation; zero humans have seen the name or the misreadable 'Rest Tomorrow' pun.",
+    "demand": "Label the tournament as synthetic internal deliberation with zero human validation, in the first section of the document.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 5",
+    "objection": "The kill criteria are self-graded with unbounded escape hatches ('after two fix iterations', 'after at least one ASO metadata iteration'); no one enforces the walk-away, and solo founders' base rate of honoring their own kill criteria is near zero.",
+    "demand": "Pre-commit to publishing the 90-day review publicly on a named date, or name a specific external person who receives the numbers and holds the walk-away call.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md (market section)",
+    "objection": "iOS-only is asserted, never argued: the channel plan rehearses answering 'why not Android' on HN, but no document answers it, and the iOS 17+ floor's TAM concession for a 'tired parent at 9pm' ICP appears nowhere.",
+    "demand": "Add one paragraph stating why iOS-only, what fraction of the ICP it concedes, and the condition under which Android happens.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 4 + channel-plan.md",
+    "objection": "Three download-to-paid medians circulate unreconciled: 2.1% (thesis base), 2.6% (thesis funnel cross-check), 2.9% (channel plan's paid-UA arithmetic), eroding trust in every other figure.",
+    "demand": "Add one footnote reconciling blended vs freemium vs funnel-implied medians and state which one the model stands on.",
+    "severity": "low"
+   },
+   {
+    "target": "01-research/product-facts-brief.md / decisions-log.md (domain posture)",
+    "objection": "Bundle root com.reptoday.app is locked and unchangeable while reptoday.com belongs to HugeDomains and reptoday.app sits unregistered (NXDOMAIN treated as a finding, not an action) - the brand's only cheap domain is left open to squatting.",
+    "demand": "Register reptoday.app now (~$20) and record it in the decisions log; scope the do-not-buy advice to the .com only.",
+    "severity": "low"
+   }
+  ],
+  "surviving": [
+   "No answer to the copy scenario exists: the teaser concedes 'not a moat... the quadrant is empty today', and if Seven (30M claimed users) or Down Dog defaults to a ready session, or Apple sherlocks the Ready Screen, the package can name no surviving asset - no network effect, no data moat, no brand, no distribution lock, and no speed advantage for one solo founder.",
+   "The distribution story has no base rate: every install figure is an [ASSUMPTION], the only always-on channel rests on a keyword whose volume is admittedly unmeasured and likely near zero, and the plan's own per-channel realistic expectations sum closer to the pessimistic 2,000 installs than the base 6,000 - against a market the package itself documents as 92.6% concentrated with median new-app revenue falling 22%.",
+   "The only spike channel acquires the wrong customer by the plan's own definition: Show HN traffic is 'skewed toward engineers rather than the 9pm-parent ICP', the plan pre-classifies half-rate-retention spikes as audience mismatch, and no listed channel plausibly reaches tired 9pm parents at volume.",
+   "By its own numbers, total success in year 1 is still not a business: optimistic gross under $30K, base case 'roughly $375 a month', no year-2 model, and no argument anywhere that the prize for passing every kill criterion is large - the package proves the experiment is cheap and falsifiable, and its own phrase 'fundable as an experiment rather than dismissible as a hobby' concedes that today it is a well-instrumented hobby.",
+   "The evidence base is mined App Store reviews and forum comments the thesis itself calls 'directional, not measured', with the streak-pain quotes mostly out-of-category and the demand anchor a single HN commenter; demand evidence is not demand proof, and the thesis admits 'the difference is the whole company'.",
+   "Every mitigation still routes through one person's discipline: one founder is simultaneously developer, support desk, analyst, community member, video editor, and judge of his own kill criteria inside an 8-12 hour weekly GTM cap - this risk is structural and no rewrite removes it."
+  ]
+ },
+ "redteam-competitor.md": {
+  "mustFix": [
+   {
+    "target": "02-brand/positioning.md (positioning statement)",
+    "objection": "Claims Down Dog is a generator that 'interviews you before you can move'; Rep Today's own research (competitor-down-dog.md) concedes settings persist and returning users press Start once, so the core contrast claim is publicly falsifiable with a ten-second screen recording in the launch thread.",
+    "demand": "Reword to the verifiable truth: mandatory login plus first-run configuration for Down Dog, onboarding interview for Freeletics; audit all assets for 'interview' applied to Down Dog.",
+    "severity": "high"
+   },
+   {
+    "target": "03-site/index.html (mechanism card 2, 'The AI Programmer')",
+    "objection": "Site says 'The AI tunes, it never generates' and 'an AI Programmer adjusts your Session Policy,' but product-facts-brief.md says the MVP Programmer is deterministic heuristics with one optional LLM call - the exact 'There is no AI...all marketing BS' Freeletics pattern the channel plan itself quotes as a weapon, and it violates the plan's own 'Do not lead any channel with AI' rule.",
+    "demand": "Rewrite card 2 to describe deterministic on-device tuning at launch (AI planned later), or remove 'AI' from the site entirely.",
+    "severity": "high"
+   },
+   {
+    "target": "03-site/index.html (hero phone mock)",
+    "objection": "Mock renders 'Nothing repeats from yesterday. Bear crawl is new this week.' - a categorical no-repeat guarantee found nowhere in the facts brief (which promises only a 'variety window') and implausible for a 42-movement library at 60-minute durations; an invented product claim inside a fake screenshot.",
+    "demand": "Replace with a variety line the engine actually guarantees, sourced from product-facts-brief.md.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/channel-plan.md + decisions-log.md D-005 (App Store subtitle)",
+    "objection": "The subtitle is an unresolved conflict, and the currently-selected 'Opens to a ready workout' contains zero searched keywords per their own aso-landscape.md ('nobody searches opens ready'), wasting the single highest-weight metadata slot.",
+    "demand": "Resolve now: ship the keyword subtitle 'No Equipment Micro Workouts' (or the researched fallback), move the wedge line to screenshot 1, record the reversal in the decisions log.",
+    "severity": "medium"
+   },
+   {
+    "target": "03-site/index.html footer + channel-plan.md pre-spend list",
+    "objection": "Footer publicly admits 'Trademark and App Store name clearance pending' while the plan schedules only a trademark search, never a filing - leaving 'rep today' brand-term conquest on Apple Search Ads open to any competitor on day one with no registered-mark remedy.",
+    "demand": "Make the USPTO filing a blocking pre-launch item and add brand-term conquest monitoring to launch week.",
+    "severity": "medium"
+   },
+   {
+    "target": "02-brand/positioning.md hero + 03-site/index.html hero subhead",
+    "objection": "The hero subhead leads entirely with claims an incumbent can neutralize in one sprint (speed, no questions, offline via caching/quick-start), while the only structurally uncopyable claim - free unlimited workouts forever, no account - is buried at pillar 5 and in the pricing section; positioning.md itself admits perceived instant-open can be faked.",
+    "demand": "Add the free-forever/no-account line to the hero subhead so the uncopyable message leads.",
+    "severity": "medium"
+   },
+   {
+    "target": "03-site/index.html (hero phone mock duration)",
+    "objection": "The mock labels the session '15 min' over four blocks (3x8 push-ups, 2 min hinge, 40s bear crawl, 3x30s squat hold) that sum to roughly ten minutes even with rests; trainers and competitor social accounts will do the arithmetic under the launch post.",
+    "demand": "Make the blocks plausibly fill the labeled duration or relabel the mock to 10 minutes.",
+    "severity": "low"
+   }
+  ],
+  "surviving": [
+   "The hero claim is imitable in one sprint (cached pre-generation, quick-start setting, widget); only the free-forever/no-account business model is structurally safe, and a moat that narrow must carry the whole company.",
+   "The paywall wedge does not bite the beloved incumbents: Rep Today's own research found Down Dog's US review set 'contained no pricing complaints; users treat the subscription as fair,' so the free pitch converts scam-paywall victims, a smaller pool than the positioning implies.",
+   "ASO whitespace is a countdown, not a moat: 'micro workout' is empty because it is worthless, and the moment it shows volume any incumbent with five-digit ratings takes it with one subtitle edit against Rep Today's zero ratings.",
+   "42 movements will read as small next to Down Dog HIIT's marketed 1000+ exercises; repeat-fatigue one-star reviews are a predictable wave within weeks of daily use.",
+   "'Free means the workouts. All of them. Forever.' is an unverifiable promise from a zero-revenue solo developer, and 'free-forever apps flip the paywall or die' is a counter-message incumbents get for free.",
+   "The channel plan's own numbers (single-digit daily ASO installs, one few-hundred-install HN spike of non-ICP engineers, tens per Reddit post) produce week-12 kill-criteria cohorts too small to be more than noise.",
+   "Premium's day-one value is thin and mockable: $7.99/mo buys deeper analytics plus a Strength Phase gated by both payment and merit ('earned ... never self-selected') - 'they charge you for a feature they might not let you use.'",
+   "The launch page has zero social proof: both evidence quotes are about other products and the captions admit 'we don't have any yet,' so the page argues from theory against incumbents holding hundreds of thousands of five-star ratings.",
+   "The App Store name 'Rep Today, Rest Tomorrow' hands competitors a one-line joke - a consistency app whose title schedules tomorrow off - and no GTM copy can rewrite a locked name."
+  ]
+ },
+ "redteam-lawyer.md": {
+  "mustFix": [
+   {
+    "target": "03-site/index.html footer; 04-video/script.md Scene 8; 07-extras/investor-teaser.html footer; 02-brand/brand-guidelines.md section 2; 07-extras/social-launch-kit.md checklist",
+    "objection": "\"Trademark and App Store name clearance pending\" is false: \"pending\" implies a filed application or process underway, but name-collisions.md confirms no USPTO search was performed and no App Store Connect record exists - nothing is pending.",
+    "demand": "Replace the line everywhere, including the canonical form in brand-guidelines.md section 2, with: \"Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved.\" (short form for the video end card: \"Name not yet trademark-searched or registered.\")",
+    "severity": "high"
+   },
+   {
+    "target": "07-extras/app-store-screenshots/README.md",
+    "objection": "The set is positioned as the App Store submission assets (\"Five screenshots for the 6.7-inch iPhone App Store slot\") and asserts \"Everything shown in the UI mocks is implemented product behavior\", but the PNGs are hand-written HTML/CSS mocks never diffed against the running app - Guideline 2.3.3 requires screenshots to show the app in use.",
+    "demand": "Add a prominent README warning that this set is a pre-release design comp for marketing review only, that the submission set must be captured from the built app and diffed screen-by-screen against the real UI, and delete or soften the \"implemented product behavior\" assertion until verified.",
+    "severity": "high"
+   },
+   {
+    "target": "03-site/index.html mechanism card 2; 07-extras/social-launch-kit.md X post 4",
+    "objection": "Calling the component an \"AI Programmer\" to consumers without disclosing that at MVP it is deterministic on-device heuristics with exactly one optional LLM call is AI-washing under the FTC's Operation AI Comply standard; the HN draft and investor teaser disclose this, the two widest-reach consumer assets do not.",
+    "demand": "Add to the site card and X post 4 (or its mandatory first thread reply): \"At launch the Programmer is deterministic on-device logic; there is exactly one optional AI-generated line of text in the app, with an offline fallback.\" Or drop the word \"AI\" from consumer copy until the LLM-backed Programmer ships.",
+    "severity": "high"
+   },
+   {
+    "target": "03-site/index.html library section, Mobility card",
+    "objection": "\"Built for same-day relief\" is an implied therapeutic claim (relief is a symptom word) requiring FTC-grade substantiation the pre-launch app cannot have, and it violates the package's own no-pain-cure rule in product-facts-brief.md and brand-guidelines.md rule 7.",
+    "demand": "Rewrite without \"relief\" or any same-day outcome, e.g. \"Mobility work is programmed for how a desk day actually feels, and it earns full space in the session.\"",
+    "severity": "high"
+   },
+   {
+    "target": "03-site/index.html FAQ \"Can I build my own workout?\"",
+    "objection": "\"Swap a movement mid-session\" claims a feature that appears nowhere in product-facts-brief.md; under the package's own rules claims beyond the brief are errors, and if the build lacks it this becomes misrepresented functionality.",
+    "demand": "Verify mid-session swap against the build; if it exists, add it to the product-facts brief with a source; if not, cut the clause.",
+    "severity": "high"
+   },
+   {
+    "target": "03-site/index.html FAQ \"Does it need internet?\"",
+    "objection": "\"Nothing you can do in the app waits on a network\" is literally false: StoreKit purchases, restore, and CloudKit sync all wait on a network.",
+    "demand": "Scope the claim: \"Nothing between opening the app and starting a workout waits on a network.\"",
+    "severity": "medium"
+   },
+   {
+    "target": "03-site/index.html phone caption; 04-video/script.md Scenes 3 and 8",
+    "objection": "The site captions a hand-written HTML mock as \"Ready Screen (product UI, pre-release)\" - literally false - and the video shows a \"faithful Ready Screen phone mock\" for 10 seconds with no \"screen images simulated\" disclosure anywhere in 52.4 seconds.",
+    "demand": "Change the site caption to \"Ready Screen (pre-release mock of the product UI)\" and add \"Screen images simulated; app is pre-release.\" to the video's Scene 8 end card.",
+    "severity": "medium"
+   },
+   {
+    "target": "All assets carrying \"under 100 milliseconds\" (site meta+subhead, video VO line 3, screenshot 2 footnote, social bios/posts, investor teaser)",
+    "objection": "The 100ms figure originates as a PRD requirement and no asset cites a measurement - no device, no percentile, no benchmark; an objective performance claim requires substantiation at the time it is made, and simulator numbers say nothing about the slowest iOS 17 hardware (iPhone XS).",
+    "demand": "Before publication, produce a benchmark record (device list incl. slowest supported iPhone, cold/warm times, p95, method, date) checked into 01-research/ as the substantiation file; if the slowest device misses 100ms, change the number everywhere.",
+    "severity": "medium"
+   },
+   {
+    "target": "07-extras/app-store-screenshots/src/05-free-forever.html",
+    "objection": "\"$7.99 a month or $59.99 a year \u00b7 14-day free trial\" pairs a free-trial offer with a price and no auto-renewal disclosure (FTC negative-option fact pattern), and states planned prices as live terms with no \"planned\" qualifier, unlike the site.",
+    "demand": "Add \"Auto-renews until cancelled\" beside the trial line, and add a README note that screenshot 5 must be regenerated against final App Store Connect pricing before submission.",
+    "severity": "medium"
+   },
+   {
+    "target": "03-site/index.html pricing section; 07-extras/app-store-screenshots/src/05-free-forever.html",
+    "objection": "\"Free means the workouts. All of them. Forever.\" sits next to a paywalled Strength Phase that changes what the user's sessions are; a reasonable consumer reads \"all of them\" as covering the app's training content, so the headline carries an undisclosed qualification.",
+    "demand": "Add a plan-note defining the boundary: \"The Strength Phase changes how sessions are programmed; every session remains free to generate and start.\" If that sentence cannot be written truthfully, drop \"All of them.\"",
+    "severity": "medium"
+   },
+   {
+    "target": "03-site/index.html FAQ \"Is my data sold?\"",
+    "objection": "A public \"data is never sold, nothing to sell\" pledge is an enforceable privacy commitment, and no privacy policy exists anywhere in the package; Apple also requires a privacy policy URL and accurate nutrition labels at submission.",
+    "demand": "Write the privacy policy before the site goes live, link it from this FAQ answer and the footer, and align the App Store privacy labels with the on-device/optional-iCloud/HealthKit-opt-in story.",
+    "severity": "low"
+   },
+   {
+    "target": "03-site/index.html subhead; 02-brand/brand-guidelines.md section 8; 04-video/script.md VO line 3",
+    "objection": "\"No questions, no account, no internet needed\" is an absolute falsifiable on first run: HealthKit write permission and the optional Sign in with Apple offer are both questions, even if off the start path.",
+    "demand": "Keep the line but record in brand-guidelines.md section 8 that \"no questions\" means the open-to-start path (no quiz, no sign-up), and add that scoping once per asset where space allows.",
+    "severity": "low"
+   },
+   {
+    "target": "04-video/script.md VO line 5",
+    "objection": "\"Real mobility\" is an unsubstantiated comparative implying competitors' mobility is fake, and it sharpens \"the kind of moving you did when you were seven\" toward a restored-capability reading.",
+    "demand": "Drop the word \"real\": \"bodyweight strength, mobility, and the kind of moving you did when you were seven\"; the childhood line may stay as obvious figurative language once the comparative frame is gone.",
+    "severity": "low"
+   }
+  ],
+  "surviving": [
+   "\"Forever\" is a promise no pre-revenue solo founder can guarantee: if Rep Today shuts down, is sold, or pivots, every asset that said \"Free means the workouts. All of them. Forever.\" becomes the record of a broken promise; softening it would gut the brand's central pledge, so the founder carries this liability knowingly.",
+   "The entire public package markets, in the present tense, an app that has never been submitted to the App Store: every behavioral claim is about software zero consumers have run, and any drift between these assets and the binary Apple approves converts polished copy into documented misrepresentation retroactively.",
+   "The name is legally naked: no USPTO search has been performed, REP Fitness owns heavy \"REP\" mindshare, reptoday.com belongs to a domain investor at $3,895 and could be bought tomorrow by anyone including a competitor, and the collision scan is a search-results sample, not clearance.",
+   "\"No account\" as a marketing pillar does not remove account obligations: because Sign in with Apple exists, Guideline 5.1.1(v)'s account-deletion requirement attaches regardless of the copy, and \"nothing to sign up for\" framing will make any account-related friction read as a contradiction.",
+   "Even with a benchmark file behind it, \"under 100 milliseconds\" is an unverifiable-by-consumers precision claim that invites free challenges (NAD referral, FTC complaint), and the defense burden - device matrices, percentiles, re-measurement every release - is carried forever by a one-person company for a number no tired parent at 9pm can perceive."
+  ]
+ },
+ "redteam-user.md": {
+  "mustFix": [
+   {
+    "target": "gtm/04-video/script.md (line 6, 'Voice: macOS Samantha')",
+    "objection": "The consumer launch video is narrated by a text-to-speech system voice, which in 2026 reads as AI-slop content and gets reflexively swiped; a robot narrating 'It's nine at night' about my life is uncanny, not relatable.",
+    "demand": "Re-record all eight VO lines with a human voice (ideally the founder) before the video ships anywhere consumer-facing; the script's own 're-recording' section proves Samantha was a placeholder.",
+    "severity": "high"
+   },
+   {
+    "target": "gtm/04-video/script.md (Scenes 1-2)",
+    "objection": "The product does not appear until 9.4 seconds in; the open is a static clock card plus a self-drawing logo with deliberate silence and no music, which loses a feed-scroller by second two - a speed-pitch video that makes you wait contradicts itself.",
+    "demand": "Restructure so the Ready Screen or the real uncut screen recording (already specified in social kit X post 2) is on screen within the first 3 seconds.",
+    "severity": "high"
+   },
+   {
+    "target": "All consumer surfaces: index.html hero/meta/FAQ, video VO, screenshot 2 footnote, X bio, Instagram bio",
+    "objection": "'Under 100 milliseconds' appears on eight-plus consumer surfaces including an Instagram bio; users experience 'no quiz,' not latency figures - the number is a dev/investor flex that smells like the page was written for Hacker News.",
+    "demand": "Keep the number only in the Show HN post and #iosdev thread; replace it everywhere consumer-facing with the existing human formulation 'before your thumb lifts' / 'before the screen finished appearing.'",
+    "severity": "high"
+   },
+   {
+    "target": "gtm/03-site/index.html (hero aside 'No waitlist, nothing to reserve' + launch FAQ)",
+    "objection": "The page is a dead end: no email capture, no follow link, no pre-order, no date - an interested 9:40pm reader has literally nothing to do and will never find the app again.",
+    "demand": "Add exactly one low-pressure action: an email notify field, a follow link, or an App Store pre-order link when available.",
+    "severity": "high"
+   },
+   {
+    "target": "gtm/03-site/index.html (Premium card bullet 'The Strength Phase, earned ... never self-selected')",
+    "objection": "As written, one of three paid benefits is a feature the app may withhold indefinitely on its own judgment - paying $7.99/mo for something I might never receive is exactly the subscription trap the audience has been burned by.",
+    "demand": "State what a payer gets on day one (analytics), describe Strength Phase as included-when-unlocked, and add one sentence on what happens if it is never earned.",
+    "severity": "medium"
+   },
+   {
+    "target": "index.html ('Asked plainly, answered plainly', 'This page is the whole pitch') and social-launch-kit.md ('launching at zero users, and saying so', 'saying that up front', 'I'll say plainly')",
+    "objection": "The copy repeatedly narrates its own honesty; performed honesty makes the underlying (genuinely good) facts less trustworthy.",
+    "demand": "Delete every clause whose only job is to point at the sentence's own honesty; state the fact and stop.",
+    "severity": "medium"
+   },
+   {
+    "target": "gtm/07-extras/social-launch-kit.md (X bio 'Free tier is really free') and index.html pricing",
+    "objection": "'Really free' is what scam apps say - insisting louder is the pattern, not the antidote; the one sentence that actually defuses suspicion ('I'd rather charge the people who want more than tax the people who just want to start') is buried in a Product Hunt comment.",
+    "demand": "Move the business-model rationale sentence onto the landing page pricing section; replace 'really free' in the X bio with the mechanism or the motive.",
+    "severity": "medium"
+   },
+   {
+    "target": "gtm/03-site/index.html (mechanism card 2, 'AI Programmer')",
+    "objection": "The page voluntarily raises 'AI' (a 2026 red flag meaning chatbot upsell and data leaving the phone), then explains it in PRD vocabulary ('Session Policy: progression rate, pillar weighting, variety window') meaningless to consumers, while omitting its strongest fact: the MVP tuner runs on-device.",
+    "demand": "Rewrite the card in plain words including 'on your phone,' or demote the entire AI defense to one FAQ entry.",
+    "severity": "medium"
+   },
+   {
+    "target": "gtm/03-site/index.html (launch FAQ, 'It will ship the way it opens: ready.')",
+    "objection": "A copywriter's pun in place of a launch date is exactly how vaporware talks, and it violates the package's own 'specific over aspirational' voice rule.",
+    "demand": "Delete the line; end the answer on 'No date to announce.'",
+    "severity": "medium"
+   },
+   {
+    "target": "gtm/04-video/script.md (Scene 8 end card)",
+    "objection": "The consumer video closes on 'Trademark and App Store name clearance pending' - legal housekeeping in the final frame reads as 'student project that might get renamed' and plants a doubt no viewer had.",
+    "demand": "Cut the clearance line from the video; the site footer already carries it.",
+    "severity": "medium"
+   },
+   {
+    "target": "gtm/03-site/index.html (hero section)",
+    "objection": "The word 'free' first appears five scroll-lengths down; the burned user's second question after 'already there' is 'what's the catch,' and the page answers it too late.",
+    "demand": "Add one free-tier line within the hero viewport using the already-approved copy 'Free means the workouts. All of them. Forever.'",
+    "severity": "medium"
+   },
+   {
+    "target": "gtm/03-site/index.html (FAQ) and the thrice-repeated '42 movements' claim",
+    "objection": "42 sounds small next to competitors' '500+ exercises' and the obvious cynical question - won't this get boring in three weeks? - is never confronted, though the variety-window facts to answer it exist.",
+    "demand": "Add a FAQ entry 'Only 42 movements - won't this get boring?' answered with the implemented variety mechanics.",
+    "severity": "low"
+   },
+   {
+    "target": "gtm/07-extras/app-store-screenshots/README.md (screenshot 4)",
+    "objection": "No screenshot shows the product's real emotional differentiator - the celebrated, easy return after a gap - which is the exact wound all four deleted apps left; screenshot 4 shows rules text instead.",
+    "demand": "Replace or augment screenshot 4 with the return-after-a-gap screen, captioned with the comeback promise (it is implemented behavior, so it can be shown honestly).",
+    "severity": "low"
+   }
+  ],
+  "surviving": [
+   "The package never answers why I open the app on day 12: no streaks means nothing to lose, but with no reminder, hook, or social layer it also means nothing calls me back - the Product Hunt comment admits retention is 'a bet, not a proven result,' and I am the person the bet is about.",
+   "Speed-to-start is not why I deleted four fitness apps; I quit in week three when life won, not at the login screen, and the package treats the first 100 milliseconds as the whole war.",
+   "Everything here is a promise from an app with zero users, no date, and no way to try it; the evidence quotes are strangers on Hacker News describing an app they wished existed - market research standing where social proof should eventually go.",
+   "The brand bans photography, so I never see a human move: 42 movement names stay abstract until install, and a novice with a bad back cannot judge fitness suitability from geometric shapes.",
+   "'Rep Today, Rest Tomorrow' (the planned App Store name, shown in the video end card) parses as 'never rest today' - a daily-obligation vibe that quietly contradicts the forgiveness pitch, and the listing name of record means the tension stays.",
+   "My real 9pm failure mode is the kid-cries interruption at minute four, and nothing in any asset says whether a broken-off session counts as showing up; the facts brief covers a 5-minute session but not an abandoned one, so no copy can honestly promise anything here yet."
+  ]
+ },
+ "skeptic-thesis.md": {
+  "mustFix": [
+   {
+    "target": "05-thesis/investment-thesis.md section 5 (K2, K3)",
+    "objection": "Kill thresholds are set below the thesis's own success bar: bet (b) requires 'beating these medians materially,' yet K2 kills only below D7 8.5% (bottom of the cited median band) and K3 only below D30 3% (below the median band). A product retaining at exactly category median fails the stated premise while firing no kill criterion.",
+    "demand": "Raise K2/K3 kill thresholds to the median band itself, or add an explicit rule that at-median retention at day 90 counts as bet (b) failing.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 1 bet (c) vs section 3",
+    "objection": "Internal contradiction: bet (c) lists App Store search whitespace ('micro workout') as one of exactly three reach mechanisms, while section 3 and aso-landscape.md disclaim it as 'a differentiator with growth optionality, not a traffic source' with zero volume data; decisions-log D-005 additionally demoted 'micro' out of the subtitle entirely.",
+    "demand": "Rewrite bet (c) so it does not rest on the whitespace term as a reach mechanism, or reconcile with section 3 and D-005.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 5 (all of K1-K7)",
+    "objection": "No kill criterion specifies a minimum cohort size; at the channel plan's own forecast volumes (single-digit to low-double-digit installs/day, K5 floor 50/week), the margin between expected band and kill threshold on a weekly cohort is one to three users, so the 90-day review reads statistical noise as a verdict.",
+    "demand": "Attach minimum sample sizes or pooled-cohort rules (and confidence intervals) to K1-K7 before launch.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 2, 'The competitive quadrant Rep Today targets is empty'",
+    "objection": "The bolded heading asserts an empty market quadrant based on a teardown of roughly a dozen apps sourced from top-10 iTunes Search API results fetched on one day; section 7's own phrasing 'no researched competitor' is the honest version, and the quadrant is defined as the conjunction of the product's own three feature choices (unique-by-construction).",
+    "demand": "Qualify the section 2 heading to 'no researched competitor combines...' and add one sentence acknowledging the quadrant may be empty because an ungated free tier monetizes at 2.1% vs 10.7%, per the thesis's own data.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 2, 'Adjacent scale proves the demand shape'",
+    "objection": "'Proves' rests on self-reported marketing claims from seven.app and bend.com (30M/15M users, likely cumulative downloads), and both witnesses built their scale on the streak-and-gamification mechanics Rep Today bans, a confound the thesis never names.",
+    "demand": "Change 'proves' to 'suggests', label the user counts as vendor self-reported, and add the confound: no gamification-free micro-workout app at scale exists in the research.",
+    "severity": "high"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 4 base-case installs vs channel-plan.md",
+    "objection": "The thesis's base case assumes 'one modest launch spike (roughly 1,500 installs)' while channel-plan.md plans for 'a few hundred installs per successful post' as the modest case, a 3-5x contradiction between two documents in the same package.",
+    "demand": "Reconcile the two numbers: either lower the thesis base case's spike assumption or raise and justify the channel plan's expectation.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 4 revenue table",
+    "objection": "Year-1 gross revenue is computed as payers x $35.64, but $35.64 is twelve-month realized LTV per payer; applying it to payers acquired throughout year 1 (a month-11 payer realizes ~1/12 of it in-year) overstates calendar-year-1 revenue, plausibly by a third or more, and this omission is not in the 'deliberately ignores' list.",
+    "demand": "Either time-weight payers by acquisition month or add the timing overstatement to the model's stated ignore list.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 2, 14-day trial benchmark sentence",
+    "objection": "The supporting benchmark band '42.5% median for 17-32 day trials versus 25.5% for 3-day trials' literally excludes the product's own 14-day trial, and the aggregate correlation is confounded by app type; the sentence is constructed so a reader assumes coverage.",
+    "demand": "Restate as: longer trials correlate with higher conversion in aggregate data, the cited band does not cover 14 days, and causality is unknown.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 5 (K5)",
+    "objection": "K5 conjoins three separately resettable conditions (below 50/week AND flat-or-declining 4 weeks AND after one ASO iteration and one launch post the founder schedules), making it deferrable indefinitely; and the 50/week floor sustains only ~2,600 installs/year, below the base case's 6,000, so an app can pass K5 all year while the base case is already dead.",
+    "demand": "Set the K5 floor at the run rate the base case requires (~90-100/week post-spike) and replace the conjunction with a rolling 4-week average with a fixed evaluation date.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 5 (K8) and escalation rule",
+    "objection": "K8 has walk-away power ('K1/K8 firing at all') but is judged on a majority of 8-10 founder-moderated, founder-coded first-run sessions with no pre-registered rubric or numeric threshold, making the decisive criterion effectively unfalsifiable.",
+    "demand": "Pre-register a written coding rubric, a target of 25+ observed first runs, numeric thresholds for both K8 signals, and independent (non-founder) coding of recordings.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 4 inputs and cross-check",
+    "objection": "The base case adopts the all-category freemium median (2.1%) from a benchmark population of live, marketed, conversion-optimized apps as if Rep Today were a typical member, and the 2.6% funnel cross-check multiplies medians from paywall-driven apps while K6 simultaneously expects Rep Today's trial starts at half that median by design.",
+    "demand": "Relabel the 2.1% base case as an at-benchmark scenario rather than a neutral midpoint, drop or caveat the 2.6% 'consistent with base case' cross-check, and note the aggregate-conversion x fitness-LTV population mixing.",
+    "severity": "medium"
+   },
+   {
+    "target": "05-thesis/investment-thesis.md section 5 (K2/K3 source anchors)",
+    "objection": "The retention kill thresholds carrying bet (b) anchor on uxcam.com and sendbird.com marketing-blog aggregations (Sendbird 2024 citing Statista of unstated vintage) while primary fetches from Adjust and Business of Apps failed; blog-grade provenance backs the walk-away lines.",
+    "demand": "Re-anchor K2/K3 on a primary dataset where possible, or state the blog-grade provenance inside section 5 itself.",
+    "severity": "low"
+   }
+  ],
+  "surviving": [
+   "Nothing in this product is defensible. Every leg of the wedge, a ready session on open, a forgiving non-streak score, and an ungated free tier, is a UX or pricing choice with no data moat, no network effect, and no switching cost behind it; Seven or Bend could copy the entire stack in one release cycle the moment it shows signs of working. The quadrant is empty of competitors, but it is also empty of barriers, and a fully successful 90-day experiment proves a feature set, not a company.",
+   "The demand evidence is anecdote-grade and the category has never validated the core bet. The load-bearing demand quote is one Hacker News commenter, the in-category friction quote is a single review from 2019, and the two scale witnesses (Seven's self-claimed 30M users, Bend's 15M) built that scale on the streak-and-achievement mechanics Rep Today bans. No gamification-free micro-workout app at scale exists anywhere in the research, so the anti-streak bet is validated by no one, including the apps cited as proof of demand.",
+   "Every zero-budget channel reaches someone other than the customer. The ICP is a tired parent at 9pm; the channels are Hacker News (engineers, by the channel plan's own admission), an ASO term with unmeasured and probably negligible volume, fitness subreddits whose rules could not even be read during research, and creators with no incentive to promote a competitor. The plan contains no reliable path from any channel to the stated audience.",
+   "At the install volumes this plan itself forecasts, the 90-day verdict will be statistical noise. Weekly cohorts of 35-100 users cannot distinguish the kill thresholds from the expected bands, where the margins are one to three users per cohort; the 'cheap, instrumented, self-terminating experiment' framing oversells what 90 days of underpowered data can decide.",
+   "The most likely outcome is the one the package is not calibrated to detect: unremarkable survival. Median-ish retention, a few dozen payers, no kill criterion fired, no compounding, in a category where the top 10% of apps take 92.6% of revenue and median new-app revenue fell 22% year over year. The kill criteria catch catastrophe and the verdict celebrates success, but nothing forces a decision in the wide gray middle where solo apps actually go to linger."
+  ]
+ }
+}
