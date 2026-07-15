@@ -1,8 +1,8 @@
-# FitSnack - Discipline-First Micro-Workout App
+# Rep Today - Discipline-First Micro-Workout App
 
 **Open the app. Tell it how many minutes you have. Press play.**
 
-FitSnack is an iOS app for busy, desk-bound adults who can give exercise 5-60 minutes a day.
+Rep Today is an iOS app for busy, desk-bound adults who can give exercise 5-60 minutes a day.
 It exists to build one thing: the discipline of showing up.
 The user says how many minutes they have, and a deterministic on-device engine generates a complete zero-equipment session that blends bodyweight strength and mobility.
 No browsing, no choosing, no thinking.
@@ -13,10 +13,10 @@ No browsing, no choosing, no thinking.
 
 ---
 
-## Why FitSnack?
+## Why Rep Today?
 
 Most fitness apps assume you have an hour to spare and the mental bandwidth to pick a routine.
-FitSnack assumes the opposite:
+Rep Today assumes the opposite:
 
 - **Zero-decision workouts** - a deterministic on-device engine builds a complete session the moment you select a duration.
 - **Time-flexible by design** - every session is 5-60 minutes, generated to land within ±1 minute of the time you asked for.
@@ -147,7 +147,7 @@ In-session **swap** substitutes deterministically within the same pillar, patter
 ## Project Structure
 
 ```
-FitSnack/
+RepToday/
 ├── ios/RepToday/RepToday/
 │   ├── App/                 # App entry point (RepTodayApp.swift)
 │   ├── DesignSystem/        # Theme tokens (Theme.swift)
@@ -241,7 +241,7 @@ The proxy (`proxy/`) is a Cloudflare Worker (`src/worker.js` + `wrangler.toml`/`
 
 | Document | Purpose |
 |----------|---------|
-| `.claude/agent/tasks/FitSnack-PRD-v6_070226.md` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes `FitSnack-PRD-v5.md` (kept for reference). |
+| The v6.0 strategic PRD under `.claude/agent/tasks/` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes the prior v5 strategic PRD (kept for reference). |
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants. |
 
@@ -291,7 +291,7 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 
 ## Design System
 
-FitSnack uses a consistent design token system via `Theme.*` (`Theme.Colors`, `Theme.Typography`, `Theme.Spacing`) - always use these, never hardcode colors, fonts, or spacing.
+Rep Today uses a consistent design token system via `Theme.*` (`Theme.Colors`, `Theme.Typography`, `Theme.Spacing`) - always use these, never hardcode colors, fonts, or spacing.
 
 | Token | Value |
 |-------|-------|

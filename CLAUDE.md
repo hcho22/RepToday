@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FitSnack is a discipline-first micro-workout iOS app (5-60 min sessions) for busy, desk-bound adults.
+Rep Today is a discipline-first micro-workout iOS app (5-60 min sessions) for busy, desk-bound adults.
 It exists to build the habit of showing up: the user says how many minutes they have, and a deterministic on-device engine generates a complete zero-equipment session blending bodyweight strength and mobility.
 No browsing, no choosing, no thinking.
 
@@ -21,7 +21,7 @@ Work proceeds story-by-story against the PRD (see below).
 
 ## Source of Truth
 
-- **Strategic plan:** `.claude/agent/tasks/FitSnack-PRD-v6_070226.md` (v6.0, reconciled to ADRs 0001-0019) - the discipline-first vision plus the v6 wedge: a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on. Supersedes `FitSnack-PRD-v5.md` (kept for reference).
+- **Strategic plan:** the v6.0 strategic PRD under `.claude/agent/tasks/` (reconciled to ADRs 0001-0019) - the discipline-first vision plus the v6 wedge: a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on. Supersedes the prior v5 strategic PRD (kept for reference).
 - **Implementation PRD / progress tracker:** `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` - the comprehensive v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria and validation tests. Epics A-C are built; D-N are new or reframed under v6. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference).
   As each story is completed, its acceptance-criteria checkboxes are flipped to `[x]` so the PRD doubles as a live progress tracker.
 - Always check the PRD for the relevant story before building a feature.

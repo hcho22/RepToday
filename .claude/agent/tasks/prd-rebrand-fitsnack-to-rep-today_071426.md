@@ -147,9 +147,9 @@ This is a full rename (permanent identifiers + user-facing display/copy + intern
 
 **Acceptance Criteria:**
 
-- [ ] `CLAUDE.md`: product name "FitSnack" → "Rep Today"; every `ios/FitSnack/FitSnack/...` path → `ios/RepToday/RepToday/...`; build/test commands updated to the `RepToday` scheme/project
-- [ ] `README.md`: rebranded consistently
-- [ ] Dated files under `.claude/agent/tasks/` are **not** modified (historical snapshots)
+- [x] `CLAUDE.md`: product name "FitSnack" → "Rep Today"; every `ios/FitSnack/FitSnack/...` path → `ios/RepToday/RepToday/...`; build/test commands updated to the `RepToday` scheme/project
+- [x] `README.md`: rebranded consistently
+- [x] Dated files under `.claude/agent/tasks/` are **not** modified (historical snapshots)
 
 **Validation Test:**
 
