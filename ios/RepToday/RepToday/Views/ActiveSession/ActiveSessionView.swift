@@ -1,4 +1,5 @@
 import SwiftUI
+import Lottie
 
 /// The active-session player (US-K01) - a focused, one-exercise-at-a-time screen that walks the user
 /// through the generated session so they never lose their place.
@@ -647,11 +648,14 @@ private struct RestView: View {
 
 /// The auto-playing exercise demonstration for the player (US-K01).
 ///
-/// It renders a large, movement-appropriate glyph that pulses continuously to signal "this is the
-/// live demo". Under Reduce Motion the pulse is dropped for a static glyph - the required accessible
-/// fallback - so the screen never animates against the user's preference. The glyph is chosen by the
-/// exercise's movement pattern; this is the seam where a richer Lottie/video demo drops in later,
-/// keeping the same auto-play + static-fallback contract.
+/// When the exercise names a bundled Lottie animation (US-O01) it plays that looping, auto-playing
+/// animation; otherwise it renders a large, movement-appropriate SF Symbol that pulses continuously
+/// to signal "this is the live demo". The Lottie path is the seam a richer per-exercise demo drops
+/// into as its file is added - no animation files ship yet, so every exercise currently falls back
+/// to its symbol, and a named-but-missing file falls back too, so a demo is never blank.
+/// Under Reduce Motion the animation shows a static frame and the symbol drops its pulse for a
+/// static glyph - the required accessible fallback - so the screen never animates against the
+/// user's preference. The `"<displayName> demonstration"` accessibility label is retained.
 struct ExerciseDemoView: View {
     let prescription: PrescribedExercise
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -660,12 +664,24 @@ struct ExerciseDemoView: View {
         ZStack {
             RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
                 .fill(Theme.Colors.secondaryBackground)
-            glyph
+            demo
         }
         .frame(maxWidth: .infinity)
         .frame(height: 220)
         .accessibilityElement()
         .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
+    }
+
+    /// The bundled Lottie animation when the exercise names one that actually resolves to a file,
+    /// else the SF-Symbol fallback so a demo is never blank.
+    @ViewBuilder
+    private var demo: some View {
+        if let name = prescription.exercise.animationName, LottieAnimation.named(name) != nil {
+            LottieDemoView(animationName: name, isPlaying: !reduceMotion)
+                .frame(width: 200, height: 200)
+        } else {
+            glyph
+        }
     }
 
     @ViewBuilder
@@ -691,6 +707,37 @@ struct ExerciseDemoView: View {
         case .pull: return "figure.climbing"
         case .mobility: return "figure.flexibility"
         case .locomotion: return "figure.run"
+        }
+    }
+}
+
+/// Plays a bundled Lottie animation for the exercise demo (US-O01), looping and auto-playing.
+///
+/// When `isPlaying` is false (Reduce Motion) it holds the first frame as a static image rather than
+/// animating, preserving the auto-play + static-fallback contract. The caller only constructs this
+/// for an `animationName` that already resolved to a bundled file, so the animation is never nil.
+private struct LottieDemoView: UIViewRepresentable {
+    let animationName: String
+    let isPlaying: Bool
+
+    func makeUIView(context: Context) -> LottieAnimationView {
+        let view = LottieAnimationView(name: animationName)
+        view.contentMode = .scaleAspectFit
+        view.loopMode = .loop
+        apply(to: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: LottieAnimationView, context: Context) {
+        apply(to: uiView)
+    }
+
+    private func apply(to view: LottieAnimationView) {
+        if isPlaying {
+            if !view.isAnimationPlaying { view.play() }
+        } else {
+            view.pause()
+            view.currentProgress = 0 // static first frame under Reduce Motion
         }
     }
 }

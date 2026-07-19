@@ -44,4 +44,9 @@ struct Exercise: Codable, Equatable, Identifiable {
     var advancementCriteria: String
     /// True when the movement is doable in a small space with only a floor and wall.
     var apartmentFriendly: Bool
+    /// The bundled Lottie animation file (without extension) demonstrating this movement (US-O01).
+    /// `nil` when no animation ships for the movement, in which case the player's `ExerciseDemoView`
+    /// falls back to the movement-appropriate SF Symbol so a demo is never blank. Optional with a
+    /// `nil` default so the existing `Exercises.json` and pre-O01 persisted records decode unchanged.
+    var animationName: String? = nil
 }
