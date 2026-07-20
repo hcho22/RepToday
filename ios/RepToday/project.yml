@@ -12,6 +12,14 @@ settings:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: ""
 
+# Lottie powers the exercise demo animations (US-O01). The app ships on SF-Symbol demos and each
+# exercise lights up as its bundled animation file is added; no animation files ship yet, so the
+# dependency is the seam + graceful fallback only.
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: "4.5.0"
+
 targets:
   RepToday:
     type: application
@@ -25,6 +33,8 @@ targets:
           - Resources/RepToday.storekit
       - path: RepToday/Resources/RepToday.storekit
         buildPhase: none
+    dependencies:
+      - package: Lottie
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reptoday.app

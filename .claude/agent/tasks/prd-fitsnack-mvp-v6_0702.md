@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epic D complete (US-D01-D04 done); Epic E complete (US-E01-E06 done); Epic F complete (US-F01-F04 done); Epics G-N not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epics D-N complete (US-D01-N05 done); Epic O (post-v6 refinements, US-O01-O04) added; US-O01 done (`[x]`), US-O02-O04 not started (`[ ]`).
 
 ---
 
@@ -884,6 +884,100 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 ---
 
+### Epic O - Post-v6 Refinements
+
+> Four refinements from real-use feedback after the v6 MVP shipped: recognizable exercise demos, a start matched to the user's fitness level, a less-distracting timer, and imperial units. Each is additive and preserves the deterministic engine, offline-first loop, and no-XP/badges rules. New code follows the current post-rebrand names (scheme `RepToday`, `@testable import RepToday`, bundle `com.reptoday.app`).
+
+#### US-O01: Exercise demo animations (Lottie seam + graceful fallback)
+
+**Description:** As a user, I want to see an animation of each exercise so that I know how to perform a movement I don't recognize.
+
+**Acceptance Criteria:**
+
+- [x] The Lottie SPM dependency (`airbnb/lottie-ios`) is added to `project.yml` and the `RepToday` target; `xcodegen generate` and the build succeed with it
+- [x] `Exercise` gains an optional `animationName: String?` defaulting to `nil`; existing `Exercises.json` and persisted records decode unchanged (backward-compatible)
+- [x] `ExerciseDemoView` plays a bundled Lottie animation (looping, auto-play) when the exercise's `animationName` resolves to a bundled file, and **falls back to the current SF-Symbol glyph** when it is absent or the file is missing - no exercise ever shows a blank demo
+- [x] Under Reduce Motion the demo shows a static frame (or the static symbol), preserving the auto-play + static-fallback contract; the `"<displayName> demonstration"` accessibility label is retained
+- [x] Sourcing/licensing the animation pack itself is out of scope (this story delivers infrastructure + fallback only, so the app ships on SF Symbols and each exercise lights up as its file is added)
+- [x] Uses `Theme` tokens and `@Observable` view models; Verify in iOS Simulator
+
+**Validation Test:**
+
+- **Setup:** The app built with the Lottie dependency and no animation files yet; then a single test `.json` dropped into `Resources` with its exercise's `animationName` set
+- **Steps:**
+  1. Open a session and view several exercises
+  2. Add the test animation file + set its exercise's `animationName`, then reopen the session on that exercise
+  3. Enable Reduce Motion and reopen
+- **Expected Result:** Step 1 - every exercise shows the SF-Symbol fallback (no blank, no crash); Step 2 - that one exercise plays its looping animation while the others still fall back; Step 3 - the animated exercise shows a static frame.
+- **Failure Indicator:** A missing file blanks or crashes the demo, the SF-Symbol fallback is lost, or Reduce Motion still animates.
+
+#### US-O02: Fitness-level start seeding (harder tier + volume)
+
+**Description:** As an active user, I want my first sessions matched to my self-reported fitness level so that strength work doesn't feel too beginner.
+
+**Acceptance Criteria:**
+
+- [ ] `SessionPolicy.ColdStartContract` carries a Start Seed - a `startingDifficultyFloor` plus a volume seed (`startingRepMultiplier`, `startingSets`) - seeded in `.seeded(for:)` from `fitnessLevel`: floor **beginner 1 / intermediate 3 / advanced 4**; volume **beginner x1.0 & 3 sets / intermediate x1.15 & 3 sets / advanced x1.30 & 4 sets**. It is Codable with backward-compatible neutral defaults (floor 1 / x1.0 / 3 sets) so pre-existing persisted policies decode
+- [ ] For a no-history user, the strength & primal training-block pool is banded to `[startingDifficultyFloor, cappedMaxDifficulty]` so Step 5's lowest-eligible selection starts at the band entry (e.g. advanced -> standard/diamond push-up, not wall push-up); warm-up/mobility/cooldown are never floored, and the band never empties the pool (it falls back to the unfloored pool)
+- [ ] `AdaptiveOverload`'s no-history default target scales per-set reps/holds by `startingRepMultiplier` and uses `startingSets`, clamped to the existing rails (`maxReps 50`, `maxHoldSeconds 180`, `maxSets 4`); a neutral seed reproduces current behavior, and capacity-derived targets (session 2+) are unchanged
+- [ ] The Asymmetric Ramp still backs off fast on `too_hard`/skip, so an over-reported level self-corrects downward within one cycle (the safety net for a dishonest self-report)
+- [ ] Build and tests pass
+
+**Validation Test:**
+
+- **Setup:** Two freshly onboarded no-history users, one self-reported **advanced**, one **beginner**
+- **Steps:**
+  1. Generate each user's first session
+  2. Inspect the strength block's lead movement and its prescribed reps/sets
+- **Expected Result:** The advanced user's strength block leads with a difficulty-4 movement (e.g. diamond push-up) at ~x1.3 reps over 4 sets; the beginner's is unchanged (wall push-up, default reps, 3 sets). Warm-up and mobility gating is identical for both.
+- **Failure Indicator:** The advanced first session still starts at the difficulty-1 entry tier, the beginner is made harder, or a strength/primal pool is emptied.
+
+#### US-O03: Session timer redesign (hidden clock + hold timer)
+
+**Description:** As a user, I want the running clock hidden during the session and a countdown only for timed exercises, so the timer helps instead of distracts, and I still see my total at the end.
+
+**Acceptance Criteria:**
+
+- [ ] The always-on elapsed clock is removed from the player top bar and the rest-overlay top bar; no running session clock is visible during the session
+- [ ] The completion summary still shows the total session duration (the existing `completedDurationMinutes()` -> `SessionSummary` path is unchanged), so the total is revealed only at the end
+- [ ] Timed (`isHold`) exercises get a per-exercise Hold Timer: the user taps "Start hold", a countdown runs, and at zero it fires the `RestTimerFeedback` cue **exactly once** and auto-records the set, advancing to rest. Rep-based exercises are unchanged (set tracker + "Complete set", no timer)
+- [ ] The Hold Timer uses an absolute deadline with pause/resume wired to `scenePhase` (backgrounding-resilient), persists in `ActiveSessionState`, and restores on resume; the cue never fires early, per-tick, or while paused
+- [ ] Uses `Theme` tokens (60pt active-screen targets) with VoiceOver labels; no XP/levels/badges; Verify in iOS Simulator
+
+**Validation Test:**
+
+- **Setup:** A session containing at least one hold (e.g. plank or wall-sit) and one rep-based exercise
+- **Steps:**
+  1. Start the session and observe the top bar
+  2. Reach the hold exercise, tap "Start hold", and let it run to zero
+  3. Reach a rep-based exercise
+  4. Finish the session
+- **Expected Result:** No running clock is visible during the session; the hold counts down, fires the haptic/audio cue once at zero, and auto-advances to rest; the rep exercise shows the manual Complete-set flow; the completion summary shows the total duration.
+- **Failure Indicator:** The main clock is still visible mid-session, the hold has no countdown or fires its cue wrongly, or the total is missing at completion.
+
+#### US-O04: Imperial units in onboarding
+
+**Description:** As a US user, I want to enter my height in feet/inches and weight in pounds so that the numbers are familiar.
+
+**Acceptance Criteria:**
+
+- [ ] A pure `UnitConversion` utility converts lbs<->kg and feet-inches<->cm, unit-tested for known values (5 ft 7 in ~ 170 cm; 165 lb ~ 74.8 kg) and round-trips
+- [ ] Onboarding's basics step collects height as **feet + inches** and weight in **lbs** (replacing the cm/kg sliders), with sensible US defaults, >= 44pt touch targets, and VoiceOver values
+- [ ] `OnboardingViewModel` converts the imperial inputs to `heightCm`/`weightKg` in `buildUser`; the persisted `UserProfile` stays metric and the HealthKit energy path still receives kilograms
+- [ ] Uses `Theme` tokens; Verify in iOS Simulator
+
+**Validation Test:**
+
+- **Setup:** A fresh onboarding run
+- **Steps:**
+  1. On the basics step, set height to 5 ft 7 in and weight to 165 lb
+  2. Finish onboarding
+  3. Inspect the saved `UserProfile` (or a HealthKit workout write)
+- **Expected Result:** The UI shows feet/inches and lbs; the stored profile is ~170 cm / ~74.8 kg; the HealthKit energy estimate uses kilograms.
+- **Failure Indicator:** The UI shows metric, the stored values are wrong, or HealthKit receives pounds as kilograms.
+
+---
+
 ## Functional Requirements
 
 **Data & persistence**
@@ -924,6 +1018,13 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 - FR-23: The system must integrate Sign in with Apple (identity), CloudKit (private-DB sync of user/logs/policy), HealthKit (on-device workout writes), and StoreKit 2 (free unlimited core + premium depth, 14-day trial).
 - FR-24: The system must run exactly one thin stateless proxy that holds the model API key for the Variety Language slice, stores no user logs at rest, and runs no scheduler or data mirror.
+
+**Post-v6 refinements (Epic O)**
+
+- FR-25: The system must render exercise demos as bundled Lottie animations when one is available for the exercise and fall back to the SF-Symbol demo otherwise, showing a static frame under Reduce Motion; sourcing the animation pack itself is out of scope.
+- FR-26: The system must seed a no-history user's starting difficulty floor (beginner 1 / intermediate 3 / advanced 4) and starting volume (x1.0/3, x1.15/3, x1.30/4 sets) from the self-reported fitness level for strength & primal blocks, composing with the cold-start cap and retiring with cold start, while the Asymmetric Ramp continues to correct an over-report downward.
+- FR-27: The system must hide the running session clock during the session, reveal total duration only on the completion summary, and provide a manual-start/auto-complete countdown for timed (hold) exercises while leaving rep-based exercises timer-free.
+- FR-28: The system must collect height in feet/inches and weight in pounds during onboarding, converting to metric at the boundary so persistence and HealthKit remain in kg/cm.
 
 ## Non-Goals (Out of Scope)
 
