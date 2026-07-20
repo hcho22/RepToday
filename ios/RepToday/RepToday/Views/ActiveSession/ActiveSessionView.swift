@@ -729,6 +729,10 @@ private struct LottieDemoView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: LottieAnimationView, context: Context) {
+        let next = LottieAnimation.named(animationName)
+        if uiView.animation !== next {
+            uiView.animation = next
+        }
         apply(to: uiView)
     }
 
