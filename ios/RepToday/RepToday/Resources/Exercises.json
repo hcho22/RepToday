@@ -76,7 +76,8 @@
     "regressionId": "push_knee",
     "progressionId": "push_diamond",
     "advancementCriteria": "3x12 clean reps",
-    "apartmentFriendly": true
+    "apartmentFriendly": true,
+    "animationName": "push_standard"
   },
   {
     "id": "push_diamond",
