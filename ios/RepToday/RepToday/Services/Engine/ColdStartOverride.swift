@@ -58,6 +58,86 @@ enum ColdStartOverride {
         return capped.isEmpty ? pool : capped
     }
 
+    // MARK: - Start Seed: difficulty floor (US-O02)
+
+    /// The eligible pool with the Start Seed's difficulty **floor** applied, banding the strength and
+    /// primal training movements to `[startingDifficultyFloor, cappedMaxDifficulty]` (the cap having
+    /// already been applied by `cappedPool`). Step 5 starts a no-history user at the *lowest eligible*
+    /// tier, so raising the floor is exactly what makes an active user's first session open at the band
+    /// entry - a standard or diamond push-up rather than a wall push-up - while a beginner (floor `1`)
+    /// is untouched. A no-op when Step 0 is inactive or the seed is neutral.
+    ///
+    /// Two things are deliberately never floored:
+    /// - **Mobility** - the warm-up, the Movement Practice block, and the cooldown all draw from the
+    ///   mobility pool, and a mobility movement's difficulty is not a measure of training load. Gating
+    ///   there is identical for every fitness level.
+    /// - **A movement pattern the floor would empty** - the floor is clamped down per pattern to the
+    ///   hardest movement that pattern actually offers inside the cap, so banding can never starve a
+    ///   pattern (and never break generation) just because the library has no movement that hard yet.
+    static func startBandedPool(
+        _ pool: [Exercise],
+        user: User,
+        sessionPolicy: SessionPolicy
+    ) -> [Exercise] {
+        guard
+            user.coldStart.active,
+            let contract = sessionPolicy.coldStartContract,
+            contract.startingDifficultyFloor > SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+        else { return pool }
+
+        // The hardest movement each banded pattern offers within the (already capped) pool.
+        var hardestByPattern: [MovementPattern: Int] = [:]
+        for exercise in pool where isBanded(exercise) {
+            hardestByPattern[exercise.movementPattern] = max(
+                hardestByPattern[exercise.movementPattern] ?? 0,
+                exercise.difficulty
+            )
+        }
+
+        return pool.filter { exercise in
+            guard isBanded(exercise), let hardest = hardestByPattern[exercise.movementPattern] else {
+                return true
+            }
+            return exercise.difficulty >= min(contract.startingDifficultyFloor, hardest)
+        }
+    }
+
+    /// Whether the Start Seed's difficulty floor applies to a movement: only the strength and primal
+    /// training pillars are banded (see `startBandedPool`).
+    private static func isBanded(_ exercise: Exercise) -> Bool {
+        exercise.pillar == .strength || exercise.pillar == .primal
+    }
+
+    // MARK: - Start Seed: volume (US-O02)
+
+    /// The volume half of the Start Seed: how much of a movement a user at this fitness level should be
+    /// prescribed the *first* time they meet it. The engine hands these to Step 6's no-history default
+    /// target; a capacity-derived target (session 2+ of that movement) ignores them entirely.
+    struct VolumeSeed: Equatable {
+        /// Multiplier on the exercise's own default per-set reps / hold seconds.
+        var repMultiplier: Double
+        /// Set count for a no-history prescription.
+        var sets: Int
+
+        /// The neutral seed - unscaled per-set targets over the engine's own default set count, so a
+        /// warmed-up user (or a pre-US-O02 policy) is prescribed exactly what they were before.
+        static let neutral = VolumeSeed(
+            repMultiplier: SessionPolicy.ColdStartContract.neutralStartingRepMultiplier,
+            sets: SessionPolicy.ColdStartContract.neutralStartingSets
+        )
+    }
+
+    /// The Start Seed volume in force for this generation, or `.neutral` when Step 0 is inactive.
+    static func volumeSeed(user: User, sessionPolicy: SessionPolicy) -> VolumeSeed {
+        guard user.coldStart.active, let contract = sessionPolicy.coldStartContract else {
+            return .neutral
+        }
+        return VolumeSeed(
+            repMultiplier: contract.startingRepMultiplier,
+            sets: contract.startingSets
+        )
+    }
+
     // MARK: - First-Week Contrast
 
     /// The pillar plan with First-Week Contrast applied: the lead pillar is forced onto the

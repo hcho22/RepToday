@@ -6,7 +6,7 @@
 **Supersedes:** `.claude/agent/tasks/prd-fitsnack-mvp_0626.md` (the v5 implementation PRD). Its Epics A-C are already built and are carried forward here as done; its Epics D-J are re-expressed under v6 below.
 **Persistence:** CoreData backed by `NSPersistentCloudKitContainer`; domain models are `Codable` structs; nested fields stored as JSON-encoded `Data`.
 **Platform:** iOS 17+, SwiftUI, Swift 5.9, Xcode 16.3. Bundle ID `com.fitsnack.app`.
-**Status:** Epics A-C built (`[x]`); Epics D-N complete (US-D01-N05 done); Epic O (post-v6 refinements, US-O01-O04) added; US-O01 done (`[x]`), US-O02-O04 not started (`[ ]`).
+**Status:** Epics A-C built (`[x]`); Epics D-N complete (US-D01-N05 done); Epic O (post-v6 refinements, US-O01-O04) added; US-O01-O02 done (`[x]`), US-O03-O04 not started (`[ ]`).
 
 ---
 
@@ -917,11 +917,11 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [ ] `SessionPolicy.ColdStartContract` carries a Start Seed - a `startingDifficultyFloor` plus a volume seed (`startingRepMultiplier`, `startingSets`) - seeded in `.seeded(for:)` from `fitnessLevel`: floor **beginner 1 / intermediate 3 / advanced 4**; volume **beginner x1.0 & 3 sets / intermediate x1.15 & 3 sets / advanced x1.30 & 4 sets**. It is Codable with backward-compatible neutral defaults (floor 1 / x1.0 / 3 sets) so pre-existing persisted policies decode
-- [ ] For a no-history user, the strength & primal training-block pool is banded to `[startingDifficultyFloor, cappedMaxDifficulty]` so Step 5's lowest-eligible selection starts at the band entry (e.g. advanced -> standard/diamond push-up, not wall push-up); warm-up/mobility/cooldown are never floored, and the band never empties the pool (it falls back to the unfloored pool)
-- [ ] `AdaptiveOverload`'s no-history default target scales per-set reps/holds by `startingRepMultiplier` and uses `startingSets`, clamped to the existing rails (`maxReps 50`, `maxHoldSeconds 180`, `maxSets 4`); a neutral seed reproduces current behavior, and capacity-derived targets (session 2+) are unchanged
-- [ ] The Asymmetric Ramp still backs off fast on `too_hard`/skip, so an over-reported level self-corrects downward within one cycle (the safety net for a dishonest self-report)
-- [ ] Build and tests pass
+- [x] `SessionPolicy.ColdStartContract` carries a Start Seed - a `startingDifficultyFloor` plus a volume seed (`startingRepMultiplier`, `startingSets`) - seeded in `.seeded(for:)` from `fitnessLevel`: floor **beginner 1 / intermediate 3 / advanced 4**; volume **beginner x1.0 & 3 sets / intermediate x1.15 & 3 sets / advanced x1.30 & 4 sets**. It is Codable with backward-compatible neutral defaults (floor 1 / x1.0 / 3 sets) so pre-existing persisted policies decode
+- [x] For a no-history user, the strength & primal training-block pool is banded to `[startingDifficultyFloor, cappedMaxDifficulty]` so Step 5's lowest-eligible selection starts at the band entry (e.g. advanced -> standard/diamond push-up, not wall push-up); warm-up/mobility/cooldown are never floored, and the band never empties the pool (it falls back to the unfloored pool)
+- [x] `AdaptiveOverload`'s no-history default target scales per-set reps/holds by `startingRepMultiplier` and uses `startingSets`, clamped to the existing rails (`maxReps 50`, `maxHoldSeconds 180`, `maxSets 4`); a neutral seed reproduces current behavior, and capacity-derived targets (session 2+) are unchanged
+- [x] The Asymmetric Ramp still backs off fast on `too_hard`/skip, so an over-reported level self-corrects downward within one cycle (the safety net for a dishonest self-report)
+- [x] Build and tests pass
 
 **Validation Test:**
 

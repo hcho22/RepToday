@@ -85,6 +85,14 @@ enum AdaptiveOverload {
     /// (`ReturnOverride.reentryScale`) to hold the per-set target below normal and walk it back up.
     static let neutralReentryScale = 1.0
 
+    /// The neutral Start Seed volume multiplier (US-O02): `1.0` scales nothing, so the no-history
+    /// default target is exactly the exercise's own default. A cold-start user at a higher
+    /// self-reported fitness level passes a larger multiplier
+    /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) so their *first* prescription of a
+    /// movement carries proportionate volume; it is clamped to the same per-set rails as every other
+    /// target, and it never touches a capacity-derived one.
+    static let neutralStartingRepMultiplier = 1.0
+
     /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
     /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
     /// keep a target meaningful after repeated easing.
@@ -118,14 +126,27 @@ enum AdaptiveOverload {
     /// back gradually. It is applied only to capacity-derived targets - a no-history default is already
     /// the gentle starting value and is left untouched - and it always lands at least one below the
     /// un-held target (down to the safety floor) so the ease is never lost to rounding.
+    ///
+    /// `startingRepMultiplier` / `startingSets` are the cold-start **Start Seed** (US-O02), and they
+    /// apply *only* to the no-history default target - the very first prescription of a movement, where
+    /// there is no demonstrated capacity to be relative to and the exercise's own default would
+    /// otherwise under-serve a genuinely active user. Both are clamped to the existing rails, and both
+    /// are ignored the moment the user has logged the movement, so session 2+ stays capacity-relative
+    /// exactly as before. The neutral values reproduce the pre-seed target precisely.
     static func target(
         for exercise: Exercise,
         recentLogs: [WorkoutLog],
         progressionRate: Double = neutralProgressionRate,
-        reentryScale: Double = neutralReentryScale
+        reentryScale: Double = neutralReentryScale,
+        startingRepMultiplier: Double = neutralStartingRepMultiplier,
+        startingSets: Int = defaultSets
     ) -> OverloadTarget {
         guard let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs) else {
-            return defaultTarget(for: exercise)
+            return defaultTarget(
+                for: exercise,
+                startingRepMultiplier: startingRepMultiplier,
+                startingSets: startingSets
+            )
         }
         let perSet = adjusted(
             capacity.perSetValue,
@@ -206,15 +227,24 @@ enum AdaptiveOverload {
         }
     }
 
-    /// The starting target when there is no usable history: the exercise's own per-set default over
-    /// `defaultSets`, clamped to the safety rails.
-    private static func defaultTarget(for exercise: Exercise) -> OverloadTarget {
+    /// The starting target when there is no usable history: the exercise's own per-set default scaled
+    /// by the Start Seed's `startingRepMultiplier` over `startingSets` (US-O02), clamped to the safety
+    /// rails. The neutral seed (`x1.0`, `defaultSets`) is the pre-seed target exactly.
+    private static func defaultTarget(
+        for exercise: Exercise,
+        startingRepMultiplier: Double,
+        startingSets: Int
+    ) -> OverloadTarget {
+        let sets = clampSets(startingSets)
+        let multiplier = max(0, startingRepMultiplier)
         if exercise.isHold {
-            let seconds = clampPerSet(exercise.defaultDurationSeconds ?? minHoldSeconds, isHold: true)
-            return OverloadTarget(sets: defaultSets, reps: nil, durationSeconds: seconds)
+            let base = exercise.defaultDurationSeconds ?? minHoldSeconds
+            let seconds = clampPerSet(rounded(base, by: multiplier), isHold: true)
+            return OverloadTarget(sets: sets, reps: nil, durationSeconds: seconds)
         } else {
-            let reps = clampPerSet(exercise.defaultReps ?? minReps, isHold: false)
-            return OverloadTarget(sets: defaultSets, reps: reps, durationSeconds: nil)
+            let base = exercise.defaultReps ?? minReps
+            let reps = clampPerSet(rounded(base, by: multiplier), isHold: false)
+            return OverloadTarget(sets: sets, reps: reps, durationSeconds: nil)
         }
     }
 

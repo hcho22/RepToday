@@ -190,10 +190,17 @@ enum SessionAssembly {
         let pillarPlan = ReturnOverride.overridePlan(coldStartPlan, isReturn: isReturn)
 
         // On a Return, cap the eligible difficulty so a strong pre-gap history can't serve a punishing
-        // tier (layered after the cold-start cap; only one is ever active).
+        // tier (layered after the cold-start band; only one is ever active). The cold-start band is the
+        // Start Seed's floor (US-O02) applied under the cap (US-G01): together they restrict the
+        // strength/primal training pool to `[startingDifficultyFloor, cappedMaxDifficulty]` so an
+        // active user's first sessions open at the band entry rather than the absolute entry tier.
         let pool = ReturnOverride.returnPool(
-            ColdStartOverride.cappedPool(
-                ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+            ColdStartOverride.startBandedPool(
+                ColdStartOverride.cappedPool(
+                    ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+                    user: user,
+                    sessionPolicy: sessionPolicy
+                ),
                 user: user,
                 sessionPolicy: sessionPolicy
             ),
@@ -205,6 +212,10 @@ enum SessionAssembly {
         // the steady state, so it is a no-op.
         let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
 
+        // The Start Seed's volume half (US-O02): the reps/sets a no-history prescription opens at,
+        // matched to the self-reported fitness level. Neutral outside the cold-start window.
+        let startVolume = ColdStartOverride.volumeSeed(user: user, sessionPolicy: sessionPolicy)
+
         var builder = Builder(
             library: library,
             pool: pool,
@@ -212,6 +223,7 @@ enum SessionAssembly {
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
+            startVolume: startVolume,
             asOf: asOf,
             calendar: calendar
         )
@@ -482,6 +494,12 @@ private struct Builder {
     /// Return / Re-entry Ramp lever (US-E06): holds Step 6's capacity-derived per-set targets below
     /// normal (`< 1.0`) on a Return and its ramp, neutral (`1.0`) otherwise.
     let reentryScale: Double
+    /// Cold-start Start Seed volume (US-O02): the reps/sets a *no-history* prescription opens at,
+    /// matched to the self-reported fitness level. Applied only to the strength and primal training
+    /// blocks - the mobility bookends and Movement Practice are one set of a stretch at every level, so
+    /// warm-up/mobility/cooldown are identical for a beginner and an advanced user. Neutral outside
+    /// the cold-start window.
+    let startVolume: ColdStartOverride.VolumeSeed
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -657,7 +675,9 @@ private struct Builder {
                 for: selection.exercise,
                 recentLogs: recentLogs,
                 progressionRate: progressionRate,
-                reentryScale: reentryScale
+                reentryScale: reentryScale,
+                startingRepMultiplier: startVolume.repMultiplier,
+                startingSets: startVolume.sets
             )
             usedIds.insert(selection.exercise.id)
             items.append(
@@ -704,7 +724,9 @@ private struct Builder {
             for: selection.exercise,
             recentLogs: recentLogs,
             progressionRate: progressionRate,
-            reentryScale: reentryScale
+            reentryScale: reentryScale,
+            startingRepMultiplier: startVolume.repMultiplier,
+            startingSets: startVolume.sets
         )
         usedIds.insert(selection.exercise.id)
         let item = PlannedItem(
