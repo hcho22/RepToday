@@ -97,13 +97,16 @@ extension SessionPolicy {
         /// so an active user's first prescription carries proportionate volume. `1.0` is neutral.
         /// Capacity-derived targets (session 2+ of a movement) are never scaled by it.
         var startingRepMultiplier: Double = ColdStartContract.neutralStartingRepMultiplier
-        /// Start Seed (US-O02): the set count of a *no-history* prescription. Neutral is `3`, matching
-        /// `AdaptiveOverload.defaultSets`.
+        /// Start Seed (US-O02): the set count of a *no-history* prescription.
         var startingSets: Int = ColdStartContract.neutralStartingSets
 
         /// The neutral Start Seed - the values a pre-US-O02 policy decodes to, reproducing the
         /// previous behavior exactly: the full band beneath the cap, unscaled per-set targets, and
         /// the engine's own default set count.
+        ///
+        /// These are the single definition of "neutral": the engine aliases them
+        /// (`AdaptiveOverload.neutralStartingRepMultiplier` / `.defaultSets`) rather than restating
+        /// them, so the contract and the step that consumes it cannot drift apart.
         static let neutralStartingDifficultyFloor = 1
         static let neutralStartingRepMultiplier = 1.0
         static let neutralStartingSets = 3
@@ -212,21 +215,33 @@ extension SessionPolicy.ColdStartContract {
 extension SessionPolicy.ColdStartContract {
 
     /// The Start Seed's difficulty **floor** for a self-reported fitness level (US-O02): **beginner 1,
-    /// intermediate 3, advanced 4**.
+    /// intermediate 2, advanced 3**.
     ///
     /// Together with `cappedMaxDifficulty` this bands the strength/primal training pool to
     /// `[floor, cap]`, so Step 5's lowest-eligible selection for a no-history user starts at the *band
     /// entry* rather than the chain's absolute entry tier - an active user's first push is a standard
     /// or diamond push-up, not a wall push-up. A beginner's floor is `1`, so the beginner experience is
-    /// unchanged. The floor is only ever a starting *aim*: banding never empties a movement pattern
+    /// unchanged.
+    ///
+    /// The floor is tuned against the library the user can actually *reach*, not the nominal 1-5
+    /// difficulty scale: `ExercisePoolFilter` gates `phase == .strength` movements out for every
+    /// Discipline-Phase user, so the reachable strength/primal catalog tops out at difficulty 3.
+    /// Setting each level's floor to its own cap would therefore collapse the "band" to a single tier
+    /// *and* land intermediate and advanced on the same one - the same seven movements, with nothing
+    /// left for the variety window to rotate over. Sitting the floor a tier beneath the cap instead
+    /// leaves each level a real range and keeps the two pools genuinely different (intermediate opens
+    /// the whole 2-3 band; advanced opens only the top).
+    ///
+    /// The floor is only ever a starting *aim*: banding never starves a movement pattern
     /// (`ColdStartOverride.startBandedPool` clamps the floor down to what a pattern actually offers),
-    /// and an over-reported level is corrected downward by the Asymmetric Ramp (US-E05), which backs
-    /// off fast on a `too_hard` rating or a skip.
+    /// and an over-reported level is corrected downward within one cycle - the Asymmetric Ramp
+    /// (US-E05) eases the volume, and `ColdStartOverride.startSeed` steps the *tier* itself back down
+    /// on a `too_hard` rating or a bailed-on strength movement.
     static func startingDifficultyFloor(for level: FitnessLevel) -> Int {
         switch level {
         case .beginner: return 1
-        case .intermediate: return 3
-        case .advanced: return 4
+        case .intermediate: return 2
+        case .advanced: return 3
         }
     }
 

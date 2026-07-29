@@ -127,15 +127,21 @@ final class StartSeedTests: XCTestCase {
 
     /// The pool the engine hands Steps 1-6 for a cold-start user: eligible, capped, then Start-Seed
     /// banded - exactly the composition `SessionAssembly.planBlocks` performs.
-    private func bandedPool(user: User, policy: SessionPolicy, library: [Exercise]) -> [Exercise] {
+    private func bandedPool(
+        user: User,
+        policy: SessionPolicy,
+        library: [Exercise],
+        recentLogs: [WorkoutLog] = []
+    ) -> [Exercise] {
         ColdStartOverride.startBandedPool(
             ColdStartOverride.cappedPool(
-                ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: []),
+                ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
                 user: user,
                 sessionPolicy: policy
             ),
             user: user,
-            sessionPolicy: policy
+            sessionPolicy: policy,
+            recentLogs: recentLogs
         )
     }
 
@@ -145,8 +151,8 @@ final class StartSeedTests: XCTestCase {
         typealias Contract = SessionPolicy.ColdStartContract
 
         XCTAssertEqual(Contract.startingDifficultyFloor(for: .beginner), 1)
-        XCTAssertEqual(Contract.startingDifficultyFloor(for: .intermediate), 3)
-        XCTAssertEqual(Contract.startingDifficultyFloor(for: .advanced), 4)
+        XCTAssertEqual(Contract.startingDifficultyFloor(for: .intermediate), 2)
+        XCTAssertEqual(Contract.startingDifficultyFloor(for: .advanced), 3)
 
         XCTAssertEqual(Contract.startingRepMultiplier(for: .beginner), 1.0, accuracy: 0.0001)
         XCTAssertEqual(Contract.startingRepMultiplier(for: .intermediate), 1.15, accuracy: 0.0001)
@@ -179,8 +185,10 @@ final class StartSeedTests: XCTestCase {
         }
     }
 
-    /// The floor never exceeds the cap, so the band `[floor, cap]` is always well-formed.
-    func testFloorNeverExceedsTheCap() {
+    /// The floor never exceeds the cap, so the band `[floor, cap]` is always well-formed - and for an
+    /// active level it sits strictly *beneath* the cap, so the band is a real range rather than a
+    /// single tier the variety window has nothing to rotate over.
+    func testFloorLeavesARealBandBeneathTheCap() {
         typealias Contract = SessionPolicy.ColdStartContract
         for level in FitnessLevel.allCases {
             XCTAssertLessThanOrEqual(
@@ -189,9 +197,70 @@ final class StartSeedTests: XCTestCase {
                 "\(level)'s Start Seed floor must sit inside its capped band"
             )
         }
+        for level in [FitnessLevel.intermediate, .advanced] {
+            XCTAssertLessThan(
+                Contract.startingDifficultyFloor(for: level),
+                Contract.cappedMaxDifficulty(for: level),
+                "\(level)'s band must span more than one tier"
+            )
+        }
+    }
+
+    /// The three levels are genuinely different starting points, not three names for one pool. This is
+    /// the regression guard for the floor being tuned against the nominal 1-5 scale instead of the
+    /// library a Discipline-Phase user can actually reach (which tops out at difficulty 3, so equal
+    /// floors and caps collapsed intermediate and advanced onto the same seven movements).
+    func testEachFitnessLevelResolvesToADistinctBandedPool() async throws {
+        let library = try await library()
+
+        func trainingIds(_ level: FitnessLevel) -> [String] {
+            bandedPool(
+                user: freshUser(level: level),
+                policy: SessionPolicy.seeded(forFitnessLevel: level),
+                library: library
+            )
+            .filter { $0.pillar == .strength || $0.pillar == .primal }
+            .map(\.id)
+        }
+
+        let beginner = trainingIds(.beginner)
+        let intermediate = trainingIds(.intermediate)
+        let advanced = trainingIds(.advanced)
+
+        XCTAssertNotEqual(Set(intermediate), Set(advanced), "intermediate and advanced must differ")
+        XCTAssertNotEqual(Set(beginner), Set(intermediate))
+        // Harder self-report, tighter pool: each level's band starts above the last one's.
+        XCTAssertGreaterThan(advanced.count, 0)
+        XCTAssertLessThan(advanced.count, intermediate.count)
+    }
+
+    /// Whatever the floor, every movement pattern the capped pool offers survives the band with at
+    /// least one movement, so banding can never starve a pattern - or the generation - of options.
+    func testEveryBandedPatternSurvivesTheFloor() async throws {
+        let library = try await library()
+
+        for level in FitnessLevel.allCases {
+            let user = freshUser(level: level)
+            let policy = SessionPolicy.seeded(forFitnessLevel: level)
+            let capped = ColdStartOverride.cappedPool(
+                ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: []),
+                user: user,
+                sessionPolicy: policy
+            )
+            let banded = bandedPool(user: user, policy: policy, library: library)
+
+            let isTraining: (Exercise) -> Bool = { $0.pillar == .strength || $0.pillar == .primal }
+            for pattern in Set(capped.filter(isTraining).map(\.movementPattern)) {
+                XCTAssertFalse(
+                    banded.filter { isTraining($0) && $0.movementPattern == pattern }.isEmpty,
+                    "\(level)'s band starved the \(pattern) pattern"
+                )
+            }
+        }
     }
 
     /// The contract's neutral values are the engine's own defaults, so a neutral seed is a true no-op.
+    /// The engine aliases the contract rather than restating it, so this holds by construction.
     func testNeutralSeedMatchesTheEngineDefaults() {
         XCTAssertEqual(
             SessionPolicy.ColdStartContract.neutralStartingSets,
@@ -210,6 +279,7 @@ final class StartSeedTests: XCTestCase {
                 sets: AdaptiveOverload.defaultSets
             )
         )
+        XCTAssertEqual(ColdStartOverride.StartSeed.neutral.volume, .neutral)
     }
 
     // MARK: - Backward-compatible persistence
@@ -327,7 +397,10 @@ final class StartSeedTests: XCTestCase {
             user: user,
             sessionPolicy: policy
         )
-        XCTAssertEqual(ColdStartOverride.startBandedPool(capped, user: user, sessionPolicy: policy), capped)
+        XCTAssertEqual(
+            ColdStartOverride.startBandedPool(capped, user: user, sessionPolicy: policy, recentLogs: []),
+            capped
+        )
     }
 
     /// The floor is a training-load lever, so mobility - the warm-up, Movement Practice, and cooldown
@@ -367,7 +440,8 @@ final class StartSeedTests: XCTestCase {
         let banded = ColdStartOverride.startBandedPool(
             pool,
             user: freshUser(level: .advanced),
-            sessionPolicy: policy
+            sessionPolicy: policy,
+            recentLogs: []
         )
 
         // Push offers nothing at difficulty 4, so it keeps its own hardest (2) instead of vanishing.
@@ -404,7 +478,8 @@ final class StartSeedTests: XCTestCase {
             ColdStartOverride.startBandedPool(
                 pool,
                 user: warm,
-                sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced)
+                sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced),
+                recentLogs: []
             ),
             pool,
             "a warmed-up user is never floored"
@@ -413,7 +488,8 @@ final class StartSeedTests: XCTestCase {
             ColdStartOverride.startBandedPool(
                 pool,
                 user: freshUser(level: .advanced),
-                sessionPolicy: .default
+                sessionPolicy: .default,
+                recentLogs: []
             ),
             pool,
             "no contract means no band"
@@ -544,6 +620,212 @@ final class StartSeedTests: XCTestCase {
             ]
         )
         XCTAssertLessThan(afterSkip.reps!, seeded.reps!, "a bailed-on seeded session also eases")
+    }
+
+    /// The correction reaches the **tier**, not just the reps: one `too_hard` session steps the Start
+    /// Seed's difficulty floor down, so the next session's banded pool opens on an easier movement
+    /// rather than holding the user at an unwinnable tier for the whole cold-start window.
+    func testTooHardRatingEasesTheStartSeedTier() {
+        let user = freshUser(level: .advanced)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        let seeded = policy.coldStartContract!
+
+        let untouched = ColdStartOverride.startSeed(user: user, sessionPolicy: policy, recentLogs: [])
+        XCTAssertEqual(untouched.difficultyFloor, seeded.startingDifficultyFloor)
+
+        let afterTooHard = ColdStartOverride.startSeed(
+            user: user,
+            sessionPolicy: policy,
+            recentLogs: [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1, difficulty: .tooHard)]
+        )
+        XCTAssertEqual(
+            afterTooHard.difficultyFloor, seeded.startingDifficultyFloor - 1,
+            "a too-hard session must step the tier down, not just the reps"
+        )
+
+        // A bailed-on strength movement is the same eager down-signal the Asymmetric Ramp reacts to.
+        let afterSkip = ColdStartOverride.startSeed(
+            user: user,
+            sessionPolicy: policy,
+            recentLogs: [skipLog(id: "push_diamond", daysAgo: 1)]
+        )
+        XCTAssertEqual(afterSkip.difficultyFloor, seeded.startingDifficultyFloor - 1)
+    }
+
+    /// The tier and the volume ease together. Otherwise de-escalating onto an easier movement - which
+    /// the user has never logged - would simply re-apply the full volume seed to it.
+    func testDownSignalEasesTheVolumeSeedToo() {
+        let user = freshUser(level: .advanced)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        let seeded = policy.coldStartContract!
+
+        let eased = ColdStartOverride.volumeSeed(
+            user: user,
+            sessionPolicy: policy,
+            recentLogs: [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1, difficulty: .tooHard)]
+        )
+        XCTAssertLessThan(eased.repMultiplier, seeded.startingRepMultiplier)
+        XCTAssertEqual(eased.sets, seeded.startingSets - 1)
+    }
+
+    /// Easing stops at neutral: repeated down-signals can never push the seed *below* the un-seeded
+    /// default, and a beginner - whose seed is already neutral - is never touched at all.
+    func testEasingNeverOvershootsNeutral() {
+        typealias Contract = SessionPolicy.ColdStartContract
+        let logs = (1...6).map { repsLog(id: "push_diamond", reps: [8], daysAgo: $0, difficulty: .tooHard) }
+
+        let advanced = ColdStartOverride.startSeed(
+            user: freshUser(level: .advanced),
+            sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced),
+            recentLogs: logs
+        )
+        XCTAssertEqual(advanced, .neutral, "a hammered seed bottoms out at neutral, never below it")
+
+        let beginner = ColdStartOverride.startSeed(
+            user: freshUser(level: .beginner),
+            sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .beginner),
+            recentLogs: logs
+        )
+        XCTAssertEqual(beginner, .neutral, "a beginner's already-neutral seed is never moved")
+    }
+
+    /// End-to-end: an over-reported advanced user who rates their first session `too_hard` is served a
+    /// strictly *easier lead movement* next time, not the same movement with fewer reps.
+    func testOverReportedLevelIsServedAnEasierTierNextSession() async throws {
+        let library = try await library()
+        var user = freshUser(level: .advanced)
+        user.coldStart = User.ColdStart(sessionsLogged: 1, active: true)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+
+        func strengthLead(rating: PerceivedDifficulty) throws -> PlannedItem {
+            let blocks = SessionAssembly.planBlocks(
+                requestedMinutes: 30,
+                user: user,
+                library: library,
+                recentLogs: [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1, difficulty: rating)],
+                sessionPolicy: policy,
+                asOf: asOf,
+                calendar: calendar
+            )
+            return try XCTUnwrap(blocks.first { $0.category == .strength }?.items.first)
+        }
+
+        let held = try strengthLead(rating: .justRight)
+        let eased = try strengthLead(rating: .tooHard)
+
+        XCTAssertLessThan(
+            eased.exercise.difficulty, held.exercise.difficulty,
+            "a too-hard first session must de-escalate the tier (got \(eased.exercise.id) vs "
+                + "\(held.exercise.id))"
+        )
+    }
+
+    // MARK: - The seed survives the seam it is handed across
+
+    /// A mid-session swap keeps the session's Start Seed: the substitute's no-history target is sized
+    /// by the same seed the rest of the lineup was, instead of silently reverting to the neutral x1.0.
+    func testSwapKeepsTheSessionsStartSeed() async throws {
+        let library = try await library()
+        let user = freshUser(level: .advanced)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        let original = try XCTUnwrap(library.first { $0.id == "push_diamond" })
+        let seed = ColdStartOverride.volumeSeed(user: user, sessionPolicy: policy, recentLogs: [])
+
+        let slot = PrescribedExercise(
+            id: UUID(),
+            exercise: original,
+            sets: seed.sets,
+            reps: AdaptiveOverload.target(
+                for: original,
+                recentLogs: [],
+                startingRepMultiplier: seed.repMultiplier,
+                startingSets: seed.sets
+            ).reps,
+            durationSeconds: nil,
+            restSeconds: SessionAssembly.strengthRestSeconds
+        )
+        let session = Workout(
+            id: UUID(),
+            createdAt: asOf,
+            shape: .singleFocus,
+            focusPillar: .strength,
+            requestedMinutes: 15,
+            wasReturn: false,
+            blocks: [WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])]
+        )
+
+        let seeded = ExerciseSwap.swap(
+            slot, in: session, user: user, library: library, recentLogs: [], sessionPolicy: policy
+        )
+        guard case .substituted(let substitute) = seeded else {
+            return XCTFail("the advanced push slot must have an in-band substitute")
+        }
+        let defaultReps = try XCTUnwrap(substitute.exercise.defaultReps)
+        XCTAssertEqual(
+            substitute.reps,
+            Int((Double(defaultReps) * seed.repMultiplier).rounded()),
+            "the substitute must carry the session's Start Seed, not the neutral seed"
+        )
+
+        // Without the policy the same swap falls back to the neutral seed - the exact divergence this
+        // seam exists to close.
+        let unseeded = ExerciseSwap.swap(slot, in: session, user: user, library: library, recentLogs: [])
+        guard case .substituted(let neutral) = unseeded else {
+            return XCTFail("the unseeded swap must still substitute")
+        }
+        XCTAssertEqual(neutral.exercise.id, substitute.exercise.id, "the same movement is chosen either way")
+        XCTAssertEqual(neutral.reps, defaultReps, "the neutral seed opens at the movement's own default")
+        XCTAssertGreaterThan(try XCTUnwrap(substitute.reps), try XCTUnwrap(neutral.reps))
+    }
+
+    // MARK: - The seeded target is reflected in the planned wall-clock
+
+    /// A seeded set really does take longer than a default-sized one, and the engine now sizes it that
+    /// way - so the ±1 minute timing-fit promise is measured against the session the user will do.
+    func testPlannedTimeAccountsForTheSeededPerSetTarget() {
+        let movement = exercise(id: "ex", defaultReps: 10) // 40s per set at its own default
+
+        XCTAssertEqual(
+            SessionAssembly.workSecondsPerSet(for: movement, reps: 10, durationSeconds: nil),
+            movement.estimatedTimePerSetSeconds,
+            "a default-sized set is the movement's own estimate, unchanged"
+        )
+        XCTAssertEqual(
+            SessionAssembly.workSecondsPerSet(for: movement, reps: 13, durationSeconds: nil),
+            52,
+            "13 reps of a 10-rep movement is 1.3x the work"
+        )
+        // A movement with no default to scale against falls back to the flat estimate.
+        let unscalable = exercise(id: "unscalable", defaultReps: nil)
+        XCTAssertEqual(
+            SessionAssembly.workSecondsPerSet(for: unscalable, reps: 20, durationSeconds: nil),
+            unscalable.estimatedTimePerSetSeconds
+        )
+    }
+
+    /// The whole seeded session lands inside the timing tolerance when measured with the rep-aware
+    /// clock - the fit and the measurement agree, so the promise is not honest-by-omission.
+    func testSeededSessionStillLandsWithinTheTimingTolerance() async throws {
+        let library = try await library()
+
+        for minutes in [5, 10, 15, 20, 30, 45, 60] {
+            for level in FitnessLevel.allCases {
+                let workout = SessionAssembly.assemble(
+                    requestedMinutes: minutes,
+                    user: freshUser(level: level),
+                    library: library,
+                    recentLogs: [],
+                    sessionPolicy: SessionPolicy.seeded(forFitnessLevel: level),
+                    asOf: asOf,
+                    calendar: calendar
+                )
+                let drift = abs(SessionAssembly.plannedSeconds(of: workout) - minutes * 60)
+                XCTAssertLessThanOrEqual(
+                    drift, SessionAssembly.toleranceSeconds,
+                    "\(level)'s \(minutes)-minute seeded session drifted \(drift)s"
+                )
+            }
+        }
     }
 
     private func skipLog(id: String, daysAgo: Int) -> WorkoutLog {

@@ -91,7 +91,10 @@ enum AdaptiveOverload {
     /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) so their *first* prescription of a
     /// movement carries proportionate volume; it is clamped to the same per-set rails as every other
     /// target, and it never touches a capacity-derived one.
-    static let neutralStartingRepMultiplier = 1.0
+    ///
+    /// Aliased from the policy contract's own neutral rather than restated, so the value the
+    /// Programmer writes and the value this step falls back to cannot drift apart.
+    static let neutralStartingRepMultiplier = SessionPolicy.ColdStartContract.neutralStartingRepMultiplier
 
     /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
     /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
@@ -104,10 +107,11 @@ enum AdaptiveOverload {
     /// Set-count bounds, and the default when the user has no history for the exercise. The exercise
     /// carries a default *per-set* value (`defaultReps`/`defaultDurationSeconds`) but no default set
     /// count, so `defaultSets` supplies it; once there is history the set count tracks what the user
-    /// actually sustained.
+    /// actually sustained. Like `neutralStartingRepMultiplier`, `defaultSets` is aliased from the
+    /// policy contract's neutral Start Seed so the two cannot drift.
     static let minSets = 1
     static let maxSets = 4
-    static let defaultSets = 3
+    static let defaultSets = SessionPolicy.ColdStartContract.neutralStartingSets
 
     // MARK: Target selection
 

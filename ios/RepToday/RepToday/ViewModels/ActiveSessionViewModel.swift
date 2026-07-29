@@ -134,6 +134,10 @@ final class ActiveSessionViewModel {
     /// construction from the Ready Screen's already-loaded state, so a swap adds no fetch.
     private let user: User?
     private let recentLogs: [WorkoutLog]
+    /// The policy this session was generated against, carried so a mid-session swap sizes its
+    /// substitute with the same Step 6 levers - including the cold-start Start Seed (US-O02) - rather
+    /// than reverting to the neutral defaults. `.default` in previews / when none was supplied.
+    private let sessionPolicy: SessionPolicy
 
     // MARK: - Persistence (US-K04)
 
@@ -184,6 +188,7 @@ final class ActiveSessionViewModel {
         swapEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -194,6 +199,7 @@ final class ActiveSessionViewModel {
         self.swapEngine = swapEngine
         self.user = user
         self.recentLogs = recentLogs
+        self.sessionPolicy = sessionPolicy
         self.store = store
         self.userId = userId
         self.completionService = completionService
@@ -224,6 +230,7 @@ final class ActiveSessionViewModel {
         swapEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -235,6 +242,7 @@ final class ActiveSessionViewModel {
             swapEngine: swapEngine,
             user: user,
             recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
             store: store,
             userId: userId,
             completionService: completionService,
@@ -468,7 +476,8 @@ final class ActiveSessionViewModel {
                 step.prescription,
                 in: snapshotForSwap(),
                 user: user,
-                recentLogs: recentLogs
+                recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy
             )
         } catch {
             // An unexpected engine failure leaves the original slot untouched; the user can retry.

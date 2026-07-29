@@ -154,7 +154,8 @@ final class ColdStartSeedingTests: XCTestCase {
                     sessionPolicy: policy
                 ),
                 user: user,
-                sessionPolicy: policy
+                sessionPolicy: policy,
+                recentLogs: []
             )
             let bandEntry = banded
                 .filter { $0.pillar == .strength || $0.pillar == .primal }

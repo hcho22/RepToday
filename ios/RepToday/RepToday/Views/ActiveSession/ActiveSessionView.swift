@@ -26,6 +26,7 @@ struct ActiveSessionView: View {
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -38,6 +39,7 @@ struct ActiveSessionView: View {
                 swapEngine: workoutEngine,
                 user: user,
                 recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
                 completionService: completionService
@@ -52,6 +54,7 @@ struct ActiveSessionView: View {
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -64,6 +67,7 @@ struct ActiveSessionView: View {
                 swapEngine: workoutEngine,
                 user: user,
                 recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
                 completionService: completionService

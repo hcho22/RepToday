@@ -4,13 +4,16 @@ import Foundation
 /// Steps 1-6 while a brand-new user is still finding their footing, so their first sessions are kept
 /// gentle and vivid and a mis-reported fitness level never produces a badly over-hard day.
 ///
-/// Step 0 is deliberately a thin override, not a second engine. It touches exactly two of the inputs
-/// the rest of the pipeline already consumes, and leaves everything else to Steps 1-6:
+/// Step 0 is deliberately a thin override, not a second engine. It reshapes only inputs the rest of
+/// the pipeline already consumes, and leaves everything else to Steps 1-6:
 ///
 /// - **Capped Starting Difficulty** (`cappedPool`) - the eligible pool is restricted to movements at
 ///   or below the policy's `coldStartContract.cappedMaxDifficulty`, so someone who over-rated their
 ///   fitness level still gets a winnable first day. The "served at the gentle end of the band"
 ///   promise then falls out of Step 5, which already starts a no-history user at the gentlest tier.
+/// - **Start Seed** (`startSeed` / `startBandedPool` / `volumeSeed`, US-O02) - the floor beneath that
+///   cap and the volume a no-history prescription opens at, so an *active* user's first sessions are
+///   not served the absolute beginner tier at beginner volume.
 /// - **First-Week Contrast** (`overridePlan`) - when the contract sets `forceContrastSpread`, the
 ///   day's lead pillar is forced onto a deterministic rotation keyed by `coldStart.sessionsLogged`,
 ///   overriding the single-theme bias `why`/`sitsLong` alone would produce (a desk worker's
@@ -58,57 +61,7 @@ enum ColdStartOverride {
         return capped.isEmpty ? pool : capped
     }
 
-    // MARK: - Start Seed: difficulty floor (US-O02)
-
-    /// The eligible pool with the Start Seed's difficulty **floor** applied, banding the strength and
-    /// primal training movements to `[startingDifficultyFloor, cappedMaxDifficulty]` (the cap having
-    /// already been applied by `cappedPool`). Step 5 starts a no-history user at the *lowest eligible*
-    /// tier, so raising the floor is exactly what makes an active user's first session open at the band
-    /// entry - a standard or diamond push-up rather than a wall push-up - while a beginner (floor `1`)
-    /// is untouched. A no-op when Step 0 is inactive or the seed is neutral.
-    ///
-    /// Two things are deliberately never floored:
-    /// - **Mobility** - the warm-up, the Movement Practice block, and the cooldown all draw from the
-    ///   mobility pool, and a mobility movement's difficulty is not a measure of training load. Gating
-    ///   there is identical for every fitness level.
-    /// - **A movement pattern the floor would empty** - the floor is clamped down per pattern to the
-    ///   hardest movement that pattern actually offers inside the cap, so banding can never starve a
-    ///   pattern (and never break generation) just because the library has no movement that hard yet.
-    static func startBandedPool(
-        _ pool: [Exercise],
-        user: User,
-        sessionPolicy: SessionPolicy
-    ) -> [Exercise] {
-        guard
-            user.coldStart.active,
-            let contract = sessionPolicy.coldStartContract,
-            contract.startingDifficultyFloor > SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
-        else { return pool }
-
-        // The hardest movement each banded pattern offers within the (already capped) pool.
-        var hardestByPattern: [MovementPattern: Int] = [:]
-        for exercise in pool where isBanded(exercise) {
-            hardestByPattern[exercise.movementPattern] = max(
-                hardestByPattern[exercise.movementPattern] ?? 0,
-                exercise.difficulty
-            )
-        }
-
-        return pool.filter { exercise in
-            guard isBanded(exercise), let hardest = hardestByPattern[exercise.movementPattern] else {
-                return true
-            }
-            return exercise.difficulty >= min(contract.startingDifficultyFloor, hardest)
-        }
-    }
-
-    /// Whether the Start Seed's difficulty floor applies to a movement: only the strength and primal
-    /// training pillars are banded (see `startBandedPool`).
-    private static func isBanded(_ exercise: Exercise) -> Bool {
-        exercise.pillar == .strength || exercise.pillar == .primal
-    }
-
-    // MARK: - Start Seed: volume (US-O02)
+    // MARK: - Start Seed (US-O02)
 
     /// The volume half of the Start Seed: how much of a movement a user at this fitness level should be
     /// prescribed the *first* time they meet it. The engine hands these to Step 6's no-history default
@@ -127,15 +80,144 @@ enum ColdStartOverride {
         )
     }
 
-    /// The Start Seed volume in force for this generation, or `.neutral` when Step 0 is inactive.
-    static func volumeSeed(user: User, sessionPolicy: SessionPolicy) -> VolumeSeed {
+    /// The whole Start Seed in force for one generation: the difficulty **floor** the strength/primal
+    /// training pool is banded to, and the **volume** a no-history prescription opens at.
+    ///
+    /// Resolving both halves together is what makes the self-correction coherent: a down-signal has to
+    /// step the *tier* and the *volume* back at the same time, or de-escalating to an easier movement
+    /// would simply re-apply the full volume seed to a movement the user has never logged.
+    struct StartSeed: Equatable {
+        var difficultyFloor: Int
+        var volume: VolumeSeed
+
+        /// The neutral seed: the whole band beneath the cap stays eligible and no-history targets are
+        /// exactly the exercise's own defaults - the pre-US-O02 behavior.
+        static let neutral = StartSeed(
+            difficultyFloor: SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor,
+            volume: .neutral
+        )
+    }
+
+    /// The Start Seed in force for this generation, or `.neutral` when Step 0 is inactive.
+    ///
+    /// The contract's seeded values are the *aim*; what is actually served is that aim **eased by every
+    /// down-signal the cold-start window has already produced**, so a dishonest self-report corrects
+    /// itself within one cycle rather than holding the user at an unwinnable tier for the whole first
+    /// week. A down-signal is the same eager signal the Asymmetric Ramp (US-E05) reacts to - a session
+    /// rated `tooHard`, or one where the user bailed on a strength/primal movement - and each one steps
+    /// the floor down a tier, drops a set, and eases the rep multiplier by the ramp's own `hardStep`.
+    /// Easing stops at neutral: a down-signal can never push the seed *below* the un-seeded default,
+    /// and a seed already at or under neutral is left exactly as it is.
+    static func startSeed(
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> StartSeed {
+        typealias Contract = SessionPolicy.ColdStartContract
         guard user.coldStart.active, let contract = sessionPolicy.coldStartContract else {
             return .neutral
         }
-        return VolumeSeed(
-            repMultiplier: contract.startingRepMultiplier,
-            sets: contract.startingSets
+        let signals = downSignalCount(recentLogs: recentLogs)
+        return StartSeed(
+            difficultyFloor: eased(
+                contract.startingDifficultyFloor,
+                toward: Contract.neutralStartingDifficultyFloor,
+                to: contract.startingDifficultyFloor - signals
+            ),
+            volume: VolumeSeed(
+                repMultiplier: eased(
+                    contract.startingRepMultiplier,
+                    toward: Contract.neutralStartingRepMultiplier,
+                    to: contract.startingRepMultiplier * pow(AdaptiveOverload.hardStep, Double(signals))
+                ),
+                sets: eased(
+                    contract.startingSets,
+                    toward: Contract.neutralStartingSets,
+                    to: contract.startingSets - signals
+                )
+            )
         )
+    }
+
+    /// How many eager down-signals the user has already produced: sessions they rated `tooHard`, plus
+    /// sessions where they bailed on a banded (strength/primal) movement. This mirrors the Asymmetric
+    /// Ramp's own down-signal exactly (`AdaptiveOverload` treats a `tooHard` rating and a skip
+    /// identically), so the tier and the volume back off on the same evidence.
+    static func downSignalCount(recentLogs: [WorkoutLog]) -> Int {
+        recentLogs.filter { log in
+            log.perceivedDifficulty == .tooHard
+                || log.exercises.contains { $0.skipped && ($0.pillar == .strength || $0.pillar == .primal) }
+        }.count
+    }
+
+    /// Moves `seeded` toward `neutral` to `backedOff`, never overshooting neutral and never touching a
+    /// seed that is already at or below it. Shared by all three seed fields so they can only ever ease,
+    /// never harden, in response to a down-signal.
+    private static func eased<Value: Comparable>(
+        _ seeded: Value,
+        toward neutral: Value,
+        to backedOff: Value
+    ) -> Value {
+        guard seeded > neutral else { return seeded }
+        return max(neutral, min(seeded, backedOff))
+    }
+
+    /// The eligible pool with the Start Seed's difficulty **floor** applied, banding the strength and
+    /// primal training movements to `[startingDifficultyFloor, cappedMaxDifficulty]` (the cap having
+    /// already been applied by `cappedPool`). Step 5 starts a no-history user at the *lowest eligible*
+    /// tier, so raising the floor is exactly what makes an active user's first session open at the band
+    /// entry - a standard or diamond push-up rather than a wall push-up - while a beginner (floor `1`)
+    /// is untouched. A no-op when Step 0 is inactive or the resolved seed is neutral.
+    ///
+    /// Two things are deliberately never floored:
+    /// - **Mobility** - the warm-up, the Movement Practice block, and the cooldown all draw from the
+    ///   mobility pool, and a mobility movement's difficulty is not a measure of training load. Gating
+    ///   there is identical for every fitness level.
+    /// - **A movement pattern the floor would empty** - the floor is clamped down per pattern to the
+    ///   hardest movement that pattern actually offers inside the cap, so banding can never starve a
+    ///   pattern (and never break generation) just because the library has no movement that hard yet.
+    ///
+    /// `recentLogs` is read only to resolve the seed (see `startSeed`), so a `tooHard` first session
+    /// visibly lowers the *tier* of the next one, not just its reps.
+    static func startBandedPool(
+        _ pool: [Exercise],
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> [Exercise] {
+        let floor = startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs).difficultyFloor
+        guard floor > SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor else { return pool }
+
+        // The hardest movement each banded pattern offers within the (already capped) pool.
+        var hardestByPattern: [MovementPattern: Int] = [:]
+        for exercise in pool where isBanded(exercise) {
+            hardestByPattern[exercise.movementPattern] = max(
+                hardestByPattern[exercise.movementPattern] ?? 0,
+                exercise.difficulty
+            )
+        }
+
+        return pool.filter { exercise in
+            guard isBanded(exercise), let hardest = hardestByPattern[exercise.movementPattern] else {
+                return true
+            }
+            return exercise.difficulty >= min(floor, hardest)
+        }
+    }
+
+    /// Whether the Start Seed's difficulty floor applies to a movement: only the strength and primal
+    /// training pillars are banded (see `startBandedPool`).
+    private static func isBanded(_ exercise: Exercise) -> Bool {
+        exercise.pillar == .strength || exercise.pillar == .primal
+    }
+
+    /// The Start Seed volume in force for this generation, or `.neutral` when Step 0 is inactive.
+    static func volumeSeed(
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> VolumeSeed {
+        startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs).volume
     }
 
     // MARK: - First-Week Contrast

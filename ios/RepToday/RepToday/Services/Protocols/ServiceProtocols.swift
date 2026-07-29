@@ -43,11 +43,16 @@ protocol WorkoutEngineProtocol {
 
     /// Resolves a deterministic substitute for one prescribed slot (US-C08), or `.noAlternative`
     /// when no safe, equivalent, in-budget movement exists - never an unsafe or off-pattern pick.
+    ///
+    /// `sessionPolicy` is the same program the session was generated against, so the substitute is
+    /// sized by the same Step 6 levers as the rest of the lineup (`progressionRate`, and the
+    /// cold-start Start Seed of US-O02) instead of silently reverting to the neutral defaults.
     func swapExercise(
         _ prescription: PrescribedExercise,
         in workout: Workout,
         user: User,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
     ) async throws -> SwapOutcome
 }
 

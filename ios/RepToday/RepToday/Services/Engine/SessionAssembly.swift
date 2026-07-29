@@ -20,7 +20,8 @@ import Foundation
 ///   static stretches closes any session longer than `cooldownThresholdMinutes`. In a short
 ///   mobility-led session the opening warm-up and the Movement Practice block are both mobility, so
 ///   the opening flow doubles as warm-up + training, exactly as the PRD describes.
-/// - **Timing fit** - the planned wall-clock is `Σ(sets × estTimePerSet) + rests + transitions`; a
+/// - **Timing fit** - the planned wall-clock is `Σ(sets × workPerSet) + rests + transitions`, where
+///   `workPerSet` scales the movement's estimate to the per-set target Step 6 actually prescribed; a
 ///   deterministic best-fit pass trims or extends the session (adding/removing whole exercises or
 ///   individual sets, never touching the capacity-relative *per-set* target from Step 6) until it
 ///   lands within `toleranceSeconds` of the request.
@@ -202,7 +203,8 @@ enum SessionAssembly {
                     sessionPolicy: sessionPolicy
                 ),
                 user: user,
-                sessionPolicy: sessionPolicy
+                sessionPolicy: sessionPolicy,
+                recentLogs: recentLogs
             ),
             isReturn: isReturn
         )
@@ -213,8 +215,13 @@ enum SessionAssembly {
         let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
 
         // The Start Seed's volume half (US-O02): the reps/sets a no-history prescription opens at,
-        // matched to the self-reported fitness level. Neutral outside the cold-start window.
-        let startVolume = ColdStartOverride.volumeSeed(user: user, sessionPolicy: sessionPolicy)
+        // matched to the self-reported fitness level and eased by any cold-start down-signal already
+        // logged, so it stays in step with the banded pool above. Neutral outside the cold-start window.
+        let startVolume = ColdStartOverride.volumeSeed(
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs
+        )
 
         var builder = Builder(
             library: library,
@@ -260,13 +267,46 @@ enum SessionAssembly {
 
     // MARK: - Planned wall-clock
 
-    /// The planned wall-clock of an assembled `Workout`: `Σ(sets × estTimePerSet) + rests +
+    /// The planned seconds one set of `exercise` takes at the per-set target Step 6 actually
+    /// prescribed.
+    ///
+    /// `Exercise.estimatedTimePerSetSeconds` is a single constant calibrated against the movement's
+    /// *own* default per-set value (`defaultReps` / `defaultDurationSeconds`), so reading it directly
+    /// silently assumes every set is prescribed at that default. It is not: Step 6 is
+    /// capacity-relative, and the cold-start Start Seed (US-O02) opens an active user at up to x1.30 of
+    /// the default on their very first session. Scaling the estimate by `prescribed / default` keeps
+    /// the planned wall-clock - and therefore the ±1 minute promise the timing fit is measured against
+    /// - honest about the session the user is actually going to do. A movement with no default to
+    /// scale against falls back to the flat estimate.
+    ///
+    /// - Note: The model is proportional because the library carries no separate setup/transition
+    ///   component per set; the per-set rest and inter-exercise transition are counted separately.
+    static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
+        let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
+        let prescribed = exercise.isHold ? durationSeconds : reps
+        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else {
+            return exercise.estimatedTimePerSetSeconds
+        }
+        let scaled = Double(exercise.estimatedTimePerSetSeconds) * Double(prescribed) / Double(baseline)
+        return max(1, Int(scaled.rounded()))
+    }
+
+    /// The planned seconds one set of a prescribed slot takes, at the target it actually carries.
+    static func workSecondsPerSet(of prescription: PrescribedExercise) -> Int {
+        workSecondsPerSet(
+            for: prescription.exercise,
+            reps: prescription.reps,
+            durationSeconds: prescription.durationSeconds
+        )
+    }
+
+    /// The planned wall-clock of an assembled `Workout`: `Σ(sets × workPerSet) + rests +
     /// transitions`. The same formula the timing-fit pass minimizes against, exposed so callers and
     /// tests measure the session exactly as the engine sized it.
     static func plannedSeconds(of workout: Workout) -> Int {
         let items = workout.blocks.flatMap(\.exercises)
         let work = items.reduce(0) { sum, item in
-            sum + item.sets * item.exercise.estimatedTimePerSetSeconds
+            sum + item.sets * workSecondsPerSet(of: item)
                 + max(0, item.sets - 1) * item.restSeconds
         }
         return work + max(0, items.count - 1) * transitionSeconds
@@ -360,12 +400,27 @@ enum SessionAssembly {
             if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
                 for (itemIndex, item) in block.items.enumerated() where item.sets < maxTrainingSets {
-                    let delta = item.exercise.estimatedTimePerSetSeconds + item.restSeconds
+                    let delta = item.workSecondsPerSet + item.restSeconds
                     result.append((.addSet(block: blockIndex, item: itemIndex), delta))
                 }
             }
             if let next = block.reserve.first {
-                result.append((.addReserve(block: blockIndex), next.seconds + transitionSeconds))
+                // A reserve may be promoted at any set count within the rails, not only at the count
+                // Step 6 prescribed. Without that, a block whose items already sit at `maxTrainingSets`
+                // (an advanced cold-start Start Seed opens at 4) has no fine-grained lever left at all:
+                // its only move is a whole extra exercise at full volume, which a short session cannot
+                // absorb, and the greedy fit parks minutes away from the request.
+                let counts = block.allowSetAdjust
+                    ? Array(minTrainingSets...max(minTrainingSets, next.sets))
+                    : [next.sets]
+                for sets in counts {
+                    var probe = next
+                    probe.sets = sets
+                    result.append((
+                        .addReserve(block: blockIndex, sets: sets),
+                        probe.seconds + transitionSeconds
+                    ))
+                }
             }
         }
         return result
@@ -381,7 +436,7 @@ enum SessionAssembly {
             if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
                 for (itemIndex, item) in block.items.enumerated() where item.sets > minTrainingSets {
-                    let delta = -(item.exercise.estimatedTimePerSetSeconds + item.restSeconds)
+                    let delta = -(item.workSecondsPerSet + item.restSeconds)
                     result.append((.removeSet(block: blockIndex, item: itemIndex), delta))
                 }
             }
@@ -398,8 +453,10 @@ enum SessionAssembly {
             blocks[block].items[item].sets += 1
         case let .removeSet(block, item):
             blocks[block].items[item].sets -= 1
-        case let .addReserve(block):
-            blocks[block].items.append(blocks[block].reserve.removeFirst())
+        case let .addReserve(block, sets):
+            var promoted = blocks[block].reserve.removeFirst()
+            promoted.sets = sets
+            blocks[block].items.append(promoted)
         case let .dropItem(block):
             let removed = blocks[block].items.removeLast()
             blocks[block].reserve.insert(removed, at: 0)
@@ -410,7 +467,7 @@ enum SessionAssembly {
     private enum Adjustment {
         case addSet(block: Int, item: Int)
         case removeSet(block: Int, item: Int)
-        case addReserve(block: Int)
+        case addReserve(block: Int, sets: Int)
         case dropItem(block: Int)
     }
 }
@@ -427,9 +484,16 @@ struct PlannedItem: Equatable {
     var sets: Int
     let restSeconds: Int
 
-    /// Planned seconds for this item alone: `sets × estTimePerSet + (sets - 1) × rest`.
+    /// Planned seconds for one set at this item's actual per-set target (see
+    /// `SessionAssembly.workSecondsPerSet(for:reps:durationSeconds:)`), so a seeded or
+    /// capacity-grown prescription is sized as the work it really is.
+    var workSecondsPerSet: Int {
+        SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds)
+    }
+
+    /// Planned seconds for this item alone: `sets × workPerSet + (sets - 1) × rest`.
     var seconds: Int {
-        sets * exercise.estimatedTimePerSetSeconds + max(0, sets - 1) * restSeconds
+        sets * workSecondsPerSet + max(0, sets - 1) * restSeconds
     }
 
     func materialize() -> PrescribedExercise {

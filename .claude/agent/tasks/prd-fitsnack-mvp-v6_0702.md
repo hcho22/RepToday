@@ -917,10 +917,13 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [x] `SessionPolicy.ColdStartContract` carries a Start Seed - a `startingDifficultyFloor` plus a volume seed (`startingRepMultiplier`, `startingSets`) - seeded in `.seeded(for:)` from `fitnessLevel`: floor **beginner 1 / intermediate 3 / advanced 4**; volume **beginner x1.0 & 3 sets / intermediate x1.15 & 3 sets / advanced x1.30 & 4 sets**. It is Codable with backward-compatible neutral defaults (floor 1 / x1.0 / 3 sets) so pre-existing persisted policies decode
-- [x] For a no-history user, the strength & primal training-block pool is banded to `[startingDifficultyFloor, cappedMaxDifficulty]` so Step 5's lowest-eligible selection starts at the band entry (e.g. advanced -> standard/diamond push-up, not wall push-up); warm-up/mobility/cooldown are never floored, and the band never empties the pool (it falls back to the unfloored pool)
+- [x] `SessionPolicy.ColdStartContract` carries a Start Seed - a `startingDifficultyFloor` plus a volume seed (`startingRepMultiplier`, `startingSets`) - seeded in `.seeded(for:)` from `fitnessLevel`: floor **beginner 1 / intermediate 2 / advanced 3**; volume **beginner x1.0 & 3 sets / intermediate x1.15 & 3 sets / advanced x1.30 & 4 sets**. It is Codable with backward-compatible neutral defaults (floor 1 / x1.0 / 3 sets) so pre-existing persisted policies decode
+- [x] The floor sits a tier *beneath* each level's `cappedMaxDifficulty` rather than equal to it, tuned against the library a Discipline-Phase user can actually reach (`phase == .strength` movements are gated out, so the reachable strength/primal catalog tops out at difficulty 3). Intermediate and advanced must not resolve to the same single-tier pool, and the surviving band must leave the variety window something to rotate over
+- [x] For a no-history user, the strength & primal training-block pool is banded to `[startingDifficultyFloor, cappedMaxDifficulty]` so Step 5's lowest-eligible selection starts at the band entry (e.g. advanced -> diamond/pike push-up, not wall push-up); warm-up/mobility/cooldown are never floored, and the band never empties a movement pattern (the floor clamps down per pattern to what that pattern actually offers)
 - [x] `AdaptiveOverload`'s no-history default target scales per-set reps/holds by `startingRepMultiplier` and uses `startingSets`, clamped to the existing rails (`maxReps 50`, `maxHoldSeconds 180`, `maxSets 4`); a neutral seed reproduces current behavior, and capacity-derived targets (session 2+) are unchanged
-- [x] The Asymmetric Ramp still backs off fast on `too_hard`/skip, so an over-reported level self-corrects downward within one cycle (the safety net for a dishonest self-report)
+- [x] The seeded per-set target is reflected in the planned wall-clock: `SessionAssembly.workSecondsPerSet` scales a movement's estimate by `prescribed / default`, so a x1.30 first session is *sized* as the longer session it is and the ±1 minute timing-fit promise stays honest. The seeded **set count** is the pre-fit starting volume only - the fit may still trade sets against the duration the user asked for, and the requested duration always wins
+- [x] An over-reported level self-corrects downward within one cycle, in **tier** as well as volume: `ColdStartOverride.startSeed` counts the same eager down-signals the Asymmetric Ramp reacts to (a session rated `too_hard`, or one where the user bailed on a strength/primal movement) and steps the floor down a tier, drops a set, and eases the rep multiplier by the ramp's own `hardStep` per signal - never past neutral
+- [x] An in-session swap keeps the session's seed: `WorkoutEngineProtocol.swapExercise` carries the `sessionPolicy`, so `ExerciseSwap` sizes a substitute with the same Step 6 levers (`progressionRate`, Start Seed, `varietyWindow`) the lineup was built on instead of reverting to the neutral defaults
 - [x] Build and tests pass
 
 **Validation Test:**
@@ -929,8 +932,9 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 - **Steps:**
   1. Generate each user's first session
   2. Inspect the strength block's lead movement and its prescribed reps/sets
-- **Expected Result:** The advanced user's strength block leads with a difficulty-4 movement (e.g. diamond push-up) at ~x1.3 reps over 4 sets; the beginner's is unchanged (wall push-up, default reps, 3 sets). Warm-up and mobility gating is identical for both.
-- **Failure Indicator:** The advanced first session still starts at the difficulty-1 entry tier, the beginner is made harder, or a strength/primal pool is emptied.
+  3. Rate the advanced user's session `too_hard` and generate their second session
+- **Expected Result:** The advanced user's strength block leads with a difficulty-3 movement (e.g. diamond push-up) at ~x1.3 reps, opening at 4 sets before the timing fit lands the requested duration; the beginner's is unchanged (wall push-up, default reps, 3 sets). Warm-up and mobility gating is identical for both. After the `too_hard` rating the advanced user's second session leads with an *easier* tier, not merely fewer reps.
+- **Failure Indicator:** The advanced first session still starts at the difficulty-1 entry tier, intermediate and advanced draw the same pool, the beginner is made harder, a strength/primal pattern is emptied, or a `too_hard` rating leaves the tier untouched.
 
 #### US-O03: Session timer redesign (hidden clock + hold timer)
 

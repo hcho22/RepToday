@@ -479,6 +479,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
         private(set) var swapCallCount = 0
         private(set) var lastPrescriptionID: UUID?
         private(set) var lastSnapshotExerciseIDs: [String] = []
+        /// The policy the player handed the engine, so a test can prove the session's program - and
+        /// with it the cold-start Start Seed (US-O02) - reaches the swap step.
+        private(set) var lastSessionPolicy: SessionPolicy?
         /// Runs inside `swapExercise` before the outcome returns, so a test can mutate the view model
         /// mid-await (e.g. advance off the exercise) and exercise the stale-result guard.
         var onSwap: (() -> Void)?
@@ -492,11 +495,16 @@ final class ActiveSessionViewModelTests: XCTestCase {
         }
 
         func swapExercise(
-            _ prescription: PrescribedExercise, in workout: Workout, user: User, recentLogs: [WorkoutLog]
+            _ prescription: PrescribedExercise,
+            in workout: Workout,
+            user: User,
+            recentLogs: [WorkoutLog],
+            sessionPolicy: SessionPolicy
         ) async throws -> SwapOutcome {
             swapCallCount += 1
             lastPrescriptionID = prescription.id
             lastSnapshotExerciseIDs = workout.blocks.flatMap(\.exercises).map(\.exercise.id)
+            lastSessionPolicy = sessionPolicy
             onSwap?()
             return outcome
         }
@@ -530,10 +538,31 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
-    private func makeSwapViewModel(engine: StubSwapEngine) -> ActiveSessionViewModel {
+    private func makeSwapViewModel(
+        engine: StubSwapEngine,
+        sessionPolicy: SessionPolicy = .default
+    ) -> ActiveSessionViewModel {
         ActiveSessionViewModel(
-            workout: sampleWorkout(), swapEngine: engine, user: makeUser(), recentLogs: [], now: { self.start }
+            workout: sampleWorkout(),
+            swapEngine: engine,
+            user: makeUser(),
+            recentLogs: [],
+            sessionPolicy: sessionPolicy,
+            now: { self.start }
         )
+    }
+
+    /// The player hands the swap step the policy the session was generated against, so a substitute is
+    /// sized by the same Step 6 levers as the rest of the lineup - including the cold-start Start Seed
+    /// (US-O02) - instead of the engine silently re-deriving it at the neutral defaults.
+    func testSwapCarriesTheSessionsPolicy() async {
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = makeSwapViewModel(engine: engine, sessionPolicy: policy)
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(engine.lastSessionPolicy, policy)
     }
 
     /// A substitute replaces the current slot in place: the current step becomes the substitute, its

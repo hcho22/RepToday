@@ -182,4 +182,26 @@ final class ExerciseLibraryTests: XCTestCase {
             XCTAssertFalse(ex.advancementCriteria.isEmpty, "\(ex.id) needs advancement criteria")
         }
     }
+
+    // MARK: - Demo animations (US-O01)
+
+    /// A movement may only name a demo animation that the app actually ships (US-O01). The player
+    /// falls back to its SF Symbol for a missing file rather than blanking, so a broken name is silent
+    /// at runtime - this is the gate that makes it loud.
+    ///
+    /// It is also the enforcement half of `docs/asset-attribution.md`: an animation stays out of the
+    /// bundle until it has a cleared license row there, so wiring an `animationName` to an uncleared
+    /// asset fails here.
+    func testEveryAnimationNameResolvesToABundledFile() {
+        let bundle = Bundle(for: AppState.self)
+        for ex in exercises {
+            guard let name = ex.animationName else { continue }
+            XCTAssertNotNil(
+                bundle.url(forResource: name, withExtension: "json"),
+                "\(ex.id) names the animation \"\(name)\", which the app bundle does not carry - "
+                    + "either ship the file (with a cleared row in docs/asset-attribution.md) or drop "
+                    + "the animationName"
+            )
+        }
+    }
 }

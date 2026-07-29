@@ -71,12 +71,20 @@ enum ExerciseSwap {
     /// is a different movement in the same pillar and pattern, within the difficulty band and the time
     /// budget, with its own capacity-relative per-set target and the original slot's set count and
     /// rest preserved.
+    ///
+    /// `sessionPolicy` is the same per-user program the session was assembled against, so a substitute
+    /// is sized by the *same* Step 6 levers the rest of the lineup was: the policy's `progressionRate`
+    /// and, during cold-start, the Start Seed (US-O02). Without it a mid-session swap would silently
+    /// re-derive the substitute's no-history target at the neutral seed, handing an advanced cold-start
+    /// user a x1.00 slot in a session built at x1.30. It defaults to `SessionPolicy.default` (every
+    /// lever neutral), which reproduces the pre-policy swap exactly.
     static func swap(
         _ prescription: PrescribedExercise,
         in workout: Workout,
         user: User,
         library: [Exercise],
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy = .default
     ) -> SwapOutcome {
         let target = prescription.exercise
 
@@ -90,14 +98,25 @@ enum ExerciseSwap {
         // is harmless.
         let inSessionIds = Set(workout.blocks.flatMap(\.exercises).map(\.exercise.id))
 
+        // The Start Seed in force for this session (US-O02), so a substitute for a cold-start user
+        // opens at the same volume the rest of their lineup did.
+        let startVolume = ColdStartOverride.volumeSeed(
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs
+        )
+
         let originalSlotSeconds = slotSeconds(
-            estPerSet: target.estimatedTimePerSetSeconds,
+            workPerSet: target.estimatedTimePerSetSeconds,
             sets: prescription.sets,
             rest: prescription.restSeconds
         )
 
         // Same pillar + pattern, within the difficulty band, not the original, not already in the
-        // session, and close enough in per-set time to keep the slot inside the budget.
+        // session, and close enough in per-set time to keep the slot inside the budget. The budget
+        // check compares the two *movements* at their own per-set estimates - it asks whether the
+        // substitute is a comparable time cost, not whether the user's grown target happens to match
+        // a newcomer's starting one.
         let candidates = pool.compactMap { candidate -> (exercise: Exercise, drift: Int)? in
             guard
                 candidate.id != target.id,
@@ -108,7 +127,7 @@ enum ExerciseSwap {
             else { return nil }
 
             let candidateSlot = slotSeconds(
-                estPerSet: candidate.estimatedTimePerSetSeconds,
+                workPerSet: candidate.estimatedTimePerSetSeconds,
                 sets: prescription.sets,
                 rest: prescription.restSeconds
             )
@@ -118,7 +137,7 @@ enum ExerciseSwap {
         }
         guard !candidates.isEmpty else { return .noAlternative }
 
-        let recentlyUsed = recentlyUsedIds(recentLogs: recentLogs)
+        let recentlyUsed = recentlyUsedIds(recentLogs: recentLogs, window: sessionPolicy.varietyWindow)
         let chosen = candidates.min { lhs, rhs in
             // 1. Closest difficulty to the original (a true peer beats a band-edge option).
             let lhsGap = abs(lhs.exercise.difficulty - target.difficulty)
@@ -134,22 +153,29 @@ enum ExerciseSwap {
             return lhs.exercise.id < rhs.exercise.id
         }!.exercise
 
-        return .substituted(materialize(chosen, like: prescription, recentLogs: recentLogs))
+        let overload = AdaptiveOverload.target(
+            for: chosen,
+            recentLogs: recentLogs,
+            progressionRate: sessionPolicy.progressionRate,
+            startingRepMultiplier: startVolume.repMultiplier,
+            startingSets: startVolume.sets
+        )
+        return .substituted(materialize(chosen, at: overload, like: prescription))
     }
 
     // MARK: Helpers
 
     /// Builds the substitute prescription: the chosen movement at the original slot's set count and
-    /// rest (so timing is preserved), with a fresh capacity-relative per-set target from Step 6. The
-    /// target is reps for a rep-based movement and hold seconds for a hold, matched to the
-    /// substitute's `isHold`, so a rep↔hold swap within a pattern still yields a well-formed slot.
+    /// rest (so timing is preserved), carrying the Step 6 target resolved for it under the session's
+    /// own policy. The target is reps for a rep-based movement and hold seconds for a hold,
+    /// matched to the substitute's `isHold`, so a rep↔hold swap within a pattern still yields a
+    /// well-formed slot.
     private static func materialize(
         _ exercise: Exercise,
-        like prescription: PrescribedExercise,
-        recentLogs: [WorkoutLog]
+        at overload: OverloadTarget,
+        like prescription: PrescribedExercise
     ) -> PrescribedExercise {
-        let overload = AdaptiveOverload.target(for: exercise, recentLogs: recentLogs)
-        return PrescribedExercise(
+        PrescribedExercise(
             id: UUID(),
             exercise: exercise,
             sets: prescription.sets,
@@ -159,19 +185,19 @@ enum ExerciseSwap {
         )
     }
 
-    /// Planned wall-clock of one slot in isolation: `sets × estPerSet + (sets - 1) × rest`. The same
+    /// Planned wall-clock of one slot in isolation: `sets × workPerSet + (sets - 1) × rest`. The same
     /// formula the assembly step's `plannedSeconds` sums over every slot, so a swap's slot-level
     /// budget check is consistent with how the session was sized.
-    private static func slotSeconds(estPerSet: Int, sets: Int, rest: Int) -> Int {
-        sets * estPerSet + max(0, sets - 1) * rest
+    private static func slotSeconds(workPerSet: Int, sets: Int, rest: Int) -> Int {
+        sets * workPerSet + max(0, sets - 1) * rest
     }
 
     /// Ids worked (non-skipped) in the most recent few sessions, so a swap can prefer a movement the
-    /// user has not just done. The window mirrors Step 5's variety window.
-    private static func recentlyUsedIds(recentLogs: [WorkoutLog]) -> Set<String> {
+    /// user has not just done. The window is the policy's own `varietyWindow`, mirroring Step 5.
+    private static func recentlyUsedIds(recentLogs: [WorkoutLog], window: Int) -> Set<String> {
         let recentSessions = recentLogs
             .sorted { $0.completedAt > $1.completedAt }
-            .prefix(ProgressionChainSelection.recentSessionWindow)
+            .prefix(max(0, window))
         return recentSessions.reduce(into: Set<String>()) { ids, log in
             for logged in log.exercises where !logged.skipped {
                 ids.insert(logged.exerciseId)

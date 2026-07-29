@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 51;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -91,7 +91,6 @@
 		A1219679D6D57B9CC81E21C9 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 68E12B6D2D9EA47FAFA1BD53 /* Lottie */; };
 		A26C625E0AE5F47FA64605EC /* ProgressionChainSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9EF193CBAA44AE479CCC72B /* ProgressionChainSelectionTests.swift */; };
 		A616AAE42708152D4173BE86 /* ProgressAnalyticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D2933C5C50DB6D05383878C /* ProgressAnalyticsTests.swift */; };
-		A8B6D1383EC6FAA9E13EB214 /* push_standard.json in Resources */ = {isa = PBXBuildFile; fileRef = 66C97A9F4472C11134C363C7 /* push_standard.json */; };
 		AA0AD93A48A8A8889248B6AE /* SessionCompletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4470E4714068CB26B224F8 /* SessionCompletionService.swift */; };
 		AC55155DABE13639BB5C29FA /* ReturnOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85274C4D6459D630BE1E4978 /* ReturnOverrideTests.swift */; };
 		B4B38F942E95757ABABB4B3D /* CoreDataServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */; };
@@ -687,6 +686,8 @@
 				67FF2BE929CDD0E109E91156 /* PBXTargetDependency */,
 			);
 			name = RepTodayTests;
+			packageProductDependencies = (
+			);
 			productName = RepTodayTests;
 			productReference = 1D262409C6A91253012B146E /* RepTodayTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -717,6 +718,7 @@
 		CB2E288E8805291D99D23C07 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1630;
 				TargetAttributes = {
 					60A3927A3D70C97CBEDBFFAC = {
@@ -728,7 +730,6 @@
 				};
 			};
 			buildConfigurationList = 02958D9180408934BA74DFD9 /* Build configuration list for PBXProject "RepToday" */;
-			compatibilityVersion = "Xcode 11.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -736,9 +737,12 @@
 				en,
 			);
 			mainGroup = 1486DD41BBF9CC2A8B786FCF;
+			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				FAB5353BD1BFEB277EB19BAF /* XCRemoteSwiftPackageReference "lottie-ios" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9A63B5C6BD2A91C7EE4F48DE /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -755,7 +759,6 @@
 			files = (
 				4F3C71401C264577DCC72028 /* Assets.xcassets in Resources */,
 				E3E57C3510EE559D1BEF8220 /* Exercises.json in Resources */,
-				A8B6D1383EC6FAA9E13EB214 /* push_standard.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
