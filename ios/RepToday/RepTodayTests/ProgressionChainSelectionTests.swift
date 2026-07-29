@@ -70,12 +70,14 @@ final class ProgressionChainSelectionTests: XCTestCase {
         reps: [Int],
         pattern: MovementPattern = .push,
         daysAgo: Int,
-        skipped: Bool = false
+        skipped: Bool = false,
+        difficulty: PerceivedDifficulty? = nil
     ) -> WorkoutLog {
         log(
             daysAgo: daysAgo,
             [(id: id, pattern: pattern,
-              sets: reps.map { CompletedSet(reps: $0, durationSeconds: nil) }, skipped: skipped)]
+              sets: reps.map { CompletedSet(reps: $0, durationSeconds: nil) }, skipped: skipped)],
+            difficulty: difficulty
         )
     }
 
@@ -96,7 +98,8 @@ final class ProgressionChainSelectionTests: XCTestCase {
     /// A session `daysAgo` built from raw per-exercise entries.
     private func log(
         daysAgo: Int,
-        _ entries: [(id: String, pattern: MovementPattern, sets: [CompletedSet], skipped: Bool)]
+        _ entries: [(id: String, pattern: MovementPattern, sets: [CompletedSet], skipped: Bool)],
+        difficulty: PerceivedDifficulty? = nil
     ) -> WorkoutLog {
         WorkoutLog(
             id: UUID(),
@@ -106,7 +109,7 @@ final class ProgressionChainSelectionTests: XCTestCase {
             durationMinutes: 10,
             shape: .singleFocus,
             focusPillar: .strength,
-            perceivedDifficulty: nil,
+            perceivedDifficulty: difficulty,
             exercises: entries.map { entry in
                 LoggedExercise(
                     id: UUID(),
@@ -218,10 +221,10 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selection?.didAdvance, false)
     }
 
-    /// A chain the user has never worked is entered at the gentlest tier that still matches the
-    /// ability they have demonstrated *elsewhere in the pattern* - not at the chain's entry tier.
-    /// Ability belongs to the movement pattern, not to one chain.
-    func testNoHistoryChainIsEnteredAtDemonstratedAbility() {
+    /// A chain the user has never worked is entered at the gentlest tier that still clears the
+    /// session's ability floor - not at the chain's entry tier. Ability belongs to the movement
+    /// pattern, not to one chain.
+    func testNoHistoryChainIsEnteredAtTheAbilityFloor() {
         let chain = makeChain("c", [
             (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
             (id: "c1", difficulty: 2, criteria: "3x12 clean reps"),
@@ -231,15 +234,16 @@ final class ProgressionChainSelectionTests: XCTestCase {
             chain,
             eligibleIds: Set(chain.map(\.id)),
             recentLogs: [],
-            demonstratedDifficulty: 2
+            difficultyFloor: 2
         )
-        XCTAssertEqual(selection?.exercise.id, "c1", "entered at the demonstrated tier, not c0")
+        XCTAssertEqual(selection?.exercise.id, "c1", "entered at the floor, not c0")
         XCTAssertEqual(selection?.didAdvance, false, "a lateral entry is not an advancement")
     }
 
-    /// When the chain offers nothing as hard as the demonstrated tier, its own hardest tier is the
-    /// entry - the closest thing to the user's ability, never the chain's absolute entry.
-    func testNoHistoryChainToppingOutBelowAbilityEntersAtItsHardestTier() {
+    /// When no eligible tier clears the floor, the entry is the chain's *gentlest* eligible tier,
+    /// never its hardest. Reaching for the top of what survived would invert the very restriction
+    /// that narrowed the pool (a Return cap, an injury filter) in the first place.
+    func testNoHistoryChainToppingOutBelowTheFloorEntersAtItsGentlestTier() {
         let chain = makeChain("c", [
             (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
             (id: "c1", difficulty: 2, criteria: "3x12 clean reps"),
@@ -248,14 +252,13 @@ final class ProgressionChainSelectionTests: XCTestCase {
             chain,
             eligibleIds: Set(chain.map(\.id)),
             recentLogs: [],
-            demonstratedDifficulty: 4
+            difficultyFloor: 4
         )
-        XCTAssertEqual(selection?.exercise.id, "c1")
+        XCTAssertEqual(selection?.exercise.id, "c0")
     }
 
-    /// The default keeps the pre-existing chain-local behavior: no demonstrated ability means the
-    /// chain entry.
-    func testDemonstratedAbilityDefaultsToTheChainEntry() {
+    /// The default keeps the pre-existing chain-local behavior: no floor means the chain entry.
+    func testAbilityFloorDefaultsToTheChainEntry() {
         let chain = makeChain("c", [
             (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
             (id: "c1", difficulty: 3, criteria: "3x12 clean reps"),
@@ -482,12 +485,23 @@ final class ProgressionChainSelectionTests: XCTestCase {
         // The user worked the hard chain last session; the banded chain was never prescribable.
         let logs = [repsLog(id: "worked_hard", reps: [8, 8, 8], daysAgo: 1)]
         let selection = ProgressionChainSelection.select(
-            pattern: .push, library: library, pool: library, recentLogs: logs
+            pattern: .push, library: library, pool: library, recentLogs: logs,
+            abilityFloor: steadyStateFloor
         )
 
         XCTAssertEqual(
             selection?.exercise.id, "worked_hard",
             "a never-worked gentler chain must not out-rank the movement matching demonstrated ability"
+        )
+
+        // Suppressed - a Return, a too-hard session - and the rail is gone: freshness wins again,
+        // which is the whole point of easing outranking the floor.
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs
+            )?.exercise.id,
+            "banded_easy",
+            "a suppressed floor must reproduce the pre-floor, chain-local behavior exactly"
         )
     }
 
@@ -500,10 +514,153 @@ final class ProgressionChainSelectionTests: XCTestCase {
 
         XCTAssertEqual(
             ProgressionChainSelection.select(
-                pattern: .push, library: library, pool: library, recentLogs: logs
+                pattern: .push, library: library, pool: library, recentLogs: logs,
+                abilityFloor: steadyStateFloor
             )?.exercise.id,
             "b0"
         )
+    }
+
+    /// The rail narrows the variety preference, it never cancels it. When the pool caps every chain
+    /// below demonstrated ability - a Return, an injury filter - no fresh candidate can clear the
+    /// floor, and the old all-or-nothing rail silently switched the variety window off entirely.
+    /// The fresh-but-gentler candidate must still beat the one worked last session.
+    func testVarietyStillAppliesWhenNothingFreshClearsTheFloor() {
+        let library = makeChain("a", [
+            (id: "a0", difficulty: 1, criteria: "3x99 clean reps"),
+            (id: "a_hard", difficulty: 3, criteria: "3x99 clean reps"),
+        ]) + makeChain("b", [(id: "b0", difficulty: 1, criteria: "3x99 clean reps")])
+        // Ability demonstrated at 3, but the pool now offers only the difficulty-1 tiers.
+        let pool = library.filter { $0.difficulty == 1 }
+        let logs = [
+            repsLog(id: "a_hard", reps: [8, 8, 8], daysAgo: 2),
+            repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 1),
+        ]
+
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: pool, recentLogs: logs,
+                abilityFloor: steadyStateFloor
+            )?.exercise.id,
+            "b0",
+            "an unreachable floor must not disable the no-repeat window"
+        )
+    }
+
+    // MARK: - select(pattern:): ability-floor precedence (easing always wins)
+
+    /// A Return suppresses the floor outright. `ReturnOverride.returnPool` caps the pool precisely so
+    /// a strong pre-gap history cannot serve a punishing tier; a floor read from that same history
+    /// would hand it straight back.
+    func testReturnSuppressesTheAbilityFloor() {
+        let user = beginnerDisciplineUser()
+        let logs = [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 30)]
+
+        XCTAssertEqual(
+            ProgressionChainSelection.abilityFloor(
+                user: user, sessionPolicy: .default, recentLogs: logs, isReturn: true
+            ),
+            .suppressed
+        )
+        XCTAssertTrue(
+            ProgressionChainSelection.abilityFloor(
+                user: user, sessionPolicy: .default, recentLogs: logs, isReturn: false
+            ).applies,
+            "outside a Return the same history resolves a live floor"
+        )
+    }
+
+    /// A down-signal suppresses the floor too, so the tier the Start Seed just stepped down is not
+    /// immediately re-raised by the floor reading the pre-signal history.
+    func testDownSignalSuppressesTheAbilityFloor() {
+        let user = beginnerDisciplineUser()
+
+        XCTAssertEqual(
+            ProgressionChainSelection.abilityFloor(
+                user: user,
+                sessionPolicy: .default,
+                recentLogs: [repsLog(id: "push_diamond", reps: [8], daysAgo: 1, difficulty: .tooHard)],
+                isReturn: false
+            ),
+            .suppressed
+        )
+        // Outside cold start only the most recent session counts, so one bad day does not shadow the
+        // user forever.
+        XCTAssertTrue(
+            ProgressionChainSelection.abilityFloor(
+                user: user,
+                sessionPolicy: .default,
+                recentLogs: [
+                    repsLog(id: "push_diamond", reps: [8], daysAgo: 2, difficulty: .tooHard),
+                    repsLog(id: "push_standard", reps: [8], daysAgo: 1, difficulty: .justRight),
+                ],
+                isReturn: false
+            ).applies
+        )
+    }
+
+    /// The floor a steady-state session carries is the user's own fitness level, used - uniquely -
+    /// as a floor rather than as `ExercisePoolFilter`'s ceiling.
+    func testAbilityFloorCarriesTheFitnessLevelForward() {
+        for level in FitnessLevel.allCases {
+            var user = beginnerDisciplineUser()
+            user.profile.fitnessLevel = level
+            XCTAssertEqual(
+                ProgressionChainSelection.abilityFloor(
+                    user: user, sessionPolicy: .default, recentLogs: [], isReturn: false
+                ).untrainedPatternFloor,
+                SessionPolicy.ColdStartContract.startingDifficultyFloor(for: level)
+            )
+        }
+    }
+
+    /// A pattern the user has worked *nothing* in falls back to the level-derived floor, so the
+    /// handoff cannot hand an advanced user the absolute entry tier of a pattern their cold-start
+    /// week happened never to touch.
+    func testUntrainedPatternFallsBackToTheLevelFloor() {
+        let library = makeChain("a", [
+            (id: "a0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "a1", difficulty: 2, criteria: "3x12 clean reps"),
+            (id: "a2", difficulty: 3, criteria: "3x12 clean reps"),
+        ])
+        let floor = ProgressionChainSelection.AbilityFloor(untrainedPatternFloor: 3, applies: true)
+
+        XCTAssertEqual(
+            ProgressionChainSelection.difficultyFloor(
+                for: .push, library: library, recentLogs: [], abilityFloor: floor
+            ),
+            3,
+            "no history in the pattern means the level floor carries"
+        )
+        // Demonstrated history in the pattern is the truer signal and wins over the level default.
+        XCTAssertEqual(
+            ProgressionChainSelection.difficultyFloor(
+                for: .push,
+                library: library,
+                recentLogs: [repsLog(id: "a1", reps: [8], daysAgo: 1)],
+                abilityFloor: floor
+            ),
+            2
+        )
+        XCTAssertEqual(
+            ProgressionChainSelection.difficultyFloor(
+                for: .push, library: library, recentLogs: [], abilityFloor: .suppressed
+            ),
+            0
+        )
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: [], abilityFloor: floor
+            )?.exercise.id,
+            "a2",
+            "the untrained pattern opens at the level floor, not at the chain entry"
+        )
+    }
+
+    /// A live floor for a user who has demonstrated nothing anywhere, for the tests that only care
+    /// that the rail is switched on.
+    private var steadyStateFloor: ProgressionChainSelection.AbilityFloor {
+        ProgressionChainSelection.AbilityFloor(untrainedPatternFloor: 0, applies: true)
     }
 
     func testSelectReturnsNilWhenPatternHasNoEligibleTier() {

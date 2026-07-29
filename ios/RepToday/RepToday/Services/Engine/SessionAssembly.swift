@@ -223,6 +223,17 @@ enum SessionAssembly {
             recentLogs: recentLogs
         )
 
+        // Step 5's ability floor (the other half of the Start Seed band's cliff): the band withholds
+        // whole chains, so they accrue no history and their untouched entry tiers would win the
+        // freshness preference the moment it lifts. Resolved here because easing outranks it - the
+        // same `isReturn` that capped the pool above suppresses it entirely, as does a down-signal.
+        let abilityFloor = ProgressionChainSelection.abilityFloor(
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs,
+            isReturn: isReturn
+        )
+
         var builder = Builder(
             library: library,
             pool: pool,
@@ -231,6 +242,7 @@ enum SessionAssembly {
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
             startVolume: startVolume,
+            abilityFloor: abilityFloor,
             asOf: asOf,
             calendar: calendar
         )
@@ -564,6 +576,10 @@ private struct Builder {
     /// warm-up/mobility/cooldown are identical for a beginner and an advanced user. Neutral outside
     /// the cold-start window.
     let startVolume: ColdStartOverride.VolumeSeed
+    /// Step 5's cliff-prevention ability floor: how far the user's demonstrated level is carried into
+    /// chains and patterns their logs say nothing about. `.suppressed` whenever a Return or a
+    /// down-signal is easing them - easing outranks it (see `ProgressionChainSelection`).
+    let abilityFloor: ProgressionChainSelection.AbilityFloor
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -730,7 +746,8 @@ private struct Builder {
                     library: library,
                     pool: pool,
                     recentLogs: recentLogs,
-                    varietyWindow: varietyWindow
+                    varietyWindow: varietyWindow,
+                    abilityFloor: abilityFloor
                 ),
                 !usedIds.contains(selection.exercise.id)
             else { continue }
@@ -778,7 +795,8 @@ private struct Builder {
                 library: library,
                 pool: pool,
                 recentLogs: recentLogs,
-                varietyWindow: varietyWindow
+                varietyWindow: varietyWindow,
+                abilityFloor: abilityFloor
             ),
             selection.exercise.pillar == .primal,
             !usedIds.contains(selection.exercise.id)

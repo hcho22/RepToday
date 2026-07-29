@@ -224,19 +224,24 @@ extension SessionPolicy.ColdStartContract {
     /// unchanged.
     ///
     /// The floor is tuned against the library the user can actually *reach*, not the nominal 1-5
-    /// difficulty scale: `ExercisePoolFilter` gates `phase == .strength` movements out for every
-    /// Discipline-Phase user, so the reachable strength/primal catalog tops out at difficulty 3.
-    /// Setting each level's floor to its own cap would therefore collapse the "band" to a single tier
-    /// *and* land intermediate and advanced on the same one - the same seven movements, with nothing
-    /// left for the variety window to rotate over. Sitting the floor a tier beneath the cap instead
-    /// leaves each level a real range and keeps the two pools genuinely different (intermediate opens
-    /// the whole 2-3 band; advanced opens only the top).
+    /// difficulty scale. `ExercisePoolFilter` gates `phase == .strength` movements out for every
+    /// Discipline-Phase user, so a floor can only ever band against the Discipline catalog - but phase
+    /// gates *skills*, not tiers, so that catalog is a real 1-4 range carrying difficulty-4 tiers in
+    /// every banded pattern (`ExerciseLibraryTests.testPhaseMatchesDifficultyIntent` pins it).
+    ///
+    /// Setting each level's floor to its own cap would still collapse the "band" to a single tier, so
+    /// the floor sits one tier beneath it: that leaves every level a genuine two-tier range and keeps
+    /// the levels' pools different (intermediate opens the whole 2-3 band, advanced only the 3-4 top).
+    /// Two tiers is not by itself enough for the variety window, which rotates over *chains* rather
+    /// than tiers - `ExerciseLibraryTests.testAdvancedStartBandHasRoomToRotate` is the gate that keeps
+    /// at least two chains per banded pattern inside every level's band.
     ///
     /// The floor is only ever a starting *aim*: banding never starves a movement pattern
     /// (`ColdStartOverride.startBandedPool` clamps the floor down to what a pattern actually offers),
     /// and an over-reported level is corrected downward within one cycle - the Asymmetric Ramp
     /// (US-E05) eases the volume, and `ColdStartOverride.startSeed` steps the *tier* itself back down
-    /// on a `too_hard` rating or a bailed-on strength movement.
+    /// on a `too_hard` rating or a bailed-on strength movement. Step 5's ability floor stands down
+    /// while that correction is in force, so nothing re-raises the tier the seed just lowered.
     static func startingDifficultyFloor(for level: FitnessLevel) -> Int {
         switch level {
         case .beginner: return 1

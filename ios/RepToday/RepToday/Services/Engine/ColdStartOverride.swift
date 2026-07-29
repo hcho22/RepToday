@@ -144,10 +144,16 @@ enum ColdStartOverride {
     /// Ramp's own down-signal exactly (`AdaptiveOverload` treats a `tooHard` rating and a skip
     /// identically), so the tier and the volume back off on the same evidence.
     static func downSignalCount(recentLogs: [WorkoutLog]) -> Int {
-        recentLogs.filter { log in
-            log.perceivedDifficulty == .tooHard
-                || log.exercises.contains { $0.skipped && ($0.pillar == .strength || $0.pillar == .primal) }
-        }.count
+        recentLogs.filter(isDownSignal).count
+    }
+
+    /// Whether one session is an eager down-signal: the user rated it `tooHard`, or bailed on a
+    /// banded (strength/primal) movement in it. Exposed so the other steps that must stand down while
+    /// the user is being eased (Step 5's ability floor) read the signal from exactly one definition
+    /// rather than re-deriving a subtly different one.
+    static func isDownSignal(_ log: WorkoutLog) -> Bool {
+        log.perceivedDifficulty == .tooHard
+            || log.exercises.contains { $0.skipped && ($0.pillar == .strength || $0.pillar == .primal) }
     }
 
     /// Moves `seeded` toward `neutral` to `backedOff`, never overshooting neutral and never touching a

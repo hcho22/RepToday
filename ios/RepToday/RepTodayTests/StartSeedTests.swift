@@ -720,6 +720,44 @@ final class StartSeedTests: XCTestCase {
         )
     }
 
+    /// The de-escalation has to reach the patterns the user *already has history in* - the ones a
+    /// pattern-local ability floor would otherwise read straight back out of the session they just
+    /// rated too hard.
+    ///
+    /// An advanced user's first squat resolves to `lunge_split_squat` (difficulty 3). They rate the
+    /// session `too_hard`, the Start Seed eases the floor to 2 and the band reopens the difficulty-2
+    /// squat tiers - but their demonstrated squat ability is still 3. Easing outranks the floor, so
+    /// the floor stands down and the second session genuinely leads with the easier tier.
+    func testTooHardDeEscalatesEvenInAPatternWithDemonstratedHistory() async throws {
+        let library = try await library()
+        var user = freshUser(level: .advanced)
+        user.coldStart = User.ColdStart(sessionsLogged: 1, active: true)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+
+        func squat(rating: PerceivedDifficulty) throws -> Exercise {
+            let logs = [repsLog(id: "lunge_split_squat", reps: [10, 10, 10], daysAgo: 1, difficulty: rating)]
+            let selection = ProgressionChainSelection.select(
+                pattern: .squat,
+                library: library,
+                pool: bandedPool(user: user, policy: policy, library: library, recentLogs: logs),
+                recentLogs: logs,
+                varietyWindow: policy.varietyWindow,
+                abilityFloor: ProgressionChainSelection.abilityFloor(
+                    user: user, sessionPolicy: policy, recentLogs: logs, isReturn: false
+                )
+            )
+            return try XCTUnwrap(selection).exercise
+        }
+
+        let held = try squat(rating: .justRight)
+        let eased = try squat(rating: .tooHard)
+        XCTAssertEqual(held.difficulty, 3, "the fixture must start at the seeded floor")
+        XCTAssertLessThan(
+            eased.difficulty, held.difficulty,
+            "the ability floor re-raised the tier the Start Seed just lowered (got \(eased.id))"
+        )
+    }
+
     // MARK: - The seed survives the seam it is handed across
 
     /// A mid-session swap keeps the session's Start Seed: the substitute's no-history target is sized
@@ -921,7 +959,12 @@ final class StartSeedTests: XCTestCase {
     /// accrue no history; the moment the band lifts their untouched entry tiers are the only movements
     /// the variety window has never seen, and freshness alone would hand an advanced user a
     /// difficulty-1 movement. It takes both halves to hold - a library with in-band tiers in every
-    /// chain, and Step 5 refusing to let freshness regress below demonstrated ability.
+    /// chain, and Step 5 refusing to let freshness regress below the ability floor.
+    ///
+    /// The assertion deliberately covers *every* strength/primal pattern the library carries, not only
+    /// the ones the simulated week happened to reach. A pattern cold start never touched has no
+    /// demonstrated difficulty at all, so it is the harder half of the guarantee - it holds only
+    /// because `AbilityFloor` carries the fitness level forward as a floor for exactly that case.
     func testSessionAfterTheHandoffNeverRegressesBelowTheColdStartTiers() async throws {
         let library = try await library()
         var user = freshUser(level: .advanced)
@@ -976,6 +1019,73 @@ final class StartSeedTests: XCTestCase {
                 "the session after the handoff regressed to \(prescribed.exercise.id) "
                     + "(difficulty \(prescribed.exercise.difficulty)) after a cold-start week trained "
                     + "at \(floor)+: \(coldStartTiers.sorted { $0.key < $1.key })"
+            )
+        }
+
+        // The harder half, and the one the generated session above does not necessarily reach: a
+        // pattern the cold-start week never touched at all. Strip every `pull` entry from the history
+        // and resolve that pattern directly through Step 5 - it now has no demonstrated difficulty,
+        // every chain in it is unworked, and freshness alone would hand this advanced user
+        // `pull_superman` at difficulty 1.
+        let withoutPull = logs.map { log -> WorkoutLog in
+            var stripped = log
+            stripped.exercises = log.exercises.filter { $0.movementPattern != .pull }
+            return stripped
+        }
+        let seededFloor = SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced)
+        XCTAssertEqual(
+            ProgressionChainSelection.demonstratedDifficulty(
+                pattern: .pull, library: library, recentLogs: withoutPull
+            ),
+            0,
+            "the untrained-pattern case needs a pattern with genuinely no history"
+        )
+        let untrained = ProgressionChainSelection.select(
+            pattern: .pull,
+            library: library,
+            pool: ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: withoutPull),
+            recentLogs: withoutPull,
+            varietyWindow: policy.varietyWindow,
+            abilityFloor: ProgressionChainSelection.abilityFloor(
+                user: user, sessionPolicy: policy, recentLogs: withoutPull, isReturn: false
+            )
+        )
+        XCTAssertGreaterThanOrEqual(
+            try XCTUnwrap(untrained).exercise.difficulty, seededFloor,
+            "a pattern cold start never touched still regressed to \(untrained?.exercise.id ?? "nil")"
+        )
+    }
+
+    /// Easing outranks the cliff guard. The same post-cold-start user who is held at their level in
+    /// the steady state is served the *gentlest* tier on a Return - `ReturnOverride` caps the pool so
+    /// a strong history cannot serve a punishing tier, and the ability floor must not hand it back.
+    func testReturnServesTheGentlestTierDespiteTheAbilityFloor() async throws {
+        let library = try await library()
+        var user = freshUser(level: .advanced)
+        user.coldStart = User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
+        let policy = SessionPolicy.default
+
+        // A strong pre-gap history, then a gap long enough to be a Return.
+        let logs = [repsLog(id: "push_diamond", reps: [10, 10, 10], daysAgo: 30)]
+        let asOfReturn = asOf
+        XCTAssertTrue(
+            ReturnOverride.isReturn(recentLogs: logs, asOf: asOfReturn, calendar: calendar),
+            "the fixture must actually be a Return"
+        )
+
+        let workout = SessionAssembly.assemble(
+            requestedMinutes: 30,
+            user: user,
+            library: library,
+            recentLogs: logs,
+            sessionPolicy: policy,
+            asOf: asOfReturn,
+            calendar: calendar
+        )
+        for prescribed in trainingItems(of: workout) {
+            XCTAssertLessThanOrEqual(
+                prescribed.exercise.difficulty, ReturnOverride.returnMaxDifficulty,
+                "the Return served \(prescribed.exercise.id) above the return cap"
             )
         }
     }

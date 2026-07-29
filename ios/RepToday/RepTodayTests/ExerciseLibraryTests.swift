@@ -108,6 +108,26 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
+    /// Difficulty never goes *down* as a chain progresses. Step 5 relies on this silently: its
+    /// no-history entry rule scans a chain in `progressionOrder` and takes the first tier whose
+    /// *difficulty* clears the session's ability floor, which is only the gentlest match when the two
+    /// orderings agree. A chain edit that inserted a tier out of difficulty order would quietly make
+    /// that rule pick a harder-than-necessary entry with nothing else failing.
+    func testChainDifficultyNeverDecreasesAlongTheChain() {
+        let chains = Dictionary(grouping: exercises, by: \.progressionChainId)
+
+        for (chainId, members) in chains {
+            let chain = members.sorted { $0.progressionOrder < $1.progressionOrder }
+            for (lower, higher) in zip(chain, chain.dropFirst()) {
+                XCTAssertLessThanOrEqual(
+                    lower.difficulty, higher.difficulty,
+                    "chain \(chainId) drops from \(lower.id) (difficulty \(lower.difficulty)) to "
+                        + "\(higher.id) (difficulty \(higher.difficulty)) as it progresses"
+                )
+            }
+        }
+    }
+
     /// No dangling references: every non-nil chain link resolves to a real exercise.
     func testChainLinksResolve() {
         for ex in exercises {

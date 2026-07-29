@@ -386,13 +386,13 @@
     "progressionChainId": "hinge_bridge",
     "progressionOrder": 2,
     "regressionId": "hinge_single_leg_bridge",
-    "progressionId": "hinge_nordic_negative",
+    "progressionId": "hinge_long_lever_bridge",
     "advancementCriteria": "3x12 reps per side",
     "apartmentFriendly": true
   },
   {
-    "id": "hinge_nordic_negative",
-    "displayName": "Nordic Curl Negative",
+    "id": "hinge_long_lever_bridge",
+    "displayName": "Long-Lever Single-Leg Bridge",
     "pillar": "strength",
     "movementPattern": "hinge",
     "category": "strength",
@@ -406,7 +406,7 @@
     "progressionChainId": "hinge_bridge",
     "progressionOrder": 3,
     "regressionId": "hinge_bridge_march",
-    "advancementCriteria": "3x6 slow reps",
+    "advancementCriteria": "3x8 slow reps per side",
     "apartmentFriendly": true
   },
   {
@@ -954,8 +954,8 @@
     "apartmentFriendly": true
   },
   {
-    "id": "pull_doorway_row",
-    "displayName": "Doorway Row",
+    "id": "pull_wall_scapular_pull",
+    "displayName": "Wall Scapular Pull",
     "pillar": "strength",
     "movementPattern": "pull",
     "category": "strength",
@@ -968,13 +968,13 @@
     "metValue": 4.0,
     "progressionChainId": "pull_horizontal",
     "progressionOrder": 0,
-    "progressionId": "pull_table_row",
+    "progressionId": "pull_floor_row",
     "advancementCriteria": "3x12 clean reps",
     "apartmentFriendly": true
   },
   {
-    "id": "pull_table_row",
-    "displayName": "Table Row",
+    "id": "pull_floor_row",
+    "displayName": "Supine Floor Row",
     "pillar": "strength",
     "movementPattern": "pull",
     "category": "strength",
@@ -987,14 +987,14 @@
     "metValue": 4.5,
     "progressionChainId": "pull_horizontal",
     "progressionOrder": 1,
-    "regressionId": "pull_doorway_row",
-    "progressionId": "pull_table_row_single_arm",
+    "regressionId": "pull_wall_scapular_pull",
+    "progressionId": "pull_floor_row_single_arm",
     "advancementCriteria": "3x10 clean reps",
     "apartmentFriendly": true
   },
   {
-    "id": "pull_table_row_single_arm",
-    "displayName": "Single-Arm Table Row",
+    "id": "pull_floor_row_single_arm",
+    "displayName": "Single-Arm Supine Floor Row",
     "pillar": "strength",
     "movementPattern": "pull",
     "category": "strength",
@@ -1007,7 +1007,7 @@
     "metValue": 5.0,
     "progressionChainId": "pull_horizontal",
     "progressionOrder": 2,
-    "regressionId": "pull_table_row",
+    "regressionId": "pull_floor_row",
     "advancementCriteria": "3x8 clean reps per side",
     "apartmentFriendly": true
   },
