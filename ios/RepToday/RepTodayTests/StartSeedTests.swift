@@ -208,8 +208,8 @@ final class StartSeedTests: XCTestCase {
 
     /// The three levels are genuinely different starting points, not three names for one pool. This is
     /// the regression guard for the floor being tuned against the nominal 1-5 scale instead of the
-    /// library a Discipline-Phase user can actually reach (which tops out at difficulty 3, so equal
-    /// floors and caps collapsed intermediate and advanced onto the same seven movements).
+    /// library a Discipline-Phase user can actually reach. The per-pattern breadth that makes each
+    /// band a real range is gated separately, in `ExerciseLibraryTests`.
     func testEachFitnessLevelResolvesToADistinctBandedPool() async throws {
         let library = try await library()
 
@@ -556,27 +556,126 @@ final class StartSeedTests: XCTestCase {
         XCTAssertFalse(eased.contains("squat_sumo"), "easing the floor to 2 reopens the tier")
     }
 
-    /// Once cold start retires the contract is gone, so the band has to be reconstructed - and it is
-    /// bounded by what the user's logs actually show rather than by the never-revised onboarding
-    /// self-report. A user who reported "advanced" but trains at difficulty 1 withholds nothing.
-    func testTheReconstructedBandIsBoundedByDemonstratedAbility() async throws {
+    /// Once cold start retires the contract is gone, so the band is read from the floor the handoff
+    /// recorded - the fact of what ran - rather than re-derived from the never-revised onboarding
+    /// self-report.
+    func testTheBandPastTheHandoffIsTheRecordedFloor() async throws {
         let library = try await library()
         var warm = freshUser(level: .advanced)
-        warm.coldStart = User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
-
-        let honest = ColdStartOverride.withheldByStartSeed(
-            library: library, user: warm, sessionPolicy: .default,
-            recentLogs: [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1)] // difficulty 3
+        warm.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold,
+            active: false,
+            bandFloorAtHandoff: 3
         )
-        XCTAssertTrue(honest.contains("push_wall"), "the full advanced band survives a matching history")
 
-        let overReported = ColdStartOverride.withheldByStartSeed(
-            library: library, user: warm, sessionPolicy: .default,
-            recentLogs: [repsLog(id: "push_wall", reps: [8, 8, 8], daysAgo: 1)] // difficulty 1
+        let withheld = ColdStartOverride.withheldByStartSeed(
+            library: library, user: warm, sessionPolicy: .default, recentLogs: []
+        )
+        XCTAssertTrue(withheld.contains("push_wall"), "difficulty 1 sits under the recorded floor of 3")
+        XCTAssertTrue(withheld.contains("squat_sumo"), "difficulty 2 sits under the recorded floor of 3")
+        XCTAssertFalse(withheld.contains("push_diamond"), "difficulty 3 is the recorded floor itself")
+
+        // And it is exactly that recorded number, not the level's: a user whose week ran at an eased
+        // floor of 2 withholds only the tier beneath 2.
+        warm.coldStart.bandFloorAtHandoff = 2
+        let eased = ColdStartOverride.withheldByStartSeed(
+            library: library, user: warm, sessionPolicy: .default, recentLogs: []
+        )
+        XCTAssertTrue(eased.contains("push_wall"))
+        XCTAssertFalse(eased.contains("squat_sumo"), "the eased floor of 2 keeps difficulty 2 on offer")
+    }
+
+    /// The `tooHard` de-escalation has to survive the retirement, not be recomputed away by it. An
+    /// advanced user rates their first session too hard, so the rest of the week runs at an eased
+    /// floor of 2 and genuinely offers the difficulty-2 tiers - and the session after the handoff must
+    /// still treat those tiers as movements the user was offered.
+    func testTheEasedFloorSurvivesTheHandoff() async throws {
+        let library = try await library()
+        let user = freshUser(level: .advanced)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        // The user completed a difficulty-3 push and rated the session too hard.
+        let logs = [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1, difficulty: .tooHard)]
+
+        var retiring = user
+        retiring.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold - 1,
+            active: true
+        )
+        let outcome = ColdStartHandoff.afterCompletedSession(
+            user: retiring, sessionPolicy: policy, recentLogs: logs
+        )
+
+        XCTAssertFalse(outcome.user.coldStart.active, "the fixture must actually retire the band")
+        XCTAssertEqual(
+            outcome.user.coldStart.bandFloorAtHandoff, 2,
+            "the recorded floor must be the eased one, not the advanced level's aim of 3"
+        )
+
+        // The reconstruction is now a no-op over `recentLogs`: the eased tier stays on offer even once
+        // the cold-start sessions have aged out of the engine's bounded window entirely.
+        let withheld = ColdStartOverride.withheldByStartSeed(
+            library: library,
+            user: outcome.user,
+            sessionPolicy: outcome.sessionPolicy,
+            recentLogs: []
+        )
+        XCTAssertFalse(
+            withheld.contains("squat_sumo"),
+            "the handoff re-raised the tier the too_hard rating eased, got \(withheld.sorted())"
+        )
+    }
+
+    /// A band that never ran is never asserted retroactively. `coldStart.active == false` is equally
+    /// true *before* a contract exists as after one retires, so the claim rests on the recorded floor
+    /// alone - absent it, nothing was ever withheld.
+    func testNoBandIsClaimedWhenNoneEverRan() async throws {
+        let library = try await library()
+
+        // A record written before US-O02: the persisted contract decodes its Start Seed to the neutral
+        // floor, so that user's week ran unbanded and was genuinely offered the gentle tiers.
+        var legacy = freshUser(level: .advanced)
+        legacy.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold,
+            active: false
         )
         XCTAssertTrue(
-            overReported.isEmpty,
-            "logs showing difficulty-1 training must bound the claimed advanced band, got \(overReported)"
+            ColdStartOverride.withheldByStartSeed(
+                library: library, user: legacy, sessionPolicy: .default,
+                recentLogs: [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1)]
+            ).isEmpty,
+            "a user with no recorded band must withhold nothing, however they self-reported"
+        )
+
+        // And a generation against the neutral default policy for an advanced user with no history at
+        // all - the `SessionPolicy.default` path - claims nothing either.
+        XCTAssertTrue(
+            ColdStartOverride.withheldByStartSeed(
+                library: library, user: legacy, sessionPolicy: .default, recentLogs: []
+            ).isEmpty
+        )
+    }
+
+    /// A neutral contract records "no band ran" rather than the level's aim, so a legacy policy that
+    /// decodes its Start Seed to the neutral floor cannot acquire a band at the handoff.
+    func testANeutralContractRecordsNoBand() {
+        var contract = SessionPolicy.ColdStartContract.seeded(for: .advanced)
+        contract.startingDifficultyFloor =
+            SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+        var policy = SessionPolicy.default
+        policy.coldStartContract = contract
+
+        var user = freshUser(level: .advanced)
+        user.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold - 1,
+            active: true
+        )
+
+        let outcome = ColdStartHandoff.afterCompletedSession(
+            user: user, sessionPolicy: policy, recentLogs: []
+        )
+        XCTAssertEqual(
+            outcome.user.coldStart.bandFloorAtHandoff,
+            SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
         )
     }
 
@@ -585,7 +684,11 @@ final class StartSeedTests: XCTestCase {
     func testARoutineSkipDoesNotChangeTheWithheldSet() async throws {
         let library = try await library()
         var warm = freshUser(level: .advanced)
-        warm.coldStart = User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
+        warm.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold,
+            active: false,
+            bandFloorAtHandoff: 3 // a real band, so the comparison below is not vacuously empty
+        )
 
         let completed = [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1)]
         var skipped = completed
@@ -600,10 +703,12 @@ final class StartSeedTests: XCTestCase {
             )
         )
 
+        let unchanged = ColdStartOverride.withheldByStartSeed(
+            library: library, user: warm, sessionPolicy: .default, recentLogs: completed
+        )
+        XCTAssertFalse(unchanged.isEmpty, "the fixture must have a band for the skip to fail to move")
         XCTAssertEqual(
-            ColdStartOverride.withheldByStartSeed(
-                library: library, user: warm, sessionPolicy: .default, recentLogs: completed
-            ),
+            unchanged,
             ColdStartOverride.withheldByStartSeed(
                 library: library, user: warm, sessionPolicy: .default, recentLogs: skipped
             )
@@ -1099,13 +1204,20 @@ final class StartSeedTests: XCTestCase {
             }
             logs.append(completedLog(of: workout, on: date(daysAgo: 12 - session * 2)))
 
-            let handoff = ColdStartHandoff.afterCompletedSession(user: user, sessionPolicy: policy)
+            let handoff = ColdStartHandoff.afterCompletedSession(
+                user: user, sessionPolicy: policy, recentLogs: logs
+            )
             user = handoff.user
             policy = handoff.sessionPolicy
         }
 
         XCTAssertFalse(user.coldStart.active, "cold start must have retired after the fifth session")
         XCTAssertNil(policy.coldStartContract, "the contract must be cleared at the handoff")
+        XCTAssertEqual(
+            user.coldStart.bandFloorAtHandoff,
+            SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced),
+            "the week ran unproblematically, so the recorded floor is the seeded one"
+        )
         let floor = try XCTUnwrap(coldStartTiers.values.min())
         XCTAssertGreaterThanOrEqual(
             floor,
@@ -1174,7 +1286,11 @@ final class StartSeedTests: XCTestCase {
     func testReturnServesTheGentlestTierDespiteTheColdStartBand() async throws {
         let library = try await library()
         var user = freshUser(level: .advanced)
-        user.coldStart = User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
+        user.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold,
+            active: false,
+            bandFloorAtHandoff: SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced)
+        )
         let policy = SessionPolicy.default
 
         // A strong pre-gap history, then a gap long enough to be a Return.

@@ -10,9 +10,11 @@ import Foundation
 ///   persisted history (including the just-saved log) and stored back on the user aggregate, so the
 ///   all-time `longestChain` stays honest and is never understated by a bounded log window.
 /// - **Cold-start handoff (US-G04).** This is the single caller of `ColdStartHandoff`: it advances
-///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, then
-///   reconciles the policy (clearing the now-inert `coldStartContract`). The user and policy are
-///   separate aggregates, so they are persisted separately.
+///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, recording
+///   the Start Seed floor the week actually ran at, then reconciles the policy (clearing the now-inert
+///   `coldStartContract`). The user and policy are separate aggregates, so they are persisted
+///   separately. The floor is resolved over the *full* history, not the caller's bounded `recentLogs`,
+///   so every down-signal the cold-start window produced is counted.
 /// - **HealthKit write (US-N03).** When a HealthKit service is wired, the completed session is mirrored
 ///   into Health as a workout. The write is fully isolated (its own `try?`) so a denied authorization or
 ///   a HealthKit failure never disrupts the essential bookkeeping above or blocks the completion; the
@@ -86,24 +88,31 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         //    snapshot would clobber it. Fall back to the snapshot only if the read is unavailable.
         let latest = (try? await userService.currentUser()) ?? user
 
-        // 3. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
+        // 3. Read the *full* persisted history (which now includes the just-saved `log`), not the
+        //    caller's bounded `recentLogs`. Both of the steps below need it and neither tolerates a
+        //    window: `longestChain` is an all-time historical maximum (US-H01: "a later break never
+        //    lowers it"), and the cold-start handoff records the Start Seed floor the week ran at,
+        //    which is resolved from every down-signal the window produced.
+        let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
+
+        // 4. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
         //    The policy read falls back to the neutral default until the Programmer has ever written
         //    one, exactly as `currentPolicy(for:)` does.
         let currentPolicy = try await policyStore.policy(for: latest.id) ?? .default
-        let handoff = ColdStartHandoff.afterCompletedSession(user: latest, sessionPolicy: currentPolicy)
+        let handoff = ColdStartHandoff.afterCompletedSession(
+            user: latest,
+            sessionPolicy: currentPolicy,
+            recentLogs: allLogs
+        )
 
-        // 4. Refresh the forgiving Consistency Score onto the user aggregate over the *full* persisted
-        //    history (which now includes the just-saved `log`), not the caller's bounded `recentLogs`.
-        //    `longestChain` is an all-time historical maximum (US-H01: "a later break never lowers it"),
-        //    so scoring over a bounded window would understate and overwrite the earned best run.
-        let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
+        // 5. Refresh the forgiving Consistency Score onto the user aggregate.
         var updatedUser = handoff.user
         updatedUser.consistency = try await consistencyService.consistency(
             for: allLogs,
             weeklyGoal: latest.consistency.weeklyGoal
         )
 
-        // 5. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
+        // 6. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
         //    only when the handoff actually changed it (i.e. cold-start just retired and cleared the
         //    contract). The two aggregates are saved separately, matching US-F03.
         try await userService.save(updatedUser)
@@ -111,7 +120,7 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
             try await policyStore.save(handoff.sessionPolicy, for: latest.id)
         }
 
-        // 6. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
+        // 7. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
         //    authorization or any HealthKit failure must never disrupt the bookkeeping above or block the
         //    completion. The service enforces idempotency by the log id, so a re-record never duplicates.
         if let healthKitService {

@@ -85,9 +85,19 @@ extension User {
         var sessionsLogged: Int
         /// Whether cold-start overrides are still in effect.
         var active: Bool
+        /// The Start Seed difficulty floor (US-O02) the cold-start week actually ran at, recorded
+        /// once by `ColdStartHandoff` at the moment the band retires. `nil` means no banded cold
+        /// start ever ran for this user - they are still inside the window, their record predates
+        /// US-O02, or their contract carried the neutral floor - and Step 5 then withholds nothing.
+        ///
+        /// This is deliberately recorded rather than re-derived: the engine's `recentLogs` window is
+        /// bounded (70 days), so the cold-start sessions that produced the band age out, and a
+        /// derivation would silently start reporting a band the user never lived through. See
+        /// `ColdStartOverride.withheldByStartSeed`.
+        var bandFloorAtHandoff: Int?
 
-        /// A brand-new user: no sessions logged yet, cold-start active. The documented
-        /// default for a legacy record that predates the `coldStart` field.
+        /// A brand-new user: no sessions logged yet, cold-start active, no band retired. The
+        /// documented default for a legacy record that predates the `coldStart` field.
         static let fresh = ColdStart(sessionsLogged: 0, active: true)
     }
 }

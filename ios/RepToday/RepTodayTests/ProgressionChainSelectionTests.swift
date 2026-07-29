@@ -473,15 +473,21 @@ final class ProgressionChainSelectionTests: XCTestCase {
 
     /// Setting withheld candidates aside is about *never having been offered*, not about novelty: a
     /// fresh candidate inside the band still wins, so variety is untouched in the steady state.
+    ///
+    /// The fixture puts a genuinely withheld candidate in the running - `w0` is a real chain the band
+    /// held out of reach - so the set-aside actually narrows the field here. It pins both halves at
+    /// once: drop the set-aside and the never-offered `w0` wins on difficulty; drop the freshness
+    /// preference and `a0`, worked last session, wins on active-chain recency.
     func testSelectStillPrefersAFreshCandidateInsideTheBand() {
-        let library = makeChain("a", [(id: "a0", difficulty: 3, criteria: "3x99 clean reps")])
+        let library = makeChain("w", [(id: "w0", difficulty: 1, criteria: "3x99 clean reps")])
+            + makeChain("a", [(id: "a0", difficulty: 3, criteria: "3x99 clean reps")])
             + makeChain("b", [(id: "b0", difficulty: 3, criteria: "3x99 clean reps")])
         let logs = [repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 1)]
 
         XCTAssertEqual(
             ProgressionChainSelection.select(
                 pattern: .push, library: library, pool: library, recentLogs: logs,
-                withheldByStartSeed: ["nothing_here"]
+                withheldByStartSeed: ["w0"]
             )?.exercise.id,
             "b0"
         )

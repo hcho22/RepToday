@@ -16,7 +16,10 @@ import Foundation
 ///
 /// - **`user.coldStart`** - `sessionsLogged` increments on each completed session and `active` flips
 ///   off (one-way) the moment the count reaches `handoffThreshold`. This is the switch
-///   `ColdStartOverride.isActive` reads; once it is false, Step 0 is a no-op.
+///   `ColdStartOverride.isActive` reads; once it is false, Step 0 is a no-op. In the same move the
+///   Start Seed floor the week actually ran at is recorded as `bandFloorAtHandoff`, so Step 5 can
+///   still tell "the engine never let this user see this movement" from "they outgrew it" long after
+///   the cold-start sessions have aged out of the engine's bounded log window.
 /// - **`sessionPolicy.coldStartContract`** - cleared to `nil` once cold-start is no longer active, so
 ///   the policy that reaches the engine carries no cold-start levers at all. Clearing the contract is
 ///   belt-and-suspenders with the `active` flag: Step 0 is gated on *both*, so either one retiring is
@@ -45,17 +48,35 @@ enum ColdStartHandoff {
     /// The retirement is **one-way** - once `active` is false the state is frozen and further completed
     /// sessions are a no-op, so a user can never fall back into cold start (a later gap is the Return
     /// override's job, US-E06, not cold start's).
-    static func advanced(_ coldStart: User.ColdStart) -> User.ColdStart {
+    ///
+    /// `bandFloorInForce` is the Start Seed difficulty floor the week ran at (`ColdStartOverride
+    /// .startSeed(...).difficultyFloor`, already eased by every down-signal the window produced). It is
+    /// written to `bandFloorAtHandoff` **only** on the session that retires cold-start, and only there,
+    /// because that is the one moment the floor is still knowable: the recording is the whole point of
+    /// the field. It defaults to the neutral floor, which records "no band ran" - the correct claim for
+    /// a caller with no cold-start contract in play.
+    static func advanced(
+        _ coldStart: User.ColdStart,
+        bandFloorInForce: Int = SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+    ) -> User.ColdStart {
         guard coldStart.active else { return coldStart }
         let logged = coldStart.sessionsLogged + 1
-        return User.ColdStart(sessionsLogged: logged, active: logged < handoffThreshold)
+        let retiring = logged >= handoffThreshold
+        return User.ColdStart(
+            sessionsLogged: logged,
+            active: !retiring,
+            bandFloorAtHandoff: retiring ? bandFloorInForce : coldStart.bandFloorAtHandoff
+        )
     }
 
     /// The user with their cold-start state advanced by one completed session (see `advanced(_:)`).
     /// Only `coldStart` changes; every other field is carried through untouched.
-    static func advanced(_ user: User) -> User {
+    static func advanced(
+        _ user: User,
+        bandFloorInForce: Int = SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+    ) -> User {
         var updated = user
-        updated.coldStart = advanced(user.coldStart)
+        updated.coldStart = advanced(user.coldStart, bandFloorInForce: bandFloorInForce)
         return updated
     }
 
@@ -75,13 +96,32 @@ enum ColdStartHandoff {
 
     // MARK: - Combined handoff
 
-    /// The user and policy after a completed session, reconciled together: the user's cold-start state
-    /// is advanced first, then the policy is reconciled against that *advanced* state so the contract is
-    /// cleared in the same step the `active` flag flips off. This is the single entry point the
-    /// post-session log-writer (US-L01) calls; the two aggregates are returned separately because they
-    /// are persisted separately.
-    static func afterCompletedSession(user: User, sessionPolicy: SessionPolicy) -> Outcome {
-        let advancedUser = advanced(user)
+    /// The user and policy after a completed session, reconciled together: the Start Seed floor in
+    /// force is resolved from the pre-handoff user and policy, the user's cold-start state is advanced
+    /// (recording that floor if this is the retiring session), then the policy is reconciled against
+    /// that *advanced* state so the contract is cleared in the same step the `active` flag flips off.
+    /// This is the single entry point the post-session log-writer (US-L01) calls; the two aggregates
+    /// are returned separately because they are persisted separately.
+    ///
+    /// `recentLogs` must include the just-completed session, so the floor recorded is the one the whole
+    /// week ran at: easing is monotonic (`ColdStartOverride.startSeed` only ever steps the floor down),
+    /// so the floor resolved last is the lowest of the window, and a movement was "never on offer"
+    /// exactly when it sits beneath it. Reading one session too many can therefore only ever *under*
+    /// claim - which is the safe direction, and the one "ease always wins" (US-E06) asks for.
+    ///
+    /// It is deliberately a required parameter rather than a defaulted one: an empty history reads as
+    /// "no down-signals", which would record the contract's un-eased *aim* instead of what actually ran.
+    static func afterCompletedSession(
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> Outcome {
+        let bandFloor = ColdStartOverride.startSeed(
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs
+        ).difficultyFloor
+        let advancedUser = advanced(user, bandFloorInForce: bandFloor)
         let reconciledPolicy = reconciled(sessionPolicy, with: advancedUser.coldStart)
         return Outcome(user: advancedUser, sessionPolicy: reconciledPolicy)
     }

@@ -44,13 +44,16 @@ import Foundation
 ///   so the whole candidate set comes back into scope and the gentlest tier is served, exactly as
 ///   before the band existed. Same for an injury filter or any other narrowing of the pool.
 /// - **A `tooHard` session** eases the band itself (`ColdStartOverride.startSeed`), so the tier the
-///   Start Seed just stepped down to stops being withheld in the same move. Nothing re-raises it.
+///   Start Seed just stepped down to stops being withheld in the same move. Nothing re-raises it -
+///   the floor `ColdStartHandoff` records at the handoff *is* that eased floor, so the de-escalation
+///   survives the retirement rather than being recomputed away by it.
 /// - **A skipped movement** changes nothing here at all - skipping is the product's escape hatch,
 ///   not evidence about ability.
 ///
-/// The band is also bounded by evidence, not by the onboarding self-report alone: once cold start
-/// retires, the reconstructed band is capped by the hardest tier the user's logs actually show (see
-/// `ColdStartOverride.withheldByStartSeed`), so an over-reported level narrows itself.
+/// The band is a fact about the user's own cold-start week, not a claim derived from the onboarding
+/// self-report: it is the live seed while cold start runs, and afterwards exactly the floor recorded
+/// on `User.ColdStart.bandFloorAtHandoff`. A user who never ran a banded cold start has no recorded
+/// floor and withholds nothing.
 ///
 /// Like the earlier steps this is a pure function of its inputs - the full `library` (so chains
 /// can be reasoned about end-to-end), the eligible `pool` from Step 4, and `recentLogs` - with no

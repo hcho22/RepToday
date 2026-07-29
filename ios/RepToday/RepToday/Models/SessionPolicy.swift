@@ -242,8 +242,10 @@ extension SessionPolicy.ColdStartContract {
     /// and an over-reported level is corrected downward within one cycle - the Asymmetric Ramp
     /// (US-E05) eases the volume, and `ColdStartOverride.startSeed` steps the *tier* itself back down
     /// on a `too_hard` rating or a bailed-on strength movement. Nothing re-raises the tier the seed
-    /// just lowered: `ColdStartOverride.withheldByStartSeed`, the only thing carrying the band past
-    /// the handoff, is resolved from that same eased seed.
+    /// just lowered: the only thing carrying the band past the handoff is
+    /// `User.ColdStart.bandFloorAtHandoff`, which `ColdStartHandoff` records *from that same eased
+    /// seed* on the retiring session. The floor below is therefore only ever the starting aim - what a
+    /// user is later judged against is the floor their own week ran at.
     static func startingDifficultyFloor(for level: FitnessLevel) -> Int {
         switch level {
         case .beginner: return 1

@@ -188,22 +188,23 @@ final class ExerciseLibraryTests: XCTestCase {
     /// picking one exercise *per chain* and then preferring a candidate the variety window has not
     /// seen, so a pattern with a single in-band chain hands the user the identical movement every
     /// session of the cold-start week however many tiers that one chain carries.
+    ///
+    /// The loop runs over `bandablePatterns` - every pattern the *catalog* offers - deliberately, not
+    /// over the patterns the band happens to leave standing. Deriving the expectation from the banded
+    /// subset would let a pattern with zero in-band movements drop out of the loop and pass, which is
+    /// exactly the case that breaks the guarantee.
     func testAdvancedStartBandHasRoomToRotate() {
         typealias Contract = SessionPolicy.ColdStartContract
 
         for level in FitnessLevel.allCases {
             let floor = Contract.startingDifficultyFloor(for: level)
             let cap = Contract.cappedMaxDifficulty(for: level)
-            let banded = exercises.filter {
-                $0.phase == .discipline
-                    && ($0.pillar == .strength || $0.pillar == .primal)
-                    && (floor...cap).contains($0.difficulty)
-            }
-            let patterns = Set(banded.map(\.movementPattern))
-            XCTAssertFalse(patterns.isEmpty, "\(level)'s band must reach some training pattern")
 
-            for pattern in patterns {
-                let chains = Set(banded.filter { $0.movementPattern == pattern }.map(\.progressionChainId))
+            for pattern in bandablePatterns {
+                let banded = bandableCatalog.filter {
+                    $0.movementPattern == pattern && (floor...cap).contains($0.difficulty)
+                }
+                let chains = Set(banded.map(\.progressionChainId))
                 XCTAssertGreaterThanOrEqual(
                     chains.count, 2,
                     "\(level)'s [\(floor), \(cap)] band leaves the \(pattern) pattern only "
@@ -211,6 +212,32 @@ final class ExerciseLibraryTests: XCTestCase {
                 )
             }
         }
+    }
+
+    /// The training catalog the Start Seed band applies to: Discipline-Phase strength and primal
+    /// movements (`ColdStartOverride` bands exactly these; mobility is never floored).
+    private var bandableCatalog: [Exercise] {
+        exercises.filter {
+            $0.phase == .discipline && ($0.pillar == .strength || $0.pillar == .primal)
+        }
+    }
+
+    /// Every movement pattern that catalog reaches. The band's guarantees are asserted over all of
+    /// these, so a pattern the band empties fails rather than silently disappearing from the check.
+    private var bandablePatterns: [MovementPattern] {
+        MovementPattern.allCases.filter { pattern in
+            bandableCatalog.contains { $0.movementPattern == pattern }
+        }
+    }
+
+    /// The catalog must actually reach the patterns the engine bands, so the two gates below are
+    /// never vacuously true.
+    func testTheBandableCatalogCoversTheTrainingPatterns() {
+        XCTAssertEqual(
+            Set(bandablePatterns),
+            [.push, .pull, .squat, .hinge, .core, .locomotion],
+            "the Start Seed band's guarantees are only meaningful over the patterns it reaches"
+        )
     }
 
     /// Every banded pattern spans at least two *tiers* inside a seeded band, so the band is a real
@@ -221,6 +248,10 @@ final class ExerciseLibraryTests: XCTestCase {
     /// Only the levels that actually band are checked - a beginner's floor is the neutral `1`, so
     /// `ColdStartOverride.startBandedPool` is a no-op for them and the whole catalog beneath the cap
     /// stays eligible.
+    ///
+    /// Like the gate above, this walks every pattern the catalog offers rather than the patterns the
+    /// band leaves standing: a pattern the band empties has *one* tier's worth of coverage (none), and
+    /// must fail here rather than exempt itself from the loop.
     func testEveryBandedPatternSpansTwoTiersInsideItsStartBand() {
         typealias Contract = SessionPolicy.ColdStartContract
 
@@ -229,13 +260,12 @@ final class ExerciseLibraryTests: XCTestCase {
             let cap = Contract.cappedMaxDifficulty(for: level)
             guard floor > Contract.neutralStartingDifficultyFloor else { continue }
 
-            let banded = exercises.filter {
-                $0.phase == .discipline
-                    && ($0.pillar == .strength || $0.pillar == .primal)
-                    && (floor...cap).contains($0.difficulty)
-            }
-            for pattern in Set(banded.map(\.movementPattern)) {
-                let tiers = Set(banded.filter { $0.movementPattern == pattern }.map(\.difficulty))
+            for pattern in bandablePatterns {
+                let tiers = Set(
+                    bandableCatalog
+                        .filter { $0.movementPattern == pattern && (floor...cap).contains($0.difficulty) }
+                        .map(\.difficulty)
+                )
                 XCTAssertGreaterThanOrEqual(
                     tiers.count, 2,
                     "\(level)'s [\(floor), \(cap)] band collapses the \(pattern) pattern to tier(s) "

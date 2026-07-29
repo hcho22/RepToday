@@ -141,7 +141,7 @@ final class ColdStartHandoffTests: XCTestCase {
         let before = user(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true)
         let policy = SessionPolicy.seeded(forFitnessLevel: .beginner)
 
-        let outcome = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy)
+        let outcome = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy, recentLogs: [])
 
         XCTAssertEqual(outcome.user.coldStart.sessionsLogged, ColdStartHandoff.handoffThreshold)
         XCTAssertFalse(outcome.user.coldStart.active, "The fifth session retires cold-start.")
@@ -152,18 +152,64 @@ final class ColdStartHandoffTests: XCTestCase {
         let before = user(sessionsLogged: 1, active: true)
         let policy = SessionPolicy.seeded(forFitnessLevel: .intermediate)
 
-        let outcome = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy)
+        let outcome = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy, recentLogs: [])
 
         XCTAssertEqual(outcome.user.coldStart.sessionsLogged, 2)
         XCTAssertTrue(outcome.user.coldStart.active)
         XCTAssertNotNil(outcome.sessionPolicy.coldStartContract, "Mid-window, the contract stays.")
+        XCTAssertNil(
+            outcome.user.coldStart.bandFloorAtHandoff,
+            "Mid-window there is no handoff yet, so nothing is recorded."
+        )
+    }
+
+    // MARK: - Recording the band that ran (US-O02)
+
+    /// The retiring session records the Start Seed floor the week actually ran at, and only that
+    /// session does. Step 5 reads this back long after the cold-start logs have aged out of the
+    /// engine's bounded window, so it is the one durable record of what was ever on offer.
+    func testHandoffRecordsTheBandFloorTheWeekRanAt() {
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+
+        var state = User.ColdStart.fresh
+        for logged in 1..<ColdStartHandoff.handoffThreshold {
+            state = ColdStartHandoff.advanced(state, bandFloorInForce: 3)
+            XCTAssertEqual(state.sessionsLogged, logged)
+            XCTAssertNil(state.bandFloorAtHandoff, "Only the retiring session records the band.")
+        }
+
+        let outcome = ColdStartHandoff.afterCompletedSession(
+            user: user(sessionsLogged: state.sessionsLogged, active: true),
+            sessionPolicy: policy,
+            recentLogs: []
+        )
+        XCTAssertFalse(outcome.user.coldStart.active)
+        XCTAssertEqual(
+            outcome.user.coldStart.bandFloorAtHandoff,
+            SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced)
+        )
+    }
+
+    /// A handoff with no cold-start contract in play records the neutral floor - "no band ran" - so a
+    /// band is never asserted over a user who never had one.
+    func testHandoffWithoutAContractRecordsNoBand() {
+        let outcome = ColdStartHandoff.afterCompletedSession(
+            user: user(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true),
+            sessionPolicy: .default,
+            recentLogs: []
+        )
+        XCTAssertEqual(
+            outcome.user.coldStart.bandFloorAtHandoff,
+            SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+        )
     }
 
     func testAfterCompletedSessionCarriesOtherUserFieldsThrough() {
         let before = user(sessionsLogged: 0, active: true)
         let outcome = ColdStartHandoff.afterCompletedSession(
             user: before,
-            sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .beginner)
+            sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .beginner),
+            recentLogs: []
         )
         XCTAssertEqual(outcome.user.id, before.id)
         XCTAssertEqual(outcome.user.profile, before.profile)
@@ -176,7 +222,7 @@ final class ColdStartHandoffTests: XCTestCase {
         // After the handoff, both the flag and the contract have retired, so Step 0 does nothing.
         let before = user(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true)
         let policy = SessionPolicy.seeded(forFitnessLevel: .beginner)
-        let outcome = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy)
+        let outcome = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy, recentLogs: [])
 
         XCTAssertFalse(
             ColdStartOverride.isActive(user: outcome.user, sessionPolicy: outcome.sessionPolicy),
@@ -211,8 +257,8 @@ final class ColdStartHandoffTests: XCTestCase {
     func testDeterministic() {
         let before = user(sessionsLogged: 3, active: true)
         let policy = SessionPolicy.seeded(forFitnessLevel: .beginner)
-        let a = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy)
-        let b = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy)
+        let a = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy, recentLogs: [])
+        let b = ColdStartHandoff.afterCompletedSession(user: before, sessionPolicy: policy, recentLogs: [])
         XCTAssertEqual(a, b)
     }
 }

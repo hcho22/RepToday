@@ -230,16 +230,23 @@ enum ColdStartOverride {
     /// narrower pool (a Return, an injury) simply makes the band unreachable and every movement
     /// eligible again.
     ///
-    /// The band being reconstructed is the one that actually ran:
+    /// The band is the one that actually ran, never one asserted after the fact:
     /// - **While cold start is active** it is the live seed (`startSeed`), already eased by every
     ///   down-signal, so a `tooHard` session stops withholding the gentler tier in the same move that
     ///   lowers the floor.
-    /// - **Once cold start retires** the contract is gone, so the level's seeded floor is
-    ///   reconstructed - but bounded by the hardest banded tier the user's logs actually show. Their
-    ///   own history, not the never-revised onboarding self-report, is what the claim rests on: a user
-    ///   who reported "advanced" and trains at difficulty 2 withholds nothing above 2.
+    /// - **Once cold start retires** it is `user.coldStart.bandFloorAtHandoff` - the floor
+    ///   `ColdStartHandoff` recorded, from that same eased seed, on the session that retired the band.
+    ///   A user with no recorded floor never ran a banded cold start (they are still inside the window,
+    ///   their record predates US-O02, or their contract carried the neutral floor) and withholds
+    ///   nothing at all.
     ///
-    /// Pure over its inputs (no wall clock; the band and the evidence both come from `recentLogs`),
+    /// Recording beats re-deriving here, and the reason is the window: the engine's `recentLogs` is
+    /// bounded (70 days at the Ready Screen), so the cold-start sessions that produced the band - and
+    /// the down-signals that eased it - age out. A derivation would then quietly re-raise the tier a
+    /// `tooHard` rating lowered and claim a band the user never lived through. The recorded floor is a
+    /// fact about their own week and stays true for the life of the account.
+    ///
+    /// Pure over its inputs (no wall clock; the band comes from the user's own state and `recentLogs`),
     /// like the rest of Step 0.
     static func withheldByStartSeed(
         library: [Exercise],
@@ -248,7 +255,6 @@ enum ColdStartOverride {
         recentLogs: [WorkoutLog]
     ) -> Set<String> {
         let floor = bandFloorInForce(
-            library: library,
             user: user,
             sessionPolicy: sessionPolicy,
             recentLogs: recentLogs
@@ -274,10 +280,15 @@ enum ColdStartOverride {
     }
 
     /// The Start Seed's difficulty floor as it applies to this user right now: the live seed while
-    /// cold start is active, otherwise the level's seeded floor bounded by demonstrated ability (see
-    /// `withheldByStartSeed`). `neutralStartingDifficultyFloor` when nothing is banded.
+    /// cold start is active, otherwise the floor `ColdStartHandoff` recorded when the band retired
+    /// (see `withheldByStartSeed`). `neutralStartingDifficultyFloor` when no band ever ran, which is
+    /// what a user who never had one - a pre-US-O02 record, a generation against `SessionPolicy
+    /// .default` - correctly reports, rather than having a band asserted over them retroactively.
+    ///
+    /// Note this never reads `profile.fitnessLevel`. That self-report seeds the contract at onboarding
+    /// and is never revised; what the band actually ran at is the recorded fact, and it is the only
+    /// thing a claim about the user's own past may rest on.
     private static func bandFloorInForce(
-        library: [Exercise],
         user: User,
         sessionPolicy: SessionPolicy,
         recentLogs: [WorkoutLog]
@@ -286,26 +297,8 @@ enum ColdStartOverride {
             return startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
                 .difficultyFloor
         }
-        let seeded = SessionPolicy.ColdStartContract.startingDifficultyFloor(
-            for: user.profile.fitnessLevel
-        )
-        let demonstrated = demonstratedBandDifficulty(library: library, recentLogs: recentLogs)
-        return demonstrated > 0 ? min(seeded, demonstrated) : seeded
-    }
-
-    /// The hardest banded (strength/primal) tier the user has actually worked - not skipped - in
-    /// `recentLogs`, or `0` when they have worked none.
-    private static func demonstratedBandDifficulty(
-        library: [Exercise],
-        recentLogs: [WorkoutLog]
-    ) -> Int {
-        let worked = recentLogs.reduce(into: Set<String>()) { ids, log in
-            for logged in log.exercises where !logged.skipped { ids.insert(logged.exerciseId) }
-        }
-        return library
-            .filter { isBanded($0) && worked.contains($0.id) }
-            .map(\.difficulty)
-            .max() ?? 0
+        return user.coldStart.bandFloorAtHandoff
+            ?? SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
     }
 
     /// The Start Seed volume in force for this generation, or `.neutral` when Step 0 is inactive.
