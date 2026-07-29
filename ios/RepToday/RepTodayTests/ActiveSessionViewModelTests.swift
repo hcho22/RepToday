@@ -708,9 +708,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let exerciseService = try MockExerciseService()
         let library = try await exerciseService.exercises()
         let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        // At the movement's own default, the target Step 6 gives a user with no history of it - so the
+        // slot's budget is the one the assembler would really have sized this session with.
         let slot = PrescribedExercise(
-            id: UUID(), exercise: target, sets: 3, reps: 12, durationSeconds: nil,
-            restSeconds: SessionAssembly.strengthRestSeconds
+            id: UUID(), exercise: target, sets: 3, reps: try XCTUnwrap(target.defaultReps),
+            durationSeconds: nil, restSeconds: SessionAssembly.strengthRestSeconds
         )
         let block = WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])
         let workout = Workout(

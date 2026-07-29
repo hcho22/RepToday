@@ -21,7 +21,8 @@ import Foundation
 ///   mobility-led session the opening warm-up and the Movement Practice block are both mobility, so
 ///   the opening flow doubles as warm-up + training, exactly as the PRD describes.
 /// - **Timing fit** - the planned wall-clock is `Σ(sets × workPerSet) + rests + transitions`, where
-///   `workPerSet` scales the movement's estimate to the per-set target Step 6 actually prescribed; a
+///   `workPerSet` re-prices the movement's estimate as a fixed per-set setup cost plus the per-unit
+///   work of the target Step 6 actually prescribed (see `workSecondsPerSet`); a
 ///   deterministic best-fit pass trims or extends the session (adding/removing whole exercises or
 ///   individual sets, never touching the capacity-relative *per-set* target from Step 6) until it
 ///   lands within `toleranceSeconds` of the request.
@@ -68,6 +69,20 @@ enum SessionAssembly {
     /// Hard backstop on the timing-fit loop; each accepted step strictly shrinks the timing error, so
     /// the loop converges well within this in practice.
     static let maxFitIterations = 200
+
+    /// Seconds of work in one second of a prescribed hold - the per-unit half of the work model in
+    /// `workSecondsPerSet`, and the one half that needs no calibration: a 40-second hold is 40 seconds
+    /// of work by definition.
+    static let secondsPerHoldSecond = 1.0
+
+    /// Seconds of work in one rep of a rep-based movement - the per-unit half of the work model in
+    /// `workSecondsPerSet`. A rep, unlike a hold, carries no authored duration, so the constant is
+    /// calibrated from the catalog's own highest-rep entries, where a set is nearly all work and almost
+    /// no setup: `hinge_glute_bridge` (15 reps in 40s), `push_wall` (12 in 35s) and `squat_bodyweight`
+    /// (15 in 45s) sit at 2.7-3.0 seconds per rep, a controlled bodyweight cadence. A movement whose
+    /// authored estimate implies a slower cadence than this keeps the excess as fixed per-set setup
+    /// rather than per-rep cost, which is what the `min` in `workSecondsPerSet` enforces.
+    static let secondsPerRep = 3.0
 
     // MARK: - Entry point
 
@@ -283,27 +298,44 @@ enum SessionAssembly {
     // MARK: - Planned wall-clock
 
     /// The planned seconds one set of `exercise` takes at the per-set target Step 6 actually
-    /// prescribed.
+    /// prescribed: a fixed per-set `setup` cost plus `perUnit × prescribed` of work.
     ///
     /// `Exercise.estimatedTimePerSetSeconds` is a single constant calibrated against the movement's
     /// *own* default per-set value (`defaultReps` / `defaultDurationSeconds`), so reading it directly
     /// silently assumes every set is prescribed at that default. It is not: Step 6 is
     /// capacity-relative, and the cold-start Start Seed (US-O02) opens an active user at up to x1.30 of
-    /// the default on their very first session. Scaling the estimate by `prescribed / default` keeps
-    /// the planned wall-clock - and therefore the ±1 minute promise the timing fit is measured against
-    /// - honest about the session the user is actually going to do. A movement with no default to
-    /// scale against falls back to the flat estimate.
+    /// the default on their very first session.
     ///
-    /// - Note: The model is proportional because the library carries no separate setup/transition
-    ///   component per set; the per-set rest and inter-exercise transition are counted separately.
+    /// Nor is that estimate pure per-unit work: getting into position, bracing, switching sides and
+    /// getting out again is paid once per set whether the set is 8 reps or 20, and in the catalog that
+    /// fixed part is often the *bulk* of the estimate (`mobility_9090_hip` carries a 70s estimate on a
+    /// 30s hold, so 40s of it is setup). Scaling the whole constant by `prescribed / default` would
+    /// therefore charge a grown 40s hold 93s instead of the real ~80s, and understate a shrunk one, so
+    /// the estimate is split into its two components instead:
+    /// - a **hold**'s per-unit cost is `secondsPerHoldSecond` - one second of work per prescribed
+    ///   second - so its setup is the authored remainder, `estimate - defaultDurationSeconds`;
+    /// - a **rep**'s per-unit cost is `secondsPerRep`, capped at the movement's own authored
+    ///   `estimate / defaultReps` so a fast, high-rep movement never yields a negative setup, and its
+    ///   setup is again the remainder.
+    ///
+    /// Both halves reproduce `estimatedTimePerSetSeconds` exactly at the movement's own default, so a
+    /// default-sized set is priced exactly as the catalog authored it and only a target Step 6 moved
+    /// off the default is re-priced. That keeps the planned wall-clock - and therefore the ±1 minute
+    /// promise the timing fit is measured against - honest about the session the user is actually going
+    /// to do. A movement with no default to scale against falls back to the flat estimate.
+    ///
+    /// - Note: This is per-set *work* only; the between-set rest and the inter-exercise transition are
+    ///   counted separately by `plannedSeconds`.
     static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
+        let estimate = exercise.estimatedTimePerSetSeconds
         let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
         let prescribed = exercise.isHold ? durationSeconds : reps
-        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else {
-            return exercise.estimatedTimePerSetSeconds
-        }
-        let scaled = Double(exercise.estimatedTimePerSetSeconds) * Double(prescribed) / Double(baseline)
-        return max(1, Int(scaled.rounded()))
+        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else { return estimate }
+
+        let authoredPerUnit = Double(estimate) / Double(baseline)
+        let perUnit = min(exercise.isHold ? secondsPerHoldSecond : secondsPerRep, authoredPerUnit)
+        let setup = Double(estimate) - perUnit * Double(baseline)
+        return max(1, Int((setup + perUnit * Double(prescribed)).rounded()))
     }
 
     /// The planned seconds one set of a prescribed slot takes, at the target it actually carries.

@@ -67,36 +67,81 @@ final class ExerciseSwapTests: XCTestCase {
     }
 
     /// A prescribed slot for `exercise` at the given structure, mirroring what the assembler would
-    /// have produced (rep-based gets reps, holds get seconds).
+    /// have produced (rep-based gets reps, holds get seconds). `perSet` defaults to the movement's own
+    /// per-set default - the target Step 6 hands a user with no history of it - so a slot is never in a
+    /// state the engine could not have produced for the fixture's own (empty) log set.
     private func prescription(
         for exercise: Exercise,
         sets: Int = 3,
-        perSet: Int = 12,
+        perSet: Int? = nil,
         rest: Int = SessionAssembly.strengthRestSeconds
     ) -> PrescribedExercise {
-        PrescribedExercise(
+        let value = perSet
+            ?? (exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps)
+            ?? 12
+        return PrescribedExercise(
             id: UUID(),
             exercise: exercise,
             sets: sets,
-            reps: exercise.isHold ? nil : perSet,
-            durationSeconds: exercise.isHold ? perSet : nil,
+            reps: exercise.isHold ? nil : value,
+            durationSeconds: exercise.isHold ? value : nil,
             restSeconds: rest
         )
     }
 
     /// A one-block workout wrapping `prescriptions`, enough for the swap to read the session's
-    /// existing movements.
-    private func workout(_ prescriptions: [PrescribedExercise]) -> Workout {
+    /// existing movements. `wasReturn` stamps the session the way the assembler does, so a swap can be
+    /// exercised on a Return.
+    private func workout(_ prescriptions: [PrescribedExercise], wasReturn: Bool = false) -> Workout {
         Workout(
             id: UUID(),
             createdAt: asOf,
             shape: .blend,
             focusPillar: nil,
             requestedMinutes: 20,
+            wasReturn: wasReturn,
             blocks: [
                 WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: prescriptions)
             ]
         )
+    }
+
+    /// A log in which `worked` were each performed for `sets` sets at `perSet`, so a movement has the
+    /// demonstrated capacity the Step 6 levers act on.
+    private func log(_ worked: [Exercise], sets: Int, perSet: Int, daysAgo: Int) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: date(daysAgo: daysAgo),
+            requestedMinutes: 20,
+            durationMinutes: 20,
+            shape: .blend,
+            focusPillar: nil,
+            perceivedDifficulty: .justRight,
+            exercises: worked.map { exercise in
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: exercise.id,
+                    pillar: exercise.pillar,
+                    movementPattern: exercise.movementPattern,
+                    completedSets: Array(
+                        repeating: CompletedSet(
+                            reps: exercise.isHold ? nil : perSet,
+                            durationSeconds: exercise.isHold ? perSet : nil
+                        ),
+                        count: sets
+                    ),
+                    skipped: false
+                )
+            }
+        )
+    }
+
+    /// The planned wall-clock of one slot, measured exactly as the engine sizes a session: each set at
+    /// the work its own target really costs, plus the rests between them.
+    private func slotSeconds(of prescription: PrescribedExercise) -> Int {
+        prescription.sets * SessionAssembly.workSecondsPerSet(of: prescription)
+            + max(0, prescription.sets - 1) * prescription.restSeconds
     }
 
     /// A minimal fixture exercise, so a no-alternative / out-of-budget scenario can be constructed
@@ -133,11 +178,23 @@ final class ExerciseSwapTests: XCTestCase {
         )
     }
 
-    private func substitute(_ outcome: SwapOutcome) throws -> PrescribedExercise {
+    /// Unwraps a `.substituted` outcome, *failing* the test when the swap declined. A `.noAlternative`
+    /// is a real regression in every test that calls this - it must never be skipped away, or the
+    /// assertions that follow silently stop running.
+    private func substitute(
+        _ outcome: SwapOutcome,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> PrescribedExercise {
         guard case let .substituted(prescription) = outcome else {
-            throw XCTSkip("expected a substitute, got \(outcome)")
+            XCTFail("expected a substitute, got \(outcome)", file: file, line: line)
+            throw SwapTestFailure.expectedSubstitute
         }
         return prescription
+    }
+
+    private enum SwapTestFailure: Error {
+        case expectedSubstitute
     }
 
     // MARK: - Valid swap within constraints (PRD validation)
@@ -180,14 +237,71 @@ final class ExerciseSwapTests: XCTestCase {
         XCTAssertEqual(result.sets, slot.sets, "set count is preserved for timing fidelity")
         XCTAssertEqual(result.restSeconds, slot.restSeconds, "rest is preserved for timing fidelity")
 
-        let originalSlot = slot.sets * target.estimatedTimePerSetSeconds
-            + (slot.sets - 1) * slot.restSeconds
-        let substituteSlot = result.sets * result.exercise.estimatedTimePerSetSeconds
-            + (result.sets - 1) * result.restSeconds
+        // Measured the way the engine sizes a session: each side at the target it actually carries,
+        // not at the two movements' default-sized estimates.
         XCTAssertLessThanOrEqual(
-            abs(substituteSlot - originalSlot), ExerciseSwap.slotToleranceSeconds,
+            abs(slotSeconds(of: result) - slotSeconds(of: slot)), ExerciseSwap.slotToleranceSeconds,
             "the swap must not move the slot's wall-clock beyond its tolerance"
         )
+    }
+
+    /// The budget check prices both sides at their *own* targets, so a capacity-grown slot cannot be
+    /// swapped for a movement whose flat estimate happens to match while its actual work does not.
+    /// Before this, both sides were compared at `estimatedTimePerSetSeconds` and this swap sailed
+    /// through with a drift of zero while the session lost minutes.
+    func testSwapRejectsAPeerThatOnlyMatchesAtItsDefaultSizedEstimate() async throws {
+        let library = try await library()
+        let diamond = try XCTUnwrap(library.first { $0.id == "push_diamond" })
+        let pike = try XCTUnwrap(library.first { $0.id == "push_pike" })
+
+        // Two movements with identical estimates and defaults (45s / 8 reps), so a flat comparison
+        // reports zero drift - but the slot is prescribed at 20 reps, well above the 8-rep default.
+        XCTAssertEqual(diamond.estimatedTimePerSetSeconds, pike.estimatedTimePerSetSeconds)
+        XCTAssertEqual(diamond.defaultReps, pike.defaultReps)
+        let grown = prescription(for: diamond, sets: 3, perSet: 20)
+
+        // The substitute has no history, so it would open at its own 8-rep default: far less work per
+        // set than the 20-rep slot it replaces.
+        let outcome = ExerciseSwap.swap(
+            grown,
+            in: workout([grown]),
+            user: user(),
+            library: [diamond, pike],
+            recentLogs: []
+        )
+        XCTAssertEqual(
+            outcome, .noAlternative,
+            "a newcomer's starting target is not a comparable time cost for a capacity-grown slot"
+        )
+    }
+
+    /// Whatever the swap does hand back, it lands inside the tolerance measured against the session's
+    /// own work model - across every rep-based and hold slot the real library can produce.
+    func testEverySubstituteTheLibraryOffersStaysInsideTheSlotBudget() async throws {
+        let library = try await library()
+        let user = user(level: .advanced)
+        var swapped = 0
+
+        for movement in library {
+            let slot = prescription(
+                for: movement,
+                perSet: movement.isHold
+                    ? (movement.defaultDurationSeconds ?? 30)
+                    : (movement.defaultReps ?? 10)
+            )
+            guard case let .substituted(result) = ExerciseSwap.swap(
+                slot, in: workout([slot]), user: user, library: library, recentLogs: []
+            ) else { continue }
+            swapped += 1
+            XCTAssertLessThanOrEqual(
+                abs(slotSeconds(of: result) - slotSeconds(of: slot)),
+                ExerciseSwap.slotToleranceSeconds,
+                "swapping \(movement.id) for \(result.exercise.id) moved the slot out of budget"
+            )
+        }
+        // A movement whose pattern has no in-band peer legitimately declines, so the loop tolerates
+        // `.noAlternative` - but not *every* movement declining, which would make the sweep vacuous.
+        XCTAssertGreaterThan(swapped, library.count / 2, "most of the library must still offer a swap")
     }
 
     func testSubstituteCarriesACapacityRelativePerSetTarget() async throws {
@@ -320,6 +434,147 @@ final class ExerciseSwapTests: XCTestCase {
         XCTAssertEqual(result.exercise.movementPattern, .push)
         XCTAssertNotEqual(result.exercise.id, floorDips.id, "must not duplicate a movement already in the session")
         XCTAssertNotEqual(result.exercise.id, standard.id, "must not return the swapped movement itself")
+    }
+
+    // MARK: - The substitute is sized by the same Step 6 levers as the slot it replaces
+
+    /// A push slot whose only in-band peer (`push_knee`) already has demonstrated capacity, so every
+    /// Step 6 lever has something to act on. One set keeps the slot's own budget check out of the way.
+    private func leveredSwapFixture(
+        library: [Exercise]
+    ) throws -> (slot: PrescribedExercise, peer: Exercise, logs: [WorkoutLog]) {
+        let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let peer = try XCTUnwrap(library.first { $0.id == "push_knee" })
+        return (
+            prescription(for: target, sets: 1),
+            peer,
+            [log([peer], sets: 3, perSet: 12, daysAgo: 3)]
+        )
+    }
+
+    /// A Return holds every assembled slot below full volume (US-E06); a swapped-in slot must be held
+    /// back too, or one tap hands the returning user the single hardest slot in a session whose whole
+    /// point is to be uniformly gentle.
+    func testSwapOnAReturnCarriesTheReentryEase() async throws {
+        let library = try await library()
+        let fixture = try leveredSwapFixture(library: library)
+        let catalog = [fixture.slot.exercise, fixture.peer]
+
+        let steady = try substitute(
+            ExerciseSwap.swap(
+                fixture.slot,
+                in: workout([fixture.slot], wasReturn: false),
+                user: user(),
+                library: catalog,
+                recentLogs: fixture.logs
+            )
+        )
+        let returning = try substitute(
+            ExerciseSwap.swap(
+                fixture.slot,
+                in: workout([fixture.slot], wasReturn: true),
+                user: user(),
+                library: catalog,
+                recentLogs: fixture.logs
+            )
+        )
+
+        XCTAssertEqual(returning.exercise.id, steady.exercise.id, "the same movement is chosen either way")
+        XCTAssertLessThan(
+            try XCTUnwrap(returning.reps), try XCTUnwrap(steady.reps),
+            "a substitute on a Return must carry the eased volume, not the full capacity target"
+        )
+        XCTAssertEqual(
+            returning.reps,
+            AdaptiveOverload.target(
+                for: returning.exercise,
+                recentLogs: fixture.logs,
+                reentryScale: ReturnOverride.reentryFloorScale
+            ).reps,
+            "the ease applied is the Return's own floor scale"
+        )
+    }
+
+    /// The Re-entry Ramp sessions that follow a Return are eased too, by the ramp's own partial scale.
+    func testSwapDuringTheReentryRampCarriesThePartialEase() async throws {
+        let library = try await library()
+        let fixture = try leveredSwapFixture(library: library)
+        var ramping = SessionPolicy.default
+        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 1)
+
+        let result = try substitute(
+            ExerciseSwap.swap(
+                fixture.slot,
+                in: workout([fixture.slot], wasReturn: false),
+                user: user(),
+                library: [fixture.slot.exercise, fixture.peer],
+                recentLogs: fixture.logs,
+                sessionPolicy: ramping
+            )
+        )
+        XCTAssertEqual(
+            result.reps,
+            AdaptiveOverload.target(
+                for: result.exercise,
+                recentLogs: fixture.logs,
+                reentryScale: ReturnOverride.reentryScale(isReturn: false, reentry: ramping.reentry)
+            ).reps,
+            "a swap mid-ramp must carry the ramp's partial ease, not the full capacity target"
+        )
+    }
+
+    /// The general property the two tests above are instances of: *every* Step 6 lever the session was
+    /// sized with visibly moves the substitute's target. A lever the swap seam forgets to thread makes
+    /// its row here collapse onto the neutral target, so a third one cannot go missing silently.
+    func testEveryStep6LeverMovesTheSubstitutesTarget() async throws {
+        let library = try await library()
+        let fixture = try leveredSwapFixture(library: library)
+        let catalog = [fixture.slot.exercise, fixture.peer]
+
+        func reps(policy: SessionPolicy = .default, wasReturn: Bool = false) throws -> Int {
+            let result = try substitute(
+                ExerciseSwap.swap(
+                    fixture.slot,
+                    in: workout([fixture.slot], wasReturn: wasReturn),
+                    user: user(),
+                    library: catalog,
+                    recentLogs: fixture.logs,
+                    sessionPolicy: policy
+                )
+            )
+            return try XCTUnwrap(result.reps)
+        }
+
+        let neutral = try reps()
+
+        var faster = SessionPolicy.default
+        faster.progressionRate = 3.0
+        XCTAssertGreaterThan(try reps(policy: faster), neutral, "progressionRate (US-E03) must reach the swap")
+
+        XCTAssertLessThan(try reps(wasReturn: true), neutral, "the Return ease (US-E06) must reach the swap")
+
+        var ramping = SessionPolicy.default
+        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 1)
+        XCTAssertLessThan(try reps(policy: ramping), neutral, "the Re-entry Ramp (US-E06) must reach the swap")
+
+        // The Start Seed's volume half (US-O02) only reaches a *no-history* target, so it is pinned on
+        // the untouched peer: a fresh advanced user's substitute opens above the movement's own default.
+        let fresh = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let freshSlot = prescription(for: fresh, sets: 1)
+        let seeded = try substitute(
+            ExerciseSwap.swap(
+                freshSlot,
+                in: workout([freshSlot]),
+                user: user(level: .advanced),
+                library: catalog,
+                recentLogs: [],
+                sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced)
+            )
+        )
+        XCTAssertGreaterThan(
+            try XCTUnwrap(seeded.reps), try XCTUnwrap(seeded.exercise.defaultReps),
+            "the Start Seed (US-O02) must reach the swap"
+        )
     }
 
     // MARK: - Determinism

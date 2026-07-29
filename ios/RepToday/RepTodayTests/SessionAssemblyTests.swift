@@ -247,11 +247,12 @@ final class SessionAssemblyTests: XCTestCase {
 
     // MARK: - Blend honors the Step 2 pillar weights
 
-    /// Planned wall-clock of a single materialized block (`Σ sets × est + (sets - 1) × rest`), used to
-    /// compare how much session time each pillar block actually owns.
+    /// Planned wall-clock of a single materialized block (`Σ sets × workPerSet + (sets - 1) × rest`),
+    /// measured with the engine's own work model, used to compare how much session time each pillar
+    /// block actually owns.
     private func plannedSeconds(_ block: WorkoutBlock) -> Int {
         block.exercises.reduce(0) { sum, p in
-            sum + p.sets * p.exercise.estimatedTimePerSetSeconds + max(0, p.sets - 1) * p.restSeconds
+            sum + p.sets * SessionAssembly.workSecondsPerSet(of: p) + max(0, p.sets - 1) * p.restSeconds
         }
     }
 

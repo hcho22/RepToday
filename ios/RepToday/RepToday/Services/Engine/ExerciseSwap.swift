@@ -16,10 +16,12 @@ import Foundation
 ///   them: if the only same-pattern options are gated, over-cap, or hard on an injury, there is no
 ///   safe substitute and the step says so rather than reaching for an unsafe pick.
 /// - **Timing fidelity** - the substitute keeps the original slot's set count and rest, so the only
-///   wall-clock change is the difference in per-set time between the two movements; a candidate whose
+///   wall-clock change is the difference in per-set *work* between the two movements; a candidate whose
 ///   best-fit slot would move the session by more than `slotToleranceSeconds` is rejected as
 ///   out-of-budget. The per-set target itself (reps or hold seconds) is recomputed capacity-relative
-///   for the substitute via `AdaptiveOverload`, exactly as assembly would have.
+///   for the substitute via `AdaptiveOverload`, exactly as assembly would have, and both sides of the
+///   budget check are then priced through `SessionAssembly.workSecondsPerSet` at the target each
+///   movement actually carries - the same arithmetic the session was sized with.
 ///
 /// Like every other engine step this is a pure function of its inputs - the slot, the `Workout`, the
 /// `User`, the full `library`, and `recentLogs` - with no hidden clock or library lookup, so a given
@@ -58,8 +60,9 @@ enum ExerciseSwap {
     static let difficultyBandWidth = 1
 
     /// The most a swap may move the session's wall-clock: the substitute keeps the slot's set count
-    /// and rest, so the slot's time changes only by `sets × |Δ est-per-set|`; a candidate whose
-    /// change exceeds this is rejected so a swap never meaningfully alters the session length. Tunable.
+    /// and rest, so the slot's time changes only by `sets × |Δ work-per-set|`, each side priced at the
+    /// target it actually carries; a candidate whose change exceeds this is rejected so a swap never
+    /// meaningfully alters the session length. Tunable.
     static let slotToleranceSeconds = 30
 
     // MARK: Entry point
@@ -73,11 +76,15 @@ enum ExerciseSwap {
     /// rest preserved.
     ///
     /// `sessionPolicy` is the same per-user program the session was assembled against, so a substitute
-    /// is sized by the *same* Step 6 levers the rest of the lineup was: the policy's `progressionRate`
-    /// and, during cold-start, the Start Seed (US-O02). Without it a mid-session swap would silently
-    /// re-derive the substitute's no-history target at the neutral seed, handing an advanced cold-start
-    /// user a x1.00 slot in a session built at x1.30. It defaults to `SessionPolicy.default` (every
-    /// lever neutral), which reproduces the pre-policy swap exactly.
+    /// is sized by the *same* Step 6 levers the rest of the lineup was: the policy's `progressionRate`,
+    /// during cold-start the Start Seed (US-O02), and on a Return or its Re-entry Ramp the eased
+    /// `reentryScale` (US-E06, read off the session's own `wasReturn` stamp plus the policy's ramp
+    /// state, so the swap never re-derives the decision at a different clock). Without them a
+    /// mid-session swap would silently re-derive the substitute's target at the neutral levers, handing
+    /// an advanced cold-start user a x1.00 slot in a session built at x1.30, or a returning user one
+    /// full-volume slot in a session whose whole point is to be uniformly gentle. `sessionPolicy`
+    /// defaults to `SessionPolicy.default` (every lever neutral), which reproduces the pre-policy swap
+    /// exactly.
     static func swap(
         _ prescription: PrescribedExercise,
         in workout: Workout,
@@ -106,18 +113,27 @@ enum ExerciseSwap {
             recentLogs: recentLogs
         )
 
+        // The Return / Re-entry Ramp ease in force for this session (US-E06), read off the stamp the
+        // assembler already made rather than re-derived against a fresh clock, so a substitute is held
+        // back exactly as much as the slot it replaces.
+        let reentryScale = ReturnOverride.reentryScale(
+            isReturn: workout.wasReturn,
+            reentry: sessionPolicy.reentry
+        )
+
         let originalSlotSeconds = slotSeconds(
-            workPerSet: target.estimatedTimePerSetSeconds,
+            workPerSet: SessionAssembly.workSecondsPerSet(of: prescription),
             sets: prescription.sets,
             rest: prescription.restSeconds
         )
 
         // Same pillar + pattern, within the difficulty band, not the original, not already in the
-        // session, and close enough in per-set time to keep the slot inside the budget. The budget
-        // check compares the two *movements* at their own per-set estimates - it asks whether the
-        // substitute is a comparable time cost, not whether the user's grown target happens to match
-        // a newcomer's starting one.
-        let candidates = pool.compactMap { candidate -> (exercise: Exercise, drift: Int)? in
+        // session, and close enough in per-set work to keep the slot inside the budget. Both sides of
+        // that budget check are priced at the target they actually carry - the original at the reps or
+        // hold seconds it was prescribed, the candidate at the target Step 6 would give it here - so
+        // the tolerance bounds the session's real wall-clock rather than two movements' default-sized
+        // estimates.
+        let candidates = pool.compactMap { candidate -> Candidate? in
             guard
                 candidate.id != target.id,
                 candidate.pillar == target.pillar,
@@ -126,14 +142,25 @@ enum ExerciseSwap {
                 !inSessionIds.contains(candidate.id)
             else { return nil }
 
+            let overload = overloadTarget(
+                for: candidate,
+                recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
+                reentryScale: reentryScale,
+                startVolume: startVolume
+            )
             let candidateSlot = slotSeconds(
-                workPerSet: candidate.estimatedTimePerSetSeconds,
+                workPerSet: SessionAssembly.workSecondsPerSet(
+                    for: candidate,
+                    reps: overload.reps,
+                    durationSeconds: overload.durationSeconds
+                ),
                 sets: prescription.sets,
                 rest: prescription.restSeconds
             )
             let drift = abs(candidateSlot - originalSlotSeconds)
             guard drift <= slotToleranceSeconds else { return nil }
-            return (candidate, drift)
+            return Candidate(exercise: candidate, overload: overload, drift: drift)
         }
         guard !candidates.isEmpty else { return .noAlternative }
 
@@ -151,19 +178,43 @@ enum ExerciseSwap {
             if lhsRecent != rhsRecent { return !lhsRecent }
             // 4. Deterministic final tie-break.
             return lhs.exercise.id < rhs.exercise.id
-        }!.exercise
+        }!
 
-        let overload = AdaptiveOverload.target(
-            for: chosen,
-            recentLogs: recentLogs,
-            progressionRate: sessionPolicy.progressionRate,
-            startingRepMultiplier: startVolume.repMultiplier,
-            startingSets: startVolume.sets
-        )
-        return .substituted(materialize(chosen, at: overload, like: prescription))
+        return .substituted(materialize(chosen.exercise, at: chosen.overload, like: prescription))
     }
 
     // MARK: Helpers
+
+    /// One in-band, in-budget substitute under consideration: the movement, the Step 6 target already
+    /// resolved for it (so the budget check and the materialized slot can never disagree about how big
+    /// the substitute is), and how far its slot moves the session's wall-clock.
+    private struct Candidate {
+        let exercise: Exercise
+        let overload: OverloadTarget
+        let drift: Int
+    }
+
+    /// The Step 6 target for a substitute, resolved under **every** lever the slot it replaces was
+    /// sized with: the policy's `progressionRate` (US-E03), the Return / Re-entry Ramp ease (US-E06),
+    /// and the cold-start Start Seed's volume (US-O02). It is the single place the swap seam talks to
+    /// `AdaptiveOverload`, so the budget check and the materialized prescription are sized identically
+    /// and a lever cannot go missing from one but not the other.
+    private static func overloadTarget(
+        for exercise: Exercise,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy,
+        reentryScale: Double,
+        startVolume: ColdStartOverride.VolumeSeed
+    ) -> OverloadTarget {
+        AdaptiveOverload.target(
+            for: exercise,
+            recentLogs: recentLogs,
+            progressionRate: sessionPolicy.progressionRate,
+            reentryScale: reentryScale,
+            startingRepMultiplier: startVolume.repMultiplier,
+            startingSets: startVolume.sets
+        )
+    }
 
     /// Builds the substitute prescription: the chosen movement at the original slot's set count and
     /// rest (so timing is preserved), carrying the Step 6 target resolved for it under the session's
@@ -185,9 +236,10 @@ enum ExerciseSwap {
         )
     }
 
-    /// Planned wall-clock of one slot in isolation: `sets × workPerSet + (sets - 1) × rest`. The same
-    /// formula the assembly step's `plannedSeconds` sums over every slot, so a swap's slot-level
-    /// budget check is consistent with how the session was sized.
+    /// Planned wall-clock of one slot in isolation: `sets × workPerSet + (sets - 1) × rest`, where
+    /// `workPerSet` is `SessionAssembly.workSecondsPerSet` at the target the slot actually carries.
+    /// The same formula, over the same work model, that the assembly step's `plannedSeconds` sums over
+    /// every slot, so a swap's slot-level budget check is consistent with how the session was sized.
     private static func slotSeconds(workPerSet: Int, sets: Int, rest: Int) -> Int {
         sets * workPerSet + max(0, sets - 1) * rest
     }

@@ -1157,6 +1157,10 @@ final class StartSeedTests: XCTestCase {
 
     /// A seeded set really does take longer than a default-sized one, and the engine now sizes it that
     /// way - so the ±1 minute timing-fit promise is measured against the session the user will do.
+    ///
+    /// The extra time is the *work* the extra reps cost, not a proportional scaling of the whole
+    /// estimate: a set's fixed setup (get into position, brace, get out again) is paid once whether the
+    /// set is 10 reps or 13.
     func testPlannedTimeAccountsForTheSeededPerSetTarget() {
         let movement = exercise(id: "ex", defaultReps: 10) // 40s per set at its own default
 
@@ -1165,10 +1169,17 @@ final class StartSeedTests: XCTestCase {
             movement.estimatedTimePerSetSeconds,
             "a default-sized set is the movement's own estimate, unchanged"
         )
+        // 40s over 10 reps implies a 4.0s cadence, slower than the catalog's 3.0s per rep of work, so
+        // 10s of the estimate is fixed setup and each rep costs 3s: 3 extra reps is 9 extra seconds.
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: movement, reps: 13, durationSeconds: nil),
-            52,
-            "13 reps of a 10-rep movement is 1.3x the work"
+            49,
+            "13 reps costs the setup once plus 13 reps of work"
+        )
+        XCTAssertEqual(
+            SessionAssembly.workSecondsPerSet(for: movement, reps: 5, durationSeconds: nil),
+            25,
+            "a shrunk set still pays the same fixed setup"
         )
         // A movement with no default to scale against falls back to the flat estimate.
         let unscalable = exercise(id: "unscalable", defaultReps: nil)
@@ -1176,6 +1187,63 @@ final class StartSeedTests: XCTestCase {
             SessionAssembly.workSecondsPerSet(for: unscalable, reps: 20, durationSeconds: nil),
             unscalable.estimatedTimePerSetSeconds
         )
+    }
+
+    /// The setup/per-unit split is derived from the movement's own authored fields, and both halves
+    /// reproduce the authored estimate exactly at the movement's own default - so a default-sized
+    /// session is priced precisely as the catalog wrote it and only a moved target is re-priced.
+    func testWorkPerSetSplitsTheEstimateIntoSetupPlusPerUnitWork() async throws {
+        let library = try await library()
+
+        // A hold's per-unit cost is exactly one second of work per prescribed second, so its setup is
+        // the authored remainder: 70s estimate on a 30s default is 40s of setup.
+        let hip = try XCTUnwrap(library.first { $0.id == "mobility_9090_hip" })
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 30), 70)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 40), 80)
+        XCTAssertEqual(
+            SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: AdaptiveOverload.maxHoldSeconds),
+            40 + AdaptiveOverload.maxHoldSeconds,
+            "a hold clamped to the safety ceiling costs its setup plus the hold, not a scaled estimate"
+        )
+
+        let tuckLSit = try XCTUnwrap(library.first { $0.id == "core_tuck_l_sit" })
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 12), 35)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 20), 43)
+
+        // A rep-based movement whose authored cadence is already at or below the catalog's per-rep work
+        // has no setup left to carve out, so it stays proportional.
+        let glutes = try XCTUnwrap(library.first { $0.id == "hinge_glute_bridge" })
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 15, durationSeconds: nil), 40)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 30, durationSeconds: nil), 80)
+
+        // Every movement in the catalog reproduces its own authored estimate at its own default, and
+        // never prices a grown set above strict proportionality.
+        for movement in library {
+            guard let baseline = movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps,
+                  baseline > 0 else { continue }
+            let atDefault = SessionAssembly.workSecondsPerSet(
+                for: movement,
+                reps: movement.isHold ? nil : baseline,
+                durationSeconds: movement.isHold ? baseline : nil
+            )
+            XCTAssertEqual(
+                atDefault, movement.estimatedTimePerSetSeconds,
+                "\(movement.id) must price its own default set at its authored estimate"
+            )
+            let doubled = SessionAssembly.workSecondsPerSet(
+                for: movement,
+                reps: movement.isHold ? nil : baseline * 2,
+                durationSeconds: movement.isHold ? baseline * 2 : nil
+            )
+            XCTAssertLessThanOrEqual(
+                doubled, movement.estimatedTimePerSetSeconds * 2,
+                "\(movement.id) must not charge a grown set more than strict proportionality"
+            )
+            XCTAssertGreaterThan(
+                doubled, atDefault,
+                "\(movement.id) must still charge more for a bigger set"
+            )
+        }
     }
 
     /// The whole seeded session lands inside the timing tolerance when measured with the rep-aware
