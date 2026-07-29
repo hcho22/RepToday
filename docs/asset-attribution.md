@@ -12,12 +12,19 @@ An animation only ships once **both** are true: it has a cleared row below, and 
 
 | File | Embedded name | Source | License | Cleared to ship |
 | --- | --- | --- | --- | --- |
-| `ios/RepToday/RepToday/Resources/push_standard.json` | `military_push_ups` | Not recorded | Not recorded | **No** |
+| _(none yet)_ | | | | |
 
-### `push_standard.json`
+The app therefore ships entirely on the SF-Symbol fallback today, which is the designed steady state until a cleared animation arrives.
 
-Added as the US-O01 validation fixture ("a single test `.json` dropped into `Resources`") to prove the Lottie seam and its fallback end to end.
-It is a third-party Lottie whose origin was never written down, so nobody can say today what redistributing it inside the app would require.
+## Removed assets
 
-Until that is answered it stays a repo-local fixture: excluded from the app bundle, and not referenced from `Exercises.json`.
-Its opaque full-canvas `White Solid 1` layer has been stripped so the animation composites onto `Theme.Colors.secondaryBackground` correctly in both light and dark mode whenever it is cleared - the asset is ready, the paperwork is not.
+### `push_standard.json` (removed)
+
+Added as the US-O01 validation fixture ("a single test `.json` dropped into `Resources`") to prove the Lottie seam and its fallback end to end, then **deleted from the repository**.
+
+It was a third-party Lottie whose origin was never written down, so nobody could say what redistributing it would require.
+Keeping it out of Copy Bundle Resources addressed the risk of shipping it inside the binary, but the file was still committed to a public repository - which is itself redistribution - so excluding it from the bundle was never enough.
+Since its provenance could not be reconstructed, it was removed rather than kept as a repo-local fixture.
+
+Nothing depended on it: no `Exercises.json` entry ever referenced it, and the seam it validated is covered by `ExerciseDemoView`'s fallback path plus `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile`, which still gates any future `animationName` against the bundle.
+The next animation to land must arrive with its source and license row above **before** it is added to `Resources`.

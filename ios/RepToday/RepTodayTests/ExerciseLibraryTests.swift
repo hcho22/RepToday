@@ -32,10 +32,11 @@ final class ExerciseLibraryTests: XCTestCase {
 
     // MARK: - Library size and id uniqueness
 
-    /// ~38 movements per v5 5.1; the exact count is pinned so an accidental add/drop is
-    /// caught and has to be made deliberately.
+    /// The exact count is pinned so an accidental add/drop is caught and has to be made
+    /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
+    /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 42, "expected the authored 42-movement library")
+        XCTAssertEqual(exercises.count, 55, "expected the authored 55-movement library")
     }
 
     func testIdsAreUnique() {
@@ -47,21 +48,21 @@ final class ExerciseLibraryTests: XCTestCase {
     /// Every movement-pattern group from v5 5.1 is represented with the authored counts.
     func testMovementPatternCounts() {
         let counts = Dictionary(grouping: exercises, by: \.movementPattern).mapValues(\.count)
-        XCTAssertEqual(counts[.push], 8, "push group")
-        XCTAssertEqual(counts[.squat], 6, "squat group")
-        XCTAssertEqual(counts[.hinge], 4, "hinge group")
-        XCTAssertEqual(counts[.core], 6, "core group")
-        XCTAssertEqual(counts[.pull], 3, "pull/postural group")
+        XCTAssertEqual(counts[.push], 9, "push group")
+        XCTAssertEqual(counts[.squat], 8, "squat group")
+        XCTAssertEqual(counts[.hinge], 6, "hinge group")
+        XCTAssertEqual(counts[.core], 9, "core group")
+        XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 12, "Movement Practice mobility group")
-        XCTAssertEqual(counts[.locomotion], 3, "primal group")
+        XCTAssertEqual(counts[.locomotion], 5, "primal group")
     }
 
     /// All three training pillars carry movements; mobility is co-primary (not a sliver).
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
-        XCTAssertEqual(counts[.strength], 27)
+        XCTAssertEqual(counts[.strength], 38)
         XCTAssertEqual(counts[.mobility], 12)
-        XCTAssertEqual(counts[.primal], 3)
+        XCTAssertEqual(counts[.primal], 5)
     }
 
     /// `Pillar` and `ExerciseCategory` agree for the library: a strength-pillar movement is
@@ -140,15 +141,54 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(gated, ["push_one_arm", "squat_pistol", "core_l_sit"])
     }
 
-    /// Phase tracks difficulty intent: gated skills are the hard tiers (4-5), discipline
-    /// movements stay accessible (<= 3) so a beginner/intermediate cap always leaves a pool.
+    /// Phase gates *skills*, not tiers: the gated movements are the library's summit (difficulty 5),
+    /// and every tier beneath a summit is reachable in the Discipline Phase. That is what keeps the
+    /// reachable catalog a real 1-4 range rather than topping out at 3 - the Start Seed band
+    /// (US-O02) has nothing to band against otherwise.
     func testPhaseMatchesDifficultyIntent() {
         for ex in exercises {
             XCTAssertTrue((1...5).contains(ex.difficulty), "\(ex.id) difficulty out of range")
             if ex.phase == .strength {
-                XCTAssertGreaterThanOrEqual(ex.difficulty, 4, "\(ex.id) gated skill should be a hard tier")
+                XCTAssertEqual(ex.difficulty, 5, "\(ex.id) gated skill should be the library's summit")
             } else {
-                XCTAssertLessThanOrEqual(ex.difficulty, 3, "\(ex.id) discipline movement should stay accessible")
+                XCTAssertLessThanOrEqual(ex.difficulty, 4, "\(ex.id) discipline movement must stay reachable")
+            }
+        }
+        let disciplineTiers = Set(exercises.filter { $0.phase == .discipline }.map(\.difficulty))
+        XCTAssertEqual(disciplineTiers, [1, 2, 3, 4], "every non-summit tier must be reachable")
+    }
+
+    // MARK: - Start Seed band coverage (US-O02)
+
+    /// The library's shape half of the Start Seed contract: within the band each fitness level's
+    /// cold-start contract opens (`[startingDifficultyFloor, cappedMaxDifficulty]`), every banded
+    /// movement pattern must offer at least **two progression chains**.
+    ///
+    /// Two chains, not two movements, is the number that matters: Step 5 resolves a pattern by
+    /// picking one exercise *per chain* and then preferring a candidate the variety window has not
+    /// seen, so a pattern with a single in-band chain hands the user the identical movement every
+    /// session of the cold-start week however many tiers that one chain carries.
+    func testAdvancedStartBandHasRoomToRotate() {
+        typealias Contract = SessionPolicy.ColdStartContract
+
+        for level in FitnessLevel.allCases {
+            let floor = Contract.startingDifficultyFloor(for: level)
+            let cap = Contract.cappedMaxDifficulty(for: level)
+            let banded = exercises.filter {
+                $0.phase == .discipline
+                    && ($0.pillar == .strength || $0.pillar == .primal)
+                    && (floor...cap).contains($0.difficulty)
+            }
+            let patterns = Set(banded.map(\.movementPattern))
+            XCTAssertFalse(patterns.isEmpty, "\(level)'s band must reach some training pattern")
+
+            for pattern in patterns {
+                let chains = Set(banded.filter { $0.movementPattern == pattern }.map(\.progressionChainId))
+                XCTAssertGreaterThanOrEqual(
+                    chains.count, 2,
+                    "\(level)'s [\(floor), \(cap)] band leaves the \(pattern) pattern only "
+                        + "\(chains.count) chain(s), so the variety window has nothing to rotate over"
+                )
             }
         }
     }

@@ -68,7 +68,7 @@ No XP, no levels, no badges, no streak to break.
 - Enums are `Codable`, `CaseIterable`, and `Identifiable` where they have a stable id.
 - Always use `Theme.Colors` / `Theme.Typography` / `Theme.Spacing`; never hardcode colors, fonts, or spacing.
 - Button height 56pt, card radius 16pt, touch targets 44pt (60pt on active workout screens).
-- Exercise library: 42 bodyweight movements in `Resources/Exercises.json`, all `equipment == []`, load-time-validated.
+- Exercise library: 55 bodyweight movements in `Resources/Exercises.json`, all `equipment == []`, load-time-validated.
 - Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion, haptics with an audio alternative.
 - Pure engine/evaluator logic takes an injected `asOf` clock; never read the wall clock inside it.
 - Tests live in `ios/RepToday/RepTodayTests/` (`XCTestCase` + `@testable import RepToday`); all new logic needs tests, and each story adds a row to `docs/test-coverage.md`.

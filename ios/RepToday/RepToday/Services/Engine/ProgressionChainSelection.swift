@@ -152,28 +152,42 @@ enum ProgressionChainSelection {
     /// all (the caller then drops the chain).
     ///
     /// - The user's **frontier** is the highest-order tier they have worked (non-skipped) in
-    ///   `recentLogs`. With no worked tier, selection starts at the lowest eligible tier (the
-    ///   entry, `progressionOrder` 0 for a full chain).
+    ///   `recentLogs`. With no worked tier, selection starts at the lowest eligible tier that is
+    ///   not beneath `demonstratedDifficulty` (the entry, `progressionOrder` 0, for a user who has
+    ///   demonstrated nothing in this pattern).
     /// - When the frontier tier's `advancementCriteria` are met in the logs and its next tier
     ///   exists, the desired tier is that next tier; otherwise it is the frontier itself.
     /// - The desired tier is then clamped to what is eligible: the highest eligible tier no higher
     ///   than desired (so a gated/over-cap next tier collapses back to the frontier rather than
     ///   leaking through), or the lowest eligible tier if none sits at or below.
+    ///
+    /// `demonstratedDifficulty` is the load the user has already shown they can handle *in this
+    /// movement pattern*, from any chain (see `demonstratedDifficulty(pattern:...)`). Ability is a
+    /// property of the pattern, not of one chain, so meeting a chain for the first time must not
+    /// hand an experienced user the chain's absolute entry tier: a user pressing diamond push-ups
+    /// does not get walked back to a wall push-up because the vertical chain is new to them. It
+    /// defaults to `0`, which reproduces the pre-existing chain-local behavior exactly.
     static func selectInChain(
         _ chain: [Exercise],
         eligibleIds: Set<String>,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        demonstratedDifficulty: Int = 0
     ) -> ChainSelection? {
         let sorted = chain.sorted { $0.progressionOrder < $1.progressionOrder }
         let eligible = sorted.filter { eligibleIds.contains($0.id) }
         guard let lowestEligible = eligible.first else { return nil }
 
         guard let frontier = frontierTier(in: sorted, recentLogs: recentLogs) else {
-            // No history in this chain: start at the entry (lowest eligible tier).
+            // No history in this chain: enter at the gentlest eligible tier that still matches the
+            // ability the user has demonstrated in this pattern, or - when the chain offers nothing
+            // that hard - at the hardest tier it does offer, rather than at its entry.
+            let entry = eligible.first { $0.difficulty >= demonstratedDifficulty }
+                ?? eligible.last
+                ?? lowestEligible
             return ChainSelection(
-                exercise: lowestEligible,
-                chainId: lowestEligible.progressionChainId,
-                order: lowestEligible.progressionOrder,
+                exercise: entry,
+                chainId: entry.progressionChainId,
+                order: entry.progressionOrder,
                 didAdvance: false
             )
         }
@@ -205,6 +219,13 @@ enum ProgressionChainSelection {
     /// `varietyWindow` is the Session Policy lever (US-E03) replacing the previously hardcoded
     /// no-repeat window; it defaults to `recentSessionWindow` so a caller that does not pass a
     /// policy keeps the pre-policy behavior exactly.
+    ///
+    /// Variety is a preference *among equals*, never a reason to go backwards: a candidate that
+    /// sits below the difficulty the user has already demonstrated in this pattern is not treated
+    /// as a fresh alternative, so novelty can never hand back a tier they have outgrown. Without
+    /// that rail, a chain the pool kept out of reach for a while (Step 0's Start Seed band does
+    /// exactly this during cold start) accrues no history, and its untouched entry tier then wins
+    /// the freshness preference outright the moment the band lifts.
     static func select(
         pattern: MovementPattern,
         library: [Exercise],
@@ -218,19 +239,32 @@ enum ProgressionChainSelection {
             by: \.progressionChainId
         )
 
+        let demonstrated = demonstratedDifficulty(
+            pattern: pattern,
+            library: library,
+            recentLogs: recentLogs
+        )
         let candidates = chains
             .sorted { $0.key < $1.key } // stable starting order before the real ordering below
             .compactMap { _, members in
-                selectInChain(members, eligibleIds: eligibleIds, recentLogs: recentLogs)
+                selectInChain(
+                    members,
+                    eligibleIds: eligibleIds,
+                    recentLogs: recentLogs,
+                    demonstratedDifficulty: demonstrated
+                )
             }
         guard !candidates.isEmpty else { return nil }
 
         let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs, window: varietyWindow)
         let lastWorked = lastWorkedByChain(recentLogs: recentLogs, library: library)
 
-        // Prefer candidates whose chosen exercise was not used in the last few sessions; fall back
-        // to the full set if that leaves nothing (variety never beats having an exercise).
-        let fresh = candidates.filter { !recentlyUsed.contains($0.exercise.id) }
+        // Prefer candidates whose chosen exercise was not used in the last few sessions and that do
+        // not regress below demonstrated ability; fall back to the full set if that leaves nothing
+        // (variety never beats having an exercise).
+        let fresh = candidates.filter {
+            !recentlyUsed.contains($0.exercise.id) && $0.exercise.difficulty >= demonstrated
+        }
         let pickFrom = fresh.isEmpty ? candidates : fresh
 
         return pickFrom.min { lhs, rhs in
@@ -248,6 +282,24 @@ enum ProgressionChainSelection {
     }
 
     // MARK: Helpers
+
+    /// The hardest tier the user has actually worked (non-skipped) in `pattern`, across every chain
+    /// - `0` when they have worked nothing in it.
+    ///
+    /// This is the pattern-level ability signal chain-local history cannot see. It is read from the
+    /// logs alone (no clock, no policy), so it stays a pure function of the inputs like the rest of
+    /// Step 5.
+    static func demonstratedDifficulty(
+        pattern: MovementPattern,
+        library: [Exercise],
+        recentLogs: [WorkoutLog]
+    ) -> Int {
+        let workedIds = workedExerciseIds(recentLogs: recentLogs)
+        return library
+            .filter { $0.movementPattern == pattern && workedIds.contains($0.id) }
+            .map(\.difficulty)
+            .max() ?? 0
+    }
 
     /// The user's frontier in a chain: the highest-order tier worked (non-skipped) in `recentLogs`,
     /// or `nil` when the chain has no worked tier.

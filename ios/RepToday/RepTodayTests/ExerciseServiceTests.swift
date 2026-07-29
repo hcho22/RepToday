@@ -69,7 +69,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testRealLibraryLoadsAndCaches() async throws {
         let service = try MockExerciseService()
         let all = try await service.exercises()
-        XCTAssertEqual(all.count, 42, "service should load the full bundled library")
+        XCTAssertEqual(all.count, 55, "service should load the full bundled library")
     }
 
     func testExerciseByIdResolves() async throws {
@@ -92,7 +92,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testExercisesByMovementPattern() async throws {
         let service = try MockExerciseService()
         let push = try await service.exercises(for: .push)
-        XCTAssertEqual(push.count, 8)
+        XCTAssertEqual(push.count, 9)
         XCTAssertTrue(push.allSatisfy { $0.movementPattern == .push })
     }
 
@@ -102,7 +102,7 @@ final class ExerciseServiceTests: XCTestCase {
         let gated = try await service.exercises(for: Phase.strength)
         XCTAssertEqual(Set(gated.map(\.id)), ["push_one_arm", "squat_pistol", "core_l_sit"])
         let discipline = try await service.exercises(for: Phase.discipline)
-        XCTAssertEqual(discipline.count, 39)
+        XCTAssertEqual(discipline.count, 52)
     }
 
     func testExercisesByDifficultyRange() async throws {

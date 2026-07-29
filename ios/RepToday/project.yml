@@ -29,18 +29,9 @@ targets:
         # The StoreKit config is attached to the scheme (below), not shipped in the app bundle:
         # exclude it from the target's sources so xcodegen never adds the placeholder prices/ids
         # to Copy Bundle Resources, then re-add it in no build phase so it stays visible/referenced.
-        #
-        # `push_standard.json` is the US-O01 Lottie validation fixture. Its provenance is not yet
-        # cleared (see docs/asset-attribution.md), so it is kept in the repo and visible in Xcode but
-        # deliberately out of Copy Bundle Resources - the app ships on the SF-Symbol fallback until an
-        # animation has a license row. Deleting its `excludes` line and its `buildPhase: none` entry is
-        # all it takes to ship it once that row exists.
         excludes:
           - Resources/RepToday.storekit
-          - Resources/push_standard.json
       - path: RepToday/Resources/RepToday.storekit
-        buildPhase: none
-      - path: RepToday/Resources/push_standard.json
         buildPhase: none
     dependencies:
       - package: Lottie

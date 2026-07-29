@@ -912,6 +912,108 @@ final class StartSeedTests: XCTestCase {
         }
     }
 
+    /// The band must not create a cliff on the other side of the handoff. An advanced user walks the
+    /// whole five-session cold-start window, completing everything the engine prescribes, and then
+    /// generates the session *after* cold start retires - the first one with no contract, no cap and
+    /// no band. Nothing in that session may be gentler than what they trained on all week.
+    ///
+    /// The failure this guards is subtle: banding withholds whole progression chains, so those chains
+    /// accrue no history; the moment the band lifts their untouched entry tiers are the only movements
+    /// the variety window has never seen, and freshness alone would hand an advanced user a
+    /// difficulty-1 movement. It takes both halves to hold - a library with in-band tiers in every
+    /// chain, and Step 5 refusing to let freshness regress below demonstrated ability.
+    func testSessionAfterTheHandoffNeverRegressesBelowTheColdStartTiers() async throws {
+        let library = try await library()
+        var user = freshUser(level: .advanced)
+        var policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        var logs: [WorkoutLog] = []
+        var coldStartTiers: [String: Int] = [:] // exercise id -> difficulty, for the failure message
+
+        for session in 0..<ColdStartHandoff.handoffThreshold {
+            let workout = SessionAssembly.assemble(
+                requestedMinutes: 30,
+                user: user,
+                library: library,
+                recentLogs: logs,
+                sessionPolicy: policy,
+                asOf: date(daysAgo: 12 - session * 2),
+                calendar: calendar
+            )
+            for prescribed in trainingItems(of: workout) {
+                coldStartTiers[prescribed.exercise.id] = prescribed.exercise.difficulty
+            }
+            logs.append(completedLog(of: workout, on: date(daysAgo: 12 - session * 2)))
+
+            let handoff = ColdStartHandoff.afterCompletedSession(user: user, sessionPolicy: policy)
+            user = handoff.user
+            policy = handoff.sessionPolicy
+        }
+
+        XCTAssertFalse(user.coldStart.active, "cold start must have retired after the fifth session")
+        XCTAssertNil(policy.coldStartContract, "the contract must be cleared at the handoff")
+        let floor = try XCTUnwrap(coldStartTiers.values.min())
+        XCTAssertGreaterThanOrEqual(
+            floor,
+            SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced),
+            "the cold-start week itself must have trained at the seeded floor"
+        )
+
+        let afterHandoff = SessionAssembly.assemble(
+            requestedMinutes: 30,
+            user: user,
+            library: library,
+            recentLogs: logs,
+            sessionPolicy: policy,
+            asOf: asOf,
+            calendar: calendar
+        )
+
+        let training = trainingItems(of: afterHandoff)
+        XCTAssertFalse(training.isEmpty, "the session after the handoff must still train something")
+        for prescribed in training {
+            XCTAssertGreaterThanOrEqual(
+                prescribed.exercise.difficulty, floor,
+                "the session after the handoff regressed to \(prescribed.exercise.id) "
+                    + "(difficulty \(prescribed.exercise.difficulty)) after a cold-start week trained "
+                    + "at \(floor)+: \(coldStartTiers.sorted { $0.key < $1.key })"
+            )
+        }
+    }
+
+    /// The strength and primal (i.e. banded) movements a generated session prescribes.
+    private func trainingItems(of workout: Workout) -> [PrescribedExercise] {
+        workout.blocks
+            .flatMap(\.exercises)
+            .filter { $0.exercise.pillar == .strength || $0.exercise.pillar == .primal }
+    }
+
+    /// The log of a session the user completed exactly as prescribed, rated `justRight` so the Start
+    /// Seed neither eases nor hardens across the simulated week.
+    private func completedLog(of workout: Workout, on completedAt: Date) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(),
+            workoutId: workout.id,
+            completedAt: completedAt,
+            requestedMinutes: workout.requestedMinutes,
+            durationMinutes: workout.requestedMinutes,
+            shape: workout.shape,
+            focusPillar: workout.focusPillar,
+            perceivedDifficulty: .justRight,
+            exercises: workout.blocks.flatMap(\.exercises).map { prescribed in
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: prescribed.exercise.id,
+                    pillar: prescribed.exercise.pillar,
+                    movementPattern: prescribed.exercise.movementPattern,
+                    completedSets: (0..<prescribed.sets).map { _ in
+                        CompletedSet(reps: prescribed.reps, durationSeconds: prescribed.durationSeconds)
+                    },
+                    skipped: false
+                )
+            }
+        )
+    }
+
     /// The whole seeded pipeline stays deterministic - identical inputs, identical session content.
     func testSeededAssemblyIsDeterministic() async throws {
         let library = try await library()

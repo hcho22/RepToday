@@ -218,6 +218,85 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selection?.didAdvance, false)
     }
 
+    /// A chain the user has never worked is entered at the gentlest tier that still matches the
+    /// ability they have demonstrated *elsewhere in the pattern* - not at the chain's entry tier.
+    /// Ability belongs to the movement pattern, not to one chain.
+    func testNoHistoryChainIsEnteredAtDemonstratedAbility() {
+        let chain = makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "c1", difficulty: 2, criteria: "3x12 clean reps"),
+            (id: "c2", difficulty: 3, criteria: "3x12 clean reps"),
+        ])
+        let selection = ProgressionChainSelection.selectInChain(
+            chain,
+            eligibleIds: Set(chain.map(\.id)),
+            recentLogs: [],
+            demonstratedDifficulty: 2
+        )
+        XCTAssertEqual(selection?.exercise.id, "c1", "entered at the demonstrated tier, not c0")
+        XCTAssertEqual(selection?.didAdvance, false, "a lateral entry is not an advancement")
+    }
+
+    /// When the chain offers nothing as hard as the demonstrated tier, its own hardest tier is the
+    /// entry - the closest thing to the user's ability, never the chain's absolute entry.
+    func testNoHistoryChainToppingOutBelowAbilityEntersAtItsHardestTier() {
+        let chain = makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "c1", difficulty: 2, criteria: "3x12 clean reps"),
+        ])
+        let selection = ProgressionChainSelection.selectInChain(
+            chain,
+            eligibleIds: Set(chain.map(\.id)),
+            recentLogs: [],
+            demonstratedDifficulty: 4
+        )
+        XCTAssertEqual(selection?.exercise.id, "c1")
+    }
+
+    /// The default keeps the pre-existing chain-local behavior: no demonstrated ability means the
+    /// chain entry.
+    func testDemonstratedAbilityDefaultsToTheChainEntry() {
+        let chain = makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "c1", difficulty: 3, criteria: "3x12 clean reps"),
+        ])
+        XCTAssertEqual(selectInChain(chain, logs: [])?.exercise.id, "c0")
+    }
+
+    func testDemonstratedDifficultyReadsTheHardestWorkedTierInThePattern() {
+        let library = makeChain("a", [
+            (id: "a0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "a1", difficulty: 3, criteria: "3x12 clean reps"),
+        ]) + makeChain("s", [(id: "s0", difficulty: 4, criteria: "3x12 clean reps")], pattern: .squat)
+
+        XCTAssertEqual(
+            ProgressionChainSelection.demonstratedDifficulty(
+                pattern: .push,
+                library: library,
+                recentLogs: [repsLog(id: "a1", reps: [8], daysAgo: 1)]
+            ),
+            3
+        )
+        // Another pattern's work is not this pattern's ability.
+        XCTAssertEqual(
+            ProgressionChainSelection.demonstratedDifficulty(
+                pattern: .push,
+                library: library,
+                recentLogs: [repsLog(id: "s0", reps: [8], pattern: .squat, daysAgo: 1)]
+            ),
+            0
+        )
+        // A bailed-on movement demonstrates nothing.
+        XCTAssertEqual(
+            ProgressionChainSelection.demonstratedDifficulty(
+                pattern: .push,
+                library: library,
+                recentLogs: [repsLog(id: "a1", reps: [], daysAgo: 1, skipped: true)]
+            ),
+            0
+        )
+    }
+
     func testStaysAtFrontierWhenCriteriaNotMet() {
         let chain = makeChain("c", [
             (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
@@ -387,6 +466,44 @@ final class ProgressionChainSelectionTests: XCTestCase {
         )
         XCTAssertEqual(selection?.exercise.id, "b0") // difficulty 1 beats difficulty 2
         XCTAssertEqual(selection?.didAdvance, false)
+    }
+
+    /// Freshness never buys a regression. A chain the pool kept out of reach - so it accrued no
+    /// history - must not win the variety preference with an entry tier beneath what the user has
+    /// already demonstrated in this pattern. This is the post-handoff cliff guard: during cold
+    /// start Step 0's Start Seed band hides the gentle chains entirely, and the session the band
+    /// lifts is exactly when their untouched entry tiers become the only "fresh" candidates.
+    func testSelectPrefersRepeatingOverRegressingBelowDemonstratedAbility() {
+        let library = makeChain("banded", [
+            (id: "banded_easy", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "banded_mid", difficulty: 2, criteria: "3x12 clean reps"),
+        ]) + makeChain("worked", [(id: "worked_hard", difficulty: 3, criteria: "3x99 clean reps")])
+
+        // The user worked the hard chain last session; the banded chain was never prescribable.
+        let logs = [repsLog(id: "worked_hard", reps: [8, 8, 8], daysAgo: 1)]
+        let selection = ProgressionChainSelection.select(
+            pattern: .push, library: library, pool: library, recentLogs: logs
+        )
+
+        XCTAssertEqual(
+            selection?.exercise.id, "worked_hard",
+            "a never-worked gentler chain must not out-rank the movement matching demonstrated ability"
+        )
+    }
+
+    /// The rail is about *regression*, not about novelty: a fresh candidate at or above demonstrated
+    /// ability still wins, so variety is untouched in the steady state.
+    func testSelectStillPrefersAFreshCandidateAtDemonstratedAbility() {
+        let library = makeChain("a", [(id: "a0", difficulty: 3, criteria: "3x99 clean reps")])
+            + makeChain("b", [(id: "b0", difficulty: 3, criteria: "3x99 clean reps")])
+        let logs = [repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 1)]
+
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs
+            )?.exercise.id,
+            "b0"
+        )
     }
 
     func testSelectReturnsNilWhenPatternHasNoEligibleTier() {

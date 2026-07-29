@@ -203,7 +203,6 @@
 		63BD9CFC17194608C1F4C42E /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		6489E7C96E05197D40685001 /* ProgressionChainSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelection.swift; sourceTree = "<group>"; };
 		653FDB4A7212A136518C2E28 /* ColdStartHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartHandoff.swift; sourceTree = "<group>"; };
-		66C97A9F4472C11134C363C7 /* push_standard.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = push_standard.json; sourceTree = "<group>"; };
 		6D7B4D9BBA996389C45338A9 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		6EBABF9B7207E63B2A3DEEAF /* RestTimerFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerFeedback.swift; sourceTree = "<group>"; };
 		6F06B0BC9CE9949F676C2493 /* ProgressAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressAnalytics.swift; sourceTree = "<group>"; };
@@ -468,7 +467,6 @@
 			children = (
 				DBD09F019DF4749257F188B1 /* Assets.xcassets */,
 				B0ED4A87CACFFFC4FC60A3E4 /* Exercises.json */,
-				66C97A9F4472C11134C363C7 /* push_standard.json */,
 				8BC722B26A6ABDD56648D13E /* RepToday.storekit */,
 			);
 			path = Resources;
