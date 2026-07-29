@@ -223,15 +223,14 @@ enum SessionAssembly {
             recentLogs: recentLogs
         )
 
-        // Step 5's ability floor (the other half of the Start Seed band's cliff): the band withholds
-        // whole chains, so they accrue no history and their untouched entry tiers would win the
-        // freshness preference the moment it lifts. Resolved here because easing outranks it - the
-        // same `isReturn` that capped the pool above suppresses it entirely, as does a down-signal.
-        let abilityFloor = ProgressionChainSelection.abilityFloor(
+        // The other half of the Start Seed band: the movements it withholds accrue no history, so
+        // Step 5 is told they were never on offer rather than outgrown. Without it their untouched
+        // entry tiers win the freshness preference outright the moment the band lifts.
+        let withheldByStartSeed = ColdStartOverride.withheldByStartSeed(
+            library: library,
             user: user,
             sessionPolicy: sessionPolicy,
-            recentLogs: recentLogs,
-            isReturn: isReturn
+            recentLogs: recentLogs
         )
 
         var builder = Builder(
@@ -242,7 +241,7 @@ enum SessionAssembly {
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
             startVolume: startVolume,
-            abilityFloor: abilityFloor,
+            withheldByStartSeed: withheldByStartSeed,
             asOf: asOf,
             calendar: calendar
         )
@@ -576,10 +575,10 @@ private struct Builder {
     /// warm-up/mobility/cooldown are identical for a beginner and an advanced user. Neutral outside
     /// the cold-start window.
     let startVolume: ColdStartOverride.VolumeSeed
-    /// Step 5's cliff-prevention ability floor: how far the user's demonstrated level is carried into
-    /// chains and patterns their logs say nothing about. `.suppressed` whenever a Return or a
-    /// down-signal is easing them - easing outranks it (see `ProgressionChainSelection`).
-    let abilityFloor: ProgressionChainSelection.AbilityFloor
+    /// The movements Step 0's Start Seed band held out of reach (US-O02): Step 5 treats them as
+    /// never-on-offer rather than fresh, which is what keeps the session after the cold-start handoff
+    /// from regressing to an untouched entry tier (see `ProgressionChainSelection`).
+    let withheldByStartSeed: Set<String>
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -747,7 +746,7 @@ private struct Builder {
                     pool: pool,
                     recentLogs: recentLogs,
                     varietyWindow: varietyWindow,
-                    abilityFloor: abilityFloor
+                    withheldByStartSeed: withheldByStartSeed
                 ),
                 !usedIds.contains(selection.exercise.id)
             else { continue }
@@ -796,7 +795,7 @@ private struct Builder {
                 pool: pool,
                 recentLogs: recentLogs,
                 varietyWindow: varietyWindow,
-                abilityFloor: abilityFloor
+                withheldByStartSeed: withheldByStartSeed
             ),
             selection.exercise.pillar == .primal,
             !usedIds.contains(selection.exercise.id)

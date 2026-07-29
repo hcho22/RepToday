@@ -148,9 +148,8 @@ enum ColdStartOverride {
     }
 
     /// Whether one session is an eager down-signal: the user rated it `tooHard`, or bailed on a
-    /// banded (strength/primal) movement in it. Exposed so the other steps that must stand down while
-    /// the user is being eased (Step 5's ability floor) read the signal from exactly one definition
-    /// rather than re-deriving a subtly different one.
+    /// banded (strength/primal) movement in it. Exposed so anything else reacting to the same
+    /// evidence reads it from exactly one definition rather than re-deriving a subtly different one.
     static func isDownSignal(_ log: WorkoutLog) -> Bool {
         log.perceivedDifficulty == .tooHard
             || log.exercises.contains { $0.skipped && ($0.pillar == .strength || $0.pillar == .primal) }
@@ -215,6 +214,98 @@ enum ColdStartOverride {
     /// training pillars are banded (see `startBandedPool`).
     private static func isBanded(_ exercise: Exercise) -> Bool {
         exercise.pillar == .strength || exercise.pillar == .primal
+    }
+
+    // MARK: - Withheld movements
+
+    /// The strength/primal movements the Start Seed band holds - or held during the cold-start week -
+    /// out of this user's reach, so Step 5 can tell "the user outgrew this" apart from "the engine
+    /// never let them see this".
+    ///
+    /// This is what closes the post-handoff difficulty cliff. Banding withholds whole progression
+    /// chains for five sessions, so they accrue no history; the moment the band lifts their untouched
+    /// entry tiers are the only movements the variety window has never seen, and freshness alone
+    /// hands an advanced user a wall push-up. `ProgressionChainSelection` skips these when entering a
+    /// chain with no history and does not count them as fresh - it never filters them out, so a
+    /// narrower pool (a Return, an injury) simply makes the band unreachable and every movement
+    /// eligible again.
+    ///
+    /// The band being reconstructed is the one that actually ran:
+    /// - **While cold start is active** it is the live seed (`startSeed`), already eased by every
+    ///   down-signal, so a `tooHard` session stops withholding the gentler tier in the same move that
+    ///   lowers the floor.
+    /// - **Once cold start retires** the contract is gone, so the level's seeded floor is
+    ///   reconstructed - but bounded by the hardest banded tier the user's logs actually show. Their
+    ///   own history, not the never-revised onboarding self-report, is what the claim rests on: a user
+    ///   who reported "advanced" and trains at difficulty 2 withholds nothing above 2.
+    ///
+    /// Pure over its inputs (no wall clock; the band and the evidence both come from `recentLogs`),
+    /// like the rest of Step 0.
+    static func withheldByStartSeed(
+        library: [Exercise],
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> Set<String> {
+        let floor = bandFloorInForce(
+            library: library,
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs
+        )
+        guard floor > SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor else { return [] }
+
+        // Banding never starves a pattern, so a pattern whose hardest movement sits under the floor
+        // withholds nothing (mirrors `startBandedPool`'s per-pattern clamp).
+        var hardestByPattern: [MovementPattern: Int] = [:]
+        for exercise in library where isBanded(exercise) {
+            hardestByPattern[exercise.movementPattern] = max(
+                hardestByPattern[exercise.movementPattern] ?? 0,
+                exercise.difficulty
+            )
+        }
+
+        return library.reduce(into: Set<String>()) { withheld, exercise in
+            guard isBanded(exercise), let hardest = hardestByPattern[exercise.movementPattern] else {
+                return
+            }
+            if exercise.difficulty < min(floor, hardest) { withheld.insert(exercise.id) }
+        }
+    }
+
+    /// The Start Seed's difficulty floor as it applies to this user right now: the live seed while
+    /// cold start is active, otherwise the level's seeded floor bounded by demonstrated ability (see
+    /// `withheldByStartSeed`). `neutralStartingDifficultyFloor` when nothing is banded.
+    private static func bandFloorInForce(
+        library: [Exercise],
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> Int {
+        if isActive(user: user, sessionPolicy: sessionPolicy) {
+            return startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
+                .difficultyFloor
+        }
+        let seeded = SessionPolicy.ColdStartContract.startingDifficultyFloor(
+            for: user.profile.fitnessLevel
+        )
+        let demonstrated = demonstratedBandDifficulty(library: library, recentLogs: recentLogs)
+        return demonstrated > 0 ? min(seeded, demonstrated) : seeded
+    }
+
+    /// The hardest banded (strength/primal) tier the user has actually worked - not skipped - in
+    /// `recentLogs`, or `0` when they have worked none.
+    private static func demonstratedBandDifficulty(
+        library: [Exercise],
+        recentLogs: [WorkoutLog]
+    ) -> Int {
+        let worked = recentLogs.reduce(into: Set<String>()) { ids, log in
+            for logged in log.exercises where !logged.skipped { ids.insert(logged.exerciseId) }
+        }
+        return library
+            .filter { isBanded($0) && worked.contains($0.id) }
+            .map(\.difficulty)
+            .max() ?? 0
     }
 
     /// The Start Seed volume in force for this generation, or `.neutral` when Step 0 is inactive.

@@ -951,6 +951,26 @@
     "progressionOrder": 2,
     "regressionId": "primal_crab_walk",
     "advancementCriteria": "3x10 reps",
+    "apartmentFriendly": true,
+    "progressionId": "primal_bear_shoulder_tap"
+  },
+  {
+    "id": "primal_bear_shoulder_tap",
+    "displayName": "Bear Hover Shoulder Tap",
+    "pillar": "primal",
+    "movementPattern": "locomotion",
+    "category": "primal",
+    "difficulty": 4,
+    "phase": "discipline",
+    "equipment": [],
+    "isHold": false,
+    "defaultReps": 8,
+    "estimatedTimePerSetSeconds": 50,
+    "metValue": 5.0,
+    "progressionChainId": "primal_locomotion",
+    "progressionOrder": 3,
+    "regressionId": "primal_ground_to_standing",
+    "advancementCriteria": "3x12 reps",
     "apartmentFriendly": true
   },
   {
@@ -1047,6 +1067,26 @@
     "progressionOrder": 1,
     "regressionId": "primal_gorilla_walk",
     "advancementCriteria": "3x10 steps",
+    "apartmentFriendly": true,
+    "progressionId": "primal_underswitch"
+  },
+  {
+    "id": "primal_underswitch",
+    "displayName": "Underswitch",
+    "pillar": "primal",
+    "movementPattern": "locomotion",
+    "category": "primal",
+    "difficulty": 4,
+    "phase": "discipline",
+    "equipment": [],
+    "isHold": false,
+    "defaultReps": 6,
+    "estimatedTimePerSetSeconds": 50,
+    "metValue": 6.0,
+    "progressionChainId": "primal_ground_flow",
+    "progressionOrder": 2,
+    "regressionId": "primal_lizard_crawl",
+    "advancementCriteria": "3x8 reps per side",
     "apartmentFriendly": true
   }
 ]

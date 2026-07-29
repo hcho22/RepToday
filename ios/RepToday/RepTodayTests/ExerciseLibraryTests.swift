@@ -36,7 +36,7 @@ final class ExerciseLibraryTests: XCTestCase {
     /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
     /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 55, "expected the authored 55-movement library")
+        XCTAssertEqual(exercises.count, 57, "expected the authored 57-movement library")
     }
 
     func testIdsAreUnique() {
@@ -54,7 +54,7 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(counts[.core], 9, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 12, "Movement Practice mobility group")
-        XCTAssertEqual(counts[.locomotion], 5, "primal group")
+        XCTAssertEqual(counts[.locomotion], 7, "primal group")
     }
 
     /// All three training pillars carry movements; mobility is co-primary (not a sliver).
@@ -62,7 +62,7 @@ final class ExerciseLibraryTests: XCTestCase {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
         XCTAssertEqual(counts[.strength], 38)
         XCTAssertEqual(counts[.mobility], 12)
-        XCTAssertEqual(counts[.primal], 5)
+        XCTAssertEqual(counts[.primal], 7)
     }
 
     /// `Pillar` and `ExerciseCategory` agree for the library: a strength-pillar movement is
@@ -109,10 +109,10 @@ final class ExerciseLibraryTests: XCTestCase {
     }
 
     /// Difficulty never goes *down* as a chain progresses. Step 5 relies on this silently: its
-    /// no-history entry rule scans a chain in `progressionOrder` and takes the first tier whose
-    /// *difficulty* clears the session's ability floor, which is only the gentlest match when the two
-    /// orderings agree. A chain edit that inserted a tier out of difficulty order would quietly make
-    /// that rule pick a harder-than-necessary entry with nothing else failing.
+    /// no-history entry rule scans a chain in `progressionOrder` and takes the first tier the Start
+    /// Seed band did not withhold, which is only the gentlest surviving tier when the two orderings
+    /// agree. A chain edit that inserted a tier out of difficulty order would quietly make that rule
+    /// pick a harder-than-necessary entry with nothing else failing.
     func testChainDifficultyNeverDecreasesAlongTheChain() {
         let chains = Dictionary(grouping: exercises, by: \.progressionChainId)
 
@@ -208,6 +208,38 @@ final class ExerciseLibraryTests: XCTestCase {
                     chains.count, 2,
                     "\(level)'s [\(floor), \(cap)] band leaves the \(pattern) pattern only "
                         + "\(chains.count) chain(s), so the variety window has nothing to rotate over"
+                )
+            }
+        }
+    }
+
+    /// Every banded pattern spans at least two *tiers* inside a seeded band, so the band is a real
+    /// range rather than a single difficulty wearing a `[floor, cap]` label. This is the gate the
+    /// `SessionPolicy.ColdStartContract.startingDifficultyFloor` tuning rests on: set a level's floor
+    /// to its own cap, or leave a pattern topping out at the floor, and this fails.
+    ///
+    /// Only the levels that actually band are checked - a beginner's floor is the neutral `1`, so
+    /// `ColdStartOverride.startBandedPool` is a no-op for them and the whole catalog beneath the cap
+    /// stays eligible.
+    func testEveryBandedPatternSpansTwoTiersInsideItsStartBand() {
+        typealias Contract = SessionPolicy.ColdStartContract
+
+        for level in FitnessLevel.allCases {
+            let floor = Contract.startingDifficultyFloor(for: level)
+            let cap = Contract.cappedMaxDifficulty(for: level)
+            guard floor > Contract.neutralStartingDifficultyFloor else { continue }
+
+            let banded = exercises.filter {
+                $0.phase == .discipline
+                    && ($0.pillar == .strength || $0.pillar == .primal)
+                    && (floor...cap).contains($0.difficulty)
+            }
+            for pattern in Set(banded.map(\.movementPattern)) {
+                let tiers = Set(banded.filter { $0.movementPattern == pattern }.map(\.difficulty))
+                XCTAssertGreaterThanOrEqual(
+                    tiers.count, 2,
+                    "\(level)'s [\(floor), \(cap)] band collapses the \(pattern) pattern to tier(s) "
+                        + "\(tiers.sorted()), so the band is not a real range there"
                 )
             }
         }

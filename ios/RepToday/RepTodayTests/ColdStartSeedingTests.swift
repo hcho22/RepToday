@@ -145,34 +145,17 @@ final class ColdStartSeedingTests: XCTestCase {
                 .map(\.exercise.difficulty)
             XCTAssertFalse(trainingDifficulties.isEmpty, "\(level) must have at least one training block")
 
-            // The band the Start Seed left the engine to choose from; its entry is the gentlest tier the
-            // session may open at.
-            let banded = ColdStartOverride.startBandedPool(
-                ColdStartOverride.cappedPool(
-                    ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: []),
-                    user: user,
-                    sessionPolicy: policy
-                ),
-                user: user,
-                sessionPolicy: policy,
-                recentLogs: []
-            )
-            let bandEntry = banded
-                .filter { $0.pillar == .strength || $0.pillar == .primal }
-                .map(\.difficulty)
-                .min()!
+            // The band entry is the level's own seeded floor - derived from the contract, not
+            // re-read from the pool the assembler drew from, so this can actually fail. Equality in
+            // both directions is the point: `>=` alone would pass on a session that opened at the
+            // top of the cap, and `<=` alone on one that ignored the floor.
+            let bandEntry = SessionPolicy.ColdStartContract.startingDifficultyFloor(for: level)
             let easiest = trainingDifficulties.min()!
-            XCTAssertGreaterThanOrEqual(
+            XCTAssertEqual(
                 easiest, bandEntry,
-                "\(level) first session must open at its band entry (\(bandEntry)), not below it at "
+                "\(level) first session must open exactly at its band entry (\(bandEntry)), not at "
                     + "difficulty \(easiest)"
             )
-            if level == .beginner {
-                XCTAssertEqual(
-                    easiest, 1,
-                    "a beginner's band is unfloored, so their first session still opens at difficulty 1"
-                )
-            }
             XCTAssertLessThan(
                 trainingDifficulties.max()!, cap + 1,
                 "\(level) first session must never open at or above the top of the cap"
