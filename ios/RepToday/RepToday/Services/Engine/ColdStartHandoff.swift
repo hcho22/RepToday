@@ -17,9 +17,12 @@ import Foundation
 /// - **`user.coldStart`** - `sessionsLogged` increments on each completed session and `active` flips
 ///   off (one-way) the moment the count reaches `handoffThreshold`. This is the switch
 ///   `ColdStartOverride.isActive` reads; once it is false, Step 0 is a no-op. In the same move the
-///   Start Seed floor the week actually ran at is recorded as `bandFloorAtHandoff`, so Step 5 can
-///   still tell "the engine never let this user see this movement" from "they outgrew it" long after
-///   the cold-start sessions have aged out of the engine's bounded log window.
+///   Start Seed floor the week actually ran at is recorded as `bandFloorAtHandoff` (with the
+///   contract's un-eased aim beside it), so Step 5 can still tell "the engine never let this user see
+///   this movement" from "they outgrew it" long after the cold-start sessions have aged out of the
+///   engine's bounded log window. The retiring session's own rating arrives after this - it is
+///   collected on the completion screen - so `revisedBandFloor(_:coldStartLogs:)` folds it into that
+///   recorded floor without ever re-advancing the counter.
 /// - **`sessionPolicy.coldStartContract`** - cleared to `nil` once cold-start is no longer active, so
 ///   the policy that reaches the engine carries no cold-start levers at all. Clearing the contract is
 ///   belt-and-suspenders with the `active` flag: Step 0 is gated on *both*, so either one retiring is
@@ -49,34 +52,78 @@ enum ColdStartHandoff {
     /// sessions are a no-op, so a user can never fall back into cold start (a later gap is the Return
     /// override's job, US-E06, not cold start's).
     ///
-    /// `bandFloorInForce` is the Start Seed difficulty floor the week ran at (`ColdStartOverride
-    /// .startSeed(...).difficultyFloor`, already eased by every down-signal the window produced). It is
-    /// written to `bandFloorAtHandoff` **only** on the session that retires cold-start, and only there,
+    /// `band` is the Start Seed floor the week ran at, paired with the contract's un-eased aim it was
+    /// eased from. It is written **only** on the session that retires cold-start, and only there,
     /// because that is the one moment the floor is still knowable: the recording is the whole point of
-    /// the field. It defaults to the neutral floor, which records "no band ran" - the correct claim for
-    /// a caller with no cold-start contract in play.
-    static func advanced(
-        _ coldStart: User.ColdStart,
-        bandFloorInForce: Int = SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
-    ) -> User.ColdStart {
+    /// the fields.
+    ///
+    /// It is deliberately a required parameter with no default. A defaulted `.unbanded` would let any
+    /// caller that simply forgot the argument record "no band ran" and permanently discard the cliff
+    /// protection those fields exist to provide - failing silently, in the one direction that cannot be
+    /// noticed later. Callers with genuinely no band in play pass `.unbanded` explicitly.
+    static func advanced(_ coldStart: User.ColdStart, band: BandRecord) -> User.ColdStart {
         guard coldStart.active else { return coldStart }
         let logged = coldStart.sessionsLogged + 1
         let retiring = logged >= handoffThreshold
         return User.ColdStart(
             sessionsLogged: logged,
             active: !retiring,
-            bandFloorAtHandoff: retiring ? bandFloorInForce : coldStart.bandFloorAtHandoff
+            bandFloorAtHandoff: retiring ? band.floor : coldStart.bandFloorAtHandoff,
+            bandAimAtHandoff: retiring ? band.aim : coldStart.bandAimAtHandoff
         )
     }
 
-    /// The user with their cold-start state advanced by one completed session (see `advanced(_:)`).
+    /// The user with their cold-start state advanced by one completed session (see `advanced(_:band:)`).
     /// Only `coldStart` changes; every other field is carried through untouched.
-    static func advanced(
-        _ user: User,
-        bandFloorInForce: Int = SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
-    ) -> User {
+    static func advanced(_ user: User, band: BandRecord) -> User {
         var updated = user
-        updated.coldStart = advanced(user.coldStart, bandFloorInForce: bandFloorInForce)
+        updated.coldStart = advanced(user.coldStart, band: band)
+        return updated
+    }
+
+    // MARK: - The recorded band
+
+    /// The Start Seed band a cold-start week ran under, as recorded at the handoff: the contract's
+    /// un-eased floor `aim` and the `floor` that aim actually eased to. Both are recorded because the
+    /// retiring session's own `tooHard` rating always arrives *after* the handoff (it is collected on
+    /// the completion screen, once the log is already written), and re-resolving the floor from the aim
+    /// is the only way to fold that rating in exactly rather than by guessing a step size.
+    struct BandRecord: Equatable {
+        var aim: Int
+        var floor: Int
+
+        /// The record for a user who never ran a banded cold start - a caller with no cold-start
+        /// contract in play, or a contract carrying the neutral floor. Withholds nothing.
+        static let unbanded = BandRecord(
+            aim: SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor,
+            floor: SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+        )
+    }
+
+    /// The cold-start sessions themselves: the first `handoffThreshold` logs in date order. The band
+    /// is a claim about *that* week, so both the recording and any later revision of it count
+    /// down-signals over exactly this set - a `tooHard` rating on a much later session can neither
+    /// widen nor narrow a band that retired long before it.
+    static func coldStartWindowLogs(_ allLogs: [WorkoutLog]) -> [WorkoutLog] {
+        Array(allLogs.sorted { $0.completedAt < $1.completedAt }.prefix(handoffThreshold))
+    }
+
+    /// The cold-start state with its recorded band floor re-resolved against the now-rated cold-start
+    /// sessions, for a rating that landed after the handoff.
+    ///
+    /// This deliberately touches only the derived floor - `sessionsLogged` and `active` are carried
+    /// through untouched - so it can be called on every rating without ever double-advancing cold
+    /// start. It is idempotent: the floor is recomputed from the recorded aim and the full set of
+    /// cold-start ratings, never stepped relative to its own previous value, so re-rating (or
+    /// re-recording the same rating) converges on the same answer. A user who never rates keeps
+    /// exactly the floor the handoff recorded.
+    static func revisedBandFloor(_ user: User, coldStartLogs: [WorkoutLog]) -> User {
+        guard !user.coldStart.active, let aim = user.coldStart.bandAimAtHandoff else { return user }
+        var updated = user
+        updated.coldStart.bandFloorAtHandoff = ColdStartOverride.easedDifficultyFloor(
+            aim: aim,
+            tierDownSignals: ColdStartOverride.tierDownSignalCount(recentLogs: coldStartLogs)
+        )
         return updated
     }
 
@@ -105,23 +152,32 @@ enum ColdStartHandoff {
     ///
     /// `recentLogs` must include the just-completed session, so the floor recorded is the one the whole
     /// week ran at: easing is monotonic (`ColdStartOverride.startSeed` only ever steps the floor down),
-    /// so the floor resolved last is the lowest of the window, and a movement was "never on offer"
-    /// exactly when it sits beneath it. Reading one session too many can therefore only ever *under*
-    /// claim - which is the safe direction, and the one "ease always wins" (US-E06) asks for.
+    /// so the floor resolved over every cold-start session is the lowest any single one of them ran at,
+    /// and a movement was "never on offer" exactly when it sits beneath it. Only the cold-start window
+    /// itself is counted (`coldStartWindowLogs`); a later session's rating is not evidence about a band
+    /// that had already retired.
     ///
     /// It is deliberately a required parameter rather than a defaulted one: an empty history reads as
     /// "no down-signals", which would record the contract's un-eased *aim* instead of what actually ran.
+    ///
+    /// The retiring session's own rating is not in yet - it is collected on the completion screen,
+    /// after the log is written - so the aim is recorded alongside the floor and
+    /// `revisedBandFloor(_:coldStartLogs:)` folds that rating in when it lands.
     static func afterCompletedSession(
         user: User,
         sessionPolicy: SessionPolicy,
         recentLogs: [WorkoutLog]
     ) -> Outcome {
-        let bandFloor = ColdStartOverride.startSeed(
-            user: user,
-            sessionPolicy: sessionPolicy,
-            recentLogs: recentLogs
-        ).difficultyFloor
-        let advancedUser = advanced(user, bandFloorInForce: bandFloor)
+        let coldStartLogs = coldStartWindowLogs(recentLogs)
+        let band = BandRecord(
+            aim: ColdStartOverride.startSeedFloorAim(user: user, sessionPolicy: sessionPolicy),
+            floor: ColdStartOverride.startSeed(
+                user: user,
+                sessionPolicy: sessionPolicy,
+                recentLogs: coldStartLogs
+            ).difficultyFloor
+        )
+        let advancedUser = advanced(user, band: band)
         let reconciledPolicy = reconciled(sessionPolicy, with: advancedUser.coldStart)
         return Outcome(user: advancedUser, sessionPolicy: reconciledPolicy)
     }

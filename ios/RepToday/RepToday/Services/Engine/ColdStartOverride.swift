@@ -83,9 +83,11 @@ enum ColdStartOverride {
     /// The whole Start Seed in force for one generation: the difficulty **floor** the strength/primal
     /// training pool is banded to, and the **volume** a no-history prescription opens at.
     ///
-    /// Resolving both halves together is what makes the self-correction coherent: a down-signal has to
-    /// step the *tier* and the *volume* back at the same time, or de-escalating to an easier movement
-    /// would simply re-apply the full volume seed to a movement the user has never logged.
+    /// Resolving both halves together is what makes the self-correction coherent: a `tooHard` rating has
+    /// to step the *tier* and the *volume* back at the same time, or de-escalating to an easier movement
+    /// would simply re-apply the full volume seed to a movement the user has never logged. The two read
+    /// different evidence beyond that - see `startSeed` - which is exactly why they are resolved once,
+    /// as a pair, rather than derived independently wherever each is needed.
     struct StartSeed: Equatable {
         var difficultyFloor: Int
         var volume: VolumeSeed
@@ -100,14 +102,26 @@ enum ColdStartOverride {
 
     /// The Start Seed in force for this generation, or `.neutral` when Step 0 is inactive.
     ///
-    /// The contract's seeded values are the *aim*; what is actually served is that aim **eased by every
-    /// down-signal the cold-start window has already produced**, so a dishonest self-report corrects
+    /// The contract's seeded values are the *aim*; what is actually served is that aim **eased by the
+    /// down-signals the cold-start window has already produced**, so a dishonest self-report corrects
     /// itself within one cycle rather than holding the user at an unwinnable tier for the whole first
-    /// week. A down-signal is the same eager signal the Asymmetric Ramp (US-E05) reacts to - a session
-    /// rated `tooHard`, or one where the user bailed on a strength/primal movement - and each one steps
-    /// the floor down a tier, drops a set, and eases the rep multiplier by the ramp's own `hardStep`.
-    /// Easing stops at neutral: a down-signal can never push the seed *below* the un-seeded default,
-    /// and a seed already at or under neutral is left exactly as it is.
+    /// week. Easing stops at neutral: a down-signal can never push the seed *below* the un-seeded
+    /// default, and a seed already at or under neutral is left exactly as it is.
+    ///
+    /// The two halves read deliberately *different* evidence:
+    ///
+    /// - The **tier** floor eases only on an explicit `tooHard` rating (`isTierDownSignal`). That
+    ///   rating is the one signal that actually says "this tier is beyond me". A skip is the product's
+    ///   escape hatch and means "not this movement" - one the user dislikes, has no room for, or does
+    ///   not want today - which is not evidence about the tier at all. The tier floor is also the half
+    ///   that outlives the window (`ColdStartHandoff` records it at the handoff), so reading a
+    ///   preference skip as over-reach would bake that mis-reading into the account permanently.
+    /// - The **volume** eases on either signal (`isVolumeDownSignal`), mirroring the Asymmetric Ramp
+    ///   (US-E05), which treats a bailed-on set and a `tooHard` rating identically. Backing the reps
+    ///   off when a set went unfinished is the right read whatever the reason, and being wrong costs
+    ///   nothing: the volume seed is re-resolved from the window on every generation, applies only to
+    ///   no-history prescriptions, and is gone the moment cold start retires. `AdaptiveOverload`
+    ///   therefore stays exactly as it is - it moves volume only, never a tier.
     static func startSeed(
         user: User,
         sessionPolicy: SessionPolicy,
@@ -117,40 +131,72 @@ enum ColdStartOverride {
         guard user.coldStart.active, let contract = sessionPolicy.coldStartContract else {
             return .neutral
         }
-        let signals = downSignalCount(recentLogs: recentLogs)
+        let volumeSignals = volumeDownSignalCount(recentLogs: recentLogs)
         return StartSeed(
-            difficultyFloor: eased(
-                contract.startingDifficultyFloor,
-                toward: Contract.neutralStartingDifficultyFloor,
-                to: contract.startingDifficultyFloor - signals
+            difficultyFloor: easedDifficultyFloor(
+                aim: contract.startingDifficultyFloor,
+                tierDownSignals: tierDownSignalCount(recentLogs: recentLogs)
             ),
             volume: VolumeSeed(
                 repMultiplier: eased(
                     contract.startingRepMultiplier,
                     toward: Contract.neutralStartingRepMultiplier,
-                    to: contract.startingRepMultiplier * pow(AdaptiveOverload.hardStep, Double(signals))
+                    to: contract.startingRepMultiplier * pow(AdaptiveOverload.hardStep, Double(volumeSignals))
                 ),
                 sets: eased(
                     contract.startingSets,
                     toward: Contract.neutralStartingSets,
-                    to: contract.startingSets - signals
+                    to: contract.startingSets - volumeSignals
                 )
             )
         )
     }
 
-    /// How many eager down-signals the user has already produced: sessions they rated `tooHard`, plus
-    /// sessions where they bailed on a banded (strength/primal) movement. This mirrors the Asymmetric
-    /// Ramp's own down-signal exactly (`AdaptiveOverload` treats a `tooHard` rating and a skip
-    /// identically), so the tier and the volume back off on the same evidence.
-    static func downSignalCount(recentLogs: [WorkoutLog]) -> Int {
-        recentLogs.filter(isDownSignal).count
+    /// The contract's un-eased difficulty-floor **aim** for this generation, or the neutral floor when
+    /// Step 0 is inactive. `ColdStartHandoff` records this alongside the eased floor so a rating that
+    /// lands *after* the handoff can re-resolve the floor exactly from the same aim, rather than
+    /// guessing at a step size or re-deriving the band from a window the sessions have aged out of.
+    static func startSeedFloorAim(user: User, sessionPolicy: SessionPolicy) -> Int {
+        guard user.coldStart.active, let contract = sessionPolicy.coldStartContract else {
+            return SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+        }
+        return contract.startingDifficultyFloor
     }
 
-    /// Whether one session is an eager down-signal: the user rated it `tooHard`, or bailed on a
-    /// banded (strength/primal) movement in it. Exposed so anything else reacting to the same
-    /// evidence reads it from exactly one definition rather than re-deriving a subtly different one.
-    static func isDownSignal(_ log: WorkoutLog) -> Bool {
+    /// A difficulty-floor `aim` eased by `tierDownSignals` explicit `tooHard` sessions - one tier per
+    /// signal, never past neutral. The single definition of the tier easing, shared by the live seed
+    /// and by the handoff's recorded floor so the two can never drift.
+    static func easedDifficultyFloor(aim: Int, tierDownSignals: Int) -> Int {
+        eased(
+            aim,
+            toward: SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor,
+            to: aim - tierDownSignals
+        )
+    }
+
+    /// How many sessions the user has explicitly rated `tooHard` - the evidence the Start Seed's
+    /// difficulty floor eases on (see `startSeed`).
+    static func tierDownSignalCount(recentLogs: [WorkoutLog]) -> Int {
+        recentLogs.filter(isTierDownSignal).count
+    }
+
+    /// Whether one session says the *tier* was beyond the user: they rated it `tooHard`. Deliberately
+    /// narrower than `isVolumeDownSignal` - a skip is a preference, not a verdict on difficulty.
+    static func isTierDownSignal(_ log: WorkoutLog) -> Bool {
+        log.perceivedDifficulty == .tooHard
+    }
+
+    /// How many eager down-signals the user has produced for the *volume* half of the seed: sessions
+    /// rated `tooHard`, plus sessions where they bailed on a banded (strength/primal) movement.
+    static func volumeDownSignalCount(recentLogs: [WorkoutLog]) -> Int {
+        recentLogs.filter(isVolumeDownSignal).count
+    }
+
+    /// Whether one session is an eager volume down-signal: the user rated it `tooHard`, or bailed on a
+    /// banded (strength/primal) movement in it. This mirrors the Asymmetric Ramp's own down-signal
+    /// exactly (`AdaptiveOverload` treats a `tooHard` rating and a skip identically), so the seeded
+    /// volume and the ramp back off on the same evidence.
+    static func isVolumeDownSignal(_ log: WorkoutLog) -> Bool {
         log.perceivedDifficulty == .tooHard
             || log.exercises.contains { $0.skipped && ($0.pillar == .strength || $0.pillar == .primal) }
     }
@@ -182,15 +228,12 @@ enum ColdStartOverride {
     ///   hardest movement that pattern actually offers inside the cap, so banding can never starve a
     ///   pattern (and never break generation) just because the library has no movement that hard yet.
     ///
-    /// `recentLogs` is read only to resolve the seed (see `startSeed`), so a `tooHard` first session
-    /// visibly lowers the *tier* of the next one, not just its reps.
-    static func startBandedPool(
-        _ pool: [Exercise],
-        user: User,
-        sessionPolicy: SessionPolicy,
-        recentLogs: [WorkoutLog]
-    ) -> [Exercise] {
-        let floor = startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs).difficultyFloor
+    /// `seed` is the Start Seed already resolved for this generation (see `startSeed`), so a `tooHard`
+    /// first session visibly lowers the *tier* of the next one, not just its reps. It is passed in
+    /// rather than re-resolved because the band and the volume have to move together; the convenience
+    /// overload below resolves it for callers that only need the pool.
+    static func startBandedPool(_ pool: [Exercise], seed: StartSeed) -> [Exercise] {
+        let floor = seed.difficultyFloor
         guard floor > SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor else { return pool }
 
         // The hardest movement each banded pattern offers within the (already capped) pool.
@@ -208,6 +251,19 @@ enum ColdStartOverride {
             }
             return exercise.difficulty >= min(floor, hardest)
         }
+    }
+
+    /// `startBandedPool` for a caller that has not already resolved the Start Seed.
+    static func startBandedPool(
+        _ pool: [Exercise],
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> [Exercise] {
+        startBandedPool(
+            pool,
+            seed: startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
+        )
     }
 
     /// Whether the Start Seed's difficulty floor applies to a movement: only the strength and primal
@@ -232,7 +288,7 @@ enum ColdStartOverride {
     ///
     /// The band is the one that actually ran, never one asserted after the fact:
     /// - **While cold start is active** it is the live seed (`startSeed`), already eased by every
-    ///   down-signal, so a `tooHard` session stops withholding the gentler tier in the same move that
+    ///   `tooHard` rating, so such a session stops withholding the gentler tier in the same move that
     ///   lowers the floor.
     /// - **Once cold start retires** it is `user.coldStart.bandFloorAtHandoff` - the floor
     ///   `ColdStartHandoff` recorded, from that same eased seed, on the session that retired the band.
@@ -252,13 +308,9 @@ enum ColdStartOverride {
         library: [Exercise],
         user: User,
         sessionPolicy: SessionPolicy,
-        recentLogs: [WorkoutLog]
+        seed: StartSeed
     ) -> Set<String> {
-        let floor = bandFloorInForce(
-            user: user,
-            sessionPolicy: sessionPolicy,
-            recentLogs: recentLogs
-        )
+        let floor = bandFloorInForce(user: user, sessionPolicy: sessionPolicy, seed: seed)
         guard floor > SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor else { return [] }
 
         // Banding never starves a pattern, so a pattern whose hardest movement sits under the floor
@@ -291,14 +343,28 @@ enum ColdStartOverride {
     private static func bandFloorInForce(
         user: User,
         sessionPolicy: SessionPolicy,
-        recentLogs: [WorkoutLog]
+        seed: StartSeed
     ) -> Int {
         if isActive(user: user, sessionPolicy: sessionPolicy) {
-            return startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
-                .difficultyFloor
+            return seed.difficultyFloor
         }
         return user.coldStart.bandFloorAtHandoff
             ?? SessionPolicy.ColdStartContract.neutralStartingDifficultyFloor
+    }
+
+    /// `withheldByStartSeed` for a caller that has not already resolved the Start Seed.
+    static func withheldByStartSeed(
+        library: [Exercise],
+        user: User,
+        sessionPolicy: SessionPolicy,
+        recentLogs: [WorkoutLog]
+    ) -> Set<String> {
+        withheldByStartSeed(
+            library: library,
+            user: user,
+            sessionPolicy: sessionPolicy,
+            seed: startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs)
+        )
     }
 
     /// The Start Seed volume in force for this generation, or `.neutral` when Step 0 is inactive.

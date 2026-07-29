@@ -190,6 +190,16 @@ enum SessionAssembly {
         // On a Return, discipline overrides optimization: mobility leads regardless of staleness.
         let pillarPlan = ReturnOverride.overridePlan(coldStartPlan, isReturn: isReturn)
 
+        // The Start Seed (US-O02), resolved exactly once for the whole generation. Its two halves - the
+        // difficulty floor the training pool is banded to and the volume a no-history prescription
+        // opens at - have to move together, so all three consumers below read this one resolution
+        // rather than each re-deriving it from `recentLogs`.
+        let startSeed = ColdStartOverride.startSeed(
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs
+        )
+
         // On a Return, cap the eligible difficulty so a strong pre-gap history can't serve a punishing
         // tier (layered after the cold-start band; only one is ever active). The cold-start band is the
         // Start Seed's floor (US-O02) applied under the cap (US-G01): together they restrict the
@@ -202,9 +212,7 @@ enum SessionAssembly {
                     user: user,
                     sessionPolicy: sessionPolicy
                 ),
-                user: user,
-                sessionPolicy: sessionPolicy,
-                recentLogs: recentLogs
+                seed: startSeed
             ),
             isReturn: isReturn
         )
@@ -214,14 +222,10 @@ enum SessionAssembly {
         // the steady state, so it is a no-op.
         let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
 
-        // The Start Seed's volume half (US-O02): the reps/sets a no-history prescription opens at,
-        // matched to the self-reported fitness level and eased by any cold-start down-signal already
-        // logged, so it stays in step with the banded pool above. Neutral outside the cold-start window.
-        let startVolume = ColdStartOverride.volumeSeed(
-            user: user,
-            sessionPolicy: sessionPolicy,
-            recentLogs: recentLogs
-        )
+        // The Start Seed's volume half: the reps/sets a no-history prescription opens at, matched to
+        // the self-reported fitness level and eased by any cold-start down-signal already logged, so it
+        // stays in step with the banded pool above. Neutral outside the cold-start window.
+        let startVolume = startSeed.volume
 
         // The other half of the Start Seed band: the movements it withholds accrue no history, so
         // Step 5 is told they were never on offer rather than outgrown. Without it their untouched
@@ -230,7 +234,7 @@ enum SessionAssembly {
             library: library,
             user: user,
             sessionPolicy: sessionPolicy,
-            recentLogs: recentLogs
+            seed: startSeed
         )
 
         var builder = Builder(

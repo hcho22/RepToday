@@ -14,7 +14,8 @@ import Foundation
 ///   the Start Seed floor the week actually ran at, then reconciles the policy (clearing the now-inert
 ///   `coldStartContract`). The user and policy are separate aggregates, so they are persisted
 ///   separately. The floor is resolved over the *full* history, not the caller's bounded `recentLogs`,
-///   so every down-signal the cold-start window produced is counted.
+///   so every `too_hard` rating the cold-start window produced is counted - including, once
+///   `recordPerceivedDifficulty` folds it in, the retiring session's own.
 /// - **HealthKit write (US-N03).** When a HealthKit service is wired, the completed session is mirrored
 ///   into Health as a workout. The write is fully isolated (its own `try?`) so a denied authorization or
 ///   a HealthKit failure never disrupts the essential bookkeeping above or blocks the completion; the
@@ -41,10 +42,17 @@ protocol SessionCompletionServiceProtocol {
     /// The rating is collected on the completion screen, *after* `recordCompletedSession` has already
     /// written the durable record (US-L01), so this is a minimal, idempotent re-save of that one log by
     /// its stable id: it sets `perceivedDifficulty` and persists, and deliberately does **not** repeat
-    /// the Consistency refresh or the cold-start handoff. Those don't depend on the rating, and re-running
-    /// the handoff would advance `coldStart.sessionsLogged` a second time for the same session. The rating
-    /// is what the Asymmetric Ramp (US-E05) reads on the next session, so it only needs to land on the log
-    /// record before the next generation. A `nil` difficulty is a valid "unrated" value.
+    /// the Consistency refresh or advance the cold-start counter. Those don't depend on the rating, and
+    /// re-running the handoff would advance `coldStart.sessionsLogged` a second time for the same
+    /// session. The rating is what the Asymmetric Ramp (US-E05) reads on the next session, so it only
+    /// needs to land on the log record before the next generation. A `nil` difficulty is a valid
+    /// "unrated" value.
+    ///
+    /// It does re-resolve one *derived* fact: the Start Seed band floor the cold-start week ran at
+    /// (US-O02). Because the retiring session can only be rated after its handoff has run, a `tooHard`
+    /// on the fifth session would otherwise be dropped entirely - the strongest signal the user can
+    /// send, silently missing from the record of their own week. Only `bandFloorAtHandoff` moves; the
+    /// counter is untouched, so this can never double-advance cold start.
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws
 }
 
@@ -129,11 +137,29 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     }
 
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {
-        // A minimal re-save of the one log by its stable id (`save` is an upsert), setting only the
-        // rating. No Consistency refresh, no cold-start handoff - the rating changes neither, and
-        // re-running the handoff would double-advance cold-start for a session already recorded.
+        // 1. A minimal re-save of the one log by its stable id (`save` is an upsert), setting only the
+        //    rating. No Consistency refresh and no counter advance - the rating changes neither, and
+        //    re-running the handoff would double-advance cold-start for a session already recorded.
         var rated = log
         rated.perceivedDifficulty = difficulty
         try await workoutLogService.save(rated)
+
+        // 2. Fold the rating into the recorded Start Seed band (US-O02). The retiring session's rating
+        //    always arrives here rather than at the handoff, so without this an explicit `tooHard` on
+        //    the fifth session would never reach the band the rest of the account is measured against.
+        //    Best-effort and idempotent: the floor is re-resolved from the recorded aim over the
+        //    cold-start sessions, so repeating or changing a rating converges rather than compounding,
+        //    and a failure here must never fail the rating write the user actually asked for.
+        guard let latest = try? await userService.currentUser(),
+              latest.coldStart.bandAimAtHandoff != nil,
+              let allLogs = try? await workoutLogService.workoutLogs(from: nil, to: nil)
+        else { return }
+        let revised = ColdStartHandoff.revisedBandFloor(
+            latest,
+            coldStartLogs: ColdStartHandoff.coldStartWindowLogs(allLogs)
+        )
+        if revised != latest {
+            try? await userService.save(revised)
+        }
     }
 }

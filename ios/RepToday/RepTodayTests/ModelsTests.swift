@@ -92,7 +92,9 @@ final class ModelsTests: XCTestCase {
 
     func testColdStartRoundTrip() {
         assertRoundTrip(User.ColdStart(sessionsLogged: 3, active: false))
-        assertRoundTrip(User.ColdStart(sessionsLogged: 5, active: false, bandFloorAtHandoff: 3))
+        assertRoundTrip(
+            User.ColdStart(sessionsLogged: 5, active: false, bandFloorAtHandoff: 2, bandAimAtHandoff: 3)
+        )
     }
 
     /// A record persisted before the Start Seed band existed decodes to "no band ran" rather than
@@ -103,6 +105,7 @@ final class ModelsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(User.ColdStart.self, from: legacy)
         XCTAssertEqual(decoded, User.ColdStart(sessionsLogged: 5, active: false))
         XCTAssertNil(decoded.bandFloorAtHandoff)
+        XCTAssertNil(decoded.bandAimAtHandoff)
     }
 
     /// `fresh` is the documented brand-new/legacy default: cold-start active, nothing logged, no band
@@ -110,6 +113,7 @@ final class ModelsTests: XCTestCase {
     func testColdStartFreshDefault() {
         XCTAssertEqual(User.ColdStart.fresh, User.ColdStart(sessionsLogged: 0, active: true))
         XCTAssertNil(User.ColdStart.fresh.bandFloorAtHandoff)
+        XCTAssertNil(User.ColdStart.fresh.bandAimAtHandoff)
     }
 
     // MARK: - User (nested optionals present and absent)

@@ -96,6 +96,13 @@ extension User {
         /// `ColdStartOverride.withheldByStartSeed`.
         var bandFloorAtHandoff: Int?
 
+        /// The contract's un-eased Start Seed floor *aim*, recorded beside `bandFloorAtHandoff` at the
+        /// same moment. It exists so a `tooHard` rating that lands after the handoff - the retiring
+        /// session is always rated on the completion screen, i.e. after the log is already written -
+        /// can re-resolve `bandFloorAtHandoff` exactly from the aim and the now-rated cold-start
+        /// sessions, instead of guessing at a step size. `nil` exactly when `bandFloorAtHandoff` is.
+        var bandAimAtHandoff: Int?
+
         /// A brand-new user: no sessions logged yet, cold-start active, no band retired. The
         /// documented default for a legacy record that predates the `coldStart` field.
         static let fresh = ColdStart(sessionsLogged: 0, active: true)

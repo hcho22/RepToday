@@ -45,10 +45,11 @@ import Foundation
 ///   before the band existed. Same for an injury filter or any other narrowing of the pool.
 /// - **A `tooHard` session** eases the band itself (`ColdStartOverride.startSeed`), so the tier the
 ///   Start Seed just stepped down to stops being withheld in the same move. Nothing re-raises it -
-///   the floor `ColdStartHandoff` records at the handoff *is* that eased floor, so the de-escalation
-///   survives the retirement rather than being recomputed away by it.
+///   the floor `ColdStartHandoff` records at the handoff *is* that eased floor, and the retiring
+///   session's own rating (which can only land after that handoff) is folded back into it - so the
+///   de-escalation survives the retirement rather than being recomputed away by it.
 /// - **A skipped movement** changes nothing here at all - skipping is the product's escape hatch,
-///   not evidence about ability.
+///   not evidence about ability. It eases the seeded *volume*, never the tier.
 ///
 /// The band is a fact about the user's own cold-start week, not a claim derived from the onboarding
 /// self-report: it is the live seed while cold start runs, and afterwards exactly the floor recorded

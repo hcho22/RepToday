@@ -591,24 +591,24 @@ final class StartSeedTests: XCTestCase {
     /// still treat those tiers as movements the user was offered.
     func testTheEasedFloorSurvivesTheHandoff() async throws {
         let library = try await library()
-        let user = freshUser(level: .advanced)
         let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
-        // The user completed a difficulty-3 push and rated the session too hard.
-        let logs = [repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 1, difficulty: .tooHard)]
+        // The real shape of a cold-start week at the moment the fifth session is recorded: sessions
+        // 1-4 already carry the rating their own completion screen collected, and session 5 does not
+        // yet - its rating cannot exist until after the log is written.
+        let logs = coldStartWeek(ratings: [.tooHard, .justRight, .justRight, .justRight, nil])
 
-        var retiring = user
-        retiring.coldStart = User.ColdStart(
-            sessionsLogged: ColdStartHandoff.handoffThreshold - 1,
-            active: true
-        )
         let outcome = ColdStartHandoff.afterCompletedSession(
-            user: retiring, sessionPolicy: policy, recentLogs: logs
+            user: retiringUser(level: .advanced), sessionPolicy: policy, recentLogs: logs
         )
 
         XCTAssertFalse(outcome.user.coldStart.active, "the fixture must actually retire the band")
         XCTAssertEqual(
             outcome.user.coldStart.bandFloorAtHandoff, 2,
             "the recorded floor must be the eased one, not the advanced level's aim of 3"
+        )
+        XCTAssertEqual(
+            outcome.user.coldStart.bandAimAtHandoff, 3,
+            "the un-eased aim is recorded beside it so a late rating can re-resolve the floor"
         )
 
         // The reconstruction is now a no-op over `recentLogs`: the eased tier stays on offer even once
@@ -623,6 +623,100 @@ final class StartSeedTests: XCTestCase {
             withheld.contains("squat_sumo"),
             "the handoff re-raised the tier the too_hard rating eased, got \(withheld.sorted())"
         )
+    }
+
+    /// The retiring session's own `tooHard` must count. It is collected on the completion screen, so it
+    /// always lands *after* the handoff has already recorded the floor - the strongest signal the user
+    /// can send, arriving too late to be seen. `revisedBandFloor` folds it in without re-advancing the
+    /// counter, so the band ends up describing the week the user actually had.
+    func testALateRatingOnTheRetiringSessionStillEasesTheRecordedFloor() async throws {
+        let library = try await library()
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        var logs = coldStartWeek(ratings: [nil, nil, nil, nil, nil])
+
+        let outcome = ColdStartHandoff.afterCompletedSession(
+            user: retiringUser(level: .advanced), sessionPolicy: policy, recentLogs: logs
+        )
+        XCTAssertEqual(outcome.user.coldStart.bandFloorAtHandoff, 3, "nothing rated yet: the full aim")
+
+        // The user now taps "too hard" on the completion screen of that fifth session.
+        logs[4].perceivedDifficulty = .tooHard
+        let revised = ColdStartHandoff.revisedBandFloor(
+            outcome.user,
+            coldStartLogs: ColdStartHandoff.coldStartWindowLogs(logs)
+        )
+
+        XCTAssertEqual(revised.coldStart.bandFloorAtHandoff, 2, "the late rating eases the recorded tier")
+        XCTAssertEqual(
+            revised.coldStart.sessionsLogged, outcome.user.coldStart.sessionsLogged,
+            "revising a derived fact must never re-advance the cold-start counter"
+        )
+        XCTAssertFalse(revised.coldStart.active)
+        XCTAssertFalse(
+            ColdStartOverride.withheldByStartSeed(
+                library: library, user: revised, sessionPolicy: outcome.sessionPolicy, recentLogs: []
+            ).contains("squat_sumo"),
+            "the eased tier must be back on offer for the session after the handoff"
+        )
+
+        // Idempotent: the floor is re-resolved from the recorded aim, never stepped from itself, so
+        // re-rating (the completion screen lets the user re-tap) converges instead of compounding.
+        XCTAssertEqual(
+            ColdStartHandoff.revisedBandFloor(
+                revised, coldStartLogs: ColdStartHandoff.coldStartWindowLogs(logs)
+            ),
+            revised
+        )
+        logs[4].perceivedDifficulty = .justRight
+        XCTAssertEqual(
+            ColdStartHandoff.revisedBandFloor(
+                revised, coldStartLogs: ColdStartHandoff.coldStartWindowLogs(logs)
+            ).coldStart.bandFloorAtHandoff,
+            3,
+            "re-rating away from too_hard re-resolves to the floor that week actually ran at"
+        )
+    }
+
+    /// A rating on a session long after the handoff is not evidence about a band that retired before
+    /// it, so it can neither widen nor narrow the recorded floor.
+    func testARatingAfterTheColdStartWeekLeavesTheRecordedBandAlone() {
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        var logs = coldStartWeek(ratings: [nil, nil, nil, nil, nil])
+        let outcome = ColdStartHandoff.afterCompletedSession(
+            user: retiringUser(level: .advanced), sessionPolicy: policy, recentLogs: logs
+        )
+
+        // A sixth session, well past the handoff, rated too hard.
+        logs.append(repsLog(id: "push_diamond", reps: [8], daysAgo: 1, difficulty: .tooHard))
+
+        XCTAssertEqual(
+            ColdStartHandoff.revisedBandFloor(
+                outcome.user, coldStartLogs: ColdStartHandoff.coldStartWindowLogs(logs)
+            ),
+            outcome.user
+        )
+    }
+
+    /// A user one session shy of the handoff, with an advanced-level Start Seed contract in play.
+    private func retiringUser(level: FitnessLevel) -> User {
+        var user = freshUser(level: level)
+        user.coldStart = User.ColdStart(
+            sessionsLogged: ColdStartHandoff.handoffThreshold - 1,
+            active: true
+        )
+        return user
+    }
+
+    /// A full cold-start week in date order, one log per session, carrying the given ratings.
+    private func coldStartWeek(ratings: [PerceivedDifficulty?]) -> [WorkoutLog] {
+        ratings.enumerated().map { index, rating in
+            repsLog(
+                id: "push_diamond",
+                reps: [8, 8, 8],
+                daysAgo: ratings.count - index,
+                difficulty: rating
+            )
+        }
     }
 
     /// A band that never ran is never asserted retroactively. `coldStart.active == false` is equally
@@ -862,17 +956,42 @@ final class StartSeedTests: XCTestCase {
             "a too-hard session must step the tier down, not just the reps"
         )
 
-        // A bailed-on strength movement is the same eager down-signal the Asymmetric Ramp reacts to.
-        let afterSkip = ColdStartOverride.startSeed(
-            user: user,
-            sessionPolicy: policy,
-            recentLogs: [skipLog(id: "push_diamond", daysAgo: 1)]
-        )
-        XCTAssertEqual(afterSkip.difficultyFloor, seeded.startingDifficultyFloor - 1)
     }
 
-    /// The tier and the volume ease together. Otherwise de-escalating onto an easier movement - which
-    /// the user has never logged - would simply re-apply the full volume seed to it.
+    /// A skip is the product's escape hatch - "not this movement" - and must never be read as a verdict
+    /// on the *tier*. It still eases the volume, mirroring the Asymmetric Ramp, but the difficulty floor
+    /// is untouched: that floor is the half `ColdStartHandoff` records for the life of the account, so a
+    /// preference tap must not permanently erode the band and re-open the post-handoff cliff.
+    func testSkipEasesTheVolumeButNeverTheTier() {
+        let user = freshUser(level: .advanced)
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        let seeded = policy.coldStartContract!
+
+        let afterSkips = ColdStartOverride.startSeed(
+            user: user,
+            sessionPolicy: policy,
+            recentLogs: [
+                skipLog(id: "push_diamond", daysAgo: 2),
+                skipLog(id: "squat_cossack", daysAgo: 1),
+            ]
+        )
+        XCTAssertEqual(
+            afterSkips.difficultyFloor, seeded.startingDifficultyFloor,
+            "two routine skips must leave the tier band exactly where it was"
+        )
+        XCTAssertLessThan(
+            afterSkips.volume.repMultiplier, seeded.startingRepMultiplier,
+            "the volume still backs off - the ramp reads a bailed-on set the same way either way"
+        )
+        XCTAssertEqual(
+            afterSkips.volume.sets,
+            max(SessionPolicy.ColdStartContract.neutralStartingSets, seeded.startingSets - 2),
+            "two signals drop two sets, stopping at the un-seeded neutral count"
+        )
+    }
+
+    /// The tier and the volume ease together on an explicit `too_hard`. Otherwise de-escalating onto an
+    /// easier movement - which the user has never logged - would simply re-apply the full volume seed.
     func testDownSignalEasesTheVolumeSeedToo() {
         let user = freshUser(level: .advanced)
         let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)

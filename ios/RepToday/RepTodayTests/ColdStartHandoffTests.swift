@@ -45,13 +45,13 @@ final class ColdStartHandoffTests: XCTestCase {
     // MARK: - sessionsLogged increment
 
     func testAdvanceIncrementsSessionsLogged() {
-        let advanced = ColdStartHandoff.advanced(User.ColdStart(sessionsLogged: 2, active: true))
+        let advanced = ColdStartHandoff.advanced(User.ColdStart(sessionsLogged: 2, active: true), band: .unbanded)
         XCTAssertEqual(advanced.sessionsLogged, 3)
         XCTAssertTrue(advanced.active, "Below the threshold, cold-start stays active.")
     }
 
     func testFreshUserAdvancesFromZero() {
-        let advanced = ColdStartHandoff.advanced(User.ColdStart.fresh)
+        let advanced = ColdStartHandoff.advanced(User.ColdStart.fresh, band: .unbanded)
         XCTAssertEqual(advanced.sessionsLogged, 1)
         XCTAssertTrue(advanced.active)
     }
@@ -61,14 +61,15 @@ final class ColdStartHandoffTests: XCTestCase {
     func testActiveFlipsOffAtThreshold() {
         // The validation-test setup: a user one session shy of the handoff.
         let before = User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true)
-        let after = ColdStartHandoff.advanced(before)
+        let after = ColdStartHandoff.advanced(before, band: .unbanded)
         XCTAssertEqual(after.sessionsLogged, ColdStartHandoff.handoffThreshold)
         XCTAssertFalse(after.active, "Cold-start retires the moment sessionsLogged reaches the threshold.")
     }
 
     func testActiveStaysOnJustBeforeThreshold() {
         let after = ColdStartHandoff.advanced(
-            User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold - 2, active: true)
+            User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold - 2, active: true),
+            band: .unbanded
         )
         XCTAssertEqual(after.sessionsLogged, ColdStartHandoff.handoffThreshold - 1)
         XCTAssertTrue(after.active, "One session before the threshold, cold-start is still active.")
@@ -77,14 +78,14 @@ final class ColdStartHandoffTests: XCTestCase {
     func testRetirementIsOneWayAndFrozen() {
         // Once inactive, further completed sessions are a no-op - the state never re-activates.
         let retired = User.ColdStart(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
-        let after = ColdStartHandoff.advanced(retired)
+        let after = ColdStartHandoff.advanced(retired, band: .unbanded)
         XCTAssertEqual(after, retired, "A retired cold-start state is frozen.")
     }
 
     func testStepThroughFullColdStartWindow() {
         var state = User.ColdStart.fresh
         for expected in 1...ColdStartHandoff.handoffThreshold {
-            state = ColdStartHandoff.advanced(state)
+            state = ColdStartHandoff.advanced(state, band: .unbanded)
             XCTAssertEqual(state.sessionsLogged, expected)
             XCTAssertEqual(
                 state.active,
@@ -173,7 +174,7 @@ final class ColdStartHandoffTests: XCTestCase {
 
         var state = User.ColdStart.fresh
         for logged in 1..<ColdStartHandoff.handoffThreshold {
-            state = ColdStartHandoff.advanced(state, bandFloorInForce: 3)
+            state = ColdStartHandoff.advanced(state, band: ColdStartHandoff.BandRecord(aim: 3, floor: 3))
             XCTAssertEqual(state.sessionsLogged, logged)
             XCTAssertNil(state.bandFloorAtHandoff, "Only the retiring session records the band.")
         }
