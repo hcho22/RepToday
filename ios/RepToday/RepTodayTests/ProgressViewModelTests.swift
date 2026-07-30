@@ -289,7 +289,12 @@ final class ProgressTabSnapshotTests: XCTestCase {
     private func snapshot(viewModel: ProgressViewModel, tall: Bool, fileName: String) async throws {
         // Pre-load so the populated content path renders when the view is hosted.
         await viewModel.load()
+        try render(viewModel: viewModel, tall: tall, fileName: fileName)
+    }
 
+    /// Hosting, layout and capture stay in a synchronous context: spinning the run loop is unavailable
+    /// from an async context, and the capture itself has nothing left to await.
+    private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) throws {
         let size = CGSize(width: 393, height: tall ? 2500 : 760)
         let host = UIHostingController(rootView: ProgressTabView(viewModel: viewModel))
         host.overrideUserInterfaceStyle = .dark
