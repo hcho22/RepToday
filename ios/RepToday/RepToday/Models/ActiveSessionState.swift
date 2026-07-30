@@ -7,15 +7,17 @@ import Foundation
 /// The snapshot captures the play state, not just the generated `Workout`: the current lineup
 /// (`slots`, which reflects any in-session swap, US-K03), where the user is (`currentStepIndex` /
 /// `currentSet`), what they have done so far (`completedSets` / `skippedStepIDs`), the session clock
-/// origin (`startedAt`), the rest timer (`rest`), and the hold timer (`hold`, US-O03). It is a plain
+/// origin (`startedAt`), the rest timer (`rest`), and the side a part-done per-side hold left them on
+/// (`hold`, US-O03). It is a plain
 /// `Codable` value type persisted whole as JSON by the `ActiveSessionStore`, keyed by the owning
 /// user's id and cleared the moment the session completes or is discarded - so at most one resumable
 /// session exists per user.
 ///
-/// Timing is stored as absolute instants (`startedAt`, `rest.deadline`, `hold.deadline`) rather than
-/// remaining durations, so elapsed time and a running countdown restore correctly across a relaunch
-/// that happened at an unknown later moment. A countdown that was paused on backgrounding (US-K02,
-/// US-O03) instead carries its frozen remainder, so it resumes from where it stopped.
+/// Timing is stored as absolute instants (`startedAt`, `rest.deadline`) rather than remaining
+/// durations, so elapsed time and a running rest restore correctly across a relaunch that happened at
+/// an unknown later moment. A rest that was paused on backgrounding (US-K02) instead carries its
+/// frozen remainder, so it resumes from where it stopped. No running hold countdown is stored at all -
+/// only the side it left the user on (see `Hold`).
 struct ActiveSessionState: Codable, Equatable {
 
     /// One playable slot in the current lineup: a prescribed exercise plus the block context the
@@ -68,7 +70,8 @@ struct ActiveSessionState: Codable, Equatable {
     var startedAt: Date?
     /// The rest timer between sets, or `nil` when not resting.
     var rest: Rest?
-    /// The Hold Timer for a timed exercise (US-O03), or `nil` when none is running or part-done.
+    /// How far through a per-side set the user is (US-O03), or `nil` when there is none. Never a
+    /// running countdown - that is in-memory only.
     /// Optional and defaulted, so a snapshot written before US-O03 decodes unchanged.
     var hold: Hold?
 

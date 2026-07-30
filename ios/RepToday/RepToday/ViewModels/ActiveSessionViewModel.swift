@@ -50,12 +50,12 @@ import Observation
 /// countdown runs, and at zero it fires the same `RestTimerFeedback` cue exactly once and records the
 /// set automatically. It is counted one *side* at a time, because the engine charges a per-side
 /// movement for both sides - a set of side plank is two legs, and a single countdown that recorded
-/// the set at the end of one would quietly halve the work the session was built around. Like the rest
-/// timer it runs against an absolute deadline with pause/resume on backgrounding, and it is captured
-/// in the persisted snapshot, so it survives a relaunch - as a *frozen* leg, because leaving the
-/// screen freezes the countdown rather than letting it run against time the user was not holding for,
-/// and a leg whose deadline expired anyway comes back idle rather than completing itself on the first
-/// tick after a resume. Rep-based exercises are untouched: set tracker plus a manual "Complete set".
+/// the set at the end of one would quietly halve the work the session was built around. The countdown
+/// itself is in-memory only and is never persisted or restored: backgrounding *within* the session
+/// freezes and resumes the leg through `scenePhase`, while tearing the player down ends it outright,
+/// and only the side the user still owes is carried into the snapshot - so a resumed session always
+/// comes back idle. (`init(state:)` records why a hold is not a rest.) Rep-based exercises are
+/// untouched: set tracker plus a manual "Complete set".
 @Observable
 final class ActiveSessionViewModel {
 
