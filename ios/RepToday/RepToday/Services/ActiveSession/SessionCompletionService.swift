@@ -33,8 +33,10 @@ import Foundation
 /// from it on the next open.
 protocol SessionCompletionServiceProtocol {
     /// Persist a completed session and its post-session bookkeeping. `recentLogs` is retained for
-    /// caller stability, but the Consistency Score is recomputed over the full persisted history so the
-    /// all-time `longestChain` (US-H01) is never understated by a bounded window.
+    /// caller stability, but the full persisted history is what the bookkeeping reads, because neither
+    /// consumer tolerates a bounded window: the Consistency Score's all-time `longestChain` (US-H01)
+    /// would be understated by one, and the cold-start handoff resolves the Start Seed floor the week
+    /// actually ran at (US-O02) from every down-signal that week produced.
     func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws
 
     /// Attach the user's perceived-difficulty rating to an already-recorded log (US-L02).

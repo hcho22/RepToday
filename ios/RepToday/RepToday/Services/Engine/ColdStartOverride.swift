@@ -10,7 +10,9 @@ import Foundation
 /// - **Capped Starting Difficulty** (`cappedPool`) - the eligible pool is restricted to movements at
 ///   or below the policy's `coldStartContract.cappedMaxDifficulty`, so someone who over-rated their
 ///   fitness level still gets a winnable first day. The "served at the gentle end of the band"
-///   promise then falls out of Step 5, which already starts a no-history user at the gentlest tier.
+///   promise then falls out of Step 5, which starts a no-history user at the gentlest eligible tier
+///   the Start Seed band did not withhold - for a beginner (neutral floor) that is the chain entry,
+///   and for an active level it is the band floor.
 /// - **Start Seed** (`startSeed` / `startBandedPool` / `volumeSeed`, US-O02) - the floor beneath that
 ///   cap and the volume a no-history prescription opens at, so an *active* user's first sessions are
 ///   not served the absolute beginner tier at beginner volume.
@@ -21,10 +23,17 @@ import Foundation
 ///
 /// Step 0 is gated on two conditions and is otherwise a no-op: the user is still in the cold-start
 /// window (`user.coldStart.active`) *and* the live policy carries a `coldStartContract`. Once the
-/// engine retires cold-start (US-G04 clears the contract and flips `active` off), both overrides
-/// return their input untouched and the engine behaves exactly as US-E03. Like every other step it
-/// is a pure function of its inputs (no hidden clock; the "day" is read from `sessionsLogged`), so it
-/// stays deterministic and unit-testable.
+/// engine retires cold-start (US-G04 clears the contract and flips `active` off), every override
+/// above returns its input untouched and Steps 1-6 run exactly as US-E03 wrote them.
+///
+/// `withheldByStartSeed` is the one deliberate exception, and it outlives the gate by design. It is
+/// not an override but a *factual* record of which movements the band never put on offer, so past the
+/// handoff it reads the floor `ColdStartHandoff` recorded (`User.ColdStart.bandFloorAtHandoff`) and
+/// keeps Step 5 from mistaking a chain the band hid for a fresh one. It withholds nothing for a user
+/// who never ran a band. See `withheldByStartSeed` for why that has to survive the retirement.
+///
+/// Like every other step it is a pure function of its inputs (no hidden clock; the "day" is read from
+/// `sessionsLogged`), so it stays deterministic and unit-testable.
 enum ColdStartOverride {
 
     /// The canonical First-Week Contrast rotation order. Cycling through all three first-class
@@ -35,7 +44,10 @@ enum ColdStartOverride {
     // MARK: - Gate
 
     /// Whether Step 0 applies at all: the user is still in the cold-start window and the live policy
-    /// carries a cold-start contract. When this is false both overrides below are no-ops.
+    /// carries a cold-start contract. When this is false every override below (`cappedPool`,
+    /// `startBandedPool`, `volumeSeed`, `overridePlan`) is a no-op. `withheldByStartSeed` is the sole
+    /// exception - it falls through to the floor recorded at the handoff, which is the whole point of
+    /// recording it.
     static func isActive(user: User, sessionPolicy: SessionPolicy) -> Bool {
         user.coldStart.active && sessionPolicy.coldStartContract != nil
     }
@@ -89,7 +101,10 @@ enum ColdStartOverride {
     /// different evidence beyond that - see `startSeed` - which is exactly why they are resolved once,
     /// as a pair, rather than derived independently wherever each is needed.
     struct StartSeed: Equatable {
+        /// The gentlest difficulty the strength/primal training pool is banded to. Clamped down per
+        /// movement pattern to what that pattern actually offers, so a band never empties one.
         var difficultyFloor: Int
+        /// What a no-history prescription inside that band opens at.
         var volume: VolumeSeed
 
         /// The neutral seed: the whole band beneath the cap stays eligible and no-history targets are

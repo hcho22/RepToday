@@ -16,8 +16,9 @@ import Foundation
 ///   already on is always exactly one step). Advancement is honored only when the next tier is
 ///   itself in the eligible pool, so a phase-gated or over-cap skill (e.g. the one-arm push-up) is
 ///   never offered to a user who cannot yet receive it.
-/// - **Variety** - across the chains available for a pattern, an exercise used in the last 3
-///   sessions is avoided when a fresher alternative exists, so the user is not handed the same
+/// - **Variety** - across the chains available for a pattern, an exercise used in the last
+///   `varietyWindow` sessions (the Session Policy lever, US-E03; `recentSessionWindow` = 3 when no
+///   policy is passed) is avoided when a fresher alternative exists, so the user is not handed the same
 ///   movement every time. Variety never wins over having an exercise at all: if every candidate
 ///   was used recently, the best ability-matched pick is still returned.
 ///
@@ -247,7 +248,7 @@ enum ProgressionChainSelection {
     // MARK: Per-pattern selection
 
     /// Selects the single exercise to prescribe for `pattern`, integrating every chain available
-    /// for it and the last-3-sessions variety rule.
+    /// for it and the `varietyWindow` no-repeat rule.
     ///
     /// `library` is the full catalog (so each chain is reasoned about end-to-end); `pool` is the
     /// eligible pool from Step 4 (so only safe, level-appropriate tiers are prescribable). Each

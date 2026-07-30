@@ -271,6 +271,10 @@ enum AdaptiveOverload {
     /// otherwise-prescribed value and lands at least one below it (down to the floor), so a Return /
     /// Re-entry Ramp session is always gentler than the un-held session while remaining within the
     /// rails. The neutral `1.0` is a no-op, so the pre-ramp curve is reproduced exactly.
+    ///
+    /// `sides` is the movement's `sidesPerSet`, passed straight to `clampPerSet` so the hold ceiling
+    /// bounds what one *set* costs rather than what the player displays - `maxHoldSeconds` on a
+    /// per-side hold would otherwise mean twice that much work.
     private static func adjusted(
         _ capacity: Int,
         signal: RampSignal,

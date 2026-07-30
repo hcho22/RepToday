@@ -474,6 +474,9 @@ struct ActiveSessionView: View {
         return "\(prescription.sets) sets"
     }
 
+    /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds" - carrying
+    /// the same " per side" suffix, since VoiceOver is the only place a non-sighted user meets the
+    /// prescription and dropping it there would hide exactly half the work.
     static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
         let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {

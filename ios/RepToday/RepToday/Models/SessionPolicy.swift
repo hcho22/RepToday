@@ -44,8 +44,9 @@ struct SessionPolicy: Codable, Equatable {
     var varietyWindow: Int
 
     /// The cold-start override contract, present only during the cold-start window (US-E04):
-    /// it forces First-Week Contrast and caps Starting Difficulty. `nil` once the engine
-    /// retires cold-start (US-G04), after which Step 0 is a no-op.
+    /// it forces First-Week Contrast, caps Starting Difficulty, and carries the Start Seed
+    /// (US-O02) - the difficulty floor and opening volume the self-reported fitness level starts
+    /// at. `nil` once the engine retires cold-start (US-G04), after which Step 0 is a no-op.
     var coldStartContract: ColdStartContract?
 
     /// The Re-entry Ramp state, present only while walking a user back up after a Return
@@ -85,8 +86,9 @@ extension SessionPolicy {
         /// Force a vivid day-to-day pillar spread (First-Week Contrast), overriding the
         /// single-theme bias that `why`/`sitsLong` alone would produce.
         var forceContrastSpread: Bool
-        /// Hard difficulty cap for cold-start sessions, in `1...5`. The engine serves at the
-        /// gentle end of the eligible band beneath this cap so a mis-reported fitness level
+        /// Hard difficulty cap for cold-start sessions, in `1...5`. It is the *ceiling* of the Start
+        /// Seed band: the engine serves at the gentle end of `[startingDifficultyFloor, this]` (below
+        /// for warm-up/mobility/cooldown, which are never floored), so a mis-reported fitness level
         /// never yields a badly over-hard first day.
         var cappedMaxDifficulty: Int
         /// Start Seed (US-O02): the difficulty *floor* the strength and primal training pool is banded
@@ -183,10 +185,12 @@ extension SessionPolicy.ColdStartContract {
     /// pool filter applies (`ExercisePoolFilter.difficultyCap`: beginner 1-2, intermediate 1-3,
     /// advanced 1-5) - it tightens only the advanced user (5 -> 4), and matches the others.
     /// The point is not the ceiling alone: the engine serves the *gentle end* of the eligible
-    /// band first (US-E04, via Step 5's no-history entry-tier selection), so an over-rated
-    /// self-report still yields a winnable first session. Correction is left to the Asymmetric
-    /// Ramp (US-E05) - a too-easy day self-corrects upward as the user returns, while a too-hard
-    /// day is prevented up front.
+    /// band first (US-E04, via Step 5's no-history entry-tier selection), where since US-O02 that
+    /// band starts at `startingDifficultyFloor` rather than at the chain's absolute entry tier - so
+    /// an over-rated self-report still yields a winnable first session, one tier beneath the cap.
+    /// Correction runs in both directions: a too-easy day self-corrects upward through the
+    /// Asymmetric Ramp (US-E05) as the user returns, and a `tooHard` rating steps the floor itself
+    /// back down a tier within one session (`ColdStartOverride.startSeed`, US-O02).
     static func cappedMaxDifficulty(for level: FitnessLevel) -> Int {
         switch level {
         case .beginner: return 2
@@ -195,10 +199,11 @@ extension SessionPolicy.ColdStartContract {
         }
     }
 
-    /// The cold-start contract seeded at onboarding (US-G01/US-G02): First-Week Contrast forced on
-    /// so the first week visibly spans strength/mobility/primal (US-G02), and Starting Difficulty
-    /// capped from the self-reported fitness level (US-G01). The engine reads this in Step 0 and
-    /// retires it after the handoff (US-G04).
+    /// The cold-start contract seeded at onboarding (US-G01/US-G02/US-O02): First-Week Contrast
+    /// forced on so the first week visibly spans strength/mobility/primal (US-G02), Starting
+    /// Difficulty capped from the self-reported fitness level (US-G01), and the whole Start Seed -
+    /// `startingDifficultyFloor`, `startingRepMultiplier`, `startingSets` - seeded from that same
+    /// level (US-O02). The engine reads this in Step 0 and retires it after the handoff (US-G04).
     static func seeded(for level: FitnessLevel) -> Self {
         Self(
             forceContrastSpread: true,
@@ -283,6 +288,10 @@ extension SessionPolicy.ColdStartContract {
 
 extension SessionPolicy.ColdStartContract {
 
+    /// Written out explicitly because the hand-written `init(from:)` below needs them: adding the
+    /// synthesized initializer's memberwise decode back would defeat the `decodeIfPresent` fallbacks
+    /// the three Start Seed keys rely on. The raw values are the persisted JSON contract, so renaming
+    /// a case silently drops that field from every already-stored policy.
     enum CodingKeys: String, CodingKey {
         case forceContrastSpread
         case cappedMaxDifficulty

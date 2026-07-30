@@ -67,7 +67,7 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 ### Epic B - Exercise Library (BUILT)
 
-> Shipped. 42 zero-equipment movements. Carried forward as done.
+> Shipped. 42 zero-equipment movements at US-B01, grown to **57** by US-O02 (fifteen Discipline-reachable difficulty 3-4 tiers, so the Start Seed band has real chains to rotate over). Carried forward as done.
 
 | Story | Title | Status |
 |-------|-------|--------|
@@ -898,7 +898,7 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 - [x] `Exercise` gains an optional `animationName: String?` defaulting to `nil`; existing `Exercises.json` and persisted records decode unchanged (backward-compatible)
 - [x] `ExerciseDemoView` plays a bundled Lottie animation (looping, auto-play) when the exercise's `animationName` resolves to a bundled file, and **falls back to the current SF-Symbol glyph** when it is absent or the file is missing - no exercise ever shows a blank demo
 - [x] Under Reduce Motion the demo shows a static frame (or the static symbol), preserving the auto-play + static-fallback contract; the `"<displayName> demonstration"` accessibility label is retained
-- [x] Sourcing/licensing the animation pack itself is out of scope (this story delivers infrastructure + fallback only, so the app ships on SF Symbols and each exercise lights up as its file is added)
+- [x] Sourcing/licensing the animation pack itself is out of scope (this story delivers infrastructure + fallback only, so the app ships on SF Symbols and each exercise lights up as its file is added) - *the clearing rule now lives in `docs/asset-attribution.md`: an asset with no recorded source and license is not cleared for distribution, so it stays out of `Resources`, out of Copy Bundle Resources, and out of `Exercises.json`. The validation fixture below (`push_standard.json`) had no recorded provenance and was **deleted** rather than kept as a repo-local fixture, since committing it to a public repo is redistribution in its own right; `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` is the enforcement half, so an uncleared asset can never be wired into the catalog*
 - [x] Uses `Theme` tokens and `@Observable` view models; Verify in iOS Simulator
 
 **Validation Test:**

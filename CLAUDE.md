@@ -13,7 +13,7 @@ The MVP is Apple-native with no custom backend; AI/LLM features are deferred to 
 
 - **Strategic plan:** the v6.0 strategic PRD under `.claude/agent/tasks/` (supersedes v5, kept for reference).
 - **Implementation PRD / live progress tracker:** `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` (~51 stories, US-A01 ... US-N05); acceptance checkboxes flip to `[x]` as stories land. Always check the story before building a feature.
-- **What is already built:** `docs/implementation-log.md`. **Test coverage map:** `docs/test-coverage.md`.
+- **What is already built:** `docs/implementation-log.md`. **Test coverage map:** `docs/test-coverage.md`. **Third-party asset source/license ledger:** `docs/asset-attribution.md` (an asset with no cleared row never ships).
 - The strategic plans reference a `CONTEXT.md` and `docs/adr/` that do not exist here; the task files above are authoritative.
 
 ## Build & Run
@@ -42,7 +42,7 @@ One scheme, `RepToday`, builds the app and runs `RepTodayTests`; if the destinat
 
 ## The Deterministic Engine
 
-Pure Swift, on-device, no network, no LLM, <100ms. Step 0 overrides (cold start, Return) run first and are no-ops in the steady state.
+Pure Swift, on-device, no network, no LLM, <100ms. Step 0 overrides (cold start, Return) run first and are no-ops in the steady state; the cold start also carries a **Start Seed** - a difficulty band `[startingDifficultyFloor, cappedMaxDifficulty]` over strength/primal plus a volume seed, both seeded from `profile.fitnessLevel`, eased a tier per `tooHard` rating, and retired at the handoff (which records the floor the week actually ran at so Step 5 does not treat a withheld chain as fresh).
 
 1. **Session shape** - 5-10 single-focus; 11-20 blend light; 21-40 blend full; 41-60 blend extended.
 2. **Pillar balance** - stalest pillar by days-since-worked; mobility lean for desk workers; policy `pillarWeighting` scales it.
@@ -50,9 +50,9 @@ Pure Swift, on-device, no network, no LLM, <100ms. Step 0 overrides (cold start,
 4. **Filter pool** - drop by phase, injuries, difficulty cap, recent skips; everything is bodyweight (Zero-Equipment Floor).
 5. **Progression-chain selection** - the user's frontier tier, advancing only when criteria are cleared; avoid the last `varietyWindow` sessions (default 3).
 6. **Adaptive Overload** - capacity-relative reps/sets/holds, never a fixed heroic number; the Asymmetric Ramp backs off fast and climbs slow, paced by `progressionRate`.
-7. **Assemble + fit timing** - warm-up first, cooldown over 10 min, land within +/-1 min of the request.
+7. **Assemble + fit timing** - warm-up first, cooldown over 10 min, land within +/-1 min of the request. `SessionAssembly.workSecondsPerSet` prices a set as a fixed setup cost plus the per-unit work of the target prescribed (a hold's per-unit cost is one second per prescribed second *per side*, via `Exercise.isPerSide`/`sidesPerSet`), so a grown or seeded target is planned honestly; the work half is never timed at runtime, so this is a planning-only number where systematic bias matters and per-second precision does not.
 
-In-session **swap** substitutes within the same pillar, pattern, difficulty band, and time budget. A deterministic on-device **AI Programmer** (`Services/Programmer/`) writes the per-user `SessionPolicy` the engine reads: it detects re-program triggers, diagnoses plateaus, learns the Default Duration, and never returns a workout.
+In-session **swap** substitutes within the same pillar, pattern, difficulty band, and time budget, sized by the session's own policy (`progressionRate`, Start Seed, `varietyWindow`, Return/re-entry ease). It keeps the slot's set count whenever a peer fits at it and re-picks one inside `minTrainingSets...maxTrainingSets` only when nothing else would keep the session in its minutes - never on the single-set warm-up/cooldown bookends, which get a work-scaled tolerance instead. A deterministic on-device **AI Programmer** (`Services/Programmer/`) writes the per-user `SessionPolicy` the engine reads: it detects re-program triggers, diagnoses plateaus, learns the Default Duration, and never returns a workout.
 
 ## Consistency & Phase (no gamification)
 
@@ -87,7 +87,7 @@ Services/Progress/          Progress-tab analytics (free + premium-gated deep la
 Services/ActiveSession/     Resume store, completion recorder, session summary
 Services/Auth|Health|Subscription/   Sign in with Apple, HealthKit writes, StoreKit 2
 DI/ ViewModels/ Views/      Container + injection, @Observable view models, SwiftUI screens
-Utilities/ Resources/       AppState and helpers; Exercises.json, assets, animations, .storekit
+Utilities/ Resources/       AppState and helpers; Exercises.json, assets, .storekit (no demo animation ships yet)
 ```
 
 ## Out of Scope (MVP Non-Goals)

@@ -30,7 +30,8 @@ import Foundation
 ///   out-of-budget.
 ///
 /// Like every other engine step this is a pure function of its inputs - the slot, the `Workout`, the
-/// `User`, the full `library`, and `recentLogs` - with no hidden clock or library lookup, so a given
+/// `User`, the full `library`, `recentLogs`, and the `sessionPolicy` the session was generated against
+/// - with no hidden clock or library lookup, so a given
 /// request always yields the same outcome and is unit-testable, mirroring `ExercisePoolFilter`,
 /// `ProgressionChainSelection`, and `AdaptiveOverload`. Only the substitute's fresh `UUID` varies run
 /// to run; the chosen movement and its targets are fully determined by the inputs.

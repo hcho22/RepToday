@@ -4,8 +4,9 @@ import Foundation
 /// Step 0 cold-start overrides to the self-driving engine once there is enough history for staleness
 /// and Adaptive Overload to steer sessions unassisted.
 ///
-/// Cold start (US-E04/US-G01/US-G02) governs roughly the first five sessions - it caps Starting
-/// Difficulty and forces First-Week Contrast so a brand-new user's first week is gentle and vivid. But
+/// Cold start (US-E04/US-G01/US-G02/US-O02) governs roughly the first five sessions - it caps Starting
+/// Difficulty, bands the strength/primal pool and its opening volume to the Start Seed, and forces
+/// First-Week Contrast, so a brand-new user's first week is gentle, level-appropriate and vivid. But
 /// those overrides are training wheels, not the engine: once the user has logged enough real sessions
 /// the engine has the history it needs (worked pillars, cleared tiers, demonstrated capacity) to drive
 /// itself, and the overrides must retire so they never keep flattening variety or capping difficulty
@@ -27,13 +28,21 @@ import Foundation
 ///   the policy that reaches the engine carries no cold-start levers at all. Clearing the contract is
 ///   belt-and-suspenders with the `active` flag: Step 0 is gated on *both*, so either one retiring is
 ///   enough to make it a no-op, and a policy with no contract is exactly `SessionPolicy.default`'s
-///   cold-start shape - the engine behaves precisely as US-E03 from the sixth session on.
+///   cold-start shape, so every Step 0 *override* is inert from the sixth session on.
+///
+/// The one thing that deliberately outlives the retirement is the recorded band. Sessions from the
+/// sixth on are not quite plain US-E03: Step 5 keeps reading `bandFloorAtHandoff` through
+/// `ColdStartOverride.withheldByStartSeed`, so a chain the band never put on offer is not mistaken for
+/// a fresh one and handed to an advanced user as the variety pick. That is the cliff these fields
+/// exist to close, and it withholds nothing for a user who never ran a band.
 ///
 /// Like the rest of the pipeline this is a pure function of its inputs - there is no wall-clock read;
 /// the "how far into cold start" signal is the logged-session count itself - so the handoff is
-/// deterministic and unit-testable. The post-session log-writer (US-L01) is the single caller: after it
-/// records a completed session it advances the cold-start state and reconciles the policy, persisting
-/// the user and policy aggregates separately (as US-F03 does), so the retirement survives relaunch.
+/// deterministic and unit-testable. `SessionCompletionService` is the only caller, through two entry
+/// points: the post-session log-writer (US-L01) calls `afterCompletedSession` to advance the state,
+/// record the band and reconcile the policy - persisting the user and policy aggregates separately (as
+/// US-F03 does) so the retirement survives relaunch - and the rating write (US-L02) calls
+/// `revisedBandFloor` to fold a late `tooHard` into the already-recorded floor, moving no counter.
 enum ColdStartHandoff {
 
     // MARK: - Tuning constant
@@ -89,7 +98,10 @@ enum ColdStartHandoff {
     /// the completion screen, once the log is already written), and re-resolving the floor from the aim
     /// is the only way to fold that rating in exactly rather than by guessing a step size.
     struct BandRecord: Equatable {
+        /// The contract's un-eased Start Seed floor - what the self-report aimed the week at.
         var aim: Int
+        /// What that aim actually eased to over the week, one tier per `tooHard` rating. This is the
+        /// floor Step 5 reads afterwards; `aim` exists only to re-resolve it.
         var floor: Int
 
         /// The record for a user who never ran a banded cold start - a caller with no cold-start

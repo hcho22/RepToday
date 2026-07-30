@@ -76,10 +76,12 @@ extension User {
         }
     }
 
-    /// Cold-start state (US-D01). While `active`, the engine applies the First-Week Contrast
-    /// and capped Starting Difficulty overrides (US-E04/US-G01/US-G02); `sessionsLogged`
-    /// increments per completed session and the engine flips `active` off after the handoff
-    /// threshold (US-G04), after which staleness and Adaptive Overload drive sessions unassisted.
+    /// Cold-start state (US-D01). While `active`, the engine applies the First-Week Contrast, the
+    /// capped Starting Difficulty and the Start Seed band/volume overrides
+    /// (US-E04/US-G01/US-G02/US-O02); `sessionsLogged` increments per completed session and the
+    /// engine flips `active` off after the handoff threshold (US-G04), after which staleness and
+    /// Adaptive Overload drive sessions unassisted - with the single exception of
+    /// `bandFloorAtHandoff` below, which keeps Step 5 from treating a chain the band hid as fresh.
     struct ColdStart: Codable, Equatable {
         /// Count of completed sessions during the cold-start window.
         var sessionsLogged: Int

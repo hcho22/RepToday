@@ -171,6 +171,11 @@ final class ActiveSessionViewModel {
     /// The perceived-difficulty rating the user gave on the completion screen, or `nil` if they haven't
     /// rated (skipping the control is treated as unrated). Feeds the Asymmetric Ramp (US-E05) on the
     /// next session: `tooHard` eases the next target, `tooEasy` intensifies it.
+    ///
+    /// During cold start a `tooHard` reaches further than the next session. Through
+    /// `SessionCompletionServiceProtocol.recordPerceivedDifficulty` it also steps the Start Seed
+    /// difficulty floor down a tier (US-O02), and on the session that retires the band that becomes a
+    /// durable account-level fact (`User.ColdStart.bandFloorAtHandoff`) rather than one session's ease.
     private(set) var perceivedDifficulty: PerceivedDifficulty?
 
     /// The durable `WorkoutLog` built once at the `finish()` transition and kept so a later rating

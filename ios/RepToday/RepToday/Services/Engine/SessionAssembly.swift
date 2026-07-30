@@ -13,7 +13,10 @@ import Foundation
 ///   mobility; an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
-///   exercise in each, and that exercise's capacity-relative reps/sets/hold.
+///   exercise in each, and that exercise's capacity-relative reps/sets/hold. During cold start Step
+///   0's Start Seed (US-O02) is resolved once here and threaded into all three - it bands the
+///   strength/primal pool, tells Step 5 which chains it withheld, and sizes Step 6's no-history
+///   target - so a self-reported level reaches every part of the block that depends on it.
 ///
 /// On top of those it owns two things the earlier steps deliberately left to assembly:
 /// - **Structure** - every session opens with a `.warmup` block (mobility); a `.cooldown` block of

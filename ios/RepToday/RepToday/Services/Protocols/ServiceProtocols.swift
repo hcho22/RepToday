@@ -45,8 +45,10 @@ protocol WorkoutEngineProtocol {
     /// when no safe, equivalent, in-budget movement exists - never an unsafe or off-pattern pick.
     ///
     /// `sessionPolicy` is the same program the session was generated against, so the substitute is
-    /// sized by the same Step 6 levers as the rest of the lineup (`progressionRate`, and the
-    /// cold-start Start Seed of US-O02) instead of silently reverting to the neutral defaults.
+    /// sized by the same Step 6 levers as the rest of the lineup - `progressionRate`, the cold-start
+    /// Start Seed (US-O02, at the assembler's own strength/primal scope), `varietyWindow`, and the
+    /// Return / Re-entry Ramp ease (US-E06, read off the session's own `wasReturn` stamp rather than
+    /// re-derived against a fresh clock) - instead of silently reverting to the neutral defaults.
     func swapExercise(
         _ prescription: PrescribedExercise,
         in workout: Workout,
