@@ -306,7 +306,10 @@ final class ExerciseSwapTests: XCTestCase {
                 swapped += 1
                 XCTAssertLessThanOrEqual(
                     abs(slotSeconds(of: result) - slotSeconds(of: slot)),
-                    ExerciseSwap.slotToleranceSeconds,
+                    ExerciseSwap.slotTolerance(
+                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot),
+                        setsAreAdjustable: true
+                    ),
                     "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the slot out of budget"
                 )
                 XCTAssertTrue(
@@ -321,6 +324,66 @@ final class ExerciseSwapTests: XCTestCase {
             XCTAssertGreaterThan(
                 swapped * 4, library.count * 3,
                 "at x\(growth) only \(swapped)/\(library.count) movements could be swapped - the pool has collapsed"
+            )
+        }
+    }
+
+    /// The same sweep in the shape a real warm-up and cooldown slot actually has: **one set, mobility
+    /// rest, and `allowSetAdjust: false`**.
+    ///
+    /// The sweep above prices every slot as a 3-set, 40s-rest strength block, which is the one
+    /// configuration where the set lever is always available - so it cannot see a bookend, where the
+    /// lever is withheld by design and the tolerance is the whole decision. That is why bookends get the
+    /// widened, soft-estimate-scaled tolerance: a 1-set slot has no rest at all, so 100% of its cost is
+    /// the estimate.
+    ///
+    /// Coverage over the 12 mobility movements is 12/12 at x1.0 and x1.25, and 11/12 at x1.5 and x2.0.
+    /// The one refusal is `mobility_pigeon`, and it is arithmetic rather than false precision: grown to
+    /// 68s per side it is 146s of work, while the nearest in-band stretch the catalog offers is 70s. No
+    /// tolerance short of abandoning the ±1 minute promise admits that, so declining is the honest
+    /// answer and the floor below is set to what actually holds rather than to 12/12.
+    func testEverySubstituteStaysInBudgetInTheNonAdjustableBookendShape() async throws {
+        let library = try await library()
+        let mobility = library.filter { $0.pillar == .mobility }
+        XCTAssertFalse(mobility.isEmpty, "the sweep needs mobility movements to price")
+
+        for (growth, expected) in [(1.0, 12), (1.25, 12), (1.5, 11), (2.0, 11)] {
+            var swapped = 0
+            for movement in mobility {
+                let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10
+                let slot = prescription(
+                    for: movement,
+                    sets: 1,
+                    perSet: max(1, Int((Double(baseline) * growth).rounded())),
+                    rest: SessionAssembly.mobilityRestSeconds
+                )
+                let bookend = Workout(
+                    id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil, requestedMinutes: 20,
+                    wasReturn: false,
+                    blocks: [WorkoutBlock(
+                        id: UUID(), title: "Warm-Up", category: .warmup, exercises: [slot]
+                    )]
+                )
+                guard case let .substituted(result) = ExerciseSwap.swap(
+                    slot, in: bookend, user: user(level: .advanced), library: library, recentLogs: []
+                ) else { continue }
+                swapped += 1
+                XCTAssertEqual(
+                    result.sets, slot.sets,
+                    "a bookend may not spend the set lever, so \(movement.id) at x\(growth) must stay at one set"
+                )
+                XCTAssertLessThanOrEqual(
+                    abs(slotSeconds(of: result) - slotSeconds(of: slot)),
+                    ExerciseSwap.slotTolerance(
+                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot),
+                        setsAreAdjustable: false
+                    ),
+                    "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the bookend out of budget"
+                )
+            }
+            XCTAssertEqual(
+                swapped, expected,
+                "bookend coverage at x\(growth) was \(swapped)/\(mobility.count), expected \(expected)"
             )
         }
     }
@@ -364,17 +427,64 @@ final class ExerciseSwapTests: XCTestCase {
         XCTAssertEqual(result.sets, slot.sets, "an in-budget slot keeps its set count")
     }
 
+    /// Set-preservation outranks drift: whenever *any* in-band peer fits the slot as built, the swap
+    /// picks one of those, even when some other peer would sit a few seconds closer at a different set
+    /// count. The lever is a fallback for a slot that will not fit, not a way to shave seconds.
+    ///
+    /// Both cases are drawn from the shipped catalog and both used to restructure. `push_standard` grown
+    /// to 10 reps is an ordinary place to be - it advances at "3x12" off an 8-rep default - and returned
+    /// `push_wall` at **4 sets** (drift 18) over `push_diamond` at the original 3 (drift 27). The
+    /// mobility case needs no growth at all: `mobility_pigeon` at its own 45s default returned
+    /// `mobility_cat_cow` at **2 sets** (drift 5) over `mobility_9090_hip` at 1 (drift 30). Sweeping the
+    /// catalog, this was 40 cases at 3 sets/40s rest and 28 at 1 set/15s rest.
+    func testSwapPrefersAPeerThatFitsAtTheOriginalSetCountOverACloserRestructuring() async throws {
+        let library = try await library()
+
+        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let grown = prescription(for: standard, sets: 3, perSet: 10)
+        let strengthPick = try substitute(
+            ExerciseSwap.swap(grown, in: workout([grown]), user: user(), library: library, recentLogs: [])
+        )
+        XCTAssertEqual(
+            strengthPick.sets, grown.sets,
+            "push_diamond fits at 3 sets, so the swap must not restructure to 4 sets of push_wall"
+        )
+
+        // Movement Practice: one set, mobility rest, and set-adjustable - so the lever *is* available
+        // here and the swap still has to leave it alone.
+        let pigeon = try XCTUnwrap(library.first { $0.id == "mobility_pigeon" })
+        let stretch = prescription(for: pigeon, sets: 1, rest: SessionAssembly.mobilityRestSeconds)
+        let practice = Workout(
+            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil, requestedMinutes: 20,
+            wasReturn: false,
+            blocks: [WorkoutBlock(
+                id: UUID(), title: "Movement Practice", category: .mobility, exercises: [stretch]
+            )]
+        )
+        let mobilityPick = try substitute(
+            ExerciseSwap.swap(stretch, in: practice, user: user(), library: library, recentLogs: [])
+        )
+        XCTAssertEqual(
+            mobilityPick.sets, stretch.sets,
+            "a stretch that fits at one set must not become two sets of a different stretch"
+        )
+    }
+
     /// The warm-up and the cooldown are one set of a stretch by construction (`allowSetAdjust: false`),
     /// so the swap must not reach for the set lever there even when it would improve the fit - a
     /// four-set warm-up stretch is not a session the assembler could have produced.
     func testSwapNeverMovesTheSetCountOfAStructuralBookend() async throws {
-        // A single-set stretch slot grown to 90s (100s of work) beside a peer that opens at its own 30s
-        // default (40s of work): the only way into budget is two sets of the peer (40 + 15 + 40 = 95s),
-        // so the same swap must succeed in a training block and be refused in a bookend.
+        // A single-set stretch slot grown to 100s (110s of work) beside a peer that opens at its own 30s
+        // default (40s of work). At one set the peer is 70s away, past even the widened bookend
+        // tolerance a non-adjustable slot gets (30 + 0.3 × 110 = 63s); at two sets it is 40 + 15 + 40 =
+        // 95s, a 15s drift and comfortably in budget. So the only route into budget is the set lever,
+        // and the same swap must succeed in a training block and be refused in a bookend. The slot is
+        // deliberately sized past the widened gate rather than just past the flat one, so this asserts
+        // the lever is withheld rather than merely re-asserting the tolerance.
         let stretch = makeExercise(id: "stretch_long", pillar: .mobility, pattern: .mobility, isHold: true)
         let peer = makeExercise(id: "stretch_peer", pillar: .mobility, pattern: .mobility, isHold: true)
         let catalog = [stretch, peer]
-        let slot = prescription(for: stretch, sets: 1, perSet: 90, rest: SessionAssembly.mobilityRestSeconds)
+        let slot = prescription(for: stretch, sets: 1, perSet: 100, rest: SessionAssembly.mobilityRestSeconds)
 
         func session(title: String, category: ExerciseCategory) -> Workout {
             Workout(

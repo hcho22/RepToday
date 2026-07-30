@@ -15,17 +15,19 @@ import Foundation
 ///   and the Zero-Equipment Floor. The swap step never re-derives those rules and never relaxes
 ///   them: if the only same-pattern options are gated, over-cap, or hard on an injury, there is no
 ///   safe substitute and the step says so rather than reaching for an unsafe pick.
-/// - **Timing fidelity** - a substitute's slot must land within `slotToleranceSeconds` of the slot it
-///   replaces, both sides priced through `SessionAssembly.workSecondsPerSet` at the target each
-///   movement actually carries - the same arithmetic the session was sized with. The per-set target
-///   itself (reps or hold seconds) is recomputed capacity-relative for the substitute via
-///   `AdaptiveOverload`, exactly as assembly would have. Because that target is *not* transferable -
-///   a movement the user has never logged opens at its own default while the slot it replaces may
-///   carry a long-grown one - the substitute's **set count** is the lever that absorbs the difference,
-///   within the same `minTrainingSets...maxTrainingSets` rails and on the same set-adjustable blocks
-///   the assembler's own timing fit uses. The original set count is kept whenever it is already in
-///   budget, so a swap restructures a slot only when leaving it alone would push the session out of
-///   its stated minutes; only when *no* permitted set count fits is the candidate out-of-budget.
+/// - **Timing fidelity** - a substitute's slot must land within the slot's tolerance (see
+///   `slotTolerance`) of the slot it replaces, both sides priced through
+///   `SessionAssembly.workSecondsPerSet` at the target each movement actually carries - the same
+///   arithmetic the session was sized with. The per-set target itself (reps or hold seconds) is
+///   recomputed capacity-relative for the substitute via `AdaptiveOverload`, exactly as assembly would
+///   have. Because that target is *not* transferable - a movement the user has never logged opens at
+///   its own default while the slot it replaces may carry a long-grown one - the substitute's **set
+///   count** is the lever that absorbs the difference, within the same
+///   `minTrainingSets...maxTrainingSets` rails and on the same set-adjustable blocks the assembler's
+///   own timing fit uses. That lever is a strict *fallback*: a substitute that fits the slot as built
+///   outranks every substitute that needs a re-pick, so a swap restructures a slot only when no in-band
+///   peer fits it as built, and only when no permitted set count fits at all is a candidate
+///   out-of-budget.
 ///
 /// Like every other engine step this is a pure function of its inputs - the slot, the `Workout`, the
 /// `User`, the full `library`, and `recentLogs` - with no hidden clock or library lookup, so a given
@@ -69,6 +71,30 @@ enum ExerciseSwap {
     /// the budget that is exactly known. A candidate no permitted set count brings inside this is
     /// rejected, so a swap never meaningfully alters the session length. Tunable.
     static let slotToleranceSeconds = 30
+
+    /// Extra tolerance a slot the assembler would *not* re-fit gets, as a share of its estimated work.
+    ///
+    /// A training slot is part exact and part estimate: its rests are a known quantity, and if a
+    /// substitute's own target lands it outside the flat gate the set lever moves it back in. A
+    /// structural bookend is neither - it is one set, so it has no rest at all and 100% of its cost is
+    /// the soft work estimate, and `allowSetAdjust: false` means there is no lever to reach for. Holding
+    /// that to the same flat gate is maximum false precision on the one slot with no recourse: it does
+    /// not make the session more accurate, it just refuses the swap.
+    ///
+    /// The share is read off the shipped catalog rather than picked: across all 57 movements, the
+    /// widest gap between a movement's own per-set work at its default and its *nearest* in-band peer's
+    /// is 30% (`mobility_pigeon` at 100s against `mobility_9090_hip` at 70s; the 95th percentile is
+    /// 14%). So a 30% band is exactly wide enough to admit every pair the catalog itself authors as
+    /// equivalent work, and no wider. It is additive over the flat gate rather than replacing it, so a
+    /// very small slot keeps the flat allowance instead of being handed a tighter one.
+    static let softSlotToleranceShare = 0.3
+
+    /// How far this slot's planned seconds may move, given the estimated work it carries and whether
+    /// the assembler would re-fit it. `workSeconds` is the slot's own `sets × workPerSet`.
+    static func slotTolerance(workSeconds: Int, setsAreAdjustable: Bool) -> Int {
+        guard !setsAreAdjustable else { return slotToleranceSeconds }
+        return slotToleranceSeconds + Int((softSlotToleranceShare * Double(max(0, workSeconds))).rounded())
+    }
 
     // MARK: Entry point
 
@@ -127,8 +153,9 @@ enum ExerciseSwap {
             reentry: sessionPolicy.reentry
         )
 
+        let originalWorkPerSet = SessionAssembly.workSecondsPerSet(of: prescription)
         let originalSlotSeconds = slotSeconds(
-            workPerSet: SessionAssembly.workSecondsPerSet(of: prescription),
+            workPerSet: originalWorkPerSet,
             sets: prescription.sets,
             rest: prescription.restSeconds
         )
@@ -137,6 +164,13 @@ enum ExerciseSwap {
         // counts on. The structural bookends are not (`allowSetAdjust: false` on the warm-up and the
         // cooldown), so a swapped warm-up stretch stays the one set it was built as.
         let setsAreAdjustable = blockIsSetAdjustable(containing: prescription, in: workout)
+
+        // How far this slot may move, measured against the slot the user actually has: the flat gate on
+        // a slot the set lever can re-fit, widened by the soft-estimate share on a bookend that cannot.
+        let tolerance = slotTolerance(
+            workSeconds: prescription.sets * originalWorkPerSet,
+            setsAreAdjustable: setsAreAdjustable
+        )
 
         // Same pillar + pattern, within the difficulty band, not the original, not already in the
         // session, and reachable inside the slot's budget at some permitted set count. Both sides of
@@ -170,7 +204,8 @@ enum ExerciseSwap {
                 rest: prescription.restSeconds,
                 originalSets: prescription.sets,
                 originalSlotSeconds: originalSlotSeconds,
-                setsAreAdjustable: setsAreAdjustable
+                setsAreAdjustable: setsAreAdjustable,
+                tolerance: tolerance
             ) else { return nil }
             return Candidate(exercise: candidate, overload: overload, sets: fit.sets, drift: fit.drift)
         }
@@ -178,21 +213,28 @@ enum ExerciseSwap {
 
         let recentlyUsed = recentlyUsedIds(recentLogs: recentLogs, window: sessionPolicy.varietyWindow)
         let chosen = candidates.min { lhs, rhs in
-            // 1. Closest difficulty to the original (a true peer beats a band-edge option).
+            // 1. Leave the slot's shape alone. The set lever is a *fallback* for when no in-band peer
+            //    fits the slot as built, not a way to shave seconds off an otherwise fine swap, so a
+            //    candidate that fits at the original count outranks every candidate that needs a
+            //    re-pick. Only when none does are the re-picked ones considered at all.
+            let lhsKeeps = lhs.sets == prescription.sets
+            let rhsKeeps = rhs.sets == prescription.sets
+            if lhsKeeps != rhsKeeps { return lhsKeeps }
+            // 2. Closest difficulty to the original (a true peer beats a band-edge option).
             let lhsGap = abs(lhs.exercise.difficulty - target.difficulty)
             let rhsGap = abs(rhs.exercise.difficulty - target.difficulty)
             if lhsGap != rhsGap { return lhsGap < rhsGap }
-            // 2. Smallest change to the session's wall-clock.
+            // 3. Smallest change to the session's wall-clock.
             if lhs.drift != rhs.drift { return lhs.drift < rhs.drift }
-            // 3. Least restructuring of the slot: prefer a substitute that keeps its set count.
+            // 4. Among re-picked candidates, the smallest move off the original count.
             let lhsSetMove = abs(lhs.sets - prescription.sets)
             let rhsSetMove = abs(rhs.sets - prescription.sets)
             if lhsSetMove != rhsSetMove { return lhsSetMove < rhsSetMove }
-            // 4. Variety: prefer a movement the user has not done in the last few sessions.
+            // 5. Variety: prefer a movement the user has not done in the last few sessions.
             let lhsRecent = recentlyUsed.contains(lhs.exercise.id)
             let rhsRecent = recentlyUsed.contains(rhs.exercise.id)
             if lhsRecent != rhsRecent { return !lhsRecent }
-            // 5. Deterministic final tie-break.
+            // 6. Deterministic final tie-break.
             return lhs.exercise.id < rhs.exercise.id
         }!
 
@@ -215,8 +257,8 @@ enum ExerciseSwap {
     }
 
     /// The set count a substitute runs at, and the wall-clock drift that leaves - or `nil` when no
-    /// permitted count brings the slot inside `slotToleranceSeconds`, which is the one honest reason to
-    /// reject a candidate on time.
+    /// permitted count brings the slot inside `tolerance`, which is the one honest reason to reject a
+    /// candidate on time.
     ///
     /// Set count is the lever here because the substitute's per-set *target* is not transferable: Step 6
     /// sizes it from the user's demonstrated capacity in that movement, so a peer they have never logged
@@ -229,19 +271,24 @@ enum ExerciseSwap {
     /// count inside `minTrainingSets...maxTrainingSets` is taken, ties going to the smaller move, so the
     /// re-pick can neither leave the assembler's own rails nor drift far from the slot the user chose to
     /// replace. On a block the assembler would not adjust either, only the original count is considered.
+    ///
+    /// This settles each candidate's *own* best count; preferring a candidate that needed no re-pick
+    /// over one that did is the selection's job (criterion 1), because whether restructuring was
+    /// avoidable is only knowable once every candidate has been priced.
     private static func bestFitSets(
         workPerSet: Int,
         rest: Int,
         originalSets: Int,
         originalSlotSeconds: Int,
-        setsAreAdjustable: Bool
+        setsAreAdjustable: Bool,
+        tolerance: Int
     ) -> (sets: Int, drift: Int)? {
         func drift(at sets: Int) -> Int {
             abs(slotSeconds(workPerSet: workPerSet, sets: sets, rest: rest) - originalSlotSeconds)
         }
 
         let atOriginal = drift(at: originalSets)
-        if atOriginal <= slotToleranceSeconds { return (originalSets, atOriginal) }
+        if atOriginal <= tolerance { return (originalSets, atOriginal) }
         guard setsAreAdjustable else { return nil }
 
         let best = (SessionAssembly.minTrainingSets...SessionAssembly.maxTrainingSets)
@@ -251,7 +298,7 @@ enum ExerciseSwap {
                     ? lhs.drift < rhs.drift
                     : abs(lhs.sets - originalSets) < abs(rhs.sets - originalSets)
             }
-        guard let best, best.drift <= slotToleranceSeconds else { return nil }
+        guard let best, best.drift <= tolerance else { return nil }
         return best
     }
 

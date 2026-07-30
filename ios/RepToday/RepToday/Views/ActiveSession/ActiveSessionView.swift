@@ -189,9 +189,13 @@ struct ActiveSessionView: View {
             Text(step.prescription.exercise.displayName)
                 .font(Theme.Typography.largeTitle)
                 .foregroundStyle(Theme.Colors.textPrimary)
+            // The per-side targets are the longest strings this line renders; letting it grow
+            // vertically keeps "3 × 0:30 per side" whole at the largest Dynamic Type sizes rather than
+            // truncating away the part that says how much work the set actually is.
             Text(Self.targetText(step.prescription))
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.accent)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -446,23 +450,37 @@ struct ActiveSessionView: View {
 
     // MARK: - Formatting
 
-    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds.
+    /// `" per side"` when the prescribed value is performed once on each side, empty otherwise.
+    ///
+    /// The engine charges a per-side movement for both sides - a 40-second `core_side_plank` slot is
+    /// planned as 80 seconds of work - so the target the player shows has to say so, or a user who
+    /// holds it once does half the work the session was built around. Driven off `isPerSide` (via
+    /// `sidesPerSet`), the same field the timing model reads, so the prescription and the arithmetic
+    /// behind it cannot drift apart.
+    static func perSideSuffix(_ prescription: PrescribedExercise) -> String {
+        prescription.exercise.sidesPerSet > 1 ? " per side" : ""
+    }
+
+    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds, each with " per side" where the target
+    /// is per side.
     static func targetText(_ prescription: PrescribedExercise) -> String {
+        let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {
-            return "\(prescription.sets) × \(reps)"
+            return "\(prescription.sets) × \(reps)\(suffix)"
         }
         if let seconds = prescription.durationSeconds {
-            return "\(prescription.sets) × \(clockText(seconds))"
+            return "\(prescription.sets) × \(clockText(seconds))\(suffix)"
         }
         return "\(prescription.sets) sets"
     }
 
-    private static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
+    static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
+        let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {
-            return "\(prescription.sets) sets of \(reps) reps"
+            return "\(prescription.sets) sets of \(reps) reps\(suffix)"
         }
         if let seconds = prescription.durationSeconds {
-            return "\(prescription.sets) sets of \(seconds) second holds"
+            return "\(prescription.sets) sets of \(seconds) second holds\(suffix)"
         }
         return "\(prescription.sets) sets"
     }

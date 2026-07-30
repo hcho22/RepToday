@@ -61,5 +61,15 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// How many times a set's prescribed per-set value is actually performed: twice for an `isPerSide`
     /// movement, once otherwise (including when the flag is absent). Read by the timing model, which has
     /// to charge a "20 second" side plank for both sides.
+    ///
+    /// - Important: The timing model reads this for **holds only**, and deliberately so. A hold's
+    ///   per-unit cost is known a priori (one second of work per prescribed second, per side), so the
+    ///   sides have to be applied explicitly. A rep-based movement's cadence is instead *derived* from
+    ///   its own authored `estimatedTimePerSetSeconds` against `defaultReps`, and that authored estimate
+    ///   already covers every side the set is performed on - `push_archer` ("3x8 clean reps per side")
+    ///   is authored at 5 reps in 50s with both sides included. Applying `sidesPerSet` in the rep branch
+    ///   as well would therefore double-count the 15 per-side rep movements outright. The flag is not
+    ///   inert there by oversight; it is already accounted for.
+    ///   `AdaptiveOverload.clampPerSet` is the other consumer, where it divides the hold ceiling.
     var sidesPerSet: Int { isPerSide == true ? 2 : 1 }
 }

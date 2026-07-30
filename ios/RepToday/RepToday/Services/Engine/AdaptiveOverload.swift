@@ -99,6 +99,10 @@ enum AdaptiveOverload {
     /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
     /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
     /// keep a target meaningful after repeated easing.
+    ///
+    /// `maxHoldSeconds` bounds what one *set* costs, not the number the player shows: a per-side hold
+    /// is clamped to `maxHoldSeconds / sidesPerSet` so three minutes stays three minutes whether the
+    /// movement is held once or once per side (see `clampPerSet`).
     static let minReps = 3
     static let maxReps = 50
     static let minHoldSeconds = 10
@@ -156,6 +160,7 @@ enum AdaptiveOverload {
             capacity.perSetValue,
             signal: capacity.signal,
             isHold: exercise.isHold,
+            sides: exercise.sidesPerSet,
             progressionRate: progressionRate,
             reentryScale: reentryScale
         )
@@ -243,11 +248,11 @@ enum AdaptiveOverload {
         let multiplier = max(0, startingRepMultiplier)
         if exercise.isHold {
             let base = exercise.defaultDurationSeconds ?? minHoldSeconds
-            let seconds = clampPerSet(rounded(base, by: multiplier), isHold: true)
+            let seconds = clampPerSet(rounded(base, by: multiplier), isHold: true, sides: exercise.sidesPerSet)
             return OverloadTarget(sets: sets, reps: nil, durationSeconds: seconds)
         } else {
             let base = exercise.defaultReps ?? minReps
-            let reps = clampPerSet(rounded(base, by: multiplier), isHold: false)
+            let reps = clampPerSet(rounded(base, by: multiplier), isHold: false, sides: exercise.sidesPerSet)
             return OverloadTarget(sets: sets, reps: reps, durationSeconds: nil)
         }
     }
@@ -270,6 +275,7 @@ enum AdaptiveOverload {
         _ capacity: Int,
         signal: RampSignal,
         isHold: Bool,
+        sides: Int,
         progressionRate: Double,
         reentryScale: Double
     ) -> Int {
@@ -285,7 +291,7 @@ enum AdaptiveOverload {
         let held = reentryScale < neutralReentryScale
             ? min(rounded(scaled, by: reentryScale), scaled - 1)
             : scaled
-        return clampPerSet(held, isHold: isHold)
+        return clampPerSet(held, isHold: isHold, sides: sides)
     }
 
     /// Scales an advancing multiplier by `progressionRate` around `1.0`: the deviation from
@@ -299,9 +305,19 @@ enum AdaptiveOverload {
         Int((Double(value) * factor).rounded())
     }
 
-    private static func clampPerSet(_ value: Int, isHold: Bool) -> Int {
-        let lo = isHold ? minHoldSeconds : minReps
-        let hi = isHold ? maxHoldSeconds : maxReps
+    /// Clamps a per-set target to the safety rails, reading `maxHoldSeconds` as the ceiling on what the
+    /// *set* costs rather than on the number shown.
+    ///
+    /// A per-side hold is performed once per side, so a prescribed "90 seconds" of `core_side_plank` is
+    /// three minutes of holding. Capping the prescribed number alone would let an `isPerSide` movement
+    /// reach six minutes in a single set - past the entire budget of a 5-minute session - which is
+    /// exactly the absurd prescription the rail exists to prevent. Dividing the ceiling by `sides` makes
+    /// the rail mean what its doc says for every movement. The floor stays per-side (10 seconds a side
+    /// is still a meaningful hold), and `min` keeps it from crossing the divided ceiling.
+    private static func clampPerSet(_ value: Int, isHold: Bool, sides: Int) -> Int {
+        let effectiveSides = max(1, sides)
+        let hi = isHold ? maxHoldSeconds / effectiveSides : maxReps
+        let lo = min(isHold ? minHoldSeconds : minReps, hi)
         return min(max(value, lo), hi)
     }
 

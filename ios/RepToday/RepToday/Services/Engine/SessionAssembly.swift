@@ -93,11 +93,19 @@ enum SessionAssembly {
     /// rep-based entries it subsequently assigned zero setup to, which is no calibration at all.
     static let setupSecondsPerSet = 10.0
 
-    /// The most of a movement's authored per-set estimate that `workSecondsPerSet` will treat as fixed
-    /// setup. A movement whose estimate is mostly setup carries almost no cadence signal, so its own
-    /// default would stop saying anything useful about a target moved off it; capping the setup share
-    /// at half keeps `setupSecondsPerSet` from swallowing a short authored estimate. Inert across the
-    /// shipped catalog (every estimate is at least 35s), it bounds a future entry rather than today's.
+    /// The most of a **rep-based** movement's authored per-set estimate that `workSecondsPerSet` will
+    /// treat as fixed setup. A movement whose estimate is mostly setup carries almost no cadence signal,
+    /// so its own default would stop saying anything useful about a target moved off it; capping the
+    /// setup share at half keeps `setupSecondsPerSet` from swallowing a short authored estimate. Inert
+    /// across the shipped catalog (every estimate is at least 35s), it bounds a future entry rather than
+    /// today's.
+    ///
+    /// It deliberately does *not* apply to holds. A hold's setup is not assumed but observed - the
+    /// authored remainder left once its known per-unit cost is subtracted - so there is no constant to
+    /// bound, and capping it would corrupt a figure the catalog states outright. Several shipped holds
+    /// are legitimately over this share (`core_l_sit` implies 25s of setup on a 35s estimate, 71%;
+    /// `core_tuck_l_sit` 23s on 35s, 66%), which is the catalog describing a movement that takes longer
+    /// to get into than to hold, not an authoring error.
     static let maxSetupShareOfEstimate = 0.5
 
     // MARK: - Entry point

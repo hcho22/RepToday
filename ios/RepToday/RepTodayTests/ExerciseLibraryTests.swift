@@ -313,11 +313,29 @@ final class ExerciseLibraryTests: XCTestCase {
     /// "per side" while the flag is missing would be silently under-timed by half its work - this is the
     /// gate that makes that loud, in both directions.
     func testPerSideFlagMatchesTheAuthoredAdvancementCriteria() {
+        // Every criteria string has to match one of the recognised authoring templates. Matching a
+        // *closed* set of phrasings positively, rather than scanning an open string for a whitelist of
+        // per-side phrases, is what makes an unfamiliar wording fail here instead of falling through to
+        // "not per side" - which would silently under-time the movement by half, the exact failure this
+        // gate exists to prevent. A criteria authored "3x8 clean reps per arm" (natural for the upper
+        // body, and `push_one_arm` already exists) matches no template and fails loudly; the fix is then
+        // a deliberate decision to extend the grammar and the flag together, not a silent default.
+        let body = #"(?:\d+x\d+ (?:clean |slow )?reps|\d+x\d+ steps|\d+x\d+s hold"#
+            + #"|\d+ reps|hold \d+s(?: comfortably)?|flow \d+ slow reps)"#
+        let perSideMarker = #"(?: (?:per|each) (?:side|leg))"#
+        let template = "^" + body + perSideMarker + "?$"
+
         for ex in exercises {
             let criteria = ex.advancementCriteria.lowercased()
-            let saysPerSide = ["per side", "each side", "per leg", "each leg"].contains {
-                criteria.contains($0)
-            }
+            XCTAssertNotNil(
+                criteria.range(of: template, options: .regularExpression),
+                "\(ex.id): advancementCriteria \"\(ex.advancementCriteria)\" matches no recognised "
+                    + "authoring template. Extend the template *and* set isPerSide deliberately - "
+                    + "leaving it unrecognised would price the movement as one-sided."
+            )
+            let saysPerSide = criteria.range(
+                of: perSideMarker + "$", options: .regularExpression
+            ) != nil
             XCTAssertEqual(
                 ex.sidesPerSet == 2, saysPerSide,
                 "\(ex.id): isPerSide is \(ex.isPerSide == true) but its criteria read \"\(ex.advancementCriteria)\""
@@ -325,17 +343,44 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
+    /// The template gate above is only as good as its laterality vocabulary, so this is the backstop: no
+    /// criteria string may mention a limb or a side at all except inside a recognised per-side marker.
+    /// "each hand", "per foot" and "per arm" are all caught here even though they are shapes the
+    /// template deliberately does not know.
+    func testNoCriteriaMentionsALimbOutsideARecognisedPerSideMarker() {
+        let limbWord = #"\b(?:side|sides|leg|legs|arm|arms|hand|hands|foot|feet|limb|limbs)\b"#
+        for ex in exercises {
+            let criteria = ex.advancementCriteria.lowercased()
+            guard criteria.range(of: limbWord, options: .regularExpression) != nil else { continue }
+            XCTAssertTrue(
+                ex.sidesPerSet == 2,
+                "\(ex.id): \"\(ex.advancementCriteria)\" names a limb but isPerSide is not set - if the "
+                    + "movement really is performed per side the flag has to say so, because the timing "
+                    + "model reads the flag and not the prose"
+            )
+        }
+    }
+
     /// A per-side hold's authored per-set estimate has to cover the hold on both sides, or the timing
     /// model's known per-second cost would imply a negative setup and get clamped - quietly pricing the
     /// set below the work it contains.
-    func testPerSideHoldEstimatesCoverBothSides() {
+    func testPerSideHoldEstimatesCoverBothSides() throws {
+        var checked = 0
         for ex in exercises where ex.isHold && ex.sidesPerSet == 2 {
-            let hold = try? XCTUnwrap(ex.defaultDurationSeconds)
-            XCTAssertGreaterThanOrEqual(
-                ex.estimatedTimePerSetSeconds, (hold ?? 0) * ex.sidesPerSet,
-                "\(ex.id): a \(hold ?? 0)s hold per side needs an estimate of at least \((hold ?? 0) * 2)s"
+            // Unwrapped, not defaulted: a per-side hold with no authored duration has nothing for the
+            // estimate to cover, so the comparison below would hold trivially against zero and the
+            // movement would sail through the very gate meant to catch it.
+            let hold = try XCTUnwrap(
+                ex.defaultDurationSeconds,
+                "\(ex.id) is a hold but authors no defaultDurationSeconds"
             )
+            XCTAssertGreaterThanOrEqual(
+                ex.estimatedTimePerSetSeconds, hold * ex.sidesPerSet,
+                "\(ex.id): a \(hold)s hold per side needs an estimate of at least \(hold * 2)s"
+            )
+            checked += 1
         }
+        XCTAssertGreaterThan(checked, 0, "no per-side holds were checked - the gate is not running")
     }
 
     // MARK: - Demo animations (US-O01)

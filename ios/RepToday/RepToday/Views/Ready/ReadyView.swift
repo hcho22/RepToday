@@ -431,16 +431,19 @@ private struct ExerciseRow: View {
         .accessibilityLabel("\(prescription.exercise.displayName), \(targetText)")
     }
 
-    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds.
+    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds, each with " per side" where the target is
+    /// per side - the same prescription the player shows, so the preview cannot describe a slot
+    /// differently from the screen the user then works it on.
     private var targetText: String {
+        let suffix = prescription.exercise.sidesPerSet > 1 ? " per side" : ""
         if let reps = prescription.reps {
-            return "\(prescription.sets) × \(reps)"
+            return "\(prescription.sets) × \(reps)\(suffix)"
         }
         if let seconds = prescription.durationSeconds {
             let minutes = seconds / 60
             let remainder = seconds % 60
             let time = String(format: "%d:%02d", minutes, remainder)
-            return "\(prescription.sets) × \(time)"
+            return "\(prescription.sets) × \(time)\(suffix)"
         }
         return "\(prescription.sets) sets"
     }

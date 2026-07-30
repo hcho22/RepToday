@@ -61,6 +61,14 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
+    /// The same fixture marked `isPerSide`, so the player's target copy can be exercised against the
+    /// flag the timing model actually reads.
+    private func perSide(_ exercise: Exercise) -> Exercise {
+        var copy = exercise
+        copy.isPerSide = true
+        return copy
+    }
+
     private func repPrescription(_ id: String, sets: Int, reps: Int) -> PrescribedExercise {
         PrescribedExercise(id: UUID(), exercise: repExercise(id: id), sets: sets, reps: reps, durationSeconds: nil, restSeconds: 30)
     }
@@ -1218,5 +1226,40 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.perceivedDifficulty, .justRight, "the UI still reflects the tap")
         XCTAssertNil(vm.completionTask, "but nothing is persisted")
+    }
+
+    // MARK: - The player states a per-side target as per side
+
+    /// The engine charges a per-side movement for both sides, so the player has to say so. A user handed
+    /// a 30s per-side hold who holds it once does half the work per set the session was planned around -
+    /// over three sets that is the whole ±1 minute budget from a single slot.
+    func testTargetTextSaysPerSideForAPerSideMovement() {
+        let hold = PrescribedExercise(
+            id: UUID(), exercise: perSide(holdExercise(id: "side_plank")),
+            sets: 3, reps: nil, durationSeconds: 30, restSeconds: 30
+        )
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "3 × 0:30 per side")
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(hold),
+            "3 sets of 30 second holds per side"
+        )
+
+        let reps = PrescribedExercise(
+            id: UUID(), exercise: perSide(repExercise(id: "split_squat")),
+            sets: 3, reps: 8, durationSeconds: nil, restSeconds: 30
+        )
+        XCTAssertEqual(ActiveSessionView.targetText(reps), "3 × 8 per side")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "3 sets of 8 reps per side")
+    }
+
+    /// ...and only for a per-side movement, so a two-sided target is never described as one-sided work.
+    func testTargetTextOmitsPerSideForABilateralMovement() {
+        let hold = holdPrescription("plank", sets: 3, seconds: 30)
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "3 × 0:30")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(hold), "3 sets of 30 second holds")
+
+        let reps = repPrescription("pushup", sets: 3, reps: 8)
+        XCTAssertEqual(ActiveSessionView.targetText(reps), "3 × 8")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "3 sets of 8 reps")
     }
 }

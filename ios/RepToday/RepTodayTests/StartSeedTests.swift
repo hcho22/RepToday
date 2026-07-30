@@ -1175,8 +1175,9 @@ final class StartSeedTests: XCTestCase {
             movement.estimatedTimePerSetSeconds,
             "a default-sized set is the movement's own estimate, unchanged"
         )
-        // 40s over 10 reps implies a 4.0s cadence, slower than the catalog's 3.0s per rep of work, so
-        // 10s of the estimate is fixed setup and each rep costs 3s: 3 extra reps is 9 extra seconds.
+        // The rep branch assumes `setupSecondsPerSet` (10s) of fixed setup and derives the cadence from
+        // what this movement itself authors: (40 - 10) / 10 reps = 3.0s a rep. So 3 extra reps costs 9
+        // extra seconds on top of the same one-off setup.
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: movement, reps: 13, durationSeconds: nil),
             49,
