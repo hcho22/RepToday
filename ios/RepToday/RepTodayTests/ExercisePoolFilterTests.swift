@@ -350,7 +350,7 @@ final class ExercisePoolFilterTests: XCTestCase {
         }
         let removed = library.filter { !kept.contains($0.id) }
 
-        print("=== US-C04 exercise pool filter — PRD validation over real Exercises.json ===")
+        print("=== US-C04 exercise pool filter - PRD validation over real Exercises.json ===")
         print("User: beginner · discipline phase · injuries: [\"knees\"] · no recent logs")
         print("Library: \(library.count) movements  ->  Eligible pool: \(pool.count)  ·  Removed: \(removed.count)")
         print("")
