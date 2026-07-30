@@ -28,7 +28,8 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
 ```
 
 One scheme, `RepToday`, builds the app and runs `RepTodayTests`; if the destination will not resolve, use `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`. Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
-`DEVELOPMENT_TEAM` is empty, so entitlement-gated paths (Sign in with Apple, CloudKit sync, HealthKit writes, live purchases) verify only on a provisioned device.
+`DEVELOPMENT_TEAM` is set to the signing team, so entitlement-gated paths (Sign in with Apple, CloudKit sync, HealthKit writes, live purchases) build for device; they still verify only on real hardware, never in the Simulator.
+Historical device notes in `docs/implementation-log.md` and the PRDs predate this and describe the team as empty - read them as point-in-time records.
 
 ## Architecture
 
