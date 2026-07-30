@@ -16,24 +16,36 @@ import SwiftUI
 @MainActor
 final class PerSideSwapEvidenceTests: XCTestCase {
 
-    /// Where the rendered-UI evidence is written: the repo's own `artifacts/reports/`, so the files the
-    /// PRD and `docs/test-coverage.md` cite are the ones these tests actually produce rather than copies
-    /// of them. Located by walking up from `#filePath` - a test bundle controls neither the working
-    /// directory nor any repo-relative path - and overridable through `REPTODAY_EVIDENCE_DIR` so a run
-    /// can still redirect the output.
+    /// Where the rendered-UI evidence is written.
     ///
+    /// A plain test run writes to a per-run temporary directory, so running the suite never leaves the
+    /// worktree dirty with re-encoded PNGs. Setting `REPTODAY_WRITE_EVIDENCE=1` points the same writes at
+    /// the repo's own `artifacts/reports/`, which is how the committed images the PRD and
+    /// `docs/test-coverage.md` cite are produced - deliberately, by these tests, rather than copied there
+    /// by hand. `REPTODAY_EVIDENCE_DIR` overrides the destination outright. Every render and every
+    /// assertion runs identically in all three modes; only where the bytes land changes.
+    ///
+    /// The repo path is walked up from `#filePath`, since a test bundle controls neither the working
+    /// directory nor any repo-relative path:
     /// `<repo>/ios/RepToday/RepTodayTests/PerSideSwapEvidenceTests.swift` -> `<repo>/artifacts/reports`.
     private static let evidenceRoot: String = {
-        if let override = ProcessInfo.processInfo.environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty {
+        let environment = ProcessInfo.processInfo.environment
+        if let override = environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty {
             return override
         }
-        return URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // RepTodayTests
-            .deletingLastPathComponent() // RepToday
-            .deletingLastPathComponent() // ios
-            .deletingLastPathComponent() // the repo root
-            .appendingPathComponent("artifacts")
-            .appendingPathComponent("reports")
+        if environment["REPTODAY_WRITE_EVIDENCE"] == "1" {
+            return URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // RepTodayTests
+                .deletingLastPathComponent() // RepToday
+                .deletingLastPathComponent() // ios
+                .deletingLastPathComponent() // the repo root
+                .appendingPathComponent("artifacts")
+                .appendingPathComponent("reports")
+                .path
+        }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("RepTodayEvidence")
+            .appendingPathComponent(UUID().uuidString)
             .path
     }()
 
@@ -765,7 +777,18 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// does, because a running leg is deliberately unreachable any other way: a hold is never persisted
     /// (US-O03), so there is no snapshot that restores one. That is the point of the rule, and it means
     /// the only honest way to see this state is the one the user takes to reach it.
-    private func hostedMidHold<V: View>(_ view: V, size: CGSize) throws -> UIHostingController<V> {
+    ///
+    /// `settlingAt` pins what the ring *reads* before the surface is handed back, which is what a render
+    /// needs. Without it the leg is captured a fraction of a second after it started, so whether the
+    /// countdown shows N or N-1 - and the arc's fill fraction with it, since that is `remaining / total`
+    /// over whole seconds - depends on how the runloop pump happens to land, and the PNG's bytes churn
+    /// between runs for no change in behaviour. Waiting for the exact remaining second puts the capture
+    /// inside a whole one-second window instead, and the extra settle lets the arc's 0.5s animation
+    /// finish. The clock underneath is the real one, so this is as far as determinism honestly goes:
+    /// the number and the arc are pinned, the frame's antialiasing is not.
+    private func hostedMidHold<V: View>(
+        _ view: V, size: CGSize, settlingAt settlingSeconds: Int? = nil
+    ) throws -> UIHostingController<V> {
         let host = hosted(view, size: size)
         let start = try XCTUnwrap(
             accessibilityElement(labeled: "Start hold", in: host.view)
@@ -773,9 +796,34 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "the player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
         )
         XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.6))
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
+
+        func pump(until end: Date) {
+            RunLoop.main.run(mode: .default, before: end)
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+        }
+
+        guard let settlingSeconds else {
+            pump(until: Date().addingTimeInterval(0.6))
+            return host
+        }
+
+        let target = "Hold, \(settlingSeconds) seconds remaining"
+        func reads(_ label: String) -> Bool { accessibilityLabels(in: host.view).contains(label) }
+        let ceiling = Date().addingTimeInterval(20)
+        while Date() < ceiling && !reads(target) {
+            pump(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertTrue(
+            reads(target),
+            "the countdown never settled at \"\(target)\"; it reads \(accessibilityLabels(in: host.view))"
+        )
+        // Let the arc finish animating to its new fill, in small steps and only while the second just
+        // pinned is still the one on screen, so a slow machine gives up the settle rather than the pin.
+        let settled = Date().addingTimeInterval(0.55)
+        while Date() < settled && reads(target) {
+            pump(until: Date().addingTimeInterval(0.05))
+        }
         return host
     }
 
@@ -826,7 +874,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         // Running: the countdown takes the demo's place and speaks the seconds it has left. The leg is
         // started through the real control, since a hold is never persisted and so cannot be restored
         // into this state (US-O03).
-        let runningHost = try hostedMidHold(try playerView(idle), size: playerSize)
+        let runningHost = try hostedMidHold(try playerView(idle), size: playerSize, settlingAt: seconds - 1)
         let runningLabels = accessibilityLabels(in: runningHost.view)
         XCTAssertTrue(
             runningLabels.contains { $0.hasPrefix("Hold, ") && $0.hasSuffix(" seconds remaining") },
@@ -1132,6 +1180,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         // it. Seeding matters here: starting and freezing a leg now writes nothing by design, so without
         // it the store would be empty for the uninteresting reason that nothing persisted at all.
         let state = resumed(workout, at: index, currentSet: 1)
+        // Whatever the earlier slots of the session already banked. The property under test is that the
+        // close adds *nothing* to it, so it is read off the snapshot rather than assumed to be zero -
+        // which would only hold while the session's first timed movement happens to be its first slot.
+        let bankedBefore = state.completedSets.values.reduce(0) { $0 + $1.count }
         try await store.save(state, for: "u1")
 
         let host = try hostedMidHold(
@@ -1166,7 +1218,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         let resumedPlayer = ActiveSessionViewModel(state: snapshot, now: { Date() })
         XCTAssertFalse(resumedPlayer.isHolding, "the resumed session offers Start hold, not a live countdown")
         XCTAssertFalse(resumedPlayer.isHoldPaused)
-        XCTAssertEqual(resumedPlayer.completedSetCount, 0, "and banks nothing the user did not do")
+        XCTAssertEqual(
+            resumedPlayer.completedSetCount, bankedBefore,
+            "and banks nothing the user did not do"
+        )
     }
 
     /// Writes a text artifact next to the rendered PNGs.

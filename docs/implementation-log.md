@@ -257,8 +257,9 @@ So a per-side hold cues the *switch* at the end of the first leg and parks on si
 Only the last leg records the set.
 Four of the library's seventeen holds are per-side (`core_side_plank`, `mobility_9090_hip`, `mobility_pigeon`, `mobility_kneeling_hip_flexor`), so this is the ordinary case rather than an edge one, and both the button ("Start hold (side 2 of 2)") and the set tracker ("Side 2 of 2") name it.
 
-Mechanically the hold mirrors the rest timer's contract exactly - an absolute deadline, `pauseHold`/`resumeHold` wired to the same `scenePhase` transitions, `completeHoldIfElapsed` a pure idempotent check the view's ticker may call every tick - so the cue can never fire early, per-tick, or while the app is away.
-It persists as `ActiveSessionState.Hold` alongside `.Rest`, optional and defaulted so a snapshot written before this story decodes unchanged and an in-progress session is never lost to an app update.
+Mechanically the leg runs against an absolute deadline, `pauseHold`/`resumeHold` are wired to the same `scenePhase` transitions the rest timer uses, and `completeHoldIfElapsed` is a pure idempotent check the view's ticker may call every tick - so the cue can never fire early, per-tick, or while the app is away.
+It was first written as a full mirror of the rest timer, restore-from-snapshot included; that half of the mirroring turned out to be the root error of this story and was removed, so a leg no longer survives the player being torn down at all ("A hold is not a rest" below is where that lands and why).
+What *is* persisted, in `ActiveSessionState.Hold` alongside `.Rest`, is the side - optional and defaulted so a snapshot written before this story decodes unchanged and an in-progress session is never lost to an app update.
 The **side is persisted independently of whether a leg is running**: without that, a user who finished side 1 and backgrounded the app would come back on side 1 and do three legs of a two-leg set, which is the same halving bug pointing the other way.
 
 One thing the story's own promise could not survive was left implicit in it, so it is fixed here too: a hold pauses on backgrounding, and iOS auto-lock backgrounds the app, so a user who sets the phone down to plank would have the countdown freeze and the cue that ends it never land.
@@ -291,8 +292,9 @@ Both ends of that are independently wrong and both are fixed.
 Dismissal no longer leaves a countdown running on disk - first by freezing the leg on the way out, and finally by never writing one at all (the section below is where that lands).
 What survives from that round either way is the ordering: `close()` reports the dismissal to the Ready Screen only once the last queued write has landed, so the resume card reflects the position the user actually left rather than the one before it.
 That report hops to the main actor explicitly (`Task { @MainActor in … }`) rather than inheriting whatever a nonisolated method gives it, because `onFinish` reaches `ReadyViewModel.handlePlayerDismiss`, which mutates `@Observable` state SwiftUI is tracking; only `body` is implicitly main-actor, so the annotation is what makes that true.
-And restore is defensive regardless of how the snapshot was written - a snapshot can predate this, be killed by the OS with no scene-phase transition, or simply be resumed days later - so a leg still marked running whose deadline has already gone by comes back **idle on the side the user still owes**, offering "Start hold" again.
-Restoring it as paused-at-zero would have been no better, since resuming would complete it immediately; an unfinished leg is unfinished work, and the user re-starts it deliberately.
+The round that fixed the write end also made restore defensive about what it read, on the reasoning that a snapshot can predate this, be killed by the OS with no scene-phase transition, or simply be resumed days later: a leg still marked running whose deadline had gone by was brought back idle rather than finished.
+That guard is gone now, because there is nothing left for it to guard - `init(state:)` reads the side and discards every other key a snapshot might carry, so no restore path ever sees a countdown.
+The principle it was reaching for survived and hardened into the rule: an unfinished leg is unfinished work, and the user re-starts it deliberately.
 
 Two smaller consolidations came with it.
 The countdown ring was duplicated between the rest overlay and the new Hold Timer, so both now render one `CountdownRing`, and the two timers a user meets in a session read as the same object.
@@ -305,9 +307,23 @@ The label now wraps and the row grows - the same remedy the target line already 
 Verification ran three ways in the Simulator, all against the production `ActiveSessionView`.
 Rendered PNGs of the player at a hold (idle, running, idle at accessibility Dynamic Type, per-side side 1 and side 2) and of the rest overlay are under `artifacts/reports/us-o03/`, and `PerSideSwapEvidenceTests` is what writes them.
 That is worth stating precisely, because it was not true at first: the evidence directory fell back to a machine- and session-specific path under `/var/folders`, so the committed images had been copied there by hand and any later change to the player's layout or copy would have left a stale render still cited as evidence.
-It now resolves from the test's own `#filePath` - a test bundle controls neither the working directory nor any repo-relative path, so walking up from the source file is the reliable way to find the repo root - with `REPTODAY_EVIDENCE_DIR` kept as an override.
-Re-running the suite regenerates the committed images in place, which turns a drifted screen into a diff.
-The per-side and swap renders belonging to the earlier story write to `artifacts/reports/per-side-swap/` for the same reason, kept apart so nothing lands among the files the US-O03 acceptance notes point a reviewer at.
+The repo path is now resolved from the test's own `#filePath` - a test bundle controls neither the working directory nor any repo-relative path, so walking up from the source file is the reliable way to find the repo root.
+Writing there is deliberate rather than incidental, though, because a test suite that rewrites fourteen tracked PNGs on every run makes a clean `git status` impossible and buries a real drift in re-encoding noise.
+So a plain test run renders to a per-run temporary directory and leaves the worktree untouched, and regenerating the committed images is an explicit act:
+
+```bash
+xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
+  -destination 'platform=iOS Simulator,name=iPhone 16' test \
+  -only-testing:RepTodayTests/PerSideSwapEvidenceTests REPTODAY_WRITE_EVIDENCE=1
+```
+
+That reads as a build setting rather than a shell variable on purpose: the test bundle runs inside the Simulator and does not inherit the invoking shell's environment, so the scheme forwards `$(REPTODAY_WRITE_EVIDENCE)` and `$(REPTODAY_EVIDENCE_DIR)` (both undefined, and so empty, by default) into the test process, and xcodebuild takes either on the command line.
+`REPTODAY_EVIDENCE_DIR` still overrides the destination outright. Every render and every assertion runs in all three modes - only where the bytes land changes, so the gate is never weaker for being quiet.
+One render needed pinning to be worth refreshing at all.
+The running-hold capture starts the leg and then reads the real clock, so whether the ring showed N or N-1 seconds - and the arc's fill with it, since that is `remaining / total` over whole seconds - depended on how the runloop pump happened to land, and the file's bytes moved between runs for no change in behaviour.
+It now waits for a specific remaining second and lets the arc's 0.5s animation finish before capturing, which makes it the steadiest file of the set.
+The honest limit is that these are live surfaces, not golden images: every render that still shows the exercise demo catches that demo's continuous pulse at whatever phase it is in, so those bytes move a little on every deliberate refresh. The renders are review material and a "did this screen change" prompt, and the assertions beside them are the actual gate.
+The per-side and swap renders belonging to the earlier story write to `artifacts/reports/per-side-swap/`, kept apart so nothing lands among the files the US-O03 acceptance notes point a reviewer at.
 The accessibility tree of those same hosted surfaces is read back and asserted, so the spoken forms and the absent clock are gated rather than eyeballed.
 And three live wall-clock tests close the loop by driving the real controls the way VoiceOver's double-tap does.
 `testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer` activates "Start hold", lets the wall clock run out on a short-authored hold, and asserts the live player has recorded the set and moved to the rest overlay - exercising the `Timer` publisher, the deadline arithmetic and the auto-advance as one system rather than as pieces.
