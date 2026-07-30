@@ -268,7 +268,13 @@ The timer is the offer, not the only way through a timed movement.
 A hold's primary action is "Start hold", but the row underneath keeps a quiet manual completion beside Swap and Skip, titled by the same `completeButtonTitle` logic every other slot uses ("Complete set" / "Finish exercise" / "Finish session").
 Without it a timed exercise had no way to bank work at all: "Stop hold" records nothing by design, and Skip *discards* every set already recorded for the exercise - so a user interrupted on set 3 of a 3-set plank, or who held it off-timer, would lose the work rather than log it.
 Most cooldown slots are holds, which made this the last control of nearly every session.
-It is hidden while a leg is actually running, where the countdown is what records the set.
+It stays offered **while a leg is actually running** too.
+Hiding it there - on the tidy rule that the countdown is the only thing that records a set while it runs - left the running state with exactly two visible exits, and both destroy work: "Stop hold" records nothing, and Skip discards every set already banked for the exercise.
+A user 25 seconds into set 3 of a plank who decides to stop would reach for Skip and lose sets 1 and 2 without being told.
+The two-tap escape ("Stop hold", then the manual completion that reappears) existed but was not discoverable from the state the user is in, and an escape nobody can see is not one.
+So the control is visible and enabled throughout: tapping it takes the running leg down through the existing cancel path - no cue, because coming out early is the user's choice rather than the timer's verdict - and then banks the set through the ordinary `completeSet`, which records exactly one set, resets the side, and opens the rest exactly as the countdown reaching zero does.
+Trading a rule for a data-loss path is the right way round.
+It also simplifies the row: every slot a timed movement carries is now always occupied, so `secondaryAction` no longer needs a hide-in-place mode at all.
 
 Which *slots* that row carries is decided by the exercise rather than by whether a hold happens to be running, so starting one dims controls in place instead of removing them and the row never reflows under a thumb mid-tap.
 The same principle settles the slot above it: the countdown is drawn inside the demo's own card (one `exerciseSlotCard()` shared by both), so starting a hold changes what is in the slot and nothing else - not the card under it, not the exercise name and target below it.
@@ -282,7 +288,9 @@ The deliberate asymmetry either side of it stands - the pre-`await` call stays `
 The same class of phantom set turned out to be reachable through a second door: **closing the player mid-hold**.
 The snapshot kept the leg as running against an absolute deadline that was, by the time the user tapped Resume, already in the past - so the restored player's first tick fired the cue and banked a set within half a second of reopening, untouched.
 Both ends of that are independently wrong and both are fixed.
-Dismissal no longer leaves a countdown running on disk: `close()` calls the same `pauseHold` backgrounding uses, because the user walking away should freeze the leg rather than let it count against time they were not holding for, and the dismissal is reported to the Ready Screen only once the write that freeze queued has landed.
+Dismissal no longer leaves a countdown running on disk - first by freezing the leg on the way out, and finally by never writing one at all (the section below is where that lands).
+What survives from that round either way is the ordering: `close()` reports the dismissal to the Ready Screen only once the last queued write has landed, so the resume card reflects the position the user actually left rather than the one before it.
+That report hops to the main actor explicitly (`Task { @MainActor in … }`) rather than inheriting whatever a nonisolated method gives it, because `onFinish` reaches `ReadyViewModel.handlePlayerDismiss`, which mutates `@Observable` state SwiftUI is tracking; only `body` is implicitly main-actor, so the annotation is what makes that true.
 And restore is defensive regardless of how the snapshot was written - a snapshot can predate this, be killed by the OS with no scene-phase transition, or simply be resumed days later - so a leg still marked running whose deadline has already gone by comes back **idle on the side the user still owes**, offering "Start hold" again.
 Restoring it as paused-at-zero would have been no better, since resuming would complete it immediately; an unfinished leg is unfinished work, and the user re-starts it deliberately.
 
@@ -295,10 +303,16 @@ Each column is roughly a third of a 393pt row, and the manual completion carries
 The label now wraps and the row grows - the same remedy the target line already documents - with 60pt as the touch-target floor rather than a ceiling, measured off the live accessibility tree at both default and accessibility type (60pt vs 144pt) instead of only rendered.
 
 Verification ran three ways in the Simulator, all against the production `ActiveSessionView`.
-Rendered PNGs of the player at a hold (idle, running, idle at accessibility Dynamic Type, per-side side 1 and side 2) and of the rest overlay are under `artifacts/reports/us-o03/`.
+Rendered PNGs of the player at a hold (idle, running, idle at accessibility Dynamic Type, per-side side 1 and side 2) and of the rest overlay are under `artifacts/reports/us-o03/`, and `PerSideSwapEvidenceTests` is what writes them.
+That is worth stating precisely, because it was not true at first: the evidence directory fell back to a machine- and session-specific path under `/var/folders`, so the committed images had been copied there by hand and any later change to the player's layout or copy would have left a stale render still cited as evidence.
+It now resolves from the test's own `#filePath` - a test bundle controls neither the working directory nor any repo-relative path, so walking up from the source file is the reliable way to find the repo root - with `REPTODAY_EVIDENCE_DIR` kept as an override.
+Re-running the suite regenerates the committed images in place, which turns a drifted screen into a diff.
+The per-side and swap renders belonging to the earlier story write to `artifacts/reports/per-side-swap/` for the same reason, kept apart so nothing lands among the files the US-O03 acceptance notes point a reviewer at.
 The accessibility tree of those same hosted surfaces is read back and asserted, so the spoken forms and the absent clock are gated rather than eyeballed.
-And `testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer` closes the loop in real time: it activates the real "Start hold" control the way VoiceOver's double-tap does, lets the wall clock run out on a short-authored hold, and asserts the live player has recorded the set and moved to the rest overlay - exercising the `Timer` publisher, the deadline arithmetic and the auto-advance as one system rather than as pieces.
+And three live wall-clock tests close the loop by driving the real controls the way VoiceOver's double-tap does.
+`testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer` activates "Start hold", lets the wall clock run out on a short-authored hold, and asserts the live player has recorded the set and moved to the rest overlay - exercising the `Timer` publisher, the deadline arithmetic and the auto-advance as one system rather than as pieces.
 That one pumps the runloop until the hand-off is *observable* rather than for a fixed budget, so a loaded machine that takes longer to push the update through still fails on behaviour rather than on the clock.
+`testBankingASetByHandMidLegEndsTheLegAndOpensTheRestInTheLivePlayer` drives the escape the running state has to offer: start a leg, then activate the manual completion mid-countdown, and assert the countdown is gone, the set is banked, and the rest overlay is up with the counter advanced one set.
 `testClosingThePlayerMidHoldLeavesNoLegOnDisk` drives the other live path the same way - start a hold, then activate the real close control - and asserts what actually reached the store: no countdown at all, only the side of a half-done per-side set, which is what the resume then picks up with nothing banked.
 
 ### A hold is not a rest, and modelling it as one cost three review rounds

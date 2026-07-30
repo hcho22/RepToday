@@ -778,6 +778,39 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up", "the single-set hold is done")
     }
 
+    /// Banking the set by hand *while* a leg is running is the non-destructive way out of a hold, and
+    /// the only one: "Stop hold" records nothing and "Skip" discards every set already banked for the
+    /// exercise. It takes the countdown down without firing the cue - the user came out of it early,
+    /// which is not the timer's verdict - records exactly one set, and opens the rest like any other
+    /// completed set.
+    func testCompletingASetByHandMidLegBanksItOnceAndEndsTheCountdown() throws {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(perSideHoldWorkout(sets: 3, seconds: 20), clock: { clock }, feedback: spy)
+        let holdStepID = try XCTUnwrap(vm.currentStep?.id)
+
+        vm.startHold()
+        clock = start.addingTimeInterval(8) // 12s still on the clock
+        XCTAssertTrue(vm.isHolding)
+
+        vm.completeSet()
+
+        XCTAssertFalse(vm.isHolding, "the running leg comes down with the tap")
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 0)
+        XCTAssertEqual(spy.completions, 0, "coming out early is the user's choice, not the timer's verdict")
+        XCTAssertEqual(vm.completedSets[holdStepID], [CompletedSet(reps: nil, durationSeconds: 20)],
+                       "exactly one set, banked at its prescribed target")
+        XCTAssertEqual(vm.currentSet, 2, "and the set counter advances as it does when the timer runs out")
+        XCTAssertEqual(vm.holdSide, 1, "the next set opens back on side 1, never parked mid-set")
+        XCTAssertTrue(vm.isResting, "which opens the rest")
+
+        // The ticker keeps firing at the view's cadence; the abandoned deadline must record nothing.
+        clock = start.addingTimeInterval(600)
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertEqual(vm.completedSetCount, 1)
+        XCTAssertEqual(spy.completions, 0)
+    }
+
     private func swappableHoldViewModel(_ engine: StubSwapEngine) -> ActiveSessionViewModel {
         ActiveSessionViewModel(
             workout: perSideHoldWorkout(seconds: 20),

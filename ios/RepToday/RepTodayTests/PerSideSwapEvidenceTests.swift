@@ -16,11 +16,37 @@ import SwiftUI
 @MainActor
 final class PerSideSwapEvidenceTests: XCTestCase {
 
-    /// Where the rendered-UI evidence is written. Overridable so a later run can point it elsewhere
-    /// without editing the test.
-    private var evidenceDir: String {
-        ProcessInfo.processInfo.environment["REPTODAY_EVIDENCE_DIR"]
-            ?? "/var/folders/9t/k_yy9fqs5vd27rf12jx_rzqh0000gn/T/no-mistakes-evidence/01KYSP7F2TSE3ZKY9MYPCXDZVZ"
+    /// Where the rendered-UI evidence is written: the repo's own `artifacts/reports/`, so the files the
+    /// PRD and `docs/test-coverage.md` cite are the ones these tests actually produce rather than copies
+    /// of them. Located by walking up from `#filePath` - a test bundle controls neither the working
+    /// directory nor any repo-relative path - and overridable through `REPTODAY_EVIDENCE_DIR` so a run
+    /// can still redirect the output.
+    ///
+    /// `<repo>/ios/RepToday/RepTodayTests/PerSideSwapEvidenceTests.swift` -> `<repo>/artifacts/reports`.
+    private static let evidenceRoot: String = {
+        if let override = ProcessInfo.processInfo.environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty {
+            return override
+        }
+        return URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // RepTodayTests
+            .deletingLastPathComponent() // RepToday
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // the repo root
+            .appendingPathComponent("artifacts")
+            .appendingPathComponent("reports")
+            .path
+    }()
+
+    /// Each story keeps its evidence in its own folder, so a render belonging to the per-side/swap copy
+    /// work never lands among the ones the US-O03 acceptance notes point a reviewer at.
+    private enum Evidence {
+        static let perSideSwap = "per-side-swap"
+        static let sessionTimer = "us-o03"
+    }
+
+    /// The directory `story`'s evidence is written to.
+    private func evidenceDir(_ story: String) -> String {
+        (Self.evidenceRoot as NSString).appendingPathComponent(story)
     }
 
     private let requestedMinutes = 30
@@ -346,22 +372,25 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         return host
     }
 
-    /// Renders a production surface to a PNG in the evidence directory.
-    private func render<V: View>(_ view: V, size: CGSize, fileName: String) throws {
-        try renderHosted(hosted(view, size: size), size: size, fileName: fileName)
+    /// Renders a production surface to a PNG in `story`'s evidence directory.
+    private func render<V: View>(_ view: V, size: CGSize, fileName: String, story: String) throws {
+        try renderHosted(hosted(view, size: size), size: size, fileName: fileName, story: story)
     }
 
     /// Renders an *already-hosted* surface, for a state that only exists once the view has been driven
     /// into it - a running hold, which is unreachable through the restore path by design (US-O03).
-    private func renderHosted<V: View>(_ host: UIHostingController<V>, size: CGSize, fileName: String) throws {
+    private func renderHosted<V: View>(
+        _ host: UIHostingController<V>, size: CGSize, fileName: String, story: String
+    ) throws {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let image = renderer.image { ctx in host.view.layer.render(in: ctx.cgContext) }
         let data = try XCTUnwrap(image.pngData())
 
-        try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)
-        let path = (evidenceDir as NSString).appendingPathComponent(fileName)
+        let directory = evidenceDir(story)
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        let path = (directory as NSString).appendingPathComponent(fileName)
         try data.write(to: URL(fileURLWithPath: path))
         XCTAssertGreaterThan(data.count, 8000, "rendered PNG unexpectedly small - the surface may not have drawn")
         print("SNAPSHOT_WRITTEN \(path) bytes=\(data.count)")
@@ -433,12 +462,12 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try render(
             try playerView(state),
             size: CGSize(width: 393, height: 852),
-            fileName: "player-per-side-hold.png"
+            fileName: "player-per-side-hold.png", story: Evidence.perSideSwap
         )
         try render(
             try playerView(state).environment(\.dynamicTypeSize, .accessibility3),
             size: CGSize(width: 393, height: 852),
-            fileName: "player-per-side-hold-accessibility-type.png"
+            fileName: "player-per-side-hold-accessibility-type.png", story: Evidence.perSideSwap
         )
     }
 
@@ -455,7 +484,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try render(
             try playerView(resumed(workout, at: index, currentSet: 1)),
             size: CGSize(width: 393, height: 852),
-            fileName: "player-per-side-reps.png"
+            fileName: "player-per-side-reps.png", story: Evidence.perSideSwap
         )
     }
 
@@ -476,7 +505,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try render(
             try playerView(renderable(viewModel.snapshot())),
             size: CGSize(width: 393, height: 852),
-            fileName: "player-swap-before.png"
+            fileName: "player-swap-before.png", story: Evidence.perSideSwap
         )
 
         await viewModel.swapCurrentExercise()
@@ -488,7 +517,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try render(
             try playerView(renderable(viewModel.snapshot())),
             size: CGSize(width: 393, height: 852),
-            fileName: "player-swap-after.png"
+            fileName: "player-swap-after.png", story: Evidence.perSideSwap
         )
     }
 
@@ -499,7 +528,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try render(
             ReadyView(services: try readyServices()),
             size: CGSize(width: 393, height: 1420),
-            fileName: "ready-screen-per-side-rows.png"
+            fileName: "ready-screen-per-side-rows.png", story: Evidence.perSideSwap
         )
     }
 
@@ -565,7 +594,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             )
         }
 
-        try write(transcript.joined(separator: "\n") + "\n", to: "voiceover-target-transcript.md")
+        try write(transcript.joined(separator: "\n") + "\n", to: "voiceover-target-transcript.md", story: Evidence.perSideSwap)
     }
 
     /// Gates one spoken target against the prescription behind it: the set count, the rep noun and the
@@ -636,7 +665,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
                 "a screen reader would read the multiplication glyph aloud: \"\(label)\""
             )
         }
-        try write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", to: "ready-screen-voiceover-labels.md")
+        try write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", to: "ready-screen-voiceover-labels.md", story: Evidence.perSideSwap)
     }
 
     /// The accessibility element carrying `label`, so a test can activate it exactly the way VoiceOver's
@@ -720,7 +749,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             try render(
                 try playerView(resumed(workout, at: index, currentSet: 1)),
                 size: CGSize(width: 393, height: 852),
-                fileName: fileName
+                fileName: fileName,
+                story: Evidence.perSideSwap
             )
         }
     }
@@ -758,9 +788,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// the source, so re-adding it - the regression this story exists to prevent - fails here.
     ///
     /// The timer is the primary action, not the only one: the manual way to bank the set stays on the
-    /// row as a quiet secondary while the hold is idle - a user interrupted part-way through a plank
-    /// should not have to lose the work to a skip - and is hidden while a leg is actually running,
-    /// where the countdown is what records it.
+    /// row as a quiet secondary throughout, idle *and* mid-leg. A user interrupted part-way through a
+    /// plank must not have to choose between "Stop hold", which records nothing, and "Skip", which
+    /// discards every set already banked for the exercise - so this asserts the non-destructive way out
+    /// is on screen in both states.
     func testHoldTimerReplacesTheAlwaysOnSessionClock() throws {
         let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
@@ -790,7 +821,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "an idle hold should still offer \"\(manualTitle)\" as the way to bank a set held off-timer; "
             + "it reads \(idleLabels)"
         )
-        try render(try playerView(idle), size: playerSize, fileName: "player-hold-idle.png")
+        try render(try playerView(idle), size: playerSize, fileName: "player-hold-idle.png", story: Evidence.sessionTimer)
 
         // Running: the countdown takes the demo's place and speaks the seconds it has left. The leg is
         // started through the real control, since a hold is never persisted and so cannot be restored
@@ -802,15 +833,17 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "a running hold should speak its remaining seconds; it reads \(runningLabels)"
         )
         XCTAssertTrue(runningLabels.contains("Stop hold"), "and offer the quiet way out of it")
-        XCTAssertFalse(
+        XCTAssertTrue(
             runningLabels.contains(manualTitle),
-            "while the leg runs the countdown is what records the set; it reads \(runningLabels)"
+            "a running leg must keep \"\(manualTitle)\" offered - without it the only ways out are "
+            + "\"Stop hold\", which records nothing, and \"Skip\", which discards the sets already "
+            + "banked for this exercise; it reads \(runningLabels)"
         )
         XCTAssertTrue(
             runningLabels.contains("Skip this exercise"),
             "the row keeps its slots while the hold runs; it reads \(runningLabels)"
         )
-        try renderHosted(runningHost, size: playerSize, fileName: "player-hold-running.png")
+        try renderHosted(runningHost, size: playerSize, fileName: "player-hold-running.png", story: Evidence.sessionTimer)
 
         for labels in [idleLabels, runningLabels] {
             XCTAssertFalse(
@@ -849,7 +882,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             firstLabels.contains("\(slot.exercise.displayName), \(ActiveSessionView.targetAccessibilityText(slot))"),
             "the spoken target still carries its per-side suffix; it reads \(firstLabels)"
         )
-        try render(try playerView(firstSide), size: playerSize, fileName: "player-per-side-hold-side-1.png")
+        try render(try playerView(firstSide), size: playerSize, fileName: "player-per-side-hold-side-1.png", story: Evidence.sessionTimer)
 
         // Parked between the legs - the state a relaunch restores to, so it must read as owing side 2.
         var secondSide = firstSide
@@ -859,7 +892,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             secondLabels.contains("Start hold, side 2 of 2"),
             "a restored between-legs hold owes side 2; it reads \(secondLabels)"
         )
-        try render(try playerView(secondSide), size: playerSize, fileName: "player-per-side-hold-side-2.png")
+        try render(try playerView(secondSide), size: playerSize, fileName: "player-per-side-hold-side-2.png", story: Evidence.sessionTimer)
     }
 
     /// The rest overlay lost its clock too (US-O03) - it kept the countdown that is *about* the rest and
@@ -881,7 +914,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             labels.contains { $0.hasPrefix("Elapsed time") },
             "the always-on session clock is back on the rest overlay: \(labels)"
         )
-        try render(try playerView(state), size: playerSize, fileName: "player-rest-overlay.png")
+        try render(try playerView(state), size: playerSize, fileName: "player-rest-overlay.png", story: Evidence.sessionTimer)
     }
 
     /// The Hold Timer driven the way a user drives it, in real time (US-O03).
@@ -893,27 +926,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// one live system rather than as pieces. The hold is authored short so the test does not have to
     /// wait out a real 30-second plank.
     func testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer() throws {
-        let hold = Exercise(
-            id: "evidence_short_hold", displayName: "Short Hold", pillar: .strength,
-            movementPattern: .core, category: .strength, difficulty: 1, phase: .discipline,
-            equipment: [], isHold: true, defaultReps: nil, defaultDurationSeconds: 2,
-            estimatedTimePerSetSeconds: 10, metValue: 3, progressionChainId: "evidence_chain",
-            progressionOrder: 0, regressionId: nil, progressionId: nil,
-            advancementCriteria: "hold it", apartmentFriendly: true
-        )
-        let workout = Workout(
-            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil,
-            requestedMinutes: 5, wasReturn: false,
-            blocks: [
-                WorkoutBlock(
-                    id: UUID(), title: "Strength", category: .strength,
-                    exercises: [
-                        PrescribedExercise(id: UUID(), exercise: hold, sets: 1, reps: nil, durationSeconds: 2, restSeconds: 30),
-                        PrescribedExercise(id: UUID(), exercise: hold, sets: 1, reps: nil, durationSeconds: 2, restSeconds: 30)
-                    ]
-                )
-            ]
-        )
+        let workout = shortHoldWorkout(seconds: 2, sets: 1)
 
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
         let start = try XCTUnwrap(
@@ -953,6 +966,99 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         XCTAssertFalse(
             after.contains { $0.hasPrefix("Elapsed time") },
             "no running session clock anywhere in the live session; the player reads \(after)"
+        )
+    }
+
+    /// Banking the set by hand *while* a leg runs, driven through the real controls on the hosted
+    /// production player (US-O03).
+    ///
+    /// This is the non-destructive way out of a running hold, and it has to be reachable in one tap from
+    /// the running state: the alternatives are "Stop hold", which records nothing, and "Skip", which
+    /// discards every set already banked for the exercise. The leg is started and then banked through
+    /// the accessibility tree the way VoiceOver's double-tap does, so what is gated is the control a
+    /// user can actually reach mid-plank rather than a view-model call.
+    func testBankingASetByHandMidLegEndsTheLegAndOpensTheRestInTheLivePlayer() throws {
+        // Long enough that the leg is unambiguously still running when the set is banked by hand.
+        let workout = shortHoldWorkout(seconds: 120, sets: 2)
+
+        let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
+        let start = try XCTUnwrap(
+            accessibilityElement(labeled: "Start hold", in: host.view),
+            "the live player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+        )
+        XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.6))
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        let running = accessibilityLabels(in: host.view)
+        XCTAssertTrue(
+            running.contains { $0.hasPrefix("Hold, ") },
+            "the leg should be running before it is banked by hand; the player reads \(running)"
+        )
+
+        let bank = try XCTUnwrap(
+            accessibilityElement(labeled: "Complete set", in: host.view),
+            "a running leg offers no way to bank the set without discarding the exercise; "
+            + "the player reads \(running)"
+        )
+        XCTAssertTrue(bank.accessibilityActivate(), "the manual completion did not activate")
+
+        func banked(_ labels: [String]) -> Bool {
+            labels.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") }
+                && !labels.contains { $0.hasPrefix("Hold, ") }
+        }
+        let ceiling = Date().addingTimeInterval(20)
+        var after: [String] = []
+        repeat {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            after = accessibilityLabels(in: host.view)
+        } while Date() < ceiling && !banked(after)
+
+        print("=== Rep Today - after banking a set by hand mid-leg, the player reads: \(after) ===")
+        XCTAssertFalse(
+            after.contains { $0.hasPrefix("Hold, ") },
+            "the running leg should have come down with the tap; the player reads \(after)"
+        )
+        XCTAssertTrue(
+            after.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
+            "and the set should have been banked, opening the rest; the player reads \(after)"
+        )
+        XCTAssertTrue(
+            after.contains { $0.contains("set 2 of 2") },
+            "with the set counter advanced exactly one set, as it is when the timer runs out; "
+            + "the player reads \(after)"
+        )
+    }
+
+    /// A session of short holds, so a live test can drive a real countdown without waiting out a real
+    /// 30-second plank. Two slots, so finishing the first is an exercise hand-off rather than the end
+    /// of the session.
+    private func shortHoldWorkout(seconds: Int, sets: Int) -> Workout {
+        let hold = Exercise(
+            id: "evidence_short_hold", displayName: "Short Hold", pillar: .strength,
+            movementPattern: .core, category: .strength, difficulty: 1, phase: .discipline,
+            equipment: [], isHold: true, defaultReps: nil, defaultDurationSeconds: seconds,
+            estimatedTimePerSetSeconds: 10, metValue: 3, progressionChainId: "evidence_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "hold it", apartmentFriendly: true
+        )
+        func slot() -> PrescribedExercise {
+            PrescribedExercise(
+                id: UUID(), exercise: hold, sets: sets, reps: nil,
+                durationSeconds: seconds, restSeconds: 30
+            )
+        }
+        return Workout(
+            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil,
+            requestedMinutes: 5, wasReturn: false,
+            blocks: [
+                WorkoutBlock(
+                    id: UUID(), title: "Strength", category: .strength, exercises: [slot(), slot()]
+                )
+            ]
         )
     }
 
@@ -1001,7 +1107,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try render(
             try playerView(state).environment(\.dynamicTypeSize, .accessibility3),
             size: playerSize,
-            fileName: "player-hold-idle-accessibility-type.png"
+            fileName: "player-hold-idle-accessibility-type.png", story: Evidence.sessionTimer
         )
     }
 
@@ -1064,9 +1170,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     }
 
     /// Writes a text artifact next to the rendered PNGs.
-    private func write(_ text: String, to fileName: String) throws {
-        try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)
-        let path = (evidenceDir as NSString).appendingPathComponent(fileName)
+    private func write(_ text: String, to fileName: String, story: String) throws {
+        let directory = evidenceDir(story)
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        let path = (directory as NSString).appendingPathComponent(fileName)
         try text.write(toFile: path, atomically: true, encoding: .utf8)
         print("TRANSCRIPT_WRITTEN \(path)")
     }

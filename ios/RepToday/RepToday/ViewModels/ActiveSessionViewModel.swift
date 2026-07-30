@@ -362,7 +362,9 @@ final class ActiveSessionViewModel {
         // where the complete-set control is hidden during rest).
         endRest(fireFeedback: false)
         // The set is done, so the hold that timed it is too - and the next set starts back on side 1.
-        // Already ended (without a second cue) when the hold itself is what completed the set.
+        // Already ended (without a second cue) when the hold itself is what completed the set; when the
+        // user banked it by hand mid-leg instead, this is what takes the running countdown down, and it
+        // fires no cue because coming out early is the user's choice rather than the timer's verdict.
         resetHold()
         recordSet(for: step.prescription)
         let restSeconds = step.prescription.restSeconds

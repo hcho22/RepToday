@@ -1,0 +1,10 @@
+- Downward Dog, 1 set of a 30 second hold
+- Thoracic Rotations, 1 set of 10 reps per side
+- World's Greatest Stretch, 4 sets of 8 reps per side
+- Kneeling Hip-Flexor Stretch, 3 sets of 30 second holds per side
+- Pigeon Pose, 4 sets of 45 second holds per side
+- Cat-Cow Flow, 1 set of 11 reps
+- Glute Bridge, 3 sets of 15 reps
+- Superman Hold, 3 sets of 20 second holds
+- Bear Crawl, 2 sets of 10 reps
+- Child's Pose, 1 set of a 45 second hold

@@ -95,7 +95,7 @@ struct ActiveSessionView: View {
         let pendingWrite = viewModel.persistenceTask
         let completed = viewModel.isComplete
         let report = onFinish
-        Task {
+        Task { @MainActor in
             await pendingWrite?.value
             report?(completed)
         }
@@ -283,15 +283,18 @@ struct ActiveSessionView: View {
 
                 // A timed movement records itself at zero, but the timer is an offer, not the only way
                 // out: a user who held it off-timer, or was interrupted part-way through a three-set
-                // plank, can still bank the work they did instead of losing it to a skip. Hidden in
-                // place while a leg runs - the countdown is what records the set then.
+                // plank, can still bank the work they did instead of losing it to a skip. It stays
+                // offered *while* a leg runs too - otherwise the only visible ways out of a running
+                // hold are "Stop hold", which records nothing, and "Skip", which discards every set
+                // already banked for the exercise. Tapping it ends the leg without firing the cue (the
+                // user came out of it early) and banks the set through the same path the countdown
+                // takes at zero.
                 if viewModel.holdSecondsPerSide != nil {
                     secondaryAction(
                         title: completeButtonTitle,
                         accessibilityLabel: completeButtonTitle,
                         accessibilityHint: "Records this set without the timer",
-                        isEnabled: !viewModel.isHolding,
-                        hidesWhenDisabled: true
+                        isEnabled: true
                     ) {
                         viewModel.completeSet()
                     }
@@ -314,8 +317,6 @@ struct ActiveSessionView: View {
     /// One quiet control in the secondary row. Every slot is built here so they share their styling,
     /// their 60pt active-screen touch target, and their column width - and so a control that is
     /// unavailable right now still holds its place in the row rather than letting the others slide.
-    /// `hidesWhenDisabled` is for the control that should not merely be untappable but absent to the
-    /// eye and to VoiceOver, while still occupying its column.
     ///
     /// The columns are narrow - three of them on a timed movement - and the longest title in the row
     /// ("Finish exercise", "Finish session") is the one that says what the tap actually does, so the
@@ -327,11 +328,9 @@ struct ActiveSessionView: View {
         accessibilityLabel: String,
         accessibilityHint: String?,
         isEnabled: Bool,
-        hidesWhenDisabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        let isHidden = hidesWhenDisabled && !isEnabled
-        return Button(action: action) {
+        Button(action: action) {
             Text(title)
                 .font(Theme.Typography.body)
                 .multilineTextAlignment(.center)
@@ -342,10 +341,8 @@ struct ActiveSessionView: View {
                 .frame(minHeight: Theme.Spacing.workoutTouchTarget)
         }
         .disabled(!isEnabled)
-        .opacity(isHidden ? 0 : 1)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint ?? "")
-        .accessibilityHidden(isHidden)
     }
 
     /// The one big action at the bottom of the player. Running a hold has no "do it now" action - the
