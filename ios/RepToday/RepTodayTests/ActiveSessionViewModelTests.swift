@@ -477,6 +477,323 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(spy.completions, 0)
     }
 
+    // MARK: - Hold timer (US-O03)
+
+    /// A per-side hold slot, so the two-leg path can be driven against the same `isPerSide` flag the
+    /// engine's timing model charges both sides against.
+    private func perSideHoldPrescription(_ id: String, sets: Int, seconds: Int) -> PrescribedExercise {
+        PrescribedExercise(
+            id: UUID(), exercise: perSide(holdExercise(id: id)),
+            sets: sets, reps: nil, durationSeconds: seconds, restSeconds: 30
+        )
+    }
+
+    /// A session leading with a per-side hold, followed by a rep movement so the hold has somewhere to
+    /// advance to.
+    private func perSideHoldWorkout(sets: Int = 1, seconds: Int = 20) -> Workout {
+        let block = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                perSideHoldPrescription("side_plank", sets: sets, seconds: seconds),
+                repPrescription("push_up", sets: 1, reps: 10)
+            ]
+        )
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [block]
+        )
+    }
+
+    /// The Hold Timer is offered on a timed movement and withheld on a rep-based one, which keeps the
+    /// unchanged manual set tracker + "Complete set" flow.
+    func testHoldTimerIsOfferedOnlyForTimedExercises() {
+        let vm = makeViewModel(clock: { self.start }) // leads with the 30s cat_cow hold
+
+        XCTAssertEqual(vm.holdSecondsPerSide, 30)
+        XCTAssertEqual(vm.holdSidesPerSet, 1)
+        XCTAssertTrue(vm.canStartHold)
+
+        vm.completeSet() // -> push_up, rep-based
+        vm.skipRest()
+
+        XCTAssertNil(vm.holdSecondsPerSide, "a rep-based movement has no hold to time")
+        XCTAssertFalse(vm.canStartHold)
+    }
+
+    /// Starting a hold counts the prescribed seconds down against the injected clock.
+    func testStartHoldCountsDownThePrescribedSeconds() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+
+        vm.startHold()
+        XCTAssertTrue(vm.isHolding)
+        XCTAssertEqual(vm.holdTotalSeconds, 30)
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 30)
+
+        clock = start.addingTimeInterval(12)
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 18)
+    }
+
+    /// At zero the hold fires the completion cue exactly once - never before it elapses, never again on
+    /// repeated ticks - records the set, and hands off to the rest, so a timed exercise advances without
+    /// the user touching the screen.
+    func testHoldCompletionFiresCueOnceAndRecordsTheSet() throws {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        let holdStepID = try XCTUnwrap(vm.currentStep?.id)
+
+        vm.startHold() // 30s
+
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isHolding, "still holding - 10s to go")
+        XCTAssertEqual(spy.completions, 0, "the cue never fires early")
+        XCTAssertEqual(vm.completedSetCount, 0)
+
+        clock = start.addingTimeInterval(30)
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isHolding)
+        XCTAssertEqual(spy.completions, 1)
+        XCTAssertEqual(vm.completedSets[holdStepID], [CompletedSet(reps: nil, durationSeconds: 30)], "the set records itself")
+        XCTAssertTrue(vm.isResting, "and hands off to the rest")
+
+        vm.completeHoldIfElapsed(asOf: clock) // the view's ticker keeps calling
+        XCTAssertEqual(spy.completions, 1, "the cue fires once, not per tick")
+        XCTAssertEqual(vm.completedSetCount, 1)
+    }
+
+    /// A per-side hold is one leg per *side*, because the engine charges both: the first leg cues the
+    /// switch and parks on side 2 without recording anything, and only the last leg records the set. A
+    /// single countdown that recorded the set after one side would quietly halve the prescribed work.
+    func testPerSideHoldRunsOneLegPerSideAndRecordsOneSet() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { clock }, feedback: spy)
+
+        XCTAssertEqual(vm.holdSidesPerSet, 2)
+        XCTAssertEqual(vm.holdSide, 1)
+        XCTAssertEqual(vm.holdSecondsPerSide, 20, "each leg is the prescribed per-side hold, not the pair")
+
+        vm.startHold()
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock)
+
+        XCTAssertEqual(spy.completions, 1, "the cue marks the switch")
+        XCTAssertEqual(vm.holdSide, 2, "parked on the second side")
+        XCTAssertFalse(vm.isHolding, "the next leg waits for the user's tap - time to change position")
+        XCTAssertEqual(vm.completedSetCount, 0, "half the set is not a set")
+        XCTAssertFalse(vm.isResting)
+
+        vm.startHold()
+        clock = start.addingTimeInterval(40)
+        vm.completeHoldIfElapsed(asOf: clock)
+
+        XCTAssertEqual(spy.completions, 2)
+        XCTAssertEqual(vm.completedSetCount, 1, "both sides make exactly one set")
+        XCTAssertTrue(vm.isResting)
+        XCTAssertEqual(vm.holdSide, 1, "the next set opens back on side 1")
+    }
+
+    /// Stopping a hold early records nothing and fires no cue - the user chose to come out of it - and
+    /// leaves the same side ready to re-start.
+    func testCancelHoldRecordsNothingAndFiresNoCue() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { clock }, feedback: spy)
+
+        vm.startHold()
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock) // side 1 done, parked on side 2
+        vm.startHold()
+        clock = start.addingTimeInterval(25)
+        vm.cancelHold()
+
+        XCTAssertFalse(vm.isHolding)
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 0)
+        XCTAssertEqual(vm.completedSetCount, 0)
+        XCTAssertEqual(spy.completions, 1, "only the completed first side cued")
+        XCTAssertEqual(vm.holdSide, 2, "the abandoned side is still the one they owe")
+        XCTAssertTrue(vm.canStartHold, "and can be started again")
+    }
+
+    /// Backgrounding freezes the hold rather than letting it blow past, and a frozen hold never
+    /// auto-completes - so its cue can never fire at a screen the user is away from. Foregrounding
+    /// reschedules from the captured remainder.
+    func testPausedHoldFreezesAndNeverAutoCompletes() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        vm.startHold() // 30s
+
+        clock = start.addingTimeInterval(10) // 20s remaining
+        vm.pauseHold(asOf: clock)
+        XCTAssertTrue(vm.isHoldPaused)
+
+        clock = start.addingTimeInterval(600) // ten minutes away
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 20, "frozen while paused")
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isHolding, "a paused hold stays up")
+        XCTAssertEqual(spy.completions, 0)
+        XCTAssertEqual(vm.completedSetCount, 0)
+
+        vm.resumeHold(asOf: clock)
+        XCTAssertFalse(vm.isHoldPaused)
+        clock = start.addingTimeInterval(615)
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 5, "resumes from the captured remainder")
+    }
+
+    /// A hold cannot start on top of a rest - the rest overlay owns the screen, and a countdown behind
+    /// it would run unseen.
+    func testHoldCannotStartDuringRest() {
+        let vm = makeViewModel(perSideHoldWorkout(sets: 2, seconds: 20), clock: { self.start })
+        vm.completeSet() // set 1 of 2 recorded manually -> 30s rest opens
+
+        XCTAssertTrue(vm.isResting)
+        XCTAssertFalse(vm.canStartHold)
+        vm.startHold()
+        XCTAssertFalse(vm.isHolding, "start is a no-op during rest")
+
+        vm.skipRest()
+        XCTAssertTrue(vm.canStartHold)
+    }
+
+    /// Skipping the exercise drops a running hold without firing its cue and clears the side, so the
+    /// next timed movement opens on side 1.
+    func testSkipExerciseClearsARunningHold() {
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start }, feedback: spy)
+
+        vm.startHold()
+        vm.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done -> parked on side 2
+        vm.startHold()
+
+        vm.skipExercise()
+
+        XCTAssertFalse(vm.isHolding)
+        XCTAssertEqual(vm.holdSide, 1, "the abandoned side does not follow the user to the next movement")
+        XCTAssertEqual(spy.completions, 1, "skipping is not a completion - only the finished first side cued")
+        XCTAssertEqual(vm.skippedStepIDs.count, 1)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
+    }
+
+    /// A swap reshapes the slot the countdown was timing, so it drops the running hold and - on an
+    /// actual substitution - the side too: a different movement is a different set of legs.
+    func testSwapClearsARunningHold() async {
+        let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
+        let vm = swappableHoldViewModel(StubSwapEngine(outcome: .substituted(substitute)))
+        vm.startHold()
+        vm.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // parked on side 2
+        vm.startHold()
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "dips")
+        XCTAssertFalse(vm.isHolding)
+        XCTAssertEqual(vm.holdSide, 1)
+        XCTAssertNil(vm.holdSecondsPerSide, "the substitute is rep-based, so no hold is offered")
+    }
+
+    /// A swap that finds nothing leaves the original movement in place, so it must also leave the side
+    /// the user has already held. Clearing it would charge them a side for a substitution that never
+    /// happened - they would hold side 1 of the same stretch twice.
+    func testSwapWithNoAlternativeKeepsTheSideAlreadyHeld() async {
+        let vm = swappableHoldViewModel(StubSwapEngine(outcome: .noAlternative))
+        vm.startHold()
+        vm.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // parked on side 2
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertTrue(vm.noSwapAlternative)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "side_plank", "the original slot stays")
+        XCTAssertEqual(vm.holdSide, 2, "and so does the side they still owe")
+    }
+
+    private func swappableHoldViewModel(_ engine: StubSwapEngine) -> ActiveSessionViewModel {
+        ActiveSessionViewModel(
+            workout: perSideHoldWorkout(seconds: 20),
+            swapEngine: engine, user: makeUser(), recentLogs: [], sessionPolicy: .default,
+            now: { self.start }
+        )
+    }
+
+    /// A hold still running when the app was killed resumes counting from its absolute deadline.
+    func testRestoreResumesRunningHold() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.startHold() // 30s, deadline start+30
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) })
+
+        XCTAssertTrue(resumed.isHolding)
+        XCTAssertFalse(resumed.isHoldPaused)
+        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(8)), 22)
+    }
+
+    /// A hold paused on backgrounding persists its frozen remainder, so a relaunch resumes from exactly
+    /// where it stopped - and the player's on-appear resume is what un-freezes it.
+    func testRestoreResumesPausedHold() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.startHold() // 30s
+        original.pauseHold(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(300) })
+        XCTAssertTrue(resumed.isHoldPaused, "a restored hold starts frozen")
+        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(300)), 20)
+
+        // Mirror ActiveSessionView.onAppear on an already-active app.
+        resumed.start()
+        resumed.resumeHold(asOf: start.addingTimeInterval(300))
+
+        XCTAssertFalse(resumed.isHoldPaused)
+        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(305)), 15)
+    }
+
+    /// A per-side set the user is *between* the sides of survives a relaunch: the snapshot carries the
+    /// side even with nothing running, so they come back owing side 2 rather than silently repeating
+    /// side 1 and doing three legs of a two-leg set.
+    func testRestoreKeepsTheSideOfAPerSideHoldBetweenLegs() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = ActiveSessionViewModel(
+            workout: perSideHoldWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
+        )
+        original.start()
+        original.startHold()
+        original.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done, nothing running
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(60) })
+
+        XCTAssertFalse(resumed.isHolding)
+        XCTAssertEqual(resumed.holdSide, 2)
+        XCTAssertEqual(resumed.completedSetCount, 0)
+        XCTAssertTrue(resumed.canStartHold)
+    }
+
+    /// The session clock is still measured (US-O03 hides it, it does not remove it), so the completion
+    /// summary the user finally sees still reports the total they worked.
+    func testTotalDurationStillReachesTheCompletionSummary() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+        vm.start()
+
+        clock = start.addingTimeInterval(11 * 60)
+        while !vm.isComplete { vm.completeSet() }
+
+        XCTAssertEqual(vm.summary?.durationMinutes, 11)
+    }
+
     // MARK: - Swap (US-K03)
 
     /// A stub engine so the swap's view-model behavior is driven deterministically, decoupled from the

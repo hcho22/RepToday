@@ -40,9 +40,20 @@ import Observation
 /// and the original slot stays. The swap dependencies are injected and optional, so the player still
 /// constructs (e.g. in previews) without an engine - swap simply stays unavailable then.
 ///
-/// Elapsed time is derived from an injected clock rather than an internal ticking counter: the view
-/// re-reads `elapsed(asOf:)` once a second via a `TimelineView`, so the value is accurate, resilient
-/// to backgrounding, and a pure function the tests can drive without real time passing.
+/// Elapsed time is derived from an injected clock rather than an internal ticking counter, and is
+/// deliberately *not* shown while the session runs (US-O03): a visible ticking total turns the session
+/// into something to get through, so the clock only surfaces as the completion summary's duration.
+/// `elapsed(asOf:)` stays a pure function of the clock, so `completedDurationMinutes()` - and the log,
+/// Default Duration learning, and Consistency Score behind it - are unchanged.
+///
+/// A timed (`isHold`) exercise gets a Hold Timer instead (US-O03): the user taps "Start hold", a
+/// countdown runs, and at zero it fires the same `RestTimerFeedback` cue exactly once and records the
+/// set automatically. It is counted one *side* at a time, because the engine charges a per-side
+/// movement for both sides - a set of side plank is two legs, and a single countdown that recorded
+/// the set at the end of one would quietly halve the work the session was built around. Like the rest
+/// timer it runs against an absolute deadline with pause/resume on backgrounding, and it is captured
+/// in the persisted snapshot, so it survives a relaunch. Rep-based exercises are untouched: set
+/// tracker plus a manual "Complete set".
 @Observable
 final class ActiveSessionViewModel {
 
@@ -123,6 +134,29 @@ final class ActiveSessionViewModel {
 
     /// The remaining seconds captured when the rest was paused (backgrounding). `nil` while running.
     private var restRemainingWhenPaused: Int?
+
+    // MARK: - Hold timer (US-O03)
+
+    /// True while a hold leg is counting down for the current exercise - running or paused. The player
+    /// shows the countdown in place of the demo while this holds.
+    private(set) var isHolding = false
+
+    /// The full length of the running hold leg in seconds - one side's prescribed hold, and the
+    /// denominator for the countdown ring. Zero between legs.
+    private(set) var holdTotalSeconds = 0
+
+    /// The 1-based side of the current set the hold is on. Always 1 for a bilateral movement; a
+    /// per-side movement runs the prescribed hold once per side, so its set is two legs and side 2 is
+    /// the second of them. Carried across a pause and a relaunch, so a user who finished the first
+    /// side never silently repeats it.
+    private(set) var holdSide = 1
+
+    /// The wall-clock instant the running hold leg is scheduled to finish. `nil` while paused (the app
+    /// is backgrounded) or between legs.
+    private var holdDeadline: Date?
+
+    /// The remaining seconds captured when the hold leg was paused (backgrounding). `nil` while running.
+    private var holdRemainingWhenPaused: Int?
 
     private let now: () -> Date
     private let feedback: RestTimerFeedback
@@ -227,6 +261,17 @@ final class ActiveSessionViewModel {
             self.restDeadline = rest.deadline
             self.restRemainingWhenPaused = rest.remainingWhenPaused
         }
+        if let hold = state.hold {
+            // The side is restored whether or not a leg was running, so a per-side hold resumes on the
+            // side the user is actually owed rather than repeating the one they already held.
+            self.holdSide = max(1, hold.side)
+            if hold.isRunning {
+                self.isHolding = true
+                self.holdTotalSeconds = hold.totalSeconds
+                self.holdDeadline = hold.deadline
+                self.holdRemainingWhenPaused = hold.remainingWhenPaused
+            }
+        }
     }
 
     /// Fresh-start convenience: play `workout` from its first set, with no completed work yet.
@@ -312,6 +357,9 @@ final class ActiveSessionViewModel {
         // Any prior rest is over the moment the next set is logged (a no-op in the overlay-gated UI,
         // where the complete-set control is hidden during rest).
         endRest(fireFeedback: false)
+        // The set is done, so the hold that timed it is too - and the next set starts back on side 1.
+        // Already ended (without a second cue) when the hold itself is what completed the set.
+        resetHold()
         recordSet(for: step.prescription)
         let restSeconds = step.prescription.restSeconds
         if currentSet < step.prescription.sets {
@@ -333,8 +381,9 @@ final class ActiveSessionViewModel {
     /// the plain "move past it" path.)
     func skipExercise() {
         guard !isComplete, let step = currentStep else { return }
-        // Skipping moves on immediately, so any rest in force is dropped without firing its cue.
+        // Skipping moves on immediately, so any rest or hold in force is dropped without firing a cue.
         endRest(fireFeedback: false)
+        resetHold()
         completedSets.removeValue(forKey: step.id)
         skippedStepIDs.insert(step.id)
         advanceExercise()
@@ -474,8 +523,13 @@ final class ActiveSessionViewModel {
         noSwapAlternative = false
         defer { isSwapping = false }
 
-        // A swap reshapes the slot, so any lingering rest ends without firing its completion cue.
+        // A swap reshapes the slot, so any lingering rest or running hold ends without firing a
+        // completion cue. The *side* is deliberately not cleared here: a swap that comes back
+        // `.noAlternative` leaves the original movement in place, and sending a user who has already
+        // held one side back to side 1 of the movement they kept would cost them that side for nothing.
+        // It is cleared below, on the substitution that actually makes it meaningless.
         endRest(fireFeedback: false)
+        endHold(fireFeedback: false)
 
         let outcome: SwapOutcome
         do {
@@ -512,6 +566,9 @@ final class ActiveSessionViewModel {
                 total: previous.total
             )
             currentSet = 1
+            // A different movement means a different set of legs: the side the user was owed on the
+            // movement they just replaced does not carry over to the one that replaced it.
+            holdSide = 1
             // The lineup changed - persist so a resume after a swap restores the substitute, not the
             // movement the user replaced.
             persist()
@@ -645,6 +702,121 @@ final class ActiveSessionViewModel {
         if fireFeedback { feedback.restDidComplete() }
     }
 
+    // MARK: - Hold timer (US-O03)
+
+    /// The hold prescribed for one side of the current exercise, or `nil` when the current step is not
+    /// a timed movement (rep-based, complete, or a hold carrying no usable duration). This is what
+    /// gates the whole Hold Timer: a `nil` here means the player shows the unchanged manual set tracker.
+    var holdSecondsPerSide: Int? {
+        guard let step = currentStep,
+              step.prescription.exercise.isHold,
+              let seconds = step.prescription.durationSeconds,
+              seconds > 0
+        else { return nil }
+        return seconds
+    }
+
+    /// How many legs one set of the current exercise is - one per side, so two for a per-side movement.
+    /// Read through `Exercise.sidesPerSet`, the same field the engine's timing model charges against,
+    /// so the timer cannot ask for less work than the session was planned around.
+    var holdSidesPerSet: Int { currentStep?.prescription.exercise.sidesPerSet ?? 1 }
+
+    /// Whether the user can start a hold leg right now: there is a timed exercise on screen and no
+    /// rest, hold, or completion in the way.
+    var canStartHold: Bool {
+        !isComplete && !isResting && !isHolding && holdSecondsPerSide != nil
+    }
+
+    /// Whether the running hold is paused (the app is backgrounded). Distinct from `isHolding`, which
+    /// stays true across a pause so the countdown stays on screen.
+    var isHoldPaused: Bool { holdRemainingWhenPaused != nil }
+
+    /// Seconds left on the running hold leg, counted down from `holdTotalSeconds` to zero, as of
+    /// `date`. Zero when no leg is running; while paused it holds the captured remainder. Pure over
+    /// the injected clock, so the view's ticker reads it cheaply and tests drive it without real time.
+    func holdRemaining(asOf date: Date) -> Int {
+        guard isHolding else { return 0 }
+        if let paused = holdRemainingWhenPaused { return paused }
+        guard let deadline = holdDeadline else { return 0 }
+        return max(0, Int(ceil(deadline.timeIntervalSince(date))))
+    }
+
+    /// Begin the current side's hold, scheduled against the injected clock. A no-op when a hold cannot
+    /// start (rep-based exercise, rest in force, one already running).
+    func startHold() {
+        guard canStartHold, let seconds = holdSecondsPerSide else { return }
+        holdTotalSeconds = seconds
+        holdDeadline = now().addingTimeInterval(TimeInterval(seconds))
+        holdRemainingWhenPaused = nil
+        isHolding = true
+        persist()
+    }
+
+    /// End the hold leg at zero, firing the completion cue exactly once. On the last side that also
+    /// records the set and opens the rest (US-K02), so a timed exercise advances without the user
+    /// touching the screen; on an earlier side it parks on the next side, where the tap to start it is
+    /// the user's own time to change position. Idempotent and safe to call every tick from the view's
+    /// ticker (a paused or unfinished leg is left untouched), so the cue fires once at the right instant
+    /// and never per-tick.
+    func completeHoldIfElapsed(asOf date: Date) {
+        guard isHolding, holdRemainingWhenPaused == nil, holdRemaining(asOf: date) == 0 else { return }
+        let sides = holdSidesPerSet
+        let finishedSide = holdSide
+        endHold(fireFeedback: true)
+        if finishedSide < sides {
+            holdSide = finishedSide + 1
+            persist()
+        } else {
+            // Records the set and starts the rest; `completeSet` resets the side back to 1 for the next.
+            completeSet()
+        }
+    }
+
+    /// Abandon the running hold leg without recording anything and without firing the cue - the user
+    /// stopped early. The side is kept, so they can re-start the same leg. A no-op when none is running.
+    func cancelHold() {
+        guard isHolding else { return }
+        endHold(fireFeedback: false)
+        persist()
+    }
+
+    /// Pause the running hold (the app is backgrounding), capturing the remaining seconds so the
+    /// countdown freezes rather than blowing past - and, crucially, so its cue cannot fire while the
+    /// user is away from the screen. A no-op if not running. The frozen remainder is persisted, so a
+    /// hold that was mid-countdown when the app was killed resumes from exactly where it stopped.
+    func pauseHold(asOf date: Date) {
+        guard isHolding, holdRemainingWhenPaused == nil else { return }
+        holdRemainingWhenPaused = holdRemaining(asOf: date)
+        holdDeadline = nil
+        persist()
+    }
+
+    /// Resume a paused hold (the app is foregrounding again), rescheduling the deadline from the
+    /// captured remainder. A no-op if not currently paused.
+    func resumeHold(asOf date: Date) {
+        guard isHolding, let remaining = holdRemainingWhenPaused else { return }
+        holdDeadline = date.addingTimeInterval(TimeInterval(remaining))
+        holdRemainingWhenPaused = nil
+        persist()
+    }
+
+    private func endHold(fireFeedback: Bool) {
+        guard isHolding else { return }
+        isHolding = false
+        holdDeadline = nil
+        holdRemainingWhenPaused = nil
+        holdTotalSeconds = 0
+        if fireFeedback { feedback.restDidComplete() }
+    }
+
+    /// Clear the hold entirely - the running leg *and* the side the user is part-way through. This is
+    /// what every move off the current set does (completing it, skipping the exercise, swapping it),
+    /// so a fresh set always opens on side 1.
+    private func resetHold() {
+        endHold(fireFeedback: false)
+        holdSide = 1
+    }
+
     // MARK: - Private
 
     private func recordSet(for prescription: PrescribedExercise) {
@@ -690,6 +862,17 @@ final class ActiveSessionViewModel {
         let rest: ActiveSessionState.Rest? = isResting
             ? ActiveSessionState.Rest(totalSeconds: restTotalSeconds, deadline: restDeadline, remainingWhenPaused: restRemainingWhenPaused)
             : nil
+        // The hold is captured whenever it carries state a resume would otherwise lose - a running or
+        // paused leg, *or* a per-side set the user is between the sides of.
+        let hold: ActiveSessionState.Hold? = (isHolding || holdSide > 1)
+            ? ActiveSessionState.Hold(
+                totalSeconds: holdTotalSeconds,
+                side: holdSide,
+                deadline: holdDeadline,
+                remainingWhenPaused: holdRemainingWhenPaused,
+                isRunning: isHolding
+            )
+            : nil
         return ActiveSessionState(
             workout: workout,
             slots: slots,
@@ -698,7 +881,8 @@ final class ActiveSessionViewModel {
             completedSets: completedSets,
             skippedStepIDs: skippedStepIDs,
             startedAt: startedAt,
-            rest: rest
+            rest: rest,
+            hold: hold
         )
     }
 

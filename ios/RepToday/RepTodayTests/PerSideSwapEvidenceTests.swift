@@ -635,6 +635,37 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         try write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", to: "ready-screen-voiceover-labels.md")
     }
 
+    /// The accessibility element carrying `label`, so a test can activate it exactly the way VoiceOver's
+    /// double-tap does - driving the production control rather than reaching past it into the view model.
+    private func accessibilityElement(labeled label: String, in root: UIView) -> NSObject? {
+        _ = UIApplication.shared.accessibilityActivate()
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+
+        var found: NSObject?
+        var visited = Set<ObjectIdentifier>()
+
+        func walk(_ node: NSObject) {
+            guard found == nil, visited.insert(ObjectIdentifier(node)).inserted else { return }
+            if node.isAccessibilityElement, node.accessibilityLabel == label {
+                found = node
+                return
+            }
+            let count = node.accessibilityElementCount()
+            if count != NSNotFound {
+                for index in 0..<count where found == nil {
+                    if let child = node.accessibilityElement(at: index) as? NSObject { walk(child) }
+                }
+            }
+            if let view = node as? UIView {
+                for subview in view.subviews where found == nil { walk(subview) }
+            }
+        }
+
+        walk(root)
+        return found
+    }
+
     /// Every accessibility label in a hosted hierarchy, in traversal order - the strings VoiceOver reads
     /// as the user swipes down the screen.
     ///
@@ -688,6 +719,206 @@ final class PerSideSwapEvidenceTests: XCTestCase {
                 fileName: fileName
             )
         }
+    }
+
+    // MARK: - Session timer redesign (US-O03)
+
+    private var playerSize: CGSize { CGSize(width: 393, height: 852) }
+
+    /// The same snapshot with a hold running - built through the production *restore* path, which is how
+    /// the player can be rendered mid-countdown without reaching into its view model. The deadline is a
+    /// real-time one because the hosted view reads it against `Date()`.
+    private func holding(_ state: ActiveSessionState, seconds: Int, side: Int = 1) -> ActiveSessionState {
+        var withHold = state
+        withHold.hold = ActiveSessionState.Hold(
+            totalSeconds: seconds,
+            side: side,
+            deadline: Date().addingTimeInterval(TimeInterval(seconds) * 0.7),
+            remainingWhenPaused: nil,
+            isRunning: true
+        )
+        return withHold
+    }
+
+    /// The player at a timed movement, idle then mid-hold, read off the live accessibility tree of the
+    /// production surface (US-O03).
+    ///
+    /// Two things are gated together because they are the same change: a timed movement is now recorded
+    /// by its own countdown rather than a "Complete set" tap, and the always-on elapsed clock that used
+    /// to sit in the top bar is gone. The clock half is asserted on the tree rather than assumed from
+    /// the source, so re-adding it - the regression this story exists to prevent - fails here.
+    func testHoldTimerReplacesTheAlwaysOnSessionClock() throws {
+        let workout = try generate()
+        let slots = workout.blocks.flatMap(\.exercises)
+        let holdIndex = try XCTUnwrap(
+            slots.firstIndex { $0.exercise.isHold && ($0.durationSeconds ?? 0) > 0 },
+            "the generated session carries no timed movement to hold"
+        )
+        let hold = slots[holdIndex]
+        let sides = hold.exercise.sidesPerSet
+        let seconds = try XCTUnwrap(hold.durationSeconds)
+        print("=== Rep Today - the player at \(hold.exercise.id): \(seconds)s"
+              + (sides > 1 ? " per side, two legs per set" : "") + " ===")
+
+        // Idle: the Hold Timer is offered in place of the manual "Complete set".
+        let idle = resumed(workout, at: holdIndex, currentSet: 1)
+        let idleLabels = accessibilityLabels(in: hosted(try playerView(idle), size: playerSize).view)
+        let expectedStart = sides > 1 ? "Start hold, side 1 of \(sides)" : "Start hold"
+        XCTAssertTrue(
+            idleLabels.contains(expectedStart),
+            "the player should offer \"\(expectedStart)\"; it reads \(idleLabels)"
+        )
+        XCTAssertFalse(
+            idleLabels.contains("Complete set"),
+            "a timed movement is recorded by its countdown, not by a tap"
+        )
+        try render(try playerView(idle), size: playerSize, fileName: "player-hold-idle.png")
+
+        // Running: the countdown takes the demo's place and speaks the seconds it has left.
+        let running = holding(idle, seconds: seconds)
+        let runningLabels = accessibilityLabels(in: hosted(try playerView(running), size: playerSize).view)
+        XCTAssertTrue(
+            runningLabels.contains { $0.hasPrefix("Hold, ") && $0.hasSuffix(" seconds remaining") },
+            "a running hold should speak its remaining seconds; it reads \(runningLabels)"
+        )
+        XCTAssertTrue(runningLabels.contains("Stop hold"), "and offer the quiet way out of it")
+        try render(try playerView(running), size: playerSize, fileName: "player-hold-running.png")
+
+        for labels in [idleLabels, runningLabels] {
+            XCTAssertFalse(
+                labels.contains { $0.hasPrefix("Elapsed time") },
+                "the always-on session clock is back on the player: \(labels)"
+            )
+        }
+    }
+
+    /// A per-side hold is two legs per set, and the player has to say so on every surface that counts
+    /// them (US-O02 + US-O03): the button names the side it is about to start, the tracker names the
+    /// side the set is on, and the spoken forms agree. Without this a user follows one countdown, calls
+    /// the set done, and quietly does half the work the session was planned around.
+    func testPerSideHoldNamesTheSideOnEverySurface() throws {
+        let workout = try generate()
+        let slots = workout.blocks.flatMap(\.exercises)
+        let index = try XCTUnwrap(
+            slots.firstIndex { $0.exercise.isHold && $0.exercise.sidesPerSet > 1 && ($0.durationSeconds ?? 0) > 0 },
+            "the generated session carries no per-side hold"
+        )
+        let slot = slots[index]
+        let seconds = try XCTUnwrap(slot.durationSeconds)
+        print("=== Rep Today - \(slot.exercise.id): \(seconds)s per side, so one set is two legs ===")
+
+        let firstSide = resumed(workout, at: index, currentSet: 1)
+        let firstLabels = accessibilityLabels(in: hosted(try playerView(firstSide), size: playerSize).view)
+        XCTAssertTrue(
+            firstLabels.contains("Start hold, side 1 of 2"),
+            "the button should name the side it starts; it reads \(firstLabels)"
+        )
+        XCTAssertTrue(
+            firstLabels.contains { $0.contains("side 1 of 2") && $0.hasPrefix("Set ") },
+            "the set tracker should name the side the set is on; it reads \(firstLabels)"
+        )
+        XCTAssertTrue(
+            firstLabels.contains("\(slot.exercise.displayName), \(ActiveSessionView.targetAccessibilityText(slot))"),
+            "the spoken target still carries its per-side suffix; it reads \(firstLabels)"
+        )
+        try render(try playerView(firstSide), size: playerSize, fileName: "player-per-side-hold-side-1.png")
+
+        // Parked between the legs - the state a relaunch restores to, so it must read as owing side 2.
+        var secondSide = firstSide
+        secondSide.hold = ActiveSessionState.Hold(
+            totalSeconds: 0, side: 2, deadline: nil, remainingWhenPaused: nil, isRunning: false
+        )
+        let secondLabels = accessibilityLabels(in: hosted(try playerView(secondSide), size: playerSize).view)
+        XCTAssertTrue(
+            secondLabels.contains("Start hold, side 2 of 2"),
+            "a restored between-legs hold owes side 2; it reads \(secondLabels)"
+        )
+        try render(try playerView(secondSide), size: playerSize, fileName: "player-per-side-hold-side-2.png")
+    }
+
+    /// The rest overlay lost its clock too (US-O03) - it kept the countdown that is *about* the rest and
+    /// dropped the session total that was only ever pressure. Rendered beside the player for review.
+    func testRestOverlayCarriesItsCountdownButNoSessionClock() throws {
+        let workout = try generate()
+        var state = resumed(workout, at: 1, currentSet: 1)
+        state.rest = ActiveSessionState.Rest(
+            totalSeconds: 45, deadline: Date().addingTimeInterval(28), remainingWhenPaused: nil
+        )
+
+        let labels = accessibilityLabels(in: hosted(try playerView(state), size: playerSize).view)
+
+        XCTAssertTrue(
+            labels.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
+            "the rest keeps its own countdown; the overlay reads \(labels)"
+        )
+        XCTAssertFalse(
+            labels.contains { $0.hasPrefix("Elapsed time") },
+            "the always-on session clock is back on the rest overlay: \(labels)"
+        )
+        try render(try playerView(state), size: playerSize, fileName: "player-rest-overlay.png")
+    }
+
+    /// The Hold Timer driven the way a user drives it, in real time (US-O03).
+    ///
+    /// Everything else about the hold is asserted against an injected clock or a static render. This one
+    /// hosts the production `ActiveSessionView`, taps its real "Start hold" control the way VoiceOver's
+    /// double-tap does, and then lets the wall clock actually run out - so the `Timer` publisher, the
+    /// deadline arithmetic, the auto-record and the hand-off to the rest overlay are all exercised as
+    /// one live system rather than as pieces. The hold is authored short so the test does not have to
+    /// wait out a real 30-second plank.
+    func testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer() throws {
+        let hold = Exercise(
+            id: "evidence_short_hold", displayName: "Short Hold", pillar: .strength,
+            movementPattern: .core, category: .strength, difficulty: 1, phase: .discipline,
+            equipment: [], isHold: true, defaultReps: nil, defaultDurationSeconds: 2,
+            estimatedTimePerSetSeconds: 10, metValue: 3, progressionChainId: "evidence_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "hold it", apartmentFriendly: true
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil,
+            requestedMinutes: 5, wasReturn: false,
+            blocks: [
+                WorkoutBlock(
+                    id: UUID(), title: "Strength", category: .strength,
+                    exercises: [
+                        PrescribedExercise(id: UUID(), exercise: hold, sets: 1, reps: nil, durationSeconds: 2, restSeconds: 30),
+                        PrescribedExercise(id: UUID(), exercise: hold, sets: 1, reps: nil, durationSeconds: 2, restSeconds: 30)
+                    ]
+                )
+            ]
+        )
+
+        let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
+        let start = try XCTUnwrap(
+            accessibilityElement(labeled: "Start hold", in: host.view),
+            "the live player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+        )
+
+        XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
+
+        // Let the hold actually run out in wall-clock time, then let the view settle on what follows.
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        let after = accessibilityLabels(in: host.view)
+        print("=== Rep Today - after a live 2 second hold, the player reads: \(after) ===")
+        XCTAssertTrue(
+            after.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
+            "the hold should have recorded its set and handed off to the rest; the player reads \(after)"
+        )
+        XCTAssertFalse(
+            after.contains { $0.hasPrefix("Hold, ") },
+            "the countdown should be gone once it reached zero; the player reads \(after)"
+        )
+        XCTAssertFalse(
+            after.contains { $0.hasPrefix("Elapsed time") },
+            "no running session clock anywhere in the live session; the player reads \(after)"
+        )
     }
 
     /// Writes a text artifact next to the rendered PNGs.

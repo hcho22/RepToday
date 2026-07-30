@@ -7,14 +7,15 @@ import Foundation
 /// The snapshot captures the play state, not just the generated `Workout`: the current lineup
 /// (`slots`, which reflects any in-session swap, US-K03), where the user is (`currentStepIndex` /
 /// `currentSet`), what they have done so far (`completedSets` / `skippedStepIDs`), the session clock
-/// origin (`startedAt`), and the rest timer (`rest`). It is a plain `Codable` value type persisted
-/// whole as JSON by the `ActiveSessionStore`, keyed by the owning user's id and cleared the moment
-/// the session completes or is discarded - so at most one resumable session exists per user.
+/// origin (`startedAt`), the rest timer (`rest`), and the hold timer (`hold`, US-O03). It is a plain
+/// `Codable` value type persisted whole as JSON by the `ActiveSessionStore`, keyed by the owning
+/// user's id and cleared the moment the session completes or is discarded - so at most one resumable
+/// session exists per user.
 ///
-/// Timing is stored as absolute instants (`startedAt`, `rest.deadline`) rather than remaining
-/// durations, so elapsed time and a running rest countdown restore correctly across a relaunch that
-/// happened at an unknown later moment. A rest that was paused on backgrounding (US-K02) instead
-/// carries its frozen remainder (`rest.remainingWhenPaused`), so it resumes from where it stopped.
+/// Timing is stored as absolute instants (`startedAt`, `rest.deadline`, `hold.deadline`) rather than
+/// remaining durations, so elapsed time and a running countdown restore correctly across a relaunch
+/// that happened at an unknown later moment. A countdown that was paused on backgrounding (US-K02,
+/// US-O03) instead carries its frozen remainder, so it resumes from where it stopped.
 struct ActiveSessionState: Codable, Equatable {
 
     /// One playable slot in the current lineup: a prescribed exercise plus the block context the
@@ -35,6 +36,28 @@ struct ActiveSessionState: Codable, Equatable {
         var remainingWhenPaused: Int?
     }
 
+    /// The Hold Timer for a timed (`isHold`) exercise (US-O03), or `nil` when the current exercise is
+    /// rep-based or its hold has neither been started nor part-completed.
+    ///
+    /// A hold is counted one *side* at a time, because the engine charges a per-side movement for both
+    /// sides: a set of `core_side_plank` is two 20-second legs, not one. `side` is therefore the 1-based
+    /// leg of the current set and is carried even when nothing is running, so a user who finished the
+    /// first side and backgrounded the app resumes on the second rather than repeating the first.
+    /// `isRunning` distinguishes a leg that is actually counting (deadline or frozen remainder set)
+    /// from that waiting-between-legs state.
+    struct Hold: Codable, Equatable {
+        /// The full length of the running leg - one side's prescribed hold. Zero between legs.
+        var totalSeconds: Int
+        /// The 1-based side of the current set; greater than 1 only for a per-side movement.
+        var side: Int
+        /// The wall-clock instant a *running* leg finishes; `nil` while paused or between legs.
+        var deadline: Date?
+        /// The frozen remainder captured when the leg was paused (backgrounded); `nil` while running.
+        var remainingWhenPaused: Int?
+        /// Whether a leg is counting down at all - false while the user is between sides.
+        var isRunning: Bool
+    }
+
     /// The generated session, kept whole as the metadata carrier (id/shape/focusPillar/requestedMinutes/
     /// wasReturn) the eventual `WorkoutLog` and the swap step need. The play lineup is `slots`, which
     /// diverges from `workout.blocks` once the user swaps a movement.
@@ -53,6 +76,9 @@ struct ActiveSessionState: Codable, Equatable {
     var startedAt: Date?
     /// The rest timer between sets, or `nil` when not resting.
     var rest: Rest?
+    /// The Hold Timer for a timed exercise (US-O03), or `nil` when none is running or part-done.
+    /// Optional and defaulted, so a snapshot written before US-O03 decodes unchanged.
+    var hold: Hold?
 
     /// A fresh, not-yet-started snapshot for `workout` - the lineup flattened from its blocks with the
     /// player parked at the first set. Used so the player's fresh and resumed construction paths share
@@ -68,6 +94,7 @@ struct ActiveSessionState: Codable, Equatable {
         self.skippedStepIDs = []
         self.startedAt = nil
         self.rest = nil
+        self.hold = nil
     }
 
     init(
@@ -78,7 +105,8 @@ struct ActiveSessionState: Codable, Equatable {
         completedSets: [UUID: [CompletedSet]],
         skippedStepIDs: Set<UUID>,
         startedAt: Date?,
-        rest: Rest?
+        rest: Rest?,
+        hold: Hold? = nil
     ) {
         self.workout = workout
         self.slots = slots
@@ -88,5 +116,6 @@ struct ActiveSessionState: Codable, Equatable {
         self.skippedStepIDs = skippedStepIDs
         self.startedAt = startedAt
         self.rest = rest
+        self.hold = hold
     }
 }
