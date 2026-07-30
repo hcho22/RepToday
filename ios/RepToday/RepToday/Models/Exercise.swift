@@ -28,6 +28,14 @@ struct Exercise: Codable, Equatable, Identifiable {
     var defaultReps: Int?
     /// Starting hold duration when there is no logged capacity (holds).
     var defaultDurationSeconds: Int?
+    /// Set when the prescribed per-set value is *per side* - a 20-second side plank is 20 seconds left
+    /// plus 20 seconds right, and `advancementCriteria` says so in words ("3x30s hold per side").
+    /// The timing model needs it explicitly for holds, whose per-second work cost is fixed at one second
+    /// per prescribed second *per side*, so a per-side hold's set costs twice its prescribed duration.
+    /// Read through `sidesPerSet` rather than directly; optional (absent means not per side) so an
+    /// `Exercises.json` copy or an already-persisted active session written before it existed decodes
+    /// unchanged.
+    var isPerSide: Bool?
     /// Used by the timing-fit step to size the session.
     var estimatedTimePerSetSeconds: Int
     /// Metabolic equivalent, used to estimate active energy for HealthKit.
@@ -49,4 +57,9 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// falls back to the movement-appropriate SF Symbol so a demo is never blank. Optional with a
     /// `nil` default so the existing `Exercises.json` and pre-O01 persisted records decode unchanged.
     var animationName: String? = nil
+
+    /// How many times a set's prescribed per-set value is actually performed: twice for an `isPerSide`
+    /// movement, once otherwise (including when the flag is absent). Read by the timing model, which has
+    /// to charge a "20 second" side plank for both sides.
+    var sidesPerSet: Int { isPerSide == true ? 2 : 1 }
 }

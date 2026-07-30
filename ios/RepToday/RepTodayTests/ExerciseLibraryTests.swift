@@ -305,6 +305,39 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
+    /// `isPerSide` and the human-readable `advancementCriteria` must agree about the same movement.
+    ///
+    /// The flag is what the timing model reads (a per-side hold's set costs twice its prescribed
+    /// duration), while the criteria string is what the user reads, and the two are authored separately
+    /// in the same JSON entry. Nothing at runtime cross-checks them, so a new movement whose criteria say
+    /// "per side" while the flag is missing would be silently under-timed by half its work - this is the
+    /// gate that makes that loud, in both directions.
+    func testPerSideFlagMatchesTheAuthoredAdvancementCriteria() {
+        for ex in exercises {
+            let criteria = ex.advancementCriteria.lowercased()
+            let saysPerSide = ["per side", "each side", "per leg", "each leg"].contains {
+                criteria.contains($0)
+            }
+            XCTAssertEqual(
+                ex.sidesPerSet == 2, saysPerSide,
+                "\(ex.id): isPerSide is \(ex.isPerSide == true) but its criteria read \"\(ex.advancementCriteria)\""
+            )
+        }
+    }
+
+    /// A per-side hold's authored per-set estimate has to cover the hold on both sides, or the timing
+    /// model's known per-second cost would imply a negative setup and get clamped - quietly pricing the
+    /// set below the work it contains.
+    func testPerSideHoldEstimatesCoverBothSides() {
+        for ex in exercises where ex.isHold && ex.sidesPerSet == 2 {
+            let hold = try? XCTUnwrap(ex.defaultDurationSeconds)
+            XCTAssertGreaterThanOrEqual(
+                ex.estimatedTimePerSetSeconds, (hold ?? 0) * ex.sidesPerSet,
+                "\(ex.id): a \(hold ?? 0)s hold per side needs an estimate of at least \((hold ?? 0) * 2)s"
+            )
+        }
+    }
+
     // MARK: - Demo animations (US-O01)
 
     /// A movement may only name a demo animation that the app actually ships (US-O01). The player

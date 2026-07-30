@@ -1148,9 +1148,15 @@ final class StartSeedTests: XCTestCase {
         guard case .substituted(let neutral) = unseeded else {
             return XCTFail("the unseeded swap must still substitute")
         }
-        XCTAssertEqual(neutral.exercise.id, substitute.exercise.id, "the same movement is chosen either way")
-        XCTAssertEqual(neutral.reps, defaultReps, "the neutral seed opens at the movement's own default")
-        XCTAssertGreaterThan(try XCTUnwrap(substitute.reps), try XCTUnwrap(neutral.reps))
+        // Each side is measured against its *own* movement's default, because the two runs need not pick
+        // the same peer: the seed moves every candidate's per-set work, and with it which peer fits the
+        // slot's time budget best. What must hold either way is that the seeded run opens above the
+        // movement's default and the unseeded run opens exactly at it.
+        XCTAssertEqual(
+            neutral.reps, try XCTUnwrap(neutral.exercise.defaultReps),
+            "the neutral seed opens at the movement's own default"
+        )
+        XCTAssertGreaterThan(try XCTUnwrap(substitute.reps), defaultReps)
     }
 
     // MARK: - The seeded target is reflected in the planned wall-clock
@@ -1189,60 +1195,102 @@ final class StartSeedTests: XCTestCase {
         )
     }
 
-    /// The setup/per-unit split is derived from the movement's own authored fields, and both halves
-    /// reproduce the authored estimate exactly at the movement's own default - so a default-sized
-    /// session is priced precisely as the catalog wrote it and only a moved target is re-priced.
+    /// The setup/per-unit split reproduces the authored estimate exactly at the movement's own default -
+    /// so a default-sized session is priced precisely as the catalog wrote it and only a moved target is
+    /// re-priced - and the sweep at the end bounds the model from *both* sides across the whole catalog,
+    /// because an under-charge accumulates across a session exactly as an over-charge does.
     func testWorkPerSetSplitsTheEstimateIntoSetupPlusPerUnitWork() async throws {
         let library = try await library()
 
-        // A hold's per-unit cost is exactly one second of work per prescribed second, so its setup is
-        // the authored remainder: 70s estimate on a 30s default is 40s of setup.
+        // A hold's per-unit cost is one second of work per prescribed second *per side*: a "30 second"
+        // 90/90 is 30s each way, so its 70s estimate leaves 10s of setup, not 40s.
         let hip = try XCTUnwrap(library.first { $0.id == "mobility_9090_hip" })
+        XCTAssertEqual(hip.sidesPerSet, 2)
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 30), 70)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 40), 80)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: 40), 90)
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: hip, reps: nil, durationSeconds: AdaptiveOverload.maxHoldSeconds),
-            40 + AdaptiveOverload.maxHoldSeconds,
-            "a hold clamped to the safety ceiling costs its setup plus the hold, not a scaled estimate"
+            10 + 2 * AdaptiveOverload.maxHoldSeconds,
+            "a hold clamped to the safety ceiling costs its setup plus both sides of the hold"
         )
 
+        // The case that exposed the per-side-blind split: "3x30s hold per side" grown to 40s is 80s of
+        // holding plus 5s of setup. Charging it 65s under-counted a single slot by 60s over three sets.
+        let sidePlank = try XCTUnwrap(library.first { $0.id == "core_side_plank" })
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: sidePlank, reps: nil, durationSeconds: 20), 45)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: sidePlank, reps: nil, durationSeconds: 40), 85)
+
+        // A single-sided hold is unchanged: 35s on a 12s default is 23s of setup plus the hold.
         let tuckLSit = try XCTUnwrap(library.first { $0.id == "core_tuck_l_sit" })
+        XCTAssertEqual(tuckLSit.sidesPerSet, 1)
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 12), 35)
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 20), 43)
 
-        // A rep-based movement whose authored cadence is already at or below the catalog's per-rep work
-        // has no setup left to carve out, so it stays proportional.
+        // A rep-based movement takes the fixed setup and derives its cadence from its own estimate:
+        // 40s over 15 reps leaves 30s of work, so 2s a rep, and 30 reps costs 10 + 60.
         let glutes = try XCTUnwrap(library.first { $0.id == "hinge_glute_bridge" })
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 15, durationSeconds: nil), 40)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 30, durationSeconds: nil), 80)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 30, durationSeconds: nil), 70)
 
-        // Every movement in the catalog reproduces its own authored estimate at its own default, and
-        // never prices a grown set above strict proportionality.
+        // A slow per-side rep movement keeps its authored cadence rather than being flattened to a
+        // generic one: "3x8 clean reps per side" on a 5-rep / 50s authoring costs 8s a prescribed rep,
+        // so 8 reps is 74s - not the 59s a fixed 3s-per-rep cadence charged.
+        let archer = try XCTUnwrap(library.first { $0.id == "push_archer" })
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 5, durationSeconds: nil), 50)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 8, durationSeconds: nil), 74)
+
+        // Every movement in the catalog reproduces its own authored estimate at its own default, and its
+        // implied setup is bounded on both sides: never negative (which would over-charge a grown set as
+        // strict proportionality did), and - for a rep-based movement, whose setup is *assumed* rather
+        // than observed - never more than `maxSetupShareOfEstimate` of the estimate, which is how a
+        // grown set gets under-charged. A hold's setup is the authored remainder, so it is bounded
+        // instead by the physical floor below.
         for movement in library {
             guard let baseline = movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps,
                   baseline > 0 else { continue }
-            let atDefault = SessionAssembly.workSecondsPerSet(
-                for: movement,
-                reps: movement.isHold ? nil : baseline,
-                durationSeconds: movement.isHold ? baseline : nil
-            )
+            let estimate = movement.estimatedTimePerSetSeconds
+            func work(at prescribed: Int) -> Int {
+                SessionAssembly.workSecondsPerSet(
+                    for: movement,
+                    reps: movement.isHold ? nil : prescribed,
+                    durationSeconds: movement.isHold ? prescribed : nil
+                )
+            }
+
             XCTAssertEqual(
-                atDefault, movement.estimatedTimePerSetSeconds,
+                work(at: baseline), estimate,
                 "\(movement.id) must price its own default set at its authored estimate"
             )
-            let doubled = SessionAssembly.workSecondsPerSet(
-                for: movement,
-                reps: movement.isHold ? nil : baseline * 2,
-                durationSeconds: movement.isHold ? baseline * 2 : nil
-            )
-            XCTAssertLessThanOrEqual(
-                doubled, movement.estimatedTimePerSetSeconds * 2,
+            // work(2×baseline) = setup + 2 × perUnit × baseline = 2 × estimate - setup, so the model's
+            // own implied setup is readable straight off the doubled set.
+            let doubled = work(at: baseline * 2)
+            let impliedSetup = 2 * estimate - doubled
+            XCTAssertGreaterThanOrEqual(
+                impliedSetup, 0,
                 "\(movement.id) must not charge a grown set more than strict proportionality"
             )
+            if !movement.isHold {
+                XCTAssertLessThanOrEqual(
+                    Double(impliedSetup),
+                    Double(estimate) * SessionAssembly.maxSetupShareOfEstimate + 1,
+                    "\(movement.id) treats too much of its estimate as fixed, so a grown set is under-charged"
+                )
+            }
             XCTAssertGreaterThan(
-                doubled, atDefault,
+                doubled, work(at: baseline),
                 "\(movement.id) must still charge more for a bigger set"
             )
+            // A hold has a hard physical floor: a set can never cost less than the hold itself, on
+            // every side it is held. This is the assertion the per-side-blind split failed.
+            if movement.isHold {
+                for prescribed in [baseline / 2, baseline, baseline * 2, AdaptiveOverload.maxHoldSeconds]
+                where prescribed > 0 {
+                    XCTAssertGreaterThanOrEqual(
+                        work(at: prescribed), movement.sidesPerSet * prescribed,
+                        "\(movement.id) at \(prescribed)s must cost at least the hold itself, on both sides"
+                    )
+                }
+            }
         }
     }
 

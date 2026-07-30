@@ -479,6 +479,9 @@ final class ActiveSessionViewModelTests: XCTestCase {
         private(set) var swapCallCount = 0
         private(set) var lastPrescriptionID: UUID?
         private(set) var lastSnapshotExerciseIDs: [String] = []
+        /// The whole snapshot, so a test can assert the block structure the swap step needs to tell a
+        /// set-adjustable training block from a structural bookend.
+        private(set) var lastSnapshot: Workout?
         /// The policy the player handed the engine, so a test can prove the session's program - and
         /// with it the cold-start Start Seed (US-O02) - reaches the swap step.
         private(set) var lastSessionPolicy: SessionPolicy?
@@ -504,6 +507,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
             swapCallCount += 1
             lastPrescriptionID = prescription.id
             lastSnapshotExerciseIDs = workout.blocks.flatMap(\.exercises).map(\.exercise.id)
+            lastSnapshot = workout
             lastSessionPolicy = sessionPolicy
             onSwap?()
             return outcome
@@ -565,8 +569,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(engine.lastSessionPolicy, policy)
     }
 
-    /// A substitute replaces the current slot in place: the current step becomes the substitute, its
-    /// set count and rest are preserved by the engine, and the set counter resets to 1.
+    /// A substitute replaces the current slot in place: the current step becomes the substitute, at
+    /// whatever set count and rest the engine sized it with, and the set counter resets to 1.
     func testSwapReplacesCurrentExercise() async {
         let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
         let engine = StubSwapEngine(outcome: .substituted(substitute))
@@ -583,6 +587,44 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.noSwapAlternative)
         // The rest of the session is untouched.
         XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "dips", "squat"])
+    }
+
+    /// A substitute may legitimately carry a *different* set count - the swap step spends the set-count
+    /// lever to keep a capacity-grown slot inside its time budget - so the player must land the user at
+    /// set 1 of the new count rather than wherever they had reached in the old one. Without the reset, a
+    /// user on set 3 of 3 handed a 2-set substitute would be stranded past the end of their own slot.
+    func testSwapToAFewerSetSubstituteResetsThePositionInsteadOfStrandingTheUser() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips", sets: 2)))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up (3 sets)
+        vm.completeSet() // push_up set 1
+        vm.completeSet() // push_up set 2
+        XCTAssertEqual(vm.currentSet, 3, "the user is on the last set of the 3-set slot")
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.sets, 2, "the substitute carries its own set count")
+        XCTAssertEqual(vm.currentSet, 1, "the user restarts the slot rather than sitting past its end")
+        XCTAssertLessThanOrEqual(vm.currentSet, vm.currentStep!.prescription.sets)
+    }
+
+    /// The snapshot the swap step reads keeps the session's block structure, because the block decides
+    /// whether the set-count lever is available at all - the assembler never adjusts the warm-up or the
+    /// cooldown, so neither may a swap. Collapsing every step into one strength block would have quietly
+    /// handed a warm-up stretch the training rails.
+    func testSwapSnapshotPreservesBlockStructure() async {
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = makeSwapViewModel(engine: engine)
+
+        await vm.swapCurrentExercise() // the warm-up's cat_cow is current
+
+        let snapshot = try? XCTUnwrap(engine.lastSnapshot)
+        XCTAssertEqual(snapshot?.blocks.map(\.category), [.warmup, .strength])
+        XCTAssertEqual(
+            snapshot?.blocks.first?.exercises.map(\.exercise.id), ["cat_cow"],
+            "the warm-up stays its own block, so the swap step can tell it is a bookend"
+        )
+        XCTAssertEqual(snapshot?.blocks.last?.exercises.map(\.exercise.id), ["push_up", "squat"])
     }
 
     /// The view model hands the swap step the *current* lineup, so a movement swapped in earlier is
@@ -728,7 +770,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNotEqual(swapped.exercise.id, "push_standard", "a swap returns a different movement")
         XCTAssertEqual(swapped.exercise.pillar, .strength, "same pillar")
         XCTAssertEqual(swapped.exercise.movementPattern, .push, "same movement pattern")
-        XCTAssertEqual(swapped.sets, slot.sets, "set count preserved")
+        XCTAssertEqual(swapped.sets, slot.sets, "a default-sized slot is in budget at its own set count")
         XCTAssertEqual(swapped.restSeconds, slot.restSeconds, "rest preserved")
         XCTAssertTrue(swapped.reps != nil || swapped.durationSeconds != nil, "a fresh capacity-relative target")
         XCTAssertFalse(vm.noSwapAlternative)

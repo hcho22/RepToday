@@ -456,9 +456,11 @@ final class ActiveSessionViewModel {
     /// session - the request is built from the *current* lineup, not the original).
     ///
     /// On `.substituted` the current slot is replaced in place: the substitute carries a fresh
-    /// capacity-relative target with the original slot's set count and rest preserved, the set counter
-    /// resets to 1, and any sets already recorded for the replaced movement are discarded (the
-    /// exercise is being abandoned, mirroring a skip). On `.noAlternative` the original slot stays and
+    /// capacity-relative target, the original slot's rest, and the set count the engine sized it at (the
+    /// slot's own unless that would push the session out of its time budget). The set counter resets to
+    /// 1 - which is also what keeps a substitute with *fewer* sets than the slot the user is part-way
+    /// through from stranding them past its end - and any sets already recorded for the replaced movement
+    /// are discarded (the exercise is being abandoned, mirroring a skip). On `.noAlternative` the original slot stays and
     /// `noSwapAlternative` flips so the UI shows an honest "no alternative" state. A no-op once the
     /// session is complete, while a swap is already in flight, or when swap is unavailable.
     func swapCurrentExercise() async {
@@ -513,17 +515,35 @@ final class ActiveSessionViewModel {
         }
     }
 
-    /// A snapshot of the session as it stands now - every current step's prescription in one block -
-    /// so the swap step's duplicate check sees the exercises actually in play (including earlier
-    /// swaps), not the original lineup. Only the flat exercise set matters to `ExerciseSwap`; the
-    /// block grouping is collapsed and the shape metadata carried through unchanged.
+    /// A snapshot of the session as it stands now - every current step's prescription, regrouped into
+    /// the blocks the steps came from - so the swap step's duplicate check sees the exercises actually
+    /// in play (including earlier swaps) rather than the original lineup, and still sees which *block*
+    /// the slot being replaced belongs to. The block matters: `ExerciseSwap` may move a set count to
+    /// keep a substitute inside the slot's time budget, and only on the blocks the assembler itself
+    /// would adjust - never the warm-up or the cooldown. Steps are already in block order, so
+    /// consecutive steps sharing a block fold back into one; the shape metadata is carried through
+    /// unchanged.
     private func snapshotForSwap() -> Workout {
-        let block = WorkoutBlock(
-            id: workout.id,
-            title: "Session",
-            category: .strength,
-            exercises: steps.map(\.prescription)
-        )
+        var blocks: [WorkoutBlock] = []
+        for step in steps {
+            if let last = blocks.last, last.title == step.blockTitle, last.category == step.blockCategory {
+                blocks[blocks.count - 1] = WorkoutBlock(
+                    id: last.id,
+                    title: last.title,
+                    category: last.category,
+                    exercises: last.exercises + [step.prescription]
+                )
+            } else {
+                blocks.append(
+                    WorkoutBlock(
+                        id: UUID(),
+                        title: step.blockTitle,
+                        category: step.blockCategory,
+                        exercises: [step.prescription]
+                    )
+                )
+            }
+        }
         return Workout(
             id: workout.id,
             createdAt: workout.createdAt,
@@ -531,7 +551,7 @@ final class ActiveSessionViewModel {
             focusPillar: workout.focusPillar,
             requestedMinutes: workout.requestedMinutes,
             wasReturn: workout.wasReturn,
-            blocks: [block]
+            blocks: blocks
         )
     }
 

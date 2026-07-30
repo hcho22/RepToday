@@ -6,10 +6,13 @@ import XCTest
 /// time budget, safe for the user - or an honest `.noAlternative` when none qualifies.
 ///
 /// Coverage mirrors the PRD acceptance criteria: a valid swap stays within pillar/pattern/difficulty
-/// and the time budget (run over the real bundled library, the PRD's own validation case); the
-/// substitute respects phase, injuries, and the Zero-Equipment Floor; injuries are honored even to
-/// the point of refusing rather than offering an unsafe pick; the no-alternative cases (lone peer,
-/// phase-gated peer, out-of-budget peer) return a clear result; a swap never duplicates a movement
+/// and the time budget (run over the real bundled library, the PRD's own validation case, and swept at
+/// four levels of capacity growth rather than only at the defaults, where the budget check is a no-op);
+/// the substitute's set count is the lever that keeps a grown slot in budget, spent only when the slot's
+/// own count will not fit and only on the blocks the assembler itself adjusts; the substitute respects
+/// phase, injuries, and the Zero-Equipment Floor; injuries are honored even to the point of refusing
+/// rather than offering an unsafe pick; the no-alternative cases (lone peer, phase-gated peer, a peer no
+/// permitted set count brings into budget) return a clear result; a swap never duplicates a movement
 /// already in the session; and swapping is deterministic.
 final class ExerciseSwapTests: XCTestCase {
 
@@ -233,8 +236,9 @@ final class ExerciseSwapTests: XCTestCase {
             ExerciseSwap.swap(slot, in: workout([slot]), user: user(), library: library, recentLogs: [])
         )
 
-        // The substitute keeps the slot's set count and rest, so the only timing change is per-set est.
-        XCTAssertEqual(result.sets, slot.sets, "set count is preserved for timing fidelity")
+        // A default-sized slot is in budget at its own set count, so the substitute keeps it; rest is
+        // always preserved.
+        XCTAssertEqual(result.sets, slot.sets, "an in-budget slot keeps its set count")
         XCTAssertEqual(result.restSeconds, slot.restSeconds, "rest is preserved for timing fidelity")
 
         // Measured the way the engine sizes a session: each side at the target it actually carries,
@@ -276,32 +280,158 @@ final class ExerciseSwapTests: XCTestCase {
     }
 
     /// Whatever the swap does hand back, it lands inside the tolerance measured against the session's
-    /// own work model - across every rep-based and hold slot the real library can produce.
+    /// own work model - across every rep-based and hold slot the real library can produce, at four levels
+    /// of capacity growth.
+    ///
+    /// The growth sweep is the point. At the movement's own default the target-scaled budget check is a
+    /// *no-op* (both sides are priced at their authored estimates), which is exactly the configuration in
+    /// which an earlier version of this sweep passed while real coverage at grown targets had collapsed
+    /// to near zero. Growing the slot is what makes the substitute's own no-history default diverge from
+    /// the target the slot carries, which is the case the set-count lever exists for.
     func testEverySubstituteTheLibraryOffersStaysInsideTheSlotBudget() async throws {
         let library = try await library()
         let user = user(level: .advanced)
-        var swapped = 0
 
-        for movement in library {
-            let slot = prescription(
-                for: movement,
-                perSet: movement.isHold
-                    ? (movement.defaultDurationSeconds ?? 30)
-                    : (movement.defaultReps ?? 10)
-            )
-            guard case let .substituted(result) = ExerciseSwap.swap(
-                slot, in: workout([slot]), user: user, library: library, recentLogs: []
-            ) else { continue }
-            swapped += 1
-            XCTAssertLessThanOrEqual(
-                abs(slotSeconds(of: result) - slotSeconds(of: slot)),
-                ExerciseSwap.slotToleranceSeconds,
-                "swapping \(movement.id) for \(result.exercise.id) moved the slot out of budget"
+        for growth in [1.0, 1.25, 1.5, 2.0] {
+            var swapped = 0
+            for movement in library {
+                let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10
+                let slot = prescription(
+                    for: movement,
+                    perSet: max(1, Int((Double(baseline) * growth).rounded()))
+                )
+                guard case let .substituted(result) = ExerciseSwap.swap(
+                    slot, in: workout([slot]), user: user, library: library, recentLogs: []
+                ) else { continue }
+                swapped += 1
+                XCTAssertLessThanOrEqual(
+                    abs(slotSeconds(of: result) - slotSeconds(of: slot)),
+                    ExerciseSwap.slotToleranceSeconds,
+                    "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the slot out of budget"
+                )
+                XCTAssertTrue(
+                    (SessionAssembly.minTrainingSets...SessionAssembly.maxTrainingSets).contains(result.sets),
+                    "swapping \(movement.id) at x\(growth) left the assembler's set-count rails"
+                )
+            }
+            // A movement whose pattern has no in-band peer reachable inside the budget legitimately
+            // declines, so the loop tolerates `.noAlternative` - but coverage has to hold up at *every*
+            // growth level, not just at the defaults where the budget check does nothing. Before the
+            // set-count lever, x1.5 dropped to 18/42 of the strength/primal catalog and x2.0 to 3/42.
+            XCTAssertGreaterThan(
+                swapped * 4, library.count * 3,
+                "at x\(growth) only \(swapped)/\(library.count) movements could be swapped - the pool has collapsed"
             )
         }
-        // A movement whose pattern has no in-band peer legitimately declines, so the loop tolerates
-        // `.noAlternative` - but not *every* movement declining, which would make the sweep vacuous.
-        XCTAssertGreaterThan(swapped, library.count / 2, "most of the library must still offer a swap")
+    }
+
+    /// The set count is the lever that keeps a capacity-grown slot swappable: a substitute the user has
+    /// never logged opens at its own default, and the assembler's own `minTrainingSets...maxTrainingSets`
+    /// rails absorb the difference instead of the swap refusing outright.
+    func testSwapRepicksTheSetCountToKeepAGrownSlotInBudget() async throws {
+        let library = try await library()
+        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        // A user well into the tier: `push_standard` advances at "3x12" off an 8-rep default, so this is
+        // an ordinary place to be, not an exotic one - and at a fixed 3 sets every push peer was refused.
+        let grown = prescription(for: standard, sets: 3, perSet: 12)
+
+        let result = try substitute(
+            ExerciseSwap.swap(grown, in: workout([grown]), user: user(), library: library, recentLogs: [])
+        )
+
+        XCTAssertNotEqual(result.exercise.id, standard.id)
+        XCTAssertTrue(
+            (SessionAssembly.minTrainingSets...SessionAssembly.maxTrainingSets).contains(result.sets),
+            "the re-pick must stay inside the assembler's own set-count rails"
+        )
+        XCTAssertLessThanOrEqual(
+            abs(slotSeconds(of: result) - slotSeconds(of: grown)),
+            ExerciseSwap.slotToleranceSeconds,
+            "the re-picked set count must bring the slot inside its budget"
+        )
+    }
+
+    /// The lever is only used when it is needed: a slot already in budget at its own set count keeps it,
+    /// so a swap never silently restructures a slot it had no reason to touch.
+    func testSwapKeepsTheOriginalSetCountWhenItIsAlreadyInBudget() async throws {
+        let library = try await library()
+        let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        let slot = prescription(for: standard, sets: 3)
+
+        let result = try substitute(
+            ExerciseSwap.swap(slot, in: workout([slot]), user: user(), library: library, recentLogs: [])
+        )
+        XCTAssertEqual(result.sets, slot.sets, "an in-budget slot keeps its set count")
+    }
+
+    /// The warm-up and the cooldown are one set of a stretch by construction (`allowSetAdjust: false`),
+    /// so the swap must not reach for the set lever there even when it would improve the fit - a
+    /// four-set warm-up stretch is not a session the assembler could have produced.
+    func testSwapNeverMovesTheSetCountOfAStructuralBookend() async throws {
+        // A single-set stretch slot grown to 90s (100s of work) beside a peer that opens at its own 30s
+        // default (40s of work): the only way into budget is two sets of the peer (40 + 15 + 40 = 95s),
+        // so the same swap must succeed in a training block and be refused in a bookend.
+        let stretch = makeExercise(id: "stretch_long", pillar: .mobility, pattern: .mobility, isHold: true)
+        let peer = makeExercise(id: "stretch_peer", pillar: .mobility, pattern: .mobility, isHold: true)
+        let catalog = [stretch, peer]
+        let slot = prescription(for: stretch, sets: 1, perSet: 90, rest: SessionAssembly.mobilityRestSeconds)
+
+        func session(title: String, category: ExerciseCategory) -> Workout {
+            Workout(
+                id: UUID(),
+                createdAt: asOf,
+                shape: .blend,
+                focusPillar: nil,
+                requestedMinutes: 20,
+                wasReturn: false,
+                blocks: [WorkoutBlock(id: UUID(), title: title, category: category, exercises: [slot])]
+            )
+        }
+
+        XCTAssertEqual(
+            ExerciseSwap.swap(
+                slot,
+                in: session(title: "Warm-Up", category: .warmup),
+                user: user(), library: catalog, recentLogs: []
+            ),
+            .noAlternative,
+            "a warm-up slot may not spend the set lever, so an out-of-budget peer is refused outright"
+        )
+
+        let adjusted = try substitute(
+            ExerciseSwap.swap(
+                slot,
+                in: session(title: "Movement Practice", category: .mobility),
+                user: user(), library: catalog, recentLogs: []
+            )
+        )
+        XCTAssertEqual(adjusted.sets, 2, "a set-adjustable block spends the lever to stay in budget")
+    }
+
+    /// The Start Seed (US-O02) is scoped to strength and primal in the assembler, so a swapped *mobility*
+    /// movement must open at its own default for an advanced cold-start user, exactly as the warm-up,
+    /// Movement Practice and cooldown the assembler built for them did.
+    func testSwapDoesNotApplyTheStartSeedToAMobilitySubstitute() async throws {
+        let library = try await library()
+        let fold = try XCTUnwrap(library.first { $0.id == "mobility_forward_fold" })
+        let slot = prescription(for: fold, sets: 1, rest: SessionAssembly.mobilityRestSeconds)
+
+        let result = try substitute(
+            ExerciseSwap.swap(
+                slot,
+                in: workout([slot]),
+                user: user(level: .advanced),
+                library: library,
+                recentLogs: [],
+                sessionPolicy: SessionPolicy.seeded(forFitnessLevel: .advanced)
+            )
+        )
+        XCTAssertEqual(result.exercise.pillar, .mobility)
+        XCTAssertEqual(
+            result.durationSeconds ?? result.reps,
+            result.exercise.isHold ? result.exercise.defaultDurationSeconds : result.exercise.defaultReps,
+            "a mobility substitute opens at its own default, unseeded, like every other stretch"
+        )
     }
 
     func testSubstituteCarriesACapacityRelativePerSetTarget() async throws {

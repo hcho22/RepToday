@@ -70,19 +70,35 @@ enum SessionAssembly {
     /// the loop converges well within this in practice.
     static let maxFitIterations = 200
 
-    /// Seconds of work in one second of a prescribed hold - the per-unit half of the work model in
-    /// `workSecondsPerSet`, and the one half that needs no calibration: a 40-second hold is 40 seconds
-    /// of work by definition.
+    /// Seconds of work in one second of a prescribed hold, *per side* - the per-unit half of the work
+    /// model in `workSecondsPerSet`, and the one half that needs no calibration at all: a 40-second
+    /// hold is 40 seconds of work by definition, and a 40-second hold prescribed `isPerSide` is 80.
     static let secondsPerHoldSecond = 1.0
 
-    /// Seconds of work in one rep of a rep-based movement - the per-unit half of the work model in
-    /// `workSecondsPerSet`. A rep, unlike a hold, carries no authored duration, so the constant is
-    /// calibrated from the catalog's own highest-rep entries, where a set is nearly all work and almost
-    /// no setup: `hinge_glute_bridge` (15 reps in 40s), `push_wall` (12 in 35s) and `squat_bodyweight`
-    /// (15 in 45s) sit at 2.7-3.0 seconds per rep, a controlled bodyweight cadence. A movement whose
-    /// authored estimate implies a slower cadence than this keeps the excess as fixed per-set setup
-    /// rather than per-rep cost, which is what the `min` in `workSecondsPerSet` enforces.
-    static let secondsPerRep = 3.0
+    /// The fixed per-set cost of getting into position, bracing, and getting out again - the *setup*
+    /// half of the work model in `workSecondsPerSet` for a rep-based movement.
+    ///
+    /// A hold needs no such constant: its per-unit cost is known a priori (see `secondsPerHoldSecond`),
+    /// so its setup is simply the authored remainder `estimate - sides × defaultDurationSeconds`. A rep
+    /// carries no authored duration, so exactly one of the two halves has to be assumed and the other
+    /// read off the movement's own authored cadence. Assuming the setup - and deriving the cadence - is
+    /// the right way round: cadence genuinely varies per movement (the catalog authors anything from
+    /// `hinge_glute_bridge` at 15 reps in 40s to `push_one_arm` at 3 in 50s), while getting down onto
+    /// the floor and back up is much the same work whatever the movement is.
+    ///
+    /// The value is calibrated from the *holds*, where setup is observed rather than fitted: across the
+    /// catalog's 17 holds the authored remainder is 5-25 seconds with a median of exactly 10. Taking
+    /// the constant from a different family of movements than the ones it is then applied to is what
+    /// keeps it from being circular - the previous per-rep constant was calibrated from the four
+    /// rep-based entries it subsequently assigned zero setup to, which is no calibration at all.
+    static let setupSecondsPerSet = 10.0
+
+    /// The most of a movement's authored per-set estimate that `workSecondsPerSet` will treat as fixed
+    /// setup. A movement whose estimate is mostly setup carries almost no cadence signal, so its own
+    /// default would stop saying anything useful about a target moved off it; capping the setup share
+    /// at half keeps `setupSecondsPerSet` from swallowing a short authored estimate. Inert across the
+    /// shipped catalog (every estimate is at least 35s), it bounds a future entry rather than today's.
+    static let maxSetupShareOfEstimate = 0.5
 
     // MARK: - Entry point
 
@@ -306,17 +322,22 @@ enum SessionAssembly {
     /// capacity-relative, and the cold-start Start Seed (US-O02) opens an active user at up to x1.30 of
     /// the default on their very first session.
     ///
-    /// Nor is that estimate pure per-unit work: getting into position, bracing, switching sides and
-    /// getting out again is paid once per set whether the set is 8 reps or 20, and in the catalog that
-    /// fixed part is often the *bulk* of the estimate (`mobility_9090_hip` carries a 70s estimate on a
-    /// 30s hold, so 40s of it is setup). Scaling the whole constant by `prescribed / default` would
-    /// therefore charge a grown 40s hold 93s instead of the real ~80s, and understate a shrunk one, so
-    /// the estimate is split into its two components instead:
-    /// - a **hold**'s per-unit cost is `secondsPerHoldSecond` - one second of work per prescribed
-    ///   second - so its setup is the authored remainder, `estimate - defaultDurationSeconds`;
-    /// - a **rep**'s per-unit cost is `secondsPerRep`, capped at the movement's own authored
-    ///   `estimate / defaultReps` so a fast, high-rep movement never yields a negative setup, and its
-    ///   setup is again the remainder.
+    /// Nor is that estimate pure per-unit work: getting into position, bracing and getting out again is
+    /// paid once per set whether the set is 8 reps or 20. Scaling the whole constant by
+    /// `prescribed / default` therefore overstates a capacity-grown set and understates a shrunk one,
+    /// so the estimate is split into its two components instead - one assumed, the other read off the
+    /// movement's own authored fields:
+    /// - a **hold**'s per-unit cost is known a priori: `secondsPerHoldSecond` per prescribed second,
+    ///   *doubled* when the movement is `isPerSide`, because a "20 second" side plank is 20 seconds
+    ///   left plus 20 seconds right. Its setup is then the authored remainder,
+    ///   `estimate - sides × defaultDurationSeconds` - 5s for `core_side_plank`, 10s for
+    ///   `mobility_pigeon` - so a grown 40s side plank costs 85s, not the 65s a per-side-blind split
+    ///   charged or the 90s strict proportionality charged.
+    /// - a **rep** carries no authored duration to anchor the per-unit half, so the other half is the
+    ///   assumed one: setup is `setupSecondsPerSet` (capped by `maxSetupShareOfEstimate`), and the
+    ///   cadence is the authored remainder `(estimate - setup) / defaultReps`. Reading cadence per
+    ///   movement is what keeps per-side and slow-tempo reps honest - `push_archer` ("3x8 clean reps per
+    ///   side", 5 reps in 50s) prices 8 reps at 74s rather than the 59s a fixed 3s-per-rep cadence gave.
     ///
     /// Both halves reproduce `estimatedTimePerSetSeconds` exactly at the movement's own default, so a
     /// default-sized set is priced exactly as the catalog authored it and only a target Step 6 moved
@@ -326,6 +347,15 @@ enum SessionAssembly {
     ///
     /// - Note: This is per-set *work* only; the between-set rest and the inter-exercise transition are
     ///   counted separately by `plannedSeconds`.
+    /// - Note: The work half of a session is never *timed*. Nothing counts a rep or a hold down; the
+    ///   only countdown in the player is the rest timer, and a completed set logs the target it was
+    ///   prescribed rather than anything measured. So this is a planning-only quantity that never
+    ///   reaches the UI and is never compared against reality - its single job is fitting a session to
+    ///   the minutes the user asked for. Chasing per-second accuracy on a self-paced activity would be
+    ///   false precision; what matters, and what the split above buys, is that the model carries no
+    ///   *systematic* bias, because a consistent per-slot error accumulates across a session where
+    ///   random error averages out. Set count is the better-founded lever for the same reason: each set
+    ///   added or removed moves a real, deterministic rest period.
     static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
         let estimate = exercise.estimatedTimePerSetSeconds
         let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
@@ -333,8 +363,19 @@ enum SessionAssembly {
         guard let baseline, baseline > 0, let prescribed, prescribed > 0 else { return estimate }
 
         let authoredPerUnit = Double(estimate) / Double(baseline)
-        let perUnit = min(exercise.isHold ? secondsPerHoldSecond : secondsPerRep, authoredPerUnit)
-        let setup = Double(estimate) - perUnit * Double(baseline)
+        let perUnit: Double
+        if exercise.isHold {
+            // Known per-unit cost; the `min` keeps a hold whose authored estimate does not even cover
+            // its own sides (bad authoring) from yielding a negative setup.
+            perUnit = min(Double(exercise.sidesPerSet) * secondsPerHoldSecond, authoredPerUnit)
+        } else {
+            // Assumed setup, derived cadence; the `max` enforces `maxSetupShareOfEstimate`.
+            perUnit = max(
+                (Double(estimate) - setupSecondsPerSet) / Double(baseline),
+                authoredPerUnit * (1 - maxSetupShareOfEstimate)
+            )
+        }
+        let setup = max(0, Double(estimate) - perUnit * Double(baseline))
         return max(1, Int((setup + perUnit * Double(prescribed)).rounded()))
     }
 
