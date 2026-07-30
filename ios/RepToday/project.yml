@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "QH9S83CX4Y"
 
 # Lottie powers the exercise demo animations (US-O01). The app ships on SF-Symbol demos and each
 # exercise lights up as its bundled animation file is added; no animation files ship yet, so the
