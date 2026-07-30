@@ -1262,4 +1262,50 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(ActiveSessionView.targetText(reps), "3 × 8")
         XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "3 sets of 8 reps")
     }
+
+    // MARK: - The spoken target is grammatical at every count
+
+    /// Warm-up and cooldown slots are single-set, so VoiceOver reads the singular case on the first and
+    /// last step of *every* session - the two slots a screen-reader user meets no matter how short the
+    /// session is. The visual target ("1 × 0:45") is unaffected because it never spells the nouns out.
+    func testSpokenTargetIsSingularForASingleSetSlot() {
+        let hold = holdPrescription("cat_cow", sets: 1, seconds: 45)
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "1 × 0:45")
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(hold),
+            "1 set of a 45 second hold",
+            "a single-set hold reads as one set of one hold, not \"1 sets of 45 second holds\""
+        )
+
+        let reps = repPrescription("pushup", sets: 1, reps: 12)
+        XCTAssertEqual(ActiveSessionView.targetText(reps), "1 × 12")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "1 set of 12 reps")
+    }
+
+    /// The rep noun pluralises on its own count, independently of the set count - a one-rep set is
+    /// reachable at the bottom of a hard chain's Adaptive Overload.
+    func testSpokenTargetIsSingularForASingleRep() {
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(repPrescription("archer", sets: 3, reps: 1)),
+            "3 sets of 1 rep"
+        )
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(repPrescription("archer", sets: 1, reps: 1)),
+            "1 set of 1 rep"
+        )
+    }
+
+    /// Pluralisation and the per-side suffix compose, so a single-set per-side warm-up stretch - the
+    /// common bookend shape - is spoken correctly on both axes at once.
+    func testSpokenTargetComposesSingularWithPerSide() {
+        let hold = PrescribedExercise(
+            id: UUID(), exercise: perSide(holdExercise(id: "pigeon")),
+            sets: 1, reps: nil, durationSeconds: 30, restSeconds: 15
+        )
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "1 × 0:30 per side")
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(hold),
+            "1 set of a 30 second hold per side"
+        )
+    }
 }

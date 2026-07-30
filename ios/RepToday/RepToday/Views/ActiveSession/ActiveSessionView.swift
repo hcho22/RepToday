@@ -471,21 +471,35 @@ struct ActiveSessionView: View {
         if let seconds = prescription.durationSeconds {
             return "\(prescription.sets) × \(clockText(seconds))\(suffix)"
         }
-        return "\(prescription.sets) sets"
+        return setsPhrase(prescription.sets)
     }
 
     /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds" - carrying
     /// the same " per side" suffix, since VoiceOver is the only place a non-sighted user meets the
     /// prescription and dropping it there would hide exactly half the work.
+    ///
+    /// Unlike `targetText`, which shows bare numerals, this spells the nouns out, so every count it
+    /// names has to agree with its noun. Warm-up and cooldown slots are single-set, which makes the
+    /// singular the first and last thing a VoiceOver user hears in *every* session.
     static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
         let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {
-            return "\(prescription.sets) sets of \(reps) reps\(suffix)"
+            let repsPhrase = reps == 1 ? "1 rep" : "\(reps) reps"
+            return "\(setsPhrase(prescription.sets)) of \(repsPhrase)\(suffix)"
         }
         if let seconds = prescription.durationSeconds {
-            return "\(prescription.sets) sets of \(seconds) second holds\(suffix)"
+            // One set holds once, so the article moves with the noun: "1 set of a 30 second hold".
+            let holdPhrase = prescription.sets == 1
+                ? "a \(seconds) second hold"
+                : "\(seconds) second holds"
+            return "\(setsPhrase(prescription.sets)) of \(holdPhrase)\(suffix)"
         }
-        return "\(prescription.sets) sets"
+        return setsPhrase(prescription.sets)
+    }
+
+    /// `"1 set"` / `"3 sets"` - the set count agreeing with its noun.
+    static func setsPhrase(_ sets: Int) -> String {
+        sets == 1 ? "1 set" : "\(sets) sets"
     }
 
     /// "M:SS" (or "H:MM:SS" past an hour) for the elapsed clock.
