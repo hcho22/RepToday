@@ -36,26 +36,18 @@ struct ActiveSessionState: Codable, Equatable {
         var remainingWhenPaused: Int?
     }
 
-    /// The Hold Timer for a timed (`isHold`) exercise (US-O03), or `nil` when the current exercise is
-    /// rep-based or its hold has neither been started nor part-completed.
+    /// How far through a per-side hold's set the user is (US-O03), or `nil` when there is nothing to
+    /// carry - a rep-based exercise, a bilateral hold, or a per-side set not yet half done.
     ///
     /// A hold is counted one *side* at a time, because the engine charges a per-side movement for both
-    /// sides: a set of `core_side_plank` is two 20-second legs, not one. `side` is therefore the 1-based
-    /// leg of the current set and is carried even when nothing is running, so a user who finished the
-    /// first side and backgrounded the app resumes on the second rather than repeating the first.
-    /// `isRunning` distinguishes a leg that is actually counting (deadline or frozen remainder set)
-    /// from that waiting-between-legs state.
+    /// sides: a set of `core_side_plank` is two 20-second legs, not one. The side is the only part of
+    /// the Hold Timer that is persisted at all. The running countdown deliberately is **not**: unlike a
+    /// rest, which genuinely continues while the app is away, a hold does not survive the player being
+    /// torn down - the user stopped holding when they left the screen - so a resumed session restarts
+    /// the leg on a deliberate tap. Carrying the side is what stops them repeating one they already did.
     struct Hold: Codable, Equatable {
-        /// The full length of the running leg - one side's prescribed hold. Zero between legs.
-        var totalSeconds: Int
-        /// The 1-based side of the current set; greater than 1 only for a per-side movement.
+        /// The 1-based side of the current set; greater than 1 only for a per-side movement mid-set.
         var side: Int
-        /// The wall-clock instant a *running* leg finishes; `nil` while paused or between legs.
-        var deadline: Date?
-        /// The frozen remainder captured when the leg was paused (backgrounded); `nil` while running.
-        var remainingWhenPaused: Int?
-        /// Whether a leg is counting down at all - false while the user is between sides.
-        var isRunning: Bool
     }
 
     /// The generated session, kept whole as the metadata carrier (id/shape/focusPillar/requestedMinutes/

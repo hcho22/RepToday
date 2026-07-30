@@ -378,31 +378,41 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(reloaded.rest?.deadline)
     }
 
-    /// The Hold Timer (US-O03) round-trips with the rest of the snapshot - a running leg as its absolute
-    /// deadline, and the side it is on, so a relaunch resumes the countdown the user was actually in.
-    func testSaveAndReloadActiveSessionWithRunningHold() throws {
-        let hold = ActiveSessionState.Hold(totalSeconds: 20, side: 2, deadline: dateB, remainingWhenPaused: nil, isRunning: true)
-        let state = makeActiveSessionState(hold: hold)
+    /// A per-side hold the user is *between* the sides of round-trips its side, so they come back owing
+    /// the second side rather than silently repeating the first (US-O03). The side is all the Hold Timer
+    /// persists - the running countdown deliberately is not, since a hold does not survive the player
+    /// being torn down the way a rest does.
+    func testSaveAndReloadActiveSessionWithHoldBetweenSides() throws {
+        let state = makeActiveSessionState(hold: ActiveSessionState.Hold(side: 2))
 
         try insert(state, userId: "u")
         let reloaded = try XCTUnwrap(fetchActiveSession(userId: "u")).toActiveSessionState()
 
         XCTAssertEqual(reloaded, state)
-        XCTAssertEqual(reloaded.hold?.deadline, dateB)
         XCTAssertEqual(reloaded.hold?.side, 2)
     }
 
-    /// A per-side hold the user is *between* the sides of persists its side with nothing running, so
-    /// they come back owing the second side rather than silently repeating the first.
-    func testSaveAndReloadActiveSessionWithHoldBetweenSides() throws {
-        let hold = ActiveSessionState.Hold(totalSeconds: 0, side: 2, deadline: nil, remainingWhenPaused: nil, isRunning: false)
-        let state = makeActiveSessionState(hold: hold)
+    /// A snapshot written by the earlier US-O03 shape carried the running leg alongside the side
+    /// (`totalSeconds`/`deadline`/`remainingWhenPaused`/`isRunning`). Those keys are gone, and such a
+    /// snapshot must still decode to the side it recorded rather than failing - an in-progress session
+    /// is never lost to an app update, and the leg it drops is exactly the one that must not come back.
+    func testActiveSessionStateDecodesAHoldWrittenWithTheRunningLeg() throws {
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: PersistenceCoder.encoder.encode(makeActiveSessionState())) as? [String: Any]
+        )
+        json["hold"] = [
+            "totalSeconds": 20,
+            "side": 2,
+            "deadline": 760_000_000.0,
+            "remainingWhenPaused": NSNull(),
+            "isRunning": true
+        ] as [String: Any]
 
-        try insert(state, userId: "u")
-        let reloaded = try XCTUnwrap(fetchActiveSession(userId: "u")).toActiveSessionState()
+        let decoded = try PersistenceCoder.decoder.decode(
+            ActiveSessionState.self, from: try JSONSerialization.data(withJSONObject: json)
+        )
 
-        XCTAssertEqual(reloaded.hold?.side, 2)
-        XCTAssertEqual(reloaded.hold?.isRunning, false)
+        XCTAssertEqual(decoded.hold?.side, 2, "the side survives the shape change")
     }
 
     /// A snapshot written before US-O03 carries no `hold` key at all, and must still decode - the field

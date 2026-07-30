@@ -299,4 +299,28 @@ Rendered PNGs of the player at a hold (idle, running, idle at accessibility Dyna
 The accessibility tree of those same hosted surfaces is read back and asserted, so the spoken forms and the absent clock are gated rather than eyeballed.
 And `testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer` closes the loop in real time: it activates the real "Start hold" control the way VoiceOver's double-tap does, lets the wall clock run out on a short-authored hold, and asserts the live player has recorded the set and moved to the rest overlay - exercising the `Timer` publisher, the deadline arithmetic and the auto-advance as one system rather than as pieces.
 That one pumps the runloop until the hand-off is *observable* rather than for a fixed budget, so a loaded machine that takes longer to push the update through still fails on behaviour rather than on the clock.
-`testClosingThePlayerMidHoldFreezesTheLegOnDisk` drives the other live path the same way - start a hold, then activate the real close control - and asserts what actually reached the store: a frozen remainder and no deadline, which is what the resume then picks up with nothing banked.
+`testClosingThePlayerMidHoldLeavesNoLegOnDisk` drives the other live path the same way - start a hold, then activate the real close control - and asserts what actually reached the store: no countdown at all, only the side of a half-done per-side set, which is what the resume then picks up with nothing banked.
+
+### A hold is not a rest, and modelling it as one cost three review rounds
+
+The Hold Timer was written by mirroring the rest timer: same absolute deadline, same pause-on-background, same restore-from-snapshot, same on-appear resume.
+That was wrong in one specific way, and the way it was wrong kept producing the same defect through different doors.
+
+A rest genuinely continues while the app is away - the user *is* resting - so restoring one mid-countdown is correct, and it is long-standing US-K04 behaviour.
+A hold does not: the user stopped holding when they left the screen.
+Because the hold restored the same way, every path that brought a snapshot back brought back a countdown already at or past zero, and the player's ticker then did exactly what it is built to do - fire the cue and bank a `CompletedSet` - for work nobody performed.
+Three guards were written against three spellings of that state: a deadline already in the past, a frozen remainder of zero, and a frozen remainder that `onAppear` obligingly un-froze eighteen seconds after the screen appeared.
+Each was a real fix; none was *the* fix, because the shape of the persisted state was never the problem.
+
+The rule now is that **a hold leg never survives the player being torn down**.
+Nothing about the countdown is persisted - only the side the user still owes - so a resumed session always comes back idle offering "Start hold" and the leg restarts on a deliberate tap.
+There is no door left to guard because there is nothing to restore.
+`ActiveSessionState.Hold` is a single field, and both a pre-US-O03 snapshot and one written by the earlier shape decode to the side they recorded, the running leg such a snapshot carries being exactly the thing that must not come back.
+In-session backgrounding still freezes and resumes the leg through `scenePhase`, which is the interruption the user is actually present for; only the teardown boundary drops it.
+
+The second half of the same lesson is why the rest timer had a milder version of the same bug - an expired rest firing its cue on the first tick after a resume - that no fix to the hold had ever touched.
+`holdRemaining`/`pauseHold`/`resumeHold`/`endHold` were line-for-line copies of their rest equivalents, so a fix landed on whichever copy it was written against and survived in the other.
+Both timers now run on one `Countdown` value type: absolute deadline, `pause`/`resume`/`extend`, and a `hasElapsed` that is false while paused, which is what makes the completion check safe to call on every tick.
+Roughly eighty mirrored lines went with it.
+What the two genuinely do differently stays in the view model where it is visible - a hold has sides and banks a set at zero, a rest has extend/skip and only cues.
+The view half of this duplication had already been collapsed into one `CountdownRing`; collapsing the state half is what made the rest fix a consequence of the hold fix rather than a second thing to remember.

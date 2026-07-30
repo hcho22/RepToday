@@ -121,44 +121,39 @@ final class ActiveSessionViewModel {
 
     // MARK: - Rest timer (US-K02)
 
+    /// The rest in force between sets, or `nil` when none is. Both timers run on the same `Countdown`
+    /// (absolute deadline, pause/resume), so a fix to the mechanism lands on both rather than on
+    /// whichever copy it was written against; what differs is what each one *does* at zero.
+    private var rest: Countdown?
+
     /// True while a rest period is in force between sets - running or paused. The player shows the
     /// rest overlay while this holds and hides it (revealing the already-advanced next set) once the
     /// rest ends by countdown, skip, or the final set.
-    private(set) var isResting = false
+    var isResting: Bool { rest != nil }
 
     /// The full length of the current rest in seconds, including any extensions - the denominator for
     /// the rest progress ring.
-    private(set) var restTotalSeconds = 0
-
-    /// The wall-clock instant the running rest is scheduled to finish. `nil` while paused (the app is
-    /// backgrounded) or when no rest is active.
-    private var restDeadline: Date?
-
-    /// The remaining seconds captured when the rest was paused (backgrounding). `nil` while running.
-    private var restRemainingWhenPaused: Int?
+    var restTotalSeconds: Int { rest?.total ?? 0 }
 
     // MARK: - Hold timer (US-O03)
 
+    /// The hold leg counting down for the current exercise, or `nil` between legs. Deliberately *not*
+    /// persisted: unlike a rest, a hold does not survive the player being torn down (see `init(state:)`).
+    private var hold: Countdown?
+
     /// True while a hold leg is counting down for the current exercise - running or paused. The player
     /// shows the countdown in place of the demo while this holds.
-    private(set) var isHolding = false
+    var isHolding: Bool { hold != nil }
 
     /// The full length of the running hold leg in seconds - one side's prescribed hold, and the
     /// denominator for the countdown ring. Zero between legs.
-    private(set) var holdTotalSeconds = 0
+    var holdTotalSeconds: Int { hold?.total ?? 0 }
 
     /// The 1-based side of the current set the hold is on. Always 1 for a bilateral movement; a
     /// per-side movement runs the prescribed hold once per side, so its set is two legs and side 2 is
-    /// the second of them. Carried across a pause and a relaunch, so a user who finished the first
-    /// side never silently repeats it.
+    /// the second of them. This is the one piece of hold state that *is* persisted, so a user who
+    /// finished the first side never silently repeats it.
     private(set) var holdSide = 1
-
-    /// The wall-clock instant the running hold leg is scheduled to finish. `nil` while paused (the app
-    /// is backgrounded) or between legs.
-    private var holdDeadline: Date?
-
-    /// The remaining seconds captured when the hold leg was paused (backgrounding). `nil` while running.
-    private var holdRemainingWhenPaused: Int?
 
     private let now: () -> Date
     private let feedback: RestTimerFeedback
@@ -257,30 +252,29 @@ final class ActiveSessionViewModel {
         self.completedSets = state.completedSets
         self.skippedStepIDs = state.skippedStepIDs
         self.startedAt = state.startedAt
+        // A rest genuinely continues while the app is away - the user *is* resting - so it restores and
+        // keeps counting. One that already ran out while the app was gone is simply over: restoring it
+        // would have the overlay's first tick fire a completion cue for a rest nobody is in. Covers all
+        // four shapes at once, since a frozen remainder of zero is as expired as a deadline in the past.
         if let rest = state.rest {
-            self.isResting = true
-            self.restTotalSeconds = rest.totalSeconds
-            self.restDeadline = rest.deadline
-            self.restRemainingWhenPaused = rest.remainingWhenPaused
+            let restored = Countdown(
+                total: rest.totalSeconds, deadline: rest.deadline, remainingWhenPaused: rest.remainingWhenPaused
+            )
+            if restored.remaining(asOf: now()) > 0 { self.rest = restored }
         }
+        // A hold is different, and this is the rule that keeps it safe: a leg **never** survives the
+        // player being torn down. Only the side the user still owes is restored, so a resumed session
+        // always comes back idle showing "Start hold" and the leg begins again on a deliberate tap.
+        //
+        // The alternative - restoring the countdown, however carefully guarded - kept regenerating the
+        // same defect through different doors: a past deadline, a frozen remainder of zero, and a frozen
+        // remainder that `onAppear` obligingly un-froze all ended with the cue firing and a `CompletedSet`
+        // banked for work nobody did. They shared a cause: the Hold Timer was modelled on the rest timer,
+        // and the two are not alike here. Resting continues while you are away from the screen; planking
+        // does not. Carrying the *side* and nothing else is both the honest model and the one with no
+        // door left to guard.
         if let hold = state.hold {
-            // The side is restored whether or not a leg was running, so a per-side hold resumes on the
-            // side the user is actually owed rather than repeating the one they already held.
             self.holdSide = max(1, hold.side)
-            // A leg only comes back live if it could still be counting: frozen at a captured remainder,
-            // or running against a deadline that has not passed yet. A deadline already behind the
-            // restore clock is a leg the user walked away from, not one that finished itself - restoring
-            // it as running would have the view's first tick fire the completion cue and record a set
-            // nobody performed. It comes back idle instead, owing the same side, for the user to start
-            // again deliberately. Defensive on purpose: a snapshot can predate the pause-on-dismiss
-            // below, be killed by the OS with no scene-phase transition, or simply be resumed days later.
-            let canStillCount = hold.remainingWhenPaused != nil || (hold.deadline.map { $0 > now() } ?? false)
-            if hold.isRunning, canStillCount {
-                self.isHolding = true
-                self.holdTotalSeconds = hold.totalSeconds
-                self.holdDeadline = hold.deadline
-                self.holdRemainingWhenPaused = hold.remainingWhenPaused
-            }
         }
     }
 
@@ -633,33 +627,25 @@ final class ActiveSessionViewModel {
 
     /// Whether the active rest is paused (the app is backgrounded). Distinct from `isResting`, which
     /// stays true across a pause so the overlay remains up.
-    var isRestPaused: Bool { restRemainingWhenPaused != nil }
+    var isRestPaused: Bool { rest?.isPaused ?? false }
 
     /// Seconds left on the running rest, counted down from `restTotalSeconds` to zero, as of `date`.
     /// Zero when no rest is active; while paused it holds the captured remaining value. Pure over the
     /// clock so the view's per-second timeline reads it cheaply and tests advance time deterministically.
-    func restRemaining(asOf date: Date) -> Int {
-        guard isResting else { return 0 }
-        if let paused = restRemainingWhenPaused { return paused }
-        guard let deadline = restDeadline else { return 0 }
-        return max(0, Int(ceil(deadline.timeIntervalSince(date))))
-    }
+    func restRemaining(asOf date: Date) -> Int { rest?.remaining(asOf: date) ?? 0 }
 
     /// Begin a rest period of `seconds`, scheduled against the injected clock. A non-positive rest
     /// (a prescription with no configured rest) opens no overlay, so the next set shows immediately.
     func startRest(seconds: Int) {
         guard seconds > 0 else { return }
-        restTotalSeconds = seconds
-        restDeadline = now().addingTimeInterval(TimeInterval(seconds))
-        restRemainingWhenPaused = nil
-        isResting = true
+        rest = Countdown(seconds: seconds, from: now())
     }
 
     /// End the rest and fire the completion cue exactly once, but only if the running rest has reached
     /// zero. Idempotent and safe to call every tick from the view's timeline (a paused or unfinished
     /// rest is left untouched), so the auto-advance and haptic fire once at the right instant.
     func completeRestIfElapsed(asOf date: Date) {
-        guard isResting, restRemainingWhenPaused == nil, restRemaining(asOf: date) == 0 else { return }
+        guard rest?.hasElapsed(asOf: date) == true else { return }
         endRest(fireFeedback: true)
         persist()
     }
@@ -676,12 +662,7 @@ final class ActiveSessionViewModel {
     /// the total the progress ring measures against. A no-op when no rest is active.
     func extendRest(by seconds: Int = ActiveSessionViewModel.restExtension) {
         guard isResting, seconds > 0 else { return }
-        restTotalSeconds += seconds
-        if let paused = restRemainingWhenPaused {
-            restRemainingWhenPaused = paused + seconds
-        } else if let deadline = restDeadline {
-            restDeadline = deadline.addingTimeInterval(TimeInterval(seconds))
-        }
+        rest?.extend(by: seconds)
         persist()
     }
 
@@ -690,27 +671,22 @@ final class ActiveSessionViewModel {
     /// The paused remainder is persisted, so a rest that was mid-countdown when the app was killed
     /// resumes from exactly where it stopped after a relaunch (US-K04).
     func pauseRest(asOf date: Date) {
-        guard isResting, restRemainingWhenPaused == nil else { return }
-        restRemainingWhenPaused = restRemaining(asOf: date)
-        restDeadline = nil
+        guard isResting, !isRestPaused else { return }
+        rest?.pause(asOf: date)
         persist()
     }
 
     /// Resume a paused rest (the app is foregrounding again), rescheduling the deadline from the
     /// captured remainder. A no-op if not currently paused.
     func resumeRest(asOf date: Date) {
-        guard isResting, let remaining = restRemainingWhenPaused else { return }
-        restDeadline = date.addingTimeInterval(TimeInterval(remaining))
-        restRemainingWhenPaused = nil
+        guard isRestPaused else { return }
+        rest?.resume(asOf: date)
         persist()
     }
 
     private func endRest(fireFeedback: Bool) {
         guard isResting else { return }
-        isResting = false
-        restDeadline = nil
-        restRemainingWhenPaused = nil
-        restTotalSeconds = 0
+        rest = nil
         if fireFeedback { feedback.restDidComplete() }
     }
 
@@ -743,27 +719,18 @@ final class ActiveSessionViewModel {
 
     /// Whether the running hold is paused (the app is backgrounded). Distinct from `isHolding`, which
     /// stays true across a pause so the countdown stays on screen.
-    var isHoldPaused: Bool { holdRemainingWhenPaused != nil }
+    var isHoldPaused: Bool { hold?.isPaused ?? false }
 
     /// Seconds left on the running hold leg, counted down from `holdTotalSeconds` to zero, as of
     /// `date`. Zero when no leg is running; while paused it holds the captured remainder. Pure over
     /// the injected clock, so the view's ticker reads it cheaply and tests drive it without real time.
-    func holdRemaining(asOf date: Date) -> Int {
-        guard isHolding else { return 0 }
-        if let paused = holdRemainingWhenPaused { return paused }
-        guard let deadline = holdDeadline else { return 0 }
-        return max(0, Int(ceil(deadline.timeIntervalSince(date))))
-    }
+    func holdRemaining(asOf date: Date) -> Int { hold?.remaining(asOf: date) ?? 0 }
 
     /// Begin the current side's hold, scheduled against the injected clock. A no-op when a hold cannot
     /// start (rep-based exercise, rest in force, one already running).
     func startHold() {
         guard canStartHold, let seconds = holdSecondsPerSide else { return }
-        holdTotalSeconds = seconds
-        holdDeadline = now().addingTimeInterval(TimeInterval(seconds))
-        holdRemainingWhenPaused = nil
-        isHolding = true
-        persist()
+        hold = Countdown(seconds: seconds, from: now())
     }
 
     /// End the hold leg at zero, firing the completion cue exactly once. On the last side that also
@@ -773,7 +740,7 @@ final class ActiveSessionViewModel {
     /// ticker (a paused or unfinished leg is left untouched), so the cue fires once at the right instant
     /// and never per-tick.
     func completeHoldIfElapsed(asOf date: Date) {
-        guard isHolding, holdRemainingWhenPaused == nil, holdRemaining(asOf: date) == 0 else { return }
+        guard hold?.hasElapsed(asOf: date) == true else { return }
         let sides = holdSidesPerSet
         let finishedSide = holdSide
         endHold(fireFeedback: true)
@@ -791,37 +758,30 @@ final class ActiveSessionViewModel {
     func cancelHold() {
         guard isHolding else { return }
         endHold(fireFeedback: false)
-        persist()
     }
 
-    /// Pause the running hold (the user is leaving the screen - backgrounding the app or dismissing the
-    /// player), capturing the remaining seconds so the countdown freezes rather than blowing past - and,
-    /// crucially, so its cue cannot fire while the user is away from the screen. A no-op if not running.
-    /// The frozen remainder is persisted, so a hold that was mid-countdown when the app was killed, or
-    /// when the player was closed, resumes from exactly where it stopped rather than from a deadline
-    /// that has since gone by.
+    /// Pause the running hold while the app is away, so the countdown freezes rather than blowing past
+    /// and its cue cannot fire at a screen nobody is looking at. A no-op if not running.
+    ///
+    /// This is an in-session pause only: a leg is never written to disk, so it does not survive the
+    /// player being torn down (see `init(state:)`). What it covers is the interruption the user is still
+    /// present for - a notification banner, Control Centre, a glance at another app - after which they
+    /// come back to the same leg with the same time left.
     func pauseHold(asOf date: Date) {
-        guard isHolding, holdRemainingWhenPaused == nil else { return }
-        holdRemainingWhenPaused = holdRemaining(asOf: date)
-        holdDeadline = nil
-        persist()
+        guard isHolding, !isHoldPaused else { return }
+        hold?.pause(asOf: date)
     }
 
-    /// Resume a paused hold (the app is foregrounding again), rescheduling the deadline from the
-    /// captured remainder. A no-op if not currently paused.
+    /// Resume a paused hold (the app is foregrounding again), rescheduling from the captured remainder.
+    /// A no-op if not currently paused.
     func resumeHold(asOf date: Date) {
-        guard isHolding, let remaining = holdRemainingWhenPaused else { return }
-        holdDeadline = date.addingTimeInterval(TimeInterval(remaining))
-        holdRemainingWhenPaused = nil
-        persist()
+        guard isHoldPaused else { return }
+        hold?.resume(asOf: date)
     }
 
     private func endHold(fireFeedback: Bool) {
         guard isHolding else { return }
-        isHolding = false
-        holdDeadline = nil
-        holdRemainingWhenPaused = nil
-        holdTotalSeconds = 0
+        hold = nil
         if fireFeedback { feedback.restDidComplete() }
     }
 
@@ -875,20 +835,14 @@ final class ActiveSessionViewModel {
         let slots = steps.map {
             ActiveSessionState.Slot(blockTitle: $0.blockTitle, blockCategory: $0.blockCategory, prescription: $0.prescription)
         }
-        let rest: ActiveSessionState.Rest? = isResting
-            ? ActiveSessionState.Rest(totalSeconds: restTotalSeconds, deadline: restDeadline, remainingWhenPaused: restRemainingWhenPaused)
-            : nil
-        // The hold is captured whenever it carries state a resume would otherwise lose - a running or
-        // paused leg, *or* a per-side set the user is between the sides of.
-        let hold: ActiveSessionState.Hold? = (isHolding || holdSide > 1)
-            ? ActiveSessionState.Hold(
-                totalSeconds: holdTotalSeconds,
-                side: holdSide,
-                deadline: holdDeadline,
-                remainingWhenPaused: holdRemainingWhenPaused,
-                isRunning: isHolding
-            )
-            : nil
+        let rest: ActiveSessionState.Rest? = self.rest.map {
+            ActiveSessionState.Rest(totalSeconds: $0.total, deadline: $0.deadline, remainingWhenPaused: $0.remainingWhenPaused)
+        }
+        // Only the side is captured, never the running leg (US-O03): a hold does not survive the player
+        // being torn down, so there is nothing else about it worth carrying. What a resume must not lose
+        // is that a per-side set is half done - otherwise the user repeats a side and works three legs
+        // of a two-leg set.
+        let hold: ActiveSessionState.Hold? = holdSide > 1 ? ActiveSessionState.Hold(side: holdSide) : nil
         return ActiveSessionState(
             workout: workout,
             slots: slots,

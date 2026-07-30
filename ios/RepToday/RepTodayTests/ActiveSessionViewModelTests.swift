@@ -786,83 +786,116 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
-    /// A hold still running when the app was killed resumes counting from its absolute deadline.
-    func testRestoreResumesRunningHold() async throws {
+    /// A hold leg **never** survives the player being torn down, however little time had passed and
+    /// whatever the snapshot says: the user stopped holding when they left the screen. It comes back
+    /// idle, owing the same side, for them to start again deliberately.
+    ///
+    /// This is the rule that closed a defect three separate guards could not. Restoring the countdown -
+    /// running, frozen, or frozen-at-zero - always ended the same way: the player's ticker reached zero
+    /// moments after the screen appeared, fired the cue, and banked a `CompletedSet` for work nobody
+    /// did. The cause was modelling a hold on the rest timer, and the two are not alike here: resting
+    /// continues while you are away from the screen, planking does not.
+    func testAHoldLegNeverSurvivesARelaunch() async throws {
         let store = InMemoryActiveSessionStore()
+        let spy = SpyRestFeedback()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
         original.startHold() // 30s, deadline start+30
+
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
+        XCTAssertNil(saved.hold, "a bilateral leg on side 1 leaves nothing to carry at all")
 
-        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) })
+        // Relaunched 8 seconds later - well inside the leg the user was mid-way through.
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) }, feedback: spy)
 
-        XCTAssertTrue(resumed.isHolding)
-        XCTAssertFalse(resumed.isHoldPaused)
-        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(8)), 22)
+        XCTAssertFalse(resumed.isHolding, "the leg does not come back counting")
+        XCTAssertFalse(resumed.isHoldPaused, "nor frozen, waiting to be un-frozen")
+        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(8)), 0)
+        XCTAssertTrue(resumed.canStartHold, "the player offers Start hold again")
+
+        // The player's ticker runs from the moment the resumed session is on screen, and the on-appear
+        // rest resume runs with it. Neither may complete a leg that was never restarted.
+        resumed.resumeHold(asOf: start.addingTimeInterval(8))
+        resumed.completeHoldIfElapsed(asOf: start.addingTimeInterval(8))
+
+        XCTAssertEqual(resumed.completedSetCount, 0, "no set is banked for work nobody did")
+        XCTAssertEqual(spy.completions, 0, "and no cue fires")
+        XCTAssertFalse(resumed.isResting)
     }
 
-    /// A hold paused on backgrounding persists its frozen remainder, so a relaunch resumes from exactly
-    /// where it stopped - and the player's on-appear resume is what un-freezes it.
-    func testRestoreResumesPausedHold() async throws {
+    /// The same holds for a leg frozen on the way out (backgrounding, or closing the player) and resumed
+    /// much later - the door the previous guard left open, since a frozen remainder has no deadline to
+    /// test against.
+    func testAFrozenHoldLegDoesNotComeBackEither() async throws {
         let store = InMemoryActiveSessionStore()
-        let original = persistingViewModel(store, clock: { self.start })
-        original.start()
-        original.startHold() // 30s
-        original.pauseHold(asOf: start.addingTimeInterval(10)) // freeze with 20s remaining
-        await original.persistenceTask?.value
-        let loaded = try await store.load(for: "u1")
-        let saved = try XCTUnwrap(loaded)
-
-        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(300) })
-        XCTAssertTrue(resumed.isHoldPaused, "a restored hold starts frozen")
-        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(300)), 20)
-
-        // Mirror ActiveSessionView.onAppear on an already-active app.
-        resumed.start()
-        resumed.resumeHold(asOf: start.addingTimeInterval(300))
-
-        XCTAssertFalse(resumed.isHoldPaused)
-        XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(305)), 15)
-    }
-
-    /// A leg still marked running in a snapshot whose deadline has since gone by is work the user
-    /// walked away from, not work that finished itself. Restoring it as a live countdown would have the
-    /// player's first tick fire the cue and bank a set nobody performed, so it comes back idle - owing
-    /// the same side, for the user to start again deliberately. Defensive against snapshots the
-    /// pause-on-dismiss never touched: an OS kill with no scene-phase transition, or a resume days later.
-    func testRestoreDoesNotResumeAHoldWhoseDeadlineAlreadyPassed() async throws {
-        let store = InMemoryActiveSessionStore()
+        let spy = SpyRestFeedback()
         let original = ActiveSessionViewModel(
             workout: perSideHoldWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
         )
         original.start()
         original.startHold()
-        original.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done
-        original.startHold() // side 2 running, deadline start+20, never finished
+        original.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done -> owes side 2
+        original.startHold()
+        original.pauseHold(asOf: start.addingTimeInterval(25)) // frozen with 15s left
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
-        XCTAssertTrue(try XCTUnwrap(saved.hold).isRunning, "the snapshot under test is a running leg")
 
-        let spy = SpyRestFeedback()
         let resumed = ActiveSessionViewModel(
-            state: saved, now: { self.start.addingTimeInterval(3600) }, feedback: spy
+            state: saved, now: { self.start.addingTimeInterval(86_400) }, feedback: spy
         )
+        resumed.start()
+        resumed.resumeHold(asOf: start.addingTimeInterval(86_400)) // what onAppear used to do
 
-        XCTAssertFalse(resumed.isHolding, "an expired leg never comes back counting")
-        XCTAssertFalse(resumed.isHoldPaused)
-        XCTAssertEqual(resumed.holdSide, 2, "and still owes the side it was on")
+        XCTAssertFalse(resumed.isHolding)
+        XCTAssertEqual(resumed.holdSide, 2, "but the side they still owe is preserved")
         XCTAssertEqual(resumed.completedSetCount, 0)
-        XCTAssertTrue(resumed.canStartHold, "so the player offers Start hold again")
+        XCTAssertEqual(spy.completions, 0)
+    }
 
-        // The player's ticker runs from the moment the resumed session is on screen.
-        resumed.completeHoldIfElapsed(asOf: start.addingTimeInterval(3600))
+    /// Within a live session a hold still pauses and resumes across backgrounding - the interruption the
+    /// user is actually present for. Only the teardown boundary drops the leg.
+    func testBackgroundingWithinTheSessionStillFreezesAndResumesTheLeg() {
+        var clock = start
+        let vm = makeViewModel(clock: { clock })
+        vm.startHold() // 30s
 
-        XCTAssertEqual(resumed.completedSetCount, 0, "no set is logged for a leg the user never held")
-        XCTAssertEqual(spy.completions, 0, "and no cue fires for a countdown that never resumed")
-        XCTAssertFalse(resumed.isResting)
+        clock = start.addingTimeInterval(10)
+        vm.pauseHold(asOf: clock)
+        XCTAssertTrue(vm.isHoldPaused)
+
+        clock = start.addingTimeInterval(200) // a long banner, or a glance at another app
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 20, "frozen, not drawn down")
+
+        vm.resumeHold(asOf: clock)
+        XCTAssertFalse(vm.isHoldPaused)
+        XCTAssertEqual(vm.holdRemaining(asOf: start.addingTimeInterval(205)), 15)
+    }
+
+    /// A rest that ran out while the app was gone is simply over: restoring it would have the overlay's
+    /// first tick fire a completion cue for a rest the user is not in. The same class as the hold's
+    /// phantom set, and the reason both timers now share one `Countdown` - the fix lands on both.
+    func testRestoreDropsARestThatAlreadyRanOut() async throws {
+        let store = InMemoryActiveSessionStore()
+        let spy = SpyRestFeedback()
+        let original = persistingViewModel(store, clock: { self.start })
+        original.start()
+        original.completeSet() // opens a 30s rest, deadline start+30
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+
+        // Relaunched long after that rest would have ended.
+        let resumed = ActiveSessionViewModel(
+            state: saved, now: { self.start.addingTimeInterval(600) }, feedback: spy
+        )
+        resumed.completeRestIfElapsed(asOf: start.addingTimeInterval(600))
+
+        XCTAssertFalse(resumed.isResting, "an expired rest is over, not waiting to fire")
+        XCTAssertEqual(spy.completions, 0, "no cue for a rest the user is not in")
+        XCTAssertEqual(resumed.currentStep?.prescription.exercise.id, "push_up", "the position is unchanged")
     }
 
     /// A per-side set the user is *between* the sides of survives a relaunch: the snapshot carries the

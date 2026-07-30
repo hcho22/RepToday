@@ -87,12 +87,11 @@ struct ActiveSessionView: View {
     /// refresh deterministically rather than racing the store (US-K04). Every dismiss path routes
     /// through here, so the completion signal is never missed.
     ///
-    /// Leaving the screen freezes a running hold exactly as backgrounding does (US-O03): the user walked
-    /// away, so the countdown stops rather than being left ticking on disk against time they were not
-    /// holding for. The dismissal is reported only once the write that freeze queued has landed, so the
-    /// Ready Screen re-reads a paused leg rather than the running one it replaced.
+    /// A running hold needs no handling here: it is never persisted, so leaving the screen ends it and
+    /// the resumed session comes back owing the same side (US-O03). The dismissal is reported only once
+    /// the last queued write has landed, so the Ready Screen's resume card reflects the position the
+    /// user actually left rather than the one before it.
     private func close() {
-        viewModel.pauseHold(asOf: Date())
         let pendingWrite = viewModel.persistenceTask
         let completed = viewModel.isComplete
         let report = onFinish
@@ -117,12 +116,18 @@ struct ActiveSessionView: View {
         }
         .onAppear {
             viewModel.start()
-            // A rest or hold paused on backgrounding and restored from a snapshot (US-K04/US-O03) never
-            // sees a scene-phase change when the resumed player is presented on an already-active app,
-            // so resume both here too. No-ops unless one is currently paused, leaving a fresh session
-            // and a resumed running countdown untouched.
+            // A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a
+            // scene-phase change when the resumed player is presented on an already-active app, so
+            // resume it here too. A no-op unless a rest is currently paused, leaving a fresh session
+            // and a resumed running rest untouched.
+            //
+            // There is deliberately no `resumeHold` counterpart (US-O03). A hold is never restored as a
+            // countdown at all, so there is nothing frozen to un-freeze - and un-freezing one here is
+            // precisely how a leg the user abandoned days ago used to finish itself moments after the
+            // screen appeared, banking a set nobody performed. In-session backgrounding still
+            // pauses and resumes the leg through `scenePhase` below, which is the interruption the user
+            // is actually present for.
             viewModel.resumeRest(asOf: Date())
-            viewModel.resumeHold(asOf: Date())
             // The user puts the phone down mid-plank; the screen must not lock out from under a
             // running countdown, or its cue never lands. Scoped to the session being played, and
             // released the moment it finishes or the player is dismissed.

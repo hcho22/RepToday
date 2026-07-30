@@ -348,8 +348,12 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     /// Renders a production surface to a PNG in the evidence directory.
     private func render<V: View>(_ view: V, size: CGSize, fileName: String) throws {
-        let host = hosted(view, size: size)
+        try renderHosted(hosted(view, size: size), size: size, fileName: fileName)
+    }
 
+    /// Renders an *already-hosted* surface, for a state that only exists once the view has been driven
+    /// into it - a running hold, which is unreachable through the restore path by design (US-O03).
+    private func renderHosted<V: View>(_ host: UIHostingController<V>, size: CGSize, fileName: String) throws {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
@@ -725,19 +729,24 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     private var playerSize: CGSize { CGSize(width: 393, height: 852) }
 
-    /// The same snapshot with a hold running - built through the production *restore* path, which is how
-    /// the player can be rendered mid-countdown without reaching into its view model. The deadline is a
-    /// real-time one because the hosted view reads it against `Date()`.
-    private func holding(_ state: ActiveSessionState, seconds: Int, side: Int = 1) -> ActiveSessionState {
-        var withHold = state
-        withHold.hold = ActiveSessionState.Hold(
-            totalSeconds: seconds,
-            side: side,
-            deadline: Date().addingTimeInterval(TimeInterval(seconds) * 0.7),
-            remainingWhenPaused: nil,
-            isRunning: true
+    /// A hosted player with its hold actually running, for rendering and reading mid-countdown.
+    ///
+    /// The leg is started by activating the real "Start hold" control, the way VoiceOver's double-tap
+    /// does, because a running leg is deliberately unreachable any other way: a hold is never persisted
+    /// (US-O03), so there is no snapshot that restores one. That is the point of the rule, and it means
+    /// the only honest way to see this state is the one the user takes to reach it.
+    private func hostedMidHold<V: View>(_ view: V, size: CGSize) throws -> UIHostingController<V> {
+        let host = hosted(view, size: size)
+        let start = try XCTUnwrap(
+            accessibilityElement(labeled: "Start hold", in: host.view)
+                ?? accessibilityElement(labeled: "Start hold, side 1 of 2", in: host.view),
+            "the player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
         )
-        return withHold
+        XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.6))
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        return host
     }
 
     /// The player at a timed movement, idle then mid-hold, read off the live accessibility tree of the
@@ -783,9 +792,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
         try render(try playerView(idle), size: playerSize, fileName: "player-hold-idle.png")
 
-        // Running: the countdown takes the demo's place and speaks the seconds it has left.
-        let running = holding(idle, seconds: seconds)
-        let runningLabels = accessibilityLabels(in: hosted(try playerView(running), size: playerSize).view)
+        // Running: the countdown takes the demo's place and speaks the seconds it has left. The leg is
+        // started through the real control, since a hold is never persisted and so cannot be restored
+        // into this state (US-O03).
+        let runningHost = try hostedMidHold(try playerView(idle), size: playerSize)
+        let runningLabels = accessibilityLabels(in: runningHost.view)
         XCTAssertTrue(
             runningLabels.contains { $0.hasPrefix("Hold, ") && $0.hasSuffix(" seconds remaining") },
             "a running hold should speak its remaining seconds; it reads \(runningLabels)"
@@ -799,7 +810,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             runningLabels.contains("Skip this exercise"),
             "the row keeps its slots while the hold runs; it reads \(runningLabels)"
         )
-        try render(try playerView(running), size: playerSize, fileName: "player-hold-running.png")
+        try renderHosted(runningHost, size: playerSize, fileName: "player-hold-running.png")
 
         for labels in [idleLabels, runningLabels] {
             XCTAssertFalse(
@@ -842,9 +853,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
         // Parked between the legs - the state a relaunch restores to, so it must read as owing side 2.
         var secondSide = firstSide
-        secondSide.hold = ActiveSessionState.Hold(
-            totalSeconds: 0, side: 2, deadline: nil, remainingWhenPaused: nil, isRunning: false
-        )
+        secondSide.hold = ActiveSessionState.Hold(side: 2)
         let secondLabels = accessibilityLabels(in: hosted(try playerView(secondSide), size: playerSize).view)
         XCTAssertTrue(
             secondLabels.contains("Start hold, side 2 of 2"),
@@ -996,14 +1005,16 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
-    /// Closing the player mid-hold must not leave a running countdown on disk (US-O03).
+    /// Closing the player mid-hold leaves **no** countdown on disk at all (US-O03), driven through the
+    /// real Start hold and End session controls on the hosted production player.
     ///
-    /// The user walked away, so the leg freezes exactly as backgrounding freezes it: the snapshot keeps
-    /// the frozen remainder and drops the deadline, rather than persisting an instant that will be in
-    /// the past by the time they tap Resume - which is how a resume used to fire the completion cue and
-    /// bank a set nobody performed within half a second of reopening. Driven through the real close
-    /// control on the hosted production player, so it gates the dismissal path rather than the helper.
-    func testClosingThePlayerMidHoldFreezesTheLegOnDisk() async throws {
+    /// This is the rule that finally closed a defect three narrower guards could not. Persisting the leg
+    /// - as a live deadline, as a frozen remainder, or as a frozen remainder of zero - always ended the
+    /// same way, because whatever is written gets restored and whatever is restored reaches zero moments
+    /// after the screen reappears: the cue fires and a set is banked for work nobody did. Nothing about
+    /// the countdown is written now, so the resume has nothing to finish. What *is* carried is the side,
+    /// since a per-side set half done must not restart from side 1.
+    func testClosingThePlayerMidHoldLeavesNoLegOnDisk() async throws {
         let store = InMemoryActiveSessionStore()
         let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
@@ -1011,18 +1022,20 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             slots.indices.first { slots[$0].exercise.isHold && (slots[$0].durationSeconds ?? 0) > 0 },
             "the generated session carries no timed movement to hold"
         )
-        let host = hosted(
-            ActiveSessionView(resuming: resumed(workout, at: index, currentSet: 1), store: store, userId: "u1"),
+        // The session is already on disk, as a resumable one is in the app - the player is reopened on
+        // it. Seeding matters here: starting and freezing a leg now writes nothing by design, so without
+        // it the store would be empty for the uninteresting reason that nothing persisted at all.
+        let state = resumed(workout, at: index, currentSet: 1)
+        try await store.save(state, for: "u1")
+
+        let host = try hostedMidHold(
+            ActiveSessionView(resuming: state, store: store, userId: "u1"),
             size: playerSize
         )
-
-        let startControl = try XCTUnwrap(
-            accessibilityElement(labeled: "Start hold", in: host.view)
-                ?? accessibilityElement(labeled: "Start hold, side 1 of 2", in: host.view),
-            "the live player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+        XCTAssertTrue(
+            accessibilityLabels(in: host.view).contains { $0.hasPrefix("Hold, ") },
+            "the leg should be running before it is walked away from"
         )
-        XCTAssertTrue(startControl.accessibilityActivate(), "the Start hold control did not activate")
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
 
         let closeControl = try XCTUnwrap(
             accessibilityElement(labeled: "End session", in: host.view),
@@ -1030,25 +1043,23 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
         XCTAssertTrue(closeControl.accessibilityActivate(), "the close control did not activate")
 
-        // The write the close queued is fire-and-forget, so the store is polled until it lands.
-        var saved: ActiveSessionState?
-        for _ in 0..<50 where saved?.hold?.remainingWhenPaused == nil {
+        // Let any write the close queued settle before reading what the Resume card would find.
+        for _ in 0..<10 {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
-            saved = try await store.load(for: "u1")
         }
-        let frozen = try XCTUnwrap(saved?.hold, "closing mid-hold saved no hold at all")
+        let saved = try await store.load(for: "u1")
+        let snapshot = try XCTUnwrap(saved, "the resumable session vanished")
+        print("=== Rep Today - closing mid-hold saved hold=\(String(describing: snapshot.hold)) ===")
 
-        print("=== Rep Today - closing mid-hold saved: remaining=\(String(describing: frozen.remainingWhenPaused))s, "
-              + "deadline=\(String(describing: frozen.deadline)) ===")
-        XCTAssertNil(frozen.deadline, "a countdown must never be left running against wall-clock time on disk")
-        XCTAssertGreaterThan(
-            frozen.remainingWhenPaused ?? 0, 0,
-            "the frozen remainder is what the resume comes back to"
-        )
+        // A bilateral leg on side 1 has nothing to carry; a per-side one carries only the side.
+        if let hold = snapshot.hold {
+            XCTAssertGreaterThan(hold.side, 1, "the only hold worth persisting is a half-done per-side set")
+        }
 
-        // And that is what the Resume card hands back: a frozen leg, nothing recorded.
-        let resumedPlayer = ActiveSessionViewModel(state: try XCTUnwrap(saved), now: { Date() })
-        XCTAssertTrue(resumedPlayer.isHoldPaused, "the resumed leg picks up frozen where the user left it")
+        // And that is what the Resume card hands back: no countdown, nothing recorded, ready to restart.
+        let resumedPlayer = ActiveSessionViewModel(state: snapshot, now: { Date() })
+        XCTAssertFalse(resumedPlayer.isHolding, "the resumed session offers Start hold, not a live countdown")
+        XCTAssertFalse(resumedPlayer.isHoldPaused)
         XCTAssertEqual(resumedPlayer.completedSetCount, 0, "and banks nothing the user did not do")
     }
 
