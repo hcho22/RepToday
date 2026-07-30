@@ -262,7 +262,22 @@ It persists as `ActiveSessionState.Hold` alongside `.Rest`, optional and default
 The **side is persisted independently of whether a leg is running**: without that, a user who finished side 1 and backgrounded the app would come back on side 1 and do three legs of a two-leg set, which is the same halving bug pointing the other way.
 
 One thing the story's own promise could not survive was left implicit in it, so it is fixed here too: a hold pauses on backgrounding, and iOS auto-lock backgrounds the app, so a user who sets the phone down to plank would have the countdown freeze and the cue that ends it never land.
-The player now holds `isIdleTimerDisabled` for as long as it is on screen and releases it on dismiss - correct for an active workout screen generally, and load-bearing for this feature specifically.
+The player holds `isIdleTimerDisabled` for as long as a session is being played - correct for an active workout screen generally, and load-bearing for this feature specifically - and hands the screen back to auto-lock on **completion as well as dismissal**, since the player is not dismissed when the session ends and the celebration screen has no countdown to protect.
+
+The timer is the offer, not the only way through a timed movement.
+A hold's primary action is "Start hold", but the row underneath keeps a quiet manual completion beside Swap and Skip, titled by the same `completeButtonTitle` logic every other slot uses ("Complete set" / "Finish exercise" / "Finish session").
+Without it a timed exercise had no way to bank work at all: "Stop hold" records nothing by design, and Skip *discards* every set already recorded for the exercise - so a user interrupted on set 3 of a 3-set plank, or who held it off-timer, would lose the work rather than log it.
+Most cooldown slots are holds, which made this the last control of nearly every session.
+It is hidden while a leg is actually running, where the countdown is what records the set.
+
+Which *slots* that row carries is decided by the exercise rather than by whether a hold happens to be running, so starting one dims controls in place instead of removing them and the row never reflows under a thumb mid-tap.
+The same principle settles the slot above it: the countdown is drawn inside the demo's own card (one `exerciseSlotCard()` shared by both), so starting a hold changes what is in the slot and nothing else - not the card under it, not the exercise name and target below it.
+A timed movement also keeps "Start hold" as its primary action while a swap is in flight, merely unstartable, rather than briefly morphing into a different button.
+
+That last point is the visible half of a real defect the review caught.
+`canStartHold` did not consider `isSwapping`, so a hold started in the window between requesting a swap and the engine answering would keep counting down against the *substitute*, and at zero record a set of a movement the user never performed.
+Both halves are closed: `canStartHold` refuses a leg while a swap is awaiting, and the `.substituted` branch now calls `resetHold()` rather than clearing the side alone.
+The deliberate asymmetry either side of it stands - the pre-`await` call stays `endHold(fireFeedback:)` and `.noAlternative` still leaves the side untouched, because a swap that substitutes nothing must not charge the user a side they already held.
 
 Two smaller consolidations came with it.
 The countdown ring was duplicated between the rest overlay and the new Hold Timer, so both now render one `CountdownRing`, and the two timers a user meets in a session read as the same object.
@@ -272,3 +287,4 @@ Verification ran three ways in the Simulator, all against the production `Active
 Rendered PNGs of the player at a hold (idle, running, per-side side 1 and side 2) and of the rest overlay are under `artifacts/reports/us-o03/`.
 The accessibility tree of those same hosted surfaces is read back and asserted, so the spoken forms and the absent clock are gated rather than eyeballed.
 And `testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer` closes the loop in real time: it activates the real "Start hold" control the way VoiceOver's double-tap does, lets the wall clock run out on a short-authored hold, and asserts the live player has recorded the set and moved to the rest overlay - exercising the `Timer` publisher, the deadline arithmetic and the auto-advance as one system rather than as pieces.
+That one pumps the runloop until the hand-off is *observable* rather than for a fixed budget, so a loaded machine that takes longer to push the update through still fails on behaviour rather than on the clock.

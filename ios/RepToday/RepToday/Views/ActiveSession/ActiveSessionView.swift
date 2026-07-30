@@ -112,10 +112,16 @@ struct ActiveSessionView: View {
             viewModel.resumeRest(asOf: Date())
             viewModel.resumeHold(asOf: Date())
             // The user puts the phone down mid-plank; the screen must not lock out from under a
-            // running countdown, or its cue never lands. Scoped to the player and released on exit.
-            UIApplication.shared.isIdleTimerDisabled = true
+            // running countdown, or its cue never lands. Scoped to the session being played, and
+            // released the moment it finishes or the player is dismissed.
+            UIApplication.shared.isIdleTimerDisabled = !viewModel.isComplete
         }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // The celebration screen has no countdown to protect, and the player is not dismissed when the
+        // session ends - so completion, not only dismissal, is what hands the screen back to auto-lock.
+        .onChange(of: viewModel.isComplete) { _, isComplete in
+            if isComplete { UIApplication.shared.isIdleTimerDisabled = false }
+        }
         // Pause both countdowns while the app is away so neither blows past - and so a hold's cue can
         // never fire at a screen the user is not looking at; resume on return. The elapsed session
         // clock is wall-clock derived (US-K01) and intentionally keeps running, unseen (US-O03).
@@ -225,13 +231,17 @@ struct ActiveSessionView: View {
         .accessibilityLabel(showsSide ? "\(setText), side \(viewModel.holdSide) of \(sides)" : setText)
     }
 
-    /// The primary action plus quieter "swap" and "skip" - all meeting the 60pt active-screen touch
+    /// The primary action plus the quieter secondary row - all meeting the 60pt active-screen touch
     /// target. Which primary action shows depends on the movement (US-O03): a rep-based exercise keeps
     /// "Complete set", and completing the last set of the last exercise finishes the session; a timed
     /// one offers "Start hold" instead, and the countdown records its own set at zero, so it is the
     /// timer - not a tap - that advances. Swapping (US-K03) replaces the current movement with a
     /// same-pillar/pattern peer, or, when none is safe and in budget, surfaces an honest "no
     /// alternative" notice above the actions.
+    ///
+    /// Which *slots* the secondary row carries is decided by the exercise, never by whether a hold
+    /// happens to be running: starting one dims controls in place rather than removing them, so the
+    /// row never reflows under the user's thumb mid-tap.
     private var controls: some View {
         VStack(spacing: Theme.Spacing.sm) {
             if viewModel.noSwapAlternative {
@@ -242,36 +252,76 @@ struct ActiveSessionView: View {
 
             HStack(spacing: Theme.Spacing.md) {
                 // A swap reshapes the slot the countdown is timing, so it is offered between holds
-                // rather than during one. Skip stays, as the escape hatch it is on every other slot.
-                if viewModel.canSwap && !viewModel.isHolding {
-                    Button {
+                // rather than during one - dimmed in place, so the row keeps its shape.
+                if viewModel.canSwap {
+                    secondaryAction(
+                        title: viewModel.isSwapping ? "Swapping…" : "Swap",
+                        accessibilityLabel: "Swap this exercise",
+                        accessibilityHint: "Replaces it with a similar movement",
+                        isEnabled: !viewModel.isSwapping && !viewModel.isHolding
+                    ) {
                         Task { await viewModel.swapCurrentExercise() }
-                    } label: {
-                        Text(viewModel.isSwapping ? "Swapping…" : "Swap")
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: Theme.Spacing.workoutTouchTarget)
                     }
-                    .disabled(viewModel.isSwapping)
-                    .accessibilityLabel("Swap this exercise")
-                    .accessibilityHint("Replaces it with a similar movement")
                 }
 
-                Button {
-                    viewModel.skipExercise()
-                } label: {
-                    Text("Skip")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.workoutTouchTarget)
+                // A timed movement records itself at zero, but the timer is an offer, not the only way
+                // out: a user who held it off-timer, or was interrupted part-way through a three-set
+                // plank, can still bank the work they did instead of losing it to a skip. Hidden in
+                // place while a leg runs - the countdown is what records the set then.
+                if viewModel.holdSecondsPerSide != nil {
+                    secondaryAction(
+                        title: completeButtonTitle,
+                        accessibilityLabel: completeButtonTitle,
+                        accessibilityHint: "Records this set without the timer",
+                        isEnabled: !viewModel.isHolding,
+                        hidesWhenDisabled: true
+                    ) {
+                        viewModel.completeSet()
+                    }
                 }
-                .accessibilityLabel("Skip this exercise")
+
+                secondaryAction(
+                    title: "Skip",
+                    accessibilityLabel: "Skip this exercise",
+                    accessibilityHint: nil,
+                    isEnabled: true
+                ) {
+                    viewModel.skipExercise()
+                }
             }
         }
         .padding(Theme.Spacing.lg)
         .background(Theme.Colors.background)
+    }
+
+    /// One quiet control in the secondary row. Every slot is built here so they share their styling,
+    /// their 60pt active-screen touch target, and their column width - and so a control that is
+    /// unavailable right now still holds its place in the row rather than letting the others slide.
+    /// `hidesWhenDisabled` is for the control that should not merely be untappable but absent to the
+    /// eye and to VoiceOver, while still occupying its column.
+    private func secondaryAction(
+        title: String,
+        accessibilityLabel: String,
+        accessibilityHint: String?,
+        isEnabled: Bool,
+        hidesWhenDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        let isHidden = hidesWhenDisabled && !isEnabled
+        return Button(action: action) {
+            Text(title)
+                .font(Theme.Typography.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .opacity(isEnabled ? 1 : 0.4)
+                .frame(maxWidth: .infinity)
+                .frame(height: Theme.Spacing.workoutTouchTarget)
+        }
+        .disabled(!isEnabled)
+        .opacity(isHidden ? 0 : 1)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint ?? "")
+        .accessibilityHidden(isHidden)
     }
 
     /// The one big action at the bottom of the player. Running a hold has no "do it now" action - the
@@ -292,7 +342,7 @@ struct ActiveSessionView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel("Stop hold")
             .accessibilityHint("Ends the countdown without recording the set")
-        } else if viewModel.canStartHold {
+        } else if viewModel.holdSecondsPerSide != nil {
             Button {
                 viewModel.startHold()
             } label: {
@@ -303,6 +353,9 @@ struct ActiveSessionView: View {
             }
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            // A timed movement always shows its timer as the primary action; a swap in flight makes it
+            // momentarily unstartable (US-O03) without letting the button morph into a different one.
+            .disabled(!viewModel.canStartHold)
             .accessibilityLabel(startHoldAccessibilityTitle)
             .accessibilityHint("Counts the hold down and records the set when it reaches zero")
         } else {
@@ -576,6 +629,21 @@ struct ActiveSessionView: View {
 
 // MARK: - Shared session chrome
 
+/// The card that holds whatever occupies the demo slot - the exercise demonstration (US-K01) or, while
+/// a hold runs, its countdown (US-O03). One definition of the slot's size and chrome, so the two states
+/// differ only in their content and starting a hold never makes the card itself blink out.
+private extension View {
+    func exerciseSlotCard() -> some View {
+        self
+            .frame(maxWidth: .infinity)
+            .frame(height: ExerciseDemoView.height)
+            .background(
+                Theme.Colors.secondaryBackground,
+                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+            )
+    }
+}
+
 /// The player's top bar, shared by the exercise screen and the rest overlay.
 ///
 /// It carries the close control and nothing else. It used to carry an always-on elapsed clock, which
@@ -663,10 +731,9 @@ private struct HoldCountdownView: View {
             fraction: min(1, max(0, Double(remaining) / Double(total))),
             accessibilityLabel: "Hold, \(remaining) seconds remaining"
         )
-        // Matches the demo card it stands in for, so starting a hold swaps the content without
-        // shifting the exercise name and target underneath it.
-        .frame(maxWidth: .infinity)
-        .frame(height: ExerciseDemoView.height)
+        // The countdown stands in the demo's own card, so starting a hold changes what is in the slot
+        // and nothing else - not the card under it, not the exercise name and target below it.
+        .exerciseSlotCard()
         .onReceive(ticker) { date in
             currentDate = date
             viewModel.completeHoldIfElapsed(asOf: date)
@@ -800,15 +867,10 @@ struct ExerciseDemoView: View {
     static let height: CGFloat = 220
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                .fill(Theme.Colors.secondaryBackground)
-            demo
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: Self.height)
-        .accessibilityElement()
-        .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
+        demo
+            .exerciseSlotCard()
+            .accessibilityElement()
+            .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
     }
 
     /// The bundled Lottie animation when the exercise names one that actually resolves to a file,

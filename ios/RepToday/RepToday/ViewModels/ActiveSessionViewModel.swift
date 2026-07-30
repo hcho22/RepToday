@@ -567,8 +567,10 @@ final class ActiveSessionViewModel {
             )
             currentSet = 1
             // A different movement means a different set of legs: the side the user was owed on the
-            // movement they just replaced does not carry over to the one that replaced it.
-            holdSide = 1
+            // movement they just replaced does not carry over to the one that replaced it - and
+            // neither does any leg started while the swap was in flight, which would otherwise run
+            // its countdown out against the substitute and record a set that was never performed.
+            resetHold()
             // The lineup changed - persist so a resume after a swap restores the substitute, not the
             // movement the user replaced.
             persist()
@@ -722,9 +724,11 @@ final class ActiveSessionViewModel {
     var holdSidesPerSet: Int { currentStep?.prescription.exercise.sidesPerSet ?? 1 }
 
     /// Whether the user can start a hold leg right now: there is a timed exercise on screen and no
-    /// rest, hold, or completion in the way.
+    /// rest, hold, swap, or completion in the way. A swap in flight is what the movement on screen is
+    /// about to stop being, so a leg started against it would be timing a prescription the user is
+    /// already replacing.
     var canStartHold: Bool {
-        !isComplete && !isResting && !isHolding && holdSecondsPerSide != nil
+        !isComplete && !isResting && !isHolding && !isSwapping && holdSecondsPerSide != nil
     }
 
     /// Whether the running hold is paused (the app is backgrounded). Distinct from `isHolding`, which

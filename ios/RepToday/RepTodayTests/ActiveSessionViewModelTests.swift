@@ -709,6 +709,75 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.holdSide, 2, "and so does the side they still owe")
     }
 
+    /// A hold started while a swap is in flight must never end up timing - let alone recording - the
+    /// movement that replaces it. The countdown is offered against the prescription on screen, and a
+    /// substitution makes that prescription the wrong one, so the leg is refused while the swap is
+    /// awaiting and cleared outright by the substitution that lands.
+    func testHoldStartedDuringAnInFlightSwapNeverRecordsAgainstTheSubstitute() async {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
+        let engine = StubSwapEngine(outcome: .substituted(substitute))
+        let vm = ActiveSessionViewModel(
+            workout: perSideHoldWorkout(seconds: 20),
+            swapEngine: engine, user: makeUser(), recentLogs: [], sessionPolicy: .default,
+            now: { clock }, feedback: spy
+        )
+        // The user taps "Start hold" in the window between requesting the swap and the engine answering.
+        engine.onSwap = { vm.startHold() }
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "dips")
+        XCTAssertFalse(vm.isHolding, "no countdown survives onto the substitute")
+        XCTAssertEqual(vm.holdSide, 1)
+
+        // Long past any deadline the refused leg could have carried: the ticker's check records nothing.
+        clock = start.addingTimeInterval(600)
+        vm.completeHoldIfElapsed(asOf: clock)
+
+        XCTAssertEqual(vm.completedSetCount, 0, "no set is logged for a movement the user never performed")
+        XCTAssertEqual(spy.completions, 0, "and no cue fires for a leg that never ran")
+        XCTAssertFalse(vm.isResting)
+    }
+
+    /// The timer is the offer, not the only way through a timed movement: a user who held it off-timer,
+    /// or who is stopping part-way through a multi-set plank, can record the set by hand. This is the
+    /// only path that banks their work - a skip discards the exercise's sets entirely.
+    func testAHoldsSetCanBeRecordedWithoutEverStartingTheTimer() throws {
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(perSideHoldWorkout(sets: 2, seconds: 20), clock: { self.start }, feedback: spy)
+        let holdStepID = try XCTUnwrap(vm.currentStep?.id)
+
+        vm.completeSet()
+
+        XCTAssertFalse(vm.isHolding)
+        XCTAssertEqual(vm.completedSets[holdStepID], [CompletedSet(reps: nil, durationSeconds: 20)],
+                       "the set is banked at its prescribed target, as a rep-based one would be")
+        XCTAssertEqual(vm.currentSet, 2, "and the exercise advances to its next set")
+        XCTAssertEqual(vm.holdSide, 1, "which opens back on side 1")
+        XCTAssertEqual(spy.completions, 0, "a manual completion is not a countdown reaching zero")
+        XCTAssertTrue(vm.isResting, "and it paces the next effort like any other completed set")
+    }
+
+    /// Recording a hold by hand from the second side of a per-side set banks the whole set once - the
+    /// side counter is bookkeeping for the timer, never a second set the user still owes.
+    func testManualCompletionFromTheSecondSideRecordsOneSet() {
+        var clock = start
+        let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { clock })
+
+        vm.startHold()
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock) // side 1 done -> parked on side 2
+        XCTAssertEqual(vm.holdSide, 2)
+
+        vm.completeSet()
+
+        XCTAssertEqual(vm.completedSetCount, 1, "one set, not one per side")
+        XCTAssertEqual(vm.holdSide, 1)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up", "the single-set hold is done")
+    }
+
     private func swappableHoldViewModel(_ engine: StubSwapEngine) -> ActiveSessionViewModel {
         ActiveSessionViewModel(
             workout: perSideHoldWorkout(seconds: 20),

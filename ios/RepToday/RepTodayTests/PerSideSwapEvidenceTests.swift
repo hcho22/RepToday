@@ -743,10 +743,15 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// The player at a timed movement, idle then mid-hold, read off the live accessibility tree of the
     /// production surface (US-O03).
     ///
-    /// Two things are gated together because they are the same change: a timed movement is now recorded
-    /// by its own countdown rather than a "Complete set" tap, and the always-on elapsed clock that used
+    /// Two things are gated together because they are the same change: a timed movement now leads with
+    /// its own countdown rather than a "Complete set" tap, and the always-on elapsed clock that used
     /// to sit in the top bar is gone. The clock half is asserted on the tree rather than assumed from
     /// the source, so re-adding it - the regression this story exists to prevent - fails here.
+    ///
+    /// The timer is the primary action, not the only one: the manual way to bank the set stays on the
+    /// row as a quiet secondary while the hold is idle - a user interrupted part-way through a plank
+    /// should not have to lose the work to a skip - and is hidden while a leg is actually running,
+    /// where the countdown is what records it.
     func testHoldTimerReplacesTheAlwaysOnSessionClock() throws {
         let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
@@ -760,17 +765,21 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         print("=== Rep Today - the player at \(hold.exercise.id): \(seconds)s"
               + (sides > 1 ? " per side, two legs per set" : "") + " ===")
 
-        // Idle: the Hold Timer is offered in place of the manual "Complete set".
+        // Idle: the Hold Timer leads, with the manual completion kept as a quiet secondary.
         let idle = resumed(workout, at: holdIndex, currentSet: 1)
         let idleLabels = accessibilityLabels(in: hosted(try playerView(idle), size: playerSize).view)
         let expectedStart = sides > 1 ? "Start hold, side 1 of \(sides)" : "Start hold"
+        let manualTitle = hold.sets > 1
+            ? "Complete set"
+            : (holdIndex == slots.count - 1 ? "Finish session" : "Finish exercise")
         XCTAssertTrue(
             idleLabels.contains(expectedStart),
             "the player should offer \"\(expectedStart)\"; it reads \(idleLabels)"
         )
-        XCTAssertFalse(
-            idleLabels.contains("Complete set"),
-            "a timed movement is recorded by its countdown, not by a tap"
+        XCTAssertTrue(
+            idleLabels.contains(manualTitle),
+            "an idle hold should still offer \"\(manualTitle)\" as the way to bank a set held off-timer; "
+            + "it reads \(idleLabels)"
         )
         try render(try playerView(idle), size: playerSize, fileName: "player-hold-idle.png")
 
@@ -782,6 +791,14 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "a running hold should speak its remaining seconds; it reads \(runningLabels)"
         )
         XCTAssertTrue(runningLabels.contains("Stop hold"), "and offer the quiet way out of it")
+        XCTAssertFalse(
+            runningLabels.contains(manualTitle),
+            "while the leg runs the countdown is what records the set; it reads \(runningLabels)"
+        )
+        XCTAssertTrue(
+            runningLabels.contains("Skip this exercise"),
+            "the row keeps its slots while the hold runs; it reads \(runningLabels)"
+        )
         try render(try playerView(running), size: playerSize, fileName: "player-hold-running.png")
 
         for labels in [idleLabels, runningLabels] {
@@ -897,15 +914,24 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
         XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
 
-        // Let the hold actually run out in wall-clock time, then let the view settle on what follows.
-        let deadline = Date().addingTimeInterval(4)
-        while Date() < deadline {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        // Let the hold actually run out in wall-clock time. The runloop is pumped until the hand-off
+        // has *settled* - the rest overlay up and the countdown torn down - rather than for a fixed
+        // budget, so a loaded machine that takes longer to push the update through still tests the
+        // behaviour instead of failing on the clock. The ceiling is far past any honest run of a
+        // 2-second hold, so a real regression still fails rather than hanging.
+        func handedOffToRest(_ labels: [String]) -> Bool {
+            labels.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") }
+                && !labels.contains { $0.hasPrefix("Hold, ") }
         }
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
+        let ceiling = Date().addingTimeInterval(20)
+        var after: [String] = []
+        repeat {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            after = accessibilityLabels(in: host.view)
+        } while Date() < ceiling && !handedOffToRest(after)
 
-        let after = accessibilityLabels(in: host.view)
         print("=== Rep Today - after a live 2 second hold, the player reads: \(after) ===")
         XCTAssertTrue(
             after.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
