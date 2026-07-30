@@ -266,10 +266,10 @@ If this recurs, check where the listing and onboarding use the word AI; the copy
 Getting bored. Needs a bigger library."
 
 **Why we expect it.**
-Repetitiveness is a documented complaint against Bend, the closest habit-first comparable ("repetitiveness and the paywalled free tier as the main complaints", `competitors-additional.md`), and Rep Today ships a 42-movement library, which a daily user will fully see within weeks.
+Repetitiveness is a documented complaint against Bend, the closest habit-first comparable ("repetitiveness and the paywalled free tier as the main complaints", `competitors-additional.md`), and Rep Today ships a 57-movement library, which a daily user will fully see within weeks.
 
 **Pre-written response:**
-"Straight numbers: the library is 42 movements today, and a daily user will meet all of them within a few weeks.
+"Straight numbers: the library is 57 movements today, and a daily user will meet all of them within a few weeks.
 The constraint is deliberate - every movement must work with just a floor and a wall, no equipment ever - and that rules out most of what pads other apps' catalogs.
 The engine does rotate deliberately so the same session never just repeats, but rotation cannot hide a finite list.
 The library will grow, only with movements that pass the same test, and I will not pad it to inflate a number.

@@ -52,18 +52,20 @@ At launch no user has earned the Strength Phase, so the MVP ships the Discipline
 - **Deterministic session generation** - select a duration (5-60 min) and the engine assembles a structured session (warm-up, main work, cooldown over 10 min) on-device, with no network and no LLM.
 - **Smart movement selection** - balances the stalest pillar and movement pattern, filters by phase, injuries, difficulty cap, and recent skips, and never repeats yesterday's primary pattern.
 - **Adaptive Overload** - prescribes capacity-relative reps/sets/holds (never a fixed heroic number); an asymmetric ramp adjusts within one cycle - a `too_hard` or a skip backs off fast, `too_easy` climbs slow.
+- **A start matched to your level** - the first sessions open at the difficulty band and volume seeded from the fitness level you reported at onboarding, rather than at the library's absolute beginner tier; a `too_hard` rating walks both the tier and the volume back down within one session, and the seeding retires on its own once there is real history to steer by.
 - **In-session swap** - substitutes deterministically within the same pillar, pattern, difficulty band, and time budget.
 
 ### Active Session Experience
 
 - Large touch targets (60pt minimum on active workout screens).
 - Set-by-set tracking with a rest timer between sets - skippable, extendable, and paused correctly when the app is backgrounded.
+- Per-side movements say so in the prescription itself - "3 × 0:30 per side" on screen, "3 sets of 30 second holds per side" read aloud - because the session is planned around the work on both sides, so a user who works one side never does half the session by accident.
 - Haptic feedback (and an audio alternative) when a rest ends, so you can start the next set without watching the clock.
 - In-session swap - replace the current movement with a same-pillar/pattern peer in one tap, or an honest "no alternative" notice when none is safe and in budget, so one movement you can't or won't do never derails the session.
 - Background and resume - an in-progress session is persisted and survives backgrounding and a full relaunch; an abandoned session can be resumed at the exact place you left off, or discarded, from the Ready Screen - identity-framed, never guilt-framed.
 - Post-session celebration and summary - finishing writes the durable workout log automatically (fire-and-forget, so quitting on the celebration screen never loses the record) and shows an identity-framed wrap-up ("You showed up. That's the whole game.") with the session's actual duration and honest muscle/mobility coverage - a skipped movement is never counted.
 - Optional one-tap perceived-difficulty rating ("Too easy / Just right / Too hard") on the completion screen - it never gates Done, skipping it leaves the session unrated, and the answer tunes the next session's targets within one cycle via the asymmetric ramp.
-- Accessibility throughout: VoiceOver, Dynamic Type, and a static demo fallback for Reduce Motion.
+- Accessibility throughout: VoiceOver, Dynamic Type, and a static demo fallback for Reduce Motion. The spoken prescription reads as a sentence that agrees with its own counts - a single-set warm-up or cooldown is "1 set of a 45 second hold", never "1 sets of 45 second holds" - and the Ready Screen's lineup speaks it exactly as the player does rather than reading the "×" glyph aloud.
 
 ### Consistency, Not Gamification
 
@@ -129,7 +131,8 @@ AI/LLM features are deferred to Phase 2 and, when they arrive, do language only 
 
 ## The Deterministic Engine
 
-The on-device engine runs this pipeline (one step per Epic C story in the PRD):
+The on-device engine runs this pipeline (one step per Epic C story in the PRD).
+**Step 0 overrides** run ahead of it and are no-ops in the steady state: a cold start seeds the first sessions from the reported fitness level (a difficulty band and a volume seed, both eased by a `too_hard` rating and retired once there is enough history) and forces first-week pillar contrast, and a Return after a gap serves a deliberately easy session.
 
 1. **Session shape** - 5-10 min single-focus; 11-20 min blend (light); 21-40 min blend (full); 41-60 min blend (extended).
 2. **Pillar balance** - choose the stalest pillar by days-since-worked; bias short sessions toward mobility when the user sits 6+ hours.
@@ -137,9 +140,10 @@ The on-device engine runs this pipeline (one step per Epic C story in the PRD):
 4. **Filter pool** - drop by phase, injuries, difficulty cap, and recent skips; everything is bodyweight (Zero-Equipment Floor).
 5. **Progression-chain selection** - pick the current chain position; offer the next when advancement criteria are met; avoid the last few sessions (a policy-tunable `varietyWindow`, default 3).
 6. **Adaptive Overload** - prescribe capacity-relative reps/sets/holds; feedback (or a skip) adjusts within one cycle via an asymmetric ramp (back off fast, climb slow), the advancing bump paced by the policy's `progressionRate`.
-7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, and land within ±1 min of the requested time.
+7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, and land within ±1 min of the requested time. A set is priced as a fixed setup cost plus the per-unit work of the target actually prescribed (a per-side hold costing both sides), so a grown or seeded target is planned as the longer session it really is.
 
 In-session **swap** substitutes deterministically within the same pillar, pattern, difficulty band, and time budget, or returns a clear "no alternative" when no safe peer fits.
+The substitute is sized by the same levers the session was generated with (the policy's `progressionRate`, the cold-start seed, and any Return / re-entry ease), and it keeps the slot's set count whenever a peer fits at it - re-picking a count within the assembler's rails only when leaving the slot alone would push the session out of its stated minutes, and never on the single-set warm-up or cooldown.
 
 ---
 
@@ -162,9 +166,10 @@ RepToday/
 │   ├── ViewModels/          # @Observable view models
 │   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
 │   ├── Utilities/           # AppState and shared helpers
-│   └── Resources/           # Exercises.json, Assets.xcassets, animations
+│   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
 ├── convex/                  # Empty placeholder; the MVP has no custom backend
 ├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
+├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
 └── CLAUDE.md                # Repo guidance and architecture reference
 ```
@@ -177,7 +182,10 @@ RepToday/
 |----------|---------|
 | The v6.0 strategic PRD under `.claude/agent/tasks/` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes the prior v5 strategic PRD (kept for reference). |
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
-| `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants. |
+| `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. |
+| `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
+| `docs/test-coverage.md` | The test-coverage map: one row per suite, added as the owning story lands. |
+| `docs/asset-attribution.md` | The source/license ledger every third-party asset must have a cleared row in before it ships. |
 
 Always check the PRD for the relevant story before building a feature.
 

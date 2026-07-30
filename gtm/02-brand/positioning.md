@@ -39,7 +39,7 @@ Proof: duration chip 5-60 min regenerates the session in under 100ms; Start is n
 Line: "Got 20 minutes instead of 10? One tap. The new session is there before your thumb lifts."
 
 **3. It works where you are, with what you have. Which is nothing.**
-Proof: on-device, offline, deterministic generation; 42 movements, all floor-and-wall only; no account required.
+Proof: on-device, offline, deterministic generation; 57 movements, all floor-and-wall only; no account required.
 Honesty note: stated as product fact, never as claimed market pain (review mining found no direct connectivity-complaint evidence).
 Line: "Airplane mode, hotel room, basement with no bars. The session builds on your phone, not on a server."
 

@@ -61,6 +61,14 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
+    /// The same fixture marked `isPerSide`, so the player's target copy can be exercised against the
+    /// flag the timing model actually reads.
+    private func perSide(_ exercise: Exercise) -> Exercise {
+        var copy = exercise
+        copy.isPerSide = true
+        return copy
+    }
+
     private func repPrescription(_ id: String, sets: Int, reps: Int) -> PrescribedExercise {
         PrescribedExercise(id: UUID(), exercise: repExercise(id: id), sets: sets, reps: reps, durationSeconds: nil, restSeconds: 30)
     }
@@ -479,6 +487,12 @@ final class ActiveSessionViewModelTests: XCTestCase {
         private(set) var swapCallCount = 0
         private(set) var lastPrescriptionID: UUID?
         private(set) var lastSnapshotExerciseIDs: [String] = []
+        /// The whole snapshot, so a test can assert the block structure the swap step needs to tell a
+        /// set-adjustable training block from a structural bookend.
+        private(set) var lastSnapshot: Workout?
+        /// The policy the player handed the engine, so a test can prove the session's program - and
+        /// with it the cold-start Start Seed (US-O02) - reaches the swap step.
+        private(set) var lastSessionPolicy: SessionPolicy?
         /// Runs inside `swapExercise` before the outcome returns, so a test can mutate the view model
         /// mid-await (e.g. advance off the exercise) and exercise the stale-result guard.
         var onSwap: (() -> Void)?
@@ -492,11 +506,17 @@ final class ActiveSessionViewModelTests: XCTestCase {
         }
 
         func swapExercise(
-            _ prescription: PrescribedExercise, in workout: Workout, user: User, recentLogs: [WorkoutLog]
+            _ prescription: PrescribedExercise,
+            in workout: Workout,
+            user: User,
+            recentLogs: [WorkoutLog],
+            sessionPolicy: SessionPolicy
         ) async throws -> SwapOutcome {
             swapCallCount += 1
             lastPrescriptionID = prescription.id
             lastSnapshotExerciseIDs = workout.blocks.flatMap(\.exercises).map(\.exercise.id)
+            lastSnapshot = workout
+            lastSessionPolicy = sessionPolicy
             onSwap?()
             return outcome
         }
@@ -530,14 +550,35 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
-    private func makeSwapViewModel(engine: StubSwapEngine) -> ActiveSessionViewModel {
+    private func makeSwapViewModel(
+        engine: StubSwapEngine,
+        sessionPolicy: SessionPolicy = .default
+    ) -> ActiveSessionViewModel {
         ActiveSessionViewModel(
-            workout: sampleWorkout(), swapEngine: engine, user: makeUser(), recentLogs: [], now: { self.start }
+            workout: sampleWorkout(),
+            swapEngine: engine,
+            user: makeUser(),
+            recentLogs: [],
+            sessionPolicy: sessionPolicy,
+            now: { self.start }
         )
     }
 
-    /// A substitute replaces the current slot in place: the current step becomes the substitute, its
-    /// set count and rest are preserved by the engine, and the set counter resets to 1.
+    /// The player hands the swap step the policy the session was generated against, so a substitute is
+    /// sized by the same Step 6 levers as the rest of the lineup - including the cold-start Start Seed
+    /// (US-O02) - instead of the engine silently re-deriving it at the neutral defaults.
+    func testSwapCarriesTheSessionsPolicy() async {
+        let policy = SessionPolicy.seeded(forFitnessLevel: .advanced)
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = makeSwapViewModel(engine: engine, sessionPolicy: policy)
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(engine.lastSessionPolicy, policy)
+    }
+
+    /// A substitute replaces the current slot in place: the current step becomes the substitute, at
+    /// whatever set count and rest the engine sized it with, and the set counter resets to 1.
     func testSwapReplacesCurrentExercise() async {
         let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
         let engine = StubSwapEngine(outcome: .substituted(substitute))
@@ -554,6 +595,44 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.noSwapAlternative)
         // The rest of the session is untouched.
         XCTAssertEqual(vm.steps.map(\.prescription.exercise.id), ["cat_cow", "dips", "squat"])
+    }
+
+    /// A substitute may legitimately carry a *different* set count - the swap step spends the set-count
+    /// lever to keep a capacity-grown slot inside its time budget - so the player must land the user at
+    /// set 1 of the new count rather than wherever they had reached in the old one. Without the reset, a
+    /// user on set 3 of 3 handed a 2-set substitute would be stranded past the end of their own slot.
+    func testSwapToAFewerSetSubstituteResetsThePositionInsteadOfStrandingTheUser() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips", sets: 2)))
+        let vm = makeSwapViewModel(engine: engine)
+        vm.completeSet() // cat_cow -> push_up (3 sets)
+        vm.completeSet() // push_up set 1
+        vm.completeSet() // push_up set 2
+        XCTAssertEqual(vm.currentSet, 3, "the user is on the last set of the 3-set slot")
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.sets, 2, "the substitute carries its own set count")
+        XCTAssertEqual(vm.currentSet, 1, "the user restarts the slot rather than sitting past its end")
+        XCTAssertLessThanOrEqual(vm.currentSet, vm.currentStep!.prescription.sets)
+    }
+
+    /// The snapshot the swap step reads keeps the session's block structure, because the block decides
+    /// whether the set-count lever is available at all - the assembler never adjusts the warm-up or the
+    /// cooldown, so neither may a swap. Collapsing every step into one strength block would have quietly
+    /// handed a warm-up stretch the training rails.
+    func testSwapSnapshotPreservesBlockStructure() async {
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = makeSwapViewModel(engine: engine)
+
+        await vm.swapCurrentExercise() // the warm-up's cat_cow is current
+
+        let snapshot = try? XCTUnwrap(engine.lastSnapshot)
+        XCTAssertEqual(snapshot?.blocks.map(\.category), [.warmup, .strength])
+        XCTAssertEqual(
+            snapshot?.blocks.first?.exercises.map(\.exercise.id), ["cat_cow"],
+            "the warm-up stays its own block, so the swap step can tell it is a bookend"
+        )
+        XCTAssertEqual(snapshot?.blocks.last?.exercises.map(\.exercise.id), ["push_up", "squat"])
     }
 
     /// The view model hands the swap step the *current* lineup, so a movement swapped in earlier is
@@ -679,9 +758,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let exerciseService = try MockExerciseService()
         let library = try await exerciseService.exercises()
         let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
+        // At the movement's own default, the target Step 6 gives a user with no history of it - so the
+        // slot's budget is the one the assembler would really have sized this session with.
         let slot = PrescribedExercise(
-            id: UUID(), exercise: target, sets: 3, reps: 12, durationSeconds: nil,
-            restSeconds: SessionAssembly.strengthRestSeconds
+            id: UUID(), exercise: target, sets: 3, reps: try XCTUnwrap(target.defaultReps),
+            durationSeconds: nil, restSeconds: SessionAssembly.strengthRestSeconds
         )
         let block = WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [slot])
         let workout = Workout(
@@ -697,7 +778,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNotEqual(swapped.exercise.id, "push_standard", "a swap returns a different movement")
         XCTAssertEqual(swapped.exercise.pillar, .strength, "same pillar")
         XCTAssertEqual(swapped.exercise.movementPattern, .push, "same movement pattern")
-        XCTAssertEqual(swapped.sets, slot.sets, "set count preserved")
+        XCTAssertEqual(swapped.sets, slot.sets, "a default-sized slot is in budget at its own set count")
         XCTAssertEqual(swapped.restSeconds, slot.restSeconds, "rest preserved")
         XCTAssertTrue(swapped.reps != nil || swapped.durationSeconds != nil, "a fresh capacity-relative target")
         XCTAssertFalse(vm.noSwapAlternative)
@@ -1145,5 +1226,86 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.perceivedDifficulty, .justRight, "the UI still reflects the tap")
         XCTAssertNil(vm.completionTask, "but nothing is persisted")
+    }
+
+    // MARK: - The player states a per-side target as per side
+
+    /// The engine charges a per-side movement for both sides, so the player has to say so. A user handed
+    /// a 30s per-side hold who holds it once does half the work per set the session was planned around -
+    /// over three sets that is the whole ±1 minute budget from a single slot.
+    func testTargetTextSaysPerSideForAPerSideMovement() {
+        let hold = PrescribedExercise(
+            id: UUID(), exercise: perSide(holdExercise(id: "side_plank")),
+            sets: 3, reps: nil, durationSeconds: 30, restSeconds: 30
+        )
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "3 × 0:30 per side")
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(hold),
+            "3 sets of 30 second holds per side"
+        )
+
+        let reps = PrescribedExercise(
+            id: UUID(), exercise: perSide(repExercise(id: "split_squat")),
+            sets: 3, reps: 8, durationSeconds: nil, restSeconds: 30
+        )
+        XCTAssertEqual(ActiveSessionView.targetText(reps), "3 × 8 per side")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "3 sets of 8 reps per side")
+    }
+
+    /// ...and only for a per-side movement, so a two-sided target is never described as one-sided work.
+    func testTargetTextOmitsPerSideForABilateralMovement() {
+        let hold = holdPrescription("plank", sets: 3, seconds: 30)
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "3 × 0:30")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(hold), "3 sets of 30 second holds")
+
+        let reps = repPrescription("pushup", sets: 3, reps: 8)
+        XCTAssertEqual(ActiveSessionView.targetText(reps), "3 × 8")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "3 sets of 8 reps")
+    }
+
+    // MARK: - The spoken target is grammatical at every count
+
+    /// Warm-up and cooldown slots are single-set, so VoiceOver reads the singular case on the first and
+    /// last step of *every* session - the two slots a screen-reader user meets no matter how short the
+    /// session is. The visual target ("1 × 0:45") is unaffected because it never spells the nouns out.
+    func testSpokenTargetIsSingularForASingleSetSlot() {
+        let hold = holdPrescription("cat_cow", sets: 1, seconds: 45)
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "1 × 0:45")
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(hold),
+            "1 set of a 45 second hold",
+            "a single-set hold reads as one set of one hold, not \"1 sets of 45 second holds\""
+        )
+
+        let reps = repPrescription("pushup", sets: 1, reps: 12)
+        XCTAssertEqual(ActiveSessionView.targetText(reps), "1 × 12")
+        XCTAssertEqual(ActiveSessionView.targetAccessibilityText(reps), "1 set of 12 reps")
+    }
+
+    /// The rep noun pluralises on its own count, independently of the set count - a one-rep set is
+    /// reachable at the bottom of a hard chain's Adaptive Overload.
+    func testSpokenTargetIsSingularForASingleRep() {
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(repPrescription("archer", sets: 3, reps: 1)),
+            "3 sets of 1 rep"
+        )
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(repPrescription("archer", sets: 1, reps: 1)),
+            "1 set of 1 rep"
+        )
+    }
+
+    /// Pluralisation and the per-side suffix compose, so a single-set per-side warm-up stretch - the
+    /// common bookend shape - is spoken correctly on both axes at once.
+    func testSpokenTargetComposesSingularWithPerSide() {
+        let hold = PrescribedExercise(
+            id: UUID(), exercise: perSide(holdExercise(id: "pigeon")),
+            sets: 1, reps: nil, durationSeconds: 30, restSeconds: 15
+        )
+        XCTAssertEqual(ActiveSessionView.targetText(hold), "1 × 0:30 per side")
+        XCTAssertEqual(
+            ActiveSessionView.targetAccessibilityText(hold),
+            "1 set of a 30 second hold per side"
+        )
     }
 }

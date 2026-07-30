@@ -13,14 +13,19 @@ import Foundation
 ///   mobility; an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
-///   exercise in each, and that exercise's capacity-relative reps/sets/hold.
+///   exercise in each, and that exercise's capacity-relative reps/sets/hold. During cold start Step
+///   0's Start Seed (US-O02) is resolved once here and threaded into all three - it bands the
+///   strength/primal pool, tells Step 5 which chains it withheld, and sizes Step 6's no-history
+///   target - so a self-reported level reaches every part of the block that depends on it.
 ///
 /// On top of those it owns two things the earlier steps deliberately left to assembly:
 /// - **Structure** - every session opens with a `.warmup` block (mobility); a `.cooldown` block of
 ///   static stretches closes any session longer than `cooldownThresholdMinutes`. In a short
 ///   mobility-led session the opening warm-up and the Movement Practice block are both mobility, so
 ///   the opening flow doubles as warm-up + training, exactly as the PRD describes.
-/// - **Timing fit** - the planned wall-clock is `Σ(sets × estTimePerSet) + rests + transitions`; a
+/// - **Timing fit** - the planned wall-clock is `Σ(sets × workPerSet) + rests + transitions`, where
+///   `workPerSet` re-prices the movement's estimate as a fixed per-set setup cost plus the per-unit
+///   work of the target Step 6 actually prescribed (see `workSecondsPerSet`); a
 ///   deterministic best-fit pass trims or extends the session (adding/removing whole exercises or
 ///   individual sets, never touching the capacity-relative *per-set* target from Step 6) until it
 ///   lands within `toleranceSeconds` of the request.
@@ -67,6 +72,44 @@ enum SessionAssembly {
     /// Hard backstop on the timing-fit loop; each accepted step strictly shrinks the timing error, so
     /// the loop converges well within this in practice.
     static let maxFitIterations = 200
+
+    /// Seconds of work in one second of a prescribed hold, *per side* - the per-unit half of the work
+    /// model in `workSecondsPerSet`, and the one half that needs no calibration at all: a 40-second
+    /// hold is 40 seconds of work by definition, and a 40-second hold prescribed `isPerSide` is 80.
+    static let secondsPerHoldSecond = 1.0
+
+    /// The fixed per-set cost of getting into position, bracing, and getting out again - the *setup*
+    /// half of the work model in `workSecondsPerSet` for a rep-based movement.
+    ///
+    /// A hold needs no such constant: its per-unit cost is known a priori (see `secondsPerHoldSecond`),
+    /// so its setup is simply the authored remainder `estimate - sides × defaultDurationSeconds`. A rep
+    /// carries no authored duration, so exactly one of the two halves has to be assumed and the other
+    /// read off the movement's own authored cadence. Assuming the setup - and deriving the cadence - is
+    /// the right way round: cadence genuinely varies per movement (the catalog authors anything from
+    /// `hinge_glute_bridge` at 15 reps in 40s to `push_one_arm` at 3 in 50s), while getting down onto
+    /// the floor and back up is much the same work whatever the movement is.
+    ///
+    /// The value is calibrated from the *holds*, where setup is observed rather than fitted: across the
+    /// catalog's 17 holds the authored remainder is 5-25 seconds with a median of exactly 10. Taking
+    /// the constant from a different family of movements than the ones it is then applied to is what
+    /// keeps it from being circular - the previous per-rep constant was calibrated from the four
+    /// rep-based entries it subsequently assigned zero setup to, which is no calibration at all.
+    static let setupSecondsPerSet = 10.0
+
+    /// The most of a **rep-based** movement's authored per-set estimate that `workSecondsPerSet` will
+    /// treat as fixed setup. A movement whose estimate is mostly setup carries almost no cadence signal,
+    /// so its own default would stop saying anything useful about a target moved off it; capping the
+    /// setup share at half keeps `setupSecondsPerSet` from swallowing a short authored estimate. Inert
+    /// across the shipped catalog (every estimate is at least 35s), it bounds a future entry rather than
+    /// today's.
+    ///
+    /// It deliberately does *not* apply to holds. A hold's setup is not assumed but observed - the
+    /// authored remainder left once its known per-unit cost is subtracted - so there is no constant to
+    /// bound, and capping it would corrupt a figure the catalog states outright. Several shipped holds
+    /// are legitimately over this share (`core_l_sit` implies 25s of setup on a 35s estimate, 71%;
+    /// `core_tuck_l_sit` 23s on 35s, 66%), which is the catalog describing a movement that takes longer
+    /// to get into than to hold, not an authoring error.
+    static let maxSetupShareOfEstimate = 0.5
 
     // MARK: - Entry point
 
@@ -189,13 +232,29 @@ enum SessionAssembly {
         // On a Return, discipline overrides optimization: mobility leads regardless of staleness.
         let pillarPlan = ReturnOverride.overridePlan(coldStartPlan, isReturn: isReturn)
 
+        // The Start Seed (US-O02), resolved exactly once for the whole generation. Its two halves - the
+        // difficulty floor the training pool is banded to and the volume a no-history prescription
+        // opens at - have to move together, so all three consumers below read this one resolution
+        // rather than each re-deriving it from `recentLogs`.
+        let startSeed = ColdStartOverride.startSeed(
+            user: user,
+            sessionPolicy: sessionPolicy,
+            recentLogs: recentLogs
+        )
+
         // On a Return, cap the eligible difficulty so a strong pre-gap history can't serve a punishing
-        // tier (layered after the cold-start cap; only one is ever active).
+        // tier (layered after the cold-start band; only one is ever active). The cold-start band is the
+        // Start Seed's floor (US-O02) applied under the cap (US-G01): together they restrict the
+        // strength/primal training pool to `[startingDifficultyFloor, cappedMaxDifficulty]` so an
+        // active user's first sessions open at the band entry rather than the absolute entry tier.
         let pool = ReturnOverride.returnPool(
-            ColdStartOverride.cappedPool(
-                ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
-                user: user,
-                sessionPolicy: sessionPolicy
+            ColdStartOverride.startBandedPool(
+                ColdStartOverride.cappedPool(
+                    ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs),
+                    user: user,
+                    sessionPolicy: sessionPolicy
+                ),
+                seed: startSeed
             ),
             isReturn: isReturn
         )
@@ -205,6 +264,21 @@ enum SessionAssembly {
         // the steady state, so it is a no-op.
         let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
 
+        // The Start Seed's volume half: the reps/sets a no-history prescription opens at, matched to
+        // the self-reported fitness level and eased by any cold-start down-signal already logged, so it
+        // stays in step with the banded pool above. Neutral outside the cold-start window.
+        let startVolume = startSeed.volume
+
+        // The other half of the Start Seed band: the movements it withholds accrue no history, so
+        // Step 5 is told they were never on offer rather than outgrown. Without it their untouched
+        // entry tiers win the freshness preference outright the moment the band lifts.
+        let withheldByStartSeed = ColdStartOverride.withheldByStartSeed(
+            library: library,
+            user: user,
+            sessionPolicy: sessionPolicy,
+            seed: startSeed
+        )
+
         var builder = Builder(
             library: library,
             pool: pool,
@@ -212,6 +286,8 @@ enum SessionAssembly {
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
+            startVolume: startVolume,
+            withheldByStartSeed: withheldByStartSeed,
             asOf: asOf,
             calendar: calendar
         )
@@ -248,13 +324,88 @@ enum SessionAssembly {
 
     // MARK: - Planned wall-clock
 
-    /// The planned wall-clock of an assembled `Workout`: `Σ(sets × estTimePerSet) + rests +
+    /// The planned seconds one set of `exercise` takes at the per-set target Step 6 actually
+    /// prescribed: a fixed per-set `setup` cost plus `perUnit × prescribed` of work.
+    ///
+    /// `Exercise.estimatedTimePerSetSeconds` is a single constant calibrated against the movement's
+    /// *own* default per-set value (`defaultReps` / `defaultDurationSeconds`), so reading it directly
+    /// silently assumes every set is prescribed at that default. It is not: Step 6 is
+    /// capacity-relative, and the cold-start Start Seed (US-O02) opens an active user at up to x1.30 of
+    /// the default on their very first session.
+    ///
+    /// Nor is that estimate pure per-unit work: getting into position, bracing and getting out again is
+    /// paid once per set whether the set is 8 reps or 20. Scaling the whole constant by
+    /// `prescribed / default` therefore overstates a capacity-grown set and understates a shrunk one,
+    /// so the estimate is split into its two components instead - one assumed, the other read off the
+    /// movement's own authored fields:
+    /// - a **hold**'s per-unit cost is known a priori: `secondsPerHoldSecond` per prescribed second,
+    ///   *doubled* when the movement is `isPerSide`, because a "20 second" side plank is 20 seconds
+    ///   left plus 20 seconds right. Its setup is then the authored remainder,
+    ///   `estimate - sides × defaultDurationSeconds` - 5s for `core_side_plank`, 10s for
+    ///   `mobility_pigeon` - so a grown 40s side plank costs 85s, not the 65s a per-side-blind split
+    ///   charged or the 90s strict proportionality charged.
+    /// - a **rep** carries no authored duration to anchor the per-unit half, so the other half is the
+    ///   assumed one: setup is `setupSecondsPerSet` (capped by `maxSetupShareOfEstimate`), and the
+    ///   cadence is the authored remainder `(estimate - setup) / defaultReps`. Reading cadence per
+    ///   movement is what keeps per-side and slow-tempo reps honest - `push_archer` ("3x8 clean reps per
+    ///   side", 5 reps in 50s) prices 8 reps at 74s rather than the 59s a fixed 3s-per-rep cadence gave.
+    ///
+    /// Both halves reproduce `estimatedTimePerSetSeconds` exactly at the movement's own default, so a
+    /// default-sized set is priced exactly as the catalog authored it and only a target Step 6 moved
+    /// off the default is re-priced. That keeps the planned wall-clock - and therefore the ±1 minute
+    /// promise the timing fit is measured against - honest about the session the user is actually going
+    /// to do. A movement with no default to scale against falls back to the flat estimate.
+    ///
+    /// - Note: This is per-set *work* only; the between-set rest and the inter-exercise transition are
+    ///   counted separately by `plannedSeconds`.
+    /// - Note: The work half of a session is never *timed*. Nothing counts a rep or a hold down; the
+    ///   only countdown in the player is the rest timer, and a completed set logs the target it was
+    ///   prescribed rather than anything measured. So this is a planning-only quantity that never
+    ///   reaches the UI and is never compared against reality - its single job is fitting a session to
+    ///   the minutes the user asked for. Chasing per-second accuracy on a self-paced activity would be
+    ///   false precision; what matters, and what the split above buys, is that the model carries no
+    ///   *systematic* bias, because a consistent per-slot error accumulates across a session where
+    ///   random error averages out. Set count is the better-founded lever for the same reason: each set
+    ///   added or removed moves a real, deterministic rest period.
+    static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
+        let estimate = exercise.estimatedTimePerSetSeconds
+        let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
+        let prescribed = exercise.isHold ? durationSeconds : reps
+        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else { return estimate }
+
+        let authoredPerUnit = Double(estimate) / Double(baseline)
+        let perUnit: Double
+        if exercise.isHold {
+            // Known per-unit cost; the `min` keeps a hold whose authored estimate does not even cover
+            // its own sides (bad authoring) from yielding a negative setup.
+            perUnit = min(Double(exercise.sidesPerSet) * secondsPerHoldSecond, authoredPerUnit)
+        } else {
+            // Assumed setup, derived cadence; the `max` enforces `maxSetupShareOfEstimate`.
+            perUnit = max(
+                (Double(estimate) - setupSecondsPerSet) / Double(baseline),
+                authoredPerUnit * (1 - maxSetupShareOfEstimate)
+            )
+        }
+        let setup = max(0, Double(estimate) - perUnit * Double(baseline))
+        return max(1, Int((setup + perUnit * Double(prescribed)).rounded()))
+    }
+
+    /// The planned seconds one set of a prescribed slot takes, at the target it actually carries.
+    static func workSecondsPerSet(of prescription: PrescribedExercise) -> Int {
+        workSecondsPerSet(
+            for: prescription.exercise,
+            reps: prescription.reps,
+            durationSeconds: prescription.durationSeconds
+        )
+    }
+
+    /// The planned wall-clock of an assembled `Workout`: `Σ(sets × workPerSet) + rests +
     /// transitions`. The same formula the timing-fit pass minimizes against, exposed so callers and
     /// tests measure the session exactly as the engine sized it.
     static func plannedSeconds(of workout: Workout) -> Int {
         let items = workout.blocks.flatMap(\.exercises)
         let work = items.reduce(0) { sum, item in
-            sum + item.sets * item.exercise.estimatedTimePerSetSeconds
+            sum + item.sets * workSecondsPerSet(of: item)
                 + max(0, item.sets - 1) * item.restSeconds
         }
         return work + max(0, items.count - 1) * transitionSeconds
@@ -348,12 +499,27 @@ enum SessionAssembly {
             if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
                 for (itemIndex, item) in block.items.enumerated() where item.sets < maxTrainingSets {
-                    let delta = item.exercise.estimatedTimePerSetSeconds + item.restSeconds
+                    let delta = item.workSecondsPerSet + item.restSeconds
                     result.append((.addSet(block: blockIndex, item: itemIndex), delta))
                 }
             }
             if let next = block.reserve.first {
-                result.append((.addReserve(block: blockIndex), next.seconds + transitionSeconds))
+                // A reserve may be promoted at any set count within the rails, not only at the count
+                // Step 6 prescribed. Without that, a block whose items already sit at `maxTrainingSets`
+                // (an advanced cold-start Start Seed opens at 4) has no fine-grained lever left at all:
+                // its only move is a whole extra exercise at full volume, which a short session cannot
+                // absorb, and the greedy fit parks minutes away from the request.
+                let counts = block.allowSetAdjust
+                    ? Array(minTrainingSets...max(minTrainingSets, next.sets))
+                    : [next.sets]
+                for sets in counts {
+                    var probe = next
+                    probe.sets = sets
+                    result.append((
+                        .addReserve(block: blockIndex, sets: sets),
+                        probe.seconds + transitionSeconds
+                    ))
+                }
             }
         }
         return result
@@ -369,7 +535,7 @@ enum SessionAssembly {
             if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
                 for (itemIndex, item) in block.items.enumerated() where item.sets > minTrainingSets {
-                    let delta = -(item.exercise.estimatedTimePerSetSeconds + item.restSeconds)
+                    let delta = -(item.workSecondsPerSet + item.restSeconds)
                     result.append((.removeSet(block: blockIndex, item: itemIndex), delta))
                 }
             }
@@ -386,8 +552,10 @@ enum SessionAssembly {
             blocks[block].items[item].sets += 1
         case let .removeSet(block, item):
             blocks[block].items[item].sets -= 1
-        case let .addReserve(block):
-            blocks[block].items.append(blocks[block].reserve.removeFirst())
+        case let .addReserve(block, sets):
+            var promoted = blocks[block].reserve.removeFirst()
+            promoted.sets = sets
+            blocks[block].items.append(promoted)
         case let .dropItem(block):
             let removed = blocks[block].items.removeLast()
             blocks[block].reserve.insert(removed, at: 0)
@@ -398,7 +566,7 @@ enum SessionAssembly {
     private enum Adjustment {
         case addSet(block: Int, item: Int)
         case removeSet(block: Int, item: Int)
-        case addReserve(block: Int)
+        case addReserve(block: Int, sets: Int)
         case dropItem(block: Int)
     }
 }
@@ -415,9 +583,16 @@ struct PlannedItem: Equatable {
     var sets: Int
     let restSeconds: Int
 
-    /// Planned seconds for this item alone: `sets × estTimePerSet + (sets - 1) × rest`.
+    /// Planned seconds for one set at this item's actual per-set target (see
+    /// `SessionAssembly.workSecondsPerSet(for:reps:durationSeconds:)`), so a seeded or
+    /// capacity-grown prescription is sized as the work it really is.
+    var workSecondsPerSet: Int {
+        SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds)
+    }
+
+    /// Planned seconds for this item alone: `sets × workPerSet + (sets - 1) × rest`.
     var seconds: Int {
-        sets * exercise.estimatedTimePerSetSeconds + max(0, sets - 1) * restSeconds
+        sets * workSecondsPerSet + max(0, sets - 1) * restSeconds
     }
 
     func materialize() -> PrescribedExercise {
@@ -482,6 +657,16 @@ private struct Builder {
     /// Return / Re-entry Ramp lever (US-E06): holds Step 6's capacity-derived per-set targets below
     /// normal (`< 1.0`) on a Return and its ramp, neutral (`1.0`) otherwise.
     let reentryScale: Double
+    /// Cold-start Start Seed volume (US-O02): the reps/sets a *no-history* prescription opens at,
+    /// matched to the self-reported fitness level. Applied only to the strength and primal training
+    /// blocks - the mobility bookends and Movement Practice are one set of a stretch at every level, so
+    /// warm-up/mobility/cooldown are identical for a beginner and an advanced user. Neutral outside
+    /// the cold-start window.
+    let startVolume: ColdStartOverride.VolumeSeed
+    /// The movements Step 0's Start Seed band held out of reach (US-O02): Step 5 treats them as
+    /// never-on-offer rather than fresh, which is what keeps the session after the cold-start handoff
+    /// from regressing to an untouched entry tier (see `ProgressionChainSelection`).
+    let withheldByStartSeed: Set<String>
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -648,7 +833,8 @@ private struct Builder {
                     library: library,
                     pool: pool,
                     recentLogs: recentLogs,
-                    varietyWindow: varietyWindow
+                    varietyWindow: varietyWindow,
+                    withheldByStartSeed: withheldByStartSeed
                 ),
                 !usedIds.contains(selection.exercise.id)
             else { continue }
@@ -657,7 +843,9 @@ private struct Builder {
                 for: selection.exercise,
                 recentLogs: recentLogs,
                 progressionRate: progressionRate,
-                reentryScale: reentryScale
+                reentryScale: reentryScale,
+                startingRepMultiplier: startVolume.repMultiplier,
+                startingSets: startVolume.sets
             )
             usedIds.insert(selection.exercise.id)
             items.append(
@@ -694,7 +882,8 @@ private struct Builder {
                 library: library,
                 pool: pool,
                 recentLogs: recentLogs,
-                varietyWindow: varietyWindow
+                varietyWindow: varietyWindow,
+                withheldByStartSeed: withheldByStartSeed
             ),
             selection.exercise.pillar == .primal,
             !usedIds.contains(selection.exercise.id)
@@ -704,7 +893,9 @@ private struct Builder {
             for: selection.exercise,
             recentLogs: recentLogs,
             progressionRate: progressionRate,
-            reentryScale: reentryScale
+            reentryScale: reentryScale,
+            startingRepMultiplier: startVolume.repMultiplier,
+            startingSets: startVolume.sets
         )
         usedIds.insert(selection.exercise.id)
         let item = PlannedItem(

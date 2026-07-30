@@ -614,7 +614,8 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
         _ prescription: PrescribedExercise,
         in workout: Workout,
         user: User,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
     ) async throws -> SwapOutcome {
         .noAlternative
     }
@@ -648,7 +649,8 @@ private final class FlakyWorkoutEngine: WorkoutEngineProtocol {
         _ prescription: PrescribedExercise,
         in workout: Workout,
         user: User,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
     ) async throws -> SwapOutcome {
         .noAlternative
     }
@@ -759,7 +761,8 @@ private final class PillarByDurationEngine: WorkoutEngineProtocol {
         _ prescription: PrescribedExercise,
         in workout: Workout,
         user: User,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
     ) async throws -> SwapOutcome {
         .noAlternative
     }

@@ -90,7 +90,10 @@ final class ReadyViewModel {
     /// so Start is never left waiting on an answer. Also handed to the active-session player so an
     /// in-session swap (US-K03) filters and sizes a substitute without a fresh fetch.
     private(set) var recentLogs: [WorkoutLog] = []
-    private var policy: SessionPolicy = .default
+    /// The policy today's session was generated against. Handed to the active-session player so an
+    /// in-session swap (US-K03) sizes its substitute with the same Step 6 levers the session was built
+    /// on - including the cold-start Start Seed (US-O02) - rather than reverting to the neutral defaults.
+    private(set) var policy: SessionPolicy = .default
 
     /// True once the first successful load has seeded `selectedMinutes` from the learned default.
     /// A re-appear (the Today tab's `.task` re-fires on every return) refreshes the engine inputs

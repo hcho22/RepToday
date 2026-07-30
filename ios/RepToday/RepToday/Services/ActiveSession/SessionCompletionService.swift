@@ -10,9 +10,12 @@ import Foundation
 ///   persisted history (including the just-saved log) and stored back on the user aggregate, so the
 ///   all-time `longestChain` stays honest and is never understated by a bounded log window.
 /// - **Cold-start handoff (US-G04).** This is the single caller of `ColdStartHandoff`: it advances
-///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, then
-///   reconciles the policy (clearing the now-inert `coldStartContract`). The user and policy are
-///   separate aggregates, so they are persisted separately.
+///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, recording
+///   the Start Seed floor the week actually ran at, then reconciles the policy (clearing the now-inert
+///   `coldStartContract`). The user and policy are separate aggregates, so they are persisted
+///   separately. The floor is resolved over the *full* history, not the caller's bounded `recentLogs`,
+///   so every `too_hard` rating the cold-start window produced is counted - including, once
+///   `recordPerceivedDifficulty` folds it in, the retiring session's own.
 /// - **HealthKit write (US-N03).** When a HealthKit service is wired, the completed session is mirrored
 ///   into Health as a workout. The write is fully isolated (its own `try?`) so a denied authorization or
 ///   a HealthKit failure never disrupts the essential bookkeeping above or blocks the completion; the
@@ -30,8 +33,10 @@ import Foundation
 /// from it on the next open.
 protocol SessionCompletionServiceProtocol {
     /// Persist a completed session and its post-session bookkeeping. `recentLogs` is retained for
-    /// caller stability, but the Consistency Score is recomputed over the full persisted history so the
-    /// all-time `longestChain` (US-H01) is never understated by a bounded window.
+    /// caller stability, but the full persisted history is what the bookkeeping reads, because neither
+    /// consumer tolerates a bounded window: the Consistency Score's all-time `longestChain` (US-H01)
+    /// would be understated by one, and the cold-start handoff resolves the Start Seed floor the week
+    /// actually ran at (US-O02) from every down-signal that week produced.
     func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws
 
     /// Attach the user's perceived-difficulty rating to an already-recorded log (US-L02).
@@ -39,10 +44,17 @@ protocol SessionCompletionServiceProtocol {
     /// The rating is collected on the completion screen, *after* `recordCompletedSession` has already
     /// written the durable record (US-L01), so this is a minimal, idempotent re-save of that one log by
     /// its stable id: it sets `perceivedDifficulty` and persists, and deliberately does **not** repeat
-    /// the Consistency refresh or the cold-start handoff. Those don't depend on the rating, and re-running
-    /// the handoff would advance `coldStart.sessionsLogged` a second time for the same session. The rating
-    /// is what the Asymmetric Ramp (US-E05) reads on the next session, so it only needs to land on the log
-    /// record before the next generation. A `nil` difficulty is a valid "unrated" value.
+    /// the Consistency refresh or advance the cold-start counter. Those don't depend on the rating, and
+    /// re-running the handoff would advance `coldStart.sessionsLogged` a second time for the same
+    /// session. The rating is what the Asymmetric Ramp (US-E05) reads on the next session, so it only
+    /// needs to land on the log record before the next generation. A `nil` difficulty is a valid
+    /// "unrated" value.
+    ///
+    /// It does re-resolve one *derived* fact: the Start Seed band floor the cold-start week ran at
+    /// (US-O02). Because the retiring session can only be rated after its handoff has run, a `tooHard`
+    /// on the fifth session would otherwise be dropped entirely - the strongest signal the user can
+    /// send, silently missing from the record of their own week. Only `bandFloorAtHandoff` moves; the
+    /// counter is untouched, so this can never double-advance cold start.
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws
 }
 
@@ -86,24 +98,31 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         //    snapshot would clobber it. Fall back to the snapshot only if the read is unavailable.
         let latest = (try? await userService.currentUser()) ?? user
 
-        // 3. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
+        // 3. Read the *full* persisted history (which now includes the just-saved `log`), not the
+        //    caller's bounded `recentLogs`. Both of the steps below need it and neither tolerates a
+        //    window: `longestChain` is an all-time historical maximum (US-H01: "a later break never
+        //    lowers it"), and the cold-start handoff records the Start Seed floor the week ran at,
+        //    which is resolved from every down-signal the window produced.
+        let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
+
+        // 4. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
         //    The policy read falls back to the neutral default until the Programmer has ever written
         //    one, exactly as `currentPolicy(for:)` does.
         let currentPolicy = try await policyStore.policy(for: latest.id) ?? .default
-        let handoff = ColdStartHandoff.afterCompletedSession(user: latest, sessionPolicy: currentPolicy)
+        let handoff = ColdStartHandoff.afterCompletedSession(
+            user: latest,
+            sessionPolicy: currentPolicy,
+            recentLogs: allLogs
+        )
 
-        // 4. Refresh the forgiving Consistency Score onto the user aggregate over the *full* persisted
-        //    history (which now includes the just-saved `log`), not the caller's bounded `recentLogs`.
-        //    `longestChain` is an all-time historical maximum (US-H01: "a later break never lowers it"),
-        //    so scoring over a bounded window would understate and overwrite the earned best run.
-        let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
+        // 5. Refresh the forgiving Consistency Score onto the user aggregate.
         var updatedUser = handoff.user
         updatedUser.consistency = try await consistencyService.consistency(
             for: allLogs,
             weeklyGoal: latest.consistency.weeklyGoal
         )
 
-        // 5. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
+        // 6. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
         //    only when the handoff actually changed it (i.e. cold-start just retired and cleared the
         //    contract). The two aggregates are saved separately, matching US-F03.
         try await userService.save(updatedUser)
@@ -111,7 +130,7 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
             try await policyStore.save(handoff.sessionPolicy, for: latest.id)
         }
 
-        // 6. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
+        // 7. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
         //    authorization or any HealthKit failure must never disrupt the bookkeeping above or block the
         //    completion. The service enforces idempotency by the log id, so a re-record never duplicates.
         if let healthKitService {
@@ -120,11 +139,29 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     }
 
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {
-        // A minimal re-save of the one log by its stable id (`save` is an upsert), setting only the
-        // rating. No Consistency refresh, no cold-start handoff - the rating changes neither, and
-        // re-running the handoff would double-advance cold-start for a session already recorded.
+        // 1. A minimal re-save of the one log by its stable id (`save` is an upsert), setting only the
+        //    rating. No Consistency refresh and no counter advance - the rating changes neither, and
+        //    re-running the handoff would double-advance cold-start for a session already recorded.
         var rated = log
         rated.perceivedDifficulty = difficulty
         try await workoutLogService.save(rated)
+
+        // 2. Fold the rating into the recorded Start Seed band (US-O02). The retiring session's rating
+        //    always arrives here rather than at the handoff, so without this an explicit `tooHard` on
+        //    the fifth session would never reach the band the rest of the account is measured against.
+        //    Best-effort and idempotent: the floor is re-resolved from the recorded aim over the
+        //    cold-start sessions, so repeating or changing a rating converges rather than compounding,
+        //    and a failure here must never fail the rating write the user actually asked for.
+        guard let latest = try? await userService.currentUser(),
+              latest.coldStart.bandAimAtHandoff != nil,
+              let allLogs = try? await workoutLogService.workoutLogs(from: nil, to: nil)
+        else { return }
+        let revised = ColdStartHandoff.revisedBandFloor(
+            latest,
+            coldStartLogs: ColdStartHandoff.coldStartWindowLogs(allLogs)
+        )
+        if revised != latest {
+            try? await userService.save(revised)
+        }
     }
 }

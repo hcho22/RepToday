@@ -32,10 +32,11 @@ final class ExerciseLibraryTests: XCTestCase {
 
     // MARK: - Library size and id uniqueness
 
-    /// ~38 movements per v5 5.1; the exact count is pinned so an accidental add/drop is
-    /// caught and has to be made deliberately.
+    /// The exact count is pinned so an accidental add/drop is caught and has to be made
+    /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
+    /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 42, "expected the authored 42-movement library")
+        XCTAssertEqual(exercises.count, 57, "expected the authored 57-movement library")
     }
 
     func testIdsAreUnique() {
@@ -47,21 +48,21 @@ final class ExerciseLibraryTests: XCTestCase {
     /// Every movement-pattern group from v5 5.1 is represented with the authored counts.
     func testMovementPatternCounts() {
         let counts = Dictionary(grouping: exercises, by: \.movementPattern).mapValues(\.count)
-        XCTAssertEqual(counts[.push], 8, "push group")
-        XCTAssertEqual(counts[.squat], 6, "squat group")
-        XCTAssertEqual(counts[.hinge], 4, "hinge group")
-        XCTAssertEqual(counts[.core], 6, "core group")
-        XCTAssertEqual(counts[.pull], 3, "pull/postural group")
+        XCTAssertEqual(counts[.push], 9, "push group")
+        XCTAssertEqual(counts[.squat], 8, "squat group")
+        XCTAssertEqual(counts[.hinge], 6, "hinge group")
+        XCTAssertEqual(counts[.core], 9, "core group")
+        XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 12, "Movement Practice mobility group")
-        XCTAssertEqual(counts[.locomotion], 3, "primal group")
+        XCTAssertEqual(counts[.locomotion], 7, "primal group")
     }
 
     /// All three training pillars carry movements; mobility is co-primary (not a sliver).
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
-        XCTAssertEqual(counts[.strength], 27)
+        XCTAssertEqual(counts[.strength], 38)
         XCTAssertEqual(counts[.mobility], 12)
-        XCTAssertEqual(counts[.primal], 3)
+        XCTAssertEqual(counts[.primal], 7)
     }
 
     /// `Pillar` and `ExerciseCategory` agree for the library: a strength-pillar movement is
@@ -107,6 +108,26 @@ final class ExerciseLibraryTests: XCTestCase {
         }
     }
 
+    /// Difficulty never goes *down* as a chain progresses. Step 5 relies on this silently: its
+    /// no-history entry rule scans a chain in `progressionOrder` and takes the first tier the Start
+    /// Seed band did not withhold, which is only the gentlest surviving tier when the two orderings
+    /// agree. A chain edit that inserted a tier out of difficulty order would quietly make that rule
+    /// pick a harder-than-necessary entry with nothing else failing.
+    func testChainDifficultyNeverDecreasesAlongTheChain() {
+        let chains = Dictionary(grouping: exercises, by: \.progressionChainId)
+
+        for (chainId, members) in chains {
+            let chain = members.sorted { $0.progressionOrder < $1.progressionOrder }
+            for (lower, higher) in zip(chain, chain.dropFirst()) {
+                XCTAssertLessThanOrEqual(
+                    lower.difficulty, higher.difficulty,
+                    "chain \(chainId) drops from \(lower.id) (difficulty \(lower.difficulty)) to "
+                        + "\(higher.id) (difficulty \(higher.difficulty)) as it progresses"
+                )
+            }
+        }
+    }
+
     /// No dangling references: every non-nil chain link resolves to a real exercise.
     func testChainLinksResolve() {
         for ex in exercises {
@@ -140,15 +161,116 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(gated, ["push_one_arm", "squat_pistol", "core_l_sit"])
     }
 
-    /// Phase tracks difficulty intent: gated skills are the hard tiers (4-5), discipline
-    /// movements stay accessible (<= 3) so a beginner/intermediate cap always leaves a pool.
+    /// Phase gates *skills*, not tiers: the gated movements are the library's summit (difficulty 5),
+    /// and every tier beneath a summit is reachable in the Discipline Phase. That is what keeps the
+    /// reachable catalog a real 1-4 range rather than topping out at 3 - the Start Seed band
+    /// (US-O02) has nothing to band against otherwise.
     func testPhaseMatchesDifficultyIntent() {
         for ex in exercises {
             XCTAssertTrue((1...5).contains(ex.difficulty), "\(ex.id) difficulty out of range")
             if ex.phase == .strength {
-                XCTAssertGreaterThanOrEqual(ex.difficulty, 4, "\(ex.id) gated skill should be a hard tier")
+                XCTAssertEqual(ex.difficulty, 5, "\(ex.id) gated skill should be the library's summit")
             } else {
-                XCTAssertLessThanOrEqual(ex.difficulty, 3, "\(ex.id) discipline movement should stay accessible")
+                XCTAssertLessThanOrEqual(ex.difficulty, 4, "\(ex.id) discipline movement must stay reachable")
+            }
+        }
+        let disciplineTiers = Set(exercises.filter { $0.phase == .discipline }.map(\.difficulty))
+        XCTAssertEqual(disciplineTiers, [1, 2, 3, 4], "every non-summit tier must be reachable")
+    }
+
+    // MARK: - Start Seed band coverage (US-O02)
+
+    /// The library's shape half of the Start Seed contract: within the band each fitness level's
+    /// cold-start contract opens (`[startingDifficultyFloor, cappedMaxDifficulty]`), every banded
+    /// movement pattern must offer at least **two progression chains**.
+    ///
+    /// Two chains, not two movements, is the number that matters: Step 5 resolves a pattern by
+    /// picking one exercise *per chain* and then preferring a candidate the variety window has not
+    /// seen, so a pattern with a single in-band chain hands the user the identical movement every
+    /// session of the cold-start week however many tiers that one chain carries.
+    ///
+    /// The loop runs over `bandablePatterns` - every pattern the *catalog* offers - deliberately, not
+    /// over the patterns the band happens to leave standing. Deriving the expectation from the banded
+    /// subset would let a pattern with zero in-band movements drop out of the loop and pass, which is
+    /// exactly the case that breaks the guarantee.
+    func testAdvancedStartBandHasRoomToRotate() {
+        typealias Contract = SessionPolicy.ColdStartContract
+
+        for level in FitnessLevel.allCases {
+            let floor = Contract.startingDifficultyFloor(for: level)
+            let cap = Contract.cappedMaxDifficulty(for: level)
+
+            for pattern in bandablePatterns {
+                let banded = bandableCatalog.filter {
+                    $0.movementPattern == pattern && (floor...cap).contains($0.difficulty)
+                }
+                let chains = Set(banded.map(\.progressionChainId))
+                XCTAssertGreaterThanOrEqual(
+                    chains.count, 2,
+                    "\(level)'s [\(floor), \(cap)] band leaves the \(pattern) pattern only "
+                        + "\(chains.count) chain(s), so the variety window has nothing to rotate over"
+                )
+            }
+        }
+    }
+
+    /// The training catalog the Start Seed band applies to: Discipline-Phase strength and primal
+    /// movements (`ColdStartOverride` bands exactly these; mobility is never floored).
+    private var bandableCatalog: [Exercise] {
+        exercises.filter {
+            $0.phase == .discipline && ($0.pillar == .strength || $0.pillar == .primal)
+        }
+    }
+
+    /// Every movement pattern that catalog reaches. The band's guarantees are asserted over all of
+    /// these, so a pattern the band empties fails rather than silently disappearing from the check.
+    private var bandablePatterns: [MovementPattern] {
+        MovementPattern.allCases.filter { pattern in
+            bandableCatalog.contains { $0.movementPattern == pattern }
+        }
+    }
+
+    /// The catalog must actually reach the patterns the engine bands, so the two gates below are
+    /// never vacuously true.
+    func testTheBandableCatalogCoversTheTrainingPatterns() {
+        XCTAssertEqual(
+            Set(bandablePatterns),
+            [.push, .pull, .squat, .hinge, .core, .locomotion],
+            "the Start Seed band's guarantees are only meaningful over the patterns it reaches"
+        )
+    }
+
+    /// Every banded pattern spans at least two *tiers* inside a seeded band, so the band is a real
+    /// range rather than a single difficulty wearing a `[floor, cap]` label. This is the gate the
+    /// `SessionPolicy.ColdStartContract.startingDifficultyFloor` tuning rests on: set a level's floor
+    /// to its own cap, or leave a pattern topping out at the floor, and this fails.
+    ///
+    /// Only the levels that actually band are checked - a beginner's floor is the neutral `1`, so
+    /// `ColdStartOverride.startBandedPool` is a no-op for them and the whole catalog beneath the cap
+    /// stays eligible.
+    ///
+    /// Like the gate above, this walks every pattern the catalog offers rather than the patterns the
+    /// band leaves standing: a pattern the band empties has *one* tier's worth of coverage (none), and
+    /// must fail here rather than exempt itself from the loop.
+    func testEveryBandedPatternSpansTwoTiersInsideItsStartBand() {
+        typealias Contract = SessionPolicy.ColdStartContract
+
+        for level in FitnessLevel.allCases {
+            let floor = Contract.startingDifficultyFloor(for: level)
+            let cap = Contract.cappedMaxDifficulty(for: level)
+            guard floor > Contract.neutralStartingDifficultyFloor else { continue }
+
+            for pattern in bandablePatterns {
+                let tiers = Set(
+                    bandableCatalog
+                        .filter { $0.movementPattern == pattern && (floor...cap).contains($0.difficulty) }
+                        .map(\.difficulty)
+                )
+                XCTAssertGreaterThanOrEqual(
+                    tiers.count, 2,
+                    "\(level)'s [\(floor), \(cap)] band collapses the \(pattern) pattern to tier(s) "
+                        + "\(tiers.sorted()), so the band is not a real range there"
+                )
             }
         }
     }
@@ -180,6 +302,106 @@ final class ExerciseLibraryTests: XCTestCase {
             XCTAssertGreaterThan(ex.estimatedTimePerSetSeconds, 0, "\(ex.id) estimatedTimePerSetSeconds must be positive")
             XCTAssertFalse(ex.displayName.isEmpty, "\(ex.id) needs a display name")
             XCTAssertFalse(ex.advancementCriteria.isEmpty, "\(ex.id) needs advancement criteria")
+        }
+    }
+
+    /// `isPerSide` and the human-readable `advancementCriteria` must agree about the same movement.
+    ///
+    /// The flag is what the timing model reads (a per-side hold's set costs twice its prescribed
+    /// duration), while the criteria string is what the user reads, and the two are authored separately
+    /// in the same JSON entry. Nothing at runtime cross-checks them, so a new movement whose criteria say
+    /// "per side" while the flag is missing would be silently under-timed by half its work - this is the
+    /// gate that makes that loud, in both directions.
+    func testPerSideFlagMatchesTheAuthoredAdvancementCriteria() {
+        // Every criteria string has to match one of the recognised authoring templates. Matching a
+        // *closed* set of phrasings positively, rather than scanning an open string for a whitelist of
+        // per-side phrases, is what makes an unfamiliar wording fail here instead of falling through to
+        // "not per side" - which would silently under-time the movement by half, the exact failure this
+        // gate exists to prevent. A criteria authored "3x8 clean reps per arm" (natural for the upper
+        // body, and `push_one_arm` already exists) matches no template and fails loudly; the fix is then
+        // a deliberate decision to extend the grammar and the flag together, not a silent default.
+        let body = #"(?:\d+x\d+ (?:clean |slow )?reps|\d+x\d+ steps|\d+x\d+s hold"#
+            + #"|\d+ reps|hold \d+s(?: comfortably)?|flow \d+ slow reps)"#
+        let perSideMarker = #"(?: (?:per|each) (?:side|leg))"#
+        let template = "^" + body + perSideMarker + "?$"
+
+        for ex in exercises {
+            let criteria = ex.advancementCriteria.lowercased()
+            XCTAssertNotNil(
+                criteria.range(of: template, options: .regularExpression),
+                "\(ex.id): advancementCriteria \"\(ex.advancementCriteria)\" matches no recognised "
+                    + "authoring template. Extend the template *and* set isPerSide deliberately - "
+                    + "leaving it unrecognised would price the movement as one-sided."
+            )
+            let saysPerSide = criteria.range(
+                of: perSideMarker + "$", options: .regularExpression
+            ) != nil
+            XCTAssertEqual(
+                ex.sidesPerSet == 2, saysPerSide,
+                "\(ex.id): isPerSide is \(ex.isPerSide == true) but its criteria read \"\(ex.advancementCriteria)\""
+            )
+        }
+    }
+
+    /// The template gate above is only as good as its laterality vocabulary, so this is the backstop: no
+    /// criteria string may mention a limb or a side at all except inside a recognised per-side marker.
+    /// "each hand", "per foot" and "per arm" are all caught here even though they are shapes the
+    /// template deliberately does not know.
+    func testNoCriteriaMentionsALimbOutsideARecognisedPerSideMarker() {
+        let limbWord = #"\b(?:side|sides|leg|legs|arm|arms|hand|hands|foot|feet|limb|limbs)\b"#
+        for ex in exercises {
+            let criteria = ex.advancementCriteria.lowercased()
+            guard criteria.range(of: limbWord, options: .regularExpression) != nil else { continue }
+            XCTAssertTrue(
+                ex.sidesPerSet == 2,
+                "\(ex.id): \"\(ex.advancementCriteria)\" names a limb but isPerSide is not set - if the "
+                    + "movement really is performed per side the flag has to say so, because the timing "
+                    + "model reads the flag and not the prose"
+            )
+        }
+    }
+
+    /// A per-side hold's authored per-set estimate has to cover the hold on both sides, or the timing
+    /// model's known per-second cost would imply a negative setup and get clamped - quietly pricing the
+    /// set below the work it contains.
+    func testPerSideHoldEstimatesCoverBothSides() throws {
+        var checked = 0
+        for ex in exercises where ex.isHold && ex.sidesPerSet == 2 {
+            // Unwrapped, not defaulted: a per-side hold with no authored duration has nothing for the
+            // estimate to cover, so the comparison below would hold trivially against zero and the
+            // movement would sail through the very gate meant to catch it.
+            let hold = try XCTUnwrap(
+                ex.defaultDurationSeconds,
+                "\(ex.id) is a hold but authors no defaultDurationSeconds"
+            )
+            XCTAssertGreaterThanOrEqual(
+                ex.estimatedTimePerSetSeconds, hold * ex.sidesPerSet,
+                "\(ex.id): a \(hold)s hold per side needs an estimate of at least \(hold * 2)s"
+            )
+            checked += 1
+        }
+        XCTAssertGreaterThan(checked, 0, "no per-side holds were checked - the gate is not running")
+    }
+
+    // MARK: - Demo animations (US-O01)
+
+    /// A movement may only name a demo animation that the app actually ships (US-O01). The player
+    /// falls back to its SF Symbol for a missing file rather than blanking, so a broken name is silent
+    /// at runtime - this is the gate that makes it loud.
+    ///
+    /// It is also the enforcement half of `docs/asset-attribution.md`: an animation stays out of the
+    /// bundle until it has a cleared license row there, so wiring an `animationName` to an uncleared
+    /// asset fails here.
+    func testEveryAnimationNameResolvesToABundledFile() {
+        let bundle = Bundle(for: AppState.self)
+        for ex in exercises {
+            guard let name = ex.animationName else { continue }
+            XCTAssertNotNil(
+                bundle.url(forResource: name, withExtension: "json"),
+                "\(ex.id) names the animation \"\(name)\", which the app bundle does not carry - "
+                    + "either ship the file (with a cleared row in docs/asset-attribution.md) or drop "
+                    + "the animationName"
+            )
         }
     }
 }

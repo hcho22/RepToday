@@ -101,11 +101,17 @@ final class ColdStartSeedingTests: XCTestCase {
         }
     }
 
-    // MARK: - Gentle-end selection, end-to-end (US-G01 validation)
+    // MARK: - Band-entry selection, end-to-end (US-G01 validation, re-based on US-O02)
 
     /// PRD validation: three fresh users (beginner/intermediate/advanced) each get a first session that
-    /// never exceeds their cap and opens at the gentle end of the eligible band.
-    func testFirstSessionCapsDifficultyAndOpensAtTheGentleEnd() async throws {
+    /// never exceeds their cap and opens at the *entry* of their band.
+    ///
+    /// US-O02 raised the band's floor from a flat `1` to a fitness-level Start Seed, so "the gentle end"
+    /// is now the gentle end of `[startingDifficultyFloor, cappedMaxDifficulty]` rather than the
+    /// library's absolute entry tier: a beginner still opens at difficulty 1, while an active user opens
+    /// at their seeded floor (clamped down to the hardest movement a pattern actually offers, since
+    /// banding never empties a pattern). The cap half of the contract is unchanged.
+    func testFirstSessionCapsDifficultyAndOpensAtTheBandEntry() async throws {
         let library = try await library()
 
         for level in FitnessLevel.allCases {
@@ -130,18 +136,25 @@ final class ColdStartSeedingTests: XCTestCase {
                 )
             }
 
-            // Gentle end: with no history, the training-block movements are the gentlest eligible tier
-            // (difficulty 1), never opening at the top of the band. Warm-up/cooldown are excluded since
-            // they are fixed structural blocks, not band-selected.
+            // Band entry: with no history, the strength/primal movements are the gentlest tier inside
+            // the seeded band, never the top of the cap. Warm-up/cooldown are excluded since they are
+            // fixed structural mobility blocks, never floored or band-selected (US-O02).
             let trainingDifficulties = workout.blocks
-                .filter { $0.category != .warmup && $0.category != .cooldown }
+                .filter { $0.category == .strength || $0.category == .primal }
                 .flatMap(\.exercises)
                 .map(\.exercise.difficulty)
             XCTAssertFalse(trainingDifficulties.isEmpty, "\(level) must have at least one training block")
+
+            // The band entry is the level's own seeded floor - derived from the contract, not
+            // re-read from the pool the assembler drew from, so this can actually fail. Equality in
+            // both directions is the point: `>=` alone would pass on a session that opened at the
+            // top of the cap, and `<=` alone on one that ignored the floor.
+            let bandEntry = SessionPolicy.ColdStartContract.startingDifficultyFloor(for: level)
             let easiest = trainingDifficulties.min()!
             XCTAssertEqual(
-                easiest, 1,
-                "\(level) first session must open at the gentle end of the band, not difficulty \(easiest)"
+                easiest, bandEntry,
+                "\(level) first session must open exactly at its band entry (\(bandEntry)), not at "
+                    + "difficulty \(easiest)"
             )
             XCTAssertLessThan(
                 trainingDifficulties.max()!, cap + 1,

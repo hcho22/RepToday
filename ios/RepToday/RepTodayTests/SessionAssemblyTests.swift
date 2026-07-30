@@ -194,6 +194,67 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
+    /// The ±1 minute promise for the population the per-side work model actually changes: a long-tenured
+    /// user whose *holds* have grown well past their defaults.
+    ///
+    /// The two fit tests above run against `someHistory()`, whose logs sit near the movements' rep
+    /// defaults and contain no holds at all - which is precisely the configuration in which the setup /
+    /// per-unit split and the per-side doubling are both no-ops, so neither could ever have caught a
+    /// per-side slot blowing the budget. This drives every per-side hold in the catalog to the top of its
+    /// rail, where `AdaptiveOverload` clamps a per-side hold to `maxHoldSeconds / sidesPerSet` so that
+    /// the *set* still costs at most three minutes rather than six.
+    func testTimingFitHoldsForCapacityGrownPerSideHolds() async throws {
+        let library = try await library()
+        let perSideHolds = library.filter { $0.isHold && $0.sidesPerSet > 1 }
+        XCTAssertFalse(perSideHolds.isEmpty, "the catalog must carry per-side holds for this to test anything")
+
+        // Worked far above every rail, so the clamp is what decides the target rather than the log.
+        let grown = WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: date(daysAgo: 2),
+            requestedMinutes: 20,
+            durationMinutes: 20,
+            shape: .blend,
+            focusPillar: nil,
+            perceivedDifficulty: .tooEasy,
+            exercises: perSideHolds.map { hold in
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: hold.id,
+                    pillar: hold.pillar,
+                    movementPattern: hold.movementPattern,
+                    completedSets: Array(
+                        repeating: CompletedSet(reps: nil, durationSeconds: 300),
+                        count: 3
+                    ),
+                    skipped: false
+                )
+            }
+        )
+
+        for minutes in durations {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: [grown])
+
+            for item in workout.blocks.flatMap(\.exercises) where item.exercise.sidesPerSet > 1 {
+                guard let seconds = item.durationSeconds else { continue }
+                XCTAssertLessThanOrEqual(
+                    seconds * item.exercise.sidesPerSet,
+                    AdaptiveOverload.maxHoldSeconds,
+                    "\(item.exercise.id) prescribes \(seconds)s per side, so the set costs "
+                        + "\(seconds * item.exercise.sidesPerSet)s - past the rail it is supposed to obey"
+                )
+            }
+
+            let planned = SessionAssembly.plannedSeconds(of: workout)
+            XCTAssertLessThanOrEqual(
+                abs(planned - minutes * 60),
+                SessionAssembly.toleranceSeconds,
+                "\(minutes) min with grown per-side holds planned \(planned)s outside ±60s"
+            )
+        }
+    }
+
     // MARK: - Latency under 100ms
 
     func testGenerationLatencyUnder100ms() async throws {
@@ -247,11 +308,12 @@ final class SessionAssemblyTests: XCTestCase {
 
     // MARK: - Blend honors the Step 2 pillar weights
 
-    /// Planned wall-clock of a single materialized block (`Σ sets × est + (sets - 1) × rest`), used to
-    /// compare how much session time each pillar block actually owns.
+    /// Planned wall-clock of a single materialized block (`Σ sets × workPerSet + (sets - 1) × rest`),
+    /// measured with the engine's own work model, used to compare how much session time each pillar
+    /// block actually owns.
     private func plannedSeconds(_ block: WorkoutBlock) -> Int {
         block.exercises.reduce(0) { sum, p in
-            sum + p.sets * p.exercise.estimatedTimePerSetSeconds + max(0, p.sets - 1) * p.restSeconds
+            sum + p.sets * SessionAssembly.workSecondsPerSet(of: p) + max(0, p.sets - 1) * p.restSeconds
         }
     }
 

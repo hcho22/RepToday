@@ -197,6 +197,69 @@ final class SessionCompletionServiceTests: XCTestCase {
         XCTAssertEqual(savedUser?.coldStart.sessionsLogged, 2, "rating does not re-advance the cold-start counter")
     }
 
+    /// The whole ordering the production flow actually produces: the retiring session's log is written
+    /// (and the band recorded) at `finish()`, and only then can the completion screen collect a rating.
+    /// A `tooHard` there is the strongest signal the user can send about the cold-start week, so it has
+    /// to reach the recorded band - without advancing the counter a second time (US-O02/US-L02).
+    func testLateTooHardOnTheRetiringSessionEasesTheRecordedBand() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.save(.seeded(forFitnessLevel: .advanced), for: "u1")
+        let logService = MockWorkoutLogService()
+        let user = makeUser(sessionsLogged: ColdStartHandoff.handoffThreshold - 1, active: true)
+        let userService = MockUserService(user: user)
+        let service = makeService(logService: logService, userService: userService, store: store)
+        let log = makeLog()
+
+        try await service.recordCompletedSession(log, user: user, recentLogs: [])
+        let atHandoff = try await userService.currentUser()
+        XCTAssertFalse(atHandoff?.coldStart.active ?? true, "the fifth session retires cold-start")
+        XCTAssertEqual(
+            atHandoff?.coldStart.bandFloorAtHandoff,
+            SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced),
+            "the session is still unrated here, so the full aim is recorded"
+        )
+
+        try await service.recordPerceivedDifficulty(.tooHard, forLog: log)
+
+        let afterRating = try await userService.currentUser()
+        XCTAssertEqual(
+            afterRating?.coldStart.bandFloorAtHandoff,
+            SessionPolicy.ColdStartContract.startingDifficultyFloor(for: .advanced) - 1,
+            "the rating that could only arrive after the handoff still eases the recorded tier"
+        )
+        XCTAssertEqual(
+            afterRating?.coldStart.sessionsLogged, ColdStartHandoff.handoffThreshold,
+            "revising the band must not advance the counter"
+        )
+    }
+
+    /// A rating on any other session leaves the recorded band alone - a skip or a rating well after the
+    /// handoff is not evidence about a band that had already retired.
+    func testRatingASessionOutsideTheColdStartWeekLeavesTheBandAlone() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.save(.default, for: "u1")
+        let logService = MockWorkoutLogService()
+        var user = makeUser(sessionsLogged: ColdStartHandoff.handoffThreshold, active: false)
+        user.coldStart.bandFloorAtHandoff = 3
+        user.coldStart.bandAimAtHandoff = 3
+        let userService = MockUserService(user: user)
+        let service = makeService(logService: logService, userService: userService, store: store)
+
+        // Five cold-start sessions already on record, then a sixth rated `tooHard`.
+        for daysAgo in stride(from: 10, through: 6, by: -1) {
+            var past = makeLog()
+            past.id = UUID()
+            past.completedAt = now.addingTimeInterval(TimeInterval(-86_400 * daysAgo))
+            try await logService.save(past)
+        }
+        let sixth = makeLog()
+        try await service.recordCompletedSession(sixth, user: user, recentLogs: [])
+        try await service.recordPerceivedDifficulty(.tooHard, forLog: sixth)
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.coldStart.bandFloorAtHandoff, 3, "the retired band is a closed fact")
+    }
+
     /// A user already warmed up (cold-start inactive) advances no counter and the policy stays put.
     func testRecordNoOpColdStartWhenAlreadyRetired() async throws {
         let store = InMemorySessionPolicyStore()

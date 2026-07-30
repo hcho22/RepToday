@@ -6,7 +6,7 @@ Derived from `prd-fitsnack-mvp-v6_0702.md` and `prd-rebrand-fitsnack-to-rep-toda
 
 **Rep Today** (formerly FitSnack; App Store listing name planned: "Rep Today, Rest Tomorrow") - a discipline-first micro-workout iOS app for busy, desk-bound adults.
 
-- **Zero-equipment, bodyweight only.** Every movement works with a floor and a wall ("hotel room test"). 42-movement library.
+- **Zero-equipment, bodyweight only.** Every movement works with a floor and a wall ("hotel room test"). 57-movement library (42 at US-B01, grown to 57 by US-O02).
 - **Opens to a ready session.** The app opens to a complete, pre-generated session at the user's learned Default Duration with one dominant Start button. It never asks "how long do you have?" before Start. Duration is a one-tap non-blocking chip (5/10/15/20/30/45/60 min) that regenerates the session in under 100ms.
 - **Sessions 5-60 minutes**, generated **on-device, deterministically, offline, in under 100ms**.
 - **The AI never generates a workout.** An AI Programmer asynchronously tunes a per-user Session Policy (progression rate, pillar weighting, variety window); the deterministic engine assembles every session. The AI is never on the path between opening the app and starting. At MVP the Programmer is deterministic on-device heuristics (option C) with exactly one optional LLM call (the "Variety Language" line), always backed by an offline template.

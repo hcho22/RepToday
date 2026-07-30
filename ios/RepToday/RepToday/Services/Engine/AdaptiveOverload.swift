@@ -85,9 +85,24 @@ enum AdaptiveOverload {
     /// (`ReturnOverride.reentryScale`) to hold the per-set target below normal and walk it back up.
     static let neutralReentryScale = 1.0
 
+    /// The neutral Start Seed volume multiplier (US-O02): `1.0` scales nothing, so the no-history
+    /// default target is exactly the exercise's own default. A cold-start user at a higher
+    /// self-reported fitness level passes a larger multiplier
+    /// (`SessionPolicy.ColdStartContract.startingRepMultiplier`) so their *first* prescription of a
+    /// movement carries proportionate volume; it is clamped to the same per-set rails as every other
+    /// target, and it never touches a capacity-derived one.
+    ///
+    /// Aliased from the policy contract's own neutral rather than restated, so the value the
+    /// Programmer writes and the value this step falls back to cannot drift apart.
+    static let neutralStartingRepMultiplier = SessionPolicy.ColdStartContract.neutralStartingRepMultiplier
+
     /// Floors and ceilings for the per-set target. The ceilings are deliberately generous - they
     /// are a safety rail against an absurd prescription, not a normal-range limiter - and the floors
     /// keep a target meaningful after repeated easing.
+    ///
+    /// `maxHoldSeconds` bounds what one *set* costs, not the number the player shows: a per-side hold
+    /// is clamped to `maxHoldSeconds / sidesPerSet` so three minutes stays three minutes whether the
+    /// movement is held once or once per side (see `clampPerSet`).
     static let minReps = 3
     static let maxReps = 50
     static let minHoldSeconds = 10
@@ -96,10 +111,11 @@ enum AdaptiveOverload {
     /// Set-count bounds, and the default when the user has no history for the exercise. The exercise
     /// carries a default *per-set* value (`defaultReps`/`defaultDurationSeconds`) but no default set
     /// count, so `defaultSets` supplies it; once there is history the set count tracks what the user
-    /// actually sustained.
+    /// actually sustained. Like `neutralStartingRepMultiplier`, `defaultSets` is aliased from the
+    /// policy contract's neutral Start Seed so the two cannot drift.
     static let minSets = 1
     static let maxSets = 4
-    static let defaultSets = 3
+    static let defaultSets = SessionPolicy.ColdStartContract.neutralStartingSets
 
     // MARK: Target selection
 
@@ -118,19 +134,33 @@ enum AdaptiveOverload {
     /// back gradually. It is applied only to capacity-derived targets - a no-history default is already
     /// the gentle starting value and is left untouched - and it always lands at least one below the
     /// un-held target (down to the safety floor) so the ease is never lost to rounding.
+    ///
+    /// `startingRepMultiplier` / `startingSets` are the cold-start **Start Seed** (US-O02), and they
+    /// apply *only* to the no-history default target - the very first prescription of a movement, where
+    /// there is no demonstrated capacity to be relative to and the exercise's own default would
+    /// otherwise under-serve a genuinely active user. Both are clamped to the existing rails, and both
+    /// are ignored the moment the user has logged the movement, so session 2+ stays capacity-relative
+    /// exactly as before. The neutral values reproduce the pre-seed target precisely.
     static func target(
         for exercise: Exercise,
         recentLogs: [WorkoutLog],
         progressionRate: Double = neutralProgressionRate,
-        reentryScale: Double = neutralReentryScale
+        reentryScale: Double = neutralReentryScale,
+        startingRepMultiplier: Double = neutralStartingRepMultiplier,
+        startingSets: Int = defaultSets
     ) -> OverloadTarget {
         guard let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs) else {
-            return defaultTarget(for: exercise)
+            return defaultTarget(
+                for: exercise,
+                startingRepMultiplier: startingRepMultiplier,
+                startingSets: startingSets
+            )
         }
         let perSet = adjusted(
             capacity.perSetValue,
             signal: capacity.signal,
             isHold: exercise.isHold,
+            sides: exercise.sidesPerSet,
             progressionRate: progressionRate,
             reentryScale: reentryScale
         )
@@ -206,15 +236,24 @@ enum AdaptiveOverload {
         }
     }
 
-    /// The starting target when there is no usable history: the exercise's own per-set default over
-    /// `defaultSets`, clamped to the safety rails.
-    private static func defaultTarget(for exercise: Exercise) -> OverloadTarget {
+    /// The starting target when there is no usable history: the exercise's own per-set default scaled
+    /// by the Start Seed's `startingRepMultiplier` over `startingSets` (US-O02), clamped to the safety
+    /// rails. The neutral seed (`x1.0`, `defaultSets`) is the pre-seed target exactly.
+    private static func defaultTarget(
+        for exercise: Exercise,
+        startingRepMultiplier: Double,
+        startingSets: Int
+    ) -> OverloadTarget {
+        let sets = clampSets(startingSets)
+        let multiplier = max(0, startingRepMultiplier)
         if exercise.isHold {
-            let seconds = clampPerSet(exercise.defaultDurationSeconds ?? minHoldSeconds, isHold: true)
-            return OverloadTarget(sets: defaultSets, reps: nil, durationSeconds: seconds)
+            let base = exercise.defaultDurationSeconds ?? minHoldSeconds
+            let seconds = clampPerSet(rounded(base, by: multiplier), isHold: true, sides: exercise.sidesPerSet)
+            return OverloadTarget(sets: sets, reps: nil, durationSeconds: seconds)
         } else {
-            let reps = clampPerSet(exercise.defaultReps ?? minReps, isHold: false)
-            return OverloadTarget(sets: defaultSets, reps: reps, durationSeconds: nil)
+            let base = exercise.defaultReps ?? minReps
+            let reps = clampPerSet(rounded(base, by: multiplier), isHold: false, sides: exercise.sidesPerSet)
+            return OverloadTarget(sets: sets, reps: reps, durationSeconds: nil)
         }
     }
 
@@ -232,10 +271,15 @@ enum AdaptiveOverload {
     /// otherwise-prescribed value and lands at least one below it (down to the floor), so a Return /
     /// Re-entry Ramp session is always gentler than the un-held session while remaining within the
     /// rails. The neutral `1.0` is a no-op, so the pre-ramp curve is reproduced exactly.
+    ///
+    /// `sides` is the movement's `sidesPerSet`, passed straight to `clampPerSet` so the hold ceiling
+    /// bounds what one *set* costs rather than what the player displays - `maxHoldSeconds` on a
+    /// per-side hold would otherwise mean twice that much work.
     private static func adjusted(
         _ capacity: Int,
         signal: RampSignal,
         isHold: Bool,
+        sides: Int,
         progressionRate: Double,
         reentryScale: Double
     ) -> Int {
@@ -251,7 +295,7 @@ enum AdaptiveOverload {
         let held = reentryScale < neutralReentryScale
             ? min(rounded(scaled, by: reentryScale), scaled - 1)
             : scaled
-        return clampPerSet(held, isHold: isHold)
+        return clampPerSet(held, isHold: isHold, sides: sides)
     }
 
     /// Scales an advancing multiplier by `progressionRate` around `1.0`: the deviation from
@@ -265,9 +309,19 @@ enum AdaptiveOverload {
         Int((Double(value) * factor).rounded())
     }
 
-    private static func clampPerSet(_ value: Int, isHold: Bool) -> Int {
-        let lo = isHold ? minHoldSeconds : minReps
-        let hi = isHold ? maxHoldSeconds : maxReps
+    /// Clamps a per-set target to the safety rails, reading `maxHoldSeconds` as the ceiling on what the
+    /// *set* costs rather than on the number shown.
+    ///
+    /// A per-side hold is performed once per side, so a prescribed "90 seconds" of `core_side_plank` is
+    /// three minutes of holding. Capping the prescribed number alone would let an `isPerSide` movement
+    /// reach six minutes in a single set - past the entire budget of a 5-minute session - which is
+    /// exactly the absurd prescription the rail exists to prevent. Dividing the ceiling by `sides` makes
+    /// the rail mean what its doc says for every movement. The floor stays per-side (10 seconds a side
+    /// is still a meaningful hold), and `min` keeps it from crossing the divided ceiling.
+    private static func clampPerSet(_ value: Int, isHold: Bool, sides: Int) -> Int {
+        let effectiveSides = max(1, sides)
+        let hi = isHold ? maxHoldSeconds / effectiveSides : maxReps
+        let lo = min(isHold ? minHoldSeconds : minReps, hi)
         return min(max(value, lo), hi)
     }
 

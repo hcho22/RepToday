@@ -73,6 +73,7 @@ struct ReadyView: View {
                     workoutEngine: services.workoutEngine,
                     user: viewModel.user,
                     recentLogs: viewModel.recentLogs,
+                    sessionPolicy: viewModel.policy,
                     store: viewModel.sessionStore,
                     userId: viewModel.user?.id,
                     completionService: services.sessionCompletionService,
@@ -84,6 +85,7 @@ struct ReadyView: View {
                     workoutEngine: services.workoutEngine,
                     user: viewModel.user,
                     recentLogs: viewModel.recentLogs,
+                    sessionPolicy: viewModel.policy,
                     store: viewModel.sessionStore,
                     userId: viewModel.user?.id,
                     completionService: services.sessionCompletionService,
@@ -426,21 +428,20 @@ private struct ExerciseRow: View {
         }
         .frame(minHeight: Theme.Spacing.minTouchTarget)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(prescription.exercise.displayName), \(targetText)")
+        .accessibilityLabel("\(prescription.exercise.displayName), \(spokenTarget)")
     }
 
-    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds.
+    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds, each with " per side" where the target is
+    /// per side - the same prescription the player shows, so the preview cannot describe a slot
+    /// differently from the screen the user then works it on. Shared with the player rather than
+    /// re-derived, because a second copy is how the two drifted apart before.
     private var targetText: String {
-        if let reps = prescription.reps {
-            return "\(prescription.sets) × \(reps)"
-        }
-        if let seconds = prescription.durationSeconds {
-            let minutes = seconds / 60
-            let remainder = seconds % 60
-            let time = String(format: "%d:%02d", minutes, remainder)
-            return "\(prescription.sets) × \(time)"
-        }
-        return "\(prescription.sets) sets"
+        ActiveSessionView.targetText(prescription)
+    }
+
+    /// The spoken form, which spells the nouns out instead of reading the "×" glyph aloud.
+    private var spokenTarget: String {
+        ActiveSessionView.targetAccessibilityText(prescription)
     }
 }
 

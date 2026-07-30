@@ -326,7 +326,7 @@ final class ExercisePoolFilterTests: XCTestCase {
     /// reviewable as a product-level artifact, not just an assertion.
     func testPRDValidationOverRealBundledLibrary() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertEqual(library.count, 42, "should run over the full shipped library")
+        XCTAssertEqual(library.count, 57, "should run over the full shipped library")
 
         let validationUser = user(level: .beginner, phase: .discipline, injuries: ["knees"])
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: validationUser, recentLogs: [])
@@ -350,7 +350,7 @@ final class ExercisePoolFilterTests: XCTestCase {
         }
         let removed = library.filter { !kept.contains($0.id) }
 
-        print("=== US-C04 exercise pool filter — PRD validation over real Exercises.json ===")
+        print("=== US-C04 exercise pool filter - PRD validation over real Exercises.json ===")
         print("User: beginner · discipline phase · injuries: [\"knees\"] · no recent logs")
         print("Library: \(library.count) movements  ->  Eligible pool: \(pool.count)  ·  Removed: \(removed.count)")
         print("")

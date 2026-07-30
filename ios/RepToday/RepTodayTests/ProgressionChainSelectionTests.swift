@@ -70,12 +70,14 @@ final class ProgressionChainSelectionTests: XCTestCase {
         reps: [Int],
         pattern: MovementPattern = .push,
         daysAgo: Int,
-        skipped: Bool = false
+        skipped: Bool = false,
+        difficulty: PerceivedDifficulty? = nil
     ) -> WorkoutLog {
         log(
             daysAgo: daysAgo,
             [(id: id, pattern: pattern,
-              sets: reps.map { CompletedSet(reps: $0, durationSeconds: nil) }, skipped: skipped)]
+              sets: reps.map { CompletedSet(reps: $0, durationSeconds: nil) }, skipped: skipped)],
+            difficulty: difficulty
         )
     }
 
@@ -96,7 +98,8 @@ final class ProgressionChainSelectionTests: XCTestCase {
     /// A session `daysAgo` built from raw per-exercise entries.
     private func log(
         daysAgo: Int,
-        _ entries: [(id: String, pattern: MovementPattern, sets: [CompletedSet], skipped: Bool)]
+        _ entries: [(id: String, pattern: MovementPattern, sets: [CompletedSet], skipped: Bool)],
+        difficulty: PerceivedDifficulty? = nil
     ) -> WorkoutLog {
         WorkoutLog(
             id: UUID(),
@@ -106,7 +109,7 @@ final class ProgressionChainSelectionTests: XCTestCase {
             durationMinutes: 10,
             shape: .singleFocus,
             focusPillar: .strength,
-            perceivedDifficulty: nil,
+            perceivedDifficulty: difficulty,
             exercises: entries.map { entry in
                 LoggedExercise(
                     id: UUID(),
@@ -216,6 +219,51 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selection?.exercise.id, "c0")
         XCTAssertEqual(selection?.order, 0)
         XCTAssertEqual(selection?.didAdvance, false)
+    }
+
+    /// A chain the user has never worked is entered at the gentlest tier the Start Seed band did not
+    /// withhold - not at the chain's entry tier. A withheld tier was never on offer, so skipping past
+    /// it is not skipping ahead.
+    func testNoHistoryChainSkipsPastTiersTheStartSeedWithheld() {
+        let chain = makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "c1", difficulty: 2, criteria: "3x12 clean reps"),
+            (id: "c2", difficulty: 3, criteria: "3x12 clean reps"),
+        ])
+        let selection = ProgressionChainSelection.selectInChain(
+            chain,
+            eligibleIds: Set(chain.map(\.id)),
+            recentLogs: [],
+            withheldByStartSeed: ["c0"]
+        )
+        XCTAssertEqual(selection?.exercise.id, "c1", "entered past the withheld c0")
+        XCTAssertEqual(selection?.didAdvance, false, "a lateral entry is not an advancement")
+    }
+
+    /// When every eligible tier was withheld, the entry is the chain's *gentlest* eligible tier,
+    /// never its hardest. Reaching for the top of what survived would invert the very restriction
+    /// that narrowed the pool (a Return cap, an injury filter) in the first place.
+    func testNoHistoryChainWithEveryTierWithheldEntersAtItsGentlestTier() {
+        let chain = makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "c1", difficulty: 2, criteria: "3x12 clean reps"),
+        ])
+        let selection = ProgressionChainSelection.selectInChain(
+            chain,
+            eligibleIds: Set(chain.map(\.id)),
+            recentLogs: [],
+            withheldByStartSeed: ["c0", "c1"]
+        )
+        XCTAssertEqual(selection?.exercise.id, "c0")
+    }
+
+    /// The default keeps the plain chain-local behavior: nothing withheld means the chain entry.
+    func testNothingWithheldDefaultsToTheChainEntry() {
+        let chain = makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "c1", difficulty: 3, criteria: "3x12 clean reps"),
+        ])
+        XCTAssertEqual(selectInChain(chain, logs: [])?.exercise.id, "c0")
     }
 
     func testStaysAtFrontierWhenCriteriaNotMet() {
@@ -387,6 +435,111 @@ final class ProgressionChainSelectionTests: XCTestCase {
         )
         XCTAssertEqual(selection?.exercise.id, "b0") // difficulty 1 beats difficulty 2
         XCTAssertEqual(selection?.didAdvance, false)
+    }
+
+    /// Freshness never buys a regression. A chain the Start Seed band held out of reach - so it
+    /// accrued no history - must not win the variety preference with an entry tier the user was
+    /// never actually offered. This is the post-handoff cliff guard: during cold start the band
+    /// hides the gentle chains entirely, and the session the band lifts is exactly when their
+    /// untouched entry tiers become the only "fresh" candidates.
+    func testSelectPrefersRepeatingOverAChainTheBandWithheld() {
+        let library = makeChain("banded", [
+            (id: "banded_easy", difficulty: 1, criteria: "3x12 clean reps"),
+            (id: "banded_mid", difficulty: 2, criteria: "3x12 clean reps"),
+        ]) + makeChain("worked", [(id: "worked_hard", difficulty: 3, criteria: "3x99 clean reps")])
+
+        // The user worked the hard chain last session; the banded chain was never prescribable.
+        let logs = [repsLog(id: "worked_hard", reps: [8, 8, 8], daysAgo: 1)]
+        let selection = ProgressionChainSelection.select(
+            pattern: .push, library: library, pool: library, recentLogs: logs,
+            withheldByStartSeed: ["banded_easy", "banded_mid"]
+        )
+
+        XCTAssertEqual(
+            selection?.exercise.id, "worked_hard",
+            "a never-offered gentler chain must not out-rank the movement the user actually trains"
+        )
+
+        // With nothing withheld - a beginner, whose band is unfloored - freshness wins again, which
+        // is exactly the plain pre-band behavior.
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs
+            )?.exercise.id,
+            "banded_easy",
+            "an empty withheld set must reproduce the chain-local behavior exactly"
+        )
+    }
+
+    /// Setting withheld candidates aside is about *never having been offered*, not about novelty: a
+    /// fresh candidate inside the band still wins, so variety is untouched in the steady state.
+    ///
+    /// The fixture puts a genuinely withheld candidate in the running - `w0` is a real chain the band
+    /// held out of reach - so the set-aside actually narrows the field here. It pins both halves at
+    /// once: drop the set-aside and the never-offered `w0` wins on difficulty; drop the freshness
+    /// preference and `a0`, worked last session, wins on active-chain recency.
+    func testSelectStillPrefersAFreshCandidateInsideTheBand() {
+        let library = makeChain("w", [(id: "w0", difficulty: 1, criteria: "3x99 clean reps")])
+            + makeChain("a", [(id: "a0", difficulty: 3, criteria: "3x99 clean reps")])
+            + makeChain("b", [(id: "b0", difficulty: 3, criteria: "3x99 clean reps")])
+        let logs = [repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 1)]
+
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs,
+                withheldByStartSeed: ["w0"]
+            )?.exercise.id,
+            "b0"
+        )
+    }
+
+    /// A chain that tops out beneath the user's best tier is *not* retired. The band is a fixed
+    /// level-derived range, not the user's own ceiling, so a chain sitting inside it keeps competing
+    /// for the variety window however far past it the user has climbed elsewhere in the pattern.
+    func testSelectKeepsAnInBandChainTheUserHasClimbedPast() {
+        let library = makeChain("tall", [
+            (id: "tall_mid", difficulty: 3, criteria: "3x99 clean reps"),
+            (id: "tall_top", difficulty: 4, criteria: "3x99 clean reps"),
+        ]) + makeChain("short", [(id: "short_top", difficulty: 3, criteria: "3x99 clean reps")])
+
+        // The user is working the tall chain at its top tier; the short chain tops out below them.
+        let logs = [repsLog(id: "tall_top", reps: [8, 8, 8], daysAgo: 1)]
+
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: library, recentLogs: logs,
+                withheldByStartSeed: ["tall_mid"] // only the sub-band tier is withheld
+            )?.exercise.id,
+            "short_top",
+            "an in-band chain must stay in the rotation instead of being retired by a hard tier "
+                + "elsewhere in the pattern"
+        )
+    }
+
+    /// Setting candidates aside narrows the variety preference, it never cancels it. When the pool
+    /// caps every chain beneath the band - a Return, an injury filter - the band is unreachable
+    /// rather than violated, so the fresh-but-gentler candidate must still beat the one worked last
+    /// session instead of the no-repeat window silently switching itself off.
+    func testVarietyStillAppliesWhenEveryCandidateWasWithheld() {
+        let library = makeChain("a", [
+            (id: "a0", difficulty: 1, criteria: "3x99 clean reps"),
+            (id: "a_hard", difficulty: 3, criteria: "3x99 clean reps"),
+        ]) + makeChain("b", [(id: "b0", difficulty: 1, criteria: "3x99 clean reps")])
+        // The pool now offers only the difficulty-1 tiers, all of which the band withheld.
+        let pool = library.filter { $0.difficulty == 1 }
+        let logs = [
+            repsLog(id: "a_hard", reps: [8, 8, 8], daysAgo: 2),
+            repsLog(id: "a0", reps: [8, 8, 8], daysAgo: 1),
+        ]
+
+        XCTAssertEqual(
+            ProgressionChainSelection.select(
+                pattern: .push, library: library, pool: pool, recentLogs: logs,
+                withheldByStartSeed: ["a0", "b0"]
+            )?.exercise.id,
+            "b0",
+            "an unreachable band must not disable the no-repeat window"
+        )
     }
 
     func testSelectReturnsNilWhenPatternHasNoEligibleTier() {

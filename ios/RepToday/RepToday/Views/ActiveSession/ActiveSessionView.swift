@@ -26,6 +26,7 @@ struct ActiveSessionView: View {
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -38,6 +39,7 @@ struct ActiveSessionView: View {
                 swapEngine: workoutEngine,
                 user: user,
                 recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
                 completionService: completionService
@@ -52,6 +54,7 @@ struct ActiveSessionView: View {
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -64,6 +67,7 @@ struct ActiveSessionView: View {
                 swapEngine: workoutEngine,
                 user: user,
                 recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
                 completionService: completionService
@@ -185,9 +189,13 @@ struct ActiveSessionView: View {
             Text(step.prescription.exercise.displayName)
                 .font(Theme.Typography.largeTitle)
                 .foregroundStyle(Theme.Colors.textPrimary)
+            // The per-side targets are the longest strings this line renders; letting it grow
+            // vertically keeps "3 × 0:30 per side" whole at the largest Dynamic Type sizes rather than
+            // truncating away the part that says how much work the set actually is.
             Text(Self.targetText(step.prescription))
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.accent)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -442,25 +450,62 @@ struct ActiveSessionView: View {
 
     // MARK: - Formatting
 
-    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds.
-    static func targetText(_ prescription: PrescribedExercise) -> String {
-        if let reps = prescription.reps {
-            return "\(prescription.sets) × \(reps)"
-        }
-        if let seconds = prescription.durationSeconds {
-            return "\(prescription.sets) × \(clockText(seconds))"
-        }
-        return "\(prescription.sets) sets"
+    /// `" per side"` when the prescribed value is performed once on each side, empty otherwise.
+    ///
+    /// The engine charges a per-side movement for both sides - a 40-second `core_side_plank` slot is
+    /// planned as 80 seconds of work - so the target the player shows has to say so, or a user who
+    /// holds it once does half the work the session was built around. Driven off `isPerSide` (via
+    /// `sidesPerSet`), the same field the timing model reads, so the prescription and the arithmetic
+    /// behind it cannot drift apart.
+    static func perSideSuffix(_ prescription: PrescribedExercise) -> String {
+        prescription.exercise.sidesPerSet > 1 ? " per side" : ""
     }
 
-    private static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
+    /// "3 × 12" for rep-based movements, "3 × 0:30" for holds, each with " per side" where the target
+    /// is per side, falling back to the bare set count when the prescription carries neither.
+    ///
+    /// Shared with the Ready Screen's lineup rows rather than re-derived there, so the preview cannot
+    /// describe a slot differently from the player the user then works it on.
+    static func targetText(_ prescription: PrescribedExercise) -> String {
+        let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {
-            return "\(prescription.sets) sets of \(reps) reps"
+            return "\(prescription.sets) × \(reps)\(suffix)"
         }
         if let seconds = prescription.durationSeconds {
-            return "\(prescription.sets) sets of \(seconds) second holds"
+            return "\(prescription.sets) × \(clockText(seconds))\(suffix)"
         }
-        return "\(prescription.sets) sets"
+        return setsPhrase(prescription.sets)
+    }
+
+    /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds", "1 set of a
+    /// 45 second hold" - carrying the same " per side" suffix, since VoiceOver is the only place a
+    /// non-sighted user meets the prescription and dropping it there would hide exactly half the work.
+    ///
+    /// Unlike `targetText`, which shows bare numerals, this spells the nouns out, so every count it
+    /// names has to agree with its noun. Warm-up and cooldown slots are single-set, which makes the
+    /// singular the first and last thing a VoiceOver user hears in *every* session.
+    ///
+    /// Shared with the Ready Screen's lineup rows, which speak this rather than the visual string, so
+    /// no surface reads the "×" glyph aloud.
+    static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
+        let suffix = perSideSuffix(prescription)
+        if let reps = prescription.reps {
+            let repsPhrase = reps == 1 ? "1 rep" : "\(reps) reps"
+            return "\(setsPhrase(prescription.sets)) of \(repsPhrase)\(suffix)"
+        }
+        if let seconds = prescription.durationSeconds {
+            // One set holds once, so the article moves with the noun: "1 set of a 30 second hold".
+            let holdPhrase = prescription.sets == 1
+                ? "a \(seconds) second hold"
+                : "\(seconds) second holds"
+            return "\(setsPhrase(prescription.sets)) of \(holdPhrase)\(suffix)"
+        }
+        return setsPhrase(prescription.sets)
+    }
+
+    /// `"1 set"` / `"3 sets"` - the set count agreeing with its noun.
+    static func setsPhrase(_ sets: Int) -> String {
+        sets == 1 ? "1 set" : "\(sets) sets"
     }
 
     /// "M:SS" (or "H:MM:SS" past an hour) for the elapsed clock.

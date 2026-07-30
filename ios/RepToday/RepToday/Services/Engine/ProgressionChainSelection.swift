@@ -3,22 +3,59 @@ import Foundation
 /// Pipeline Step 5 of the deterministic engine (US-C05): within each pattern Step 3 chose, pick
 /// the *exact exercise* in the progression chain that matches the user's demonstrated ability, so
 /// the session is always appropriately challenging - never repeating an exercise the user has
-/// outgrown, never skipping ahead past a tier they have not yet cleared.
+/// outgrown, never advancing them past a tier they have not yet cleared.
 ///
 /// Steps 1-4 chose the session's shape, pillar(s), lead pattern, and the safe eligible pool; Step
 /// 5 walks the user up the chains inside a pattern:
 /// - **Current position** - the user's frontier in a chain is the highest-order tier they have
-///   actually worked (read back from `recentLogs`); a user with no history starts at the chain
-///   entry (`progressionOrder` 0).
+///   actually worked (read back from `recentLogs`); a user with no history in the chain enters at
+///   its gentlest eligible tier the cold-start Start Seed band did not withhold (the chain entry,
+///   `progressionOrder` 0, when nothing was withheld).
 /// - **Advancement** - when the frontier tier's `advancementCriteria` are met in the logs, the
-///   *next* tier is offered instead (and only the next - exactly one step, never a leap past an
-///   un-cleared tier). Advancement is honored only when the next tier is itself in the eligible
-///   pool, so a phase-gated or over-cap skill (e.g. the one-arm push-up) is never offered to a
-///   user who cannot yet receive it.
-/// - **Variety** - across the chains available for a pattern, an exercise used in the last 3
-///   sessions is avoided when a fresher alternative exists, so the user is not handed the same
+///   *next* tier is offered instead (and only the next - advancement inside a chain the user is
+///   already on is always exactly one step). Advancement is honored only when the next tier is
+///   itself in the eligible pool, so a phase-gated or over-cap skill (e.g. the one-arm push-up) is
+///   never offered to a user who cannot yet receive it.
+/// - **Variety** - across the chains available for a pattern, an exercise used in the last
+///   `varietyWindow` sessions (the Session Policy lever, US-E03; `recentSessionWindow` = 3 when no
+///   policy is passed) is avoided when a fresher alternative exists, so the user is not handed the same
 ///   movement every time. Variety never wins over having an exercise at all: if every candidate
 ///   was used recently, the best ability-matched pick is still returned.
+///
+/// ## Chains the Start Seed band withheld
+///
+/// Freshness has one blind spot, and it is the post-handoff difficulty cliff: a chain is "fresh"
+/// both when the user has moved past it *and* when the engine never let them see it. Step 0's Start
+/// Seed band (US-O02) does exactly the second thing - for the whole cold-start week it holds the
+/// gentle chains of every banded pattern out of the pool, so they accrue no history at all. The
+/// moment the band lifts, those untouched entry tiers are the only movements the variety window has
+/// never seen, and novelty alone hands an advanced user a wall push-up.
+///
+/// So Step 5 is told which movements were *withheld* rather than outgrown
+/// (`ColdStartOverride.withheldByStartSeed`) and simply does not count them as new: they are skipped
+/// when entering a chain with no history, and they do not win the freshness preference. Nothing is
+/// filtered out and nothing is forced - when a withheld movement is all a chain (or a whole pattern)
+/// has left, it is still selected.
+///
+/// That is what keeps this free of the precedence fights a difficulty *floor* would create with the
+/// engine's ceilings, since **discipline overrides optimization** (US-E06) and the ceilings are all
+/// discipline:
+///
+/// - **A Return** (`ReturnOverride.returnPool`, difficulty <= 2) leaves nothing in-band to prefer,
+///   so the whole candidate set comes back into scope and the gentlest tier is served, exactly as
+///   before the band existed. Same for an injury filter or any other narrowing of the pool.
+/// - **A `tooHard` session** eases the band itself (`ColdStartOverride.startSeed`), so the tier the
+///   Start Seed just stepped down to stops being withheld in the same move. Nothing re-raises it -
+///   the floor `ColdStartHandoff` records at the handoff *is* that eased floor, and the retiring
+///   session's own rating (which can only land after that handoff) is folded back into it - so the
+///   de-escalation survives the retirement rather than being recomputed away by it.
+/// - **A skipped movement** changes nothing here at all - skipping is the product's escape hatch,
+///   not evidence about ability. It eases the seeded *volume*, never the tier.
+///
+/// The band is a fact about the user's own cold-start week, not a claim derived from the onboarding
+/// self-report: it is the live seed while cold start runs, and afterwards exactly the floor recorded
+/// on `User.ColdStart.bandFloorAtHandoff`. A user who never ran a banded cold start has no recorded
+/// floor and withholds nothing.
 ///
 /// Like the earlier steps this is a pure function of its inputs - the full `library` (so chains
 /// can be reasoned about end-to-end), the eligible `pool` from Step 4, and `recentLogs` - with no
@@ -152,28 +189,46 @@ enum ProgressionChainSelection {
     /// all (the caller then drops the chain).
     ///
     /// - The user's **frontier** is the highest-order tier they have worked (non-skipped) in
-    ///   `recentLogs`. With no worked tier, selection starts at the lowest eligible tier (the
-    ///   entry, `progressionOrder` 0 for a full chain).
+    ///   `recentLogs`. With no worked tier, selection starts at the lowest eligible tier the Start
+    ///   Seed band did not withhold (the entry, `progressionOrder` 0, when nothing was withheld).
     /// - When the frontier tier's `advancementCriteria` are met in the logs and its next tier
     ///   exists, the desired tier is that next tier; otherwise it is the frontier itself.
     /// - The desired tier is then clamped to what is eligible: the highest eligible tier no higher
     ///   than desired (so a gated/over-cap next tier collapses back to the frontier rather than
     ///   leaking through), or the lowest eligible tier if none sits at or below.
+    ///
+    /// `withheldByStartSeed` are the movements Step 0's Start Seed band held out of reach, so this
+    /// user has never had the chance to work them - see the discussion on this file. It defaults to
+    /// empty, which reproduces the plain chain-local behavior exactly.
+    ///
+    /// Withholding only ever *skips past* an entry tier, and only within what the pool already
+    /// permits: when every eligible tier was withheld, the entry is the chain's gentlest eligible
+    /// tier, never its hardest. That case means the pool - a Return cap, an injury filter, a
+    /// difficulty cap - has deliberately held this chain low, and reaching for the top of what
+    /// survived would invert the very restriction that produced it.
+    ///
+    /// - Note: The one-step-at-a-time invariant governs *advancement*, which is a claim about a
+    ///   chain the user is already working. Entering a new chain is not advancement, so the entry
+    ///   may legitimately sit above `progressionOrder` 0; it is bounded by the band and by the
+    ///   eligible pool, and `didAdvance` stays `false` because nothing was cleared.
     static func selectInChain(
         _ chain: [Exercise],
         eligibleIds: Set<String>,
-        recentLogs: [WorkoutLog]
+        recentLogs: [WorkoutLog],
+        withheldByStartSeed: Set<String> = []
     ) -> ChainSelection? {
         let sorted = chain.sorted { $0.progressionOrder < $1.progressionOrder }
         let eligible = sorted.filter { eligibleIds.contains($0.id) }
         guard let lowestEligible = eligible.first else { return nil }
 
         guard let frontier = frontierTier(in: sorted, recentLogs: recentLogs) else {
-            // No history in this chain: start at the entry (lowest eligible tier).
+            // No history in this chain: enter at the gentlest eligible tier the band did not
+            // withhold, falling back to the gentlest tier the chain offers when it withheld them all.
+            let entry = eligible.first { !withheldByStartSeed.contains($0.id) } ?? lowestEligible
             return ChainSelection(
-                exercise: lowestEligible,
-                chainId: lowestEligible.progressionChainId,
-                order: lowestEligible.progressionOrder,
+                exercise: entry,
+                chainId: entry.progressionChainId,
+                order: entry.progressionOrder,
                 didAdvance: false
             )
         }
@@ -193,7 +248,7 @@ enum ProgressionChainSelection {
     // MARK: Per-pattern selection
 
     /// Selects the single exercise to prescribe for `pattern`, integrating every chain available
-    /// for it and the last-3-sessions variety rule.
+    /// for it and the `varietyWindow` no-repeat rule.
     ///
     /// `library` is the full catalog (so each chain is reasoned about end-to-end); `pool` is the
     /// eligible pool from Step 4 (so only safe, level-appropriate tiers are prescribable). Each
@@ -205,12 +260,23 @@ enum ProgressionChainSelection {
     /// `varietyWindow` is the Session Policy lever (US-E03) replacing the previously hardcoded
     /// no-repeat window; it defaults to `recentSessionWindow` so a caller that does not pass a
     /// policy keeps the pre-policy behavior exactly.
+    ///
+    /// Variety is a preference *among equals*, never a reason to go backwards. A movement the Start
+    /// Seed band withheld was never on offer, so it is not novel - it is unseen. Those candidates
+    /// are set aside *before* freshness is consulted, so novelty alone can never hand back a tier
+    /// the band spent the whole cold-start week holding out of reach.
+    ///
+    /// Setting aside narrows the preference, it never cancels it. When *every* candidate was
+    /// withheld - the pool has been capped beneath the band by a Return or an injury filter - the
+    /// band is unreachable rather than violated, every candidate comes back into scope, and the
+    /// variety window applies over them normally instead of silently switching itself off.
     static func select(
         pattern: MovementPattern,
         library: [Exercise],
         pool: [Exercise],
         recentLogs: [WorkoutLog],
-        varietyWindow: Int = recentSessionWindow
+        varietyWindow: Int = recentSessionWindow,
+        withheldByStartSeed: Set<String> = []
     ) -> ChainSelection? {
         let eligibleIds = Set(pool.map(\.id))
         let chains = Dictionary(
@@ -221,17 +287,26 @@ enum ProgressionChainSelection {
         let candidates = chains
             .sorted { $0.key < $1.key } // stable starting order before the real ordering below
             .compactMap { _, members in
-                selectInChain(members, eligibleIds: eligibleIds, recentLogs: recentLogs)
+                selectInChain(
+                    members,
+                    eligibleIds: eligibleIds,
+                    recentLogs: recentLogs,
+                    withheldByStartSeed: withheldByStartSeed
+                )
             }
         guard !candidates.isEmpty else { return nil }
 
         let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs, window: varietyWindow)
         let lastWorked = lastWorkedByChain(recentLogs: recentLogs, library: library)
 
-        // Prefer candidates whose chosen exercise was not used in the last few sessions; fall back
-        // to the full set if that leaves nothing (variety never beats having an exercise).
-        let fresh = candidates.filter { !recentlyUsed.contains($0.exercise.id) }
-        let pickFrom = fresh.isEmpty ? candidates : fresh
+        // "Never on offer" is not "fresh". Set the withheld candidates aside first - unless that
+        // leaves nothing, in which case the band is simply unreachable this session and every
+        // candidate is back in scope. Then prefer a fresh one, falling back to the whole scope
+        // (variety never beats having an exercise at all).
+        let inBand = candidates.filter { !withheldByStartSeed.contains($0.exercise.id) }
+        let inScope = inBand.isEmpty ? candidates : inBand
+        let fresh = inScope.filter { !recentlyUsed.contains($0.exercise.id) }
+        let pickFrom = fresh.isEmpty ? inScope : fresh
 
         return pickFrom.min { lhs, rhs in
             // The chain the user worked most recently wins (keep them on their active chain).

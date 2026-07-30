@@ -134,6 +134,10 @@ final class ActiveSessionViewModel {
     /// construction from the Ready Screen's already-loaded state, so a swap adds no fetch.
     private let user: User?
     private let recentLogs: [WorkoutLog]
+    /// The policy this session was generated against, carried so a mid-session swap sizes its
+    /// substitute with the same Step 6 levers - including the cold-start Start Seed (US-O02) - rather
+    /// than reverting to the neutral defaults. `.default` in previews / when none was supplied.
+    private let sessionPolicy: SessionPolicy
 
     // MARK: - Persistence (US-K04)
 
@@ -167,6 +171,11 @@ final class ActiveSessionViewModel {
     /// The perceived-difficulty rating the user gave on the completion screen, or `nil` if they haven't
     /// rated (skipping the control is treated as unrated). Feeds the Asymmetric Ramp (US-E05) on the
     /// next session: `tooHard` eases the next target, `tooEasy` intensifies it.
+    ///
+    /// During cold start a `tooHard` reaches further than the next session. Through
+    /// `SessionCompletionServiceProtocol.recordPerceivedDifficulty` it also steps the Start Seed
+    /// difficulty floor down a tier (US-O02), and on the session that retires the band that becomes a
+    /// durable account-level fact (`User.ColdStart.bandFloorAtHandoff`) rather than one session's ease.
     private(set) var perceivedDifficulty: PerceivedDifficulty?
 
     /// The durable `WorkoutLog` built once at the `finish()` transition and kept so a later rating
@@ -184,6 +193,7 @@ final class ActiveSessionViewModel {
         swapEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -194,6 +204,7 @@ final class ActiveSessionViewModel {
         self.swapEngine = swapEngine
         self.user = user
         self.recentLogs = recentLogs
+        self.sessionPolicy = sessionPolicy
         self.store = store
         self.userId = userId
         self.completionService = completionService
@@ -224,6 +235,7 @@ final class ActiveSessionViewModel {
         swapEngine: (any WorkoutEngineProtocol)? = nil,
         user: User? = nil,
         recentLogs: [WorkoutLog] = [],
+        sessionPolicy: SessionPolicy = .default,
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
@@ -235,6 +247,7 @@ final class ActiveSessionViewModel {
             swapEngine: swapEngine,
             user: user,
             recentLogs: recentLogs,
+            sessionPolicy: sessionPolicy,
             store: store,
             userId: userId,
             completionService: completionService,
@@ -448,9 +461,11 @@ final class ActiveSessionViewModel {
     /// session - the request is built from the *current* lineup, not the original).
     ///
     /// On `.substituted` the current slot is replaced in place: the substitute carries a fresh
-    /// capacity-relative target with the original slot's set count and rest preserved, the set counter
-    /// resets to 1, and any sets already recorded for the replaced movement are discarded (the
-    /// exercise is being abandoned, mirroring a skip). On `.noAlternative` the original slot stays and
+    /// capacity-relative target, the original slot's rest, and the set count the engine sized it at (the
+    /// slot's own unless that would push the session out of its time budget). The set counter resets to
+    /// 1 - which is also what keeps a substitute with *fewer* sets than the slot the user is part-way
+    /// through from stranding them past its end - and any sets already recorded for the replaced movement
+    /// are discarded (the exercise is being abandoned, mirroring a skip). On `.noAlternative` the original slot stays and
     /// `noSwapAlternative` flips so the UI shows an honest "no alternative" state. A no-op once the
     /// session is complete, while a swap is already in flight, or when swap is unavailable.
     func swapCurrentExercise() async {
@@ -468,7 +483,8 @@ final class ActiveSessionViewModel {
                 step.prescription,
                 in: snapshotForSwap(),
                 user: user,
-                recentLogs: recentLogs
+                recentLogs: recentLogs,
+                sessionPolicy: sessionPolicy
             )
         } catch {
             // An unexpected engine failure leaves the original slot untouched; the user can retry.
@@ -504,17 +520,35 @@ final class ActiveSessionViewModel {
         }
     }
 
-    /// A snapshot of the session as it stands now - every current step's prescription in one block -
-    /// so the swap step's duplicate check sees the exercises actually in play (including earlier
-    /// swaps), not the original lineup. Only the flat exercise set matters to `ExerciseSwap`; the
-    /// block grouping is collapsed and the shape metadata carried through unchanged.
+    /// A snapshot of the session as it stands now - every current step's prescription, regrouped into
+    /// the blocks the steps came from - so the swap step's duplicate check sees the exercises actually
+    /// in play (including earlier swaps) rather than the original lineup, and still sees which *block*
+    /// the slot being replaced belongs to. The block matters: `ExerciseSwap` may move a set count to
+    /// keep a substitute inside the slot's time budget, and only on the blocks the assembler itself
+    /// would adjust - never the warm-up or the cooldown. Steps are already in block order, so
+    /// consecutive steps sharing a block fold back into one; the shape metadata is carried through
+    /// unchanged.
     private func snapshotForSwap() -> Workout {
-        let block = WorkoutBlock(
-            id: workout.id,
-            title: "Session",
-            category: .strength,
-            exercises: steps.map(\.prescription)
-        )
+        var blocks: [WorkoutBlock] = []
+        for step in steps {
+            if let last = blocks.last, last.title == step.blockTitle, last.category == step.blockCategory {
+                blocks[blocks.count - 1] = WorkoutBlock(
+                    id: last.id,
+                    title: last.title,
+                    category: last.category,
+                    exercises: last.exercises + [step.prescription]
+                )
+            } else {
+                blocks.append(
+                    WorkoutBlock(
+                        id: UUID(),
+                        title: step.blockTitle,
+                        category: step.blockCategory,
+                        exercises: [step.prescription]
+                    )
+                )
+            }
+        }
         return Workout(
             id: workout.id,
             createdAt: workout.createdAt,
@@ -522,7 +556,7 @@ final class ActiveSessionViewModel {
             focusPillar: workout.focusPillar,
             requestedMinutes: workout.requestedMinutes,
             wasReturn: workout.wasReturn,
-            blocks: [block]
+            blocks: blocks
         )
     }
 

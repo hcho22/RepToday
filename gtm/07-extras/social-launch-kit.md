@@ -60,7 +60,7 @@ Timing per channel-plan.md: App Store launch first, one quiet week to shake out 
 >
 > The AI never generates a workout.
 > There is an async "Programmer" that tunes a per-user session policy - progression rate, weighting across three pillars (strength, mobility, primal movement), and a variety window.
-> A deterministic engine then assembles every session from a 42-movement bodyweight library, entirely on-device, offline, in under 100ms.
+> A deterministic engine then assembles every session from a 57-movement bodyweight library, entirely on-device, offline, in under 100ms.
 > The AI is never on the path between opening the app and starting.
 > At MVP the Programmer is deterministic on-device heuristics too; there is exactly one optional LLM call in the entire app (a single line of variety flavor text) and it always has an offline template fallback.
 >
@@ -141,7 +141,7 @@ A removed post or mod warning is a full stop for that community.
 > Solo dev here, long-time bodyweight-only trainee (small apartment, frequent travel, zero equipment).
 > My problem was never the training, it was the starting: every app wanted an account, a quiz, or a browse session before I could move.
 >
-> So I built an app that opens to a complete session - strength, mobility, and primal movement from a 42-movement floor-and-wall library - with one Start button.
+> So I built an app that opens to a complete session - strength, mobility, and primal movement from a 57-movement floor-and-wall library - with one Start button.
 > Sessions run 5 to 60 minutes, generated on the phone, offline, so it works in a hotel room with no signal.
 > Difficulty backs off immediately when a session was too hard and climbs slowly when it was too easy.
 > No streaks or badges; consistency is a rolling score that a missed day can dent but never reset.
@@ -229,7 +229,7 @@ Caption:
 
 > At launch the Programmer is deterministic on-device logic, not a model. Exactly one optional line of text in the app is AI-generated, and it always has an offline fallback.
 
-Note: the opener plus its mandatory first reply ship together; continue with 1-2 further replies covering the 42-movement library and the duration-chip regeneration.
+Note: the opener plus its mandatory first reply ship together; continue with 1-2 further replies covering the 57-movement library and the duration-chip regeneration.
 Single hashtag justified: the thread is written for iOS engineers.
 
 **Post 5 - the free-tier promise (Day 5):**
