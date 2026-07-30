@@ -2,9 +2,10 @@ import XCTest
 import SwiftUI
 @testable import RepToday
 
-/// End-to-end evidence for the two user-facing halves of the per-side work model: the player *saying*
-/// "per side" on a movement the engine charges both sides for, and the in-session swap keeping the
-/// slot's own set count unless moving it is what keeps the session inside the minutes the user asked for.
+/// End-to-end evidence for the prescription as the user meets it: the player *saying* "per side" on a
+/// movement the engine charges both sides for, the in-session swap keeping the slot's own set count
+/// unless moving it is what keeps the session inside the minutes the user asked for, and the spoken
+/// form of that same target agreeing with its own counts on every slot of a real session.
 ///
 /// Everything here runs the real pipeline over the real bundled `Exercises.json` - `SessionAssembly`
 /// generates the session, `ExerciseSwap` (through `MockWorkoutEngine`, the same seam the app wires) does
@@ -19,10 +20,13 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// without editing the test.
     private var evidenceDir: String {
         ProcessInfo.processInfo.environment["REPTODAY_EVIDENCE_DIR"]
-            ?? "/var/folders/9t/k_yy9fqs5vd27rf12jx_rzqh0000gn/T/no-mistakes-evidence/01KYSJ41XYMX04HBJXG0WGJNEN"
+            ?? "/var/folders/9t/k_yy9fqs5vd27rf12jx_rzqh0000gn/T/no-mistakes-evidence/01KYSP7F2TSE3ZKY9MYPCXDZVZ"
     }
 
     private let requestedMinutes = 30
+
+    /// The window a hosted surface lives in while it is measured or captured.
+    private var renderWindow: UIWindow?
 
     // MARK: - Fixtures
 
@@ -316,16 +320,19 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     // MARK: - Rendered-UI evidence
 
-    /// Renders a production surface to a PNG in the evidence directory.
-    private func render<V: View>(_ view: V, size: CGSize, fileName: String) throws {
+    /// Hosts a production surface in a real key window and lets it settle, so what follows reads a
+    /// laid-out, drawn view - whether that is its pixels or its accessibility tree.
+    private func hosted<V: View>(_ view: V, size: CGSize) -> UIHostingController<V> {
         let host = UIHostingController(rootView: view)
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: size)
 
-        // A real key window makes the view actually lay out and draw its layers.
+        // A real key window makes the view actually lay out and draw its layers. It is held for the
+        // lifetime of the test case, because a released window takes the hosted view down with it.
         let window = UIWindow(frame: host.view.frame)
         window.rootViewController = host
         window.makeKeyAndVisible()
+        renderWindow = window
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 
@@ -336,6 +343,12 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         }
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
+        return host
+    }
+
+    /// Renders a production surface to a PNG in the evidence directory.
+    private func render<V: View>(_ view: V, size: CGSize, fileName: String) throws {
+        let host = hosted(view, size: size)
 
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
@@ -479,12 +492,21 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// "per side" rows can be reviewed where they are first seen. Wired to the same services the app's
     /// mock container uses, with a user whose learned default is the 30 minutes the transcripts use.
     func testRenderReadyScreenWithPerSideRows() throws {
+        try render(
+            ReadyView(services: try readyServices()),
+            size: CGSize(width: 393, height: 1420),
+            fileName: "ready-screen-per-side-rows.png"
+        )
+    }
+
+    /// The container `ReadyView` is wired to - the same services the app's mock container uses.
+    private func readyServices() throws -> ServiceContainer {
         let exerciseService = try MockExerciseService()
         let userService = MockUserService(user: steadyUser())
         let policyStore = InMemorySessionPolicyStore()
         let consistencyService = ConsistencyScoreService(now: { self.asOf }, calendar: self.calendar)
         let workoutLogService = MockWorkoutLogService(logs: history())
-        let services = ServiceContainer(
+        return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
             sessionPolicyService: DeterministicSessionPolicyService(
@@ -503,11 +525,176 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             subscriptionService: MockSubscriptionService(),
             authService: MockAuthService()
         )
+    }
 
-        try render(
-            ReadyView(services: services),
-            size: CGSize(width: 393, height: 1420),
-            fileName: "ready-screen-per-side-rows.png"
+    // MARK: - The spoken target agrees with its own counts
+
+    /// Walks a real 30-minute session and prints what the screen shows against what VoiceOver reads at
+    /// every slot, gating each spoken string on agreeing with its own numbers. The warm-up and cooldown
+    /// bookends are single-set, so the singular is the first and last thing a screen-reader user hears
+    /// in *every* session, however short - it used to read "1 sets of 45 second holds" there. The
+    /// printed table and the written transcript are the artifact; the assertions make them a gate.
+    func testGeneratedSessionSpeaksAGrammaticalTargetAtEverySlot() throws {
+        let workout = try generate()
+        let slots = workout.blocks.flatMap { block in block.exercises.map { (block.title, $0) } }
+
+        print("=== Rep Today - what VoiceOver reads at every slot of a real 30 minute session ===")
+        print(pad("BLOCK", 19) + pad("MOVEMENT", 28) + pad("SCREEN SHOWS", 20) + "VOICEOVER READS")
+        var transcript = ["| Block | Movement | Screen shows | VoiceOver reads |", "| --- | --- | --- | --- |"]
+        for (blockTitle, prescription) in slots {
+            let visual = ActiveSessionView.targetText(prescription)
+            let spoken = ActiveSessionView.targetAccessibilityText(prescription)
+            print(pad(blockTitle, 19) + pad(prescription.exercise.id, 28) + pad(visual, 20) + "\"\(spoken)\"")
+            transcript.append("| \(blockTitle) | \(prescription.exercise.displayName) | `\(visual)` | \(spoken) |")
+            assertSpokenTargetAgrees(spoken, with: prescription)
+        }
+
+        let bookends = [try XCTUnwrap(slots.first), try XCTUnwrap(slots.last)]
+        for (blockTitle, prescription) in bookends {
+            XCTAssertEqual(
+                prescription.sets, 1,
+                "\(blockTitle) is expected to be the single-set shape that made this bug unavoidable"
+            )
+            XCTAssertTrue(
+                ActiveSessionView.targetAccessibilityText(prescription).hasPrefix("1 set of "),
+                "the \(blockTitle) bookend still reads plural"
+            )
+        }
+
+        try write(transcript.joined(separator: "\n") + "\n", to: "voiceover-target-transcript.md")
+    }
+
+    /// Gates one spoken target against the prescription behind it: the set count, the rep noun and the
+    /// hold noun each have to agree with their own number, and the " per side" suffix has to survive
+    /// the pluralisation rather than being swallowed by it.
+    private func assertSpokenTargetAgrees(
+        _ spoken: String, with prescription: PrescribedExercise,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let sets = prescription.sets
+        XCTAssertTrue(
+            spoken.hasPrefix(sets == 1 ? "1 set of " : "\(sets) sets of "),
+            "\(prescription.exercise.id) prescribes \(sets) set(s) but VoiceOver reads \"\(spoken)\"",
+            file: file, line: line
         )
+        if let reps = prescription.reps {
+            XCTAssertTrue(
+                spoken.contains(reps == 1 ? "of 1 rep" : "of \(reps) reps"),
+                "\(prescription.exercise.id) prescribes \(reps) rep(s) but VoiceOver reads \"\(spoken)\"",
+                file: file, line: line
+            )
+            XCTAssertFalse(spoken.contains(" 1 reps"), "\"\(spoken)\"", file: file, line: line)
+        }
+        if let seconds = prescription.durationSeconds {
+            XCTAssertTrue(
+                spoken.contains(sets == 1 ? "of a \(seconds) second hold" : "of \(seconds) second holds"),
+                "\(prescription.exercise.id) is a \(seconds)s hold over \(sets) set(s) but VoiceOver "
+                + "reads \"\(spoken)\"",
+                file: file, line: line
+            )
+        }
+        XCTAssertEqual(
+            spoken.hasSuffix(" per side"), prescription.exercise.sidesPerSet > 1,
+            "the per-side suffix did not survive pluralisation in \"\(spoken)\"",
+            file: file, line: line
+        )
+    }
+
+    /// The Ready Screen is where the user first meets the lineup, and it carried its own copy of the
+    /// formatter that fed the *visual* string to VoiceOver - so the preview spoke "3 multiplication 12"
+    /// where the player spoke the nouns. These labels are read off the live view tree of the real
+    /// screen, not re-derived from the formatter, so they are what VoiceOver would actually announce.
+    func testReadyScreenRowsSpeakTheNounsRatherThanTheGlyph() throws {
+        let slots = try generate().blocks.flatMap(\.exercises)
+        let host = hosted(ReadyView(services: try readyServices()), size: CGSize(width: 393, height: 1420))
+        let labels = accessibilityLabels(in: host.view)
+
+        print("=== Rep Today - Ready Screen lineup, accessibility labels read off the live view tree ===")
+        var rows: [String] = []
+        for prescription in slots {
+            let name = prescription.exercise.displayName
+            let row = try XCTUnwrap(
+                labels.first { $0.hasPrefix("\(name), ") },
+                "no Ready Screen row for \(name); the screen reads \(labels)"
+            )
+            print("  \"\(row)\"")
+            rows.append(row)
+            XCTAssertEqual(
+                row, "\(name), \(ActiveSessionView.targetAccessibilityText(prescription))",
+                "the Ready Screen describes \(name) differently from the player the user works it on"
+            )
+            assertSpokenTargetAgrees(String(row.dropFirst(name.count + 2)), with: prescription)
+        }
+
+        for label in labels {
+            XCTAssertFalse(
+                label.contains("×"),
+                "a screen reader would read the multiplication glyph aloud: \"\(label)\""
+            )
+        }
+        try write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", to: "ready-screen-voiceover-labels.md")
+    }
+
+    /// Every accessibility label in a hosted hierarchy, in traversal order - the strings VoiceOver reads
+    /// as the user swipes down the screen.
+    ///
+    /// SwiftUI only builds its accessibility tree once an assistive client is attached, so a test
+    /// process has to ask for one first; without the activation below the hierarchy is empty and this
+    /// would silently report that nothing on screen is spoken at all.
+    private func accessibilityLabels(in root: UIView) -> [String] {
+        _ = UIApplication.shared.accessibilityActivate()
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+
+        var labels: [String] = []
+        var visited = Set<ObjectIdentifier>()
+
+        func walk(_ node: NSObject) {
+            guard visited.insert(ObjectIdentifier(node)).inserted else { return }
+            if node.isAccessibilityElement, let label = node.accessibilityLabel {
+                labels.append(label)
+            }
+            let count = node.accessibilityElementCount()
+            if count != NSNotFound {
+                for index in 0..<count {
+                    if let child = node.accessibilityElement(at: index) as? NSObject { walk(child) }
+                }
+            }
+            if let view = node as? UIView {
+                view.subviews.forEach(walk)
+            }
+        }
+
+        walk(root)
+        return labels
+    }
+
+    /// The player parked on each single-set bookend - the warm-up the session opens on and the cooldown
+    /// it closes on - captured with the spoken target printed alongside, so the rendered screen and the
+    /// string read over it can be reviewed together.
+    func testRenderPlayerAtTheSingleSetBookends() throws {
+        let workout = try generate()
+        let slots = workout.blocks.flatMap(\.exercises)
+        let bookends = [(0, "player-bookend-warmup.png"), (slots.count - 1, "player-bookend-cooldown.png")]
+
+        for (index, fileName) in bookends {
+            let prescription = slots[index]
+            print("rendering slot \(index + 1)/\(slots.count): \(prescription.exercise.id) - screen shows "
+                  + "\"\(ActiveSessionView.targetText(prescription))\", VoiceOver reads "
+                  + "\"\(ActiveSessionView.targetAccessibilityText(prescription))\"")
+            try render(
+                try playerView(resumed(workout, at: index, currentSet: 1)),
+                size: CGSize(width: 393, height: 852),
+                fileName: fileName
+            )
+        }
+    }
+
+    /// Writes a text artifact next to the rendered PNGs.
+    private func write(_ text: String, to fileName: String) throws {
+        try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)
+        let path = (evidenceDir as NSString).appendingPathComponent(fileName)
+        try text.write(toFile: path, atomically: true, encoding: .utf8)
+        print("TRANSCRIPT_WRITTEN \(path)")
     }
 }

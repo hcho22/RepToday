@@ -59,13 +59,13 @@ At launch no user has earned the Strength Phase, so the MVP ships the Discipline
 
 - Large touch targets (60pt minimum on active workout screens).
 - Set-by-set tracking with a rest timer between sets - skippable, extendable, and paused correctly when the app is backgrounded.
-- Per-side movements say so in the prescription itself - "3 × 0:30 per side", on screen and in VoiceOver - because the session is planned around the work on both sides, so a user who works one side never does half the session by accident.
+- Per-side movements say so in the prescription itself - "3 × 0:30 per side" on screen, "3 sets of 30 second holds per side" read aloud - because the session is planned around the work on both sides, so a user who works one side never does half the session by accident.
 - Haptic feedback (and an audio alternative) when a rest ends, so you can start the next set without watching the clock.
 - In-session swap - replace the current movement with a same-pillar/pattern peer in one tap, or an honest "no alternative" notice when none is safe and in budget, so one movement you can't or won't do never derails the session.
 - Background and resume - an in-progress session is persisted and survives backgrounding and a full relaunch; an abandoned session can be resumed at the exact place you left off, or discarded, from the Ready Screen - identity-framed, never guilt-framed.
 - Post-session celebration and summary - finishing writes the durable workout log automatically (fire-and-forget, so quitting on the celebration screen never loses the record) and shows an identity-framed wrap-up ("You showed up. That's the whole game.") with the session's actual duration and honest muscle/mobility coverage - a skipped movement is never counted.
 - Optional one-tap perceived-difficulty rating ("Too easy / Just right / Too hard") on the completion screen - it never gates Done, skipping it leaves the session unrated, and the answer tunes the next session's targets within one cycle via the asymmetric ramp.
-- Accessibility throughout: VoiceOver, Dynamic Type, and a static demo fallback for Reduce Motion.
+- Accessibility throughout: VoiceOver, Dynamic Type, and a static demo fallback for Reduce Motion. The spoken prescription reads as a sentence that agrees with its own counts - a single-set warm-up or cooldown is "1 set of a 45 second hold", never "1 sets of 45 second holds" - and the Ready Screen's lineup speaks it exactly as the player does rather than reading the "×" glyph aloud.
 
 ### Consistency, Not Gamification
 

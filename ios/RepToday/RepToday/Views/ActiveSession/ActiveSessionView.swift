@@ -462,7 +462,10 @@ struct ActiveSessionView: View {
     }
 
     /// "3 × 12" for rep-based movements, "3 × 0:30" for holds, each with " per side" where the target
-    /// is per side.
+    /// is per side, falling back to the bare set count when the prescription carries neither.
+    ///
+    /// Shared with the Ready Screen's lineup rows rather than re-derived there, so the preview cannot
+    /// describe a slot differently from the player the user then works it on.
     static func targetText(_ prescription: PrescribedExercise) -> String {
         let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {
@@ -474,13 +477,16 @@ struct ActiveSessionView: View {
         return setsPhrase(prescription.sets)
     }
 
-    /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds" - carrying
-    /// the same " per side" suffix, since VoiceOver is the only place a non-sighted user meets the
-    /// prescription and dropping it there would hide exactly half the work.
+    /// The spoken form of `targetText` - "3 sets of 12 reps", "3 sets of 30 second holds", "1 set of a
+    /// 45 second hold" - carrying the same " per side" suffix, since VoiceOver is the only place a
+    /// non-sighted user meets the prescription and dropping it there would hide exactly half the work.
     ///
     /// Unlike `targetText`, which shows bare numerals, this spells the nouns out, so every count it
     /// names has to agree with its noun. Warm-up and cooldown slots are single-set, which makes the
     /// singular the first and last thing a VoiceOver user hears in *every* session.
+    ///
+    /// Shared with the Ready Screen's lineup rows, which speak this rather than the visual string, so
+    /// no surface reads the "×" glyph aloud.
     static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
         let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {

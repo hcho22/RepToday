@@ -69,7 +69,7 @@ No XP, no levels, no badges, no streak to break.
 - Always use `Theme.Colors` / `Theme.Typography` / `Theme.Spacing`; never hardcode colors, fonts, or spacing.
 - Button height 56pt, card radius 16pt, touch targets 44pt (60pt on active workout screens).
 - Exercise library: 57 bodyweight movements in `Resources/Exercises.json`, all `equipment == []`, load-time-validated.
-- Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion, haptics with an audio alternative.
+- Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion, haptics with an audio alternative. Prescription copy has one source - `ActiveSessionView.targetText` (seen: "3 × 0:30 per side") and `.targetAccessibilityText` (spoken: nouns agreeing with their own counts, "1 set of a 45 second hold"); every other surface calls them instead of re-formatting.
 - Pure engine/evaluator logic takes an injected `asOf` clock; never read the wall clock inside it.
 - Tests live in `ios/RepToday/RepTodayTests/` (`XCTestCase` + `@testable import RepToday`); all new logic needs tests, and each story adds a row to `docs/test-coverage.md`.
 
