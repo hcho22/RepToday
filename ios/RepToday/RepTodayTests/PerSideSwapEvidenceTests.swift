@@ -947,6 +947,111 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
+    /// The secondary row at an accessibility Dynamic Type size (US-O03).
+    ///
+    /// A timed movement carries three columns - Swap, the manual completion, Skip - across a 393pt row,
+    /// and the manual one carries the longest title in it ("Finish exercise"), which is the part that
+    /// says what the tap actually does. At the largest type sizes that title needs more than one line,
+    /// so the control grows and takes the row with it rather than pinning itself to the 60pt touch
+    /// target and clipping the title away. Measured off the live accessibility tree at both sizes,
+    /// because a render alone cannot tell a grown row from a clipped one.
+    func testManualHoldCompletionGrowsRatherThanClippingAtAccessibilityType() throws {
+        let workout = try generate()
+        let slots = workout.blocks.flatMap(\.exercises)
+        let index = try XCTUnwrap(
+            slots.indices.first { slots[$0].exercise.isHold && (slots[$0].durationSeconds ?? 0) > 0 },
+            "the generated session carries no timed movement to hold"
+        )
+        // Parked on the exercise's last set, where the manual control carries the row's longest title.
+        let state = resumed(workout, at: index, currentSet: slots[index].sets)
+        let title = index == slots.count - 1 ? "Finish session" : "Finish exercise"
+
+        let atDefault = try XCTUnwrap(
+            accessibilityElement(labeled: title, in: hosted(try playerView(state), size: playerSize).view),
+            "the idle hold offers no \"\(title)\" control"
+        ).accessibilityFrame.height
+        XCTAssertGreaterThanOrEqual(
+            atDefault, Theme.Spacing.workoutTouchTarget - 0.5,
+            "the manual completion must meet the 60pt active-screen touch target"
+        )
+
+        let axHost = hosted(
+            try playerView(state).environment(\.dynamicTypeSize, .accessibility3), size: playerSize
+        )
+        let atAccessibilitySize = try XCTUnwrap(
+            accessibilityElement(labeled: title, in: axHost.view),
+            "the control is gone at accessibility type; the player reads \(accessibilityLabels(in: axHost.view))"
+        ).accessibilityFrame.height
+
+        print("=== Rep Today - \"\(title)\" is \(atDefault)pt tall at default type, "
+              + "\(atAccessibilitySize)pt at accessibility3 ===")
+        XCTAssertGreaterThan(
+            atAccessibilitySize, atDefault,
+            "the row should grow to fit \"\(title)\" at accessibility type rather than hold 60pt and clip it"
+        )
+        try render(
+            try playerView(state).environment(\.dynamicTypeSize, .accessibility3),
+            size: playerSize,
+            fileName: "player-hold-idle-accessibility-type.png"
+        )
+    }
+
+    /// Closing the player mid-hold must not leave a running countdown on disk (US-O03).
+    ///
+    /// The user walked away, so the leg freezes exactly as backgrounding freezes it: the snapshot keeps
+    /// the frozen remainder and drops the deadline, rather than persisting an instant that will be in
+    /// the past by the time they tap Resume - which is how a resume used to fire the completion cue and
+    /// bank a set nobody performed within half a second of reopening. Driven through the real close
+    /// control on the hosted production player, so it gates the dismissal path rather than the helper.
+    func testClosingThePlayerMidHoldFreezesTheLegOnDisk() async throws {
+        let store = InMemoryActiveSessionStore()
+        let workout = try generate()
+        let slots = workout.blocks.flatMap(\.exercises)
+        let index = try XCTUnwrap(
+            slots.indices.first { slots[$0].exercise.isHold && (slots[$0].durationSeconds ?? 0) > 0 },
+            "the generated session carries no timed movement to hold"
+        )
+        let host = hosted(
+            ActiveSessionView(resuming: resumed(workout, at: index, currentSet: 1), store: store, userId: "u1"),
+            size: playerSize
+        )
+
+        let startControl = try XCTUnwrap(
+            accessibilityElement(labeled: "Start hold", in: host.view)
+                ?? accessibilityElement(labeled: "Start hold, side 1 of 2", in: host.view),
+            "the live player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+        )
+        XCTAssertTrue(startControl.accessibilityActivate(), "the Start hold control did not activate")
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+
+        let closeControl = try XCTUnwrap(
+            accessibilityElement(labeled: "End session", in: host.view),
+            "the player offers no close control; it reads \(accessibilityLabels(in: host.view))"
+        )
+        XCTAssertTrue(closeControl.accessibilityActivate(), "the close control did not activate")
+
+        // The write the close queued is fire-and-forget, so the store is polled until it lands.
+        var saved: ActiveSessionState?
+        for _ in 0..<50 where saved?.hold?.remainingWhenPaused == nil {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            saved = try await store.load(for: "u1")
+        }
+        let frozen = try XCTUnwrap(saved?.hold, "closing mid-hold saved no hold at all")
+
+        print("=== Rep Today - closing mid-hold saved: remaining=\(String(describing: frozen.remainingWhenPaused))s, "
+              + "deadline=\(String(describing: frozen.deadline)) ===")
+        XCTAssertNil(frozen.deadline, "a countdown must never be left running against wall-clock time on disk")
+        XCTAssertGreaterThan(
+            frozen.remainingWhenPaused ?? 0, 0,
+            "the frozen remainder is what the resume comes back to"
+        )
+
+        // And that is what the Resume card hands back: a frozen leg, nothing recorded.
+        let resumedPlayer = ActiveSessionViewModel(state: try XCTUnwrap(saved), now: { Date() })
+        XCTAssertTrue(resumedPlayer.isHoldPaused, "the resumed leg picks up frozen where the user left it")
+        XCTAssertEqual(resumedPlayer.completedSetCount, 0, "and banks nothing the user did not do")
+    }
+
     /// Writes a text artifact next to the rendered PNGs.
     private func write(_ text: String, to fileName: String) throws {
         try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)

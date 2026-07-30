@@ -86,8 +86,20 @@ struct ActiveSessionView: View {
     /// Dismiss the player, first reporting whether the session completed so the Ready Screen can
     /// refresh deterministically rather than racing the store (US-K04). Every dismiss path routes
     /// through here, so the completion signal is never missed.
+    ///
+    /// Leaving the screen freezes a running hold exactly as backgrounding does (US-O03): the user walked
+    /// away, so the countdown stops rather than being left ticking on disk against time they were not
+    /// holding for. The dismissal is reported only once the write that freeze queued has landed, so the
+    /// Ready Screen re-reads a paused leg rather than the running one it replaced.
     private func close() {
-        onFinish?(viewModel.isComplete)
+        viewModel.pauseHold(asOf: Date())
+        let pendingWrite = viewModel.persistenceTask
+        let completed = viewModel.isComplete
+        let report = onFinish
+        Task {
+            await pendingWrite?.value
+            report?(completed)
+        }
         dismiss()
     }
 
@@ -299,6 +311,12 @@ struct ActiveSessionView: View {
     /// unavailable right now still holds its place in the row rather than letting the others slide.
     /// `hidesWhenDisabled` is for the control that should not merely be untappable but absent to the
     /// eye and to VoiceOver, while still occupying its column.
+    ///
+    /// The columns are narrow - three of them on a timed movement - and the longest title in the row
+    /// ("Finish exercise", "Finish session") is the one that says what the tap actually does, so the
+    /// label wraps and the row grows rather than truncating it away at the largest Dynamic Type sizes.
+    /// Same remedy the target line uses, and the 60pt active-screen touch target is the floor, never
+    /// the ceiling.
     private func secondaryAction(
         title: String,
         accessibilityLabel: String,
@@ -312,10 +330,11 @@ struct ActiveSessionView: View {
             Text(title)
                 .font(Theme.Typography.body)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .opacity(isEnabled ? 1 : 0.4)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.Spacing.workoutTouchTarget)
+                .frame(minHeight: Theme.Spacing.workoutTouchTarget)
         }
         .disabled(!isEnabled)
         .opacity(isHidden ? 0 : 1)

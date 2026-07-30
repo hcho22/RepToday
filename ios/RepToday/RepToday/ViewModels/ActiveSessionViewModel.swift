@@ -52,8 +52,10 @@ import Observation
 /// movement for both sides - a set of side plank is two legs, and a single countdown that recorded
 /// the set at the end of one would quietly halve the work the session was built around. Like the rest
 /// timer it runs against an absolute deadline with pause/resume on backgrounding, and it is captured
-/// in the persisted snapshot, so it survives a relaunch. Rep-based exercises are untouched: set
-/// tracker plus a manual "Complete set".
+/// in the persisted snapshot, so it survives a relaunch - as a *frozen* leg, because leaving the
+/// screen freezes the countdown rather than letting it run against time the user was not holding for,
+/// and a leg whose deadline expired anyway comes back idle rather than completing itself on the first
+/// tick after a resume. Rep-based exercises are untouched: set tracker plus a manual "Complete set".
 @Observable
 final class ActiveSessionViewModel {
 
@@ -265,7 +267,15 @@ final class ActiveSessionViewModel {
             // The side is restored whether or not a leg was running, so a per-side hold resumes on the
             // side the user is actually owed rather than repeating the one they already held.
             self.holdSide = max(1, hold.side)
-            if hold.isRunning {
+            // A leg only comes back live if it could still be counting: frozen at a captured remainder,
+            // or running against a deadline that has not passed yet. A deadline already behind the
+            // restore clock is a leg the user walked away from, not one that finished itself - restoring
+            // it as running would have the view's first tick fire the completion cue and record a set
+            // nobody performed. It comes back idle instead, owing the same side, for the user to start
+            // again deliberately. Defensive on purpose: a snapshot can predate the pause-on-dismiss
+            // below, be killed by the OS with no scene-phase transition, or simply be resumed days later.
+            let canStillCount = hold.remainingWhenPaused != nil || (hold.deadline.map { $0 > now() } ?? false)
+            if hold.isRunning, canStillCount {
                 self.isHolding = true
                 self.holdTotalSeconds = hold.totalSeconds
                 self.holdDeadline = hold.deadline
@@ -784,10 +794,12 @@ final class ActiveSessionViewModel {
         persist()
     }
 
-    /// Pause the running hold (the app is backgrounding), capturing the remaining seconds so the
-    /// countdown freezes rather than blowing past - and, crucially, so its cue cannot fire while the
-    /// user is away from the screen. A no-op if not running. The frozen remainder is persisted, so a
-    /// hold that was mid-countdown when the app was killed resumes from exactly where it stopped.
+    /// Pause the running hold (the user is leaving the screen - backgrounding the app or dismissing the
+    /// player), capturing the remaining seconds so the countdown freezes rather than blowing past - and,
+    /// crucially, so its cue cannot fire while the user is away from the screen. A no-op if not running.
+    /// The frozen remainder is persisted, so a hold that was mid-countdown when the app was killed, or
+    /// when the player was closed, resumes from exactly where it stopped rather than from a deadline
+    /// that has since gone by.
     func pauseHold(asOf date: Date) {
         guard isHolding, holdRemainingWhenPaused == nil else { return }
         holdRemainingWhenPaused = holdRemaining(asOf: date)

@@ -279,12 +279,24 @@ That last point is the visible half of a real defect the review caught.
 Both halves are closed: `canStartHold` refuses a leg while a swap is awaiting, and the `.substituted` branch now calls `resetHold()` rather than clearing the side alone.
 The deliberate asymmetry either side of it stands - the pre-`await` call stays `endHold(fireFeedback:)` and `.noAlternative` still leaves the side untouched, because a swap that substitutes nothing must not charge the user a side they already held.
 
+The same class of phantom set turned out to be reachable through a second door: **closing the player mid-hold**.
+The snapshot kept the leg as running against an absolute deadline that was, by the time the user tapped Resume, already in the past - so the restored player's first tick fired the cue and banked a set within half a second of reopening, untouched.
+Both ends of that are independently wrong and both are fixed.
+Dismissal no longer leaves a countdown running on disk: `close()` calls the same `pauseHold` backgrounding uses, because the user walking away should freeze the leg rather than let it count against time they were not holding for, and the dismissal is reported to the Ready Screen only once the write that freeze queued has landed.
+And restore is defensive regardless of how the snapshot was written - a snapshot can predate this, be killed by the OS with no scene-phase transition, or simply be resumed days later - so a leg still marked running whose deadline has already gone by comes back **idle on the side the user still owes**, offering "Start hold" again.
+Restoring it as paused-at-zero would have been no better, since resuming would complete it immediately; an unfinished leg is unfinished work, and the user re-starts it deliberately.
+
 Two smaller consolidations came with it.
 The countdown ring was duplicated between the rest overlay and the new Hold Timer, so both now render one `CountdownRing`, and the two timers a user meets in a session read as the same object.
 And the hold's countdown stands in `ExerciseDemoView.height` exactly, so starting a hold swaps the demo for the ring without shifting the exercise name and target underneath it - a jump that was visible in the first rendered pass and is gone in the second.
 
+Adding a third column to that secondary row also made its narrowest case worth measuring rather than assuming.
+Each column is roughly a third of a 393pt row, and the manual completion carries the longest title in it ("Finish exercise"), so at accessibility Dynamic Type sizes a fixed 60pt height would have clipped away exactly the words that say what the tap does.
+The label now wraps and the row grows - the same remedy the target line already documents - with 60pt as the touch-target floor rather than a ceiling, measured off the live accessibility tree at both default and accessibility type (60pt vs 144pt) instead of only rendered.
+
 Verification ran three ways in the Simulator, all against the production `ActiveSessionView`.
-Rendered PNGs of the player at a hold (idle, running, per-side side 1 and side 2) and of the rest overlay are under `artifacts/reports/us-o03/`.
+Rendered PNGs of the player at a hold (idle, running, idle at accessibility Dynamic Type, per-side side 1 and side 2) and of the rest overlay are under `artifacts/reports/us-o03/`.
 The accessibility tree of those same hosted surfaces is read back and asserted, so the spoken forms and the absent clock are gated rather than eyeballed.
 And `testHoldTimerRunsDownAndHandsOffToRestInTheLivePlayer` closes the loop in real time: it activates the real "Start hold" control the way VoiceOver's double-tap does, lets the wall clock run out on a short-authored hold, and asserts the live player has recorded the set and moved to the rest overlay - exercising the `Timer` publisher, the deadline arithmetic and the auto-advance as one system rather than as pieces.
 That one pumps the runloop until the hand-off is *observable* rather than for a fixed budget, so a loaded machine that takes longer to push the update through still fails on behaviour rather than on the clock.
+`testClosingThePlayerMidHoldFreezesTheLegOnDisk` drives the other live path the same way - start a hold, then activate the real close control - and asserts what actually reached the store: a frozen remainder and no deadline, which is what the resume then picks up with nothing banked.

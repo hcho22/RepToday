@@ -827,6 +827,44 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(resumed.holdRemaining(asOf: start.addingTimeInterval(305)), 15)
     }
 
+    /// A leg still marked running in a snapshot whose deadline has since gone by is work the user
+    /// walked away from, not work that finished itself. Restoring it as a live countdown would have the
+    /// player's first tick fire the cue and bank a set nobody performed, so it comes back idle - owing
+    /// the same side, for the user to start again deliberately. Defensive against snapshots the
+    /// pause-on-dismiss never touched: an OS kill with no scene-phase transition, or a resume days later.
+    func testRestoreDoesNotResumeAHoldWhoseDeadlineAlreadyPassed() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = ActiveSessionViewModel(
+            workout: perSideHoldWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
+        )
+        original.start()
+        original.startHold()
+        original.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done
+        original.startHold() // side 2 running, deadline start+20, never finished
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+        XCTAssertTrue(try XCTUnwrap(saved.hold).isRunning, "the snapshot under test is a running leg")
+
+        let spy = SpyRestFeedback()
+        let resumed = ActiveSessionViewModel(
+            state: saved, now: { self.start.addingTimeInterval(3600) }, feedback: spy
+        )
+
+        XCTAssertFalse(resumed.isHolding, "an expired leg never comes back counting")
+        XCTAssertFalse(resumed.isHoldPaused)
+        XCTAssertEqual(resumed.holdSide, 2, "and still owes the side it was on")
+        XCTAssertEqual(resumed.completedSetCount, 0)
+        XCTAssertTrue(resumed.canStartHold, "so the player offers Start hold again")
+
+        // The player's ticker runs from the moment the resumed session is on screen.
+        resumed.completeHoldIfElapsed(asOf: start.addingTimeInterval(3600))
+
+        XCTAssertEqual(resumed.completedSetCount, 0, "no set is logged for a leg the user never held")
+        XCTAssertEqual(spy.completions, 0, "and no cue fires for a countdown that never resumed")
+        XCTAssertFalse(resumed.isResting)
+    }
+
     /// A per-side set the user is *between* the sides of survives a relaunch: the snapshot carries the
     /// side even with nothing running, so they come back owing side 2 rather than silently repeating
     /// side 1 and doing three legs of a two-leg set.
