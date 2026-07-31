@@ -118,3 +118,14 @@ schemes:
     test:
       targets:
         - RepTodayUITests
+      # The same evidence opt-in the generated `RepToday` scheme carries, for the same reason: the
+      # XCUITest runner is a Simulator process and inherits nothing from the invoking shell, so the
+      # two variables are expanded from build settings, which xcodebuild does accept on the command
+      # line. Undefined they expand to nothing and `OnboardingImperialUITests` writes its screenshots
+      # to a per-run temporary directory, leaving the repo untouched; `REPTODAY_WRITE_EVIDENCE=1`
+      # points them at `artifacts/reports/us-o04/` and `REPTODAY_EVIDENCE_DIR=<path>` overrides the
+      # destination outright - identical to `PerSideSwapEvidenceTests` and
+      # `OnboardingBasicsEvidenceTests` in the unit bundle.
+      environmentVariables:
+        REPTODAY_WRITE_EVIDENCE: "$(REPTODAY_WRITE_EVIDENCE)"
+        REPTODAY_EVIDENCE_DIR: "$(REPTODAY_EVIDENCE_DIR)"

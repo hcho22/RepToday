@@ -24,11 +24,25 @@ import XCTest
 /// launch's failure modes on every run.
 final class OnboardingImperialUITests: XCTestCase {
 
-    /// Renders land in a per-run temporary directory unless redirected, matching the convention the
-    /// unit-bundle evidence tests already follow, so a plain test run never dirties the worktree.
+    /// Renders land in a per-run temporary directory unless `REPTODAY_WRITE_EVIDENCE=1` /
+    /// `REPTODAY_EVIDENCE_DIR` redirect them, matching `PerSideSwapEvidenceTests` and
+    /// `OnboardingBasicsEvidenceTests`, so a plain test run never dirties the worktree. The runner is a
+    /// Simulator process and inherits no shell environment, so the `RepTodayUITests` scheme forwards
+    /// both variables from build settings - which is what makes the redirect reach this bundle at all.
     private static let evidenceRoot: String = {
         let environment = ProcessInfo.processInfo.environment
         if let override = environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty { return override }
+        if environment["REPTODAY_WRITE_EVIDENCE"] == "1" {
+            return URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // RepTodayUITests
+                .deletingLastPathComponent() // RepToday
+                .deletingLastPathComponent() // ios
+                .deletingLastPathComponent() // the repo root
+                .appendingPathComponent("artifacts")
+                .appendingPathComponent("reports")
+                .appendingPathComponent("us-o04")
+                .path
+        }
         return FileManager.default.temporaryDirectory
             .appendingPathComponent("RepTodayEvidence")
             .appendingPathComponent(UUID().uuidString)
@@ -292,8 +306,9 @@ final class OnboardingImperialUITests: XCTestCase {
         return Int(value.prefix { $0.isNumber })
     }
 
-    /// Files the screenshot with the result bundle *and* writes it beside the other US-O04 renders, so
-    /// it is reviewable without opening an xcresult.
+    /// Files the screenshot with the result bundle *and* writes a copy to `evidenceRoot`, so it is
+    /// reviewable without opening an xcresult - beside the other US-O04 renders when the evidence
+    /// opt-in points it there.
     private func attach(screenshot: XCUIScreenshot, named fileName: String) {
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = fileName
