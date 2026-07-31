@@ -15,13 +15,21 @@ struct OnboardingView: View {
     private let onComplete: () -> Void
 
     init(services: ServiceContainer, onComplete: @escaping () -> Void) {
-        _viewModel = State(
-            initialValue: OnboardingViewModel(
+        self.init(
+            viewModel: OnboardingViewModel(
                 userService: services.userService,
                 sessionPolicyService: services.sessionPolicyService,
                 authService: services.authService
-            )
+            ),
+            onComplete: onComplete
         )
+    }
+
+    /// Opens the flow on an already-built view model, so a caller can render a step other than the
+    /// first. Previews and tests use it to reach a mid-flow step through the production view rather
+    /// than by reimplementing it.
+    init(viewModel: OnboardingViewModel, onComplete: @escaping () -> Void = {}) {
+        _viewModel = State(initialValue: viewModel)
         self.onComplete = onComplete
     }
 
@@ -237,10 +245,38 @@ private struct BasicsStep: View {
 
             SexPicker(sex: $viewModel.sex)
 
-            LabeledStepper(label: "Age", value: $viewModel.age, range: 13...100, unit: "years")
+            LabeledStepper(
+                label: "Age",
+                value: $viewModel.age,
+                range: 13...100,
+                display: { "\($0) years" },
+                spoken: { "\($0) years" }
+            )
 
-            LabeledSlider(label: "Height", value: $viewModel.heightCm, range: 120...220, step: 1, unit: "cm")
-            LabeledSlider(label: "Weight", value: $viewModel.weightKg, range: 35...200, step: 1, unit: "kg")
+            // Imperial in, metric stored (US-O04). The two rows step whole inches and whole pounds;
+            // `OnboardingViewModel` converts once, in `buildUser`.
+            //
+            // Height is one row over total inches rather than two controls: it keeps the step's
+            // label-value-stepper rhythm, and the split it writes back is always normalized, so
+            // "5 ft 12 in" is unreachable by construction.
+            LabeledStepper(
+                label: "Height",
+                value: $viewModel.heightTotalInches,
+                range: 48...84,
+                display: { UnitConversion.heightLabel(feet: $0 / 12, inches: $0 % 12) },
+                spoken: { UnitConversion.heightAccessibilityLabel(feet: $0 / 12, inches: $0 % 12) }
+            )
+            // Weight moves in 5lb steps: the range is wide enough that single pounds would be a long
+            // walk, and the only thing downstream reads this number for is the HealthKit MET energy
+            // estimate, where 5lb is far inside the approximation's own error.
+            LabeledStepper(
+                label: "Weight",
+                value: $viewModel.weightPounds,
+                range: 70...400,
+                step: 5,
+                display: UnitConversion.weightLabel(pounds:),
+                spoken: UnitConversion.weightAccessibilityLabel(pounds:)
+            )
         }
     }
 }
@@ -263,49 +299,152 @@ private struct SexPicker: View {
     }
 }
 
+/// One measurement row: the name on the left, the current value on the right, and a pair of step
+/// buttons that move it by exactly one unit a tap.
+///
+/// Every measurement this step collects is a whole unit (a year, an inch, a pound), and each is a
+/// number the user already knows, so an exact control beats a draggable one - the answer is recalled,
+/// not explored. `display` renders the compact on-screen read-out and `spoken` the VoiceOver value,
+/// kept apart so the screen can stay terse ("5 ft 8 in") while VoiceOver reads a real sentence
+/// ("5 feet 8 inches") instead of spelling out abbreviations.
+///
+/// The buttons are drawn rather than delegated to `Stepper`, whose halves lay out at 46.5 x 32pt -
+/// under the app's 44pt floor in the dimension a thumb is least accurate in. The row is one
+/// *adjustable* accessibility element rather than two buttons, which is the idiom VoiceOver already
+/// knows for a value control: it reads "Height, 5 feet 8 inches" and swipe up/down moves it.
 private struct LabeledStepper: View {
     let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
-    let unit: String
+    var step: Int = 1
+    let display: (Int) -> String
+    let spoken: (Int) -> String
+
+    /// At an accessibility type size the name, the value, and the buttons no longer share a line
+    /// without the value wrapping mid-row, so the row stacks instead of squeezing.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Stepper(value: $value, in: range) {
-            HStack {
-                Text(label)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer()
-                Text("\(value) \(unit)")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    name
+                    HStack(spacing: Theme.Spacing.sm) {
+                        readOut
+                        Spacer(minLength: Theme.Spacing.sm)
+                        buttons
+                    }
+                }
+            } else {
+                HStack(spacing: Theme.Spacing.sm) {
+                    name
+                    Spacer(minLength: Theme.Spacing.sm)
+                    readOut
+                    buttons
+                }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: Theme.Spacing.minTouchTarget)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(spoken(value))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: adjust(by: step)
+            case .decrement: adjust(by: -step)
+            @unknown default: break
+            }
+        }
+    }
+
+    private var name: some View {
+        Text(label)
+            .font(Theme.Typography.headline)
+            .foregroundStyle(Theme.Colors.textPrimary)
+    }
+
+    private var readOut: some View {
+        Text(display(value))
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Colors.textSecondary)
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 0) {
+            StepButton(systemName: "minus", isEnabled: value > range.lowerBound) {
+                adjust(by: -step)
+            }
+            Divider().frame(height: Theme.Spacing.lg)
+            StepButton(systemName: "plus", isEnabled: value < range.upperBound) {
+                adjust(by: step)
+            }
+        }
+        .background(
+            Theme.Colors.surface,
+            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+        )
+    }
+
+    /// Move the value and clamp it to `range`, so neither the buttons nor the VoiceOver adjustment can
+    /// walk it out of bounds.
+    private func adjust(by delta: Int) {
+        value = min(range.upperBound, max(range.lowerBound, value + delta))
     }
 }
 
-private struct LabeledSlider: View {
-    let label: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-    let unit: String
+/// One half of a `LabeledStepper`: a 44pt-square target that repeats while held.
+///
+/// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
+/// ranges here need it - 70...400 lb is a long walk in single taps. It is cancelled on release and on
+/// disappear, so no task outlives the row.
+private struct StepButton: View {
+    let systemName: String
+    let isEnabled: Bool
+    let action: () -> Void
+
+    /// Seconds between repeats while the button is held.
+    private static let repeatInterval: Duration = .milliseconds(90)
+
+    @State private var repeatTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack {
-                Text(label)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer()
-                Text("\(Int(value)) \(unit)")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+        Image(systemName: systemName)
+            .font(Theme.Typography.headline)
+            // The glyph scales with Dynamic Type like everything else, but only up to the point where
+            // it still fits its 44pt target - past that it drew straight through the button's own
+            // background. The row's text is what carries the larger sizes; this is control chrome.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .foregroundStyle(isEnabled ? Theme.Colors.textPrimary : Theme.Colors.textSecondary)
+            .frame(
+                width: Theme.Spacing.minTouchTarget,
+                height: Theme.Spacing.minTouchTarget
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { if isEnabled { action() } }
+            .onLongPressGesture(minimumDuration: 0.4) {
+                startRepeating()
+            } onPressingChanged: { isPressing in
+                if !isPressing { stopRepeating() }
             }
-            Slider(value: $value, in: range, step: step)
-                .accessibilityValue("\(Int(value)) \(unit)")
+            .onDisappear(perform: stopRepeating)
+            .accessibilityHidden(true)
+    }
+
+    private func startRepeating() {
+        guard isEnabled else { return }
+        stopRepeating()
+        repeatTask = Task { @MainActor in
+            while !Task.isCancelled {
+                action()
+                try? await Task.sleep(for: Self.repeatInterval)
+            }
         }
+    }
+
+    private func stopRepeating() {
+        repeatTask?.cancel()
+        repeatTask = nil
     }
 }
 

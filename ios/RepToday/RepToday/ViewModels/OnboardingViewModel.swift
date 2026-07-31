@@ -64,8 +64,12 @@ final class OnboardingViewModel {
     var displayName: String = ""
     var age: Int = 35
     var sex: Sex = .female
-    var heightCm: Double = 170
-    var weightKg: Double = 70
+    /// Height, collected in the units a US user thinks in (US-O04). Defaults sit near the US adult
+    /// median so the control opens somewhere plausible rather than at the end of its range.
+    var heightFeet: Int = 5
+    var heightInches: Int = 8
+    /// Weight in whole pounds (US-O04), likewise near the US adult median.
+    var weightPounds: Int = 175
     var fitnessLevel: FitnessLevel = .beginner
     var whyStatement: String = ""
     /// "Do you sit 6+ hours most days?" - biases short sessions toward mobility.
@@ -74,6 +78,33 @@ final class OnboardingViewModel {
     var selectedInjuries: Set<InjuryOption> = []
     /// The single duration answer; seeds both `defaultMinutes` and `onboardingSeedMinutes`.
     var durationMinutes: Int = 15
+
+    // MARK: - Imperial <-> metric boundary (US-O04)
+
+    /// The height answer as one number, so a single control can set both parts and the feet/inches
+    /// split stays normalized (`5 ft 12 in` is unreachable). Reading and writing both go through
+    /// `heightFeet`/`heightInches`, which remain the collected answers.
+    var heightTotalInches: Int {
+        get { heightFeet * UnitConversion.inchesPerFoot + heightInches }
+        set {
+            let clamped = max(0, newValue)
+            heightFeet = clamped / UnitConversion.inchesPerFoot
+            heightInches = clamped % UnitConversion.inchesPerFoot
+        }
+    }
+
+    /// The imperial height in the metric unit `UserProfile` persists. Derived, never stored: the
+    /// user's answer has exactly one representation, so the two can never drift apart.
+    var heightCm: Double {
+        UnitConversion.centimeters(feet: heightFeet, inches: heightInches)
+    }
+
+    /// The imperial weight in the metric unit `UserProfile` persists - and the unit the HealthKit
+    /// energy estimate (`MET x weightKg x hours`) reads, which is why the conversion happens here and
+    /// not somewhere downstream.
+    var weightKg: Double {
+        UnitConversion.kilograms(fromPounds: Double(weightPounds))
+    }
 
     // MARK: - Dependencies
 
@@ -223,6 +254,9 @@ final class OnboardingViewModel {
         let profile = UserProfile(
             age: age,
             sex: sex,
+            // The imperial -> metric boundary (US-O04): the UI collects feet/inches and pounds, the
+            // persisted profile is metric, and everything downstream - CloudKit, the HealthKit
+            // energy estimate - only ever sees cm/kg.
             heightCm: heightCm,
             weightKg: weightKg,
             fitnessLevel: fitnessLevel,
