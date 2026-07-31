@@ -48,15 +48,21 @@ enum UnitConversion {
         Double(max(0, feet * inchesPerFoot + inches)) * centimetersPerInch
     }
 
+    /// Whole inches -> whole feet and inches. The single owner of the feet/inches split: a caller
+    /// holding a height as one number never re-derives it, so a stray `/ 12` cannot drift from this.
+    /// A negative total clamps to zero, matching the rest of this type.
+    static func feetAndInches(totalInches: Int) -> (feet: Int, inches: Int) {
+        let whole = max(0, totalInches)
+        return (feet: whole / inchesPerFoot, inches: whole % inchesPerFoot)
+    }
+
     /// Centimeters -> whole feet and inches, rounded to the nearest inch.
     ///
     /// The rounding happens on *total* inches and the result is re-split, so a height that rounds up
     /// to a whole foot reads `6 ft 0 in` and never the nonsense `5 ft 12 in` that splitting first and
     /// rounding second would produce.
     static func feetAndInches(fromCentimeters centimeters: Double) -> (feet: Int, inches: Int) {
-        let totalInches = max(0, (max(0, centimeters) / centimetersPerInch).rounded())
-        let whole = Int(totalInches)
-        return (feet: whole / inchesPerFoot, inches: whole % inchesPerFoot)
+        feetAndInches(totalInches: Int((max(0, centimeters) / centimetersPerInch).rounded()))
     }
 
     // MARK: - Display
@@ -66,6 +72,13 @@ enum UnitConversion {
         "\(feet) ft \(inches) in"
     }
 
+    /// `"5 ft 7 in"` from a height held as one number, so a caller stepping total inches never has to
+    /// split them itself.
+    static func heightLabel(totalInches: Int) -> String {
+        let split = feetAndInches(totalInches: totalInches)
+        return heightLabel(feet: split.feet, inches: split.inches)
+    }
+
     /// `"5 feet 7 inches"` - the spoken height, with each noun agreeing with its own count, so
     /// VoiceOver never reads "1 feet". Mirrors the agreement rule the active-session prescription
     /// copy already follows.
@@ -73,6 +86,13 @@ enum UnitConversion {
         let feetPart = "\(feet) \(feet == 1 ? "foot" : "feet")"
         let inchesPart = "\(inches) \(inches == 1 ? "inch" : "inches")"
         return "\(feetPart) \(inchesPart)"
+    }
+
+    /// `"5 feet 7 inches"` from a height held as one number, the spoken counterpart to
+    /// `heightLabel(totalInches:)`.
+    static func heightAccessibilityLabel(totalInches: Int) -> String {
+        let split = feetAndInches(totalInches: totalInches)
+        return heightAccessibilityLabel(feet: split.feet, inches: split.inches)
     }
 
     /// `"165 lb"` - the compact on-screen weight label.

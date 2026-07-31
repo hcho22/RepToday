@@ -30,8 +30,8 @@ final class UnitConversionTests: XCTestCase {
     // MARK: - Round trips
 
     func testHeightRoundTripsAcrossTheOnboardingRange() {
-        // The slider's full 4 ft - 7 ft range, every inch.
-        for totalInches in 48...84 {
+        // Every inch the step offers - the imperial cover of the 120...220 cm slider it replaced.
+        for totalInches in 47...87 {
             let feet = totalInches / 12
             let inches = totalInches % 12
             let cm = UnitConversion.centimeters(feet: feet, inches: inches)
@@ -42,7 +42,8 @@ final class UnitConversionTests: XCTestCase {
     }
 
     func testWeightRoundTripsAcrossTheOnboardingRange() {
-        for pounds in 70...400 {
+        // Every pound the step can reach - the imperial cover of the 35...200 kg slider it replaced.
+        for pounds in 70...440 {
             let kg = UnitConversion.kilograms(fromPounds: Double(pounds))
             XCTAssertEqual(UnitConversion.pounds(fromKilograms: kg), Double(pounds), accuracy: 0.0001)
         }
@@ -97,6 +98,27 @@ final class UnitConversionTests: XCTestCase {
     func testHeightLabels() {
         XCTAssertEqual(UnitConversion.heightLabel(feet: 5, inches: 7), "5 ft 7 in")
         XCTAssertEqual(UnitConversion.heightAccessibilityLabel(feet: 5, inches: 7), "5 feet 7 inches")
+    }
+
+    /// A height held as one number labels itself, so no caller re-derives the feet/inches split with
+    /// its own `/ 12`.
+    func testTotalInchesLabelsMatchTheSplitOnesAcrossTheOnboardingRange() {
+        for totalInches in 47...87 {
+            let split = UnitConversion.feetAndInches(totalInches: totalInches)
+            XCTAssertEqual(split.feet * UnitConversion.inchesPerFoot + split.inches, totalInches)
+            XCTAssertEqual(
+                UnitConversion.heightLabel(totalInches: totalInches),
+                UnitConversion.heightLabel(feet: split.feet, inches: split.inches)
+            )
+            XCTAssertEqual(
+                UnitConversion.heightAccessibilityLabel(totalInches: totalInches),
+                UnitConversion.heightAccessibilityLabel(feet: split.feet, inches: split.inches)
+            )
+        }
+        XCTAssertEqual(UnitConversion.heightLabel(totalInches: 67), "5 ft 7 in")
+        XCTAssertEqual(UnitConversion.heightAccessibilityLabel(totalInches: 67), "5 feet 7 inches")
+        // A negative total clamps rather than splitting into negative parts.
+        XCTAssertEqual(UnitConversion.heightLabel(totalInches: -3), "0 ft 0 in")
     }
 
     func testSpokenLabelsAgreeWithTheirOwnCounts() {

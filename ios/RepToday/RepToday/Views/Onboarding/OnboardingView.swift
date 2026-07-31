@@ -259,20 +259,26 @@ private struct BasicsStep: View {
             // Height is one row over total inches rather than two controls: it keeps the step's
             // label-value-stepper rhythm, and the split it writes back is always normalized, so
             // "5 ft 12 in" is unreachable by construction.
+            //
+            // The bounds are the imperial cover of the metric sliders they replace (120...220 cm,
+            // 35...200 kg), rounded outward. Narrowing them would silently clamp somebody: there is
+            // no profile-edit surface yet, so a weight capped on the way in under-reports every
+            // HealthKit energy estimate (`MET x weightKg x hours`) for the life of the account.
             LabeledStepper(
                 label: "Height",
                 value: $viewModel.heightTotalInches,
-                range: 48...84,
-                display: { UnitConversion.heightLabel(feet: $0 / 12, inches: $0 % 12) },
-                spoken: { UnitConversion.heightAccessibilityLabel(feet: $0 / 12, inches: $0 % 12) }
+                range: 47...87,
+                display: UnitConversion.heightLabel(totalInches:),
+                spoken: UnitConversion.heightAccessibilityLabel(totalInches:)
             )
             // Weight moves in 5lb steps: the range is wide enough that single pounds would be a long
             // walk, and the only thing downstream reads this number for is the HealthKit MET energy
-            // estimate, where 5lb is far inside the approximation's own error.
+            // estimate, where 5lb is far inside the approximation's own error. Both bounds sit on the
+            // step, so the whole range is reachable from either end.
             LabeledStepper(
                 label: "Weight",
                 value: $viewModel.weightPounds,
-                range: 70...400,
+                range: 70...440,
                 step: 5,
                 display: UnitConversion.weightLabel(pounds:),
                 spoken: UnitConversion.weightAccessibilityLabel(pounds:)
@@ -351,8 +357,8 @@ private struct LabeledStepper: View {
         .accessibilityValue(spoken(value))
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: adjust(by: step)
-            case .decrement: adjust(by: -step)
+            case .increment: _ = adjust(by: step)
+            case .decrement: _ = adjust(by: -step)
             @unknown default: break
             }
         }
@@ -387,26 +393,36 @@ private struct LabeledStepper: View {
     }
 
     /// Move the value and clamp it to `range`, so neither the buttons nor the VoiceOver adjustment can
-    /// walk it out of bounds.
-    private func adjust(by delta: Int) {
-        value = min(range.upperBound, max(range.lowerBound, value + delta))
+    /// walk it out of bounds. Reports whether the value actually moved, which is what tells a held
+    /// button it has reached the end of the range and can stop.
+    @discardableResult
+    private func adjust(by delta: Int) -> Bool {
+        let adjusted = min(range.upperBound, max(range.lowerBound, value + delta))
+        guard adjusted != value else { return false }
+        value = adjusted
+        return true
     }
 }
 
 /// One half of a `LabeledStepper`: a 44pt-square target that repeats while held.
 ///
 /// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
-/// ranges here need it - 70...400 lb is a long walk in single taps. It is cancelled on release and on
-/// disappear, so no task outlives the row.
+/// ranges here need it - 70...440 lb is a long walk in single taps.
+///
+/// There is exactly one gesture, and it never succeeds: `minimumDuration: .infinity` reduces the long
+/// press to a press *tracker*, so `onPressingChanged` is the single place a press begins and ends.
+/// Stacking a tap gesture on top of a long press instead gives one press two sources of increments -
+/// the tap recognizes on touch-up whatever the long press did - and a held button ends a step past
+/// what the read-out showed while it was held. `PressRepeater` turns that one stream into steps and
+/// stops at the end of the range; it is cancelled on release and on disappear, so no task outlives
+/// the row.
 private struct StepButton: View {
     let systemName: String
     let isEnabled: Bool
-    let action: () -> Void
+    /// Steps the value, reporting whether it actually moved.
+    let action: () -> Bool
 
-    /// Seconds between repeats while the button is held.
-    private static let repeatInterval: Duration = .milliseconds(90)
-
-    @State private var repeatTask: Task<Void, Never>?
+    @State private var repeater = PressRepeater()
 
     var body: some View {
         Image(systemName: systemName)
@@ -421,30 +437,23 @@ private struct StepButton: View {
                 height: Theme.Spacing.minTouchTarget
             )
             .contentShape(Rectangle())
-            .onTapGesture { if isEnabled { action() } }
-            .onLongPressGesture(minimumDuration: 0.4) {
-                startRepeating()
+            // The finger is allowed to drift anywhere inside the button during a hold; the default
+            // 10pt would end the repeat on an ordinary wobble.
+            .onLongPressGesture(
+                minimumDuration: .infinity,
+                maximumDistance: Theme.Spacing.minTouchTarget
+            ) {
+                // Unreachable: an infinite minimum duration means the press is only ever tracked.
             } onPressingChanged: { isPressing in
-                if !isPressing { stopRepeating() }
+                if isPressing {
+                    guard isEnabled else { return }
+                    repeater.pressBegan(step: action)
+                } else {
+                    repeater.pressEnded()
+                }
             }
-            .onDisappear(perform: stopRepeating)
+            .onDisappear { repeater.pressEnded() }
             .accessibilityHidden(true)
-    }
-
-    private func startRepeating() {
-        guard isEnabled else { return }
-        stopRepeating()
-        repeatTask = Task { @MainActor in
-            while !Task.isCancelled {
-                action()
-                try? await Task.sleep(for: Self.repeatInterval)
-            }
-        }
-    }
-
-    private func stopRepeating() {
-        repeatTask?.cancel()
-        repeatTask = nil
     }
 }
 

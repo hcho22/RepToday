@@ -338,10 +338,13 @@ The story's other half gets the same treatment in `testTheSessionTotalIsHiddenDu
 Apart, either half can pass while the story fails - a player with no clock and a summary with no total is a session whose minutes simply vanished, and a summary reporting a total the player was also showing is the pressure the story removes - so the hiding and the revealing are asserted as one property rather than two.
 It renders that summary too, so the screen the total finally lands on is reviewable alongside the ones it was taken off.
 
-US-O04 (`Utilities/UnitConversion.swift`, `ViewModels/OnboardingViewModel.swift`, `Views/Onboarding/OnboardingView.swift`) puts **imperial units** in front of a US user without letting a single one of them past the onboarding boundary.
+US-O04 (`Utilities/UnitConversion.swift`, `Utilities/PressRepeater.swift`, `ViewModels/OnboardingViewModel.swift`, `Views/Onboarding/OnboardingView.swift`) puts **imperial units** in front of a US user without letting a single one of them past the onboarding boundary.
 The app is metric everywhere behind the UI - `UserProfile` holds `heightCm`/`weightKg`, and `HealthKitWorkoutSample` prices a session as `MET x weightKg x hours` - so imperial is an input concern only, converted once on the way in.
 That one-way discipline is why the arithmetic lives in a value type rather than inline in the view: a pound that leaks into the kilogram field silently inflates every calorie the app writes to Health by 2.2x, and nothing downstream would flag it.
 `UnitConversion` carries the exact international definitions (1 in == 2.54 cm, 1 lb == 0.45359237 kg) plus the display/spoken forms, and `feetAndInches(fromCentimeters:)` rounds *total* inches before re-splitting them, so a height that rounds up to a whole foot reads `6 ft 0 in` rather than the `5 ft 12 in` that splitting first and rounding second produces.
+It is also the only place the feet/inches split lives: the step holds a height as one number and the label overloads take that number, so no caller carries its own `/ 12` to drift from.
+The step's bounds - 47...87 in, 70...440 lb - are the imperial cover of the 120...220 cm / 35...200 kg sliders they replace, rounded outward rather than to convenient round numbers.
+A narrower range would have been silent: there is no profile-edit surface yet, so a weight clamped on the way in under-reports every HealthKit energy estimate for the life of the account, and the story was meant to change the units, not who the app fits.
 
 The view model stores only the imperial answers; `heightCm`/`weightKg` are derived, so there is no second representation to fall out of sync, and `buildUser` is the single place the conversion happens.
 The defaults (`5 ft 8 in`, `175 lb`) are near the US adult median and deliberately *not* the values the PRD's validation test types, so a mapping that ignored its input could not pass by coincidence - a test asserts that separation directly rather than trusting it.
@@ -353,6 +356,12 @@ So the row draws its own 44pt-square step buttons that repeat while held - the o
 Age moved onto the same row, because the touch-target miss was never specific to the units and was sitting in the step already.
 A render at the largest accessibility type size then caught the last of it: the row's name, value and buttons no longer shared a line, and the +/- glyph had grown straight through its own button's background.
 The row now stacks at accessibility sizes and the glyph's growth is capped, the text around it carrying the larger sizes instead.
+
+The repeat itself moved out of the view into `PressRepeater`, because the first version of it had two defects that no assertion could reach.
+A tap gesture stacked on a long press gave one press two sources of increments - the tap recognizes on touch-up whatever the long press already did - so a press-and-hold ended a step past what the read-out had shown while it was held.
+And the repeat loop had no termination but cancellation, so holding `+` at the top of the range kept writing the same clamped value back through the binding about eleven times a second; Observation notifies on every write regardless of equality, so that is a real invalidation loop for no visible change.
+Now the button carries a single press-*tracking* gesture (`minimumDuration: .infinity`, so it never succeeds and `onPressingChanged` is the only event stream), and `PressRepeater` turns that stream into steps against a `step` closure that reports whether the value actually moved - a refusal ends the hold.
+Being an object with an injected clock rather than gesture code is what makes both testable, and `PressRepeaterTests` gates them: a tap is one step, a hold ends where it stood when the finger lifted, and a hold at the bound stops on the refusal.
 
 `OnboardingView` gained an initializer taking an already-built view model, which is what lets a test render a mid-flow step through the production view rather than reimplementing it.
 `OnboardingBasicsEvidenceTests` hosts that view in a real Simulator key window, asserts on the live accessibility tree (the value spoken as a sentence, no metric unit anywhere on the step, the laid-out 44pt frame, the adjustable step), and writes the two renders to `artifacts/reports/us-o04/`.

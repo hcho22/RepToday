@@ -87,9 +87,9 @@ final class OnboardingViewModel {
     var heightTotalInches: Int {
         get { heightFeet * UnitConversion.inchesPerFoot + heightInches }
         set {
-            let clamped = max(0, newValue)
-            heightFeet = clamped / UnitConversion.inchesPerFoot
-            heightInches = clamped % UnitConversion.inchesPerFoot
+            let split = UnitConversion.feetAndInches(totalInches: newValue)
+            heightFeet = split.feet
+            heightInches = split.inches
         }
     }
 

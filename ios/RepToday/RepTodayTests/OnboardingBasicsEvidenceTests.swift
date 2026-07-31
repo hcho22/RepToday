@@ -53,7 +53,15 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
             sessionPolicyService: MockSessionPolicyService()
         )
         viewModel.displayName = "Riley"
-        while viewModel.step != .basics { viewModel.advance() }
+        // Bounded by the flow's own length: `advance()` is a no-op at the last step, so a reordering
+        // that puts `.basics` before the first step must fail this test rather than hang the suite.
+        for _ in OnboardingViewModel.Step.allCases where viewModel.step != .basics {
+            viewModel.advance()
+        }
+        XCTAssertEqual(
+            viewModel.step, .basics,
+            "the basics step is no longer reachable by advancing from the first step"
+        )
         return OnboardingView(viewModel: viewModel)
     }
 
