@@ -328,26 +328,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// Hosts a production surface in a real key window and lets it settle, so what follows reads a
     /// laid-out, drawn view - whether that is its pixels or its accessibility tree.
     private func hosted<V: View>(_ view: V, size: CGSize) -> UIHostingController<V> {
-        let host = UIHostingController(rootView: view)
-        host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: size)
-
-        // A real key window makes the view actually lay out and draw its layers. It is held for the
-        // lifetime of the test case, because a released window takes the hosted view down with it.
-        let window = UIWindow(frame: host.view.frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
+        let (host, window) = HostedSurface.host(view, size: size)
+        // Held for the lifetime of the test case, because a released window takes the hosted view
+        // down with it.
         renderWindow = window
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-
-        // Let SwiftUI finish its asynchronous layout/draw passes (including the view's own `.task`).
-        let deadline = Date().addingTimeInterval(2.5)
-        while Date() < deadline {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
-        }
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
         return host
     }
 
@@ -619,7 +603,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     func testReadyScreenRowsSpeakTheNounsRatherThanTheGlyph() throws {
         let slots = try generate().blocks.flatMap(\.exercises)
         let host = hosted(ReadyView(services: try readyServices()), size: CGSize(width: 393, height: 1420))
-        let labels = accessibilityLabels(in: host.view)
+        let labels = AccessibilityTree.labels(in: host.view)
 
         print("=== Rep Today - Ready Screen lineup, accessibility labels read off the live view tree ===")
         var rows: [String] = []
@@ -645,71 +629,6 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             )
         }
         try write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", to: "ready-screen-voiceover-labels.md", story: Evidence.perSideSwap)
-    }
-
-    /// The accessibility element carrying `label`, so a test can activate it exactly the way VoiceOver's
-    /// double-tap does - driving the production control rather than reaching past it into the view model.
-    private func accessibilityElement(labeled label: String, in root: UIView) -> NSObject? {
-        _ = UIApplication.shared.accessibilityActivate()
-        UIAccessibility.post(notification: .screenChanged, argument: nil)
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
-
-        var found: NSObject?
-        var visited = Set<ObjectIdentifier>()
-
-        func walk(_ node: NSObject) {
-            guard found == nil, visited.insert(ObjectIdentifier(node)).inserted else { return }
-            if node.isAccessibilityElement, node.accessibilityLabel == label {
-                found = node
-                return
-            }
-            let count = node.accessibilityElementCount()
-            if count != NSNotFound {
-                for index in 0..<count where found == nil {
-                    if let child = node.accessibilityElement(at: index) as? NSObject { walk(child) }
-                }
-            }
-            if let view = node as? UIView {
-                for subview in view.subviews where found == nil { walk(subview) }
-            }
-        }
-
-        walk(root)
-        return found
-    }
-
-    /// Every accessibility label in a hosted hierarchy, in traversal order - the strings VoiceOver reads
-    /// as the user swipes down the screen.
-    ///
-    /// SwiftUI only builds its accessibility tree once an assistive client is attached, so a test
-    /// process has to ask for one first; without the activation below the hierarchy is empty and this
-    /// would silently report that nothing on screen is spoken at all.
-    private func accessibilityLabels(in root: UIView) -> [String] {
-        _ = UIApplication.shared.accessibilityActivate()
-        UIAccessibility.post(notification: .screenChanged, argument: nil)
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
-
-        var labels: [String] = []
-        var visited = Set<ObjectIdentifier>()
-
-        func walk(_ node: NSObject) {
-            guard visited.insert(ObjectIdentifier(node)).inserted else { return }
-            if node.isAccessibilityElement, let label = node.accessibilityLabel {
-                labels.append(label)
-            }
-            let count = node.accessibilityElementCount()
-            if count != NSNotFound {
-                for index in 0..<count {
-                    if let child = node.accessibilityElement(at: index) as? NSObject { walk(child) }
-                }
-            }
-            if let view = node as? UIView {
-                view.subviews.forEach(walk)
-            }
-        }
-
-        walk(root)
-        return labels
     }
 
     /// The player parked on each single-set bookend - the warm-up the session opens on and the cooldown
@@ -758,9 +677,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     ) throws -> UIHostingController<V> {
         let host = hosted(view, size: size)
         let start = try XCTUnwrap(
-            accessibilityElement(labeled: "Start hold", in: host.view)
-                ?? accessibilityElement(labeled: "Start hold, side 1 of 2", in: host.view),
-            "the player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+            AccessibilityTree.element(labeled: "Start hold", in: host.view)
+                ?? AccessibilityTree.element(labeled: "Start hold, side 1 of 2", in: host.view),
+            "the player offers no Start hold control; it reads \(AccessibilityTree.labels(in: host.view))"
         )
         XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
 
@@ -776,14 +695,14 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         }
 
         let target = "Hold, \(settlingSeconds) seconds remaining"
-        func reads(_ label: String) -> Bool { accessibilityLabels(in: host.view).contains(label) }
+        func reads(_ label: String) -> Bool { AccessibilityTree.labels(in: host.view).contains(label) }
         let ceiling = Date().addingTimeInterval(20)
         while Date() < ceiling && !reads(target) {
             pump(until: Date().addingTimeInterval(0.02))
         }
         XCTAssertTrue(
             reads(target),
-            "the countdown never settled at \"\(target)\"; it reads \(accessibilityLabels(in: host.view))"
+            "the countdown never settled at \"\(target)\"; it reads \(AccessibilityTree.labels(in: host.view))"
         )
         // Let the arc finish animating to its new fill, in small steps and only while the second just
         // pinned is still the one on screen, so a slow machine gives up the settle rather than the pin.
@@ -822,7 +741,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
         // Idle: the Hold Timer leads, with the manual completion kept as a quiet secondary.
         let idle = resumed(workout, at: holdIndex, currentSet: 1)
-        let idleLabels = accessibilityLabels(in: hosted(try playerView(idle), size: playerSize).view)
+        let idleLabels = AccessibilityTree.labels(in: hosted(try playerView(idle), size: playerSize).view)
         let expectedStart = sides > 1 ? "Start hold, side 1 of \(sides)" : "Start hold"
         let manualTitle = hold.sets > 1
             ? "Complete set"
@@ -842,7 +761,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         // started through the real control, since a hold is never persisted and so cannot be restored
         // into this state (US-O03).
         let runningHost = try hostedMidHold(try playerView(idle), size: playerSize, settlingAt: seconds - 1)
-        let runningLabels = accessibilityLabels(in: runningHost.view)
+        let runningLabels = AccessibilityTree.labels(in: runningHost.view)
         XCTAssertTrue(
             runningLabels.contains { $0.hasPrefix("Hold, ") && $0.hasSuffix(" seconds remaining") },
             "a running hold should speak its remaining seconds; it reads \(runningLabels)"
@@ -884,7 +803,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         print("=== Rep Today - \(slot.exercise.id): \(seconds)s per side, so one set is two legs ===")
 
         let firstSide = resumed(workout, at: index, currentSet: 1)
-        let firstLabels = accessibilityLabels(in: hosted(try playerView(firstSide), size: playerSize).view)
+        let firstLabels = AccessibilityTree.labels(in: hosted(try playerView(firstSide), size: playerSize).view)
         XCTAssertTrue(
             firstLabels.contains("Start hold, side 1 of 2"),
             "the button should name the side it starts; it reads \(firstLabels)"
@@ -902,7 +821,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         // Parked between the legs - the state a relaunch restores to, so it must read as owing side 2.
         var secondSide = firstSide
         secondSide.hold = ActiveSessionState.Hold(side: 2)
-        let secondLabels = accessibilityLabels(in: hosted(try playerView(secondSide), size: playerSize).view)
+        let secondLabels = AccessibilityTree.labels(in: hosted(try playerView(secondSide), size: playerSize).view)
         XCTAssertTrue(
             secondLabels.contains("Start hold, side 2 of 2"),
             "a restored between-legs hold owes side 2; it reads \(secondLabels)"
@@ -919,7 +838,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             totalSeconds: 45, deadline: Date().addingTimeInterval(28), remainingWhenPaused: nil
         )
 
-        let labels = accessibilityLabels(in: hosted(try playerView(state), size: playerSize).view)
+        let labels = AccessibilityTree.labels(in: hosted(try playerView(state), size: playerSize).view)
 
         XCTAssertTrue(
             labels.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
@@ -945,8 +864,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
         let start = try XCTUnwrap(
-            accessibilityElement(labeled: "Start hold", in: host.view),
-            "the live player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+            AccessibilityTree.element(labeled: "Start hold", in: host.view),
+            "the live player offers no Start hold control; it reads \(AccessibilityTree.labels(in: host.view))"
         )
 
         XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
@@ -966,7 +885,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
-            after = accessibilityLabels(in: host.view)
+            after = AccessibilityTree.labels(in: host.view)
         } while Date() < ceiling && !handedOffToRest(after)
 
         print("=== Rep Today - after a live 2 second hold, the player reads: \(after) ===")
@@ -998,22 +917,22 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
         let start = try XCTUnwrap(
-            accessibilityElement(labeled: "Start hold", in: host.view),
-            "the live player offers no Start hold control; it reads \(accessibilityLabels(in: host.view))"
+            AccessibilityTree.element(labeled: "Start hold", in: host.view),
+            "the live player offers no Start hold control; it reads \(AccessibilityTree.labels(in: host.view))"
         )
         XCTAssertTrue(start.accessibilityActivate(), "the Start hold control did not activate")
         RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.6))
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 
-        let running = accessibilityLabels(in: host.view)
+        let running = AccessibilityTree.labels(in: host.view)
         XCTAssertTrue(
             running.contains { $0.hasPrefix("Hold, ") },
             "the leg should be running before it is banked by hand; the player reads \(running)"
         )
 
         let bank = try XCTUnwrap(
-            accessibilityElement(labeled: "Complete set", in: host.view),
+            AccessibilityTree.element(labeled: "Complete set", in: host.view),
             "a running leg offers no way to bank the set without discarding the exercise; "
             + "the player reads \(running)"
         )
@@ -1029,7 +948,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
-            after = accessibilityLabels(in: host.view)
+            after = AccessibilityTree.labels(in: host.view)
         } while Date() < ceiling && !banked(after)
 
         print("=== Rep Today - after banking a set by hand mid-leg, the player reads: \(after) ===")
@@ -1097,7 +1016,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         let title = index == slots.count - 1 ? "Finish session" : "Finish exercise"
 
         let atDefault = try XCTUnwrap(
-            accessibilityElement(labeled: title, in: hosted(try playerView(state), size: playerSize).view),
+            AccessibilityTree.element(labeled: title, in: hosted(try playerView(state), size: playerSize).view),
             "the idle hold offers no \"\(title)\" control"
         ).accessibilityFrame.height
         XCTAssertGreaterThanOrEqual(
@@ -1109,8 +1028,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             try playerView(state).environment(\.dynamicTypeSize, .accessibility3), size: playerSize
         )
         let atAccessibilitySize = try XCTUnwrap(
-            accessibilityElement(labeled: title, in: axHost.view),
-            "the control is gone at accessibility type; the player reads \(accessibilityLabels(in: axHost.view))"
+            AccessibilityTree.element(labeled: title, in: axHost.view),
+            "the control is gone at accessibility type; the player reads \(AccessibilityTree.labels(in: axHost.view))"
         ).accessibilityFrame.height
 
         print("=== Rep Today - \"\(title)\" is \(atDefault)pt tall at default type, "
@@ -1158,13 +1077,13 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             size: playerSize
         )
         XCTAssertTrue(
-            accessibilityLabels(in: host.view).contains { $0.hasPrefix("Hold, ") },
+            AccessibilityTree.labels(in: host.view).contains { $0.hasPrefix("Hold, ") },
             "the leg should be running before it is walked away from"
         )
 
         let closeControl = try XCTUnwrap(
-            accessibilityElement(labeled: "End session", in: host.view),
-            "the player offers no close control; it reads \(accessibilityLabels(in: host.view))"
+            AccessibilityTree.element(labeled: "End session", in: host.view),
+            "the player offers no close control; it reads \(AccessibilityTree.labels(in: host.view))"
         )
         XCTAssertTrue(closeControl.accessibilityActivate(), "the close control did not activate")
 
@@ -1224,7 +1143,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
 
         let host = hosted(try playerView(state), size: playerSize)
-        let duringPlay = accessibilityLabels(in: host.view)
+        let duringPlay = AccessibilityTree.labels(in: host.view)
         XCTAssertFalse(
             duringPlay.contains { $0.hasPrefix("Elapsed time") },
             "the session clock is on the player again; it reads \(duringPlay)"
@@ -1235,7 +1154,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
 
         let finish = try XCTUnwrap(
-            accessibilityElement(labeled: "Finish session", in: host.view),
+            AccessibilityTree.element(labeled: "Finish session", in: host.view),
             "the player offers no way to bank the session's last set; it reads \(duringPlay)"
         )
         XCTAssertTrue(finish.accessibilityActivate(), "the Finish session control did not activate")
@@ -1249,7 +1168,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
-            after = accessibilityLabels(in: host.view)
+            after = AccessibilityTree.labels(in: host.view)
         } while Date() < ceiling && !celebrating(after)
 
         print("=== Rep Today - the completion summary reads: \(after) ===")

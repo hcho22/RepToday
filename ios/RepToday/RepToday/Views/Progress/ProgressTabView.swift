@@ -301,6 +301,7 @@ private struct SessionCalendarCard: View {
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
     private let monthTitleFormatter: DateFormatter
+    private let spokenDateFormatter: DateFormatter
 
     init(completedDays: Set<Date>, now: Date, calendar: Calendar = .current) {
         self.completedDays = completedDays
@@ -323,6 +324,15 @@ private struct SessionCalendarCard: View {
         month.timeZone = calendar.timeZone
         month.dateFormat = "MMMM yyyy"
         self.monthTitleFormatter = month
+
+        // Built once here rather than per cell: it is read for every day of the displayed month while
+        // `body` is being evaluated, and `body` re-runs on any observable change to the tab.
+        // `locale` is deliberately left at the user's own, since this is a date read aloud to them.
+        let spoken = DateFormatter()
+        spoken.calendar = calendar
+        spoken.timeZone = calendar.timeZone
+        spoken.dateStyle = .medium
+        self.spokenDateFormatter = spoken
     }
 
     var body: some View {
@@ -441,11 +451,7 @@ private struct SessionCalendarCard: View {
     }
 
     private func accessibilityLabel(for date: Date, didMove: Bool, isToday: Bool) -> String {
-        let long = DateFormatter()
-        long.calendar = calendar
-        long.timeZone = calendar.timeZone
-        long.dateStyle = .medium
-        var label = long.string(from: date)
+        var label = spokenDateFormatter.string(from: date)
         if isToday { label += ", today" }
         label += didMove ? ", session completed" : ", no session"
         return label

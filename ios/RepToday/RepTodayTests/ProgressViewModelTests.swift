@@ -230,6 +230,9 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// on any other machine, into a path that had never existed at all.
     private var evidenceDir: String { EvidenceOutput.directory(for: EvidenceOutput.Story.progressAnalytics) }
 
+    /// The window a hosted surface lives in while it is captured or read.
+    private var renderWindow: UIWindow?
+
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -302,24 +305,15 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// Hosting, layout and capture stay in a synchronous context: spinning the run loop is unavailable
     /// from an async context, and the capture itself has nothing left to await.
     private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) throws {
-        let size = CGSize(width: 393, height: tall ? 2500 : 760)
-        let host = UIHostingController(rootView: ProgressTabView(viewModel: viewModel))
-        host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: size)
+        // The tab is a `ScrollView`, so it has to be hosted taller than its content for the whole of
+        // that content to lay out at once rather than a screenful of it. Comfortably taller: the
+        // capture is cropped back to what the content measures, so headroom costs nothing, while
+        // running out of it would cost the bottom of the surface.
+        let layoutSize = CGSize(width: 393, height: tall ? 3200 : 900)
+        let (host, window) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
+        renderWindow = window
 
-        // A real key window makes the view actually lay out and draw its layers; sizing the window to
-        // the full content height means the whole scroll content is laid out (not just a screenful).
-        let window = UIWindow(frame: host.view.frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-
-        // Let SwiftUI + Swift Charts finish their asynchronous layout/draw passes before capturing.
-        let deadline = Date().addingTimeInterval(2.0)
-        while Date() < deadline {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
-        }
+        let size = CGSize(width: layoutSize.width, height: capturedHeight(of: host.view, laidOutIn: layoutSize))
 
         // `layer.render(in:)` composites the entire layer tree offscreen, so it captures content past
         // the physical screen bounds - unlike `drawHierarchy(afterScreenUpdates:)`, which is limited to
@@ -337,7 +331,46 @@ final class ProgressTabSnapshotTests: XCTestCase {
         try data.write(to: URL(fileURLWithPath: path))
 
         XCTAssertGreaterThan(data.count, 8000, "Rendered PNG unexpectedly small - the surface may not have drawn")
-        print("SNAPSHOT_WRITTEN \(path) bytes=\(data.count)")
+        print("SNAPSHOT_WRITTEN \(path) bytes=\(data.count) size=\(Int(size.width))x\(Int(size.height))")
+    }
+
+    /// The height the capture is cropped to: what the content actually laid out to, rather than the
+    /// taller scratch height it had to be hosted in.
+    ///
+    /// A baseline is committed so a human can eyeball it and a layout change shows up as a diff, and a
+    /// long blank tail undermines both - it costs bytes and reads as a layout bug rather than as a
+    /// capture artifact. `layer.render(in:)` composites from the layer tree's origin, so a shorter
+    /// canvas simply drops that empty tail: nothing is re-laid out, and nothing above it moves.
+    ///
+    /// Measured off the scroll view's own content rather than `systemLayoutSizeFitting`, because the
+    /// hosted view is a `ScrollView` whose fitting size is the viewport it was given, not the content
+    /// inside it. Falls back to the full hosted height if the surface is not scrolling (or measures to
+    /// nothing), so the capture can only ever lose empty space, never content.
+    private func capturedHeight(of root: UIView, laidOutIn layoutSize: CGSize) -> CGFloat {
+        guard let scrollView = firstScrollView(in: root) else { return layoutSize.height }
+        // Converted out of the scroll view's content coordinates, so the scroll view's own offset in
+        // the hierarchy (the safe-area inset it sits below) is carried into the answer.
+        let contentBottom = scrollView.convert(CGPoint(x: 0, y: scrollView.contentSize.height), to: root).y
+        let bottom = contentBottom + scrollView.adjustedContentInset.bottom
+        guard bottom > 0 else { return layoutSize.height }
+
+        // Cropping may only ever remove empty space. If the content outgrew the height it was hosted
+        // in, the capture would be a silently truncated baseline - the one outcome worse than the
+        // dead space this crop exists to remove - so say so instead.
+        XCTAssertLessThanOrEqual(
+            ceil(bottom), layoutSize.height,
+            "The surface laid out taller than the height it was hosted in, so the capture would be "
+            + "cropped mid-content - host it taller rather than committing a truncated baseline"
+        )
+        return min(layoutSize.height, ceil(bottom))
+    }
+
+    private func firstScrollView(in view: UIView) -> UIScrollView? {
+        if let scrollView = view as? UIScrollView { return scrollView }
+        for subview in view.subviews {
+            if let found = firstScrollView(in: subview) { return found }
+        }
+        return nil
     }
 
     /// Free tier: the three free cards render for everyone and the quiet premium upsell stands in for
@@ -374,10 +407,13 @@ final class ProgressTabSnapshotTests: XCTestCase {
     func testCalendarMarksTheInjectedClocksTodayRatherThanTheWallClock() async throws {
         let labels = await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
 
-        XCTAssertTrue(labels.contains("Jul 8, 2026, today, session completed"),
-                      "The calendar should mark the injected clock's today as worked. Saw: \(labels.filter { $0.contains("2026") })")
-        XCTAssertTrue(labels.contains("Jul 7, 2026, no session"),
-                      "A day the fixture never worked should read as no session")
+        let today = expectedDayLabel(day: 8, suffix: ", today, session completed")
+        let untouched = expectedDayLabel(day: 7, suffix: ", no session")
+
+        XCTAssertTrue(labels.contains(today),
+                      "The calendar should mark the injected clock's today as worked with \"\(today)\". Saw: \(labels.filter { $0.contains("2026") })")
+        XCTAssertTrue(labels.contains(untouched),
+                      "A day the fixture never worked should read as \"\(untouched)\"")
     }
 
     /// The weekday header is visual scaffolding for the grid below, whose cells each speak their own
@@ -394,47 +430,35 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// Hosts the production `ProgressTabView` in a real key window and returns every accessibility
     /// label in traversal order - the strings VoiceOver reads as the user swipes down the screen.
     ///
-    /// SwiftUI only builds its accessibility tree once an assistive client is attached, so a test
-    /// process has to ask for one first; without the activation below the hierarchy is empty and
-    /// these assertions would pass on a screen that speaks nothing at all - hence the guard that the
-    /// tree came back populated.
+    /// Hosting and reading both go through the shared seam: `HostedSurface.host` is what lets the
+    /// surface settle before it is read, and without that settling these assertions would report an
+    /// empty or half-built screen on a loaded machine. The guard below is the backstop - an empty tree
+    /// would otherwise let both tests pass on a screen that speaks nothing at all.
     private func hostedAccessibilityLabels(for viewModel: ProgressViewModel) async -> [String] {
         await viewModel.load()
 
-        let host = UIHostingController(rootView: ProgressTabView(viewModel: viewModel))
-        host.view.frame = CGRect(x: 0, y: 0, width: 393, height: 2500)
-        let window = UIWindow(frame: host.view.frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-
-        _ = UIApplication.shared.accessibilityActivate()
-        UIAccessibility.post(notification: .screenChanged, argument: nil)
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
-
-        var labels: [String] = []
-        var visited = Set<ObjectIdentifier>()
-
-        func walk(_ node: NSObject) {
-            guard visited.insert(ObjectIdentifier(node)).inserted else { return }
-            if node.isAccessibilityElement, let label = node.accessibilityLabel {
-                labels.append(label)
-            }
-            let count = node.accessibilityElementCount()
-            if count != NSNotFound {
-                for index in 0..<count {
-                    if let child = node.accessibilityElement(at: index) as? NSObject { walk(child) }
-                }
-            }
-            if let view = node as? UIView {
-                view.subviews.forEach(walk)
-            }
-        }
-        walk(host.view)
+        let (host, window) = HostedSurface.host(
+            ProgressTabView(viewModel: viewModel), size: CGSize(width: 393, height: 2500)
+        )
+        renderWindow = window
+        let labels = AccessibilityTree.labels(in: host.view)
 
         window.isHidden = true
         XCTAssertFalse(labels.isEmpty, "The hosted Progress tab exposed no accessibility tree at all")
         return labels
+    }
+
+    /// The label a day cell is expected to speak, built the way the production view builds it: a
+    /// `.medium` date in the injected calendar and time zone, left at `Locale.current` because the
+    /// spoken date should be localized for the user. Deriving it here rather than hard-coding the
+    /// en_US rendering is what keeps these tests about the *clock* the view reads rather than about
+    /// the language the simulator happens to run in.
+    private func expectedDayLabel(day: Int, suffix: String) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateStyle = .medium
+        let date = calendar.date(from: DateComponents(year: 2026, month: 7, day: day))!
+        return formatter.string(from: date) + suffix
     }
 }
