@@ -74,7 +74,8 @@ struct ProgressTabView: View {
                     ScoreTrendCard(trend: viewModel.trend)
                     SessionCalendarCard(
                         completedDays: viewModel.completedDays,
-                        now: Date()
+                        now: viewModel.displayNow,
+                        calendar: viewModel.displayCalendar
                     )
 
                     if let analytics = viewModel.analytics {
@@ -307,13 +308,19 @@ private struct SessionCalendarCard: View {
         self.calendar = calendar
         _monthAnchor = State(initialValue: calendar.startOfMonth(for: now))
 
+        // A `DateFormatter` keeps its own time zone rather than taking the calendar's, so setting
+        // only `calendar` leaves it resolving instants in the system zone: the cells' own dates are
+        // built in `calendar`, so a calendar in any other zone would print - and speak - a day
+        // number one off from the day the cell actually marks.
         let day = DateFormatter()
         day.calendar = calendar
+        day.timeZone = calendar.timeZone
         day.dateFormat = "d"
         self.dayFormatter = day
 
         let month = DateFormatter()
         month.calendar = calendar
+        month.timeZone = calendar.timeZone
         month.dateFormat = "MMMM yyyy"
         self.monthTitleFormatter = month
     }
@@ -364,6 +371,10 @@ private struct SessionCalendarCard: View {
                     .frame(maxWidth: .infinity)
             }
         }
+        // Visual scaffolding for the grid below, whose cells each speak their own full date and
+        // state ("Jul 8, 2026, today, session completed"). Read aloud, the bare initials are seven
+        // disconnected letters in the swipe path that say nothing the day cells do not.
+        .accessibilityHidden(true)
     }
 
     private var grid: some View {
@@ -432,6 +443,7 @@ private struct SessionCalendarCard: View {
     private func accessibilityLabel(for date: Date, didMove: Bool, isToday: Bool) -> String {
         let long = DateFormatter()
         long.calendar = calendar
+        long.timeZone = calendar.timeZone
         long.dateStyle = .medium
         var label = long.string(from: date)
         if isToday { label += ", today" }

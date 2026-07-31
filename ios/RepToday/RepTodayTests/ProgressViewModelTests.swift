@@ -221,34 +221,14 @@ final class ProgressViewModelTests: XCTestCase {
 @MainActor
 final class ProgressTabSnapshotTests: XCTestCase {
 
-    /// Where the renders land, following the same convention as `PerSideSwapEvidenceTests` and
-    /// `OnboardingBasicsEvidenceTests`: a per-run temporary directory by default, so a plain `test`
-    /// leaves the worktree clean, and the committed location only when asked for explicitly.
+    /// Where the renders land - resolved by `EvidenceOutput`, the same seam `PerSideSwapEvidenceTests`
+    /// uses: a per-run temporary directory by default, so a plain `test` leaves the worktree clean,
+    /// and the committed `artifacts/reports/us-m02/` only when asked for explicitly.
     ///
     /// This used to be an absolute path baked in from one machine's tooling run, which meant every
     /// run of the default scheme wrote into a directory belonging to a session that no longer exists -
     /// on any other machine, into a path that had never existed at all.
-    private static let evidenceRoot: String = {
-        let environment = ProcessInfo.processInfo.environment
-        if let override = environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty { return override }
-        if environment["REPTODAY_WRITE_EVIDENCE"] == "1" {
-            return URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent() // RepTodayTests
-                .deletingLastPathComponent() // RepToday
-                .deletingLastPathComponent() // ios
-                .deletingLastPathComponent() // the repo root
-                .appendingPathComponent("artifacts")
-                .appendingPathComponent("reports")
-                .appendingPathComponent("us-m02")
-                .path
-        }
-        return FileManager.default.temporaryDirectory
-            .appendingPathComponent("RepTodayEvidence")
-            .appendingPathComponent(UUID().uuidString)
-            .path
-    }()
-
-    private var evidenceDir: String { Self.evidenceRoot }
+    private var evidenceDir: String { EvidenceOutput.directory(for: EvidenceOutput.Story.progressAnalytics) }
 
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -378,5 +358,83 @@ final class ProgressTabSnapshotTests: XCTestCase {
     func testRenderEmptyProgressTab() async throws {
         try await snapshot(viewModel: makeViewModel(logs: [], premium: false),
                            tall: false, fileName: "progress-m02-empty.png")
+    }
+
+    // MARK: - The calendar reads the view model's clock, not the wall clock
+
+    /// The calendar is the one surface that names a date, so it has to resolve "today" and normalize
+    /// a completed day with the *same* clock and calendar the view model derived `completedDays`
+    /// against. Read off the live accessibility tree of the hosted production view: the injected
+    /// clock's today (Jul 8, 2026) is marked as a completed session, and a day the fixture never
+    /// worked is marked as no session.
+    ///
+    /// Both halves fail if the view reaches for `Date()` / `Calendar.current` itself - the marker
+    /// lands on whatever day the suite happens to run, and every dot silently disappears because a
+    /// day normalized in one calendar is never found in a set normalized in another.
+    func testCalendarMarksTheInjectedClocksTodayRatherThanTheWallClock() async throws {
+        let labels = await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+
+        XCTAssertTrue(labels.contains("Jul 8, 2026, today, session completed"),
+                      "The calendar should mark the injected clock's today as worked. Saw: \(labels.filter { $0.contains("2026") })")
+        XCTAssertTrue(labels.contains("Jul 7, 2026, no session"),
+                      "A day the fixture never worked should read as no session")
+    }
+
+    /// The weekday header is visual scaffolding for the grid below, whose cells each speak their own
+    /// full date and state - so the bare initials are seven disconnected single letters in the swipe
+    /// path, saying nothing the day cells do not.
+    func testWeekdayHeaderIsNotSpokenAsSevenLooseLetters() async throws {
+        let labels = await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+
+        let initials = Set(calendar.veryShortStandaloneWeekdaySymbols)
+        XCTAssertTrue(labels.allSatisfy { !initials.contains($0) },
+                      "The weekday initials should be hidden from VoiceOver. Saw: \(labels.filter { initials.contains($0) })")
+    }
+
+    /// Hosts the production `ProgressTabView` in a real key window and returns every accessibility
+    /// label in traversal order - the strings VoiceOver reads as the user swipes down the screen.
+    ///
+    /// SwiftUI only builds its accessibility tree once an assistive client is attached, so a test
+    /// process has to ask for one first; without the activation below the hierarchy is empty and
+    /// these assertions would pass on a screen that speaks nothing at all - hence the guard that the
+    /// tree came back populated.
+    private func hostedAccessibilityLabels(for viewModel: ProgressViewModel) async -> [String] {
+        await viewModel.load()
+
+        let host = UIHostingController(rootView: ProgressTabView(viewModel: viewModel))
+        host.view.frame = CGRect(x: 0, y: 0, width: 393, height: 2500)
+        let window = UIWindow(frame: host.view.frame)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+
+        _ = UIApplication.shared.accessibilityActivate()
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
+
+        var labels: [String] = []
+        var visited = Set<ObjectIdentifier>()
+
+        func walk(_ node: NSObject) {
+            guard visited.insert(ObjectIdentifier(node)).inserted else { return }
+            if node.isAccessibilityElement, let label = node.accessibilityLabel {
+                labels.append(label)
+            }
+            let count = node.accessibilityElementCount()
+            if count != NSNotFound {
+                for index in 0..<count {
+                    if let child = node.accessibilityElement(at: index) as? NSObject { walk(child) }
+                }
+            }
+            if let view = node as? UIView {
+                view.subviews.forEach(walk)
+            }
+        }
+        walk(host.view)
+
+        window.isHidden = true
+        XCTAssertFalse(labels.isEmpty, "The hosted Progress tab exposed no accessibility tree at all")
+        return labels
     }
 }

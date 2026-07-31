@@ -16,49 +16,16 @@ import SwiftUI
 @MainActor
 final class PerSideSwapEvidenceTests: XCTestCase {
 
-    /// Where the rendered-UI evidence is written.
-    ///
-    /// A plain test run writes to a per-run temporary directory, so running the suite never leaves the
-    /// worktree dirty with re-encoded PNGs. Setting `REPTODAY_WRITE_EVIDENCE=1` points the same writes at
-    /// the repo's own `artifacts/reports/`, which is how the committed images the PRD and
-    /// `docs/test-coverage.md` cite are produced - deliberately, by these tests, rather than copied there
-    /// by hand. `REPTODAY_EVIDENCE_DIR` overrides the destination outright. Every render and every
-    /// assertion runs identically in all three modes; only where the bytes land changes.
-    ///
-    /// The repo path is walked up from `#filePath`, since a test bundle controls neither the working
-    /// directory nor any repo-relative path:
-    /// `<repo>/ios/RepToday/RepTodayTests/PerSideSwapEvidenceTests.swift` -> `<repo>/artifacts/reports`.
-    private static let evidenceRoot: String = {
-        let environment = ProcessInfo.processInfo.environment
-        if let override = environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty {
-            return override
-        }
-        if environment["REPTODAY_WRITE_EVIDENCE"] == "1" {
-            return URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent() // RepTodayTests
-                .deletingLastPathComponent() // RepToday
-                .deletingLastPathComponent() // ios
-                .deletingLastPathComponent() // the repo root
-                .appendingPathComponent("artifacts")
-                .appendingPathComponent("reports")
-                .path
-        }
-        return FileManager.default.temporaryDirectory
-            .appendingPathComponent("RepTodayEvidence")
-            .appendingPathComponent(UUID().uuidString)
-            .path
-    }()
-
-    /// Each story keeps its evidence in its own folder, so a render belonging to the per-side/swap copy
-    /// work never lands among the ones the US-O03 acceptance notes point a reviewer at.
-    private enum Evidence {
-        static let perSideSwap = "per-side-swap"
-        static let sessionTimer = "us-o03"
-    }
+    /// Where the rendered-UI evidence is written - resolved by `EvidenceOutput`, which is the single
+    /// place that decides between the default per-run temporary directory, the committed
+    /// `artifacts/reports/<story>/` under `REPTODAY_WRITE_EVIDENCE=1`, and a `REPTODAY_EVIDENCE_DIR`
+    /// root. Every render and every assertion runs identically in all three modes; only where the
+    /// bytes land changes.
+    private typealias Evidence = EvidenceOutput.Story
 
     /// The directory `story`'s evidence is written to.
     private func evidenceDir(_ story: String) -> String {
-        (Self.evidenceRoot as NSString).appendingPathComponent(story)
+        EvidenceOutput.directory(for: story)
     }
 
     private let requestedMinutes = 30
