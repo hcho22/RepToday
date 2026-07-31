@@ -364,9 +364,11 @@ And the step committed on touch-*down*, so a finger that landed on `+` on its wa
 The step now lands on *release*, which is what every other control in the app does.
 Getting there took three passes at hand-rolled gestures, and each one broke on the same thing: deciding in the view whether a lifted finger was still *on* the button.
 A `TapGesture` for the release and a press tracker for the repeat enforced different radii (a tap's ~10pt is not configurable, against the tracker's 22pt), so a press that drifted between them was tracked, never repeated, and then silently dropped - a button that read as dead.
-Judging the release off the drag's own translation instead fixed that and introduced worse: a radius drawn around where a finger *landed* is not a button's bounds, so a press that landed on `+` and slid a few points across the divider still incremented, even though it lifted over `-`.
+Judging the release off the drag's own translation instead fixed that and introduced worse: a radius drawn around where a finger *landed* is not a button's bounds, so "still on the button" became a circle of the view's own invention, agreeing with neither the 44pt square it was drawn over nor any other control in the app.
 So the geometry left the view entirely.
-The button is now a real `Button`, and the single step is the platform's own touch-up-inside: the bounds that decide it are the ones every other control in the app gets, a lift over the neighbouring step button commits nothing on either, and a press the enclosing `ScrollView` takes over commits nothing at all.
+The button is now a real `Button`, and the single step is the platform's own touch-up-inside: the bounds that decide it are the ones every other control in the app gets, touch slop and all.
+A press therefore stays with the button it landed on - a finger that lands on `+` and lifts a little over the adjacent `-` is still inside `+`'s slop and steps `+`, never `-`, exactly as two adjacent buttons behave anywhere else in iOS - and only travel past that slop, or a press the enclosing `ScrollView` takes over, commits nothing at all.
+Inheriting that rule instead of restating it is the whole point of the change; the earlier hand-rolled radii are gone rather than retuned.
 Only the drawing stays hand-rolled, in a `ButtonStyle` that renders the 44pt square.
 
 That leaves `PressRepeater` the one job the platform has no notion of, against a `step` closure that reports whether the value actually moved: a press that outlives the hold delay repeats, and the release ending it adds nothing on top of what the read-out already showed, while a refusal ends the hold.
@@ -379,6 +381,10 @@ The tint fades in over 100ms and out over 200ms: a tap is often under 100ms, and
 `OnboardingView` gained an initializer taking an already-built view model, which is what lets a test render a mid-flow step through the production view rather than reimplementing it.
 `OnboardingBasicsEvidenceTests` hosts that view in a real Simulator key window, asserts on the live accessibility tree (the value spoken as a sentence, no metric unit anywhere on the step, the laid-out 44pt frame, the adjustable step), and writes the two renders to `artifacts/reports/us-o04/`.
 Every defect above was found by those assertions, not by reading the diff.
+
+What that hosted window cannot do is press anything: a `Button`'s press state comes from touch delivery, which only a real run of the app has, so every fix above was argued from a state machine and a screenshot.
+A `RepTodayUITests` bundle closes that gap permanently - `OnboardingImperialUITests` launches the shipping app, walks it to the basics step, and presses the step buttons by coordinate (they are `accessibilityHidden`, the row being one adjustable element), asserting the imperial defaults, one step per tap, a hold that repeats, and two abandoned presses that commit nothing.
+It is a second scheme, `RepTodayUITests`, precisely so it is not in the way: it installs and launches the app out of process, and the documented `-scheme RepToday test` stays the unit run it has always been rather than inheriting an app launch's failure modes on every invocation.
 
 ### A hold is not a rest, and modelling it as one cost three review rounds
 

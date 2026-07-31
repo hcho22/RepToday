@@ -25,9 +25,12 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
   -destination 'generic/platform=iOS Simulator' build
 xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
   -destination 'platform=iOS Simulator,name=iPhone 16' test
+xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests \
+  -destination 'platform=iOS Simulator,name=iPhone 16' test    # XCUITest suite, run on demand
 ```
 
-One scheme, `RepToday`, builds the app and runs `RepTodayTests`; if the destination will not resolve, use `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`. Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
+The `RepToday` scheme builds the app and runs `RepTodayTests` - that is the default run, and everything except the XCUITests lives in it; if the destination will not resolve, use `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`. Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
+`RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes. Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
 `DEVELOPMENT_TEAM` is set to the signing team, so entitlement-gated paths (Sign in with Apple, CloudKit sync, HealthKit writes, live purchases) build for device; they still verify only on real hardware, never in the Simulator.
 Historical device notes in `docs/implementation-log.md` and the PRDs predate this and describe the team as empty - read them as point-in-time records.
 `PerSideSwapEvidenceTests` renders production screens to PNGs on every run, but a plain `test` writes them to a per-run temporary directory so the worktree stays clean; append `REPTODAY_WRITE_EVIDENCE=1` (a build setting, since a Simulator-hosted test bundle inherits no shell environment - the scheme forwards it) to regenerate the committed images under `artifacts/reports/`, or `REPTODAY_EVIDENCE_DIR=<path>` to send them elsewhere.
@@ -73,7 +76,7 @@ No XP, no levels, no badges, no streak to break.
 - Exercise library: 57 bodyweight movements in `Resources/Exercises.json`, all `equipment == []`, load-time-validated.
 - Accessibility throughout: VoiceOver, Dynamic Type, Reduce Motion, haptics with an audio alternative. Prescription copy has one source - `ActiveSessionView.targetText` (seen: "3 × 0:30 per side") and `.targetAccessibilityText` (spoken: nouns agreeing with their own counts, "1 set of a 45 second hold"); every other surface calls them instead of re-formatting.
 - Pure engine/evaluator logic takes an injected `asOf` clock; never read the wall clock inside it.
-- Tests live in `ios/RepToday/RepTodayTests/` (`XCTestCase` + `@testable import RepToday`); all new logic needs tests, and each story adds a row to `docs/test-coverage.md`.
+- Tests live in `ios/RepToday/RepTodayTests/` (`XCTestCase` + `@testable import RepToday`); all new logic needs tests, and each story adds a row to `docs/test-coverage.md`. `ios/RepToday/RepTodayUITests/` is the XCUITest bundle under its own scheme, for the few things only a real touch can exercise.
 
 ## Project Structure (ios/RepToday/RepToday)
 

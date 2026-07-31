@@ -13,13 +13,17 @@ import Foundation
 /// *Where* the finger was is deliberately not this type's business, and that is the whole point of the
 /// split. A press has two possible ends and the button reports them separately: `pressReleased` is a
 /// finger lifting on the control - it comes from a real `Button`'s action, so the bounds deciding it
-/// are the platform's own touch-up-inside, the same hit testing every other control in the app gets -
-/// while `pressEnded` is the press merely ceasing to be tracked (dragged off onto the neighbouring
-/// step button, stolen by the scroll view, the row disappearing) and commits nothing. They are safe to
-/// call in either order for one release, and a press that only ever ends commits nothing at all.
-/// Earlier versions of this control decided "still on the button" here, from how far the finger had
-/// travelled since it landed - but a radius drawn around where a finger landed is not a button's
-/// bounds, and a press that slid off `+` across the divider onto `-` still incremented.
+/// are the platform's own touch-up-inside, the same hit testing every other control in the app gets,
+/// touch slop and all - while `pressEnded` is the press merely ceasing to be tracked (stolen by the
+/// scroll view, carried clear of the button, the row disappearing) and commits nothing. They are safe
+/// to call in either order for one release, and a press that only ever ends commits nothing at all.
+///
+/// Inheriting those bounds means a press stays with the button it *landed* on: a finger that lands on
+/// `+` and lifts a little over the adjacent `-` is still within `+`'s touch-up slop, so it steps `+`,
+/// and only travel past that slop stops it committing. Two adjacent buttons anywhere else in iOS
+/// behave the same way, and matching them is exactly why the decision is not made here. Earlier
+/// versions did make it here, from how far the finger had travelled since it landed - but a radius
+/// drawn around a landing point is not a button's bounds however it is tuned.
 ///
 /// `step` reports whether the value actually moved, and a `false` ends the repeat. Holding `+` at the
 /// top of a range therefore stops, rather than writing the same clamped value back through a binding

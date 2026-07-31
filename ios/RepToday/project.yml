@@ -85,3 +85,35 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reptoday.app.tests
         GENERATE_INFOPLIST_FILE: YES
+
+  # The unit bundle hosts production views in a window, which is enough to read what is drawn and
+  # what VoiceOver speaks - but not to press anything: a `Button`'s press state is decided by the
+  # touch delivery the app process only gets from a real finger. The onboarding step buttons are
+  # hand-drawn and repeat while held, so a tap landing, sliding, or lifting is exactly where they
+  # break; this target exists so those are pressed rather than argued about.
+  RepTodayUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: RepTodayUITests
+    dependencies:
+      - target: RepToday
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reptoday.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+# The UI suite gets its own scheme rather than joining `RepToday`'s. It installs and launches the app
+# in a booted Simulator and drives it out of process, which is a slower and more fragile thing to
+# stand on than the unit bundle's hosted windows; folding it into the scheme everything else runs
+# through would make every unit run wait on an app launch and inherit its failure modes. Keeping it
+# separate leaves `-scheme RepToday test` exactly the run it has always been, and the touch path is
+# asked for by name - `-scheme RepTodayUITests test` - when that is what is in question.
+schemes:
+  RepTodayUITests:
+    build:
+      targets:
+        RepTodayUITests: [test]
+    test:
+      targets:
+        - RepTodayUITests

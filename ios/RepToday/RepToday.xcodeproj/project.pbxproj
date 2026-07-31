@@ -82,6 +82,7 @@
 		8234AFC18D1893CC336B0DC9 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F85C64165B442A49C91C183 /* OnboardingViewModel.swift */; };
 		8378E13A4ABCF4AABED4578F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 826A435F6E4A6028770FC52A /* OnboardingView.swift */; };
 		847789C1BA343A6F372C6E7B /* SessionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7127A3BA50BEFDD5D238955D /* SessionPolicy.swift */; };
+		879D1B25FCE5C79D1D6B9478 /* OnboardingImperialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0A92D81915B58859FBF120 /* OnboardingImperialUITests.swift */; };
 		8A82F45FFFE4FB42338A106D /* ProgressionChainSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6489E7C96E05197D40685001 /* ProgressionChainSelection.swift */; };
 		8C91A9BBBC747A47A5003503 /* StoreKitSubscriptionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7D5CA389C95932C6F294265 /* StoreKitSubscriptionServiceTests.swift */; };
 		8D69A46747B66F3F351EE801 /* CoreDataWorkoutLogService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E9F336C2F02E02793D884CB /* CoreDataWorkoutLogService.swift */; };
@@ -142,6 +143,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		3E8AF7F5859F431115741287 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CB2E288E8805291D99D23C07 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E10B61C48B135333C862BA61;
+			remoteInfo = RepToday;
+		};
 		991DE53F5A1D6F00CDB10B69 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = CB2E288E8805291D99D23C07 /* Project object */;
@@ -265,10 +273,12 @@
 		CAB76ACAE7302AC1E1872F78 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		CAD8E5DDF2CC287E122B1CFA /* PressRepeater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressRepeater.swift; sourceTree = "<group>"; };
 		CBFCEEC72CFCE6CDEF6A4CF1 /* HealthKitWorkoutSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutSample.swift; sourceTree = "<group>"; };
+		CC0A92D81915B58859FBF120 /* OnboardingImperialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingImperialUITests.swift; sourceTree = "<group>"; };
 		CE524C2E971F6D7D2CBA1988 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		D0CF49ED5905DDFE244635E7 /* VarietyLanguageResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarietyLanguageResolver.swift; sourceTree = "<group>"; };
 		D401EEF4CCC38CC610850D8E /* SessionShapeSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelection.swift; sourceTree = "<group>"; };
 		D5EC6963D9F5A548E6EAD653 /* ReprogramTriggerDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerDetection.swift; sourceTree = "<group>"; };
+		D6B2E24055E69DA5CA9B922F /* RepTodayUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = RepTodayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7D5CA389C95932C6F294265 /* StoreKitSubscriptionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitSubscriptionServiceTests.swift; sourceTree = "<group>"; };
 		D9EF193CBAA44AE479CCC72B /* ProgressionChainSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelectionTests.swift; sourceTree = "<group>"; };
 		DAF42A9D64A3F43ED663B6EB /* PillarBalance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalance.swift; sourceTree = "<group>"; };
@@ -336,6 +346,7 @@
 			children = (
 				FFCD9FD434AD6713EAAC4DE9 /* RepToday */,
 				8977762BAFBE2AF92D9C4FA2 /* RepTodayTests */,
+				E5319E06450F6C0AA9E6549E /* RepTodayUITests */,
 				9A63B5C6BD2A91C7EE4F48DE /* Products */,
 			);
 			sourceTree = "<group>";
@@ -569,6 +580,7 @@
 			children = (
 				11B9FD6F285D21BFC4FBCFC1 /* RepToday.app */,
 				1D262409C6A91253012B146E /* RepTodayTests.xctest */,
+				D6B2E24055E69DA5CA9B922F /* RepTodayUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -626,6 +638,14 @@
 				AB1C83C83DD5D2B72C9F4234 /* RepTodayApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		E5319E06450F6C0AA9E6549E /* RepTodayUITests */ = {
+			isa = PBXGroup;
+			children = (
+				CC0A92D81915B58859FBF120 /* OnboardingImperialUITests.swift */,
+			);
+			path = RepTodayUITests;
 			sourceTree = "<group>";
 		};
 		E6F3D85EF498C74AF96AD0A2 /* Progress */ = {
@@ -731,6 +751,24 @@
 			productReference = 11B9FD6F285D21BFC4FBCFC1 /* RepToday.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FE00ADC0542F637E04BDE964 /* RepTodayUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A79229D260BED3855A920BFD /* Build configuration list for PBXNativeTarget "RepTodayUITests" */;
+			buildPhases = (
+				4B9756E1183BD712CE5F01FA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8DFD2308B503B1FD8D4B0790 /* PBXTargetDependency */,
+			);
+			name = RepTodayUITests;
+			packageProductDependencies = (
+			);
+			productName = RepTodayUITests;
+			productReference = D6B2E24055E69DA5CA9B922F /* RepTodayUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -745,6 +783,10 @@
 					};
 					E10B61C48B135333C862BA61 = {
 						DevelopmentTeam = QH9S83CX4Y;
+					};
+					FE00ADC0542F637E04BDE964 = {
+						DevelopmentTeam = QH9S83CX4Y;
+						TestTargetID = E10B61C48B135333C862BA61;
 					};
 				};
 			};
@@ -767,6 +809,7 @@
 			targets = (
 				E10B61C48B135333C862BA61 /* RepToday */,
 				60A3927A3D70C97CBEDBFFAC /* RepTodayTests */,
+				FE00ADC0542F637E04BDE964 /* RepTodayUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -840,6 +883,14 @@
 				5A508E0BE93662DE9C751C57 /* USE01RangeEvidenceTests.swift in Sources */,
 				A544E1294FADA4B8300687F2 /* UnitConversionTests.swift in Sources */,
 				FF28C9C1A5868A143C2C08AD /* VarietyLanguageTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4B9756E1183BD712CE5F01FA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				879D1B25FCE5C79D1D6B9478 /* OnboardingImperialUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -935,9 +986,31 @@
 			target = E10B61C48B135333C862BA61 /* RepToday */;
 			targetProxy = 991DE53F5A1D6F00CDB10B69 /* PBXContainerItemProxy */;
 		};
+		8DFD2308B503B1FD8D4B0790 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E10B61C48B135333C862BA61 /* RepToday */;
+			targetProxy = 3E8AF7F5859F431115741287 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		111E3F8532682DC1C246B05C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.reptoday.app.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RepToday;
+			};
+			name = Debug;
+		};
 		33DAF7C1CD8CD5F42C58312C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1102,6 +1175,23 @@
 			};
 			name = Debug;
 		};
+		A95430561A677A86E401B2C6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.reptoday.app.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RepToday;
+			};
+			name = Release;
+		};
 		B56B859658BF50BF97D526F8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1171,6 +1261,15 @@
 			buildConfigurations = (
 				A33419A4BC2B46D0B34A2D91 /* Debug */,
 				B56B859658BF50BF97D526F8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A79229D260BED3855A920BFD /* Build configuration list for PBXNativeTarget "RepTodayUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				111E3F8532682DC1C246B05C /* Debug */,
+				A95430561A677A86E401B2C6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

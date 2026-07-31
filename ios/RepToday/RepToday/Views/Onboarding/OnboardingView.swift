@@ -408,10 +408,12 @@ private struct LabeledStepper: View {
 ///
 /// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
 /// ranges here need it - 70...440 lb is a long walk in single taps. Only the *drawing* is hand-rolled,
-/// though: this is a real `Button`, so everything about when a press counts is the platform's. The
-/// single step is a touch-up **inside the button's own bounds** and nowhere else, which is the rule
-/// that matters on a row where `-` and `+` are adjacent 44pt squares - a finger that lands on `+`,
-/// slides across the divider and lifts over `-` commits nothing on either. A press the enclosing
+/// though: this is a real `Button`, so everything about when a press counts is the platform's, touch
+/// slop and all. A press belongs to the button it *landed* on for its whole life, and the platform's
+/// touch-up-inside decides whether the lift still counts - so on a row where `-` and `+` are adjacent
+/// 44pt squares, a finger that lands on `+` and drifts a little over `-` steps `+` and never `-`, and
+/// one that travels clear of the slop steps nothing at all. That is how every other button in the app
+/// behaves; inheriting the rule rather than restating it here is the point. A press the enclosing
 /// `ScrollView` takes over commits nothing either, and the button's highlight is delayed exactly as
 /// long as the platform delays every other button's inside a scroll view.
 ///
