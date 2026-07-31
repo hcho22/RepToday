@@ -256,6 +256,10 @@ final class OnboardingImperialUITests: XCTestCase {
     /// onboarding speaks pounds - the profile is saved in cm/kg and the engine seeds off it - so a
     /// conversion that failed at the boundary would surface here as a flow that never reaches a
     /// session, which is the failure a user would actually experience.
+    ///
+    /// The walk runs to the end of the real first launch, which means through the Health share prompt
+    /// the main tabs raise on arrival - so the render this files shows the ready session the way it is
+    /// actually met, rather than the sheet that was sitting over it.
     func testImperialAnswersCarryThroughOnboardingToAReadySession() throws {
         goToBasicsStep()
 
@@ -290,6 +294,11 @@ final class OnboardingImperialUITests: XCTestCase {
             greeting.waitForExistence(timeout: 15),
             "onboarding with imperial measurements did not produce a ready session"
         )
+        // The ready screen is reached above; it is *met* through the Health prompt, which the main
+        // tabs raise as they appear. Answered here so the render below shows the session rather than
+        // the sheet sitting over it.
+        answerHealthAccessSheetIfPresented()
+        waitUntilMainTabsAreUncovered()
         attach(screenshot: XCUIScreen.main.screenshot(), named: "live-ready-after-imperial-onboarding.png")
     }
 
@@ -300,6 +309,60 @@ final class OnboardingImperialUITests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    /// Answers the Health share prompt the main tabs raise as they appear (US-N03), when it is up.
+    ///
+    /// Unlike a system permission alert, this sheet is a remote view presented *inside* the app's own
+    /// process - its elements are children of `app` - so an ordinary query finds it and no
+    /// interruption monitor is involved. `Don't Allow` is the control that is always enabled (`Allow`
+    /// stays disabled until a category is switched on), and either answer would do here: the Health
+    /// write is additive and gates nothing this suite asserts.
+    ///
+    /// Optional and bounded on purpose. The prompt only appears while the app's Health authorization
+    /// is still unanswered, so a run against a container that already answered it has no sheet to
+    /// dismiss and must stay green - this waits for one, answers it if it comes, and returns quietly
+    /// if it does not.
+    private func answerHealthAccessSheetIfPresented() {
+        let sheet = app.navigationBars["Health Access"]
+        guard sheet.waitForExistence(timeout: 5) else { return }
+
+        let dontAllow = sheet.buttons["UIA.Health.AuthSheet.CancelButton"]
+        XCTAssertTrue(dontAllow.waitForExistence(timeout: 5), "the Health prompt has no dismissing control")
+        dontAllow.tap()
+
+        // Declining raises its own confirmation ("you can turn these on later in the Health app"),
+        // which is one more thing standing over the ready screen. Bounded rather than required: the
+        // follow-up is the system's to keep or drop, and it is `waitUntilMainTabsAreUncovered` - not
+        // this - that actually guarantees the screen is clear before the render is taken.
+        let confirmation = app.alerts["Health Access"]
+        if confirmation.waitForExistence(timeout: 3) {
+            confirmation.buttons["OK"].tap()
+        }
+    }
+
+    /// Waits until the main tabs are reachable by a finger again, i.e. nothing is presented over them.
+    ///
+    /// `XCUIScreen.main.screenshot()` captures the whole display, so a render only shows the screen it
+    /// is named for once whatever the app raised on top has finished going away. Existence is not that
+    /// signal - the ready screen still exists underneath a sheet, and a sheet is out of the tree while
+    /// it is still animating off - so the capture waits on hittability rather than on a fixed delay.
+    /// It asks the tab bar rather than the greeting because a hit on a SwiftUI `Text` resolves to the
+    /// scroll view carrying it; the tab's own button is a control, so it answers for the whole screen.
+    private func waitUntilMainTabsAreUncovered(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let todayTab = app.tabBars.buttons["Today"]
+        let uncovered = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"), object: todayTab
+        )
+        if XCTWaiter().wait(for: [uncovered], timeout: 5) != .completed {
+            XCTFail(
+                "the main tabs are still covered - the render would not show the ready session",
+                file: file, line: line
+            )
+        }
+    }
 
     private func poundsRead(from row: XCUIElement) -> Int? {
         guard let value = row.value as? String else { return nil }
