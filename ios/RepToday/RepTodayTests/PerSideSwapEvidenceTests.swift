@@ -1201,10 +1201,16 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
         XCTAssertTrue(closeControl.accessibilityActivate(), "the close control did not activate")
 
-        // Let any write the close queued settle before reading what the Resume card would find.
-        for _ in 0..<10 {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        // Let any write the close queued settle before reading what the Resume card would find. The
+        // pump sits behind a synchronous function because `RunLoop.run(mode:before:)` is unavailable
+        // from an async context (an error under Swift 6), which is the same reason the accessibility
+        // helpers this test already calls hold their own pumps.
+        func settle() {
+            for _ in 0..<10 {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
         }
+        settle()
         let saved = try await store.load(for: "u1")
         let snapshot = try XCTUnwrap(saved, "the resumable session vanished")
         print("=== Rep Today - closing mid-hold saved hold=\(String(describing: snapshot.hold)) ===")
