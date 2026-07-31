@@ -233,7 +233,8 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
   -destination 'platform=iOS Simulator,name=iPhone 16' test
 ```
 
-`RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes. Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
+`RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes.
+Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
 
 ```bash
 xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests \

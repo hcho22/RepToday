@@ -29,8 +29,10 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests \
   -destination 'platform=iOS Simulator,name=iPhone 16' test    # XCUITest suite, run on demand
 ```
 
-The `RepToday` scheme builds the app and runs `RepTodayTests` - that is the default run, and everything except the XCUITests lives in it; if the destination will not resolve, use `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`. Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
-`RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes. Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
+The `RepToday` scheme builds the app and runs `RepTodayTests` - that is the default run, and everything except the XCUITests lives in it; if the destination will not resolve, use `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`.
+Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
+`RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes.
+Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
 `DEVELOPMENT_TEAM` is set to the signing team, so entitlement-gated paths (Sign in with Apple, CloudKit sync, HealthKit writes, live purchases) build for device; they still verify only on real hardware, never in the Simulator.
 Historical device notes in `docs/implementation-log.md` and the PRDs predate this and describe the team as empty - read them as point-in-time records.
 `PerSideSwapEvidenceTests` and `OnboardingBasicsEvidenceTests` render production screens to PNGs on every run, and `OnboardingImperialUITests` screenshots the running app the same way, but a plain `test` writes them to a per-run temporary directory so the worktree stays clean; append `REPTODAY_WRITE_EVIDENCE=1` (a build setting, since a Simulator-hosted test bundle inherits no shell environment - both schemes forward it) to point the renders at `artifacts/reports/`, which is how the committed images are regenerated, or `REPTODAY_EVIDENCE_DIR=<path>` to send them elsewhere.
