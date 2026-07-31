@@ -33,7 +33,7 @@ The `RepToday` scheme builds the app and runs `RepTodayTests` - that is the defa
 `RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes. Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
 `DEVELOPMENT_TEAM` is set to the signing team, so entitlement-gated paths (Sign in with Apple, CloudKit sync, HealthKit writes, live purchases) build for device; they still verify only on real hardware, never in the Simulator.
 Historical device notes in `docs/implementation-log.md` and the PRDs predate this and describe the team as empty - read them as point-in-time records.
-`PerSideSwapEvidenceTests` renders production screens to PNGs on every run, but a plain `test` writes them to a per-run temporary directory so the worktree stays clean; append `REPTODAY_WRITE_EVIDENCE=1` (a build setting, since a Simulator-hosted test bundle inherits no shell environment - the scheme forwards it) to regenerate the committed images under `artifacts/reports/`, or `REPTODAY_EVIDENCE_DIR=<path>` to send them elsewhere.
+`PerSideSwapEvidenceTests` and `OnboardingBasicsEvidenceTests` render production screens to PNGs on every run, but a plain `test` writes them to a per-run temporary directory so the worktree stays clean; append `REPTODAY_WRITE_EVIDENCE=1` (a build setting, since a Simulator-hosted test bundle inherits no shell environment - the scheme forwards it) to regenerate the committed images under `artifacts/reports/`, or `REPTODAY_EVIDENCE_DIR=<path>` to send them elsewhere.
 
 ## Architecture
 

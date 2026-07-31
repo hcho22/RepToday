@@ -231,6 +231,60 @@ final class OnboardingImperialUITests: XCTestCase {
         )
     }
 
+    // MARK: - The whole flow, in imperial
+
+    /// The story's acceptance path end to end: a US user dials in the PRD's validation measurements -
+    /// 5 ft 7 in and 165 lb - with the step buttons, finishes onboarding, and lands on a generated
+    /// session.
+    ///
+    /// The per-control tests above prove the rows read and move in imperial; this one proves the
+    /// imperial answers are actually *accepted* by the flow they feed. Nothing downstream of
+    /// onboarding speaks pounds - the profile is saved in cm/kg and the engine seeds off it - so a
+    /// conversion that failed at the boundary would surface here as a flow that never reaches a
+    /// session, which is the failure a user would actually experience.
+    func testImperialAnswersCarryThroughOnboardingToAReadySession() throws {
+        goToBasicsStep()
+
+        let height = row("Height")
+        minusButton(of: height).tap()
+        waitForValue("5 feet 7 inches", on: height, message: "one tap on - must remove a single inch")
+
+        let weight = row("Weight")
+        minusButton(of: weight).tap()
+        minusButton(of: weight).tap()
+        waitForValue("165 pounds", on: weight, message: "two taps on - must remove 10lb")
+
+        attach(screenshot: XCUIScreen.main.screenshot(), named: "live-basics-prd-values.png")
+
+        // Every remaining step answers itself with a usable default, so the flow is walked the way a
+        // user in a hurry walks it - straight through on the primary button. Bounded by the flow's
+        // own length, so a step that stops advancing fails here rather than spinning.
+        let startMoving = app.buttons["Start moving"]
+        for _ in 0..<OnboardingStepBudget.remainingAfterBasics where !startMoving.exists {
+            let advance = app.buttons["Continue"]
+            XCTAssertTrue(advance.waitForExistence(timeout: 5), "onboarding stopped advancing")
+            advance.tap()
+        }
+        XCTAssertTrue(
+            startMoving.waitForExistence(timeout: 5),
+            "the imperial answers never reached the last onboarding step"
+        )
+        startMoving.tap()
+
+        let greeting = app.staticTexts["Ready when you are, Riley."]
+        XCTAssertTrue(
+            greeting.waitForExistence(timeout: 15),
+            "onboarding with imperial measurements did not produce a ready session"
+        )
+        attach(screenshot: XCUIScreen.main.screenshot(), named: "live-ready-after-imperial-onboarding.png")
+    }
+
+    /// Steps left after `.basics` in the six-step flow, named so the walk above reads as a bound
+    /// rather than a magic number.
+    private enum OnboardingStepBudget {
+        static let remainingAfterBasics = 4
+    }
+
     // MARK: - Helpers
 
     private func poundsRead(from row: XCUIElement) -> Int? {

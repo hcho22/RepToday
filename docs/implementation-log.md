@@ -386,6 +386,7 @@ Every defect above was found by those assertions, not by reading the diff.
 
 What that hosted window cannot do is press anything: a `Button`'s press state comes from touch delivery, which only a real run of the app has, so every fix above was argued from a state machine and a screenshot.
 A `RepTodayUITests` bundle closes that gap permanently - `OnboardingImperialUITests` launches the shipping app, walks it to the basics step, and presses the step buttons by coordinate (they are `accessibilityHidden`, the row being one adjustable element), asserting the imperial defaults, one step per tap, a hold that repeats, and two abandoned presses that commit nothing.
+It also walks the story's acceptance path whole: the PRD's validation measurements (5 ft 7 in, 165 lb) are dialled in with those buttons, the rest of the flow is answered on its defaults, and the run has to land on a generated session - the per-control tests prove the rows read and move in imperial, and this one proves the imperial answers are *accepted* by the flow they feed, since a conversion failing at the boundary surfaces as onboarding that never reaches a session rather than as a wrong number nobody sees.
 It is a second scheme, `RepTodayUITests`, precisely so it is not in the way: it installs and launches the app out of process, and the documented `-scheme RepToday test` stays the unit run it has always been rather than inheriting an app launch's failure modes on every invocation.
 
 ### A hold is not a rest, and modelling it as one cost three review rounds
