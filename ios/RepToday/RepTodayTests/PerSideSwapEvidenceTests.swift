@@ -349,14 +349,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         format.scale = 3
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let image = renderer.image { ctx in host.view.layer.render(in: ctx.cgContext) }
-        let data = try XCTUnwrap(image.pngData())
 
-        let directory = evidenceDir(story)
-        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        let path = (directory as NSString).appendingPathComponent(fileName)
-        try data.write(to: URL(fileURLWithPath: path))
-        XCTAssertGreaterThan(data.count, 8000, "rendered PNG unexpectedly small - the surface may not have drawn")
-        print("SNAPSHOT_WRITTEN \(path) bytes=\(data.count)")
+        // Encoding, the did-it-draw check and the write are all `EvidenceOutput`'s, so a capture that
+        // failed either precondition never reaches disk to overwrite a committed baseline.
+        try EvidenceOutput.write(image, named: fileName, for: story)
     }
 
     /// A resumed-session snapshot parked on `index` - the production path the player uses to reopen an

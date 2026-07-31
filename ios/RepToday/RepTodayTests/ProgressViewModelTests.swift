@@ -212,23 +212,27 @@ final class ProgressViewModelTests: XCTestCase {
 
 // MARK: - US-M02 rendered-UI evidence
 
-/// Renders the actual `ProgressTabView` surface to PNGs so the US-M02 cards can be reviewed as an end
-/// user would see them: the free legibility layer (pillar balance, chain position, personal bests)
-/// with the non-nagging premium upsell in place of the deep layer, the premium variant with the deep
-/// analytics section unlocked, and the fresh-user empty state. The mock container ships empty history
-/// (US-M01), so these states cannot be reached by tapping the running app - the snapshots stand in for
-/// that live capture.
+/// Hosts the actual `ProgressTabView` surface and gates it two ways.
+///
+/// It **renders** the US-M02 cards to PNGs so they can be reviewed as an end user would see them: the
+/// free legibility layer (pillar balance, chain position, personal bests) with the non-nagging premium
+/// upsell in place of the deep layer, the premium variant with the deep analytics section unlocked, and
+/// the fresh-user empty state. The mock container ships empty history (US-M01), so these states cannot
+/// be reached by tapping the running app - the snapshots stand in for that live capture.
+///
+/// It also **reads the hosted surface's live accessibility tree**, in two tests that write no PNG at
+/// all: they are the regression gate for the calendar resolving "today" against the injected clock
+/// rather than the wall clock, and for the weekday header being hidden from VoiceOver rather than read
+/// as seven loose letters. Both need the same hosted, settled production view the renders need, which is
+/// why they live here rather than beside the view-model tests above.
+///
+/// The renders land where `EvidenceOutput` decides - a per-run temporary directory by default, so a
+/// plain `test` leaves the worktree clean, and the committed `artifacts/reports/us-m02/` only when asked
+/// for explicitly. That destination used to be an absolute path baked in from one machine's tooling run,
+/// which meant every run of the default scheme wrote into a directory belonging to a session that no
+/// longer exists - on any other machine, into a path that had never existed at all.
 @MainActor
 final class ProgressTabSnapshotTests: XCTestCase {
-
-    /// Where the renders land - resolved by `EvidenceOutput`, the same seam `PerSideSwapEvidenceTests`
-    /// uses: a per-run temporary directory by default, so a plain `test` leaves the worktree clean,
-    /// and the committed `artifacts/reports/us-m02/` only when asked for explicitly.
-    ///
-    /// This used to be an absolute path baked in from one machine's tooling run, which meant every
-    /// run of the default scheme wrote into a directory belonging to a session that no longer exists -
-    /// on any other machine, into a path that had never existed at all.
-    private var evidenceDir: String { EvidenceOutput.directory(for: EvidenceOutput.Story.progressAnalytics) }
 
     /// The window a hosted surface lives in while it is captured or read.
     private var renderWindow: UIWindow?
@@ -326,14 +330,10 @@ final class ProgressTabSnapshotTests: XCTestCase {
         let image = renderer.image { ctx in
             host.view.layer.render(in: ctx.cgContext)
         }
-        let data = try XCTUnwrap(image.pngData())
 
-        try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)
-        let path = (evidenceDir as NSString).appendingPathComponent(fileName)
-        try data.write(to: URL(fileURLWithPath: path))
-
-        XCTAssertGreaterThan(data.count, 8000, "Rendered PNG unexpectedly small - the surface may not have drawn")
-        print("SNAPSHOT_WRITTEN \(path) bytes=\(data.count) size=\(Int(size.width))x\(Int(size.height))")
+        // Encoding, the did-it-draw check and the write are all `EvidenceOutput`'s, so a capture that
+        // failed either precondition never reaches disk to overwrite a committed baseline.
+        try EvidenceOutput.write(image, named: fileName, for: EvidenceOutput.Story.progressAnalytics)
     }
 
     /// The height the capture is cropped to: what the content actually laid out to, rather than the
