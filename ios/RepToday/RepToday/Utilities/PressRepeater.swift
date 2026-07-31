@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// The press-and-hold behaviour behind a hand-drawn step button: nothing commits while the finger is
@@ -11,14 +10,16 @@ import Foundation
 /// -down feels a shade snappier, but it charges an accidental brush to the user's own body
 /// measurements, which nothing downstream lets them correct yet.
 ///
-/// A press has three possible ends and this type names them separately, because the gesture layer
-/// cannot: `pressReleased` is a finger lifting, `pressEnded` is the press merely ceasing to be
-/// tracked (dragged off, stolen by the scroll view, the row disappearing) and commits nothing. They
-/// are safe to call in either order for one release, and a press that only ever ends commits nothing
-/// at all.
-///
-/// Whether a lifted finger was still *on* the control is decided here too, from how far it drifted
-/// from where it landed, so one tolerance governs both tracking and committing.
+/// *Where* the finger was is deliberately not this type's business, and that is the whole point of the
+/// split. A press has two possible ends and the button reports them separately: `pressReleased` is a
+/// finger lifting on the control - it comes from a real `Button`'s action, so the bounds deciding it
+/// are the platform's own touch-up-inside, the same hit testing every other control in the app gets -
+/// while `pressEnded` is the press merely ceasing to be tracked (dragged off onto the neighbouring
+/// step button, stolen by the scroll view, the row disappearing) and commits nothing. They are safe to
+/// call in either order for one release, and a press that only ever ends commits nothing at all.
+/// Earlier versions of this control decided "still on the button" here, from how far the finger had
+/// travelled since it landed - but a radius drawn around where a finger landed is not a button's
+/// bounds, and a press that slid off `+` across the divider onto `-` still incremented.
 ///
 /// `step` reports whether the value actually moved, and a `false` ends the repeat. Holding `+` at the
 /// top of a range therefore stops, rather than writing the same clamped value back through a binding
@@ -34,18 +35,6 @@ final class PressRepeater {
     /// Time between repeats once the hold has started.
     static let defaultRepeatInterval: Duration = .milliseconds(90)
 
-    /// How far the finger may drift from where it landed and still count as being on the control.
-    ///
-    /// Half the app's 44pt touch target: roughly the button's own bounds, so an ordinary wobble
-    /// neither stops the repeat nor drops the step, while a drag deliberately away from the control
-    /// does both. A full 44pt would keep a repeat alive with the finger a whole button's width off,
-    /// and the 10pt a bare `TapGesture` enforces gives up on a thumb's normal roll.
-    ///
-    /// It is one number because the two gestures behind a step button have to agree on it: they used
-    /// to disagree (a `TapGesture`'s ~10pt is not configurable), and a press that drifted between the
-    /// two thresholds was tracked as a press, never repeated, and then silently dropped on release.
-    static let pressTolerance: CGFloat = Theme.Spacing.minTouchTarget / 2
-
     private let holdDelay: Duration
     private let repeatInterval: Duration
     private let sleep: (Duration) async throws -> Void
@@ -55,8 +44,8 @@ final class PressRepeater {
     /// already owns this press - which is the one thing that keeps a hold from ending a step past
     /// what it showed - and it has to survive `pressEnded`, since a single release delivers both
     /// calls in an order the gesture layer decides. `pressReleased` clears it once it has read it, so
-    /// a hold whose release is never reported (the button disabled itself at the bound, and the next
-    /// press begins on the other one) cannot leave a `true` behind to swallow a later tap.
+    /// a hold whose release is never reported (the button disabled itself at the bound, so it fired
+    /// no action) cannot leave a `true` behind to swallow a later tap.
     private var didBecomeHold = false
 
     init(
@@ -86,16 +75,14 @@ final class PressRepeater {
         }
     }
 
-    /// The finger lifted, having travelled `drift` from where it landed: one step, unless the press
-    /// had already become a hold and taken its own, or the finger came up further than
-    /// `pressTolerance` away and so lifted off the control rather than on it.
+    /// The finger lifted on the control: one step, unless the press had already become a hold and
+    /// taken its own.
     @MainActor
-    func pressReleased(drift: CGSize = .zero, step: () -> Bool) {
+    func pressReleased(step: () -> Bool) {
         let wasHold = didBecomeHold
         didBecomeHold = false
         cancel()
         guard !wasHold else { return }
-        guard hypot(drift.width, drift.height) <= Self.pressTolerance else { return }
         _ = step()
     }
 

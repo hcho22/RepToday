@@ -407,21 +407,23 @@ private struct LabeledStepper: View {
 /// One half of a `LabeledStepper`: a 44pt-square target that steps on release and repeats while held.
 ///
 /// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
-/// ranges here need it - 70...440 lb is a long walk in single taps.
+/// ranges here need it - 70...440 lb is a long walk in single taps. Only the *drawing* is hand-rolled,
+/// though: this is a real `Button`, so everything about when a press counts is the platform's. The
+/// single step is a touch-up **inside the button's own bounds** and nowhere else, which is the rule
+/// that matters on a row where `-` and `+` are adjacent 44pt squares - a finger that lands on `+`,
+/// slides across the divider and lifts over `-` commits nothing on either. A press the enclosing
+/// `ScrollView` takes over commits nothing either, and the button's highlight is delayed exactly as
+/// long as the platform delays every other button's inside a scroll view.
 ///
-/// The two gestures have one job each and neither commits a step on its own: the long press is
-/// reduced to a press *tracker* (`minimumDuration: .infinity`, so it never succeeds) that reports
-/// only when a press starts and stops being tracked, and the drag reports the one thing that tracker
-/// cannot tell apart - a finger lifting, and how far from where it landed. `PressRepeater` is the
-/// single thing that turns those two streams into steps: a tap steps once on release, a hold repeats
-/// and the release adds nothing on top of it, a press that is only ever cancelled commits nothing,
-/// and a hold stops at the end of the range. It is cancelled on release and on disappear, so no task
-/// outlives the row.
+/// Deciding that here is what went wrong three times: a radius measured from where the finger landed
+/// is not a button's bounds, and two gestures measuring it differently silently dropped the step.
+/// There is now one rule, it lives in the layer that owns hit testing, and this view holds no geometry
+/// at all.
 ///
-/// Both gestures measure "still on the button" with the same `PressRepeater.pressTolerance`, which is
-/// the whole reason the release is read off a drag rather than a `TapGesture`: a tap's ~10pt is not
-/// configurable, so a press that drifted past it but stayed inside the tracker's radius used to be
-/// swallowed - no repeat, no step, a button that read as dead.
+/// That leaves `PressRepeater` the one job the platform has no notion of: a press held past the hold
+/// delay repeats, and the release ending it adds nothing on top of what the read-out already showed.
+/// It runs off the style's press state - the same signal that tints the glyph - so the repeat and the
+/// highlight start and stop together, on release, on cancel, and on disappear.
 private struct StepButton: View {
     let systemName: String
     let isEnabled: Bool
@@ -430,61 +432,88 @@ private struct StepButton: View {
 
     @State private var repeater = PressRepeater()
 
-    /// Nothing else acknowledges a press now that the value only moves on release, and this is the
-    /// one hand-drawn control on a screen where every other button gets the platform's highlight.
-    @State private var isPressed = false
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
-        Image(systemName: systemName)
-            .font(Theme.Typography.headline)
-            // The glyph scales with Dynamic Type like everything else, but only up to the point where
-            // it still fits its 44pt target - past that it drew straight through the button's own
-            // background. The row's text is what carries the larger sizes; this is control chrome.
-            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .foregroundStyle(tint)
-            .frame(
-                width: Theme.Spacing.minTouchTarget,
-                height: Theme.Spacing.minTouchTarget
-            )
-            .contentShape(Rectangle())
-            .animation(reduceMotion ? nil : .easeOut, value: isPressed)
-            .onLongPressGesture(
-                minimumDuration: .infinity,
-                maximumDistance: PressRepeater.pressTolerance
-            ) {
-                // Unreachable: an infinite minimum duration means the press is only ever tracked.
-            } onPressingChanged: { isPressing in
+        Button {
+            repeater.pressReleased(step: action)
+        } label: {
+            Image(systemName: systemName)
+                .font(Theme.Typography.headline)
+                // The glyph scales with Dynamic Type like everything else, but only up to the point
+                // where it still fits its 44pt target - past that it drew straight through the
+                // button's own background. The row's text carries the larger sizes; this is chrome.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        }
+        .buttonStyle(
+            StepButtonStyle { isPressing in
                 if isPressing {
-                    guard isEnabled else { return }
-                    isPressed = true
                     repeater.pressBegan(step: action)
                 } else {
-                    isPressed = false
                     repeater.pressEnded()
                 }
             }
-            // The press tracker above reports a drag-off and a release identically, so the drag is
-            // what says the finger came up and how far away it did so. It ends after a long hold too,
-            // which is exactly why the single step lives in the repeater rather than here.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0).onEnded { drag in
-                    isPressed = false
-                    guard isEnabled else { return }
-                    repeater.pressReleased(drift: drag.translation, step: action)
-                }
-            )
-            .onDisappear {
-                isPressed = false
-                repeater.pressEnded()
-            }
-            .accessibilityHidden(true)
+        )
+        .disabled(!isEnabled)
+        .onDisappear { repeater.pressEnded() }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A step button's chrome: a 44pt square whose glyph tints while the finger is down.
+///
+/// The press state is the platform's own - true while the finger is down on the button, false the
+/// moment it lifts, drags off, or the enclosing scroll view takes the press over - so one signal
+/// drives both the highlight and the repeat, and no press can end somewhere this view never hears
+/// about. Nothing else acknowledges a press, since the value only moves on release, and this is the
+/// one hand-drawn control on a screen where every other button gets the platform's highlight free.
+private struct StepButtonStyle: ButtonStyle {
+    /// Fast in, so a tap well under 100ms still shows the highlight it was added to give; slower out,
+    /// so the release fades rather than snaps. `Theme` carries no animation tokens, so these are the
+    /// one named place for them rather than literals at the call site.
+    static let pressInDuration: TimeInterval = 0.1
+    static let pressOutDuration: TimeInterval = 0.2
+
+    let onPressingChanged: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        Chrome(configuration: configuration, onPressingChanged: onPressingChanged)
     }
 
-    private var tint: Color {
-        guard isEnabled else { return Theme.Colors.textSecondary }
-        return isPressed ? Theme.Colors.accent : Theme.Colors.textPrimary
+    /// A view rather than modifiers applied straight to the label, so it can read `isEnabled` and
+    /// Reduce Motion from the environment and own the `onChange` that drives the repeat.
+    private struct Chrome: View {
+        let configuration: Configuration
+        let onPressingChanged: (Bool) -> Void
+
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(tint)
+                .frame(
+                    width: Theme.Spacing.minTouchTarget,
+                    height: Theme.Spacing.minTouchTarget
+                )
+                .contentShape(Rectangle())
+                .animation(pressAnimation, value: configuration.isPressed)
+                .onChange(of: configuration.isPressed) { _, isPressing in
+                    onPressingChanged(isPressing)
+                }
+        }
+
+        private var tint: Color {
+            guard isEnabled else { return Theme.Colors.textSecondary }
+            return configuration.isPressed ? Theme.Colors.accent : Theme.Colors.textPrimary
+        }
+
+        private var pressAnimation: Animation? {
+            guard !reduceMotion else { return nil }
+            return .easeOut(
+                duration: configuration.isPressed
+                    ? StepButtonStyle.pressInDuration
+                    : StepButtonStyle.pressOutDuration
+            )
+        }
     }
 }
 
