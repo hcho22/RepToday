@@ -47,9 +47,14 @@ final class PressRepeater {
     /// Set the moment the press outlives the hold delay. The release reads it to know the repeat
     /// already owns this press - which is the one thing that keeps a hold from ending a step past
     /// what it showed - and it has to survive `pressEnded`, since a single release delivers both
-    /// calls in an order the gesture layer decides. `pressReleased` clears it once it has read it, so
-    /// a hold whose release is never reported (the button disabled itself at the bound, so it fired
-    /// no action) cannot leave a `true` behind to swallow a later tap.
+    /// calls in an order the gesture layer decides.
+    ///
+    /// Both ways a hold can finish clear it, so a `true` never outlives the press that set it and no
+    /// later tap is swallowed by one. `pressReleased` clears it once it has read it; the repeat
+    /// clears it itself when a refused `step` ends the loop, which is the case no release ever
+    /// reports - a hold that walks the value into the bound disables its own button under the finger,
+    /// so the lift fires no action. Clearing there is safe precisely because the value is pinned:
+    /// a release arriving anyway would step, and that step would be refused too.
     private var didBecomeHold = false
 
     init(
@@ -73,7 +78,10 @@ final class PressRepeater {
             guard !Task.isCancelled else { return }
             self?.didBecomeHold = true
             while !Task.isCancelled {
-                guard step() else { return }
+                guard step() else {
+                    self?.didBecomeHold = false
+                    return
+                }
                 do { try await sleep(repeatInterval) } catch { return }
             }
         }
@@ -101,5 +109,12 @@ final class PressRepeater {
     private func cancel() {
         task?.cancel()
         task = nil
+    }
+
+    /// The repeat loop touches nothing on `self`, so it would happily outlive the button that started
+    /// it and keep stepping the binding with no finger on screen. `.onDisappear` is the ordinary way
+    /// this ends; this is the backstop for the teardown paths that never deliver one.
+    deinit {
+        task?.cancel()
     }
 }

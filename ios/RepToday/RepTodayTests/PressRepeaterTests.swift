@@ -181,6 +181,40 @@ final class PressRepeaterTests: XCTestCase {
         XCTAssertEqual(steps, 2, "only the hold's own release may be swallowed by the hold")
     }
 
+    /// The other way a hold ends, and the one no release ever reports: the repeat walks the value into
+    /// the bound, `step` refuses, and the button disables itself under the finger - so the lift fires
+    /// no action and only `pressEnded` arrives, which deliberately clears nothing. The repeat has to
+    /// have consumed the flag on its way out, or it stands until the next `pressBegan` and swallows a
+    /// step the user did ask for.
+    func testAHoldThatStoppedAtTheBoundLeavesNoFlagForALaterPressToTripOver() async {
+        var value = 3
+        var steps = 0
+        var repeater: PressRepeater?
+        var sleeps = 0
+        repeater = PressRepeater(sleep: { _ in sleeps += 1; await Task.yield() })
+
+        // Held until the bound refuses it - never released, because there is nothing left to press.
+        repeater?.pressBegan {
+            guard value < 5 else { return false }
+            value += 1
+            steps += 1
+            return true
+        }
+        await drain()
+        XCTAssertEqual(value, 5, "the hold must walk the value up to the bound")
+        XCTAssertEqual(sleeps, 3, "the loop must end on the refusal, not on a release")
+
+        // The finger lifts on a button that is now disabled: tracking ends, no action fires.
+        repeater?.pressEnded()
+        await drain()
+
+        // A later release - the one the stale flag would have eaten.
+        repeater?.pressReleased { steps += 1; return true }
+        await drain()
+
+        XCTAssertEqual(steps, 3, "a hold ended by the bound must not swallow the next release")
+    }
+
     // MARK: - The repeat stops at the end of the range
 
     func testAHeldPressStopsAsSoonAsTheValueCannotMove() async {

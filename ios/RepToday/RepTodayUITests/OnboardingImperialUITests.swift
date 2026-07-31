@@ -169,7 +169,7 @@ final class OnboardingImperialUITests: XCTestCase {
     }
 
     /// A press held past the hold delay repeats - the one thing a hand-drawn stepper otherwise gives
-    /// up against the platform one, and what makes 70...440 lb reachable without 74 taps.
+    /// up against the platform one, and what makes 70...445 lb reachable without 75 taps.
     func testHoldingAStepButtonRepeats() throws {
         goToBasicsStep()
 

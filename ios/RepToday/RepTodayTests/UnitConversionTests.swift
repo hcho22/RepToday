@@ -43,7 +43,7 @@ final class UnitConversionTests: XCTestCase {
 
     func testWeightRoundTripsAcrossTheOnboardingRange() {
         // Every pound the step can reach - the imperial cover of the 35...200 kg slider it replaced.
-        for pounds in 70...440 {
+        for pounds in 70...445 {
             let kg = UnitConversion.kilograms(fromPounds: Double(pounds))
             XCTAssertEqual(UnitConversion.pounds(fromKilograms: kg), Double(pounds), accuracy: 0.0001)
         }

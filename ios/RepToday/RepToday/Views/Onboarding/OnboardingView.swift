@@ -261,9 +261,10 @@ private struct BasicsStep: View {
             // "5 ft 12 in" is unreachable by construction.
             //
             // The bounds are the imperial cover of the metric sliders they replace (120...220 cm,
-            // 35...200 kg), rounded outward. Narrowing them would silently clamp somebody: there is
-            // no profile-edit surface yet, so a weight capped on the way in under-reports every
-            // HealthKit energy estimate (`MET x weightKg x hours`) for the life of the account.
+            // 35...200 kg), rounded outward at all four ends: 47 in is 119.4 cm and 87 in is 221.0 cm;
+            // 70 lb is 31.8 kg and 445 lb is 201.8 kg. Narrowing them would silently clamp somebody:
+            // there is no profile-edit surface yet, so a weight capped on the way in under-reports
+            // every HealthKit energy estimate (`MET x weightKg x hours`) for the life of the account.
             LabeledStepper(
                 label: "Height",
                 value: $viewModel.heightTotalInches,
@@ -278,7 +279,7 @@ private struct BasicsStep: View {
             LabeledStepper(
                 label: "Weight",
                 value: $viewModel.weightPounds,
-                range: 70...440,
+                range: 70...445,
                 step: 5,
                 display: UnitConversion.weightLabel(pounds:),
                 spoken: UnitConversion.weightAccessibilityLabel(pounds:)
@@ -407,7 +408,7 @@ private struct LabeledStepper: View {
 /// One half of a `LabeledStepper`: a 44pt-square target that steps on release and repeats while held.
 ///
 /// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
-/// ranges here need it - 70...440 lb is a long walk in single taps. Only the *drawing* is hand-rolled,
+/// ranges here need it - 70...445 lb is a long walk in single taps. Only the *drawing* is hand-rolled,
 /// though: this is a real `Button`, so everything about when a press counts is the platform's, touch
 /// slop and all. A press belongs to the button it *landed* on for its whole life, and the platform's
 /// touch-up-inside decides whether the lift still counts - so on a row where `-` and `+` are adjacent
