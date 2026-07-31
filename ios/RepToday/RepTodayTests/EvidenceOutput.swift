@@ -67,6 +67,20 @@ enum EvidenceOutput {
         return path
     }
 
+    /// Writes a text artifact - a transcript of what VoiceOver speaks - into `story`'s evidence
+    /// directory, resolving the destination and creating it through the same path the image write uses,
+    /// so a suite never re-implements the resolve-and-create step this owns.
+    @discardableResult
+    static func write(_ text: String, named fileName: String, for story: String) throws -> String {
+        let destination = directory(for: story)
+        try FileManager.default.createDirectory(atPath: destination, withIntermediateDirectories: true)
+        let path = (destination as NSString).appendingPathComponent(fileName)
+        try text.write(toFile: path, atomically: true, encoding: .utf8)
+
+        print("TRANSCRIPT_WRITTEN \(path)")
+        return path
+    }
+
     /// Whether `image` holds a drawn screen rather than the uniform fill a capture of a surface that
     /// never drew comes back as.
     ///

@@ -47,6 +47,23 @@ enum HostedSurface {
         return (host, window)
     }
 
+    /// The scale every committed evidence PNG is captured at. It lives here, in the one place that
+    /// composites a hosted surface, so two suites' baselines cannot silently diverge on it.
+    static let captureScale: CGFloat = 3
+
+    /// Composites a hosted surface's whole layer tree to an image at `captureScale`.
+    ///
+    /// `layer.render(in:)` draws from the layer tree offscreen, so it captures content past the
+    /// physical screen bounds - unlike `drawHierarchy(afterScreenUpdates:)`, which is limited to what
+    /// is actually on screen. `size` is the region composited: a hosted surface cropped to its measured
+    /// content simply drops the empty tail below it, because nothing above the crop moves.
+    static func capture(_ view: UIView, size: CGSize) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = captureScale
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { ctx in view.layer.render(in: ctx.cgContext) }
+    }
+
     /// Spins the main run loop for `interval`.
     ///
     /// `RunLoop.run(mode:before:)` returns as soon as it has processed a single input source, so one

@@ -319,6 +319,7 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
 
 That reads as a build setting rather than a shell variable on purpose: the test bundle runs inside the Simulator and does not inherit the invoking shell's environment, so the scheme forwards `$(REPTODAY_WRITE_EVIDENCE)` and `$(REPTODAY_EVIDENCE_DIR)` (both undefined, and so empty, by default) into the test process, and xcodebuild takes either on the command line.
 `REPTODAY_EVIDENCE_DIR` still overrides the destination outright. Every render and every assertion runs in all three modes - only where the bytes land changes, so the gate is never weaker for being quiet.
+(Superseded: `REPTODAY_EVIDENCE_DIR` is now a *root* with the story folder appended, not the final directory - see `EvidenceOutput` and CLAUDE.md for the current rule.)
 One render needed pinning to be worth refreshing at all.
 The running-hold capture starts the leg and then reads the real clock, so whether the ring showed N or N-1 seconds - and the arc's fill with it, since that is `remaining / total` over whole seconds - depended on how the runloop pump happened to land, and the file's bytes moved between runs for no change in behaviour.
 It now waits for a specific remaining second and lets the arc's 0.5s animation finish before capturing, which makes it the steadiest file of the set.

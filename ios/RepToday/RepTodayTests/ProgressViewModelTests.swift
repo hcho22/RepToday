@@ -306,33 +306,42 @@ final class ProgressTabSnapshotTests: XCTestCase {
         try render(viewModel: viewModel, tall: tall, fileName: fileName)
     }
 
-    /// Hosting, layout and capture stay in one synchronous body so that the measurement and the render
+    /// The scratch height a hosted `ProgressTabView` is given so the whole of its `ScrollView` lays out
+    /// at once rather than a screenful at a time. Comfortably taller than the content on purpose: the
+    /// pixel capture is cropped back to what the content measures (`capturedHeight`), so headroom costs
+    /// nothing while running out of it would clip the bottom of the surface - which is why the measure
+    /// throws rather than silently returning a truncated height.
+    private enum HostHeight {
+        static let populated: CGFloat = 3200
+        static let empty: CGFloat = 900
+    }
+
+    /// Hosts the production `ProgressTabView` tall enough for the whole scrolling surface to lay out and
+    /// confirms the content fit inside that height. It is the one hosting policy both the pixel captures
+    /// and the accessibility reads run through, so neither can drift onto its own magic height or lose
+    /// the outgrew-host guard the other has: a surface grown past its host height fails loudly on both
+    /// paths rather than being captured cropped or read clipped.
+    private func hostedProgressTab(
+        _ viewModel: ProgressViewModel, tall: Bool
+    ) throws -> (host: UIHostingController<ProgressTabView>, contentSize: CGSize) {
+        let layoutSize = CGSize(width: 393, height: tall ? HostHeight.populated : HostHeight.empty)
+        let (host, window) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
+        renderWindow = window
+        let contentHeight = try capturedHeight(of: host.view, laidOutIn: layoutSize)
+        return (host, CGSize(width: layoutSize.width, height: contentHeight))
+    }
+
+    /// Hosting, measurement and capture stay in one synchronous body so that the height and the render
     /// read the very same laid-out hierarchy: an intervening suspension would let the surface change
     /// between the height being taken and the pixels being composited against it. Everything that has
     /// to be awaited (`viewModel.load()`) has already happened by the time this is called.
     private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) throws {
-        // The tab is a `ScrollView`, so it has to be hosted taller than its content for the whole of
-        // that content to lay out at once rather than a screenful of it. Comfortably taller: the
-        // capture is cropped back to what the content measures, so headroom costs nothing, while
-        // running out of it would cost the bottom of the surface.
-        let layoutSize = CGSize(width: 393, height: tall ? 3200 : 900)
-        let (host, window) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
-        renderWindow = window
+        let (host, size) = try hostedProgressTab(viewModel, tall: tall)
 
-        let size = CGSize(width: layoutSize.width, height: try capturedHeight(of: host.view, laidOutIn: layoutSize))
-
-        // `layer.render(in:)` composites the entire layer tree offscreen, so it captures content past
-        // the physical screen bounds - unlike `drawHierarchy(afterScreenUpdates:)`, which is limited to
-        // what is actually on screen.
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 3
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        let image = renderer.image { ctx in
-            host.view.layer.render(in: ctx.cgContext)
-        }
-
-        // Encoding, the did-it-draw check and the write are all `EvidenceOutput`'s, so a capture that
-        // failed either precondition never reaches disk to overwrite a committed baseline.
+        // Capturing (which pins the render scale) is `HostedSurface`'s, and encoding, the did-it-draw
+        // check and the write are all `EvidenceOutput`'s, so a capture that failed any precondition
+        // never reaches disk to overwrite a committed baseline.
+        let image = HostedSurface.capture(host.view, size: size)
         try EvidenceOutput.write(image, named: fileName, for: EvidenceOutput.Story.progressAnalytics)
     }
 
@@ -423,7 +432,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// lands on whatever day the suite happens to run, and every dot silently disappears because a
     /// day normalized in one calendar is never found in a set normalized in another.
     func testCalendarMarksTheInjectedClocksTodayRatherThanTheWallClock() async throws {
-        let labels = await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+        let labels = try await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
 
         let today = expectedDayLabel(day: 8, suffix: ", today, session completed")
         let untouched = expectedDayLabel(day: 7, suffix: ", no session")
@@ -438,7 +447,14 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// full date and state - so the bare initials are seven disconnected single letters in the swipe
     /// path, saying nothing the day cells do not.
     func testWeekdayHeaderIsNotSpokenAsSevenLooseLetters() async throws {
-        let labels = await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+        let labels = try await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+
+        // Positive anchor first: the negative assertion below is only meaningful once the calendar grid
+        // is proven on screen and being read. Without this, the test passes vacuously if the card fails
+        // to render, is clipped out of the hosted viewport, or the day cells stop speaking at all.
+        let renderedDayCell = expectedDayLabel(day: 7, suffix: ", no session")
+        XCTAssertTrue(labels.contains(renderedDayCell),
+                      "The calendar grid should have rendered a day cell reading \"\(renderedDayCell)\"; without it the header assertion below is vacuous")
 
         let initials = Set(calendar.veryShortStandaloneWeekdaySymbols)
         XCTAssertTrue(labels.allSatisfy { !initials.contains($0) },
@@ -448,20 +464,19 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// Hosts the production `ProgressTabView` in a real key window and returns every accessibility
     /// label in traversal order - the strings VoiceOver reads as the user swipes down the screen.
     ///
-    /// Hosting and reading both go through the shared seam: `HostedSurface.host` is what lets the
-    /// surface settle before it is read, and without that settling these assertions would report an
-    /// empty or half-built screen on a loaded machine. The guard below is the backstop - an empty tree
-    /// would otherwise let both tests pass on a screen that speaks nothing at all.
-    private func hostedAccessibilityLabels(for viewModel: ProgressViewModel) async -> [String] {
+    /// Hosting and reading both go through the shared seam: `hostedProgressTab` hosts at the one height
+    /// the pixel captures use and fails loudly if the content outgrows it (so this path can never read a
+    /// clipped screen), and `HostedSurface.host` inside it is what lets the surface settle before it is
+    /// read - without that settling these assertions would report an empty or half-built screen on a
+    /// loaded machine. The guard below is the backstop - an empty tree would otherwise let both tests
+    /// pass on a screen that speaks nothing at all.
+    private func hostedAccessibilityLabels(for viewModel: ProgressViewModel) async throws -> [String] {
         await viewModel.load()
 
-        let (host, window) = HostedSurface.host(
-            ProgressTabView(viewModel: viewModel), size: CGSize(width: 393, height: 2500)
-        )
-        renderWindow = window
+        let (host, _) = try hostedProgressTab(viewModel, tall: true)
         let labels = AccessibilityTree.labels(in: host.view)
 
-        window.isHidden = true
+        renderWindow?.isHidden = true
         XCTAssertFalse(labels.isEmpty, "The hosted Progress tab exposed no accessibility tree at all")
         return labels
     }

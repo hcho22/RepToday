@@ -23,11 +23,6 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// bytes land changes.
     private typealias Evidence = EvidenceOutput.Story
 
-    /// The directory `story`'s evidence is written to.
-    private func evidenceDir(_ story: String) -> String {
-        EvidenceOutput.directory(for: story)
-    }
-
     private let requestedMinutes = 30
 
     /// The window a hosted surface lives in while it is measured or captured.
@@ -345,13 +340,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     private func renderHosted<V: View>(
         _ host: UIHostingController<V>, size: CGSize, fileName: String, story: String
     ) throws {
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 3
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        let image = renderer.image { ctx in host.view.layer.render(in: ctx.cgContext) }
-
-        // Encoding, the did-it-draw check and the write are all `EvidenceOutput`'s, so a capture that
-        // failed either precondition never reaches disk to overwrite a committed baseline.
+        // Capturing (which pins the render scale) is `HostedSurface`'s, and encoding, the did-it-draw
+        // check and the write are all `EvidenceOutput`'s, so a capture that failed either precondition
+        // never reaches disk to overwrite a committed baseline.
+        let image = HostedSurface.capture(host.view, size: size)
         try EvidenceOutput.write(image, named: fileName, for: story)
     }
 
@@ -553,7 +545,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             )
         }
 
-        try write(transcript.joined(separator: "\n") + "\n", to: "voiceover-target-transcript.md", story: Evidence.perSideSwap)
+        try EvidenceOutput.write(transcript.joined(separator: "\n") + "\n", named: "voiceover-target-transcript.md", for: Evidence.perSideSwap)
     }
 
     /// Gates one spoken target against the prescription behind it: the set count, the rep noun and the
@@ -624,7 +616,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
                 "a screen reader would read the multiplication glyph aloud: \"\(label)\""
             )
         }
-        try write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", to: "ready-screen-voiceover-labels.md", story: Evidence.perSideSwap)
+        try EvidenceOutput.write(rows.map { "- \($0)" }.joined(separator: "\n") + "\n", named: "ready-screen-voiceover-labels.md", for: Evidence.perSideSwap)
     }
 
     /// The player parked on each single-set bookend - the warm-up the session opens on and the cooldown
@@ -1178,14 +1170,5 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             host, size: playerSize,
             fileName: "completion-summary-total.png", story: Evidence.sessionTimer
         )
-    }
-
-    /// Writes a text artifact next to the rendered PNGs.
-    private func write(_ text: String, to fileName: String, story: String) throws {
-        let directory = evidenceDir(story)
-        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        let path = (directory as NSString).appendingPathComponent(fileName)
-        try text.write(toFile: path, atomically: true, encoding: .utf8)
-        print("TRANSCRIPT_WRITTEN \(path)")
     }
 }
