@@ -59,6 +59,8 @@ At launch no user has earned the Strength Phase, so the MVP ships the Discipline
 
 - Large touch targets (60pt minimum on active workout screens).
 - Set-by-set tracking with a rest timer between sets - skippable, extendable, and paused correctly when the app is backgrounded.
+- No running clock during the session - a total ticking up in the corner turns a five-minute session into something to get through, so the time you took is revealed once, on the completion summary.
+- A hold timer only where a clock actually helps - a timed movement offers "Start hold", counts the prescribed seconds down, and records the set itself at zero with the same haptic/audio cue the rest timer uses. A per-side hold is counted one side at a time (the cue at the end of the first leg marks the switch, and the second starts when you're ready), so a plank is never logged at half the work the session was planned around. Rep-based movements stay timer-free, and a hold can always be banked by hand instead - including part-way through a countdown - so being interrupted never costs you the sets you already did.
 - Per-side movements say so in the prescription itself - "3 × 0:30 per side" on screen, "3 sets of 30 second holds per side" read aloud - because the session is planned around the work on both sides, so a user who works one side never does half the session by accident.
 - Haptic feedback (and an audio alternative) when a rest ends, so you can start the next set without watching the clock.
 - In-session swap - replace the current movement with a same-pillar/pattern peer in one tap, or an honest "no alternative" notice when none is safe and in budget, so one movement you can't or won't do never derails the session.

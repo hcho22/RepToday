@@ -1,14 +1,22 @@
 import SwiftUI
+import UIKit
 import Lottie
 
 /// The active-session player (US-K01) - a focused, one-exercise-at-a-time screen that walks the user
 /// through the generated session so they never lose their place.
 ///
-/// It renders the current exercise's demo, target, and set tracking, keeps the elapsed time always
-/// visible, and advances as each set is completed. Every interactive control meets the 60pt active-
-/// screen touch target; every color, font, and dimension comes from `Theme`. The rest timer between
-/// sets (US-K02), the in-session swap (US-K03), background/resume (US-K04), and the post-session
-/// summary + log write (US-L01/L02) build on this same view and view model.
+/// It renders the current exercise's demo, target, and set tracking, and advances as each set is
+/// completed. Every interactive control meets the 60pt active-screen touch target; every color, font,
+/// and dimension comes from `Theme`. The rest timer between sets (US-K02), the in-session swap
+/// (US-K03), background/resume (US-K04), and the post-session summary + log write (US-L01/L02) build
+/// on this same view and view model.
+///
+/// There is deliberately **no running session clock** anywhere in the player (US-O03) - not in the top
+/// bar, not on the rest overlay. A total ticking up in the corner turns the session into something to
+/// get through and pulls attention off the movement; the total is revealed once, on the completion
+/// summary. What replaces it is a clock that actually helps: a per-exercise Hold Timer on timed
+/// movements, which counts one side of the hold down and records the set at zero. Rep-based exercises
+/// keep the manual set tracker and "Complete set" exactly as they were.
 struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -78,8 +86,19 @@ struct ActiveSessionView: View {
     /// Dismiss the player, first reporting whether the session completed so the Ready Screen can
     /// refresh deterministically rather than racing the store (US-K04). Every dismiss path routes
     /// through here, so the completion signal is never missed.
+    ///
+    /// A running hold needs no handling here: it is never persisted, so leaving the screen ends it and
+    /// the resumed session comes back owing the same side (US-O03). The dismissal is reported only once
+    /// the last queued write has landed, so the Ready Screen's resume card reflects the position the
+    /// user actually left rather than the one before it.
     private func close() {
-        onFinish?(viewModel.isComplete)
+        let pendingWrite = viewModel.persistenceTask
+        let completed = viewModel.isComplete
+        let report = onFinish
+        Task { @MainActor in
+            await pendingWrite?.value
+            report?(completed)
+        }
         dismiss()
     }
 
@@ -101,15 +120,38 @@ struct ActiveSessionView: View {
             // scene-phase change when the resumed player is presented on an already-active app, so
             // resume it here too. A no-op unless a rest is currently paused, leaving a fresh session
             // and a resumed running rest untouched.
+            //
+            // There is deliberately no `resumeHold` counterpart (US-O03). A hold is never restored as a
+            // countdown at all, so there is nothing frozen to un-freeze - and un-freezing one here is
+            // precisely how a leg the user abandoned days ago used to finish itself moments after the
+            // screen appeared, banking a set nobody performed. In-session backgrounding still
+            // pauses and resumes the leg through `scenePhase` below, which is the interruption the user
+            // is actually present for.
             viewModel.resumeRest(asOf: Date())
+            // The user puts the phone down mid-plank; the screen must not lock out from under a
+            // running countdown, or its cue never lands. Scoped to the session being played, and
+            // released the moment it finishes or the player is dismissed.
+            UIApplication.shared.isIdleTimerDisabled = !viewModel.isComplete
         }
-        // Pause the rest countdown while the app is away so it never blows past; resume on return.
-        // The elapsed session clock is wall-clock derived (US-K01) and intentionally keeps running.
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // The celebration screen has no countdown to protect, and the player is not dismissed when the
+        // session ends - so completion, not only dismissal, is what hands the screen back to auto-lock.
+        .onChange(of: viewModel.isComplete) { _, isComplete in
+            if isComplete { UIApplication.shared.isIdleTimerDisabled = false }
+        }
+        // Pause both countdowns while the app is away so neither blows past - and so a hold's cue can
+        // never fire at a screen the user is not looking at; resume on return. The elapsed session
+        // clock is wall-clock derived (US-K01) and intentionally keeps running, unseen (US-O03).
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: viewModel.resumeRest(asOf: Date())
-            case .inactive, .background: viewModel.pauseRest(asOf: Date())
-            @unknown default: break
+            case .active:
+                viewModel.resumeRest(asOf: Date())
+                viewModel.resumeHold(asOf: Date())
+            case .inactive, .background:
+                viewModel.pauseRest(asOf: Date())
+                viewModel.pauseHold(asOf: Date())
+            @unknown default:
+                break
             }
         }
     }
@@ -118,7 +160,7 @@ struct ActiveSessionView: View {
 
     private var player: some View {
         VStack(spacing: 0) {
-            topBar
+            SessionTopBar(onClose: close)
 
             ProgressView(value: viewModel.progress)
                 .tint(Theme.Colors.accent)
@@ -128,7 +170,13 @@ struct ActiveSessionView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         blockContext(step)
-                        ExerciseDemoView(prescription: step.prescription)
+                        // While a hold runs, the countdown takes the demo's place: the user is already
+                        // in position, so what they need on screen is the time left, not the shape.
+                        if viewModel.isHolding {
+                            HoldCountdownView(viewModel: viewModel)
+                        } else {
+                            ExerciseDemoView(prescription: step.prescription)
+                        }
                         exerciseHeadline(step)
                         setTracker(step)
                     }
@@ -139,41 +187,6 @@ struct ActiveSessionView: View {
 
             controls
         }
-    }
-
-    /// Top bar: a close control and the always-visible elapsed time. The clock re-reads once a second
-    /// through a `TimelineView`, so it stays accurate without the view model owning a ticking counter.
-    private var topBar: some View {
-        HStack {
-            Button {
-                close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
-            }
-            .accessibilityLabel("End session")
-
-            Spacer()
-
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(Self.elapsedText(viewModel.elapsed(asOf: context.date)))
-                    .font(Theme.Typography.title)
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .accessibilityLabel("Elapsed time \(Self.elapsedAccessibilityText(viewModel.elapsed(asOf: context.date)))")
-            }
-
-            Spacer()
-
-            // Balances the leading close control so the clock stays centered; empty but non-interactive.
-            Color.clear
-                .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
-                .accessibilityHidden(true)
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, Theme.Spacing.sm)
     }
 
     /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
@@ -202,12 +215,25 @@ struct ActiveSessionView: View {
         .accessibilityLabel("\(step.prescription.exercise.displayName), \(Self.targetAccessibilityText(step.prescription))")
     }
 
-    /// Set tracking: which set of how many, with a dot per set filled as they are completed.
+    /// Set tracking: which set of how many, with a dot per set filled as they are completed. A per-side
+    /// hold names the side too, because its set is two legs and the Hold Timer only counts one of them
+    /// at a time - without it the user has no way to tell a finished set from a half-finished one.
     private func setTracker(_ step: ActiveSessionViewModel.Step) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text("Set \(viewModel.currentSet) of \(step.prescription.sets)")
+        let sides = viewModel.holdSidesPerSet
+        let showsSide = viewModel.holdSecondsPerSide != nil && sides > 1
+        let setText = "Set \(viewModel.currentSet) of \(step.prescription.sets)"
+        let sideText = "Side \(viewModel.holdSide) of \(sides)"
+
+        return VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(setText)
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)
+
+            if showsSide {
+                Text(sideText)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
 
             HStack(spacing: Theme.Spacing.sm) {
                 ForEach(0..<step.prescription.sets, id: \.self) { index in
@@ -219,19 +245,143 @@ struct ActiveSessionView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement()
-        .accessibilityLabel("Set \(viewModel.currentSet) of \(step.prescription.sets)")
+        .accessibilityLabel(showsSide ? "\(setText), side \(viewModel.holdSide) of \(sides)" : setText)
     }
 
-    /// The primary "complete set" action plus quieter "swap" and "skip" - all meeting the 60pt
-    /// active-screen touch target. Completing the last set of the last exercise finishes the session;
-    /// swapping (US-K03) replaces the current movement with a same-pillar/pattern peer, or, when none
-    /// is safe and in budget, surfaces an honest "no alternative" notice above the actions.
+    /// The primary action plus the quieter secondary row - all meeting the 60pt active-screen touch
+    /// target. Which primary action shows depends on the movement (US-O03): a rep-based exercise keeps
+    /// "Complete set", and completing the last set of the last exercise finishes the session; a timed
+    /// one offers "Start hold" instead, and the countdown records its own set at zero, so the timer
+    /// rather than a tap is what ordinarily advances it - with the same completion still offered as a
+    /// quiet slot in the row below (running leg included), so coming out early banks the work instead
+    /// of losing it to a skip. Swapping (US-K03) replaces the current movement with a
+    /// same-pillar/pattern peer, or, when none is safe and in budget, surfaces an honest "no
+    /// alternative" notice above the actions.
+    ///
+    /// Which *slots* the secondary row carries is decided by the exercise, never by whether a hold
+    /// happens to be running: starting one dims controls in place rather than removing them, so the
+    /// row never reflows under the user's thumb mid-tap.
     private var controls: some View {
         VStack(spacing: Theme.Spacing.sm) {
             if viewModel.noSwapAlternative {
                 noAlternativeNotice
             }
 
+            primaryAction
+
+            HStack(spacing: Theme.Spacing.md) {
+                // A swap reshapes the slot the countdown is timing, so it is offered between holds
+                // rather than during one - dimmed in place, so the row keeps its shape.
+                if viewModel.canSwap {
+                    secondaryAction(
+                        title: viewModel.isSwapping ? "Swapping…" : "Swap",
+                        accessibilityLabel: "Swap this exercise",
+                        accessibilityHint: "Replaces it with a similar movement",
+                        isEnabled: !viewModel.isSwapping && !viewModel.isHolding
+                    ) {
+                        Task { await viewModel.swapCurrentExercise() }
+                    }
+                }
+
+                // A timed movement records itself at zero, but the timer is an offer, not the only way
+                // out: a user who held it off-timer, or was interrupted part-way through a three-set
+                // plank, can still bank the work they did instead of losing it to a skip. It stays
+                // offered *while* a leg runs too - otherwise the only visible ways out of a running
+                // hold are "Stop hold", which records nothing, and "Skip", which discards every set
+                // already banked for the exercise. Tapping it ends the leg without firing the cue (the
+                // user came out of it early) and banks the set through the same path the countdown
+                // takes at zero.
+                if viewModel.holdSecondsPerSide != nil {
+                    secondaryAction(
+                        title: completeButtonTitle,
+                        accessibilityLabel: completeButtonTitle,
+                        accessibilityHint: "Records this set without the timer",
+                        isEnabled: true
+                    ) {
+                        viewModel.completeSet()
+                    }
+                }
+
+                secondaryAction(
+                    title: "Skip",
+                    accessibilityLabel: "Skip this exercise",
+                    accessibilityHint: nil,
+                    isEnabled: true
+                ) {
+                    viewModel.skipExercise()
+                }
+            }
+        }
+        .padding(Theme.Spacing.lg)
+        .background(Theme.Colors.background)
+    }
+
+    /// One quiet control in the secondary row. Every slot is built here so they share their styling,
+    /// their 60pt active-screen touch target, and their column width - and so a control that is
+    /// unavailable right now still holds its place in the row rather than letting the others slide.
+    ///
+    /// The columns are narrow - three of them on a timed movement - and the longest title in the row
+    /// ("Finish exercise", "Finish session") is the one that says what the tap actually does, so the
+    /// label wraps and the row grows rather than truncating it away at the largest Dynamic Type sizes.
+    /// Same remedy the target line uses, and the 60pt active-screen touch target is the floor, never
+    /// the ceiling.
+    private func secondaryAction(
+        title: String,
+        accessibilityLabel: String,
+        accessibilityHint: String?,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.Typography.body)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .opacity(isEnabled ? 1 : 0.4)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint ?? "")
+    }
+
+    /// The one big action at the bottom of the player. Running a hold has no "do it now" action - the
+    /// user is holding - so the slot is given to the quiet way out (`Stop hold`, bordered rather than
+    /// prominent) instead of a prominent button competing with the countdown for attention.
+    @ViewBuilder
+    private var primaryAction: some View {
+        if viewModel.isHolding {
+            Button {
+                viewModel.cancelHold()
+            } label: {
+                Text("Stop hold")
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityLabel("Stop hold")
+            .accessibilityHint("Ends the countdown without recording the set")
+        } else if viewModel.holdSecondsPerSide != nil {
+            Button {
+                viewModel.startHold()
+            } label: {
+                Text(startHoldTitle)
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            // A timed movement always shows its timer as the primary action; a swap in flight makes it
+            // momentarily unstartable (US-O03) without letting the button morph into a different one.
+            .disabled(!viewModel.canStartHold)
+            .accessibilityLabel(startHoldAccessibilityTitle)
+            .accessibilityHint("Counts the hold down and records the set when it reaches zero")
+        } else {
             Button {
                 viewModel.completeSet()
             } label: {
@@ -243,37 +393,22 @@ struct ActiveSessionView: View {
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(completeButtonTitle)
-
-            HStack(spacing: Theme.Spacing.md) {
-                if viewModel.canSwap {
-                    Button {
-                        Task { await viewModel.swapCurrentExercise() }
-                    } label: {
-                        Text(viewModel.isSwapping ? "Swapping…" : "Swap")
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: Theme.Spacing.workoutTouchTarget)
-                    }
-                    .disabled(viewModel.isSwapping)
-                    .accessibilityLabel("Swap this exercise")
-                    .accessibilityHint("Replaces it with a similar movement")
-                }
-
-                Button {
-                    viewModel.skipExercise()
-                } label: {
-                    Text("Skip")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Theme.Spacing.workoutTouchTarget)
-                }
-                .accessibilityLabel("Skip this exercise")
-            }
         }
-        .padding(Theme.Spacing.lg)
-        .background(Theme.Colors.background)
+    }
+
+    /// "Start hold", or "Start hold (side 2 of 2)" on a per-side movement, so the button never implies
+    /// the whole set is one countdown when it is two.
+    private var startHoldTitle: String {
+        let sides = viewModel.holdSidesPerSet
+        guard sides > 1 else { return "Start hold" }
+        return "Start hold (side \(viewModel.holdSide) of \(sides))"
+    }
+
+    /// The spoken form of `startHoldTitle` - the parenthetical read as a clause rather than punctuation.
+    private var startHoldAccessibilityTitle: String {
+        let sides = viewModel.holdSidesPerSet
+        guard sides > 1 else { return "Start hold" }
+        return "Start hold, side \(viewModel.holdSide) of \(sides)"
     }
 
     /// The honest "no alternative" state (US-K03): when the swap engine finds no safe, same-kind peer
@@ -508,26 +643,124 @@ struct ActiveSessionView: View {
         sets == 1 ? "1 set" : "\(sets) sets"
     }
 
-    /// "M:SS" (or "H:MM:SS" past an hour) for the elapsed clock.
-    static func elapsedText(_ totalSeconds: Int) -> String {
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private static func elapsedAccessibilityText(_ totalSeconds: Int) -> String {
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return "\(minutes) minutes \(seconds) seconds"
-    }
-
-    /// "0:30" for a hold duration in seconds.
-    private static func clockText(_ seconds: Int) -> String {
+    /// "0:30" for a duration in seconds - the prescribed hold in the target line, and the remaining
+    /// seconds in the rest and hold countdowns, which read it rather than carrying their own copy.
+    static func clockText(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+// MARK: - Shared session chrome
+
+/// The card that holds whatever occupies the demo slot - the exercise demonstration (US-K01) or, while
+/// a hold runs, its countdown (US-O03). One definition of the slot's size and chrome, so the two states
+/// differ only in their content and starting a hold never makes the card itself blink out.
+private extension View {
+    func exerciseSlotCard() -> some View {
+        self
+            .frame(maxWidth: .infinity)
+            .frame(height: ExerciseDemoView.height)
+            .background(
+                Theme.Colors.secondaryBackground,
+                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+            )
+    }
+}
+
+/// The player's top bar, shared by the exercise screen and the rest overlay.
+///
+/// It carries the close control and nothing else. It used to carry an always-on elapsed clock, which
+/// US-O03 removed: no running session clock is visible anywhere during the session, so the total lands
+/// once, on the completion summary, instead of counting at the user the whole way through.
+private struct SessionTopBar: View {
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack {
+            Button {
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+            }
+            .accessibilityLabel("End session")
+
+            Spacer()
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+    }
+}
+
+/// The countdown ring shared by the rest overlay (US-K02) and the Hold Timer (US-O03): a track plus an
+/// accent arc that empties as the countdown runs out, with the remaining time in its centre. One
+/// implementation, so the two timers the user meets in a session read as the same object.
+private struct CountdownRing: View {
+    let remaining: Int
+    let fraction: Double
+    let accessibilityLabel: String
+
+    private static let diameter: CGFloat = 200
+    private static let lineWidth: CGFloat = 12
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Theme.Colors.surface, lineWidth: Self.lineWidth)
+
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 0.5), value: fraction)
+
+            Text(ActiveSessionView.clockText(remaining))
+                .font(Theme.Typography.largeTitle)
+                .monospacedDigit()
+                .foregroundStyle(Theme.Colors.textPrimary)
+        }
+        .frame(width: Self.diameter, height: Self.diameter)
+        .accessibilityElement()
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+// MARK: - Hold timer
+
+/// The per-exercise Hold Timer for a timed movement (US-O03).
+///
+/// It takes the demo's place while a hold runs and counts one side of the prescribed hold down. At
+/// zero the view model fires the same accessible haptic/audio cue the rest timer uses - exactly once -
+/// and either parks on the next side (a per-side movement is two legs per set) or records the set and
+/// opens the rest. The ticker lives here rather than in the player, so it exists only while a hold is
+/// actually running, and it drives a *pure* check (`completeHoldIfElapsed`) that is a no-op until the
+/// deadline passes, so the cue can never fire early or per tick.
+private struct HoldCountdownView: View {
+    let viewModel: ActiveSessionViewModel
+
+    /// Drives the countdown display and the completion check. Kept off the view body so the mutation
+    /// happens in an action closure, never during a render pass.
+    @State private var currentDate = Date()
+    private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        let remaining = viewModel.holdRemaining(asOf: currentDate)
+        let total = max(viewModel.holdTotalSeconds, 1)
+
+        CountdownRing(
+            remaining: remaining,
+            fraction: min(1, max(0, Double(remaining) / Double(total))),
+            accessibilityLabel: "Hold, \(remaining) seconds remaining"
+        )
+        // The countdown stands in the demo's own card, so starting a hold changes what is in the slot
+        // and nothing else - not the card under it, not the exercise name and target below it.
+        .exerciseSlotCard()
+        .onReceive(ticker) { date in
+            currentDate = date
+            viewModel.completeHoldIfElapsed(asOf: date)
+        }
     }
 }
 
@@ -556,7 +789,7 @@ private struct RestView: View {
         let fraction = min(1, max(0, Double(remaining) / Double(total)))
 
         VStack(spacing: 0) {
-            topBar
+            SessionTopBar(onClose: onClose)
 
             Spacer()
 
@@ -565,7 +798,12 @@ private struct RestView: View {
                     .font(Theme.Typography.title)
                     .foregroundStyle(Theme.Colors.textSecondary)
 
-                ring(remaining: remaining, fraction: fraction)
+                CountdownRing(
+                    remaining: remaining,
+                    fraction: fraction,
+                    accessibilityLabel: "Rest, \(remaining) seconds remaining"
+                )
+                .padding(.horizontal, Theme.Spacing.lg)
 
                 nextUp
             }
@@ -578,59 +816,6 @@ private struct RestView: View {
             currentDate = date
             viewModel.completeRestIfElapsed(asOf: date)
         }
-    }
-
-    private var topBar: some View {
-        HStack {
-            Button {
-                onClose()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
-            }
-            .accessibilityLabel("End session")
-
-            Spacer()
-
-            Text(ActiveSessionView.elapsedText(viewModel.elapsed(asOf: currentDate)))
-                .font(Theme.Typography.title)
-                .monospacedDigit()
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .accessibilityHidden(true)
-
-            Spacer()
-
-            Color.clear
-                .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
-                .accessibilityHidden(true)
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.top, Theme.Spacing.sm)
-    }
-
-    /// The countdown ring: a track plus an accent arc that empties as the rest runs out.
-    private func ring(remaining: Int, fraction: Double) -> some View {
-        ZStack {
-            Circle()
-                .stroke(Theme.Colors.surface, lineWidth: 12)
-
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.5), value: fraction)
-
-            Text(Self.clockText(remaining))
-                .font(Theme.Typography.largeTitle)
-                .monospacedDigit()
-                .foregroundStyle(Theme.Colors.textPrimary)
-        }
-        .frame(width: 200, height: 200)
-        .padding(.horizontal, Theme.Spacing.lg)
-        .accessibilityElement()
-        .accessibilityLabel("Rest, \(remaining) seconds remaining")
     }
 
     /// A preview of the effort the rest is pacing toward, so the user knows what is next.
@@ -682,11 +867,6 @@ private struct RestView: View {
         }
         .padding(Theme.Spacing.lg)
     }
-
-    /// "0:30" for the remaining rest in seconds.
-    private static func clockText(_ seconds: Int) -> String {
-        String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
 }
 
 // MARK: - Exercise demo
@@ -705,16 +885,15 @@ struct ExerciseDemoView: View {
     let prescription: PrescribedExercise
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The height of the demo slot. Shared with the Hold Timer's countdown (US-O03), which stands in
+    /// this same slot while a hold runs, so the swap between them shifts nothing below it.
+    static let height: CGFloat = 220
+
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                .fill(Theme.Colors.secondaryBackground)
-            demo
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 220)
-        .accessibilityElement()
-        .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
+        demo
+            .exerciseSlotCard()
+            .accessibilityElement()
+            .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
     }
 
     /// The bundled Lottie animation when the exercise names one that actually resolves to a file,

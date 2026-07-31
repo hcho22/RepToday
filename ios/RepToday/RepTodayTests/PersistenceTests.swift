@@ -378,6 +378,59 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(reloaded.rest?.deadline)
     }
 
+    /// A per-side hold the user is *between* the sides of round-trips its side, so they come back owing
+    /// the second side rather than silently repeating the first (US-O03). The side is all the Hold Timer
+    /// persists - the running countdown deliberately is not, since a hold does not survive the player
+    /// being torn down the way a rest does.
+    func testSaveAndReloadActiveSessionWithHoldBetweenSides() throws {
+        let state = makeActiveSessionState(hold: ActiveSessionState.Hold(side: 2))
+
+        try insert(state, userId: "u")
+        let reloaded = try XCTUnwrap(fetchActiveSession(userId: "u")).toActiveSessionState()
+
+        XCTAssertEqual(reloaded, state)
+        XCTAssertEqual(reloaded.hold?.side, 2)
+    }
+
+    /// A snapshot written by the earlier US-O03 shape carried the running leg alongside the side
+    /// (`totalSeconds`/`deadline`/`remainingWhenPaused`/`isRunning`). Those keys are gone, and such a
+    /// snapshot must still decode to the side it recorded rather than failing - an in-progress session
+    /// is never lost to an app update, and the leg it drops is exactly the one that must not come back.
+    func testActiveSessionStateDecodesAHoldWrittenWithTheRunningLeg() throws {
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: PersistenceCoder.encoder.encode(makeActiveSessionState())) as? [String: Any]
+        )
+        json["hold"] = [
+            "totalSeconds": 20,
+            "side": 2,
+            "deadline": 760_000_000.0,
+            "remainingWhenPaused": NSNull(),
+            "isRunning": true
+        ] as [String: Any]
+
+        let decoded = try PersistenceCoder.decoder.decode(
+            ActiveSessionState.self, from: try JSONSerialization.data(withJSONObject: json)
+        )
+
+        XCTAssertEqual(decoded.hold?.side, 2, "the side survives the shape change")
+    }
+
+    /// A snapshot written before US-O03 carries no `hold` key at all, and must still decode - the field
+    /// is optional so an in-progress session is never lost to an app update.
+    func testActiveSessionStateDecodesWithoutTheHoldField() throws {
+        let legacy = makeActiveSessionState()
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: PersistenceCoder.encoder.encode(legacy)) as? [String: Any]
+        )
+        json.removeValue(forKey: "hold")
+        let data = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try PersistenceCoder.decoder.decode(ActiveSessionState.self, from: data)
+
+        XCTAssertNil(decoded.hold)
+        XCTAssertEqual(decoded, legacy)
+    }
+
     /// Persisting again overwrites the user's single in-progress session in place, never accumulating.
     func testUpdatingActiveSessionOverwritesInPlace() throws {
         try insert(makeActiveSessionState(), userId: "u")
@@ -463,7 +516,10 @@ final class PersistenceTests: XCTestCase {
         )
     }
 
-    private func makeActiveSessionState(rest: ActiveSessionState.Rest? = nil) -> ActiveSessionState {
+    private func makeActiveSessionState(
+        rest: ActiveSessionState.Rest? = nil,
+        hold: ActiveSessionState.Hold? = nil
+    ) -> ActiveSessionState {
         let p1 = PrescribedExercise(id: uuidA, exercise: makeExercise(id: "push_up"), sets: 3, reps: 12, durationSeconds: nil, restSeconds: 45)
         let p2 = PrescribedExercise(id: uuidB, exercise: makeExercise(id: "plank", isHold: true), sets: 2, reps: nil, durationSeconds: 30, restSeconds: 30)
         let workout = Workout(
@@ -482,7 +538,8 @@ final class PersistenceTests: XCTestCase {
             completedSets: [uuidA: [CompletedSet(reps: 12, durationSeconds: nil)]],
             skippedStepIDs: [],
             startedAt: dateB,
-            rest: rest
+            rest: rest,
+            hold: hold
         )
     }
 

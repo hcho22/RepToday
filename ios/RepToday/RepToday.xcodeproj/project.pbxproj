@@ -124,6 +124,7 @@
 		EF45DFEBA76E0C6B5D11E5CA /* ServiceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C30EDD63A032C6D69E75E8B /* ServiceContainer.swift */; };
 		F03203FEAB9CE8BBE37D0B8C /* ActiveSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB767DB4F3EF395977F503B /* ActiveSessionStore.swift */; };
 		F1B4BA89C3100A645F0E8690 /* ReadyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AF3E0C61A253331058D5B1F /* ReadyView.swift */; };
+		F341C7A65B4A9A71DEED2478 /* Countdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B0E5C3605B17046DFBF69A /* Countdown.swift */; };
 		F521213458F2B6DFA3203B8F /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BD9CFC17194608C1F4C42E /* ActiveSessionView.swift */; };
 		F7F31AD4E6E788D1249DCB78 /* PerSideSwapEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE50821F77201334D91D4905 /* PerSideSwapEvidenceTests.swift */; };
 		F84C017411630F05DEA0AA73 /* ExercisePoolFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC6705096907066E6B01F50 /* ExercisePoolFilterTests.swift */; };
@@ -157,6 +158,7 @@
 		0F59B824B9A8FEDF7ED77EBC /* DefaultDurationLearning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultDurationLearning.swift; sourceTree = "<group>"; };
 		11B9FD6F285D21BFC4FBCFC1 /* RepToday.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RepToday.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1467FDF4832D95379E2C6F5E /* ColdStartHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartHandoffTests.swift; sourceTree = "<group>"; };
+		15B0E5C3605B17046DFBF69A /* Countdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Countdown.swift; sourceTree = "<group>"; };
 		15CD56ED1F316D227FA653EA /* RepToday.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RepToday.entitlements; sourceTree = "<group>"; };
 		172293D309B076F0FBE60521 /* ConsistencyTrendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyTrendTests.swift; sourceTree = "<group>"; };
 		17955F95DFFFAAC992A32A4B /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
@@ -333,6 +335,7 @@
 			children = (
 				442F4A79409F2683FBC9C4A4 /* .gitkeep */,
 				75F54B0E514E7185919510F5 /* ActiveSessionState.swift */,
+				15B0E5C3605B17046DFBF69A /* Countdown.swift */,
 				F0D9E0BEF8C9F70009DCA8F6 /* Enums.swift */,
 				9CA59450267BE04E5A2E7C68 /* Exercise.swift */,
 				79E88FD480D389A5E5048BAD /* ReprogramTrigger.swift */,
@@ -847,6 +850,7 @@
 				0890D6815C2B90FC21E07C38 /* CoreDataSessionPolicyStore.swift in Sources */,
 				D0CC216A5F6C685B569C2C8F /* CoreDataUserService.swift in Sources */,
 				8D69A46747B66F3F351EE801 /* CoreDataWorkoutLogService.swift in Sources */,
+				F341C7A65B4A9A71DEED2478 /* Countdown.swift in Sources */,
 				EB222C6B1CB1841CEA9CB70F /* DefaultDurationLearning.swift in Sources */,
 				BB868BF7A9C08AAD58CAAC24 /* DeterministicSessionPolicyService.swift in Sources */,
 				46C12B25F92C66E102AA7A40 /* Enums.swift in Sources */,

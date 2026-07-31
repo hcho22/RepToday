@@ -392,7 +392,7 @@ The distinction that defines the wedge: the screen shows **"Today: 15 min — St
 
 ### 3.3 Active Session Screen
 
-Large touch targets, auto-playing exercise demo (Lottie), set tracking, rest timer with haptics, swap (deterministic substitution within pillar/pattern/time budget). Resumes if the app is backgrounded. Elapsed time always visible.
+Large touch targets, auto-playing exercise demo (Lottie), set tracking, rest timer with haptics, swap (deterministic substitution within pillar/pattern/time budget). Resumes if the app is backgrounded. The running session clock is deliberately **not** shown while the session runs (revised by US-O03; a total ticking up in the corner turns a five-minute session into something to get through) - the total is revealed once, on the post-session screen. What a timed (hold) exercise gets instead is its own manual-start countdown that fires the haptic/audio cue and records the set at zero, counted one side at a time; rep-based exercises stay timer-free.
 
 ### 3.4 Post-Session Screen
 

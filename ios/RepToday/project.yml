@@ -64,6 +64,15 @@ targets:
       testTargets:
         - RepTodayTests
       storeKitConfiguration: RepToday/Resources/RepToday.storekit
+      # The test bundle runs inside the Simulator and so does not inherit the invoking shell's
+      # environment. These two carry the evidence-rendering opt-in (`PerSideSwapEvidenceTests`) in
+      # through a build setting, which xcodebuild does accept on the command line. Undefined they
+      # expand to nothing, so a plain test run renders to a temporary directory and leaves the repo
+      # untouched; passing `REPTODAY_WRITE_EVIDENCE=1` (or `REPTODAY_EVIDENCE_DIR=<path>`) to
+      # xcodebuild is what redirects the renders, deliberately.
+      environmentVariables:
+        REPTODAY_WRITE_EVIDENCE: "$(REPTODAY_WRITE_EVIDENCE)"
+        REPTODAY_EVIDENCE_DIR: "$(REPTODAY_EVIDENCE_DIR)"
 
   RepTodayTests:
     type: bundle.unit-test
