@@ -221,7 +221,34 @@ final class ProgressViewModelTests: XCTestCase {
 @MainActor
 final class ProgressTabSnapshotTests: XCTestCase {
 
-    private let evidenceDir = "/var/folders/9t/k_yy9fqs5vd27rf12jx_rzqh0000gn/T/no-mistakes-evidence/01KXDS2JQK10M3QC5REGASPVYY"
+    /// Where the renders land, following the same convention as `PerSideSwapEvidenceTests` and
+    /// `OnboardingBasicsEvidenceTests`: a per-run temporary directory by default, so a plain `test`
+    /// leaves the worktree clean, and the committed location only when asked for explicitly.
+    ///
+    /// This used to be an absolute path baked in from one machine's tooling run, which meant every
+    /// run of the default scheme wrote into a directory belonging to a session that no longer exists -
+    /// on any other machine, into a path that had never existed at all.
+    private static let evidenceRoot: String = {
+        let environment = ProcessInfo.processInfo.environment
+        if let override = environment["REPTODAY_EVIDENCE_DIR"], !override.isEmpty { return override }
+        if environment["REPTODAY_WRITE_EVIDENCE"] == "1" {
+            return URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // RepTodayTests
+                .deletingLastPathComponent() // RepToday
+                .deletingLastPathComponent() // ios
+                .deletingLastPathComponent() // the repo root
+                .appendingPathComponent("artifacts")
+                .appendingPathComponent("reports")
+                .appendingPathComponent("us-m02")
+                .path
+        }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("RepTodayEvidence")
+            .appendingPathComponent(UUID().uuidString)
+            .path
+    }()
+
+    private var evidenceDir: String { Self.evidenceRoot }
 
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)

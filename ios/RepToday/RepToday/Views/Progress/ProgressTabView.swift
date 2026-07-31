@@ -353,7 +353,11 @@ private struct SessionCalendarCard: View {
 
     private var weekdayHeader: some View {
         HStack(spacing: 0) {
-            ForEach(orderedWeekdaySymbols, id: \.self) { symbol in
+            // Keyed by position rather than by the symbol itself: a week's initials repeat in most
+            // locales (en_US is S M T W T F S), so `id: \.self` hands SwiftUI the same id for Sunday
+            // and Saturday, and again for Tuesday and Thursday - which it reports at runtime as
+            // undefined results. The month grid below already keys its cells by offset.
+            ForEach(Array(orderedWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
