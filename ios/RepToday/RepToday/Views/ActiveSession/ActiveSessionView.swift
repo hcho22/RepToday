@@ -251,8 +251,10 @@ struct ActiveSessionView: View {
     /// The primary action plus the quieter secondary row - all meeting the 60pt active-screen touch
     /// target. Which primary action shows depends on the movement (US-O03): a rep-based exercise keeps
     /// "Complete set", and completing the last set of the last exercise finishes the session; a timed
-    /// one offers "Start hold" instead, and the countdown records its own set at zero, so it is the
-    /// timer - not a tap - that advances. Swapping (US-K03) replaces the current movement with a
+    /// one offers "Start hold" instead, and the countdown records its own set at zero, so the timer
+    /// rather than a tap is what ordinarily advances it - with the same completion still offered as a
+    /// quiet slot in the row below (running leg included), so coming out early banks the work instead
+    /// of losing it to a skip. Swapping (US-K03) replaces the current movement with a
     /// same-pillar/pattern peer, or, when none is safe and in budget, surfaces an honest "no
     /// alternative" notice above the actions.
     ///

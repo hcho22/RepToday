@@ -1224,6 +1224,74 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
+    /// The other half of US-O03, driven through the real control that ends the session: the clock the
+    /// player never shows is the same clock the completion summary finally reports.
+    ///
+    /// The two halves are gated together on one hosted surface, because separately either could pass
+    /// while the story fails - a player with no clock and a summary with no total is a session whose
+    /// minutes simply vanished, and a summary reporting a total the player also displayed is the
+    /// pressure the story removes. So the last set is banked through the production "Finish session"
+    /// control, and the same accessibility tree is read on both sides of that tap: no elapsed clock
+    /// before it, the session's minutes on the card after it.
+    func testTheSessionTotalIsHiddenDuringPlayAndRevealedOnTheCompletionSummary() throws {
+        let workout = try generate()
+        let slots = workout.blocks.flatMap(\.exercises)
+        let last = slots.count - 1
+
+        // Parked on the final set of the session's last slot, with the session started a little over
+        // eleven minutes ago - far enough inside the minute that the rounding cannot tip while the test
+        // runs, so the number asserted is the number rendered.
+        let workedMinutes = 11
+        var state = resumed(workout, at: last, currentSet: slots[last].sets)
+        state = ActiveSessionState(
+            workout: state.workout, slots: state.slots, currentStepIndex: state.currentStepIndex,
+            currentSet: state.currentSet, completedSets: state.completedSets,
+            skippedStepIDs: state.skippedStepIDs,
+            startedAt: Date().addingTimeInterval(-Double(workedMinutes) * 60 - 5), rest: nil
+        )
+
+        let host = hosted(try playerView(state), size: playerSize)
+        let duringPlay = accessibilityLabels(in: host.view)
+        XCTAssertFalse(
+            duringPlay.contains { $0.hasPrefix("Elapsed time") },
+            "the session clock is on the player again; it reads \(duringPlay)"
+        )
+        XCTAssertFalse(
+            duringPlay.contains { $0.contains("\(workedMinutes) minute") },
+            "the minutes worked so far must not be readable mid-session; it reads \(duringPlay)"
+        )
+
+        let finish = try XCTUnwrap(
+            accessibilityElement(labeled: "Finish session", in: host.view),
+            "the player offers no way to bank the session's last set; it reads \(duringPlay)"
+        )
+        XCTAssertTrue(finish.accessibilityActivate(), "the Finish session control did not activate")
+
+        func celebrating(_ labels: [String]) -> Bool {
+            labels.contains("You showed up. That's the whole game.")
+        }
+        let ceiling = Date().addingTimeInterval(20)
+        var after: [String] = []
+        repeat {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            after = accessibilityLabels(in: host.view)
+        } while Date() < ceiling && !celebrating(after)
+
+        print("=== Rep Today - the completion summary reads: \(after) ===")
+        XCTAssertTrue(celebrating(after), "the session never reached its summary; it reads \(after)")
+        XCTAssertTrue(
+            after.contains("\(workedMinutes) minutes"),
+            "the summary should finally report the \(workedMinutes) minutes the session took; "
+            + "it reads \(after)"
+        )
+        try renderHosted(
+            host, size: playerSize,
+            fileName: "completion-summary-total.png", story: Evidence.sessionTimer
+        )
+    }
+
     /// Writes a text artifact next to the rendered PNGs.
     private func write(_ text: String, to fileName: String, story: String) throws {
         let directory = evidenceDir(story)

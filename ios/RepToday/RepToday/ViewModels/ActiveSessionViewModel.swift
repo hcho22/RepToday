@@ -27,10 +27,11 @@ import Observation
 /// `init(workout:)` is a convenience over it.
 ///
 /// The rest timer is derived from the same injected clock as elapsed time, but with pause semantics:
-/// it is scheduled against a wall-clock `restDeadline`, and backgrounding the app pauses it (capturing
-/// the remaining seconds) so the countdown never blows past while the user is away. All rest logic is
-/// pure over the injected clock, so the tests drive the countdown, skip, extend, pause, and resume
-/// without real time passing.
+/// it runs on a `Countdown` (a wall-clock deadline, with the remainder frozen while paused), so
+/// backgrounding the app pauses it and the countdown never blows past while the user is away. The Hold
+/// Timer below runs on the same type rather than a copy of it, so a fix to the mechanism lands on both.
+/// All rest logic is pure over the injected clock, so the tests drive the countdown, skip, extend,
+/// pause, and resume without real time passing.
 ///
 /// The in-session swap (US-K03) lets the user replace the current exercise with a deterministic
 /// same-pillar/pattern peer so one movement they can't or won't do never derails the session. It
@@ -54,8 +55,11 @@ import Observation
 /// itself is in-memory only and is never persisted or restored: backgrounding *within* the session
 /// freezes and resumes the leg through `scenePhase`, while tearing the player down ends it outright,
 /// and only the side the user still owes is carried into the snapshot - so a resumed session always
-/// comes back idle. (`init(state:)` records why a hold is not a rest.) Rep-based exercises are
-/// untouched: set tracker plus a manual "Complete set".
+/// comes back idle. (`init(state:)` records why a hold is not a rest.) The timer is the offer, not the
+/// only way through: a timed exercise keeps a manual completion in the secondary row - offered while a
+/// leg runs too - so a user who held it off-timer or was interrupted part-way through banks the work
+/// rather than losing it to a skip. Rep-based exercises are untouched: set tracker plus a manual
+/// "Complete set".
 @Observable
 final class ActiveSessionViewModel {
 
@@ -829,10 +833,11 @@ final class ActiveSessionViewModel {
     // MARK: - Snapshot & persistence (US-K04)
 
     /// A snapshot of the current play state for persistence - the current lineup (reflecting any
-    /// swap), the position, what has been done, the session-clock origin, and the rest timer. Pure
-    /// over the view model's state; timing is captured as absolute instants (`startedAt`, the rest
-    /// `deadline`), so restoring at an unknown-later moment recomputes elapsed time and a running
-    /// rest countdown correctly.
+    /// swap), the position, what has been done, the session-clock origin, the rest timer, and the side
+    /// a part-done per-side hold left the user on. Pure over the view model's state; timing is captured
+    /// as absolute instants (`startedAt`, the rest `deadline`), so restoring at an unknown-later moment
+    /// recomputes elapsed time and a running rest countdown correctly. The hold is the exception, and
+    /// deliberately so: only its side is carried, never a running leg (US-O03).
     func snapshot() -> ActiveSessionState {
         let slots = steps.map {
             ActiveSessionState.Slot(blockTitle: $0.blockTitle, blockCategory: $0.blockCategory, prescription: $0.prescription)
