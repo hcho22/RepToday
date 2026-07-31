@@ -302,8 +302,10 @@ final class ProgressTabSnapshotTests: XCTestCase {
         try render(viewModel: viewModel, tall: tall, fileName: fileName)
     }
 
-    /// Hosting, layout and capture stay in a synchronous context: spinning the run loop is unavailable
-    /// from an async context, and the capture itself has nothing left to await.
+    /// Hosting, layout and capture stay in one synchronous body so that the measurement and the render
+    /// read the very same laid-out hierarchy: an intervening suspension would let the surface change
+    /// between the height being taken and the pixels being composited against it. Everything that has
+    /// to be awaited (`viewModel.load()`) has already happened by the time this is called.
     private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) throws {
         // The tab is a `ScrollView`, so it has to be hosted taller than its content for the whole of
         // that content to lay out at once rather than a screenful of it. Comfortably taller: the
@@ -313,7 +315,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
         let (host, window) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
         renderWindow = window
 
-        let size = CGSize(width: layoutSize.width, height: capturedHeight(of: host.view, laidOutIn: layoutSize))
+        let size = CGSize(width: layoutSize.width, height: try capturedHeight(of: host.view, laidOutIn: layoutSize))
 
         // `layer.render(in:)` composites the entire layer tree offscreen, so it captures content past
         // the physical screen bounds - unlike `drawHierarchy(afterScreenUpdates:)`, which is limited to
@@ -346,7 +348,13 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// hosted view is a `ScrollView` whose fitting size is the viewport it was given, not the content
     /// inside it. Falls back to the full hosted height if the surface is not scrolling (or measures to
     /// nothing), so the capture can only ever lose empty space, never content.
-    private func capturedHeight(of root: UIView, laidOutIn layoutSize: CGSize) -> CGFloat {
+    ///
+    /// Throws rather than asserting when the content outgrew its host: an assertion that let the caller
+    /// carry on would fail the run *and* write the truncated PNG, so under `REPTODAY_WRITE_EVIDENCE=1`
+    /// it would overwrite the committed baseline with a known-bad image and leave a staged diff
+    /// indistinguishable from a legitimate regeneration. Throwing keeps the failure loud and the
+    /// baseline the run was about to corrupt untouched.
+    private func capturedHeight(of root: UIView, laidOutIn layoutSize: CGSize) throws -> CGFloat {
         guard let scrollView = firstScrollView(in: root) else { return layoutSize.height }
         // Converted out of the scroll view's content coordinates, so the scroll view's own offset in
         // the hierarchy (the safe-area inset it sits below) is carried into the answer.
@@ -356,13 +364,23 @@ final class ProgressTabSnapshotTests: XCTestCase {
 
         // Cropping may only ever remove empty space. If the content outgrew the height it was hosted
         // in, the capture would be a silently truncated baseline - the one outcome worse than the
-        // dead space this crop exists to remove - so say so instead.
-        XCTAssertLessThanOrEqual(
-            ceil(bottom), layoutSize.height,
-            "The surface laid out taller than the height it was hosted in, so the capture would be "
-            + "cropped mid-content - host it taller rather than committing a truncated baseline"
-        )
-        return min(layoutSize.height, ceil(bottom))
+        // dead space this crop exists to remove.
+        guard ceil(bottom) <= layoutSize.height else {
+            throw CaptureOutgrewHost(contentHeight: ceil(bottom), hostedHeight: layoutSize.height)
+        }
+        return ceil(bottom)
+    }
+
+    /// Raised instead of writing a PNG whose bottom would be cut off mid-content.
+    private struct CaptureOutgrewHost: Error, CustomStringConvertible {
+        let contentHeight: CGFloat
+        let hostedHeight: CGFloat
+
+        var description: String {
+            "The surface laid out to \(Int(contentHeight))pt, taller than the \(Int(hostedHeight))pt it "
+            + "was hosted in, so the capture would be cropped mid-content. Nothing was written - host it "
+            + "taller rather than committing a truncated baseline."
+        }
     }
 
     private func firstScrollView(in view: UIView) -> UIScrollView? {
@@ -448,16 +466,16 @@ final class ProgressTabSnapshotTests: XCTestCase {
         return labels
     }
 
-    /// The label a day cell is expected to speak, built the way the production view builds it: a
-    /// `.medium` date in the injected calendar and time zone, left at `Locale.current` because the
-    /// spoken date should be localized for the user. Deriving it here rather than hard-coding the
-    /// en_US rendering is what keeps these tests about the *clock* the view reads rather than about
-    /// the language the simulator happens to run in.
+    /// The label a day cell is expected to speak, built the way the production view builds it: the
+    /// same `EEEEdMMMy` template in the injected calendar and time zone, left at `Locale.current`
+    /// because the spoken date should be localized for the user. Deriving it here rather than
+    /// hard-coding the en_US rendering is what keeps these tests about the *clock* the view reads
+    /// rather than about the language the simulator happens to run in.
     private func expectedDayLabel(day: Int, suffix: String) -> String {
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
-        formatter.dateStyle = .medium
+        formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMy")
         let date = calendar.date(from: DateComponents(year: 2026, month: 7, day: day))!
         return formatter.string(from: date) + suffix
     }
