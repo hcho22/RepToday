@@ -322,7 +322,11 @@ That reads as a build setting rather than a shell variable on purpose: the test 
 One render needed pinning to be worth refreshing at all.
 The running-hold capture starts the leg and then reads the real clock, so whether the ring showed N or N-1 seconds - and the arc's fill with it, since that is `remaining / total` over whole seconds - depended on how the runloop pump happened to land, and the file's bytes moved between runs for no change in behaviour.
 It now waits for a specific remaining second and lets the arc's 0.5s animation finish before capturing, which makes it the steadiest file of the set.
-The honest limit is that these are live surfaces, not golden images: every render that still shows the exercise demo catches that demo's continuous pulse at whatever phase it is in, so those bytes move a little on every deliberate refresh. The renders are review material and a "did this screen change" prompt, and the assertions beside them are the actual gate.
+The honest limit is that these are live surfaces, not golden images: every render that still shows the exercise demo catches that demo's continuous pulse at whatever phase it is in, so those bytes move a little on every deliberate refresh.
+That churn has a recognisable signature, which is what makes it safe to tell apart from a real change: it is confined to the demo glyph's own bounding box and stays around a 1% per-channel delta, invisible to the eye, with no text or layout moving anywhere on the screen.
+A refresh whose only diff is that box is noise to discard rather than a change to commit; a diff that reaches any other part of the screen is the screen actually changing.
+The renders that replace the demo with something else - the running hold, whose ring stands in the demo's slot, and the rest overlay, which covers it - come back byte-identical, so they are the ones a refresh can be read straight off.
+The renders are review material and a "did this screen change" prompt, and the assertions beside them are the actual gate.
 The per-side and swap renders belonging to the earlier story write to `artifacts/reports/per-side-swap/`, kept apart so nothing lands among the files the US-O03 acceptance notes point a reviewer at.
 The accessibility tree of those same hosted surfaces is read back and asserted, so the spoken forms and the absent clock are gated rather than eyeballed.
 And four live tests close the loop by driving the real controls the way VoiceOver's double-tap does.
