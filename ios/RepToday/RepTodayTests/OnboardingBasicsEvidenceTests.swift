@@ -43,6 +43,15 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
     /// Held for the test's lifetime - a released window takes the hosted view down with it.
     private var renderWindow: UIWindow?
 
+    /// SwiftUI only builds its accessibility tree once an assistive client is attached, so every test
+    /// asks for one before it hosts anything - otherwise the walks below silently report an empty
+    /// screen. It is attached once here rather than per walk, so reading one screen does not pay for
+    /// an activation and a runloop pump per question asked of it.
+    override func setUp() {
+        super.setUp()
+        _ = UIApplication.shared.accessibilityActivate()
+    }
+
     // MARK: - Fixtures
 
     /// The production onboarding view, parked on the basics step with a name already typed (so the
@@ -69,29 +78,32 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
 
     func testBasicsStepReadsImperialAndSpeaksItAsASentence() throws {
         let host = hosted(basicsStep(), size: screenSize)
-        let labels = accessibilityLabels(in: host.view)
-        let values = accessibilityValues(in: host.view)
+        // One walk answers every question below: a label and its own value come off the same element,
+        // so nothing here depends on two separately-collected lists having stayed in step across a
+        // runloop pump that could let SwiftUI rebuild the tree in between.
+        let readings = accessibilityReadings(in: host.view)
+        let labels = readings.map(\.label)
 
         print("=== Rep Today - onboarding basics, VoiceOver ===")
-        for (label, value) in zip(labels, values) where !label.isEmpty {
-            print("- \(label)\(value.map { ": \($0)" } ?? "")")
+        for reading in readings where !reading.label.isEmpty {
+            print("- \(reading.label)\(reading.value.map { ": \($0)" } ?? "")")
         }
 
         // Each row is named once and speaks its value as a sentence, with every noun agreeing with
         // its own count. The screen's own read-out stays terse ("5 ft 8 in") and is deliberately not
         // what VoiceOver reads - spoken, those abbreviations come out as letters.
         XCTAssertEqual(
-            value(of: "Height", in: host.view), "5 feet 8 inches",
+            value(of: "Height", in: readings), "5 feet 8 inches",
             "VoiceOver must speak the height as words, not the \"ft\"/\"in\" abbreviations; "
             + "the step reads \(labels)"
         )
         XCTAssertEqual(
-            value(of: "Weight", in: host.view), "175 pounds",
+            value(of: "Weight", in: readings), "175 pounds",
             "the weight is not spoken as words; the step reads \(labels)"
         )
 
         // No metric unit survives anywhere on the step - the regression this story prevents.
-        for reading in labels + values.compactMap({ $0 }) {
+        for reading in labels + readings.compactMap(\.value) {
             XCTAssertFalse(
                 reading.contains(" cm") || reading.contains(" kg"),
                 "the basics step still speaks a metric unit: \"\(reading)\""
@@ -194,6 +206,7 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
         renderWindow = window
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
 
         let deadline = Date().addingTimeInterval(1.5)
         while Date() < deadline {
@@ -214,16 +227,7 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
         host.view.layoutIfNeeded()
     }
 
-    /// SwiftUI only builds its accessibility tree once an assistive client is attached, so the walk
-    /// below has to ask for one first - otherwise it silently reports an empty screen.
-    private func attachAssistiveClient() {
-        _ = UIApplication.shared.accessibilityActivate()
-        UIAccessibility.post(notification: .screenChanged, argument: nil)
-        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.5))
-    }
-
     private func walkElements(in root: UIView, _ visit: (NSObject) -> Void) {
-        attachAssistiveClient()
         var visited = Set<ObjectIdentifier>()
 
         func walk(_ node: NSObject) {
@@ -241,16 +245,11 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
         walk(root)
     }
 
-    private func accessibilityLabels(in root: UIView) -> [String] {
-        var labels: [String] = []
-        walkElements(in: root) { labels.append($0.accessibilityLabel ?? "") }
-        return labels
-    }
-
-    private func accessibilityValues(in root: UIView) -> [String?] {
-        var values: [String?] = []
-        walkElements(in: root) { values.append($0.accessibilityValue) }
-        return values
+    /// Everything one walk can say about the screen: each element's label paired with its own value.
+    private func accessibilityReadings(in root: UIView) -> [(label: String, value: String?)] {
+        var readings: [(label: String, value: String?)] = []
+        walkElements(in: root) { readings.append(($0.accessibilityLabel ?? "", $0.accessibilityValue)) }
+        return readings
     }
 
     /// The first element whose label starts with `prefix` - a stepper composes its label out of its
@@ -263,7 +262,7 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
         return found
     }
 
-    private func value(of label: String, in root: UIView) -> String? {
-        accessibilityElement(labeledWithPrefix: label, in: root)?.accessibilityValue
+    private func value(of label: String, in readings: [(label: String, value: String?)]) -> String? {
+        readings.first { $0.label.hasPrefix(label) }?.value
     }
 }

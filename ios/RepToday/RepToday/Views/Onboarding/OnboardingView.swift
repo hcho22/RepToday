@@ -404,18 +404,19 @@ private struct LabeledStepper: View {
     }
 }
 
-/// One half of a `LabeledStepper`: a 44pt-square target that repeats while held.
+/// One half of a `LabeledStepper`: a 44pt-square target that steps on release and repeats while held.
 ///
 /// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
 /// ranges here need it - 70...440 lb is a long walk in single taps.
 ///
-/// There is exactly one gesture, and it never succeeds: `minimumDuration: .infinity` reduces the long
-/// press to a press *tracker*, so `onPressingChanged` is the single place a press begins and ends.
-/// Stacking a tap gesture on top of a long press instead gives one press two sources of increments -
-/// the tap recognizes on touch-up whatever the long press did - and a held button ends a step past
-/// what the read-out showed while it was held. `PressRepeater` turns that one stream into steps and
-/// stops at the end of the range; it is cancelled on release and on disappear, so no task outlives
-/// the row.
+/// The two gestures have one job each and neither commits a step on its own: the long press is
+/// reduced to a press *tracker* (`minimumDuration: .infinity`, so it never succeeds) that reports
+/// only when a press starts and stops being tracked, and the tap reports the one thing that tracker
+/// cannot tell apart - a finger lifting *on* the control, rather than a press the scroll view stole
+/// or a finger dragged away. `PressRepeater` is the single thing that turns those two streams into
+/// steps: a tap steps once on release, a hold repeats and the release adds nothing on top of it, a
+/// press that is only ever cancelled commits nothing, and a hold stops at the end of the range. It is
+/// cancelled on release and on disappear, so no task outlives the row.
 private struct StepButton: View {
     let systemName: String
     let isEnabled: Bool
@@ -437,11 +438,14 @@ private struct StepButton: View {
                 height: Theme.Spacing.minTouchTarget
             )
             .contentShape(Rectangle())
-            // The finger is allowed to drift anywhere inside the button during a hold; the default
-            // 10pt would end the repeat on an ordinary wobble.
+            // Half the target: the finger may drift within roughly the button's own bounds without
+            // the repeat stopping - the default 10pt ends it on an ordinary wobble - while a drag
+            // deliberately away from the button still cancels it. A full 44pt would keep repeating
+            // with the finger a whole button's width off the control, which no longer buys anything
+            // now that nothing commits on touch-down.
             .onLongPressGesture(
                 minimumDuration: .infinity,
-                maximumDistance: Theme.Spacing.minTouchTarget
+                maximumDistance: Theme.Spacing.minTouchTarget / 2
             ) {
                 // Unreachable: an infinite minimum duration means the press is only ever tracked.
             } onPressingChanged: { isPressing in
@@ -452,6 +456,15 @@ private struct StepButton: View {
                     repeater.pressEnded()
                 }
             }
+            // The press tracker above reports a drag-off and a release identically, so the tap is
+            // what says the finger actually came up on the button. It fires after a long hold too,
+            // which is exactly why the single step lives in the repeater rather than here.
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    guard isEnabled else { return }
+                    repeater.pressReleased(step: action)
+                }
+            )
             .onDisappear { repeater.pressEnded() }
             .accessibilityHidden(true)
     }
