@@ -411,12 +411,17 @@ private struct LabeledStepper: View {
 ///
 /// The two gestures have one job each and neither commits a step on its own: the long press is
 /// reduced to a press *tracker* (`minimumDuration: .infinity`, so it never succeeds) that reports
-/// only when a press starts and stops being tracked, and the tap reports the one thing that tracker
-/// cannot tell apart - a finger lifting *on* the control, rather than a press the scroll view stole
-/// or a finger dragged away. `PressRepeater` is the single thing that turns those two streams into
-/// steps: a tap steps once on release, a hold repeats and the release adds nothing on top of it, a
-/// press that is only ever cancelled commits nothing, and a hold stops at the end of the range. It is
-/// cancelled on release and on disappear, so no task outlives the row.
+/// only when a press starts and stops being tracked, and the drag reports the one thing that tracker
+/// cannot tell apart - a finger lifting, and how far from where it landed. `PressRepeater` is the
+/// single thing that turns those two streams into steps: a tap steps once on release, a hold repeats
+/// and the release adds nothing on top of it, a press that is only ever cancelled commits nothing,
+/// and a hold stops at the end of the range. It is cancelled on release and on disappear, so no task
+/// outlives the row.
+///
+/// Both gestures measure "still on the button" with the same `PressRepeater.pressTolerance`, which is
+/// the whole reason the release is read off a drag rather than a `TapGesture`: a tap's ~10pt is not
+/// configurable, so a press that drifted past it but stayed inside the tracker's radius used to be
+/// swallowed - no repeat, no step, a button that read as dead.
 private struct StepButton: View {
     let systemName: String
     let isEnabled: Bool
@@ -425,6 +430,12 @@ private struct StepButton: View {
 
     @State private var repeater = PressRepeater()
 
+    /// Nothing else acknowledges a press now that the value only moves on release, and this is the
+    /// one hand-drawn control on a screen where every other button gets the platform's highlight.
+    @State private var isPressed = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         Image(systemName: systemName)
             .font(Theme.Typography.headline)
@@ -432,41 +443,48 @@ private struct StepButton: View {
             // it still fits its 44pt target - past that it drew straight through the button's own
             // background. The row's text is what carries the larger sizes; this is control chrome.
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .foregroundStyle(isEnabled ? Theme.Colors.textPrimary : Theme.Colors.textSecondary)
+            .foregroundStyle(tint)
             .frame(
                 width: Theme.Spacing.minTouchTarget,
                 height: Theme.Spacing.minTouchTarget
             )
             .contentShape(Rectangle())
-            // Half the target: the finger may drift within roughly the button's own bounds without
-            // the repeat stopping - the default 10pt ends it on an ordinary wobble - while a drag
-            // deliberately away from the button still cancels it. A full 44pt would keep repeating
-            // with the finger a whole button's width off the control, which no longer buys anything
-            // now that nothing commits on touch-down.
+            .animation(reduceMotion ? nil : .easeOut, value: isPressed)
             .onLongPressGesture(
                 minimumDuration: .infinity,
-                maximumDistance: Theme.Spacing.minTouchTarget / 2
+                maximumDistance: PressRepeater.pressTolerance
             ) {
                 // Unreachable: an infinite minimum duration means the press is only ever tracked.
             } onPressingChanged: { isPressing in
                 if isPressing {
                     guard isEnabled else { return }
+                    isPressed = true
                     repeater.pressBegan(step: action)
                 } else {
+                    isPressed = false
                     repeater.pressEnded()
                 }
             }
-            // The press tracker above reports a drag-off and a release identically, so the tap is
-            // what says the finger actually came up on the button. It fires after a long hold too,
+            // The press tracker above reports a drag-off and a release identically, so the drag is
+            // what says the finger came up and how far away it did so. It ends after a long hold too,
             // which is exactly why the single step lives in the repeater rather than here.
             .simultaneousGesture(
-                TapGesture().onEnded {
+                DragGesture(minimumDistance: 0).onEnded { drag in
+                    isPressed = false
                     guard isEnabled else { return }
-                    repeater.pressReleased(step: action)
+                    repeater.pressReleased(drift: drag.translation, step: action)
                 }
             )
-            .onDisappear { repeater.pressEnded() }
+            .onDisappear {
+                isPressed = false
+                repeater.pressEnded()
+            }
             .accessibilityHidden(true)
+    }
+
+    private var tint: Color {
+        guard isEnabled else { return Theme.Colors.textSecondary }
+        return isPressed ? Theme.Colors.accent : Theme.Colors.textPrimary
     }
 }
 

@@ -144,7 +144,14 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
             "the height row is not an adjustable value control"
         )
         height.accessibilityIncrement()
-        settle(host)
+        settle(
+            host,
+            until: {
+                self.accessibilityElement(labeledWithPrefix: "Height", in: host.view)?
+                    .accessibilityValue == "5 feet 9 inches"
+            },
+            waitingFor: "the height row to re-read itself after one increment"
+        )
         XCTAssertEqual(
             accessibilityElement(labeledWithPrefix: "Height", in: host.view)?.accessibilityValue,
             "5 feet 9 inches",
@@ -154,7 +161,14 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
         let weight = try XCTUnwrap(accessibilityElement(labeledWithPrefix: "Weight", in: host.view))
         XCTAssertTrue(weight.accessibilityTraits.contains(.adjustable))
         weight.accessibilityDecrement()
-        settle(host)
+        settle(
+            host,
+            until: {
+                self.accessibilityElement(labeledWithPrefix: "Weight", in: host.view)?
+                    .accessibilityValue == "170 pounds"
+            },
+            waitingFor: "the weight row to re-read itself after one decrement"
+        )
         XCTAssertEqual(
             accessibilityElement(labeledWithPrefix: "Weight", in: host.view)?.accessibilityValue,
             "170 pounds",
@@ -195,7 +209,18 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
 
     // MARK: - Hosting & accessibility-tree helpers
 
-    private func hosted<V: View>(_ view: V, size: CGSize) -> UIHostingController<V> {
+    /// Hosts `view` in a real key window and runs the main runloop until its accessibility tree has
+    /// actually been built - the row named by `waitingFor` being the proof, since every screen hosted
+    /// here carries it. The old fixed wait spent its whole budget on every call whether the tree had
+    /// arrived or not; polling turns the same timing dependency into an assertion and pays only for
+    /// what SwiftUI needs.
+    private func hosted<V: View>(
+        _ view: V,
+        size: CGSize,
+        waitingFor rowLabel: String = "Height",
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> UIHostingController<V> {
         let host = UIHostingController(rootView: view)
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: size)
@@ -208,23 +233,48 @@ final class OnboardingBasicsEvidenceTests: XCTestCase {
         host.view.layoutIfNeeded()
         UIAccessibility.post(notification: .screenChanged, argument: nil)
 
-        let deadline = Date().addingTimeInterval(1.5)
-        while Date() < deadline {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
-        }
+        pump(
+            upTo: 1.5,
+            until: { self.accessibilityElement(labeledWithPrefix: rowLabel, in: host.view) != nil },
+            waitingFor: "the \(rowLabel) row to appear in the hosted accessibility tree",
+            file: file,
+            line: line
+        )
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
         return host
     }
 
-    /// Lets SwiftUI re-run its layout and rebuild the accessibility tree after the view was driven.
-    private func settle(_ host: UIViewController) {
-        let deadline = Date().addingTimeInterval(0.6)
-        while Date() < deadline {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
-        }
+    /// Lets SwiftUI re-run its layout and rebuild the accessibility tree after the view was driven,
+    /// stopping as soon as the change being waited on has landed.
+    private func settle(
+        _ host: UIViewController,
+        until isReady: () -> Bool,
+        waitingFor what: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        pump(upTo: 0.6, until: isReady, waitingFor: what, file: file, line: line)
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
+    }
+
+    /// Runs the main runloop until `isReady` holds, giving up at `timeout` - and failing there rather
+    /// than continuing against a screen that never arrived, naming what it was waiting for.
+    private func pump(
+        upTo timeout: TimeInterval,
+        until isReady: () -> Bool,
+        waitingFor what: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if isReady() { return }
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+        if isReady() { return }
+        XCTFail("timed out after \(timeout)s waiting for \(what)", file: file, line: line)
     }
 
     private func walkElements(in root: UIView, _ visit: (NSObject) -> Void) {

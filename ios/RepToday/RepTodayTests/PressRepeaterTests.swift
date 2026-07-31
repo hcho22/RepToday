@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import RepToday
 
@@ -5,14 +6,17 @@ import XCTest
 /// stepper that the accessibility-driven `OnboardingBasicsEvidenceTests` never reaches, because
 /// `accessibilityIncrement()` routes through the adjustable action and never presses anything.
 ///
-/// Three properties are gated, and each is a regression that shipped once. Nothing commits while the
+/// Four properties are gated, and each is a regression that shipped once. Nothing commits while the
 /// finger is down: the step lands on release, so a finger that touches `+` on its way to a scroll
 /// moves nothing, and a press that is only ever cancelled commits nothing at all. A press produces
 /// exactly the steps it showed while it was held - the original control stacked a tap gesture on a
-/// long press, so a held button took one more step on release than the read-out had reported. And a
-/// hold stops at the end of the range rather than spinning: the value is clamped, so every further
-/// "step" wrote the same number back through the binding, and Observation notifies on every write
-/// regardless of equality - roughly eleven pointless invalidations a second until the finger lifted.
+/// long press, so a held button took one more step on release than the read-out had reported. A hold
+/// stops at the end of the range rather than spinning: the value is clamped, so every further "step"
+/// wrote the same number back through the binding, and Observation notifies on every write regardless
+/// of equality - roughly eleven pointless invalidations a second until the finger lifted. And one
+/// drift tolerance decides whether a lifted finger was on the control: the button's two gestures used
+/// to enforce different ones (a `TapGesture`'s ~10pt is not configurable, against the tracker's 22pt),
+/// so a press that drifted between them was tracked, never repeated, and then dropped on release.
 ///
 /// The clock is injected, so a whole hold is driven without waiting on one and nothing here is timed.
 @MainActor
@@ -76,6 +80,37 @@ final class PressRepeaterTests: XCTestCase {
         XCTAssertEqual(steps, 0, "a press the user never completed on the button must move nothing")
     }
 
+    // MARK: - One tolerance decides whether the finger came up on the control
+
+    /// A thumb rolls on a 44pt target, and the row lives inside a scrolling step. Drift the tracker
+    /// still counts as a press has to commit the step too, or the button reads as dead.
+    func testAPressThatDriftsWithinToleranceStillStepsOnRelease() async {
+        var steps = 0
+        let repeater = tapOnlyRepeater()
+        let drift = PressRepeater.pressTolerance - 1
+
+        repeater.pressBegan { steps += 1; return true }
+        repeater.pressReleased(drift: CGSize(width: drift, height: 0)) { steps += 1; return true }
+        repeater.pressEnded()
+        await drain()
+
+        XCTAssertEqual(steps, 1, "a wobble inside the button's own bounds must still be a tap")
+    }
+
+    func testAPressThatDriftsOffTheButtonCommitsNothingOnRelease() async {
+        var steps = 0
+        let repeater = tapOnlyRepeater()
+        // Diagonally past the radius the press tracker allows, so the finger came up off the control.
+        let drift = PressRepeater.pressTolerance
+
+        repeater.pressBegan { steps += 1; return true }
+        repeater.pressReleased(drift: CGSize(width: drift, height: drift)) { steps += 1; return true }
+        repeater.pressEnded()
+        await drain()
+
+        XCTAssertEqual(steps, 0, "a finger that lifted away from the button must move nothing")
+    }
+
     // MARK: - One press, one source of steps
 
     func testAHeldPressEndsExactlyWhereItStoodWhenTheFingerLifted() async {
@@ -133,6 +168,36 @@ final class PressRepeaterTests: XCTestCase {
         await drain()
 
         XCTAssertEqual(value, 5, "a release that only ends a hold must not step past the range")
+    }
+
+    /// The flag a release reads to know a hold already owns the press is consumed by that release,
+    /// not left standing. It has to outlive `pressEnded`, since one release reports both in an order
+    /// the gesture layer decides - but a hold that walks the value into the bound disables its own
+    /// button under the finger, and the view then skips `pressBegan` on the next press, which is the
+    /// only other thing that ever cleared it. A `true` left behind would swallow that later step.
+    func testAHoldsReleaseConsumesTheFlagRatherThanLeavingItSet() async {
+        var steps = 0
+        var repeater: PressRepeater?
+        var sleeps = 0
+        repeater = PressRepeater(
+            sleep: { _ in
+                sleeps += 1
+                if sleeps == 2 { repeater?.pressEnded() }
+                await Task.yield()
+            }
+        )
+
+        repeater?.pressBegan { steps += 1; return true }
+        await drain()
+        XCTAssertEqual(steps, 1, "the hold takes its own step")
+
+        // The release that ends the hold: swallowed, as it must be.
+        repeater?.pressReleased { steps += 1; return true }
+        // A later release the repeater never saw a press for - it must not be swallowed too.
+        repeater?.pressReleased { steps += 1; return true }
+        await drain()
+
+        XCTAssertEqual(steps, 2, "only the hold's own release may be swallowed by the hold")
     }
 
     // MARK: - The repeat stops at the end of the range
