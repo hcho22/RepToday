@@ -15,13 +15,21 @@ struct OnboardingView: View {
     private let onComplete: () -> Void
 
     init(services: ServiceContainer, onComplete: @escaping () -> Void) {
-        _viewModel = State(
-            initialValue: OnboardingViewModel(
+        self.init(
+            viewModel: OnboardingViewModel(
                 userService: services.userService,
                 sessionPolicyService: services.sessionPolicyService,
                 authService: services.authService
-            )
+            ),
+            onComplete: onComplete
         )
+    }
+
+    /// Opens the flow on an already-built view model, so a caller can render a step other than the
+    /// first. Previews and tests use it to reach a mid-flow step through the production view rather
+    /// than by reimplementing it.
+    init(viewModel: OnboardingViewModel, onComplete: @escaping () -> Void = {}) {
+        _viewModel = State(initialValue: viewModel)
         self.onComplete = onComplete
     }
 
@@ -237,10 +245,45 @@ private struct BasicsStep: View {
 
             SexPicker(sex: $viewModel.sex)
 
-            LabeledStepper(label: "Age", value: $viewModel.age, range: 13...100, unit: "years")
+            LabeledStepper(
+                label: "Age",
+                value: $viewModel.age,
+                range: 13...100,
+                display: { "\($0) years" },
+                spoken: { "\($0) years" }
+            )
 
-            LabeledSlider(label: "Height", value: $viewModel.heightCm, range: 120...220, step: 1, unit: "cm")
-            LabeledSlider(label: "Weight", value: $viewModel.weightKg, range: 35...200, step: 1, unit: "kg")
+            // Imperial in, metric stored (US-O04). The two rows step whole inches and whole pounds;
+            // `OnboardingViewModel` converts once, in `buildUser`.
+            //
+            // Height is one row over total inches rather than two controls: it keeps the step's
+            // label-value-stepper rhythm, and the split it writes back is always normalized, so
+            // "5 ft 12 in" is unreachable by construction.
+            //
+            // The bounds are the imperial cover of the metric sliders they replace (120...220 cm,
+            // 35...200 kg), rounded outward at all four ends: 47 in is 119.4 cm and 87 in is 221.0 cm;
+            // 70 lb is 31.8 kg and 445 lb is 201.8 kg. Narrowing them would silently clamp somebody:
+            // there is no profile-edit surface yet, so a weight capped on the way in under-reports
+            // every HealthKit energy estimate (`MET x weightKg x hours`) for the life of the account.
+            LabeledStepper(
+                label: "Height",
+                value: $viewModel.heightTotalInches,
+                range: 47...87,
+                display: UnitConversion.heightLabel(totalInches:),
+                spoken: UnitConversion.heightAccessibilityLabel(totalInches:)
+            )
+            // Weight moves in 5lb steps: the range is wide enough that single pounds would be a long
+            // walk, and the only thing downstream reads this number for is the HealthKit MET energy
+            // estimate, where 5lb is far inside the approximation's own error. Both bounds sit on the
+            // step, so the whole range is reachable from either end.
+            LabeledStepper(
+                label: "Weight",
+                value: $viewModel.weightPounds,
+                range: 70...445,
+                step: 5,
+                display: UnitConversion.weightLabel(pounds:),
+                spoken: UnitConversion.weightAccessibilityLabel(pounds:)
+            )
         }
     }
 }
@@ -263,48 +306,216 @@ private struct SexPicker: View {
     }
 }
 
+/// One measurement row: the name on the left, the current value on the right, and a pair of step
+/// buttons that move it by exactly one unit a tap.
+///
+/// Every measurement this step collects is a whole unit (a year, an inch, a pound), and each is a
+/// number the user already knows, so an exact control beats a draggable one - the answer is recalled,
+/// not explored. `display` renders the compact on-screen read-out and `spoken` the VoiceOver value,
+/// kept apart so the screen can stay terse ("5 ft 8 in") while VoiceOver reads a real sentence
+/// ("5 feet 8 inches") instead of spelling out abbreviations.
+///
+/// The buttons are drawn rather than delegated to `Stepper`, whose halves lay out at 46.5 x 32pt -
+/// under the app's 44pt floor in the dimension a thumb is least accurate in. The row is one
+/// *adjustable* accessibility element rather than two buttons, which is the idiom VoiceOver already
+/// knows for a value control: it reads "Height, 5 feet 8 inches" and swipe up/down moves it.
 private struct LabeledStepper: View {
     let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
-    let unit: String
+    var step: Int = 1
+    let display: (Int) -> String
+    let spoken: (Int) -> String
+
+    /// At an accessibility type size the name, the value, and the buttons no longer share a line
+    /// without the value wrapping mid-row, so the row stacks instead of squeezing.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Stepper(value: $value, in: range) {
-            HStack {
-                Text(label)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer()
-                Text("\(value) \(unit)")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    name
+                    HStack(spacing: Theme.Spacing.sm) {
+                        readOut
+                        Spacer(minLength: Theme.Spacing.sm)
+                        buttons
+                    }
+                }
+            } else {
+                HStack(spacing: Theme.Spacing.sm) {
+                    name
+                    Spacer(minLength: Theme.Spacing.sm)
+                    readOut
+                    buttons
+                }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: Theme.Spacing.minTouchTarget)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(spoken(value))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: _ = adjust(by: step)
+            case .decrement: _ = adjust(by: -step)
+            @unknown default: break
+            }
+        }
+    }
+
+    private var name: some View {
+        Text(label)
+            .font(Theme.Typography.headline)
+            .foregroundStyle(Theme.Colors.textPrimary)
+    }
+
+    private var readOut: some View {
+        Text(display(value))
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Colors.textSecondary)
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 0) {
+            StepButton(systemName: "minus", isEnabled: value > range.lowerBound) {
+                adjust(by: -step)
+            }
+            Divider().frame(height: Theme.Spacing.lg)
+            StepButton(systemName: "plus", isEnabled: value < range.upperBound) {
+                adjust(by: step)
+            }
+        }
+        .background(
+            Theme.Colors.surface,
+            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+        )
+    }
+
+    /// Move the value and clamp it to `range`, so neither the buttons nor the VoiceOver adjustment can
+    /// walk it out of bounds. Reports whether the value actually moved, which is what tells a held
+    /// button it has reached the end of the range and can stop.
+    @discardableResult
+    private func adjust(by delta: Int) -> Bool {
+        let adjusted = min(range.upperBound, max(range.lowerBound, value + delta))
+        guard adjusted != value else { return false }
+        value = adjusted
+        return true
     }
 }
 
-private struct LabeledSlider: View {
-    let label: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-    let unit: String
+/// One half of a `LabeledStepper`: a 44pt-square target that steps on release and repeats while held.
+///
+/// The repeat is what a hand-drawn stepper otherwise gives up against the platform one, and the
+/// ranges here need it - 70...445 lb is a long walk in single taps. Only the *drawing* is hand-rolled,
+/// though: this is a real `Button`, so everything about when a press counts is the platform's, touch
+/// slop and all. A press belongs to the button it *landed* on for its whole life, and the platform's
+/// touch-up-inside decides whether the lift still counts - so on a row where `-` and `+` are adjacent
+/// 44pt squares, a finger that lands on `+` and drifts a little over `-` steps `+` and never `-`, and
+/// one that travels clear of the slop steps nothing at all. That is how every other button in the app
+/// behaves; inheriting the rule rather than restating it here is the point. A press the enclosing
+/// `ScrollView` takes over commits nothing either, and the button's highlight is delayed exactly as
+/// long as the platform delays every other button's inside a scroll view.
+///
+/// Deciding that here is what went wrong three times: a radius measured from where the finger landed
+/// is not a button's bounds, and two gestures measuring it differently silently dropped the step.
+/// There is now one rule, it lives in the layer that owns hit testing, and this view holds no geometry
+/// at all.
+///
+/// That leaves `PressRepeater` the one job the platform has no notion of: a press held past the hold
+/// delay repeats, and the release ending it adds nothing on top of what the read-out already showed.
+/// It runs off the style's press state - the same signal that tints the glyph - so the repeat and the
+/// highlight start and stop together, on release, on cancel, and on disappear.
+private struct StepButton: View {
+    let systemName: String
+    let isEnabled: Bool
+    /// Steps the value, reporting whether it actually moved.
+    let action: () -> Bool
+
+    @State private var repeater = PressRepeater()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack {
-                Text(label)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer()
-                Text("\(Int(value)) \(unit)")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+        Button {
+            repeater.pressReleased(step: action)
+        } label: {
+            Image(systemName: systemName)
+                .font(Theme.Typography.headline)
+                // The glyph scales with Dynamic Type like everything else, but only up to the point
+                // where it still fits its 44pt target - past that it drew straight through the
+                // button's own background. The row's text carries the larger sizes; this is chrome.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        }
+        .buttonStyle(
+            StepButtonStyle { isPressing in
+                if isPressing {
+                    repeater.pressBegan(step: action)
+                } else {
+                    repeater.pressEnded()
+                }
             }
-            Slider(value: $value, in: range, step: step)
-                .accessibilityValue("\(Int(value)) \(unit)")
+        )
+        .disabled(!isEnabled)
+        .onDisappear { repeater.pressEnded() }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A step button's chrome: a 44pt square whose glyph tints while the finger is down.
+///
+/// The press state is the platform's own - true while the finger is down on the button, false the
+/// moment it lifts, drags off, or the enclosing scroll view takes the press over - so one signal
+/// drives both the highlight and the repeat, and no press can end somewhere this view never hears
+/// about. Nothing else acknowledges a press, since the value only moves on release, and this is the
+/// one hand-drawn control on a screen where every other button gets the platform's highlight free.
+private struct StepButtonStyle: ButtonStyle {
+    /// Fast in, so a tap well under 100ms still shows the highlight it was added to give; slower out,
+    /// so the release fades rather than snaps. `Theme` carries no animation tokens, so these are the
+    /// one named place for them rather than literals at the call site.
+    static let pressInDuration: TimeInterval = 0.1
+    static let pressOutDuration: TimeInterval = 0.2
+
+    let onPressingChanged: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        Chrome(configuration: configuration, onPressingChanged: onPressingChanged)
+    }
+
+    /// A view rather than modifiers applied straight to the label, so it can read `isEnabled` and
+    /// Reduce Motion from the environment and own the `onChange` that drives the repeat.
+    private struct Chrome: View {
+        let configuration: Configuration
+        let onPressingChanged: (Bool) -> Void
+
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(tint)
+                .frame(
+                    width: Theme.Spacing.minTouchTarget,
+                    height: Theme.Spacing.minTouchTarget
+                )
+                .contentShape(Rectangle())
+                .animation(pressAnimation, value: configuration.isPressed)
+                .onChange(of: configuration.isPressed) { _, isPressing in
+                    onPressingChanged(isPressing)
+                }
+        }
+
+        private var tint: Color {
+            guard isEnabled else { return Theme.Colors.textSecondary }
+            return configuration.isPressed ? Theme.Colors.accent : Theme.Colors.textPrimary
+        }
+
+        private var pressAnimation: Animation? {
+            guard !reduceMotion else { return nil }
+            return .easeOut(
+                duration: configuration.isPressed
+                    ? StepButtonStyle.pressInDuration
+                    : StepButtonStyle.pressOutDuration
+            )
         }
     }
 }

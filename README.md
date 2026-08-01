@@ -47,6 +47,10 @@ At launch no user has earned the Strength Phase, so the MVP ships the Discipline
 
 ## Features
 
+### Onboarding
+
+- **The units you think in** - height goes in as feet and inches and weight in pounds, on 44pt step buttons that repeat when held; the stored profile stays metric, converted once at the onboarding boundary, so everything downstream (including the energy Rep Today writes to Health) is in centimeters and kilograms whatever you typed.
+
 ### Core Workout Loop
 
 - **Deterministic session generation** - select a duration (5-60 min) and the engine assembles a structured session (warm-up, main work, cooldown over 10 min) on-device, with no network and no LLM.
@@ -222,10 +226,18 @@ open ios/RepToday/RepToday.xcodeproj
 
 ### Run Tests
 
-There is a single scheme, `RepToday`, which builds the app and runs the `RepTodayTests` target.
+The `RepToday` scheme builds the app and runs the `RepTodayTests` target - that is the default run, and everything except the XCUITests lives in it.
 
 ```bash
 xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
+  -destination 'platform=iOS Simulator,name=iPhone 16' test
+```
+
+`RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes.
+Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
+
+```bash
+xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests \
   -destination 'platform=iOS Simulator,name=iPhone 16' test
 ```
 

@@ -30,8 +30,9 @@ final class OnboardingViewModelTests: XCTestCase {
         vm.displayName = "  Riley  "
         vm.age = 34
         vm.sex = .female
-        vm.heightCm = 168
-        vm.weightKg = 62
+        vm.heightFeet = 5
+        vm.heightInches = 6
+        vm.weightPounds = 137
         vm.fitnessLevel = .beginner
         vm.whyStatement = "  get on the floor with my grandkids  "
         vm.sitsLong = true
@@ -57,6 +58,116 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertTrue(user.profile.sitsLong)
         XCTAssertEqual(user.why.statement, "get on the floor with my grandkids", "why is trimmed")
         XCTAssertNil(user.why.openingBias, "the minimal flow states no opening bias")
+    }
+
+    // MARK: - Imperial in, metric stored (US-O04)
+
+    /// The PRD's own numbers: the user types 5 ft 7 in and 165 lb, the persisted profile is metric.
+    func testImperialAnswersArePersistedAsMetric() {
+        let vm = makeViewModel()
+        fillAnswers(vm)
+        vm.heightFeet = 5
+        vm.heightInches = 7
+        vm.weightPounds = 165
+
+        let profile = vm.buildUser().profile
+
+        XCTAssertEqual(profile.heightCm, 170.18, accuracy: 0.01, "5 ft 7 in is ~170 cm")
+        XCTAssertEqual(profile.weightKg, 74.84, accuracy: 0.01, "165 lb is ~74.8 kg")
+    }
+
+    /// The defaults open somewhere plausible for a US adult - and are *not* the values the validation
+    /// test types, so a conversion that silently ignored its input could not pass by coincidence.
+    func testDefaultsAreUSSensibleAndNotTheTestedValues() {
+        let vm = makeViewModel()
+
+        XCTAssertEqual(vm.heightFeet, 5)
+        XCTAssertEqual(vm.heightInches, 8)
+        XCTAssertEqual(vm.weightPounds, 175)
+        XCTAssertFalse(
+            vm.heightInches == 7 && vm.weightPounds == 165,
+            "the defaults must differ from the acceptance-criteria input, else the mapping is untested"
+        )
+    }
+
+    /// The single height control writes both parts, and the split it leaves behind is always
+    /// normalized - `5 ft 12 in` is unreachable.
+    func testHeightTotalInchesNormalizesTheFeetInchesSplit() {
+        let vm = makeViewModel()
+
+        vm.heightTotalInches = 67
+        XCTAssertEqual(vm.heightFeet, 5)
+        XCTAssertEqual(vm.heightInches, 7)
+
+        vm.heightTotalInches = 72
+        XCTAssertEqual(vm.heightFeet, 6)
+        XCTAssertEqual(vm.heightInches, 0)
+
+        vm.heightFeet = 5
+        vm.heightInches = 11
+        XCTAssertEqual(vm.heightTotalInches, 71, "the parts read back as one number")
+    }
+
+    /// The derived metric values track the imperial answers with no separate state to fall out of sync.
+    func testMetricValuesAreDerivedFromTheImperialAnswers() {
+        let vm = makeViewModel()
+
+        vm.heightTotalInches = 70
+        vm.weightPounds = 200
+        XCTAssertEqual(vm.heightCm, 177.8, accuracy: 0.001)
+        XCTAssertEqual(vm.weightKg, 90.718, accuracy: 0.001)
+
+        vm.heightTotalInches = 60
+        vm.weightPounds = 120
+        XCTAssertEqual(vm.heightCm, 152.4, accuracy: 0.001)
+        XCTAssertEqual(vm.weightKg, 54.431, accuracy: 0.001)
+    }
+
+    /// End-to-end past the boundary: the HealthKit energy estimate prices the session off the
+    /// onboarded weight in *kilograms*. Reading it as pounds would inflate every calorie written to
+    /// Health by ~2.2x, and nothing downstream would flag it - so the unit is pinned here.
+    func testHealthKitEnergyUsesKilogramsFromTheOnboardedWeight() {
+        let vm = makeViewModel()
+        fillAnswers(vm)
+        vm.weightPounds = 165
+
+        let user = vm.buildUser()
+        let completedAt = Date(timeIntervalSinceReferenceDate: 760_000_000)
+        let log = WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: completedAt,
+            requestedMinutes: 60,
+            durationMinutes: 60,
+            wasReturn: false,
+            shape: .blend,
+            focusPillar: .strength,
+            perceivedDifficulty: nil,
+            exercises: [
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: "push_standard",
+                    pillar: .strength,
+                    movementPattern: .push,
+                    completedSets: [CompletedSet(reps: 10, durationSeconds: nil)],
+                    skipped: false
+                )
+            ]
+        )
+
+        let sample = HealthKitWorkoutSample.from(
+            log: log,
+            user: user,
+            metValuesByExerciseId: ["push_standard": 5]
+        )
+
+        // 5 MET x 74.8427 kg x 1 h.
+        XCTAssertEqual(sample.energyKilocalories, 374.21, accuracy: 0.05)
+        XCTAssertLessThan(
+            sample.energyKilocalories,
+            5 * 165,
+            "the estimate must not be reading the raw pound value as kilograms"
+        )
     }
 
     /// The one duration answer seeds both the Ready-Screen default and the immutable onboarding seed.
