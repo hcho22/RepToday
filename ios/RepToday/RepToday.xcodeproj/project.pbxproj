@@ -39,6 +39,7 @@
 		3A1D0A117E5AEBEC15D8A773 /* VarietyLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2D7311A5F99FF4FA204B9A /* VarietyLanguage.swift */; };
 		3B46EB24F030E764EF3730AB /* SessionCompletionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFE1A7921225B281ABAB1669 /* SessionCompletionServiceTests.swift */; };
 		3C2C17482AF00FD9009E5162 /* HealthKitWorkoutSampleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC8E70A83D9356FBF1653BD /* HealthKitWorkoutSampleTests.swift */; };
+		3C50E0A667886567B16D76A4 /* HostedSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D4FF883C98D5A4A4C27A4FC /* HostedSurface.swift */; };
 		3C81263978A5A68876E353F0 /* PolicyNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0297CA46CCCC98D71C7E0B79 /* PolicyNote.swift */; };
 		3EDC431567051A296233F97C /* ProgressTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3520D9D5DA23D464F191E4 /* ProgressTabView.swift */; };
 		40BB98386820500AB91D8F9E /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE524C2E971F6D7D2CBA1988 /* PaywallView.swift */; };
@@ -99,6 +100,7 @@
 		AA0AD93A48A8A8889248B6AE /* SessionCompletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4470E4714068CB26B224F8 /* SessionCompletionService.swift */; };
 		AC55155DABE13639BB5C29FA /* ReturnOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85274C4D6459D630BE1E4978 /* ReturnOverrideTests.swift */; };
 		B4B38F942E95757ABABB4B3D /* CoreDataServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */; };
+		B4B7EEE0AF616AF8E10DC005 /* EvidenceOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389617B4568649F8F7C007E0 /* EvidenceOutput.swift */; };
 		B60F4B6763B9EA32562A70CD /* ProxyVarietyLanguageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59C738BA5FCD52129CBF4A5E /* ProxyVarietyLanguageProvider.swift */; };
 		B90F66AAE5B68808B2416420 /* ConsistencyTrend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D89D3D80A28347E233D368 /* ConsistencyTrend.swift */; };
 		BAA2FE30D146E268F3D8E1FE /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A5B23D421F3F7367AD71FC /* RootView.swift */; };
@@ -192,9 +194,11 @@
 		27E7EED954A9C476BDFFB951 /* StoreKitFacade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitFacade.swift; sourceTree = "<group>"; };
 		2908E41F26F4FD41D5C3D1C6 /* PersistenceCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoding.swift; sourceTree = "<group>"; };
 		2B411B1B59BDB1D465C54DE3 /* CDWorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDWorkoutLog.swift; sourceTree = "<group>"; };
+		2D4FF883C98D5A4A4C27A4FC /* HostedSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedSurface.swift; sourceTree = "<group>"; };
 		2E2FD96C653798B7A7D21701 /* ConsistencyScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyScore.swift; sourceTree = "<group>"; };
 		304334DF735169FC725E4988 /* ActiveSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionViewModel.swift; sourceTree = "<group>"; };
 		33E93566AD813FF2960EEEEE /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		389617B4568649F8F7C007E0 /* EvidenceOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceOutput.swift; sourceTree = "<group>"; };
 		3AFE83ACCA1B4E495B37E86D /* ReturnOverride.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnOverride.swift; sourceTree = "<group>"; };
 		3B022E6DD36A92F51FAAF800 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		3E05B92F85695632197BC57D /* AdaptiveOverloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveOverloadTests.swift; sourceTree = "<group>"; };
@@ -513,12 +517,14 @@
 				FD32B466256E5519DC297162 /* DefaultDurationLearningTests.swift */,
 				DFAF6D9FE810335E38A1C2DF /* DeterministicSessionPolicyServiceTests.swift */,
 				896FA5008B749566E28BAC10 /* EnumsTests.swift */,
+				389617B4568649F8F7C007E0 /* EvidenceOutput.swift */,
 				200FE49680DC28CFC5348C8E /* ExerciseLibraryTests.swift */,
 				DDC6705096907066E6B01F50 /* ExercisePoolFilterTests.swift */,
 				3E5A534AA361B55692C6C190 /* ExerciseServiceTests.swift */,
 				53EDE148D70DA7ABEC6D7DF3 /* ExerciseSwapTests.swift */,
 				55D808C6D787C3363FF43205 /* FirstWeekContrastTests.swift */,
 				BCC8E70A83D9356FBF1653BD /* HealthKitWorkoutSampleTests.swift */,
+				2D4FF883C98D5A4A4C27A4FC /* HostedSurface.swift */,
 				3B022E6DD36A92F51FAAF800 /* ModelsTests.swift */,
 				EF888D00CB3C7612EB72A396 /* MovementPatternFocusTests.swift */,
 				A6AC0C64472DDC2D59CB58DC /* OnboardingBasicsEvidenceTests.swift */,
@@ -843,12 +849,14 @@
 				CEF4EC76DE91F57C33F48F7A /* DefaultDurationLearningTests.swift in Sources */,
 				5AA136A50B47EF4E6CBBA75D /* DeterministicSessionPolicyServiceTests.swift in Sources */,
 				BC846079DA23B61BA46197D9 /* EnumsTests.swift in Sources */,
+				B4B7EEE0AF616AF8E10DC005 /* EvidenceOutput.swift in Sources */,
 				13EE8434D2EBDDA077DC4F2A /* ExerciseLibraryTests.swift in Sources */,
 				F84C017411630F05DEA0AA73 /* ExercisePoolFilterTests.swift in Sources */,
 				7FF8823409CD37C9BE09C946 /* ExerciseServiceTests.swift in Sources */,
 				DE66AC9AADF0D858AD36AB0D /* ExerciseSwapTests.swift in Sources */,
 				7A48DCF9726C50E76F0ADEEF /* FirstWeekContrastTests.swift in Sources */,
 				3C2C17482AF00FD9009E5162 /* HealthKitWorkoutSampleTests.swift in Sources */,
+				3C50E0A667886567B16D76A4 /* HostedSurface.swift in Sources */,
 				18BB492FFC5825F12658B62B /* ModelsTests.swift in Sources */,
 				1C7B2F8D44A1741AD4AA538C /* MovementPatternFocusTests.swift in Sources */,
 				26F27A30141CACB509B89600 /* OnboardingBasicsEvidenceTests.swift in Sources */,

@@ -46,6 +46,15 @@ final class ProgressViewModel {
     /// calendar/trend/score surfaces.
     var hasHistory: Bool { !completedDays.isEmpty }
 
+    /// The clock and calendar the surfaces above were derived against, for a view to render them
+    /// with rather than reaching for the wall clock and `Calendar.current` itself. `completedDays`
+    /// is start-of-day normalized by *this* calendar, so a view that normalizes a day with another
+    /// one would silently match nothing and draw a full history as an empty month; and "today" has
+    /// to be this clock's today, or the injected clock the trend and score already honour stops
+    /// reaching the one surface that names a date.
+    var displayNow: Date { now() }
+    var displayCalendar: Calendar { calendar }
+
     private let userService: any UserServiceProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
     private let consistencyService: any ConsistencyServiceProtocol

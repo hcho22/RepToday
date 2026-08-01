@@ -212,16 +212,30 @@ final class ProgressViewModelTests: XCTestCase {
 
 // MARK: - US-M02 rendered-UI evidence
 
-/// Renders the actual `ProgressTabView` surface to PNGs so the US-M02 cards can be reviewed as an end
-/// user would see them: the free legibility layer (pillar balance, chain position, personal bests)
-/// with the non-nagging premium upsell in place of the deep layer, the premium variant with the deep
-/// analytics section unlocked, and the fresh-user empty state. The mock container ships empty history
-/// (US-M01), so these states cannot be reached by tapping the running app - the snapshots stand in for
-/// that live capture.
+/// Hosts the actual `ProgressTabView` surface and gates it two ways.
+///
+/// It **renders** the US-M02 cards to PNGs so they can be reviewed as an end user would see them: the
+/// free legibility layer (pillar balance, chain position, personal bests) with the non-nagging premium
+/// upsell in place of the deep layer, the premium variant with the deep analytics section unlocked, and
+/// the fresh-user empty state. The mock container ships empty history (US-M01), so these states cannot
+/// be reached by tapping the running app - the snapshots stand in for that live capture.
+///
+/// It also **reads the hosted surface's live accessibility tree**, in two tests that write no PNG at
+/// all: they are the regression gate for the calendar resolving "today" against the injected clock
+/// rather than the wall clock, and for the weekday header being hidden from VoiceOver rather than read
+/// as seven loose letters. Both need the same hosted, settled production view the renders need, which is
+/// why they live here rather than beside the view-model tests above.
+///
+/// The renders land where `EvidenceOutput` decides - a per-run temporary directory by default, so a
+/// plain `test` leaves the worktree clean, and the committed `artifacts/reports/us-m02/` only when asked
+/// for explicitly. That destination used to be an absolute path baked in from one machine's tooling run,
+/// which meant every run of the default scheme wrote into a directory belonging to a session that no
+/// longer exists - on any other machine, into a path that had never existed at all.
 @MainActor
 final class ProgressTabSnapshotTests: XCTestCase {
 
-    private let evidenceDir = "/var/folders/9t/k_yy9fqs5vd27rf12jx_rzqh0000gn/T/no-mistakes-evidence/01KXDS2JQK10M3QC5REGASPVYY"
+    /// The window a hosted surface lives in while it is captured or read.
+    private var renderWindow: UIWindow?
 
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -292,45 +306,98 @@ final class ProgressTabSnapshotTests: XCTestCase {
         try render(viewModel: viewModel, tall: tall, fileName: fileName)
     }
 
-    /// Hosting, layout and capture stay in a synchronous context: spinning the run loop is unavailable
-    /// from an async context, and the capture itself has nothing left to await.
+    /// The scratch height a hosted `ProgressTabView` is given so the whole of its `ScrollView` lays out
+    /// at once rather than a screenful at a time. Comfortably taller than the content on purpose: the
+    /// pixel capture is cropped back to what the content measures (`capturedHeight`), so headroom costs
+    /// nothing while running out of it would clip the bottom of the surface - which is why the measure
+    /// throws rather than silently returning a truncated height.
+    private enum HostHeight {
+        static let populated: CGFloat = 3200
+        static let empty: CGFloat = 900
+    }
+
+    /// Hosts the production `ProgressTabView` tall enough for the whole scrolling surface to lay out and
+    /// confirms the content fit inside that height. It is the one hosting policy both the pixel captures
+    /// and the accessibility reads run through, so neither can drift onto its own magic height or lose
+    /// the outgrew-host guard the other has: a surface grown past its host height fails loudly on both
+    /// paths rather than being captured cropped or read clipped.
+    private func hostedProgressTab(
+        _ viewModel: ProgressViewModel, tall: Bool
+    ) throws -> (host: UIHostingController<ProgressTabView>, contentSize: CGSize) {
+        let layoutSize = CGSize(width: 393, height: tall ? HostHeight.populated : HostHeight.empty)
+        let (host, window) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
+        renderWindow = window
+        let contentHeight = try capturedHeight(of: host.view, laidOutIn: layoutSize)
+        return (host, CGSize(width: layoutSize.width, height: contentHeight))
+    }
+
+    /// Hosting, measurement and capture stay in one synchronous body so that the height and the render
+    /// read the very same laid-out hierarchy: an intervening suspension would let the surface change
+    /// between the height being taken and the pixels being composited against it. Everything that has
+    /// to be awaited (`viewModel.load()`) has already happened by the time this is called.
     private func render(viewModel: ProgressViewModel, tall: Bool, fileName: String) throws {
-        let size = CGSize(width: 393, height: tall ? 2500 : 760)
-        let host = UIHostingController(rootView: ProgressTabView(viewModel: viewModel))
-        host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: size)
+        let (host, size) = try hostedProgressTab(viewModel, tall: tall)
 
-        // A real key window makes the view actually lay out and draw its layers; sizing the window to
-        // the full content height means the whole scroll content is laid out (not just a screenful).
-        let window = UIWindow(frame: host.view.frame)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
+        // Capturing (which pins the render scale) is `HostedSurface`'s, and encoding, the did-it-draw
+        // check and the write are all `EvidenceOutput`'s, so a capture that failed any precondition
+        // never reaches disk to overwrite a committed baseline.
+        let image = HostedSurface.capture(host.view, size: size)
+        try EvidenceOutput.write(image, named: fileName, for: EvidenceOutput.Story.progressAnalytics)
+    }
 
-        // Let SwiftUI + Swift Charts finish their asynchronous layout/draw passes before capturing.
-        let deadline = Date().addingTimeInterval(2.0)
-        while Date() < deadline {
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    /// The height the capture is cropped to: what the content actually laid out to, rather than the
+    /// taller scratch height it had to be hosted in.
+    ///
+    /// A baseline is committed so a human can eyeball it and a layout change shows up as a diff, and a
+    /// long blank tail undermines both - it costs bytes and reads as a layout bug rather than as a
+    /// capture artifact. `layer.render(in:)` composites from the layer tree's origin, so a shorter
+    /// canvas simply drops that empty tail: nothing is re-laid out, and nothing above it moves.
+    ///
+    /// Measured off the scroll view's own content rather than `systemLayoutSizeFitting`, because the
+    /// hosted view is a `ScrollView` whose fitting size is the viewport it was given, not the content
+    /// inside it. Falls back to the full hosted height if the surface is not scrolling (or measures to
+    /// nothing), so the capture can only ever lose empty space, never content.
+    ///
+    /// Throws rather than asserting when the content outgrew its host: an assertion that let the caller
+    /// carry on would fail the run *and* write the truncated PNG, so under `REPTODAY_WRITE_EVIDENCE=1`
+    /// it would overwrite the committed baseline with a known-bad image and leave a staged diff
+    /// indistinguishable from a legitimate regeneration. Throwing keeps the failure loud and the
+    /// baseline the run was about to corrupt untouched.
+    private func capturedHeight(of root: UIView, laidOutIn layoutSize: CGSize) throws -> CGFloat {
+        guard let scrollView = firstScrollView(in: root) else { return layoutSize.height }
+        // Converted out of the scroll view's content coordinates, so the scroll view's own offset in
+        // the hierarchy (the safe-area inset it sits below) is carried into the answer.
+        let contentBottom = scrollView.convert(CGPoint(x: 0, y: scrollView.contentSize.height), to: root).y
+        let bottom = contentBottom + scrollView.adjustedContentInset.bottom
+        guard bottom > 0 else { return layoutSize.height }
+
+        // Cropping may only ever remove empty space. If the content outgrew the height it was hosted
+        // in, the capture would be a silently truncated baseline - the one outcome worse than the
+        // dead space this crop exists to remove.
+        guard ceil(bottom) <= layoutSize.height else {
+            throw CaptureOutgrewHost(contentHeight: ceil(bottom), hostedHeight: layoutSize.height)
         }
+        return ceil(bottom)
+    }
 
-        // `layer.render(in:)` composites the entire layer tree offscreen, so it captures content past
-        // the physical screen bounds - unlike `drawHierarchy(afterScreenUpdates:)`, which is limited to
-        // what is actually on screen.
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 3
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        let image = renderer.image { ctx in
-            host.view.layer.render(in: ctx.cgContext)
+    /// Raised instead of writing a PNG whose bottom would be cut off mid-content.
+    private struct CaptureOutgrewHost: Error, CustomStringConvertible {
+        let contentHeight: CGFloat
+        let hostedHeight: CGFloat
+
+        var description: String {
+            "The surface laid out to \(Int(contentHeight))pt, taller than the \(Int(hostedHeight))pt it "
+            + "was hosted in, so the capture would be cropped mid-content. Nothing was written - host it "
+            + "taller rather than committing a truncated baseline."
         }
-        let data = try XCTUnwrap(image.pngData())
+    }
 
-        try? FileManager.default.createDirectory(atPath: evidenceDir, withIntermediateDirectories: true)
-        let path = (evidenceDir as NSString).appendingPathComponent(fileName)
-        try data.write(to: URL(fileURLWithPath: path))
-
-        XCTAssertGreaterThan(data.count, 8000, "Rendered PNG unexpectedly small - the surface may not have drawn")
-        print("SNAPSHOT_WRITTEN \(path) bytes=\(data.count)")
+    private func firstScrollView(in view: UIView) -> UIScrollView? {
+        if let scrollView = view as? UIScrollView { return scrollView }
+        for subview in view.subviews {
+            if let found = firstScrollView(in: subview) { return found }
+        }
+        return nil
     }
 
     /// Free tier: the three free cards render for everyone and the quiet premium upsell stands in for
@@ -351,5 +418,80 @@ final class ProgressTabSnapshotTests: XCTestCase {
     func testRenderEmptyProgressTab() async throws {
         try await snapshot(viewModel: makeViewModel(logs: [], premium: false),
                            tall: false, fileName: "progress-m02-empty.png")
+    }
+
+    // MARK: - The calendar reads the view model's clock, not the wall clock
+
+    /// The calendar is the one surface that names a date, so it has to resolve "today" and normalize
+    /// a completed day with the *same* clock and calendar the view model derived `completedDays`
+    /// against. Read off the live accessibility tree of the hosted production view: the injected
+    /// clock's today (Jul 8, 2026) is marked as a completed session, and a day the fixture never
+    /// worked is marked as no session.
+    ///
+    /// Both halves fail if the view reaches for `Date()` / `Calendar.current` itself - the marker
+    /// lands on whatever day the suite happens to run, and every dot silently disappears because a
+    /// day normalized in one calendar is never found in a set normalized in another.
+    func testCalendarMarksTheInjectedClocksTodayRatherThanTheWallClock() async throws {
+        let labels = try await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+
+        let today = expectedDayLabel(day: 8, suffix: ", today, session completed")
+        let untouched = expectedDayLabel(day: 7, suffix: ", no session")
+
+        XCTAssertTrue(labels.contains(today),
+                      "The calendar should mark the injected clock's today as worked with \"\(today)\". Saw: \(labels.filter { $0.contains("2026") })")
+        XCTAssertTrue(labels.contains(untouched),
+                      "A day the fixture never worked should read as \"\(untouched)\"")
+    }
+
+    /// The weekday header is visual scaffolding for the grid below, whose cells each speak their own
+    /// full date and state - so the bare initials are seven disconnected single letters in the swipe
+    /// path, saying nothing the day cells do not.
+    func testWeekdayHeaderIsNotSpokenAsSevenLooseLetters() async throws {
+        let labels = try await hostedAccessibilityLabels(for: makeViewModel(logs: sampleLogs(), premium: false))
+
+        // Positive anchor first: the negative assertion below is only meaningful once the calendar grid
+        // is proven on screen and being read. Without this, the test passes vacuously if the card fails
+        // to render, is clipped out of the hosted viewport, or the day cells stop speaking at all.
+        let renderedDayCell = expectedDayLabel(day: 7, suffix: ", no session")
+        XCTAssertTrue(labels.contains(renderedDayCell),
+                      "The calendar grid should have rendered a day cell reading \"\(renderedDayCell)\"; without it the header assertion below is vacuous")
+
+        let initials = Set(calendar.veryShortStandaloneWeekdaySymbols)
+        XCTAssertTrue(labels.allSatisfy { !initials.contains($0) },
+                      "The weekday initials should be hidden from VoiceOver. Saw: \(labels.filter { initials.contains($0) })")
+    }
+
+    /// Hosts the production `ProgressTabView` in a real key window and returns every accessibility
+    /// label in traversal order - the strings VoiceOver reads as the user swipes down the screen.
+    ///
+    /// Hosting and reading both go through the shared seam: `hostedProgressTab` hosts at the one height
+    /// the pixel captures use and fails loudly if the content outgrows it (so this path can never read a
+    /// clipped screen), and `HostedSurface.host` inside it is what lets the surface settle before it is
+    /// read - without that settling these assertions would report an empty or half-built screen on a
+    /// loaded machine. The guard below is the backstop - an empty tree would otherwise let both tests
+    /// pass on a screen that speaks nothing at all.
+    private func hostedAccessibilityLabels(for viewModel: ProgressViewModel) async throws -> [String] {
+        await viewModel.load()
+
+        let (host, _) = try hostedProgressTab(viewModel, tall: true)
+        let labels = AccessibilityTree.labels(in: host.view)
+
+        renderWindow?.isHidden = true
+        XCTAssertFalse(labels.isEmpty, "The hosted Progress tab exposed no accessibility tree at all")
+        return labels
+    }
+
+    /// The label a day cell is expected to speak, built the way the production view builds it: the
+    /// same `EEEEdMMMy` template in the injected calendar and time zone, left at `Locale.current`
+    /// because the spoken date should be localized for the user. Deriving it here rather than
+    /// hard-coding the en_US rendering is what keeps these tests about the *clock* the view reads
+    /// rather than about the language the simulator happens to run in.
+    private func expectedDayLabel(day: Int, suffix: String) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMy")
+        let date = calendar.date(from: DateComponents(year: 2026, month: 7, day: day))!
+        return formatter.string(from: date) + suffix
     }
 }

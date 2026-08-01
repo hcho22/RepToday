@@ -74,7 +74,8 @@ struct ProgressTabView: View {
                     ScoreTrendCard(trend: viewModel.trend)
                     SessionCalendarCard(
                         completedDays: viewModel.completedDays,
-                        now: Date()
+                        now: viewModel.displayNow,
+                        calendar: viewModel.displayCalendar
                     )
 
                     if let analytics = viewModel.analytics {
@@ -300,22 +301,46 @@ private struct SessionCalendarCard: View {
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
     private let monthTitleFormatter: DateFormatter
+    private let spokenDateFormatter: DateFormatter
 
-    init(completedDays: Set<Date>, now: Date, calendar: Calendar = .current) {
+    // No default calendar: the days this card normalizes have to be normalized in the *same* calendar
+    // `completedDays` was built in, or every dot silently disappears and a full history draws as an
+    // empty month. Making the caller name it keeps that invariant unforgeable rather than documented.
+    init(completedDays: Set<Date>, now: Date, calendar: Calendar) {
         self.completedDays = completedDays
         self.now = now
         self.calendar = calendar
         _monthAnchor = State(initialValue: calendar.startOfMonth(for: now))
 
+        // A `DateFormatter` keeps its own time zone rather than taking the calendar's, so setting
+        // only `calendar` leaves it resolving instants in the system zone: the cells' own dates are
+        // built in `calendar`, so a calendar in any other zone would print - and speak - a day
+        // number one off from the day the cell actually marks.
         let day = DateFormatter()
         day.calendar = calendar
+        day.timeZone = calendar.timeZone
         day.dateFormat = "d"
         self.dayFormatter = day
 
         let month = DateFormatter()
         month.calendar = calendar
+        month.timeZone = calendar.timeZone
         month.dateFormat = "MMMM yyyy"
         self.monthTitleFormatter = month
+
+        // Built once here rather than per cell: it is read for every day of the displayed month while
+        // `body` is being evaluated, and `body` re-runs on any observable change to the tab.
+        // `locale` is deliberately left at the user's own, since this is a date read aloud to them.
+        //
+        // The weekday is named ("Wednesday, Jul 8, 2026") because the column header above carries it
+        // for a sighted user but is hidden from VoiceOver: without it here, a listener swiping the grid
+        // has no way to hear that their sessions cluster on weekends. Built from a *template* rather
+        // than a fixed format string so the field order and separators stay the user's locale's own.
+        let spoken = DateFormatter()
+        spoken.calendar = calendar
+        spoken.timeZone = calendar.timeZone
+        spoken.setLocalizedDateFormatFromTemplate("EEEEdMMMy")
+        self.spokenDateFormatter = spoken
     }
 
     var body: some View {
@@ -353,13 +378,21 @@ private struct SessionCalendarCard: View {
 
     private var weekdayHeader: some View {
         HStack(spacing: 0) {
-            ForEach(orderedWeekdaySymbols, id: \.self) { symbol in
+            // Keyed by position rather than by the symbol itself: a week's initials repeat in most
+            // locales (en_US is S M T W T F S), so `id: \.self` hands SwiftUI the same id for Sunday
+            // and Saturday, and again for Tuesday and Thursday - which it reports at runtime as
+            // undefined results. The month grid below already keys its cells by offset.
+            ForEach(Array(orderedWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .frame(maxWidth: .infinity)
             }
         }
+        // Visual scaffolding for the grid below, whose cells each speak their own full date - weekday
+        // included - and state ("Wednesday, Jul 8, 2026, today, session completed"). Read aloud, the
+        // bare initials are seven disconnected letters that say nothing the day cells do not.
+        .accessibilityHidden(true)
     }
 
     private var grid: some View {
@@ -426,10 +459,7 @@ private struct SessionCalendarCard: View {
     }
 
     private func accessibilityLabel(for date: Date, didMove: Bool, isToday: Bool) -> String {
-        let long = DateFormatter()
-        long.calendar = calendar
-        long.dateStyle = .medium
-        var label = long.string(from: date)
+        var label = spokenDateFormatter.string(from: date)
         if isToday { label += ", today" }
         label += didMove ? ", session completed" : ", no session"
         return label
