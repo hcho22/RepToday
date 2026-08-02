@@ -1,126 +1,263 @@
-<!-- Rep Today GTM package front door. Self-contained; brand tokens from 02-brand/brand-guidelines.md -->
-<title>Rep Today - GTM Package</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rep Today - GTM Package v2 Recap</title>
 <style>
-  :root{
-    --paper:#FAF7F2; --ink:#1B2228; --slate:#525E66; --moss:#2E6B4E; --clay:#B05C3F;
-    --night:#14181C; --bone:#F1EEE8; --mist:#A7B0B8; --fern:#5FA981;
+  :root {
+    --paper: #FAF7F2;
+    --ink: #1B2228;
+    --slate: #525E66;
+    --moss: #2E6B4E;
+    --clay: #B05C3F;
+    --card-shadow: 0 1px 3px rgba(27,34,40,.08);
   }
-  html{background:var(--paper)}
-  body{margin:0;font-family:ui-rounded,"SF Pro Rounded",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;color:var(--ink);line-height:1.55}
-  .wrap{max-width:960px;margin:0 auto;padding:48px 24px 96px}
-  a{color:var(--moss)}
-  h1{font-size:40px;line-height:1.15;font-weight:700;margin:24px 0 8px}
-  h2{font-size:28px;font-weight:600;margin:64px 0 12px}
-  h3{font-size:19px;font-weight:600;margin:20px 0 6px}
-  p{max-width:34em}
-  .overline{color:var(--moss);font-size:13px;font-weight:600;letter-spacing:.02em}
-  .lockup{display:flex;align-items:center;gap:14px}
-  .lockup svg{width:44px;height:44px}
-  .lockup span{font-weight:700;font-size:26px}
-  .muted{color:var(--slate)}
-  .small{font-size:14px;color:var(--slate)}
-  .card{background:#fff;border:1px solid #e8e2d8;border-radius:16px;padding:24px;box-shadow:0 1px 3px rgba(27,34,40,.08)}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  @media(max-width:720px){.grid{grid-template-columns:1fr}}
-  .dark{background:var(--night);color:var(--bone);border:none}
-  .dark .small{color:var(--mist)}
-  table{border-collapse:collapse;width:100%;font-size:15px}
-  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e8e2d8;vertical-align:top}
-  th{font-weight:600}
-  ul{padding-left:22px}
-  li{margin:6px 0;max-width:36em}
-  .pill{display:inline-block;background:var(--moss);color:#fff;border-radius:999px;padding:2px 12px;font-size:13px;font-weight:600}
-  .warn{border-left:4px solid var(--clay);padding:12px 16px;background:#fff;border-radius:0 12px 12px 0}
-  code{background:#f0ebe2;border-radius:6px;padding:1px 6px;font-size:14px}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    font-size: 17px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; }
+  header.top { padding: 40px 0 8px; }
+  .wordmark { display: flex; align-items: center; gap: 14px; }
+  .wordmark .name { font-weight: 700; font-size: 24px; }
+  h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; margin: 18px 0 8px; }
+  .sub { color: var(--slate); font-size: 16px; max-width: 46em; }
+  h2 {
+    font-size: 24px; margin: 48px 0 12px; padding-top: 20px;
+    border-top: 2px solid rgba(27,34,40,.08);
+  }
+  h3 { font-size: 18px; margin: 22px 0 8px; }
+  p { margin: 0 0 12px; max-width: 46em; }
+  ul, ol { margin: 0 0 14px 1.3em; }
+  li { margin-bottom: 6px; }
+  a { color: var(--moss); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  .overline {
+    display: inline-block; font-size: 13px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--moss); margin-bottom: 4px;
+  }
+  .banner {
+    background: #fff; border: 1px solid rgba(27,34,40,.12); border-left: 4px solid var(--clay);
+    border-radius: 12px; padding: 16px 18px; margin: 24px 0; box-shadow: var(--card-shadow);
+  }
+  .banner strong { color: var(--clay); }
+  .card {
+    background: #fff; border: 1px solid rgba(27,34,40,.10); border-radius: 16px;
+    padding: 20px 22px; box-shadow: var(--card-shadow); margin: 0 0 16px;
+  }
+  .cards2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
+  @media (max-width: 720px) { .cards2 { grid-template-columns: 1fr; } }
+  .tablewrap { overflow-x: auto; margin: 0 0 12px; }
+  table { border-collapse: collapse; font-size: 15px; min-width: 560px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid rgba(27,34,40,.10); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--slate); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.win td { font-weight: 600; }
+  tr.win td:first-child { color: var(--moss); }
+  blockquote {
+    border-left: 3px solid var(--moss); padding: 4px 0 4px 16px; margin: 0 0 14px;
+    color: var(--slate); max-width: 44em;
+  }
+  .small { font-size: 14px; color: var(--slate); }
+  .kicker { font-weight: 600; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; background: rgba(27,34,40,.06); padding: 1px 5px; border-radius: 5px; }
+  footer.bottom { margin-top: 56px; padding-top: 20px; border-top: 2px solid rgba(27,34,40,.08); }
 </style>
+</head>
+<body>
 <div class="wrap">
-  <div class="lockup">
-    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/><circle cx="50" cy="66" r="12" fill="#2E6B4E"/></svg>
-    <span>Rep Today</span>
+
+<header class="top">
+  <div class="wordmark">
+    <svg width="34" height="34" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
+      <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
+    </svg>
+    <span class="name">Rep Today</span>
   </div>
-  <p class="overline" style="margin-top:32px">Go-to-market package - built 2026-07-15 - everything local, nothing published</p>
-  <h1>The business, in under five minutes</h1>
+  <h1>Go-to-market package, v2 recap</h1>
+  <p class="sub">The single front door to the full GTM package. v2 run completed 2026-08-01/02, superseding the v1 run of 2026-07-15 (v1 artifacts are retained side by side as labeled history). Everything here is local and static: nothing is published, deployed, posted, or purchased.</p>
+</header>
 
-  <p><strong>The product.</strong>
-  Rep Today is a discipline-first micro-workout iOS app.
-  Open it and a complete zero-equipment bodyweight session is already on screen, generated on the phone, offline, deterministically, in under 100 milliseconds.
-  One dominant Start button; no questions, no account, no paywall before the first rep.
-  Sessions run 5 to 60 minutes across three pillars: bodyweight strength, mobility (co-primary), and primal movement.
-  An AI Programmer tunes each user's session policy between sessions; it never generates a workout and is never in the way of Start.
-  The Consistency Score is a forgiving rolling average, not a streak: a 5-minute session counts in full, a missed day dents but never zeroes, and a return after a gap is celebrated.
-  No XP, levels, badges, or leaderboards anywhere.
-  Free tier: unlimited workouts forever. Premium (planned $7.99/mo, $59.99/yr, 14-day trial) unlocks depth, never workouts.</p>
-
-  <p><strong>The status, honestly.</strong>
-  Pre-launch. Zero users, zero downloads, zero revenue, zero testimonials.
-  What exists: an implemented MVP (667/667 tests green, StoreKit 2, CloudKit, HealthKit, Sign in with Apple), a completed rebrand to Rep Today with permanent identifiers locked, and this package.</p>
-
-  <p><strong>The bet.</strong>
-  Session-start friction and punishing gamification are real, citable churn drivers in fitness apps; a ready-on-open, forgiving, free-core product converts the tired non-athletes the category ignores; and a solo founder can reach them with zero ad budget through ASO whitespace, communities, and creators.
-  The research found no competitor that combines instant-open, offline generation, a non-streak score, and an ungated free core.
-  The full case, for and against, with kill criteria, is in the <a href="05-thesis/investment-thesis.md">investment thesis</a>.</p>
-
-  <h2>Name recommendation</h2>
-  <div class="card">
-    <p><span class="pill">Rep Today</span>&nbsp; App Store listing name: <strong>"Rep Today, Rest Tomorrow"</strong>, subtitle "Opens to a ready workout".</p>
-    <p>Chosen by a blind 4-pitch tournament scored by 3 judges with different published rubrics; the win was unanimous and all four pitchers independently kept the incumbent name.
-    Cairn (live same-category App Store collision) and Stack (saturated) were rejected.
-    Scorecard and losers: <a href="02-brand/naming-decision.md">naming decision</a>.</p>
-    <p class="warn"><strong>Unverified clearance.</strong>
-    Formal trademark search and App Store Connect name reservation were NOT performed and cannot be from this environment.
-    Both are the founder's next action.
-    Nothing in this package is a clearance claim.</p>
-  </div>
-
-  <h2>Thesis and its strongest surviving objection, side by side</h2>
-  <div class="grid">
-    <div class="card">
-      <h3>The thesis says</h3>
-      <p>The wedge is real and citable: users ask verbatim for zero-decision workout apps, streak loss makes people quit, and hard paywalls are hated in-category.
-      No researched competitor combines Rep Today's four mechanics.
-      The category monetizes well per install, and the falsification plan is cheap: a TestFlight cohort and 90 days of measurement against eight pre-committed kill criteria.</p>
-      <p class="small"><a href="05-thesis/investment-thesis.md">Read the thesis</a> - including its own evidence-against section.</p>
-    </div>
-    <div class="card">
-      <h3>The red team answers</h3>
-      <p>"Nothing in this product is defensible.
-      Every leg of the wedge, a ready session on open, a forgiving non-streak score, and an ungated free tier, is a UX or pricing choice with no data moat, no network effect, and no switching cost behind it; Seven or Bend could copy the entire stack in one release cycle the moment it shows signs of working.
-      The quadrant is empty of competitors, but it is also empty of barriers, and a fully successful 90-day experiment proves a feature set, not a company."</p>
-      <p class="small">That objection survived the rewrite and ships unanswered, alongside 29 others.
-      The red team also forced material changes: raised kill thresholds, recomputed base-case economics, a legal line ruled false and replaced across six assets, and a rebuilt video.
-      The full dossier: <a href="06-redteam/dossier.md">objections, responses, and what changed</a> - plus the <a href="06-redteam/pre-publication-checklist.md">pre-publication checklist</a>.</p>
-    </div>
-  </div>
-
-  <h2>Every deliverable</h2>
-  <table>
-    <tr><th>Deliverable</th><th>Where</th></tr>
-    <tr><td>Naming decision + tournament scorecard (4 pitches, 3 judges)</td><td><a href="02-brand/naming-decision.md">02-brand/naming-decision.md</a> - <a href="02-brand/tournament/">tournament/</a></td></tr>
-    <tr><td>Locked positioning + messaging hierarchy</td><td><a href="02-brand/positioning.md">02-brand/positioning.md</a></td></tr>
-    <tr><td>Brand guidelines (palette, type, logo, voice)</td><td><a href="02-brand/brand-guidelines.md">02-brand/brand-guidelines.md</a></td></tr>
-    <tr><td>Brand gate test: fresh-agent asset + report</td><td><a href="02-brand/gate-test-report.md">gate-test-report.md</a> - <a href="02-brand/gate-test-asset.png">the asset it produced</a></td></tr>
-    <tr><td>Landing page (static, self-contained)</td><td><a href="03-site/index.html">03-site/index.html</a></td></tr>
-    <tr><td>Landing page gate screenshots (inspected)</td><td><a href="03-site/screenshot-mobile-390x844.png">mobile 390x844</a> - <a href="03-site/screenshot-desktop-1440x900.png">desktop 1440x900</a></td></tr>
-    <tr><td>Launch video (52.4s, 1080p, VO)</td><td><a href="04-video/launch-video.mp4">04-video/launch-video.mp4</a> - <a href="04-video/script.md">script</a></td></tr>
-    <tr><td>Video gate: ffprobe + viewed frames + strip</td><td><a href="04-video/gate-report.md">gate-report.md</a> - <a href="04-video/frame-strip.png">frame strip</a></td></tr>
-    <tr><td>Investment thesis with kill criteria</td><td><a href="05-thesis/investment-thesis.md">05-thesis/investment-thesis.md</a></td></tr>
-    <tr><td>Channel plan (ranked, zero budget)</td><td><a href="05-thesis/channel-plan.md">05-thesis/channel-plan.md</a></td></tr>
-    <tr><td>Red team dossier (objections, responses, what changed)</td><td><a href="06-redteam/dossier.md">06-redteam/dossier.md</a></td></tr>
-    <tr><td>Extra: App Store screenshot set (5, inspected)</td><td><a href="07-extras/app-store-screenshots/">07-extras/app-store-screenshots/</a></td></tr>
-    <tr><td>Extra: one-page investor teaser</td><td><a href="07-extras/investor-teaser.html">07-extras/investor-teaser.html</a></td></tr>
-    <tr><td>Extra: first-week social launch kit (drafts only)</td><td><a href="07-extras/social-launch-kit.md">07-extras/social-launch-kit.md</a></td></tr>
-    <tr><td>Invented deliverable: App Store review-response playbook</td><td><a href="07-extras/review-response-playbook.md">07-extras/review-response-playbook.md</a></td></tr>
-    <tr><td>All research (14 files, sourced)</td><td><a href="01-research/">01-research/</a></td></tr>
-    <tr><td>Decisions log (every [DECIDED BY AGENT])</td><td><a href="decisions-log.md">decisions-log.md</a></td></tr>
-    <tr><td>Sources (every fetched URL + timestamp)</td><td><a href="sources.md">sources.md</a></td></tr>
-    <tr><td>Self-grade against the master prompt</td><td><a href="self-grade.md">self-grade.md</a></td></tr>
-    <tr><td>How to run everything (3 commands)</td><td><a href="README.md">README.md</a></td></tr>
-    <tr><td>Execution record: master prompt section -> artifact</td><td><a href="master-prompt-execution-record.md">master-prompt-execution-record.md</a></td></tr>
-  </table>
-
-  <h2>How this was made</h2>
-  <p class="small">Orchestration topology: a 14-agent research fan-out (per-competitor teardowns, review mining, economics, ASO, creators, name collisions), a blind 4-pitch positioning tournament judged by 3 rubric-published judges, a fresh-agent brand gate test, 3 parallel builders (site, video, thesis) plus 4 extras builders, and a 5-persona red team (adversarial skeptic, seed investor, competitor growth head, cynical target user, App Store reviewer/FTC lawyer) whose objections forced rewrites recorded in the <a href="06-redteam/dossier.md">dossier</a> and <a href="decisions-log.md">decisions log</a>.
-  Every factual market claim in the package carries a URL fetched during the run; guesses are labeled [ASSUMPTION]; the app's pre-launch reality (zero users) is stated wherever a stranger might otherwise assume traction.</p>
-
-  <p class="small" style="margin-top:48px">Pre-launch. "Rep Today" has not been trademark-searched or registered, and the App Store name has not been reserved - both are the founder's next action. Nothing in this package has been published, deployed, or purchased.</p>
+<div class="banner">
+  <strong>Honesty first.</strong> Rep Today is a pre-launch iOS app: zero users, zero downloads, zero revenue, zero testimonials. Formal trademark and App Store name clearance are UNVERIFIED for Rep Today - the founder's next action. No number in this package is invented; guesses are labeled [ASSUMPTION] in the source documents.
 </div>
+
+<h2 id="product">What Rep Today is</h2>
+<p>A zero-equipment, bodyweight-only micro-workout iOS app for busy, desk-bound adults - the tired parent at 9pm, not the gym rat. The app opens to a complete, pre-generated 5-to-60-minute session with one dominant Start button; it never asks a question between opening and starting. Sessions are built on-device, deterministically, offline, in under 100 milliseconds per the PRD engine spec (a real-device benchmark is a pre-publication gate and has not yet been run). The Consistency Score is rolling and forgiving, not a streak: a 5-minute session is a full show-up, a missed day dents the score but never zeroes it, and a return after a gap is celebrated. No XP, levels, badges, or leaderboards anywhere. Free tier is unlimited workouts forever; Premium (~$7.99/mo or ~$59.99/yr, 14-day trial, planned pricing) adds depth, never access. Status: MVP core loop implemented, 667/667 tests passing, not yet submitted to the App Store. Source of truth: <a href="01-research/product-facts-brief.md">the product facts brief</a>.</p>
+
+<h2 id="positioning">The v2 positioning verdict</h2>
+<p><span class="kicker">Discipline is the internal spine only, never the surface lead word.</span> The v2 brief proposed discipline as the campaign spine and required at least one pitch to argue against it. The anti-discipline pitch won the blind tournament, and all three judges independently converged on the same disposition: the scroller's prior on "discipline" is the drill-sergeant register, the word is absent from the mined pain vocabulary, and it survives only with a chaperone sentence that 6-second formats delete. The inversion sentence ("the app is the disciplined one") survives at essay length and as exactly one pre-registered PMF test angle.</p>
+<p><span class="kicker">Hero A headline:</span> "Open the app. The workout is already there."</p>
+
+<h3>Tournament scorecard (4 blind pitches, 3 independent judges)</h3>
+<div class="tablewrap">
+<table>
+  <thead>
+    <tr><th>Pitch</th><th>Lead</th><th class="num">Differentiation (/10)</th><th class="num">Conversion (/100)</th><th class="num">Defensibility (/10)</th><th>Ranks (D/C/L)</th><th class="num">Mean rank</th></tr>
+  </thead>
+  <tbody>
+    <tr class="win"><td>pitch-2 (winner)</td><td>Anti-discipline: "already ready"</td><td class="num">7.30</td><td class="num">88.5</td><td class="num">7.95</td><td>1 / 1 / 1</td><td class="num">1.0</td></tr>
+    <tr><td>pitch-3</td><td>Showing up / forgiveness</td><td class="num">7.20</td><td class="num">69.0</td><td class="num">7.65</td><td>2 / 3 / 2</td><td class="num">2.3</td></tr>
+    <tr><td>pitch-4</td><td>Contrarian refusal</td><td class="num">6.80</td><td class="num">75.0</td><td class="num">6.40</td><td>3 / 2 / 4</td><td class="num">3.0</td></tr>
+    <tr><td>pitch-1</td><td>Discipline inversion</td><td class="num">6.50</td><td class="num">64.0</td><td class="num">7.35</td><td>4 / 4 / 3</td><td class="num">3.7</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">Visible margins: pitch-2 won differentiation by only 0.10 over pitch-3 (a near-tie decided on legibility and truth under compression), but won conversion by a decisive 13.5 points and defensibility by 0.30. The win was unanimous at rank level: first place on all three rubrics. Full pitches and judge files: <a href="02-brand/tournament-v2/pitch-1-discipline-inversion.md">pitch-1</a>, <a href="02-brand/tournament-v2/pitch-2-anti-discipline.md">pitch-2</a>, <a href="02-brand/tournament-v2/pitch-3-showing-up.md">pitch-3</a>, <a href="02-brand/tournament-v2/pitch-4-contrarian.md">pitch-4</a>; judges: <a href="02-brand/tournament-v2/judge-differentiation.md">differentiation</a>, <a href="02-brand/tournament-v2/judge-conversion.md">conversion</a>, <a href="02-brand/tournament-v2/judge-defensibility.md">defensibility</a>. Verdict documents: <a href="02-brand/positioning.md">positioning.md</a>, <a href="02-brand/naming-decision.md">naming-decision.md</a>.</p>
+
+<h2 id="naming">The naming verdict</h2>
+<p><span class="kicker">Rep Today stands - stress-tested, not grandfathered.</span> All four blind pitchers independently stress-tested the name against the live alternates (Cairn, Stack) and proposed no challenger; all three judges confirmed it. The one material change: the v1 listing suffix "Rest Tomorrow" is killed (D-106) - under hostile paraphrase it reads grind-culture and fights the forgiveness pillar. The listing name is plain "Rep Today", subtitle "Opens to a ready workout".</p>
+<div class="banner">
+  <strong>Clearance caveat, prominent on purpose:</strong> formal trademark clearance (USPTO or any registry) and App Store Connect name reservation are UNVERIFIED for Rep Today and every candidate considered. Nothing in this package is a clearance claim. A USPTO search (ideally with counsel) and an App Store Connect name reservation are the founder's next action before this name is final. Rep Today is a descriptive/suggestive mark with a narrow enforcement perimeter, accepted knowingly.
+</div>
+
+<h2 id="channels">The channel verdict</h2>
+<p><span class="kicker">Run zero paid spend pre-launch; build first signal from organic short-form content and a first-party waitlist.</span> The verdict is structural, not thrift: install ads cannot run at all today (Apple Ads and Meta app campaigns both require a live, registered app), and even post-launch, tiny budgets buy noise - iOS install measurement is aggregated, delayed, and partly modeled, while organic-plus-waitlist measurement is first-party, immediate, and unthrottled by any attribution framework. The doctrine on top: creative carries the targeting, the market picks the message (not the founder), and cadence beats a launch week.</p>
+<p>Ranking A - founder with $0 and no audience, in order:</p>
+<ol>
+  <li><strong>A1.</strong> Organic short-form: TikTok primary, YouTube Shorts secondary, running the PMF kit matrix.</li>
+  <li><strong>A2.</strong> App Store search / ASO preparation for launch day.</li>
+  <li><strong>A3.</strong> Reddit: listening channel plus the one sanctioned venue.</li>
+  <li><strong>A4.</strong> Personal network and the waitlist.</li>
+  <li><strong>A5.</strong> Creator seeding by honest DM, at zero cost.</li>
+</ol>
+<p class="small">Full plan with the $500/mo Ranking B ("mostly do not spend it yet"): <a href="06-channels/channel-plan.md">channel-plan.md</a>; measurement contract: <a href="06-channels/event-metric-schema.md">event-metric-schema.md</a>; superseded v1 plan retained: <a href="06-channels/channel-plan-v1.md">channel-plan-v1.md</a>.</p>
+
+<h3>The week-one instrument: the PMF kit</h3>
+<p>The PMF kit at <code>05-social-pmf/</code> is the thesis's cheapest falsification instrument and the first thing that runs: 16 pre-registered angles (each with a hypothesis, a success signal, and a kill criterion fixed before posting), 6 hook-only A/B pairs, a 14-day cadence with a fixed mid-point review gate, and a read-the-results protocol that names what is noise at zero-follower sample sizes. K0, the pre-launch kill signal, reads directly off this kit. Files: <a href="05-social-pmf/angles.md">angles</a>, <a href="05-social-pmf/ab-pairs.md">A/B pairs</a>, <a href="05-social-pmf/cadence-14-day.md">14-day cadence</a>, <a href="05-social-pmf/platform-assignment.md">platform assignment</a>, <a href="05-social-pmf/read-the-results.md">read the results</a>, <a href="05-social-pmf/week-1-drafts.md">week-1 drafts</a>, <a href="05-social-pmf/creative-log.json">creative log</a>.</p>
+
+<h2 id="thesis">The thesis, next to the strongest objection against it</h2>
+<div class="cards2">
+  <div class="card">
+    <span class="overline">The bet (investment thesis v2)</span>
+    <p>Rep Today matters only if four things are true at once: <strong>(a)</strong> session-start friction is a real churn driver in fitness apps; <strong>(b)</strong> a product that opens ready, forgives missed days, and keeps unlimited workouts free forever converts the tired non-athletes the category ignores; <strong>(c)</strong> one solo founder with zero ad budget can reach them through organic short-form running a pre-registered message matrix, a first-party waitlist, one-shot launch posts, and App Store search; <strong>(d)</strong> retention economics carry the premium conversion, which requires retaining meaningfully above category medians and word of mouth compounding. If any one fails, the company fails, and the kill criteria are designed to detect which one failed within 90 days of launch.</p>
+    <p class="small">Ten kill criteria: K0 (pre-launch message signal, adjudicated over readable posts with a named "under-sampled" state) plus K1-K8 (first session, D7, D30, weekly active exercisers, organic installs, trial starts, free-to-paid, wedge comprehension) and K9 (post-launch word-of-mouth direction). The K0 ladder: day 14, kill losing angles and rebuild the matrix once; week 8 with no angle cleared, bet (c) is revised and rebuilt from Reddit-listening input for one more 14-day window; week 16 with still no signal, K0 trips, bet (c) is declared failed - the walk-away observation for the marketing side. Full document: <a href="07-thesis/investment-thesis.md">investment-thesis.md</a>; one-page version: <a href="09-extras/investor-teaser.html">investor teaser</a>.</p>
+  </div>
+  <div class="card">
+    <span class="overline">The strongest surviving objection (red team v2)</span>
+    <p><strong>The wedge is copyable at the only layer the audience sees.</strong> From the competitor persona, shipped undefeated in <a href="08-redteam/dossier.md">the dossier</a>:</p>
+    <blockquote>Positioning.md already concedes "perceived instant-open can be faked with caching," and that concession is the whole counter-playbook: an incumbent ships a "Today's pick, ready when you open" card that server-caches one recommended class overnight, then runs the identical screen-record format with an instructor's face on it. A scroller cannot distinguish deterministic on-device generation from a cached recommendation in 8 seconds, and the incumbent's version carries "4.9 stars, 813K ratings" where Rep Today's carries "not released yet." Only free-forever and no-streaks are structurally safe, and a moat that narrow must carry the whole company.</blockquote>
+    <p class="small">It is ranked strongest because it has a named actor with a live adjacent ad flight, a concrete one-quarter mechanism, and no possible copy fix; it attacks the hero claim itself, not the packaging. The v2 red team produced 58 findings (26 MUST-FIX, 16 SURVIVING-OBJECTION, 16 NOTE); every one is dispositioned in the dossier, none silently dropped.</p>
+  </div>
+</div>
+
+<h2 id="v2-changes">What changed in v2</h2>
+<p>From the decisions log, D-101 through D-106 (<a href="decisions-log.md">full log</a>):</p>
+<ul>
+  <li><strong>Discipline tournament outcome (D-105):</strong> the v2 brief's proposed discipline spine lost its own tournament; pitch-2 (anti-discipline, "already ready") took rank 1 on all three rubrics, and discipline became the internal spine only.</li>
+  <li><strong>Listing suffix killed (D-106):</strong> "Rep Today, Rest Tomorrow" became plain "Rep Today"; every asset carrying the old name was checked and updated.</li>
+  <li><strong>PMF kit, new (D-101):</strong> the week-one falsification instrument at <code>05-social-pmf/</code> - 16 pre-registered angles, 6 A/B pairs, 14-day cadence, read-the-results protocol.</li>
+  <li><strong>Channel plan rebuilt (D-101/D-102):</strong> zero-paid-pre-launch verdict from fetched attribution evidence, creative-carries-targeting doctrine, dual $0 / $500-per-month ranking; short-form moved from v1's rank 6 to rank 1 on platform-official evidence.</li>
+  <li><strong>Event schema, new:</strong> the first-party event and metric contract at <a href="06-channels/event-metric-schema.md">06-channels/event-metric-schema.md</a> that K1's canonical denominator binds to.</li>
+  <li><strong>Marketing-agent build spec, new (D-104):</strong> the creative-loop system at <code>09-extras/marketing-agent/</code>, built and dry-run verified, never run against an account.</li>
+</ul>
+<p class="small">Also recorded: v2 ran as an update run over the v1 package (D-101), the directory tree was restructured via git mv with v1 files retained for diffability (D-102), and the referenced marketing-agent transcript does not exist on disk, so the prompt's own method summary stood in with every claim re-verified against primary sources (D-103).</p>
+
+<h2 id="map">Deliverables map</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Area</th><th>Deliverables</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>01-research</td>
+      <td>
+        <a href="01-research/product-facts-brief.md">product facts brief</a> (source of truth) &middot;
+        v2: <a href="01-research/ios-attribution-and-paid-vs-organic.md">iOS attribution / paid-vs-organic</a>, <a href="01-research/meta-ad-library-sweep.md">Meta Ad Library sweep</a>, <a href="01-research/pain-point-frequency.md">pain-point frequency</a>, <a href="01-research/platform-signal-evidence.md">platform signals</a>, <a href="01-research/creative-carries-targeting-sources.md">creative-carries-targeting</a> &middot;
+        v1: <a href="01-research/review-mining.md">review mining</a>, <a href="01-research/category-economics.md">category economics</a>, <a href="01-research/aso-landscape.md">ASO landscape</a>, <a href="01-research/creator-landscape.md">creator landscape</a>, <a href="01-research/name-collisions.md">name collisions</a>, <a href="01-research/competitors-additional.md">additional competitors</a>, teardowns of <a href="01-research/competitor-peloton-app.md">Peloton</a>, <a href="01-research/competitor-nike-training-club.md">NTC</a>, <a href="01-research/competitor-apple-fitness-plus.md">Apple Fitness+</a>, <a href="01-research/competitor-down-dog.md">Down Dog</a>, <a href="01-research/competitor-freeletics.md">Freeletics</a>, <a href="01-research/competitor-sweat.md">Sweat</a>, <a href="01-research/competitor-ladder.md">Ladder</a>, <a href="01-research/competitor-caliber.md">Caliber</a>
+      </td>
+    </tr>
+    <tr>
+      <td>02-brand</td>
+      <td>
+        <a href="02-brand/positioning.md">positioning</a> &middot; <a href="02-brand/naming-decision.md">naming decision</a> &middot; <a href="02-brand/brand-guidelines.md">brand guidelines</a> &middot;
+        tournament-v2 (4 pitches + 3 judges, linked in the scorecard above) &middot; v1 tournament: <a href="02-brand/tournament/pitch-1.md">pitch-1</a>, <a href="02-brand/tournament/pitch-2.md">pitch-2</a>, <a href="02-brand/tournament/pitch-3.md">pitch-3</a>, <a href="02-brand/tournament/pitch-4.md">pitch-4</a>, <a href="02-brand/tournament/judge-differentiation.md">judges</a> &middot;
+        brand gate round 2: <a href="02-brand/gate-test-report-v2.md">report</a>, <a href="02-brand/gate-test-asset-v2.html">asset</a>, <a href="02-brand/gate-test-asset-v2.png">render</a> &middot; round 1: <a href="02-brand/gate-test-report.md">report</a>
+      </td>
+    </tr>
+    <tr>
+      <td>03-site</td>
+      <td>
+        Hero A: <a href="03-site/index.html">index.html</a> &middot; Hero B: <a href="03-site/index-b.html">index-b.html</a> &middot;
+        screenshots: <a href="03-site/screenshot-a-desktop-1440x900.png">A desktop</a>, <a href="03-site/screenshot-a-mobile-390x844.png">A mobile</a>, <a href="03-site/screenshot-b-desktop-1440x900.png">B desktop</a>, <a href="03-site/screenshot-b-mobile-390x844.png">B mobile</a>
+      </td>
+    </tr>
+    <tr>
+      <td>04-video</td>
+      <td>
+        <a href="04-video/launch-video.mp4">launch video</a> (TTS voiceover, animatic-grade) &middot; <a href="04-video/script.md">script</a> &middot; <a href="04-video/gate-report.md">gate report</a> &middot; <a href="04-video/ffprobe-report.txt">ffprobe report</a> &middot; <a href="04-video/frame-strip.png">frame strip</a> &middot; <a href="04-video/build/build.sh">build script</a>
+      </td>
+    </tr>
+    <tr>
+      <td>05-social-pmf</td>
+      <td>The PMF kit: all seven files linked in the PMF section above.</td>
+    </tr>
+    <tr>
+      <td>06-channels</td>
+      <td><a href="06-channels/channel-plan.md">channel plan v2</a> &middot; <a href="06-channels/event-metric-schema.md">event/metric schema</a> &middot; <a href="06-channels/channel-plan-v1.md">channel plan v1 (superseded, retained)</a></td>
+    </tr>
+    <tr>
+      <td>07-thesis</td>
+      <td><a href="07-thesis/investment-thesis.md">investment thesis v2</a> (kill criteria K0-K9)</td>
+    </tr>
+    <tr>
+      <td>08-redteam</td>
+      <td>
+        <a href="08-redteam/dossier.md">dossier v2</a> (the Phase-5 gate record) &middot; <a href="08-redteam/pre-publication-checklist.md">pre-publication checklist</a> &middot;
+        v2 personas: <a href="08-redteam/redteam-investor-v2.md">investor</a>, <a href="08-redteam/redteam-competitor-v2.md">competitor</a>, <a href="08-redteam/redteam-user-v2.md">user</a>, <a href="08-redteam/redteam-lawyer-v2.md">lawyer</a>, <a href="08-redteam/completeness-critic-v2.md">completeness critic</a> &middot;
+        v1 history: <a href="08-redteam/skeptic-thesis.md">skeptic</a>, <a href="08-redteam/redteam-investor.md">investor</a>, <a href="08-redteam/redteam-competitor.md">competitor</a>, <a href="08-redteam/redteam-user.md">user</a>, <a href="08-redteam/redteam-lawyer.md">lawyer</a>
+      </td>
+    </tr>
+    <tr>
+      <td>09-extras</td>
+      <td>
+        <a href="09-extras/investor-teaser.html">investor teaser</a> &middot;
+        App Store screenshot comps: <a href="09-extras/app-store-screenshots/README.md">README</a>, <a href="09-extras/app-store-screenshots/01-ready-screen.png">01</a>, <a href="09-extras/app-store-screenshots/02-duration-chips.png">02</a>, <a href="09-extras/app-store-screenshots/03-active-session.png">03</a>, <a href="09-extras/app-store-screenshots/04-consistency.png">04</a>, <a href="09-extras/app-store-screenshots/05-free-forever.png">05</a> &middot;
+        <a href="09-extras/review-response-playbook.md">review-response playbook</a> (the invented deliverable) &middot;
+        marketing-agent: <a href="09-extras/marketing-agent/BUILD-SPEC.md">build spec</a>, <a href="09-extras/marketing-agent/README.md">README</a>, <a href="09-extras/marketing-agent/creative_loop.py">creative loop</a>, <a href="09-extras/marketing-agent/out/creative-log.json">dry-run output</a> &middot;
+        <a href="09-extras/social-launch-kit.md">social launch kit (v1, superseded by the PMF kit)</a>
+      </td>
+    </tr>
+    <tr>
+      <td>Records</td>
+      <td>
+        <a href="decisions-log.md">decisions log</a> &middot; <a href="sources.md">sources (v1 + v2)</a> &middot; <a href="self-grade.md">self-grade</a> &middot; <a href="master-prompt-execution-record.md">execution record</a> &middot;
+        <a href="gtm-master-prompt.md">master prompt v1</a> &middot; <a href="gtm-master-prompt-v2.md">master prompt v2</a> &middot; <a href="README.md">README</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="topology">How the v2 run was orchestrated</h2>
+<p>Five multi-agent workflows plus four standalone agents, roughly 34 subagent runs total:</p>
+<ul>
+  <li><strong>Research refresh:</strong> 5 parallel researchers (attribution, Meta ad sweep, pain-point frequency, platform signals, creative-carries-targeting).</li>
+  <li><strong>Tournament:</strong> 4 blind positioning pitches, then 3 independent judges.</li>
+  <li><strong>Production:</strong> 5 lanes, each passing a 3-step brand-gate pipeline.</li>
+  <li><strong>Red team:</strong> 5 adversarial personas.</li>
+  <li><strong>Fixes:</strong> 5 fix lanes, then the dossier as the disposition record.</li>
+  <li><strong>Standalone agents:</strong> channel plan, event schema, marketing-agent build spec, brand-gate round 2.</li>
+</ul>
+
+<h2 id="honesty">Honesty block</h2>
+<ul>
+  <li>Pre-launch: zero users, zero downloads, zero revenue. Nothing in this package claims otherwise.</li>
+  <li>Nothing is published or spent: no post is live, no ad account exists, no domain was purchased, no dollar moved.</li>
+  <li>The video voiceover is macOS TTS and is animatic-grade; a human re-record is a pre-publication checklist item.</li>
+  <li>"Under 100 milliseconds" is the PRD engine spec; the real-device benchmark is pending and is a pre-publication gate (blocking site, video, screenshots, social, and the investor teaser).</li>
+  <li>Stubs are labeled stubs: the waitlist does not exist yet (pre-publication action #1), the site is a deliberate dead end until it does, beta assets carry no CTA because no public link exists, and the marketing agent has only ever run dry against no account. No asset pretends a live destination exists.</li>
+  <li>Trademark and App Store name clearance: UNVERIFIED, see the naming section above.</li>
+</ul>
+
+<footer class="bottom">
+  <p class="small">Rep Today GTM package v2 &middot; recap rebuilt 2026-08-02 &middot; run <code>python3 -m http.server 8080</code> from the gtm directory and open <code>recap.html</code>. Screen images simulated. App is pre-release.</p>
+</footer>
+
+</div>
+</body>
+</html>

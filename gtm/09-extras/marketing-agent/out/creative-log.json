@@ -1,0 +1,173 @@
+{
+  "never_published": true,
+  "entries": [
+    {
+      "angle_id": "A1-paywall-rage",
+      "pain_source_url": "https://apps.apple.com/us/app/30-day-fitness-workout-at-home/id1099771240",
+      "hypothesis": "People burned by hard paywalls will respond to a free tier stated as an absolute with no trial trap.",
+      "hook": "Free means the workouts. All of them. Forever.",
+      "format": "static card, hook plus Ready Screen UI",
+      "platform": "instagram",
+      "brand_qa": {
+        "pass": null,
+        "notes": "not yet run"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "saves per 1,000 impressions beats the angle-bank median over 7 days",
+      "kill_criterion": "bottom-quartile saves per 1,000 impressions across two consecutive 7-day reads",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A1-paywall-rage.md"
+    },
+    {
+      "angle_id": "A2-streak-grief",
+      "pain_source_url": "https://hn.algolia.com/api/v1/items/40903998",
+      "hypothesis": "People who quit apps after an unfair reset will respond to a forgiving rolling score with nothing to lose.",
+      "hook": "Missing a day never zeroes you out.",
+      "format": "12s screen-record video, missed day then unchanged score",
+      "platform": "tiktok",
+      "brand_qa": {
+        "pass": true,
+        "notes": "all brand-rules checks passed"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "3-second hold rate above account median over 7 days",
+      "kill_criterion": "hold rate below account median on two consecutive 7-day reads",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A2-streak-grief.md"
+    },
+    {
+      "angle_id": "A3-decision-fatigue",
+      "pain_source_url": "https://hn.algolia.com/api/v1/items/36666806",
+      "hypothesis": "People with decision fatigue will respond to a demo where the session already exists at app open.",
+      "hook": "Open the app. Your workout is already there.",
+      "format": "8s screen-record video, cold open to ready session",
+      "platform": "tiktok",
+      "brand_qa": {
+        "pass": null,
+        "notes": "not yet run"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "watch-through to the Start tap above account median over 7 days",
+      "kill_criterion": "watch-through below account median on two consecutive 7-day reads",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A3-decision-fatigue.md"
+    },
+    {
+      "angle_id": "A4-rigid-time",
+      "pain_source_url": "https://apps.apple.com/us/app/freeletics-workouts-fitness/id654810212",
+      "hypothesis": "People squeezed by fixed 60-minute plans will respond to a 5-minute floor that still counts.",
+      "hook": "Five minutes on a hotel-room floor still counts.",
+      "format": "static card, hook plus 5-60 minute range shown in UI",
+      "platform": "instagram",
+      "brand_qa": {
+        "pass": null,
+        "notes": "not yet run"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "saves per 1,000 impressions beats the angle-bank median over 7 days",
+      "kill_criterion": "bottom-quartile saves per 1,000 impressions across two consecutive 7-day reads",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A4-rigid-time.md"
+    },
+    {
+      "angle_id": "A5-offline-forever",
+      "pain_source_url": "https://hn.algolia.com/api/v1/items/25727614",
+      "hypothesis": "Offline-first demanders will respond to on-device generation shown with airplane mode on.",
+      "hook": "A session is ready in under 100 milliseconds, offline.",
+      "format": "10s screen-record video, airplane mode toggle then app open",
+      "platform": "tiktok",
+      "brand_qa": {
+        "pass": null,
+        "notes": "not yet run"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "comment sentiment naming offline as the reason, plus above-median hold rate over 7 days",
+      "kill_criterion": "no offline-naming comments and below-median hold rate after 14 days",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A5-offline-forever.md"
+    },
+    {
+      "angle_id": "A6-equipment-creep",
+      "pain_source_url": "https://apps.apple.com/us/app/centr-strength-fitness-app/id1382530817",
+      "hypothesis": "People misled by equipment creep will respond to zero-equipment as a hard boundary, not a bullet.",
+      "hook": "A floor, a wall, and five minutes.",
+      "format": "static card, person in socks on a rug, hook overlaid",
+      "platform": "instagram",
+      "brand_qa": {
+        "pass": null,
+        "notes": "not yet run"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "saves per 1,000 impressions beats the angle-bank median over 7 days",
+      "kill_criterion": "bottom-quartile saves per 1,000 impressions across two consecutive 7-day reads",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A6-equipment-creep.md"
+    },
+    {
+      "angle_id": "A7-progress-loss",
+      "pain_source_url": "https://apps.apple.com/us/app/freeletics-workouts-fitness/id654810212",
+      "hypothesis": "People who lost progress to sync failures will respond to everything living on the phone by architecture.",
+      "hook": "Built on your phone. Nothing to lose to a sync.",
+      "format": "static card, hook plus offline UI state",
+      "platform": "instagram",
+      "brand_qa": {
+        "pass": null,
+        "notes": "not yet run"
+      },
+      "status": "draft",
+      "preregistered_success_signal": "saves per 1,000 impressions beats the angle-bank median over 7 days",
+      "kill_criterion": "bottom-quartile saves per 1,000 impressions across two consecutive 7-day reads",
+      "results": {
+        "published_at": null,
+        "impressions": null,
+        "signal_value": null,
+        "skan_postbacks": null,
+        "campaign_level_cost": null,
+        "measured_window": null
+      },
+      "brief_file": "out/brief-A7-progress-loss.md"
+    }
+  ]
+}

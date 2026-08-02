@@ -5,7 +5,7 @@ Total runtime 52.4 seconds.
 Night theme throughout (bg `#14181C`, text `#F1EEE8`, secondary `#A7B0B8`, accent `#5FA981`).
 Voice: macOS Samantha.
 No music bed - silence between lines is deliberate (relief, not aspiration).
-Scenes join with slow 0.8s crossfades; single-frame scenes carry a subtle zoom drift so nothing sits fully static.
+Scenes join with 0.8s dip-through-black transitions (D-008) so text never overlaps text; intra-scene keyframe reveals use plain fades; single-frame scenes carry a subtle zoom drift so nothing sits fully static.
 
 ## Timeline
 
@@ -19,13 +19,13 @@ Scenes join with slow 0.8s crossfades; single-frame scenes carry a subtle zoom d
 
 ### Scene 2 - The turn (5.2 - 9.4s)
 
-- VO (6.4s): "So open the app. Your workout is already there."
+- VO (6.4s): "So open the app. The workout is already there."
 - On-screen: no text. The Ready Mark (Fern on Night) draws itself in across three keyframes: partial square (5.2s), complete square (~6.8s), then the Start circle lands (~8.2s) as the VO says "already there".
 
 ### Scene 3 - Product proof: the Ready Screen (9.4 - 19.1s)
 
 - VO (10.6s): "A full bodyweight session, built on your phone in under one hundred milliseconds. No questions. No account. No internet needed."
-- On-screen, left: **Your workout is already there.** / "Built on your phone in under 100 milliseconds. No questions. No account. No internet needed."
+- On-screen, left: **The workout is already there.** / "Built on your phone in under 100 milliseconds. No questions. No account. No internet needed."
 - On-screen, right: faithful Ready Screen phone mock, Night theme - "Today / 12 min", four session blocks (Push-ups - Strength - 3 min, Hip hinge flow - Mobility - 3 min, Bear crawl - Primal - 3 min, Wall sit - Strength - 3 min), one dominant Fern **Start** button.
 
 ### Scene 4 - One tap (19.1 - 25.8s)
@@ -51,13 +51,13 @@ Scenes join with slow 0.8s crossfades; single-frame scenes carry a subtle zoom d
 ### Scene 8 - Close (44.4 - 52.4s)
 
 - VO (45.7s): "Rep Today. You're someone who moves."
-- On-screen: wordmark lockup (Ready Mark + "Rep Today"), then "Rep Today, Rest Tomorrow", "Coming soon to iOS", and the disclosure line "Screen images simulated. App is pre-release." at the bottom.
+- On-screen: wordmark lockup (Ready Mark + "Rep Today"), then "Opens to a ready workout" (the listing subtitle; the v1 "Rep Today, Rest Tomorrow" line is killed per the v2 naming decision), "Coming soon to iOS", and the disclosure line "Screen images simulated. App is pre-release." at the bottom.
 - Visual: holds ~4s after the VO, then fades to black over the final 1.2s.
 
 ## VO lines only (for re-recording)
 
 1. It's nine at night. You have twelve minutes, and no equipment.
-2. So open the app. Your workout is already there.
+2. So open the app. The workout is already there.
 3. A full bodyweight session, built on your phone in under one hundred milliseconds. No questions. No account. No internet needed.
 4. Got twenty minutes instead of ten? One tap. The session rebuilds before your thumb lifts.
 5. Bodyweight strength, mobility, and the kind of moving you did when you were seven.

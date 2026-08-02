@@ -1,7 +1,62 @@
 # Decisions Log
 
-Every autonomous decision made during the GTM run, per the master prompt's §2.6.
+Every autonomous decision made during the GTM runs, per the master prompt's §2.6.
 Format: decision, alternative rejected, and why.
+Entries D-001 through D-010 are the v1 run (2026-07-15, `gtm-master-prompt.md`).
+Entries D-101 onward are the v2 update run (2026-08-01, `gtm-master-prompt-v2.md`).
+
+## D-101 - v2 is an update run: v1 assets carry forward unless a v2 delta invalidates them [DECIDED BY AGENT]
+
+The v2 prompt was issued as "update gtm ... using that latest prompt" against a repo already carrying the completed, red-teamed v1 package.
+Decision: treat v2 as an update, not a from-scratch rebuild.
+v1 research files (competitor teardowns, review mining, economics, ASO, creators, name collisions; all URLs fetched 2026-07-15) carry forward as-is; new research runs only where v2 introduces a requirement v1 never covered (iOS-attribution state for the paid-vs-organic verdict, Meta Ad Library sweep, frequency-ranked pain mining for angle seeds, platform-selection evidence, creative-carries-targeting primary sources).
+Deliverables rebuilt outright: positioning tournament (v2's discipline-spine brief changes the question), channel plan (creative-carries-targeting doctrine plus $0/$500 dual ranking), landing page heroes (two variants now required), plus the net-new PMF kit, event schema, and marketing-agent build spec.
+**Rejected alternative:** re-running all research from scratch - it would spend most of the run re-fetching facts that have not changed in 17 days and starve the net-new v2 deliverables.
+
+## D-102 - Directory restructure to the v2 layout via `git mv` [DECIDED BY AGENT]
+
+`05-thesis` → `07-thesis`, `06-redteam` → `08-redteam`, `07-extras` → `09-extras`; new `05-social-pmf/` and `06-channels/`.
+The v1 channel plan moved to `06-channels/channel-plan-v1.md` and is kept as the superseded predecessor for diffability.
+**Rejected alternative:** keeping the v1 layout and bolting new folders on the end - recap.html must match the v2 prompt's published output structure.
+
+## D-103 - The Cody Schneider transcript is not on disk; §5.1/5.2 of the v2 prompt stand in as the method summary [DECIDED BY AGENT]
+
+The v2 prompt says a marketing-agent transcript was "given", but no transcript file exists anywhere in the repo or the founder's projects directory (searched 2026-08-01).
+Since §5.3 already forbids citing the transcript as fact, the loss is method-only, and §5.1/5.2 of the prompt itself enumerate the method points that transfer.
+Decision: proceed from §5.1/5.2, re-verify independently any claim that matters (the creative-carries-targeting mechanism, the iOS attribution state) with primary sources, and cite only those.
+**Rejected alternative:** halting to ask for the transcript - guardrail §2.6 forbids halting, and no deliverable may cite the transcript anyway.
+
+## D-104 - v2 chosen extras: marketing-agent build spec, App Store screenshot set (carried), investor teaser (carried); invented deliverable stays the review-response playbook [DECIDED BY AGENT]
+
+Chosen by the prompt's rule (which makes the company feel most real to a stranger), max three:
+1. The marketing-agent build spec is new in v2 and is the prompt's own headline addition - the system that operates the creative loop the day budget exists, built and dry-run verified but never run against an account.
+2. The App Store product-page screenshot set carries from v1 (D-007's reasoning stands: the most reality-conferring asset an unshipped iOS app can have); its copy gets re-checked against the v2 positioning verdict.
+3. The one-page investor teaser carries from v1 and gets updated to the v2 thesis and positioning.
+The v1 social-launch-kit is retired as an extra because the §8 social PMF test kit supersedes it as a required deliverable; its still-valid drafts are folded into the PMF kit rather than shipped twice.
+The invented deliverable remains the App Store review-response playbook (used weekly post-launch; still nobody would ask for it pre-launch).
+**Rejected alternatives:** pitch deck (thesis + teaser already cover the investor story), product walkthrough video (a second video would be rushed), onboarding email sequence (the product has no accounts or email capture; the artifact would be fiction).
+
+## D-105 - v2 positioning: pitch-2 (anti-discipline, "already ready") wins; discipline becomes internal spine only [DECIDED BY AGENT]
+
+The v2 tournament ran the discipline brief honestly: pitch-2 argued discipline is the wrong surface word and took rank 1 on all three rubrics (scorecard in `02-brand/naming-decision.md`).
+All three judges converged independently on "internal spine, never the surface lead word".
+Hero A is pitch-2's hero; Hero B is pitch-3's forgiveness hero with its headline rebuilt (word-level collision with a live Jillian Michaels ad) and two lines killed by the defensibility judge (an unenforceable experience guarantee and a false data-practices claim).
+Grafts: pitch-1's inversion survives at essay length plus one PMF test angle; pitch-4 survives as one mechanics-only contrarian PMF angle.
+**Rejected alternative:** protecting the discipline surface lead because the v2 brief proposed it - the brief itself ordered the honest outcome to ship.
+
+## D-106 - Listing name becomes plain "Rep Today"; the "Rest Tomorrow" suffix is killed [DECIDED BY AGENT]
+
+All four pitchers and all three judges independently flagged the suffix as grind-register under hostile paraphrase and counter to the forgiveness pillar.
+The subtitle keeps the mechanic wedge ("Opens to a ready workout", D-005/D-009 carried).
+**Rejected alternatives:** "Rep Today: Showing Up Counts" (emotional-contract register, scored below mechanic register) and a keyword suffix (D-005's reasoning stands).
+Consequence: every v2 asset that carried the old listing name (site footer, video end card, App Store screenshot set, teaser) must be checked and updated this run.
+
+## D-107 - K0 measures only zero-follower-measurable signals, on one pre-registered escalation ladder [DECIDED BY AGENT]
+
+The red-team investor and competitor personas independently showed K0's kill line depended on waitlist link-taps the package's own measurement-honesty section declares unmeasurable pre-launch, and that the week-8 no-signal observation had three divergent verdicts across the thesis, channel plan, and results guide.
+Resolution applied everywhere identically: K0 reads only bank-relative saves per 1k impressions, watch-through, and comment sentiment (200-impression floor, with a named "K0 under-sampled" state); waitlist-dependent signals activate only once the waitlist exists (pre-publication action #1); the single ladder is day-14 midpoint (kill losers, rebuild the matrix once) -> week 8 no angle clears its floor (bet (c) revised, one listening-informed rebuild) -> week 16 still nothing (K0 trips, bet (c) failed, walk-away observation).
+A new K9 makes word of mouth measurable post-launch (unattributed-install share plus organic search impressions, direction not level); pre-launch WOM is declared an unmeasured assumption and ships as a surviving objection.
+**Rejected alternative:** keeping the richer signal set (profile visits, shares) and the softer week-8 wording - a kill criterion with unmeasurable inputs or a menu of escalation ladders is not pre-registered, which was the whole point.
 
 ## D-001 - Output location is `/Users/hcho/Developer/RepToday/gtm/` [DECIDED BY AGENT]
 

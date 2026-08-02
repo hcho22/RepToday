@@ -184,4 +184,115 @@ A URL appears here only if it was actually fetched during this run and returned 
 - https://apps.apple.com/us/app/sweat-fitness-app-for-women/id1049234587?see-all=reviews - fetched 2026-07-15T12:30Z - review praise/complaint themes, verbatim quotes
 - https://www.treadmillreviewguru.com/sweat-app-review/ - fetched 2026-07-15T12:30Z - onboarding questionnaire, browse selection, pricing, trophy badges
 
-**Total: 139 fetched URLs.** (Later phases append their own sections below.)
+## v2 run (2026-08-01)
+
+The five v2 research files below record their own fetch timestamps; they are copied here faithfully, not re-fetched.
+Duplicates are removed within each subsection only; some v2 entries re-fetch URLs already listed in the v1 sections above.
+
+### ios-attribution-and-paid-vs-organic.md
+
+All fetched 2026-08-01, approximate times US Pacific, morning session.
+
+- https://developer.apple.com/app-store/user-privacy-and-data-use/ (WebFetch, 2026-08-01 ~09:05)
+- https://developer.apple.com/app-store/ad-attribution/ (WebFetch, 2026-08-01 ~09:20)
+- https://ads.apple.com/app-store/help/attribution/0093-adattributionkit-to-measure-performance (WebFetch, 2026-08-01 ~09:15)
+- https://ads.apple.com/en/app-store/advanced (WebFetch, 2026-08-01 ~09:25)
+- https://ads.apple.com/app-store/help/campaigns/0005-create-campaigns (WebFetch, 2026-08-01 ~09:40)
+- https://ads.apple.com/policies (WebFetch, 2026-08-01 ~09:35)
+- https://www.appsflyer.com/company/newsroom/pr/att-data-findings/ (WebFetch, 2026-08-01 ~09:25)
+- https://www.facebook.com/business/ads/meta-advantage-plus/app-campaigns (WebFetch, 2026-08-01 ~09:45)
+- https://www.facebook.com/business/help/331612538028890 (WebSearch excerpt, 2026-08-01 ~09:10; direct fetch blocked by JS-only rendering)
+- https://www.facebook.com/business/help/651033805513936 (WebSearch excerpt, 2026-08-01 ~09:10; direct fetch blocked by JS-only rendering)
+- https://en-gb.facebook.com/business/help/269269737396981 (WebSearch excerpt, 2026-08-01 ~09:15; direct fetch blocked by JS-only rendering)
+
+### meta-ad-library-sweep.md
+
+All fetched 2026-08-01, approximately 8:10-8:20 PM PT, via rendered logged-out browser sessions (plain HTTP fetch of the same host returned 403 and is not cited).
+
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=Freeletics&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:11 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%22Down%20Dog%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:11 PM PT; results unrelated to the Down Dog app)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=downdog&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:12 PM PT; single unrelated result)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%22Down%20Dog%20app%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:17 PM PT; unrelated dog-content noise)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%22Nike%20Training%20Club%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:13 PM PT; no Nike-owned ads in results)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=Peloton&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:14 PM PT; mostly third parties)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=onepeloton&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:15 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%22Kayla%20Itsines%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:15 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=joinladder&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:16 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=caliberstrong&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:16 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%22Centr%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:16 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%22Shred%20app%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:17 PM PT; noise only)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=%227%20minute%20workout%22&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:17 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=pliability&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:18 PM PT)
+- https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=GOWOD&search_type=keyword_unordered&media_type=all (fetched 2026-08-01, ~8:18 PM PT)
+
+### pain-point-frequency.md
+
+All fetched 2026-08-01 (US Pacific evening; UTC bookends 2026-08-02T02:45Z to 2026-08-02T03:13Z).
+V1-reused URLs were re-fetched that day and confirmed live.
+
+- https://apps.apple.com/us/app/centr-strength-fitness-app/id1382530817 - 2026-08-01 ~19:47 PT
+- https://apps.apple.com/us/app/30-day-fitness-workout-at-home/id1099771240 - 2026-08-01 ~19:47 PT
+- https://apps.apple.com/us/app/freeletics-workouts-fitness/id654810212 - 2026-08-01 ~19:47 PT
+- https://apps.apple.com/us/app/nike-training-club-wellness/id301521403 - 2026-08-01 ~19:47 PT
+- https://apps.apple.com/us/app/betterme-health-coaching/id1264546236 - 2026-08-01 ~19:50 PT
+- https://hn.algolia.com/api/v1/items/36666806 - 2026-08-01 ~19:50 PT
+- https://hn.algolia.com/api/v1/items/38919053 - 2026-08-01 ~19:50 PT
+- https://hn.algolia.com/api/v1/items/40903998 - 2026-08-01 ~19:50 PT
+- https://hn.algolia.com/api/v1/items/39991813 - 2026-08-01 ~19:50 PT
+- https://apps.apple.com/us/app/peloton-fitness-workouts/id792750948 - 2026-08-01 ~19:55 PT
+- https://apps.apple.com/us/app/seven-7-minute-workout/id650276551 - 2026-08-01 ~19:55 PT
+- https://apps.apple.com/us/app/down-dog-great-yoga-anywhere/id983693694 - 2026-08-01 ~19:55 PT
+- https://apps.apple.com/us/app/ladder-strength-training-plans/id1502936453 - 2026-08-01 ~19:58 PT
+- https://apps.apple.com/us/app/caliber-strength-training/id1482405410 - 2026-08-01 ~19:58 PT
+- https://apps.apple.com/us/app/sweat-fitness-app-for-women/id1049234587 - 2026-08-01 ~20:01 PT
+- https://hn.algolia.com/api/v1/search?query=%22workout%20app%22%20subscription&tags=comment&hitsPerPage=30 - 2026-08-01 ~20:01 PT
+- https://hn.algolia.com/api/v1/search?query=%22decision%20fatigue%22%20workout&tags=comment&hitsPerPage=30 - 2026-08-01 ~20:01 PT
+- https://hn.algolia.com/api/v1/items/42784144 - 2026-08-01 ~20:04 PT
+- https://hn.algolia.com/api/v1/items/37784759 - 2026-08-01 ~20:04 PT
+- https://hn.algolia.com/api/v1/items/45431429 - 2026-08-01 ~20:04 PT
+- https://hn.algolia.com/api/v1/search?query=%22streak%20anxiety%22&tags=comment&hitsPerPage=30 - 2026-08-01 ~20:07 PT
+- https://hn.algolia.com/api/v1/search?query=%22fitness%20app%22%20%22too%20complicated%22&tags=comment&hitsPerPage=30 - 2026-08-01 ~20:07 PT (zero hits; negative-search method note)
+- https://hn.algolia.com/api/v1/search?query=workout%20app%20%22internet%20connection%22&tags=comment&hitsPerPage=30 - 2026-08-01 ~20:07 PT
+- https://hn.algolia.com/api/v1/items/25727614 - 2026-08-01 ~20:10 PT
+
+### platform-signal-evidence.md
+
+All fetched 2026-08-01 (times approximate, US Pacific evening).
+
+- https://newsroom.tiktok.com/en-us/how-tiktok-recommends-videos-for-you - fetched 2026-08-01, ~8:10pm
+- https://about.instagram.com/blog/announcements/instagram-ranking-explained - fetched 2026-08-01, ~8:10pm
+- https://support.google.com/youtube/answer/11914225 - fetched 2026-08-01, ~8:11pm
+- https://support.google.com/youtube/answer/16089387 - fetched 2026-08-01, ~8:11pm
+- https://support.reddithelp.com/hc/en-us/articles/360043504051-Spam - fetched 2026-08-01, ~8:12pm (via browser; direct fetch returned 403)
+- https://www.reddit.com/r/bodyweightfitness/about/rules.json - fetched 2026-08-01, ~8:12pm (via browser)
+- https://www.reddit.com/r/fitness30plus/about/rules.json - fetched 2026-08-01, ~8:13pm (via browser)
+- https://www.reddit.com/r/getdisciplined/about/rules.json - fetched 2026-08-01, ~8:14pm (via browser)
+- https://www.reddit.com/r/SideProject/about/rules.json - fetched 2026-08-01, ~8:14pm (via browser; rules list empty)
+- https://www.reddit.com/r/SideProject/about.json - fetched 2026-08-01, ~8:14pm (via browser)
+- https://www.pewresearch.org/internet/fact-sheet/social-media/ - fetched 2026-08-01, ~8:12pm and ~8:15pm
+- https://buffer.com/resources/state-of-social-media-engagement-2026/ - fetched 2026-08-01, ~8:16pm
+- https://buffer.com/resources/tiktok-algorithm/ - fetched 2026-08-01, ~8:16pm
+
+Fetch-failure notes recorded in that file (not cited, no claims made from them): https://support.google.com/youtube/answer/12926071 returned 404; the old.reddit.com r/bodyweightfitness rules page was login-walled; direct WebFetch of support.reddithelp.com returned 403 before the browser workaround succeeded.
+
+### creative-carries-targeting-sources.md
+
+All fetched live on 2026-08-01, approximately 20:05-20:12 PDT.
+
+- https://www.facebook.com/business/news/good-questions-real-answers-how-does-facebook-use-machine-learning-to-deliver-ads (2026-08-01, ~20:07 PDT)
+- https://about.fb.com/news/2022/08/introducing-new-automation-tools-to-increase-sales-and-drive-growth/ (2026-08-01, ~20:10 PDT)
+- https://engineering.fb.com/2024/12/02/production-engineering/meta-andromeda-advantage-automation-next-gen-personalized-ads-retrieval-engine/ (2026-08-01, ~20:06 PDT)
+- https://www.facebook.com/business/ads/meta-advantage (2026-08-01, ~20:12 PDT)
+- https://newsroom.tiktok.com/tiktok-is-building-for-the-future-with-smart-plus?lang=en (2026-08-01, ~20:10 PDT)
+- https://ads.tiktok.com/help/article/about-smart-plus-campaign (2026-08-01, ~20:10 PDT)
+- https://support.google.com/google-ads/answer/6247380 (2026-08-01, ~20:07 PDT)
+- https://support.google.com/google-ads/answer/2404197 (2026-08-01, ~20:12 PDT)
+
+Attempted but NOT citable (fetch returned title only, no body): https://www.facebook.com/business/help/273363992030035 and https://www.facebook.com/business/help/1362234537597370.
+
+### Closing note
+
+The v1 catalog above was link-checked on 2026-08-01: 133 unique URLs, all live or correctly cited as 404-evidence; the pelobuddy/whistleout/newsweek 403/406 responses were curl bot-blocks verified live by proper fetches.
+
+**Total: 139 v1 fetched URL entries + 71 v2 fetched URL entries = 210 listed entries.**
+The two runs are not deduplicated against each other; several v2 entries deliberately re-fetch v1 URLs (the v1 catalog resolves to 133 unique URLs after within-run dedupe).

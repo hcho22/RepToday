@@ -16,7 +16,7 @@ Nothing below is a clearance claim; it is a collision scan only.
 - **Stack**: extremely generic. The exact name "Stack" is a Ketchapp game with 56k+ ratings; "Stack Team App" occupies the Sports category; Stack Sports is a large sports-tech company (50,000+ sports organizations). github.com/stack is a personal account. Weakest candidate on findability and confusion grounds.
 - **FitSnack**: the abandoned name is actively colliding - a live App Store fitness app ("Home Workout to Lose Weight" by Stanislau Shvaika) brands itself "FITsnack" and describes "daily micro home workouts", nearly the same concept. The rebrand away from this name looks well justified. fitsnack.com has live nameservers (registered).
 
-## Rep Today (incumbent; listing name "Rep Today, Rest Tomorrow")
+## Rep Today (incumbent; listing name at research time "Rep Today, Rest Tomorrow", since reduced to plain "Rep Today" by D-106)
 
 **App Store.**
 A US App Store search for "rep today" returned 10 apps, none named "Rep Today" or a close variant, and only one Health & Fitness result ("AI Fitness Coach: Basic Fit") ([iTunes Search API, "rep today"](https://itunes.apple.com/search?term=rep+today&entity=software&country=US&limit=15)).

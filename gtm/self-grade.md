@@ -1,50 +1,77 @@
-# Self-Grade Against the Master Prompt (§8)
+# Self-Grade Against the v2 Master Prompt (§11)
 
-Graded 2026-07-15, after the red team pass. Honest, including what was not fixed and why.
+Graded 2026-08-02, after the v2 red team pass and packaging.
+Supersedes the v1 self-grade of 2026-07-15 (frozen in git history).
+Honest, including what was not fixed and why.
 
-- [x] **No spend. No publication. Nothing live.**
-  Everything is local files. No accounts created, no domains bought, no posts made, no deploys. The only "services" used were already-local tools (Chrome, ffmpeg, macOS `say`) and free web fetches.
+- [x] **No spend. No publication. Nothing live. No ad account touched.**
+  Everything is local files; the only tools were already-local (Chrome, ffmpeg, macOS say, Python stdlib) plus read-only web fetches.
+  The marketing-agent extra's publish adapter refuses by design (`NotImplementedError`) and its scoreboard shows honest nulls.
 
 - [x] **Every factual claim has a fetched URL; sources.md complete; zero dead links.**
-  139 URLs in [sources.md](sources.md), each with a fetch timestamp from the run. Research files carry claims with inline sources; downstream docs reuse only researched claims with their URLs. Every relative link in recap.html, README.md, and the dossier was programmatically verified to resolve. *Caveat stated honestly: URLs were verified live during the run; link rot after the run date is possible, and two retention benchmarks are anchored on aggregator blogs because primary fetches failed - that provenance is now disclosed inside the thesis itself (a red-team fix).*
+  210 catalogued entries (139 v1 + 71 v2, cross-run dedupe caveat stated in the file).
+  The full v1 catalog was re-link-checked this run: 133 unique URLs, all live or correctly cited as 404-evidence (three 403/406s were curl bot-blocks, verified live by proper fetches).
+  v2 URLs carry their 2026-08-01 fetch timestamps as recorded by the researchers.
 
-- [x] **Zero fabricated stats, users, quotes, testimonials, or social proof anywhere - including mockups and ad creative.**
-  The landing page, video, screenshots, teaser, and social kit contain no user counts, no star ratings, no testimonials, no press logos. UI mocks show a single plausible user state and are labeled pre-release mocks. Evidence quotes are real, fetched, and captioned as being about *other* products or from *other* communities, never about Rep Today. The review-response playbook's "reviews" are explicitly labeled predicted/hypothetical.
+- [x] **Zero fabricated stats, users, quotes, testimonials, engagement, or social proof - including mockups and social drafts.**
+  The red team caught and killed the closest calls: the day-2 draft's "months of research" and "hundreds of reviews" (replaced with the real mined-source count, 24), an unsourced on-screen review date, and a false data-practices line on the site.
+  App Store screenshot 04's line was aligned to the exact shipped build copy and documented as verified product UI.
 
-- [x] **Every guess is labeled [ASSUMPTION] with reasoning.**
-  Install ranges, persona details, effort estimates, K8 thresholds, cohort floors, platform-share direction - all labeled, with reasoning shown, in the thesis, channel plan, positioning, and teaser.
+- [x] **Nothing from the provided transcript is cited as fact anywhere.**
+  The transcript was not even on disk (D-103); every method claim it inspired was independently re-verified from primary sources (Meta/TikTok/Google/Apple docs) and only those are cited.
 
-- [x] **No health/medical claims. No XP/levels/badges/streak language. No bro-fitness register.**
-  The red team's lawyer caught two edge cases ("same-day relief", "real mobility") and both were removed. Streak/badge words appear only to name the mechanics the product rejects.
+- [x] **Every guess labeled [ASSUMPTION] with reasoning.**
+  Carried v1 discipline forward; new v2 instances (200-impression floor, K9 direction-not-level, platform time-to-signal ordering, 90-day signal ranges) are labeled at the point of use.
 
-- [x] **Name recommendation carries the explicit unverified-clearance caveat.**
-  Strengthened by the red team: "clearance pending" was ruled misleading (nothing is pending) and replaced everywhere with "has not been trademark-searched or registered, and the App Store name has not been reserved - the founder's next action." The naming decision, recap, README, site footer, teaser, and brand guidelines all carry it.
+- [x] **No health claims. No XP/levels/badges/streak language. No bro-fitness register.**
+  Swept programmatically at close: the only em dash in live docs is inside a verbatim fetched competitor quote, and every "grind"/"beast mode"/"no excuses" hit names the banned register as banned.
+  The lawyer persona read every claim including social drafts; mobility copy states mechanics, never relief-from-symptoms.
+
+- [x] **Naming verdict carries the clearance caveat.**
+  "Trademark + App Store clearance UNVERIFIED - founder's next action" appears in the naming decision, recap banner, README, site footers, teaser, brand guidelines, and (new this run) the screenshots README.
 
 - [x] **Nothing contradicts the PRD.**
-  Offline on-device generation, ready-on-open, zero-equipment, forgiving non-streak score, mobility co-primary, AI-tunes-policy-never-generates - all stated exactly per the PRD across every asset. One near-miss was caught in reverse: the site claimed the in-session swap, the fact-check confirmed the PRD implements it (US-C08/US-K03), and the internal facts brief was corrected.
+  On-device offline <100ms generation (spec, benchmark pending - stated as such everywhere including the teaser after a red-team fix), ready-on-open, zero-equipment, forgiving non-streak score, mobility co-primary, AI-tunes-policy-never-generates.
+  The site FAQ's movement names were verified against the shipped `Exercises.json` after the lawyer flagged invented tier claims.
 
-- [x] **Site verified at both widths; screenshots in package.**
-  [390x844](03-site/screenshot-mobile-390x844.png) and [1440x900](03-site/screenshot-desktop-1440x900.png), captured, inspected by the orchestrator, re-captured and re-inspected after the red-team fixes.
+- [x] **The anti-discipline pitch was genuinely argued and scored, not strawmanned.**
+  It won: rank 1 on all three rubrics, and discipline shipped as internal spine only.
+  The scorecard with visible margins (including the 0.10 near-tie on differentiation) is published; the losing discipline-inversion pitch survives as an essay-layer sentence and one pre-registered PMF test angle.
+
+- [x] **Site verified at both widths; screenshots in package; pain state named explicitly.**
+  Both hero variants captured at 390x844 and 1440x900, viewed; one fold defect (variant A's Start button cut) found and fixed during the gate.
+  The pain vocabulary ("no quiz, no picking, no catalog scroll", paywall rage, streak-shame) is in the hero and a dedicated sourced-quotes section.
 
 - [x] **Video: ffprobe output + frame strip in package; script passes voice rules.**
-  [ffprobe-report.txt](04-video/ffprobe-report.txt), [frame-strip.png](04-video/frame-strip.png), frames viewed at all five gate points plus a close-card frame; audio verified non-silent; rebuilt twice (once for a transition defect I caught, once for red-team fixes) and re-gated both times. Details in [gate-report.md](04-video/gate-report.md).
+  Rebuilt this run (killed listing suffix on the end card, Hero A wording); 52.4s, 1920x1080, AAC audio verified; frames at 0/25/50/75/100% plus the end card actually viewed and described in the gate report.
 
-- [x] **Brand guidelines passed the fresh-agent test.**
-  A fresh agent restricted to the guidelines file alone produced an on-brand asset ([report](02-brand/gate-test-report.md)); the 8 gaps it surfaced were fixed into the guidelines the same day.
+- [x] **Brand guidelines passed the fresh-agent test; the test artifact ships.**
+  Round 1 failed honestly (canvas clipping) and closed four guideline gaps; a second blind agent then passed, orchestrator-verified.
+  Both rounds and both artifacts ship in `02-brand/`.
 
-- [x] **Red team ran; something changed because of it; objections visible in final docs.**
-  55 must-fix objections, all dispositioned; material changes include rewritten kill criteria, recomputed base-case economics, a false legal line replaced across six assets, a rebuilt video, and a changed hero. 30 surviving objections ship verbatim in the [dossier](06-redteam/dossier.md), and the single strongest sits beside the thesis summary on the recap page.
+- [x] **PMF kit: >=15 distinct angles, isolated-variable A/B pairs, pre-registered signals, honest sample-size limits.**
+  16 angles across all required lanes, 6 hook-only pairs, and - after the investor persona's attack - every signal restricted to what is actually measurable at zero followers, with waitlist-dependent signals explicitly gated on the waitlist existing.
+
+- [x] **Channel plan commits and answers paid-vs-organic with citations.**
+  Committed verdict: zero paid spend pre-launch; organic short-form + first-party waitlist is the first-signal engine (install ads are structurally unavailable with no listing; SKAN/AAK aggregation and learning-phase economics starve small budgets of signal).
+  Both rankings ship with per-channel kill criteria; the $500 answer is "mostly hold it".
+
+- [x] **Red team ran; something changed materially; surviving objections visible.**
+  58 findings, 26 MUST-FIX applied; the largest change was structural: one pre-registered K0 escalation ladder (day-14 / week-8 / week-16) now stated identically in the thesis, channel plan, and results guide, replacing three divergent verdicts.
+  16 surviving objections ship in the dossier; the strongest (competitor's copyable-at-the-visible-layer attack) sits beside the thesis summary in the recap.
 
 - [x] **recap.html links everything; every link resolves.**
-  Programmatically checked after the final edit.
+  126 relative targets programmatically verified on disk.
+  Responsiveness at 390px was verified in a real browser viewport (no horizontal overflow) after diagnosing a headless-capture artifact; details in the execution record.
 
 - [x] **Nothing is a placeholder pretending to be finished work.**
-  The placeholders that exist are labeled as exactly that, deliberately: six [FOUNDER TO FILL] slots (name, background, commitment, contact, two reviewer roles) where inventing facts would have violated the truth policy.
+  Deliberate, labeled exceptions: six [FOUNDER TO FILL] slots in the teaser (inventing them would violate the truth policy), and the marketing-agent's vision-QA layer, described in the build spec and explicitly marked not yet built.
 
 ## Failures and limitations kept, with reasons
 
-1. **The video voiceover is macOS text-to-speech (Samantha).** The red team's user persona is right that TTS narration reads poorly in-feed. No human voice was available to this run and hiring one would violate the no-spend guardrail. The video is labeled animatic-grade; the human re-record is the first item on the [pre-publication checklist](06-redteam/pre-publication-checklist.md), and the build is one-command reproducible for exactly that swap.
-2. **"Under 100 milliseconds" is not yet device-benchmarked.** It is the PRD's tested engine requirement, but no on-device benchmark record exists. The claim stays (it is the product's own spec, honestly framed), and the benchmark record is a blocking pre-publication item; if the slowest supported iPhone misses it, the number changes everywhere.
-3. **Reddit self-promotion rules could not be read** (blocked during research). The channel plan and social kit refuse to treat those drafts as postable until the founder reads the rules manually.
-4. **The landing page has no call to action.** Deliberate: there is no waitlist, handle, or listing to point to, and fabricating one would be worse. Blocking checklist item before the site ever goes live.
-5. **Two session-limit outages during the run** forced a rebuilt research pass (13 of 14 files survived from the first run; the Sweat teardown was redone inline) and a delayed red team. No quality shortcut was taken as a result - the delays are visible in the decisions log timeline, not in the deliverables.
+1. **The video voiceover is still macOS TTS (Samantha), animatic-grade.** No human voice is available without spending; the human re-record remains the first pre-publication checklist item and the build is one-command reproducible for the swap.
+2. **"Under 100 milliseconds" remains device-unbenchmarked.** It is the PRD's tested engine spec, framed as such everywhere (teaser included, after a red-team fix); the real-device benchmark is a blocking pre-publication gate.
+3. **The waitlist does not exist yet.** The site deliberately has no CTA; K0's waitlist-dependent signals are gated on "pre-publication action #1"; nothing fabricates a capture destination.
+4. **Reddit and YouTube comment mining stayed partially blocked**, so the pain corpus over-weights App Store reviews and Hacker News; stated in the research file's method notes, and the streak-grief evidence is honestly flagged as partly Duolingo-sourced.
+5. **Word of mouth, the thesis's load-bearing growth mechanism, is unmeasurable pre-launch.** Now stated as such (K9 measures it post-launch, direction-not-level); it ships as a surviving objection rather than dressed as analysis.
+6. **Two session interruptions (limit reset, auth expiry) hit mid-run** and were recovered via workflow resume; disclosed in the execution record; no deliverable shortcuts resulted.

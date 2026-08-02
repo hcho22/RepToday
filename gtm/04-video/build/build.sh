@@ -23,7 +23,7 @@ cd "$BUILD"
 
 # ---------------------------------------------------------------- 1. Voiceover
 say -v Samantha -o vo1.aiff "It's nine at night. You have twelve minutes, and no equipment."
-say -v Samantha -o vo2.aiff "So open the app. Your workout is already there."
+say -v Samantha -o vo2.aiff "So open the app. The workout is already there."
 say -v Samantha -o vo3.aiff "A full bodyweight session, built on your phone in under one hundred milliseconds. No questions. No account. No internet needed."
 say -v Samantha -o vo4.aiff "Got twenty minutes instead of ten? One tap. The session rebuilds before your thumb lifts."
 say -v Samantha -o vo5.aiff "Bodyweight strength, mobility, and the kind of moving you did when you were seven."

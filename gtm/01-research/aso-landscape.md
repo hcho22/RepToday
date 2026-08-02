@@ -11,6 +11,7 @@ The iTunes Search API's relevance ranking approximates but is not guaranteed to 
 "Workout planner" is owned by gym/barbell apps (Fitbod, Hevy, Strong) and is the wrong intent for Rep Today.
 "Micro workout" is near-empty whitespace: the only two apps ranking for it as a title phrase have too few ratings for the App Store to even display a score.
 Recommended listing: title "Rep Today, Rest Tomorrow" (24 chars, brand-only), subtitle "No Equipment Micro Workouts" (27 chars), and a 94-char keyword field covering bodyweight, quick, daily, mobility, and minute-duration terms.
+(Superseded by D-106: the listing title is now plain "Rep Today" and the subtitle is "Opens to a ready workout"; see `../02-brand/naming-decision.md`. The ranking evidence below still stands as researched.)
 
 ## Who ranks for what (all listings fetched 2026-07-15)
 
@@ -79,6 +80,8 @@ Only two apps rank with the phrase in their title ([search fetch](https://itunes
 - **Forgiving consistency**: [ASSUMPTION] "consistency" is not a fitness search term with meaningful volume; keep it for brand copy, not metadata.
 
 ## Recommended listing metadata
+
+(This section records the 2026-07-15 recommendation; the listing name was later reduced to plain "Rep Today" by D-106, see `../02-brand/naming-decision.md`.)
 
 **Title (24/30 chars): `Rep Today, Rest Tomorrow`**
 The name already contains "Rep", a real training word, and only 6 characters remain, too few for any meaningful keyword suffix, so keep the title brand-only.

@@ -1,68 +1,99 @@
-# Locked Positioning - Rep Today
+# Locked Positioning v2 - Rep Today
 
-Winner of the blind tournament (pitch-1, unanimous; scorecard in [naming-decision.md](naming-decision.md)), with two grafts from runners-up.
+Winner of the v2 blind tournament (pitch-2, rank 1 on all three rubrics; scorecard in [naming-decision.md](naming-decision.md), full pitches and judge files in [tournament-v2/](tournament-v2/)).
+Supersedes the v1 positioning (which this verdict substantially revalidates: the friction-led surface survived a fresh four-way tournament against the v2 discipline brief).
+
+## The discipline verdict, stated first
+
+The v2 brief proposed discipline as the campaign's surface spine, and required at least one pitch to argue against it.
+The anti-discipline pitch won, and all three judges independently reached the same disposition: **discipline is the internal spine only, never the surface lead word.**
+The reasoning, common across judges: the scroller's prior on "discipline" is the drill-sergeant register (the only observed in-market discipline creative is exactly that pole, per `01-research/meta-ad-library-sweep.md`), the word is absent from the mined pain vocabulary ("decisions", "clicks", "scrolling", per `01-research/pain-point-frequency.md`), and it survives only with a chaperone sentence that 6-second formats delete.
+What the discipline brief contributes is kept, underneath the surface: the definition below governs strategy, product narrative at essay length, and the About layer.
+
+> Discipline is not effort. Discipline is showing up.
+> Every decision between "I should work out" and "I am working out" is friction, and friction is what kills consistency.
+> Rep Today deletes the decisions: the session is already on the screen, five minutes counts, and missing yesterday costs you nothing.
+> The app is the disciplined one.
+
+"The app is the disciplined one" (pitch-1's inversion) ships at essay length only: the About page, the manifesto section of the site, and exactly one pre-registered PMF angle to test whether the inversion can earn its way onto the surface (the conversion judge's recommendation).
 
 ## Positioning statement
 
 For busy, desk-bound adults who keep skipping movement because starting a workout takes too many steps, Rep Today is the iOS app that opens to a complete bodyweight session with one dominant Start button.
-Unlike catalog apps that make you browse (Peloton, Nike Training Club, Apple Fitness+) and generators that put an account and configuration before your first session (Down Dog) or front-load an onboarding questionnaire (Freeletics), Rep Today never asks a single question between opening the app and starting.
-It can make that promise because a deterministic engine builds every session on your phone, offline, in under 100 milliseconds, so there is no server, no login, no quiz, and no paywall standing between you and your first rep.
+Unlike catalog apps that make you browse (Peloton, Nike Training Club, Apple Fitness+) and generators that put an account or a questionnaire before your first session (Down Dog, Freeletics), Rep Today never asks a single question between opening the app and starting.
+It can make that promise because a deterministic engine builds every session on your phone, offline, in under 100 milliseconds, so no server, login, quiz, or paywall stands between you and your first rep.
 
-## Hero message
+## Hero A (primary; pitch-2)
 
-**Headline:** Open the app. Your workout is already there.
+**Headline:** Open the app. The workout is already there.
 
-**Subhead:** A full bodyweight session, built on your phone in under 100 milliseconds. No questions, no account, no internet needed. Press Start.
+**Subhead:** Rep Today builds a ready session the moment you open it - 5 to 60 minutes, no equipment, no questions, works offline. Five minutes counts. Missing a day never zeroes anything.
 
-**Free-tier line (always within the hero viewport):** Free means the workouts. All of them. Forever.
-Rationale: instant-open can be imitated with caching; the ungated free tier plus no-account is the claim incumbents structurally cannot copy, so it must appear before the first scroll, not five sections down.
+**Always-in-viewport proof line:** Generated on your phone, offline, in under 100ms. Unlimited free workouts, no account required.
 
-**Secondary line (social/ads):** A floor, a wall, and five minutes.
+The hero visual is the mechanic itself: a screen recording of cold open to ready session.
+Pre-launch there are no ratings, users, or testimonials, and inventing them is prohibited; the proof line therefore states only verifiable product mechanics.
 
-## ICP: "9pm Priya"
+## Hero B (secondary; pitch-3, headline rebuilt per the differentiation judge)
 
-[ASSUMPTION] A marketing construct - the product has zero users and no interview data; every behavioral detail is inferred from the product brief's target and cited third-party evidence.
+**Headline:** Missing a day never zeroes you out.
 
-Mid-30s to mid-40s product manager or engineer with young kids and a calendar with no gym-shaped hole in it.
-Her windows to move: 9pm after the kids are down, 7am in a hotel room, ten minutes between calls - small, unpredictable, easily lost.
-She has tried a class catalog she scrolled instead of used, a generator that wanted an account and settings first, and YouTube videos that start with two minutes of talking.
-Demand-side evidence for her exact ask: "I need an app that requires little decision-making ... tell me exactly what to do", offline included (https://hn.algolia.com/api/v1/items/36666806); in-category friction complaint: "excessive scrolling, multiple clicks to get to something" (https://apps.apple.com/us/app/centr-strength-fitness-app/id1382530817).
+**Subhead:** Rep Today opens to a ready session, counts five minutes as a full show-up, and scores consistency on a rolling scale. Come back after a week away and the app celebrates it.
 
-## Messaging hierarchy
+**Always-in-viewport proof line:** No streaks, no badges, no XP, anywhere. A missed day can dent your score. Nothing can ever zero it.
+
+Pitch-3's original headline ("Showing up is the whole game") was rebuilt: the differentiation judge found a word-level collision with a live Jillian Michaels ad ("All you have to do is show up"), and the defensibility judge killed the adjacent "never makes you feel behind" line as an unenforceable experience guarantee.
+The rebuilt headline is the forgiveness mechanic stated as fact, checkable in the first week of use.
+
+## ICP: "9pm Priya" (carried from v1)
+
+[ASSUMPTION] A marketing construct - the product has zero users and no interview data; behavioral details are inferred from the product brief's target and cited third-party evidence.
+Mid-30s to mid-40s product manager or engineer with young kids and no gym-shaped hole in the calendar.
+Her windows to move: 9pm after the kids are down, 7am in a hotel room, ten minutes between calls.
+Demand-side evidence for her exact ask: "I need an app that requires little decision-making ... tell me exactly what to do" (https://hn.algolia.com/api/v1/items/36666806, fetched 2026-07-15, re-verified live 2026-08-01).
+
+## Messaging hierarchy (pitch-2's pillars, with the forgiveness graft promoted)
 
 **1. It opens ready. Nothing to answer, nothing to pick.**
 Proof: complete session pre-generated at the learned Default Duration, one dominant Start, never "how long do you have?".
 Line: "You do not pick a workout. It is on screen when the app opens."
 
-**2. Change one thing, in one tap, without starting over.**
-Proof: duration chip 5-60 min regenerates the session in under 100ms; Start is never disabled.
-Line: "Got 20 minutes instead of 10? One tap. The new session is there before your thumb lifts."
+**2. Free means the workouts. All of them. Forever.**
+Proof: unlimited workouts free forever; premium gates only depth (deeper analytics, the earned Strength Phase), never the core loop.
+Pain answered: the #1 frequency-ranked pain (paywall rage, `01-research/pain-point-frequency.md`).
+Honesty caveat carried from v1: this wedge works against paywalled apps, not against Nike Training Club, whose free tier users genuinely praise.
 
-**3. It works where you are, with what you have. Which is nothing.**
-Proof: on-device, offline, deterministic generation; 57 movements, all floor-and-wall only; no account required.
-Honesty note: stated as product fact, never as claimed market pain (review mining found no direct connectivity-complaint evidence).
-Line: "Airplane mode, hotel room, basement with no bars. The session builds on your phone, not on a server."
+**3. A score that forgives.**
+Proof: rolling non-streak Consistency Score; a 5-minute session is a full show-up; a return after a gap is served easy and celebrated.
+Pain answered: the #2 frequency-ranked pain (streak loss and punishing gamification).
+Line: "Miss a day and your score dips. It never resets."
 
-**4. Missing a day never zeroes you out.** *(grafted from pitch-2)*
-Proof: the Consistency Score is a forgiving rolling average, not a streak; a 5-minute session is a full show-up; a return after a gap is served easy and celebrated, never penalized.
-Line: "Miss a day and your score dips. It never resets. You're someone who moves, not someone who owes."
+**4. A floor and a wall. That is the whole equipment list.**
+Proof: 57 movements, all bodyweight; on-device offline generation passes the hotel-room test.
+Line: "Airplane mode, hotel room, basement with no bars. The session still builds."
 
-**5. The paywall is friction too. It is not in your way.**
-Proof: free tier is unlimited workouts forever; premium unlocks depth (deeper analytics, the earned Strength Phase), never the core loop.
-Evidence the pain is real in-category: "you cannot use this app unless you pay for it. You just can't." (https://apps.apple.com/us/app/30-day-fitness-workout-at-home/id1099771240).
-Caveat kept honest: this wedge works against paywalled apps, not against Nike Training Club, whose free tier users genuinely praise.
-Line: "Free means the workouts. All of them. Forever."
+**5. Mobility is a pillar, not a warm-up.**
+Proof: mobility is co-primary with strength and primal in the engine's pillar weighting.
+Line: "Half your session can be the part other apps skip."
 
-## Sample headlines (ads/social)
+## The 6-second hook bank (for the PMF kit)
 
-1. "Open the app. Press Start. That was the onboarding."
-2. "It never asks how long you have. A session is already on screen when you open it."
-3. "No signal, no equipment, no account. Your session still builds in under 100 milliseconds."
+- Hero A hook, softened per the defensibility judge (the original absolute was falsified by our own research): "Most workout apps open with a question. This one opens with the workout."
+- Hero B hook, founder-on-camera framing mandatory per the conversion judge (first-person claims from a zero-user product must be visibly the founder demoing their own app): "I skipped four days and my app celebrated my comeback. On purpose. I built it that way."
+- Inversion test angle (essay-register compressed; one PMF angle only): "The most disciplined thing I own is a workout app. Watch."
+- Contrarian angle (pitch-4, mechanics only, no competitor-intent claims): "I built a workout app with no streaks, on purpose. Watch what happens when I miss a day."
 
 ## What this positioning deliberately gives up
 
-- **The customizers.** Zero-decision positioning repels users who want to edit sessions (documented in Freeletics complaints). They are not the ICP. (The in-session swap exists, but it is not the story.)
-- **Leading with forgiveness.** The anti-streak ground is already contested (HN shows builders marketing "no streak anxiety" today); forgiveness ships as pillar 4, not the headline.
-- **Training-depth storytelling.** The three pillars, Asymmetric Ramp, and earned Strength Phase barely appear; the product must reveal its substance after conversion.
-- **Emotional ceiling.** No community, no transformation arc, no instructor charisma. The bet: relief converts the tired better than aspiration - unproven, zero users.
-- **Partial imitability.** A competitor can fake perceived instant-open with caching; the durable claim is the full stack at once - instant, offline, question-free, never paywalled - which no researched competitor currently combines.
+- The "app is the disciplined one" brand sentence at the surface (essay layer and one test angle only).
+- Outcome and transformation territory: no physique promises, no before-afters, ever (also a guardrail).
+- The customizers who want to edit sessions; the in-session swap exists but is not the story.
+- Proof-stack advertising (ratings, awards, testimonials): structurally unavailable pre-launch; the demo is the proof.
+- Partial imitability, named honestly: perceived instant-open can be faked with caching; the durable claim is the full stack at once - instant, offline, question-free, never paywalled - which no researched competitor currently combines.
+
+## Claims hygiene rules bound into this positioning
+
+- Never the unqualified "every workout app..." absolute; "most" is the ceiling, per the defensibility judge.
+- No data-practices claims beyond the documented architecture (the killed "that is the only fact the app records" line is the cautionary example).
+- Competitor motive claims ("their machinery serves retention, not you") stay internal; surface copy states our mechanics only.
+- All discipline-adjacent copy obeys the §4 hard rules: made easy never demanded, never implies the user failed, never romanticizes suffering, the enemy is friction never character.

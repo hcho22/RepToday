@@ -4,7 +4,7 @@ Derived from `prd-fitsnack-mvp-v6_0702.md` and `prd-rebrand-fitsnack-to-rep-toda
 
 ## What the product is
 
-**Rep Today** (formerly FitSnack; App Store listing name planned: "Rep Today, Rest Tomorrow") - a discipline-first micro-workout iOS app for busy, desk-bound adults.
+**Rep Today** (formerly FitSnack; App Store listing name: plain "Rep Today", subtitle "Opens to a ready workout" - the v1 "Rest Tomorrow" suffix was killed by D-106, see `02-brand/naming-decision.md`) - a discipline-first micro-workout iOS app for busy, desk-bound adults.
 
 - **Zero-equipment, bodyweight only.** Every movement works with a floor and a wall ("hotel room test"). 57-movement library (42 at US-B01, grown to 57 by US-O02).
 - **Opens to a ready session.** The app opens to a complete, pre-generated session at the user's learned Default Duration with one dominant Start button. It never asks "how long do you have?" before Start. Duration is a one-tap non-blocking chip (5/10/15/20/30/45/60 min) that regenerates the session in under 100ms.
