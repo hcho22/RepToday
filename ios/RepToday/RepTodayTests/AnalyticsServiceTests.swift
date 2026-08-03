@@ -133,14 +133,18 @@ final class AnalyticsServiceTests: XCTestCase {
     /// Walks one anonymous user's whole funnel - install through subscribe, all 13 pre-registered
     /// events with the schema's own property names - through `analyticsService` as resolved from both
     /// `ServiceContainer.mock()` and the production `ServiceContainer.live(context:)`, and asserts the
-    /// recorded events and the exact JSON body US-T04 will POST to the Convex sink.
+    /// recorded events, the snake_case names that serialise, and a lossless `Codable` round-trip.
+    ///
+    /// It claims nothing about the request body US-T04 will POST: that body is one event per request
+    /// carrying an install identifier (`name` / `installId` / `clientTs` / `props`), and `installId`
+    /// does not land on this model until US-T05. What is gated here is the seam and the model.
     ///
     /// This is the end-to-end read of the seam rather than of the model: every emission is written the
     /// way a US-T03 call site must write it - `await services.analyticsService.record(event)`, no `try`
     /// - so the deliberate `async`-but-not-`throws` signature is exercised as a call site, not asserted
     /// about. Both containers record into memory, which is what "no transport yet" looks like from the
     /// outside: nothing leaves the process.
-    func testFunnelEmittedThroughBothContainersIsRecordedAndSerialisesToTheWireBody() async throws {
+    func testFunnelRecordedThroughBothContainersRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext)
         let mock = ServiceContainer.mock()
@@ -164,20 +168,20 @@ final class AnalyticsServiceTests: XCTestCase {
         // The journey covers the whole pre-registered vocabulary, so the assertion is not a sample.
         XCTAssertEqual(Set(recordedLive.map(\.name)), Set(AnalyticsEventName.allCases))
 
-        // The bytes: what the sink holds, encoded as the request body the Convex ingest endpoint
-        // receives. Serialising from the *recorded* array (not the source array) asserts on what
-        // actually survived the seam.
+        // The model's own JSON, encoded from the *recorded* array (not the source array) so the
+        // assertion is on what actually survived the seam.
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let body = try encoder.encode(recordedLive)
-        let wireJSON = try XCTUnwrap(String(data: body, encoding: .utf8))
-        // The wire contract is the snake_case names, and no identity ever rides along.
-        XCTAssertTrue(wireJSON.contains("\"app_install\""))
-        XCTAssertFalse(wireJSON.contains("landing_page_view"))
-        XCTAssertFalse(wireJSON.contains("waitlist_signup"))
+        let json = try encoder.encode(recordedLive)
+        let serialised = try XCTUnwrap(String(data: json, encoding: .utf8))
+        // The event names serialise as their snake_case raw values, and no identity ever rides along.
+        XCTAssertTrue(serialised.contains("\"app_install\""))
+        XCTAssertFalse(serialised.contains("landing_page_view"))
+        XCTAssertFalse(serialised.contains("waitlist_signup"))
 
-        // A server reading the body back gets the same events - the round-trip the sink will depend on.
-        let decoded = try JSONDecoder().decode([AnalyticsEvent].self, from: body)
+        // Decoding the same bytes back yields the same events - the lossless round-trip any encoder
+        // built on this model, transport included, depends on.
+        let decoded = try JSONDecoder().decode([AnalyticsEvent].self, from: json)
         XCTAssertEqual(decoded, funnel)
     }
 

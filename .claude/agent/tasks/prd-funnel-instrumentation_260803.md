@@ -169,9 +169,11 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 > **Transport re-scope (US-T01 spike, adopted 2026-08-03):** this story previously mandated adding `get-convex/convex-swift` to `ios/RepToday/project.yml`. That is dropped. The US-T01 spike returned a no-go (`convex-swift` ships an arm64-only xcframework, which breaks every Simulator-hosted test suite on the captain's Intel host) and the captain adopted it. `LiveAnalyticsService` now posts JSON to the deployment's `.site/logEvent` HTTP action (US-T03) with `URLSession`. Lottie stays the app's only third-party package.
 
+> **Wire-shape note (US-T02):** `AnalyticsValue`'s `Codable` form is deliberately tagged (`{"type":...,"value":...}`) so `Int` and `Double` round-trip losslessly in process - that is a US-T02 requirement and stays. It is **not** the wire shape: US-T04 must flatten the property bag on the way out so the Convex sink stores plain scalars (e.g. `"props": {"generation_ms": 38}`), matching the rows the US-T01 spike persisted and US-T03's "stored as-is".
+
 **Acceptance Criteria:**
 
-- [ ] `LiveAnalyticsService` conforms to `AnalyticsServiceProtocol`, encodes an `AnalyticsEvent` as JSON, and `POST`s it to the deployment's `.site/logEvent` HTTP action with `URLSession`. No Convex SDK is used.
+- [ ] `LiveAnalyticsService` conforms to `AnalyticsServiceProtocol`, encodes an `AnalyticsEvent` as JSON, and `POST`s it to the deployment's `.site/logEvent` HTTP action with `URLSession`. No Convex SDK is used. The property bag is flattened to plain scalars for the wire (see the wire-shape note above), so `props` holds numbers, strings, and booleans rather than `AnalyticsValue`'s tagged in-process form.
 - [ ] **No new Swift Package dependency is added.** `ios/RepToday/project.yml` still lists Lottie as the only third-party package; `convex-swift` is **not** added. Only the deployment `.site` URL is new config (a build setting or plist value), alongside the install id from US-T05 and the opt-out flag from US-T06.
 - [ ] Emission is **strictly fire-and-forget**: `record(_:)` returns immediately, the send happens on a detached/background task (`Task.detached`), and no caller ever awaits network completion. A failed, slow, or offline send is swallowed (`try?`, best-effort), exactly like every other integration in this app (HealthKit, CloudKit, StoreKit observation).
 - [ ] The core loop is never blocked, degraded, or failed by telemetry: verified by the offline validation test below.

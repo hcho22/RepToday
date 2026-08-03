@@ -510,7 +510,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
-            authService: MockAuthService()
+            authService: MockAuthService(),
+            analyticsService: MockAnalyticsService()
         )
     }
 

@@ -21,8 +21,9 @@ struct ServiceContainer {
     let healthKitService: any HealthKitServiceProtocol
     let subscriptionService: any SubscriptionServiceProtocol
     let authService: any AuthServiceProtocol
-    /// The anonymous product-telemetry sink (US-T02). Additive and never gates the core loop, so it
-    /// defaults to the in-memory mock and every caller that does not care can leave it unset.
+    /// The anonymous product-telemetry sink (US-T02). Additive and never gates the core loop, but it
+    /// carries no initializer default: every construction site wires it explicitly, like every other
+    /// service here, so a container built without a sink is a build error rather than silent data loss.
     let analyticsService: any AnalyticsServiceProtocol
 
     init(
@@ -38,7 +39,7 @@ struct ServiceContainer {
         healthKitService: any HealthKitServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
         authService: any AuthServiceProtocol,
-        analyticsService: any AnalyticsServiceProtocol = MockAnalyticsService()
+        analyticsService: any AnalyticsServiceProtocol
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
