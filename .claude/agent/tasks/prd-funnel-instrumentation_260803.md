@@ -416,7 +416,9 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 ### US-T14: Protect the public `POST /logEvent` HTTP action against abuse
 
 **Description:** As the developer, I want the public, unauthenticated `POST /logEvent` HTTP action guarded against casual abuse, so that a stranger who discovers the endpoint URL cannot flood the `events` table with junk rows.
-This story **depends on US-T03** (the HTTP action must exist before it can be guarded) and must land **before launch**, not after: the checkpoint reads kill criteria off this table, so the protection has to be in place the moment the endpoint is internet-reachable with real installs behind it.
+This story **depends on US-T03** (the HTTP action must exist before it can be guarded), plus **US-T05** (which generates the per-install identifier) and **US-T04** (which actually carries that identifier in the request body); without both, the primary rate-limit key does not exist at the endpoint.
+So US-T14's per-install rate-limit key only exists once US-T05 and US-T04 have landed, and it sequences after them; if US-T14 is built earlier, it runs on the source-IP backstop alone, which the story already treats as the weaker secondary key.
+It must land **before launch**, not after: the checkpoint reads kill criteria off this table, so the protection has to be in place the moment the endpoint is internet-reachable with real installs behind it, and sequencing later does not make it optional.
 The `events` table is the evidence base for K1, K2, and K4.
 Junk rows injected by anyone who finds the endpoint would inflate installs, sessions, and weekly-active counts, so the captain would be reading kill criteria off poisoned data at the checkpoint; wasted Convex quota and billing is a secondary cost.
 This story adds **no** user accounts, no per-user authentication, no App Tracking Transparency prompt, and no identity in events - those remain hard non-goals and this story must not weaken them.
