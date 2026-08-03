@@ -1,24 +1,22 @@
 import UIKit
 
-/// The one place that decides where a test suite's evidence is written - a rendered screen, or the
-/// text artifact a non-UI seam leaves behind instead (`AnalyticsServiceTests` writes the funnel's
-/// wire payload and transcript through the same door).
+/// The one place that decides where a test suite's rendered-UI evidence is written.
 ///
-/// Every evidence suite produces its artifacts on every run - they and the assertions beside them are
-/// the gate - but where the bytes land is opt-in:
+/// Every evidence suite renders on every run - the renders and the assertions beside them are the
+/// gate - but where the bytes land is opt-in:
 ///
 /// - by default, a per-run temporary directory, so a plain `test` never leaves the worktree dirty
 ///   with re-encoded PNGs and never depends on the machine the evidence was first captured on;
 /// - `REPTODAY_WRITE_EVIDENCE=1` points the same writes at the repo's own `artifacts/reports/`,
-///   which is how the committed artifacts the PRD and `docs/test-coverage.md` cite are produced -
+///   which is how the committed images the PRD and `docs/test-coverage.md` cite are produced -
 ///   deliberately, by these tests, rather than copied there by hand;
 /// - `REPTODAY_EVIDENCE_DIR=<root>` puts the same writes under a root of the caller's choosing.
 ///
 /// **The rule for `REPTODAY_EVIDENCE_DIR`: it names a *root*, never a final directory.** The story
 /// folder is appended to it exactly as it is appended to `artifacts/reports/`, so one redirected run
 /// lays its output out in the same shape as the committed baselines and stays self-organising by
-/// story instead of pouring every suite's output into one flat directory. All three modes therefore
-/// differ only in the root; the `<root>/<story>/<file>` shape is invariant.
+/// story instead of pouring every suite's renders into one flat directory. All three modes therefore
+/// differ only in the root; the `<root>/<story>/<file>.png` shape is invariant.
 ///
 /// The repo root is walked up from `#filePath`, since a test bundle controls neither the working
 /// directory nor any repo-relative path:
@@ -36,7 +34,6 @@ enum EvidenceOutput {
         static let perSideSwap = "per-side-swap"
         static let sessionTimer = "us-o03"
         static let progressAnalytics = "us-m02"
-        static let analyticsSeam = "us-t02"
     }
 
     /// The directory `story`'s evidence is written to for this run.
@@ -71,13 +68,9 @@ enum EvidenceOutput {
         return path
     }
 
-    /// Writes a text artifact - a transcript of what VoiceOver speaks, or the JSON body a seam would
-    /// put on the wire - into `story`'s evidence directory, resolving the destination and creating it
-    /// through the same path the image write uses, so a suite never re-implements the
-    /// resolve-and-create step this owns.
-    ///
-    /// There is no did-it-draw guard to apply here: text carries its own evidence of having been
-    /// produced, where a capture of a surface that never drew does not.
+    /// Writes a text artifact - a transcript of what VoiceOver speaks - into `story`'s evidence
+    /// directory, resolving the destination and creating it through the same path the image write uses,
+    /// so a suite never re-implements the resolve-and-create step this owns.
     @discardableResult
     static func write(_ text: String, named fileName: String, for story: String) throws -> String {
         let destination = directory(for: story)

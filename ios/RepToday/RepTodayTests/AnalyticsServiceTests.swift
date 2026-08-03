@@ -132,8 +132,8 @@ final class AnalyticsServiceTests: XCTestCase {
 
     /// Walks one anonymous user's whole funnel - install through subscribe, all 13 pre-registered
     /// events with the schema's own property names - through `analyticsService` as resolved from both
-    /// `ServiceContainer.mock()` and the production `ServiceContainer.live(context:)`, then writes the
-    /// exact JSON body US-T04 will POST to the Convex sink as reviewable evidence.
+    /// `ServiceContainer.mock()` and the production `ServiceContainer.live(context:)`, and asserts the
+    /// recorded events and the exact JSON body US-T04 will POST to the Convex sink.
     ///
     /// This is the end-to-end read of the seam rather than of the model: every emission is written the
     /// way a US-T03 call site must write it - `await services.analyticsService.record(event)`, no `try`
@@ -161,12 +161,12 @@ final class AnalyticsServiceTests: XCTestCase {
         let recordedMock = await mockSink.recordedEvents
         XCTAssertEqual(recordedLive, funnel, "the production container's sink lost or reordered events")
         XCTAssertEqual(recordedMock, funnel, "the mock container's sink lost or reordered events")
-        // The journey covers the whole pre-registered vocabulary, so the evidence is not a sample.
+        // The journey covers the whole pre-registered vocabulary, so the assertion is not a sample.
         XCTAssertEqual(Set(recordedLive.map(\.name)), Set(AnalyticsEventName.allCases))
 
         // The bytes: what the sink holds, encoded as the request body the Convex ingest endpoint
-        // receives. Serialising from the *recorded* array (not the source array) means the artifact
-        // can only show what actually survived the seam.
+        // receives. Serialising from the *recorded* array (not the source array) asserts on what
+        // actually survived the seam.
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let body = try encoder.encode(recordedLive)
@@ -179,53 +179,13 @@ final class AnalyticsServiceTests: XCTestCase {
         // A server reading the body back gets the same events - the round-trip the sink will depend on.
         let decoded = try JSONDecoder().decode([AnalyticsEvent].self, from: body)
         XCTAssertEqual(decoded, funnel)
-
-        try EvidenceOutput.write(
-            wireJSON + "\n", named: "funnel-wire-payload.json", for: EvidenceOutput.Story.analyticsSeam
-        )
-        try EvidenceOutput.write(
-            Self.transcript(for: recordedLive), named: "funnel-transcript.txt",
-            for: EvidenceOutput.Story.analyticsSeam
-        )
     }
 
-    /// The story's named failure indicator, shown rather than only asserted: three values that all
-    /// serialise to `1`/`true` under natural JSON scalars stay distinct through the discriminated
-    /// encoding, and the proof is written out beside the funnel payload.
-    func testScalarCasesStayDistinctThroughTheWireAndAreWrittenAsEvidence() throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        let decoder = JSONDecoder()
-
-        var lines = ["AnalyticsValue: every scalar case survives the wire as its own case",
-                     "(a natural-JSON encoding would collapse the first three into one)",
-                     ""]
-        let collapsible: [AnalyticsValue] = [.int(1), .double(1), .bool(true), .string("1")]
-        var decodedCases: [AnalyticsValue] = []
-        for value in collapsible {
-            let data = try encoder.encode(value)
-            let json = try XCTUnwrap(String(data: data, encoding: .utf8))
-            let back = try decoder.decode(AnalyticsValue.self, from: data)
-            XCTAssertEqual(back, value)
-            decodedCases.append(back)
-            lines.append("  \(String(describing: value).padding(toLength: 16, withPad: " ", startingAt: 0))"
-                         + "-> \(json.padding(toLength: 34, withPad: " ", startingAt: 0))"
-                         + "-> \(String(describing: back))")
-        }
-        // Four inputs that a natural encoding would smear together come back as four distinct values.
-        XCTAssertEqual(Set(decodedCases.map { String(describing: $0) }).count, 4)
-
-        try EvidenceOutput.write(
-            lines.joined(separator: "\n") + "\n",
-            named: "scalar-round-trip.txt", for: EvidenceOutput.Story.analyticsSeam
-        )
-    }
-
-    // MARK: - The journey and its transcript
+    // MARK: - The journey
 
     /// One anonymous install's whole funnel, in the order the app would emit it, using the property
     /// names `gtm/06-channels/event-metric-schema.md` pre-registers for each event. Timestamps are
-    /// fixed offsets from a pinned install moment so the evidence is byte-reproducible.
+    /// fixed offsets from a pinned install moment so the fixture is byte-reproducible run to run.
     private static let funnelJourney: [AnalyticsEvent] = {
         // 2026-08-03T00:00:00Z, pinned rather than read from the clock.
         let installMs = 1_785_715_200_000
@@ -259,48 +219,4 @@ final class AnalyticsServiceTests: XCTestCase {
             .init(name: .day30Return, timestampMs: installMs + 30 * day)
         ]
     }()
-
-    /// A reviewer-readable rendering of what the sink holds: the funnel in emission order, with each
-    /// event's elapsed offset from install and its property bag.
-    private static func transcript(for events: [AnalyticsEvent]) -> String {
-        guard let installMs = events.first?.timestampMs else { return "" }
-        var lines = [
-            "RepToday US-T02 - analytics seam, one anonymous install's funnel",
-            "recorded through ServiceContainer.live(context:).analyticsService",
-            "(await analytics.record(event) - fire-and-forget, no try, no network)",
-            "",
-            column("#", 4) + column("event", 22) + column("t+ (h:mm:ss)", 14) + "properties",
-            String(repeating: "-", count: 120)
-        ]
-        for (index, event) in events.enumerated() {
-            let elapsed = (event.timestampMs - installMs) / 1_000
-            let clock = String(format: "%d:%02d:%02d", elapsed / 3_600, (elapsed % 3_600) / 60, elapsed % 60)
-            let bag = event.properties.isEmpty
-                ? "(none)"
-                : event.properties.keys.sorted()
-                    .map { "\($0)=\(describe(event.properties[$0]!))" }
-                    .joined(separator: ", ")
-            lines.append(column("\(index + 1)", 4) + column(event.name.rawValue, 22)
-                         + column(clock, 14) + bag)
-        }
-        lines.append("")
-        lines.append("\(events.count) events recorded in order; "
-                     + "\(AnalyticsEventName.allCases.count) event names registered, all covered.")
-        return lines.joined(separator: "\n") + "\n"
-    }
-
-    /// Left-aligned fixed-width cell, so the transcript reads as a table rather than as `%-@`, which
-    /// silently ignores the width for an `NSString` argument.
-    private static func column(_ text: String, _ width: Int) -> String {
-        text.count >= width ? text + " " : text.padding(toLength: width, withPad: " ", startingAt: 0)
-    }
-
-    private static func describe(_ value: AnalyticsValue) -> String {
-        switch value {
-        case .int(let raw): return "\(raw) (int)"
-        case .double(let raw): return "\(raw) (double)"
-        case .string(let raw): return "\"\(raw)\" (string)"
-        case .bool(let raw): return "\(raw) (bool)"
-        }
-    }
 }
