@@ -21,6 +21,9 @@ struct ServiceContainer {
     let healthKitService: any HealthKitServiceProtocol
     let subscriptionService: any SubscriptionServiceProtocol
     let authService: any AuthServiceProtocol
+    /// The anonymous product-telemetry sink (US-T02). Additive and never gates the core loop, so it
+    /// defaults to the in-memory mock and every caller that does not care can leave it unset.
+    let analyticsService: any AnalyticsServiceProtocol
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -34,7 +37,8 @@ struct ServiceContainer {
         sessionCompletionService: any SessionCompletionServiceProtocol,
         healthKitService: any HealthKitServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
-        authService: any AuthServiceProtocol
+        authService: any AuthServiceProtocol,
+        analyticsService: any AnalyticsServiceProtocol = MockAnalyticsService()
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -48,6 +52,7 @@ struct ServiceContainer {
         self.healthKitService = healthKitService
         self.subscriptionService = subscriptionService
         self.authService = authService
+        self.analyticsService = analyticsService
     }
 
     static func mock() -> ServiceContainer {
@@ -106,7 +111,9 @@ struct ServiceContainer {
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
-            authService: MockAuthService()
+            authService: MockAuthService(),
+            // The in-memory telemetry sink (US-T02): records events for test assertions, no I/O.
+            analyticsService: MockAnalyticsService()
         )
     }
 
@@ -163,7 +170,10 @@ struct ServiceContainer {
             // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
             subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
-            authService: AppleAuthService.live()
+            authService: AppleAuthService.live(),
+            // US-T02 is the seam only, so production temporarily records to the in-memory mock; the
+            // live Convex-backed fire-and-forget `URLSession` transport swaps in here at US-T04.
+            analyticsService: MockAnalyticsService()
         )
     }
 }

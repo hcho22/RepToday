@@ -114,13 +114,13 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 **Acceptance Criteria:**
 
-- [ ] A `Codable` value type (e.g. `AnalyticsEvent`) holds: the event name (a closed enum over the 13 event names), the millisecond timestamp, and a small string-keyed property bag (`[String: AnalyticsValue]` where `AnalyticsValue` is a closed union of the scalar types the schema uses - `Int`, `Double`, `String`, `Bool`).
-- [ ] The event name enum has exactly the 13 in-app cases from `gtm/06-channels/event-metric-schema.md`: `app_install`, `onboarding_started`, `onboarding_completed`, `ready_screen_shown`, `session_started`, `session_completed`, `session_abandoned`, `day7_return`, `day30_return`, `week_active`, `paywall_shown`, `trial_started`, `subscribe`. (The two web-side events `landing_page_view` and `waitlist_signup` are out of scope for the app build.)
-- [ ] `AnalyticsServiceProtocol` is declared in `Services/Protocols/ServiceProtocols.swift` alongside the existing service protocols. Its single emission method is `async throws` and is named to read as fire-and-forget at the call site (e.g. `func record(_ event: AnalyticsEvent) async`).
-- [ ] A `MockAnalyticsService` records every event into an in-memory array exposed for test assertions, performs no I/O, and never touches the network.
-- [ ] `analyticsService` is added as a property on `ServiceContainer` and wired in **both** `mock()` and `live(context:)` in `DI/ServiceContainer.swift` (live may temporarily point at the mock until US-T04 lands).
-- [ ] No emission call sites are added in this story - this is the seam only.
-- [ ] Uses `@Observable` only (never `ObservableObject`), all service methods `async`, `Theme` tokens where any UI appears (none here). Build and tests pass.
+- [x] A `Codable` value type (e.g. `AnalyticsEvent`) holds: the event name (a closed enum over the 13 event names), the millisecond timestamp, and a small string-keyed property bag (`[String: AnalyticsValue]` where `AnalyticsValue` is a closed union of the scalar types the schema uses - `Int`, `Double`, `String`, `Bool`).
+- [x] The event name enum has exactly the 13 in-app cases from `gtm/06-channels/event-metric-schema.md`: `app_install`, `onboarding_started`, `onboarding_completed`, `ready_screen_shown`, `session_started`, `session_completed`, `session_abandoned`, `day7_return`, `day30_return`, `week_active`, `paywall_shown`, `trial_started`, `subscribe`. (The two web-side events `landing_page_view` and `waitlist_signup` are out of scope for the app build.)
+- [x] `AnalyticsServiceProtocol` is declared in `Services/Protocols/ServiceProtocols.swift` alongside the existing service protocols. Its single emission method is `async throws` and is named to read as fire-and-forget at the call site (e.g. `func record(_ event: AnalyticsEvent) async`).
+- [x] A `MockAnalyticsService` records every event into an in-memory array exposed for test assertions, performs no I/O, and never touches the network.
+- [x] `analyticsService` is added as a property on `ServiceContainer` and wired in **both** `mock()` and `live(context:)` in `DI/ServiceContainer.swift` (live may temporarily point at the mock until US-T04 lands).
+- [x] No emission call sites are added in this story - this is the seam only.
+- [x] Uses `@Observable` only (never `ObservableObject`), all service methods `async`, `Theme` tokens where any UI appears (none here). Build and tests pass.
 
 **Validation Test:**
 

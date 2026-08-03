@@ -163,6 +163,19 @@ extension SubscriptionServiceProtocol {
     func startObservingTransactions() -> Task<Void, Never> { Task {} }
 }
 
+/// Records anonymous product-telemetry events (US-T02).
+///
+/// The single emission method is the funnel-instrumentation seam: every later story emits the 13
+/// pre-registered events (`gtm/06-channels/event-metric-schema.md`) through this one interface, and
+/// tests assert on `MockAnalyticsService`'s in-memory record with no network. `record(_:)` is
+/// `async` but **not** `throws` - unlike the rest of this file's `async throws` house style - because
+/// emission is strictly fire-and-forget: a call site reads `await analytics.record(event)` with no
+/// `try`, and a failed, slow, or offline send is swallowed by the live implementation (US-T04),
+/// never surfaced to a caller and never allowed to gate the core loop.
+protocol AnalyticsServiceProtocol {
+    func record(_ event: AnalyticsEvent) async
+}
+
 /// Handles Sign in with Apple identity.
 protocol AuthServiceProtocol {
     func currentUserIdentifier() async throws -> String?

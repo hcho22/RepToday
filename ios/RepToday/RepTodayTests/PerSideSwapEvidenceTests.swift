@@ -492,7 +492,10 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         let workoutLogService = MockWorkoutLogService(logs: history())
         return ServiceContainer(
             exerciseService: exerciseService,
-            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
+            // Pin the assembler's clock so the hosted Ready Screen generates the same lineup as
+            // `generate()` (fixed `asOf`), rather than drifting with the wall clock and diverging by
+            // a staleness tier as real time moves away from the fixture date.
+            workoutEngine: MockWorkoutEngine(exerciseService: exerciseService, now: { self.asOf }),
             sessionPolicyService: DeterministicSessionPolicyService(
                 store: policyStore, exerciseService: exerciseService, userService: userService
             ),
