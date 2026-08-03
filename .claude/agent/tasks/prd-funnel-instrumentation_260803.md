@@ -147,7 +147,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 - [ ] `logEvent` is append-only: it inserts one row and returns. It performs **no** funnel modelling, no aggregation, no dedup, and no cohort math - the whole point is that analysis stays deferred.
 - [ ] Basic input validation only: the mutation rejects an unknown event name (a `v.union` of the 13 string literals, or an explicit check) and an oversized property bag, so a malformed client cannot poison the table, but it does nothing else.
 - [ ] A `convex/http.ts` HTTP action routes `POST /logEvent` and wraps the same `logEvent` mutation via `ctx.runMutation`, so the client reaches the sink over plain HTTPS with no Convex SDK. It reads the JSON body, coerces the scalar fields, calls `logEvent`, and returns `204` (the shape validated in US-T01).
-- [ ] The numeric convention is pinned explicitly. Convex distinguishes `int64` from `float64` (a `v.number()` field rejects a Swift `Int` sent through the SDK - the `$integer` vs float64 trap the US-T01 spike documents), but the HTTP action coerces `clientTs`/`generation_ms` with `Number(...)`, so timestamps land as `float64` regardless of how the client formats them. Declare the numeric fields `v.number()` to match.
+- [ ] The numeric convention is pinned explicitly. Convex distinguishes `int64` from `float64` (a `v.number()` field rejects a Swift `Int` sent through the SDK - the `$integer` vs float64 trap the US-T01 spike documents), but the HTTP action coerces the top-level `clientTs` scalar with `Number(...)`, so that timestamp lands as `float64` regardless of how the client formats it. Declare that top-level numeric field `v.number()` to match. `generation_ms` is **not** a top-level scalar: it travels inside the `props` bag (the Convex `any`/object the action passes through untouched), so it is not reached by the top-level `Number(...)` coercion and is stored as-is.
 - [ ] A short `convex/README.md` documents the table shape, the mutation contract, the HTTP action (`POST /logEvent` -> `204`), and the explicit non-goal ("no analysis in the backend; the sink is dumb by design").
 - [ ] No app code changes in this story. Build and tests pass (Convex functions carry their own TypeScript checks; the iOS build is untouched).
 
@@ -413,6 +413,36 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 ---
 
+### US-T14: Protect the public `POST /logEvent` HTTP action against abuse
+
+**Description:** As the developer, I want the public, unauthenticated `POST /logEvent` HTTP action guarded against casual abuse, so that a stranger who discovers the endpoint URL cannot flood the `events` table with junk rows.
+This story **depends on US-T03** (the HTTP action must exist before it can be guarded) and must land **before launch**, not after: the checkpoint reads kill criteria off this table, so the protection has to be in place the moment the endpoint is internet-reachable with real installs behind it.
+The `events` table is the evidence base for K1, K2, and K4.
+Junk rows injected by anyone who finds the endpoint would inflate installs, sessions, and weekly-active counts, so the captain would be reading kill criteria off poisoned data at the checkpoint; wasted Convex quota and billing is a secondary cost.
+This story adds **no** user accounts, no per-user authentication, no App Tracking Transparency prompt, and no identity in events - those remain hard non-goals and this story must not weaken them.
+
+**Acceptance Criteria:**
+
+- [ ] A shared secret is embedded in the client build and sent with each `POST /logEvent` request (e.g. a header); the HTTP action rejects any request that does not carry the expected secret with a non-`204` status and no insert.
+- [ ] The criteria state honestly that a client-embedded secret is extractable from the app binary and therefore **raises the cost** of abuse rather than preventing it: it stops opportunistic flooding of a freshly-discovered URL, not a determined attacker who unpacks the app.
+- [ ] Rate limiting is applied in the HTTP action, keyed on the shared secret and/or the per-install identifier, so that a single source cannot insert more than a sane ceiling of rows in a window; requests over the ceiling are rejected without inserting.
+- [ ] The secret check and rate limiting run **before** the `logEvent` mutation is called, so a rejected request never writes a row.
+- [ ] The guard introduces no user accounts, no per-user auth, no ATT prompt, and no identity in events; the row shape from US-T03 is unchanged (event name, install id, client timestamp, server timestamp, property bag).
+- [ ] The `convex/README.md` documents the shared-secret check and the rate-limit ceiling, and states plainly that the secret is a cost-raiser, not a guarantee.
+- [ ] Build and tests pass (this is backend and pure-logic work; the mutation and validation stay covered by their own TypeScript checks).
+
+**Validation Test:**
+
+- **Setup:** The US-T03 backend deployed to a development deployment, with the shared secret configured.
+- **Steps:**
+  1. `POST` a valid event **with** the correct shared secret; confirm `204` and one inserted row.
+  2. `POST` a valid event **without** the secret (or with a wrong one); confirm rejection and **no** inserted row.
+  3. `POST` past the rate-limit ceiling from one key in a short window; confirm the over-ceiling requests are rejected without inserting.
+- **Expected Result:** Only secret-bearing requests under the ceiling insert rows; missing/wrong-secret and over-ceiling requests are rejected with no insert. No user identity is introduced anywhere in the path. Build and tests pass.
+- **Failure Indicator:** A secretless or over-ceiling request inserts a row; the check runs after the mutation writes; the guard introduces user accounts, per-user auth, an ATT prompt, or identity into events; or the row shape changes.
+
+---
+
 ## Functional Requirements
 
 - **FR-1:** The app must emit the 13 pre-registered in-app events from `gtm/06-channels/event-metric-schema.md`, using their exact names and property lists, and no others: `app_install`, `onboarding_started`, `onboarding_completed`, `ready_screen_shown`, `session_started`, `session_completed`, `session_abandoned`, `day7_return`, `day30_return`, `week_active`, `paywall_shown`, `trial_started`, `subscribe`.
@@ -427,7 +457,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 - **FR-10:** `generation_ms` must be measured as the wall-time delta around the `ReadyViewModel.generate()` engine call, and a device benchmark record (cold/warm, p95, slowest supported device iPhone XS on iOS 17, method, date) must be produced under `01-research/` as the substantiation for the sub-100ms marketing claim.
 - **FR-11:** `abandon_point` and `entry_point` must be small closed enums (no free text), introduced as new types since neither has a backing field today.
 - **FR-12:** The app must not present an App Tracking Transparency prompt and must not touch the advertising identifier; the App Store privacy nutrition label reflects Usage Data (and a Device ID if the install identifier is classed as one), both marked not linked to identity and not used for tracking.
-- **FR-13:** No test run may perform a real network call; all tests emit through `MockAnalyticsService`.
+- **FR-13:** No test run may perform a real network call. Tests satisfy this either by emitting through `MockAnalyticsService` or by exercising `LiveAnalyticsService` through an in-process `URLProtocol` stub that intercepts the request without touching the network.
 
 ---
 
@@ -439,7 +469,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 - **No user-level identity in any event.** No email, no IDFA, no `identifierForVendor`, no Sign in with Apple identifier - only a random per-install UUID.
 - **No ATT prompt** and no access to the advertising identifier.
 - **No change to the deterministic engine, the paywall logic, the session loop, or any existing service behaviour.** Emissions are additive hooks; they never alter what the app does.
-- **No backend beyond the single append-only table and its one `logEvent` mutation.** No queues, no auth beyond the deployment's default, no server-side analysis.
+- **No backend beyond the single append-only table, its one `logEvent` mutation, and the `POST /logEvent` HTTP action guarded by US-T14's shared-secret check and rate limiting.** No queues, no user accounts, no per-user authentication, no identity in events, and no server-side analysis; the US-T14 abuse guard (a client-embedded shared secret plus rate limiting on the endpoint) is the only auth-shaped logic and exists solely to keep strangers from flooding the table, not to identify users.
 - **No web-side events.** `landing_page_view` and `waitlist_signup` are web events handled outside the app and are not part of this build.
 - **No attempt to read K3 (D30 retention) or K7 (day-35 conversion) at the checkpoint.** They are structurally unreadable in the window (see Success Metrics); this build makes them measurable later, not now.
 
