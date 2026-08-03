@@ -1,7 +1,8 @@
 # PRD: Funnel Instrumentation - Anonymous Product Telemetry for the PMF Test
 
 **Opened:** 2026-08-03
-**Status:** Implementation-ready. Not started.
+**Status:** Implementation-ready. US-T01 (transport spike) complete; its outcome re-scoped US-T03 and US-T04 (see the 2026-08-03 re-scope note under US-T03). US-T02 onward not started.
+**Transport decision (2026-08-03):** the US-T01 spike returned a no-go on `convex-swift` and the captain adopted it. The transport is now a Convex HTTP action (`POST /logEvent`) reached by a plain `URLSession` POST, with **no** new Swift Package dependency. Reason: `convex-swift` ships an arm64-only binary xcframework (no `x86_64` slice), which would make every Simulator-hosted test suite in this repo unbuildable on the captain's Intel host. iOS 17 was never the blocker. See `artifacts/reports/US-T01/spike-note.md`.
 **Blocks:** The 90-day PMF evaluation against kill criteria K1-K8. Without this build, K1 (onboarding-to-first-session) and K4 (Weekly Active Exercisers) are unmeasurable, and K2/K3 are untrustworthy.
 **Story prefix:** `US-T##` (T for telemetry). See "Story numbering" note below.
 **Source of the events:** `gtm/06-channels/event-metric-schema.md` (pre-registered; event names and properties are carried over verbatim and must not be edited to move a threshold).
@@ -66,7 +67,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 - Keep the core loop strictly offline-first: telemetry is fire-and-forget and can never wait on, degrade for, or fail because of a network call.
 - Keep the pipeline privacy-preserving: anonymous per-install identifier only, no identity, no IDFA, no ATT prompt, opt-out in one place, zero emission when off.
 - Ship ingest only. Defer all cohort math, dashboards, and retention modelling to after launch, when real data exists.
-- De-risk the one unproven dependency (`convex-swift`) with a throwaway spike before any app code is written.
+- De-risk the transport with a throwaway spike before any app code is written. (Done: US-T01 investigated `convex-swift`, returned a no-go on it, and the adopted transport is now a Convex HTTP action reached by a plain `URLSession` POST - **no** new Swift Package dependency. See the transport-decision note above.)
 - Prove the pipeline is trustworthy by reconciling what it reports for the moderated TestFlight cohort against what was actually observed and coded in the room.
 
 ---
@@ -88,12 +89,12 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 **Acceptance Criteria:**
 
-- [ ] Work happens on a throwaway spike branch that is **never merged**; nothing from it lands in the app target.
-- [ ] A minimal Convex deployment exists with one table and one `logEvent` mutation (may be discarded after).
-- [ ] The `get-convex/convex-swift` package is added to a throwaway Swift target (a command-line tool or a scratch app), the client connects, and one hand-crafted event is sent.
-- [ ] The event is confirmed visible in the Convex dashboard for that deployment.
-- [ ] A one-page spike note is written to `artifacts/reports/US-T01/` recording: the package version pinned, the connection/auth shape, how a mutation is called from Swift, any iOS 17 deployment-target friction, and a go/no-go on `convex-swift`.
-- [ ] Time-box: roughly two hours. If it cannot connect in that window, stop and record the blocker in the spike note.
+- [x] Work happens on a throwaway spike branch that is **never merged**; nothing from it lands in the app target.
+- [x] A minimal Convex deployment exists with one table and one `logEvent` mutation (may be discarded after). (Scratch deployment `determined-vulture-542`, table `events`, mutation `logEvent`.)
+- [x] The `get-convex/convex-swift` package is added to a throwaway Swift target (a command-line tool or a scratch app), the client connects, and one hand-crafted event is sent. **Partly, and this is the finding:** the package (`0.8.1`) was added and built cleanly against an iOS 17.0 deployment target, but its xcframework is arm64-only, so the Swift client **could not be run** on the captain's Intel host (no `x86_64` slice; Rosetta on Intel cannot run arm64). The event was therefore sent via an HTTPS POST and the Convex CLI mutation runner instead, which is exactly the evidence that drove the no-go. See the spike note.
+- [x] The event is confirmed visible in the Convex dashboard for that deployment. **Verified equivalently, not via the web dashboard:** the dashboard sits behind an interactive OAuth sign-in and the spike was correctly forbidden from improvising a login, so the event was confirmed with an authenticated `npx convex data events` round-trip that reads the deployment's persisted rows and shows server-stamped `serverTs` timestamps - the same data the dashboard renders. No dashboard screenshot exists; a human with the Convex account can open the URL and see the two rows.
+- [x] A one-page spike note is written to `artifacts/reports/US-T01/` recording: the package version pinned, the connection/auth shape, how a mutation is called from Swift, any iOS 17 deployment-target friction, and a go/no-go on `convex-swift`. (`artifacts/reports/US-T01/spike-note.md`.)
+- [x] Time-box: roughly two hours. If it cannot connect in that window, stop and record the blocker in the spike note. (Completed inside the box with a decisive no-go.)
 
 **Validation Test:**
 
@@ -135,42 +136,48 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 ### US-T03: Convex backend - one append-only table and one `logEvent` mutation
 
-**Description:** As the developer, I want a single append-only Convex table and one `logEvent` mutation in the repo's `convex/` placeholder, so that events have a dumb sink to land in and analysis stays fully deferred and revisable.
+**Description:** As the developer, I want a single append-only Convex table, one `logEvent` mutation, and one `POST /logEvent` HTTP action in the repo's `convex/` placeholder, so that events have a dumb sink to land in - reachable over plain HTTPS so the client needs no Convex SDK - and analysis stays fully deferred and revisable.
+
+> **Transport note (per the US-T01 spike, adopted 2026-08-03):** the HTTP action is what makes the no-SDK `URLSession` transport in US-T04 possible. It is not optional polish; it is the client's only entry point.
 
 **Acceptance Criteria:**
 
 - [ ] The empty `convex/` placeholder (currently just `.gitkeep`) gains a real Convex project: a schema with **one** table (e.g. `events`) and **one** mutation, `logEvent`.
 - [ ] The `events` table stores: event name (string), install identifier (string), client timestamp (number, ms), server-received timestamp (number, ms, set by the mutation), and a JSON property bag (a Convex object/`any`).
 - [ ] `logEvent` is append-only: it inserts one row and returns. It performs **no** funnel modelling, no aggregation, no dedup, and no cohort math - the whole point is that analysis stays deferred.
-- [ ] Basic input validation only: the mutation rejects an unknown event name and an oversized property bag, so a malformed client cannot poison the table, but it does nothing else.
-- [ ] A short `convex/README.md` documents the table shape, the mutation contract, and the explicit non-goal ("no analysis in the backend; the sink is dumb by design").
+- [ ] Basic input validation only: the mutation rejects an unknown event name (a `v.union` of the 13 string literals, or an explicit check) and an oversized property bag, so a malformed client cannot poison the table, but it does nothing else.
+- [ ] A `convex/http.ts` HTTP action routes `POST /logEvent` and wraps the same `logEvent` mutation via `ctx.runMutation`, so the client reaches the sink over plain HTTPS with no Convex SDK. It reads the JSON body, coerces the scalar fields, calls `logEvent`, and returns `204` (the shape validated in US-T01).
+- [ ] The numeric convention is pinned explicitly. Convex distinguishes `int64` from `float64` (a `v.number()` field rejects a Swift `Int` sent through the SDK - the `$integer` vs float64 trap the US-T01 spike documents), but the HTTP action coerces `clientTs`/`generation_ms` with `Number(...)`, so timestamps land as `float64` regardless of how the client formats them. Declare the numeric fields `v.number()` to match.
+- [ ] A short `convex/README.md` documents the table shape, the mutation contract, the HTTP action (`POST /logEvent` -> `204`), and the explicit non-goal ("no analysis in the backend; the sink is dumb by design").
 - [ ] No app code changes in this story. Build and tests pass (Convex functions carry their own TypeScript checks; the iOS build is untouched).
 
 **Validation Test:**
 
 - **Setup:** The Convex CLI configured against a development deployment (may reuse the US-T01 scratch deployment or a fresh one).
 - **Steps:**
-  1. Deploy the schema and `logEvent`.
-  2. Call `logEvent` from the Convex dashboard function runner with a valid event.
-  3. Call it again with an unknown event name and with an oversized bag.
-- **Expected Result:** The valid call inserts exactly one row with both timestamps populated. The invalid calls are rejected without inserting. The table has no indexes or logic beyond append.
-- **Failure Indicator:** The mutation aggregates or transforms data, accepts an unknown event name, or the schema carries funnel/cohort structure.
+  1. Deploy the schema, `logEvent`, and the `convex/http.ts` HTTP action.
+  2. `POST` a valid event as JSON to `<deployment>.site/logEvent` (the transport US-T04 uses); confirm `204` and read the row back with `npx convex data events`.
+  3. Call `logEvent` again with an unknown event name and with an oversized bag (via the function runner or a second POST).
+- **Expected Result:** The valid POST returns `204` and inserts exactly one row with both timestamps populated. The invalid calls are rejected without inserting. The table has no indexes or logic beyond append.
+- **Failure Indicator:** The mutation aggregates or transforms data, accepts an unknown event name, the HTTP action fails to reach the mutation, or the schema carries funnel/cohort structure.
 
 ---
 
 ### US-T04: Live Convex-backed `AnalyticsService` - fire-and-forget transport
 
-**Description:** As the developer, I want a `LiveAnalyticsService` that sends events to Convex via `convex-swift` in a strictly fire-and-forget way, wired into `live(context:)`, so that real builds emit anonymous events without the core loop ever waiting on or failing because of the network.
+**Description:** As the developer, I want a `LiveAnalyticsService` that sends events to Convex over a plain `URLSession` POST in a strictly fire-and-forget way, wired into `live(context:)`, so that real builds emit anonymous events without the core loop ever waiting on or failing because of the network - and with no new Swift Package dependency.
+
+> **Transport re-scope (US-T01 spike, adopted 2026-08-03):** this story previously mandated adding `get-convex/convex-swift` to `ios/RepToday/project.yml`. That is dropped. The US-T01 spike returned a no-go (`convex-swift` ships an arm64-only xcframework, which breaks every Simulator-hosted test suite on the captain's Intel host) and the captain adopted it. `LiveAnalyticsService` now posts JSON to the deployment's `.site/logEvent` HTTP action (US-T03) with `URLSession`. Lottie stays the app's only third-party package.
 
 **Acceptance Criteria:**
 
-- [ ] `LiveAnalyticsService` conforms to `AnalyticsServiceProtocol`, holds a `convex-swift` client, and maps an `AnalyticsEvent` onto the `logEvent` mutation.
-- [ ] `convex-swift` (`get-convex/convex-swift`) is added to `ios/RepToday/project.yml` as the second Swift Package dependency, pinned to the version validated in US-T01, and the project regenerates cleanly with `xcodegen generate`.
-- [ ] Emission is **strictly fire-and-forget**: `record(_:)` returns immediately, the send happens on a detached/background task, and no caller ever awaits network completion. A failed, slow, or offline send is swallowed (best-effort), exactly like every other integration in this app (HealthKit, CloudKit, StoreKit observation).
+- [ ] `LiveAnalyticsService` conforms to `AnalyticsServiceProtocol`, encodes an `AnalyticsEvent` as JSON, and `POST`s it to the deployment's `.site/logEvent` HTTP action with `URLSession`. No Convex SDK is used.
+- [ ] **No new Swift Package dependency is added.** `ios/RepToday/project.yml` still lists Lottie as the only third-party package; `convex-swift` is **not** added. Only the deployment `.site` URL is new config (a build setting or plist value), alongside the install id from US-T05 and the opt-out flag from US-T06.
+- [ ] Emission is **strictly fire-and-forget**: `record(_:)` returns immediately, the send happens on a detached/background task (`Task.detached`), and no caller ever awaits network completion. A failed, slow, or offline send is swallowed (`try?`, best-effort), exactly like every other integration in this app (HealthKit, CloudKit, StoreKit observation).
 - [ ] The core loop is never blocked, degraded, or failed by telemetry: verified by the offline validation test below.
 - [ ] `live(context:)` in `DI/ServiceContainer.swift` swaps the temporary mock for `LiveAnalyticsService`; `mock()` keeps `MockAnalyticsService`. The environment/injection path (`@Environment(\.services)`) is unchanged.
 - [ ] Events carry the anonymous install identifier from US-T05 and honour the opt-out flag from US-T06 (integration wired here; the identifier and flag land in those stories - order T05/T06 before T04's final wiring, or stub then connect).
-- [ ] Build and tests pass; no test run performs a real network call (tests use the mock).
+- [ ] Build and tests pass; no test run performs a real network call. Unit tests either use `MockAnalyticsService` or exercise `LiveAnalyticsService` through a `URLProtocol` stub that intercepts the request in-process (asserting the URL, method, and JSON body without touching the network), so FR-13 holds with no live call.
 
 **Validation Test:**
 
@@ -413,7 +420,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 - **FR-3:** Emission must go through a single `AnalyticsServiceProtocol` seam declared in `Services/Protocols/ServiceProtocols.swift`, with a `MockAnalyticsService` (records to an in-memory array, no I/O) and a `LiveAnalyticsService` (Convex-backed), both registered in `DI/ServiceContainer.swift` (`mock()` and `live(context:)`) and reached via `@Environment(\.services)`.
 - **FR-4:** Emission must be strictly fire-and-forget: `record(_:)` returns immediately, sending happens off the calling path, and no core-loop interaction ever waits on, degrades for, or fails because of a telemetry call. Offline behaviour must be identical to online behaviour for the user.
 - **FR-5:** Each event must carry a random per-install identifier (UUIDv4 in `UserDefaults`, never Keychain, never derived from IDFA / `identifierForVendor` / Sign in with Apple / email), the client timestamp, and its property bag. No user-level identity may appear in any event.
-- **FR-6:** The Convex backend must be one append-only table plus one `logEvent` mutation that inserts and returns, with input validation only and no aggregation, dedup, or cohort math.
+- **FR-6:** The Convex backend must be one append-only table plus one `logEvent` mutation that inserts and returns, with input validation only and no aggregation, dedup, or cohort math. It must also expose a `POST /logEvent` HTTP action (`convex/http.ts`) that wraps that same mutation, so the app reaches the sink over plain HTTPS with no Convex SDK (the transport adopted after the US-T01 spike).
 - **FR-7:** Telemetry must be opt-out: on by default, disclosed in onboarding and the privacy policy, controlled by one clearly-labelled Settings toggle, and must emit **zero** events (zero network calls) when off.
 - **FR-8:** `app_install` must fire exactly once at first launch; `day7_return` and `day30_return` must each fire at most once, within days 7-13 and 30-36 of `firstLaunchAt` respectively; `week_active` must fire at most once per active calendar week. All dedup and windowing must be deterministic under an injected clock.
 - **FR-9:** `week_active`'s week bucketing must reuse the existing `ConsistencyScore.startOfWeek` rollup that `ProgressAnalytics` already computes, not a re-implemented calendar calculation.
@@ -428,7 +435,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 - **No cohort, retention, or funnel math in this build.** Ingest only. All derived-metric computation (D7/D30 rates, WAE share, free-to-paid, session-completion rate) is deferred to after launch, when real data exists.
 - **No dashboards, charts, or reporting UI.** The Convex dashboard's raw table view is the only surface; no in-app or web analytics view ships.
-- **No third-party analytics SDK.** No Firebase, Amplitude, Mixpanel, PostHog, TelemetryDeck, Countly, or Segment. The only new dependency is `convex-swift`.
+- **No third-party analytics SDK.** No Firebase, Amplitude, Mixpanel, PostHog, TelemetryDeck, Countly, or Segment. And, following the US-T01 spike, **no new Swift Package dependency at all**: the client reaches Convex over a plain `URLSession` POST to an HTTP action, so Lottie stays the app's only third-party package. (This is a stronger version of the original "the only new dependency is `convex-swift`" principle - the spike removed even that one.)
 - **No user-level identity in any event.** No email, no IDFA, no `identifierForVendor`, no Sign in with Apple identifier - only a random per-install UUID.
 - **No ATT prompt** and no access to the advertising identifier.
 - **No change to the deterministic engine, the paywall logic, the session loop, or any existing service behaviour.** Emissions are additive hooks; they never alter what the app does.
@@ -450,7 +457,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 - **Architecture / seam.** `AnalyticsServiceProtocol` follows the codebase's protocol + mock + live convention (`Services/Protocols/ServiceProtocols.swift`, `Services/Mock/`, a live impl), registered in `DI/ServiceContainer.swift` in both `mock()` and `live(context:)`, and reached via `@Environment(\.services)` exactly like every other service. `@Observable` only, `async` methods, `Theme` tokens for any UI, tests under `ios/RepToday/RepToday/RepTodayTests/` with a row added to `docs/test-coverage.md` per story.
 - **Fire-and-forget precedent.** Every existing integration in this app already degrades quietly and never gates the core loop (HealthKit writes, CloudKit sync, StoreKit transaction observation via `startObservingTransactions()`). `LiveAnalyticsService` follows the same rule: best-effort, background, swallowed failures.
-- **Convex client.** `get-convex/convex-swift` is the second Swift Package dependency (after Lottie) in `ios/RepToday/project.yml`; the project is regenerated with `xcodegen generate`. The US-T01 spike pins the version and confirms it builds against the iOS 17 deployment target before any app code depends on it.
+- **Convex transport (no client SDK).** The client reaches Convex over a plain `URLSession` POST to the deployment's `.site/logEvent` HTTP action (US-T03), so **no** Convex Swift package is added; `ios/RepToday/project.yml` keeps Lottie as its only third-party dependency. The US-T01 spike investigated `get-convex/convex-swift` and returned a no-go: it builds fine against an iOS 17.0 target (iOS 17 was never the blocker), but it ships an arm64-only binary xcframework with no `x86_64` slice, which would make every Simulator-hosted test suite in this repo unbuildable on the captain's Intel host - for what needs to be one fire-and-forget JSON POST. The captain adopted the no-go on 2026-08-03. If live reactive Convex queries are ever wanted, the first thing to re-check is that arm64-only xcframework against the Macs and CI runners in use, not the iOS deployment target. See `artifacts/reports/US-T01/spike-note.md`.
 - **Install identifier lifecycle.** A random UUIDv4 in `UserDefaults` dies on uninstall (per-install by construction) and is deliberately **not** Keychain-persisted - Keychain persistence would survive reinstall and resurrect a "deleted" identity, the exact failure mode the account-deletion PRD flags. This also keeps the identifier cleanly outside anything the account-deletion path must tear down.
 - **Clock injection.** All windowing/dedup logic (returns, `week_active`, `elapsed_seconds`, `generation_ms`) takes an injected clock, consistent with the rule that pure engine/evaluator logic never reads the wall clock inline, so every event's timing is deterministic under test.
 - **New timestamps in `AppState`.** `AppState` today persists only `isOnboarded` and `selectedTab`; `installId`, `firstLaunchAt`, `lastActiveAt`, and `analyticsEnabled` are net-new `UserDefaults` keys added there (or a small sibling store), because no first-launch marker exists in the codebase.
