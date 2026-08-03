@@ -35,7 +35,7 @@ Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
 Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
 `DEVELOPMENT_TEAM` is set to the signing team, so entitlement-gated paths (Sign in with Apple, CloudKit sync, HealthKit writes, live purchases) build for device; they still verify only on real hardware, never in the Simulator.
 Historical device notes in `docs/implementation-log.md` and the PRDs predate this and describe the team as empty - read them as point-in-time records.
-The evidence suites (`PerSideSwapEvidenceTests`, `OnboardingBasicsEvidenceTests`, `ProgressTabSnapshotTests`) render production screens to PNGs on every run, and `OnboardingImperialUITests` screenshots the running app the same way, but a plain `test` writes them to a per-run temporary directory so the worktree stays clean; append `REPTODAY_WRITE_EVIDENCE=1` (a build setting, since a Simulator-hosted test bundle inherits no shell environment - both schemes forward it) to regenerate the committed images under `artifacts/reports/<story>/`, or `REPTODAY_EVIDENCE_DIR=<root>` to send them elsewhere.
+The evidence suites (`PerSideSwapEvidenceTests`, `OnboardingBasicsEvidenceTests`, `ProgressTabSnapshotTests`) render production screens to PNGs on every run, `AnalyticsServiceTests` writes the same way for a non-UI seam (the funnel's wire payload and transcript, text rather than pixels), and `OnboardingImperialUITests` screenshots the running app, but a plain `test` writes them all to a per-run temporary directory so the worktree stays clean; append `REPTODAY_WRITE_EVIDENCE=1` (a build setting, since a Simulator-hosted test bundle inherits no shell environment - both schemes forward it) to regenerate the committed artifacts under `artifacts/reports/<story>/`, or `REPTODAY_EVIDENCE_DIR=<root>` to send them elsewhere.
 A suite never rolls its own path: `EvidenceOutput.directory(for:)` is the one resolver, and `REPTODAY_EVIDENCE_DIR` names a **root** with the story folder appended - never the final directory - so one redirected run keeps the same `<root>/<story>/<file>` shape as the committed baselines instead of scattering suites' renders into different layouts.
 The XCUITest screenshots are produced on demand rather than committed: the suite always files them with its `.xcresult` too, so the two variables only decide where a second, browsable copy lands.
 Hosting a production surface to capture or read it likewise goes through `HostedSurface.host(_:size:)` and `AccessibilityTree`, so every suite gets the same run-loop settling rather than an ad-hoc copy that reads a half-drawn screen.
@@ -49,6 +49,8 @@ Hosting a production surface to capture or read it likewise goes through `Hosted
 **Persistence:** CoreData over `NSPersistentCloudKitContainer` with two stores - the **Cloud** configuration (`CDUser`, `CDWorkoutLog`, `CDSessionPolicy`) mirrors to the user's private iCloud database, and the **Local** configuration (`CDActiveSession`) is device-bound transient state that never syncs. The core loop works fully offline and with no iCloud account; sync is additive and falls back to local-only on any CloudKit failure. Domain models are plain `Codable` structs; nested fields persist as JSON-encoded `Data`.
 
 **Integrations & navigation:** Sign in with Apple, CloudKit, write-only HealthKit, and StoreKit 2 (free unlimited core, premium depth only) never gate the core loop and degrade quietly; `AppState` (`@Observable`, UserDefaults-persisted) controls onboarding vs. main tabs and the selected tab.
+
+**Anonymous product telemetry (funnel instrumentation, a separate PRD):** `AnalyticsServiceProtocol.record(_:)` takes an `AnalyticsEvent` - one of exactly 13 pre-registered event names (`gtm/06-channels/event-metric-schema.md`, snake_case raw values that are the wire contract), a millisecond client timestamp, and a non-identifying `[String: AnalyticsValue]` bag. As of US-T02 this is the **seam only**: nothing emits and nothing leaves the process - both `mock()` and `live(context:)` wire the in-memory `MockAnalyticsService` until US-T04 lands the Convex-backed fire-and-forget `URLSession` POST.
 
 ## The Deterministic Engine
 
@@ -74,7 +76,7 @@ No XP, no levels, no badges, no streak to break.
 
 ## Key Conventions
 
-- `@Observable` only, never `ObservableObject`/`@Published`. All service methods are `async throws`.
+- `@Observable` only, never `ObservableObject`/`@Published`. All service methods are `async throws` - the one exception is `AnalyticsServiceProtocol.record(_:)`, which is `async` but not `throws` because emission is strictly fire-and-forget, so a call site reads `await analytics.record(event)` with no `try`.
 - Enums are `Codable`, `CaseIterable`, and `Identifiable` where they have a stable id.
 - Always use `Theme.Colors` / `Theme.Typography` / `Theme.Spacing`; never hardcode colors, fonts, or spacing.
 - Button height 56pt, card radius 16pt, touch targets 44pt (60pt on active workout screens).

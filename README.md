@@ -116,7 +116,7 @@ AI/LLM features are deferred to Phase 2 and, when they arrive, do language only 
                    │
 ┌──────────────────▼──────────────────────────────┐
 │  Service Protocols (Services/Protocols/)         │
-│  All methods async throws; mock implementations │
+│  Methods async throws; mock implementations     │
 └──────────────────┬──────────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────────┐
@@ -128,7 +128,7 @@ AI/LLM features are deferred to Phase 2 and, when they arrive, do language only 
 
 **Key design decisions:**
 
-- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched.
+- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched. Service methods are `async throws`, with one deliberate exception: `AnalyticsServiceProtocol.record(_:)` is `async` but never `throws`, because anonymous telemetry is strictly fire-and-forget and must not hand a caller a failure to think about.
 - **CoreData with domain separation** - domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`. The core loop works fully offline; CloudKit handles sync and backup when available.
 - **Deterministic engine** - the workout engine runs entirely on-device with no network or LLM calls (see below).
 - **Environment-based DI** - `ServiceContainer` holds all service instances, injected at the app root via a custom `EnvironmentKey`.
