@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { ConvexError, convexToJson, type Value } from "convex/values";
+import { convexToJson, type ConvexError, type Value } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { EVENT_NAMES, type AnalyticsEventName } from "./events";
@@ -30,13 +30,23 @@ const isEventName = (value: unknown): value is AnalyticsEventName =>
 
 /**
  * `logEvent` raises the rejections this sink asks for as `ConvexError`; anything else that escapes
- * it is a runtime or database failure, which is ours rather than the caller's. The class identity
- * does survive the `runMutation` boundary: the SDK reconstructs a cross-isolate throw as a genuine
- * `ConvexError` when it carries `data`, and as a plain `Error` otherwise - so `instanceof` is the
- * whole test, and only the error's structured `data` is ever echoed, never a message text.
+ * it is a runtime or database failure, which is ours rather than the caller's. The SDK reconstructs
+ * a cross-isolate throw as a genuine `ConvexError` when it carries `data`, and as a plain `Error`
+ * otherwise, so that one marker is the whole test - and only the error's structured `data` is ever
+ * echoed, never a message text.
+ *
+ * The marker is read the way the SDK itself reads it (`registration_impl.ts` uses
+ * `Symbol.for("ConvexError") in thrown`) rather than by `instanceof`. Class identity is not a safe
+ * discriminator here: the package ships physically distinct copies of the class under `dist/cjs`
+ * and `dist/esm`, and the copy `performAsyncSyscall` constructs from is reached by a relative
+ * import rather than the `convex/values` specifier this file uses. If those ever resolve to two
+ * copies, `instanceof` fails and every property-bag rejection silently becomes a 500 - the false
+ * outage signal this split exists to prevent. `Symbol.for` is registry-global, so it does not care.
  */
 const rejectionMessage = (error: unknown): string | null => {
-  if (error instanceof ConvexError) return String(error.data);
+  if (typeof error === "object" && error !== null && Symbol.for("ConvexError") in error) {
+    return String((error as ConvexError<Value>).data);
+  }
   return null;
 };
 

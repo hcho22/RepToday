@@ -117,6 +117,13 @@ above stay absent.
 
 `logEvent` raises its own rejections as `ConvexError` rather than `Error`, which is what lets the
 action tell a rejection it asked for apart from a failure it did not - see the status codes below.
+That marker is read the way the SDK reads it, by testing the thrown object for `Symbol.for("ConvexError")`
+rather than with `instanceof`. The distinction is not pedantry: the `convex` package ships physically
+distinct copies of the class under `dist/cjs` and `dist/esm`, and the copy the syscall layer
+reconstructs a cross-isolate throw from is reached by a relative import rather than the
+`convex/values` specifier `http.ts` uses. Should those ever resolve to two copies, an `instanceof`
+test would fail and every property-bag rejection would silently become a `500` - precisely the false
+outage the split exists to prevent. `Symbol.for` is registry-global and does not care.
 
 **Known current gap:** `installId` is an unbounded `v.string()` while `props` is capped, so a
 hostile client can still write a very large row through that one field. This was reviewed during
@@ -229,6 +236,17 @@ The transport status is `200` in both cases - Convex reports a missing public fu
 response payload rather than as an HTTP status - so the proof is the payload plus the absent row, not
 a status code. The junk row that the pre-fix probe inserted was afterwards deleted, and the
 transcript records how; the table read back at `99a11d0` holds only valid rows.
-What no run covers is the fourth round's deletion of an unreachable branch in the action's error
-classifier, which landed after that third run and is gated by `npm run typecheck`; the transcript
-says so in place rather than implying the current commit was re-probed.
+What no run covers is two later, classifier-only rounds that landed after that third run and are
+gated by `npm run typecheck` alone: the fourth deleted an unreachable branch of the action's error
+classifier, and the fifth changed how the remaining branch recognises a `ConvexError` - from
+`instanceof` to the SDK's own `Symbol.for("ConvexError")` test - which is a strict superset of what
+`instanceof` matched and so leaves every response above unchanged. The transcript says so in place
+rather than implying the current commit was re-probed.
+
+**Nothing here has an automated behavioural test, and this repo has no CI.** The gate is
+`npm run typecheck` plus the one-time transcript above, so a regression in the 13-name check, the
+`installId`/`clientTs` validation, the field-name classification, the `props` caps, the `4xx`/`5xx`
+split, or `logEvent` staying internal would not be caught by anything that re-runs. That is recorded
+as an unchecked acceptance criterion of US-T04 in
+`.claude/agent/tasks/prd-funnel-instrumentation_260803.md` - the story that first sends real traffic
+through this boundary and the first to edit `http.ts` after US-T03 - and in `docs/test-coverage.md`.

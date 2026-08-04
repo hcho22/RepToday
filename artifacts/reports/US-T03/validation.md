@@ -19,10 +19,13 @@ simulated and not inferred from a local type-check.
 > server-stamped `serverTs`, the untouched `props` pass-through, the two oversized-bag rejections,
 > the non-insert proven by reading the table back, and every shape assertion.
 >
-> **The scope boundary, stated rather than glossed:** a fourth review round deleted an unreachable
-> branch of the action's error classifier in `convex/http.ts`, and that deletion landed *after* the
-> `99a11d0` run. So this transcript covers every behaviour through commit `99a11d0` and not the commit
-> that carries the deletion; no result is claimed for the latter.
+> **The scope boundary, stated rather than glossed:** two later review rounds changed the action's
+> error classifier in `convex/http.ts` and nothing else - a fourth deleted an unreachable branch, and
+> a fifth changed how the remaining branch recognises a `ConvexError`, from `instanceof` to the SDK's
+> own `Symbol.for("ConvexError")` presence test (a strict superset of what `instanceof` matched, so
+> every response recorded below is unaffected in principle). Both landed *after* the `99a11d0` run.
+> So this transcript covers every behaviour through commit `99a11d0` and not the commits that carry
+> those two changes; no result is claimed for either, and their only gate is `npm run typecheck`.
 
 ---
 
@@ -318,10 +321,19 @@ Every row has a non-empty `installId`, a non-zero `clientTs`, and a `serverTs` d
 table contains, not what the responses said, is the evidence - and what it contains is only valid
 events.
 
-## Limitation
+## Limitations
 
 The dashboard at `https://dashboard.convex.dev/d/courteous-dogfish-560` sits behind an interactive
 OAuth sign-in and was not opened, for the same reason recorded in the US-T01 spike note. The
 `npx convex data events` round-trip is the equivalent authoritative evidence: it is authenticated by
 the CLI token and returns the deployment's actually-persisted rows - the same data the dashboard
 renders.
+
+**This transcript is a point-in-time record and nothing re-runs it.** Every run above was driven by
+hand; there is no automated behavioural test over `convex/` and this repository has no CI, so no
+check runs against a pull request and `npm run typecheck` - the only gate that does re-run, and only
+when someone runs it - cannot catch a regression in any of the behaviour recorded here. Reading this
+file as a standing guarantee would be reading it wrong: it says what was true at `99a11d0`. Closing
+that gap is an unchecked acceptance criterion of US-T04 in
+`.claude/agent/tasks/prd-funnel-instrumentation_260803.md`, which names each behaviour left
+unprotected; `docs/test-coverage.md` states the same.
