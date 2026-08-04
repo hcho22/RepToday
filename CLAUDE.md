@@ -50,7 +50,7 @@ Hosting a production surface to capture or read it likewise goes through `Hosted
 
 **Integrations & navigation:** Sign in with Apple, CloudKit, write-only HealthKit, and StoreKit 2 (free unlimited core, premium depth only) never gate the core loop and degrade quietly; `AppState` (`@Observable`, UserDefaults-persisted) controls onboarding vs. main tabs and the selected tab.
 
-**Anonymous product telemetry (funnel instrumentation, a separate PRD):** `AnalyticsServiceProtocol.record(_:)` takes an `AnalyticsEvent` - one of exactly 13 pre-registered event names (`gtm/06-channels/event-metric-schema.md`, snake_case raw values that are the wire contract), a millisecond client timestamp, and a non-identifying `[String: AnalyticsValue]` bag. As of US-T02 this is the **seam only**: nothing emits and nothing leaves the process - both `mock()` and `live(context:)` wire the in-memory `MockAnalyticsService` until US-T04 lands the Convex-backed fire-and-forget `URLSession` POST.
+**Anonymous product telemetry (funnel instrumentation, a separate PRD):** `AnalyticsServiceProtocol.record(_:)` takes an `AnalyticsEvent` - one of exactly 13 pre-registered event names (`gtm/06-channels/event-metric-schema.md`, snake_case raw values that are the wire contract), a millisecond client timestamp, and a non-identifying `[String: AnalyticsValue]` bag. As of US-T02 this is the **seam only**: nothing emits and nothing leaves the process - `mock()` wires the recording in-memory `MockAnalyticsService`, while `live(context:)` wires the discarding `NoOpAnalyticsService` (`Services/Analytics/`) so a shipping build accumulates nothing either, until US-T04 lands the Convex-backed fire-and-forget `URLSession` POST in its place.
 
 ## The Deterministic Engine
 

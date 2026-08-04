@@ -64,6 +64,7 @@
 		5AA136A50B47EF4E6CBBA75D /* DeterministicSessionPolicyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFAF6D9FE810335E38A1C2DF /* DeterministicSessionPolicyServiceTests.swift */; };
 		5D03F69A61F2F39635C9D69E /* ActiveSessionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A699A6213DBE560CCE43AC /* ActiveSessionViewModelTests.swift */; };
 		600A5A41CEBB807AD520D3AE /* ActiveSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F54B0E514E7185919510F5 /* ActiveSessionState.swift */; };
+		60D0E2807A7E23E9F6D073D9 /* NoOpAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E907CC03B7B8388152EE6CC0 /* NoOpAnalyticsService.swift */; };
 		6479D1663C7DCB61190D781E /* AuthCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 617A3A6BD894EFD11DE252C7 /* AuthCredentialStore.swift */; };
 		6481B92FCCB5138E80FCC26E /* ActiveSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304334DF735169FC725E4988 /* ActiveSessionViewModel.swift */; };
 		65D0C3C030F9950B7C9A3DF6 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */; };
@@ -301,6 +302,7 @@
 		DFE1A7921225B281ABAB1669 /* SessionCompletionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCompletionServiceTests.swift; sourceTree = "<group>"; };
 		E11AEB547E75AA4203A4733E /* ServiceContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceContainerTests.swift; sourceTree = "<group>"; };
 		E150DA02651957746C664AF0 /* USE01RangeEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USE01RangeEvidenceTests.swift; sourceTree = "<group>"; };
+		E907CC03B7B8388152EE6CC0 /* NoOpAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoOpAnalyticsService.swift; sourceTree = "<group>"; };
 		EAC7E12CAA18C77B3360EB44 /* VarietyLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarietyLanguageTests.swift; sourceTree = "<group>"; };
 		EC2D7311A5F99FF4FA204B9A /* VarietyLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VarietyLanguage.swift; sourceTree = "<group>"; };
 		EF888D00CB3C7612EB72A396 /* MovementPatternFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocusTests.swift; sourceTree = "<group>"; };
@@ -383,6 +385,7 @@
 			children = (
 				17955F95DFFFAAC992A32A4B /* .gitkeep */,
 				703FADB631572C570F6170FE /* ActiveSession */,
+				237ECD6285561DF92C272231 /* Analytics */,
 				89F680D02F5046DE809FDBFF /* Auth */,
 				4DC3490221AAD9639A43C3D6 /* Consistency */,
 				F32F2ACE7524C5D548B7FF2E /* Engine */,
@@ -395,6 +398,14 @@
 				388D4F12AA4609B5D3D99502 /* Subscription */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		237ECD6285561DF92C272231 /* Analytics */ = {
+			isa = PBXGroup;
+			children = (
+				E907CC03B7B8388152EE6CC0 /* NoOpAnalyticsService.swift */,
+			);
+			path = Analytics;
 			sourceTree = "<group>";
 		};
 		34D23B591B8833E2B92A93B7 /* Ready */ = {
@@ -949,6 +960,7 @@
 				E7F085AFA371D0F0F056F40F /* MockPersistence.swift in Sources */,
 				E6D6462DE67CADEA75BE5D9A /* MockServices.swift in Sources */,
 				5090E5711E1A95EAC632DA5F /* MovementPatternFocus.swift in Sources */,
+				60D0E2807A7E23E9F6D073D9 /* NoOpAnalyticsService.swift in Sources */,
 				8378E13A4ABCF4AABED4578F /* OnboardingView.swift in Sources */,
 				8234AFC18D1893CC336B0DC9 /* OnboardingViewModel.swift in Sources */,
 				40BB98386820500AB91D8F9E /* PaywallView.swift in Sources */,

@@ -142,8 +142,10 @@ final class AnalyticsServiceTests: XCTestCase {
     /// This is the end-to-end read of the seam rather than of the model: every emission is written the
     /// way a US-T03 call site must write it - `await services.analyticsService.record(event)`, no `try`
     /// - so the deliberate `async`-but-not-`throws` signature is exercised as a call site, not asserted
-    /// about. Both containers record into memory, which is what "no transport yet" looks like from the
-    /// outside: nothing leaves the process.
+    /// about. Neither container sends anything, which is what "no transport yet" looks like from the
+    /// outside: nothing leaves the process. They differ in what they do with the event, and that
+    /// difference is asserted - the mock records it for tests to read, while production discards it
+    /// through `NoOpAnalyticsService`, so a shipping build accumulates no unbounded in-memory backlog.
     func testFunnelRecordedThroughBothContainersRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext)
@@ -157,22 +159,24 @@ final class AnalyticsServiceTests: XCTestCase {
             await mock.analyticsService.record(event)
         }
 
-        // Both containers wire the in-memory sink until the real transport lands (US-T04), so the
-        // production container's telemetry is observable here in exactly the same way.
-        let liveSink = try XCTUnwrap(live.analyticsService as? MockAnalyticsService)
+        // Production must not hold on to what it cannot send: until the transport lands (US-T04)
+        // `live(context:)` wires the discarding sink, not the recording mock, so a shipping build
+        // never grows an in-memory backlog nothing drains.
+        XCTAssertTrue(
+            live.analyticsService is NoOpAnalyticsService,
+            "production must discard events until US-T04, not accumulate them in a recording sink"
+        )
         let mockSink = try XCTUnwrap(mock.analyticsService as? MockAnalyticsService)
-        let recordedLive = await liveSink.recordedEvents
-        let recordedMock = await mockSink.recordedEvents
-        XCTAssertEqual(recordedLive, funnel, "the production container's sink lost or reordered events")
-        XCTAssertEqual(recordedMock, funnel, "the mock container's sink lost or reordered events")
+        let recorded = await mockSink.recordedEvents
+        XCTAssertEqual(recorded, funnel, "the mock container's sink lost or reordered events")
         // The journey covers the whole pre-registered vocabulary, so the assertion is not a sample.
-        XCTAssertEqual(Set(recordedLive.map(\.name)), Set(AnalyticsEventName.allCases))
+        XCTAssertEqual(Set(recorded.map(\.name)), Set(AnalyticsEventName.allCases))
 
         // The model's own JSON, encoded from the *recorded* array (not the source array) so the
         // assertion is on what actually survived the seam.
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let json = try encoder.encode(recordedLive)
+        let json = try encoder.encode(recorded)
         let serialised = try XCTUnwrap(String(data: json, encoding: .utf8))
         // The event names serialise as their snake_case raw values, and no identity ever rides along.
         XCTAssertTrue(serialised.contains("\"app_install\""))

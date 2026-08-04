@@ -172,9 +172,10 @@ struct ServiceContainer {
             subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: AppleAuthService.live(),
-            // US-T02 is the seam only, so production temporarily records to the in-memory mock; the
-            // live Convex-backed fire-and-forget `URLSession` transport swaps in here at US-T04.
-            analyticsService: MockAnalyticsService()
+            // US-T02 is the seam only, so production *discards* events: a shipping build emits
+            // nothing and accumulates nothing (the recording mock would grow an array nothing
+            // drains). The Convex-backed fire-and-forget `URLSession` transport swaps in at US-T04.
+            analyticsService: NoOpAnalyticsService()
         )
     }
 }
