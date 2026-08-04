@@ -6,6 +6,24 @@ table, one `logEvent` mutation, one `POST /logEvent` HTTP action.
 **Verdict:** PASS. Every step of the PRD's Validation Test was run against a live deployment, not
 simulated and not inferred from a local type-check.
 
+> **Partially superseded (post-review, 2026-08-04).** This transcript records a live run against the
+> code as it stood at commit `7fe0b31`. Two review findings were fixed in `convex/http.ts` afterwards
+> and **the fixes were not re-validated against a live deployment** - they were gated only by
+> `npm run typecheck`. Nothing below was re-run, and no output in this file has been edited to
+> predict what the new code would return; the individual sections that no longer describe current
+> behaviour are marked in place. What still holds unchanged: the `204` and both persisted rows, the
+> server-stamped `serverTs`, the untouched `props` pass-through, the two oversized-bag rejections,
+> the non-insert proven by reading the table back, and every shape assertion.
+>
+> What changed:
+> 1. The action now requires `installId` to be a non-empty string and `clientTs` to coerce to a
+>    finite number, rejecting instead of writing `"undefined"` / `NaN`. **No POST in this transcript
+>    omitted either field, so no run below exercised the old behaviour** - this is new surface with
+>    no live evidence either way, not a contradicted result.
+> 2. Rejections and internal failures no longer share a status. A caller's fault stays `400`; a
+>    deployment or database failure now answers `500` with no detail echoed. Every rejection
+>    recorded below is a caller's fault, so all of them remain `400`.
+
 ---
 
 ## Deployment
@@ -99,6 +117,13 @@ HTTP 400
 The error enumerates all 13 accepted literals, which is itself confirmation that the deployed union
 matches `AnalyticsEventName` exactly - no additions, no omissions.
 
+> **Superseded, response body only.** The post-review action checks the name against `EVENT_NAMES`
+> before calling the mutation, so this rejection is now raised at the HTTP boundary and the body no
+> longer carries Convex's `ArgumentValidationError` text. The status is still `400` and still
+> inserts nothing, and the mutation's `v.union` is unchanged and still the contract - it is simply
+> no longer the thing that fires first, so this particular body is not what the current code
+> returns. Not re-run; no replacement output is claimed here.
+
 ### Oversized bag - serialized bytes
 
 ```
@@ -116,6 +141,13 @@ props = { k0: 0, …, k39: 39 }         # 40 keys, over the 32 cap
 HTTP 400
 {"error":"Uncaught Error: props has 40 keys, over the 32-key limit\n    at handler (../convex/events.ts:70:8)"}
 ```
+
+> **Superseded, response bodies only** (both oversized-bag cases above). `logEvent` now raises these
+> two rejections as `ConvexError` rather than `Error`, which is the marker the action uses to answer
+> `400` for a caller's fault and `5xx` for its own. The limits, the sentences they are phrased in,
+> the `400`, and the non-insert are all unchanged; what is gone is the `Uncaught Error:` prefix and
+> the trailing stack frame, which were the shape a raw throw surfaced as. Not re-run; the exact
+> current bodies are not claimed here.
 
 ### No row was inserted - read back, not inferred
 

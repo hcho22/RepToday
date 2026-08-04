@@ -1,5 +1,5 @@
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 /**
  * The 13 pre-registered in-app event names.
@@ -38,6 +38,10 @@ export type AnalyticsEventName = (typeof EVENT_NAMES)[number];
  * the app legitimately sends: they exist only to stop a malformed or hostile client from poisoning
  * the table, not to police shape. Per the story's "basic input validation only" criterion, an
  * unknown event name and an oversized bag are the *only* two rejections.
+ *
+ * They are raised as `ConvexError` rather than `Error` so the HTTP action can tell a rejection it
+ * asked for apart from a runtime or database failure it did not, and answer `400` or `5xx`
+ * accordingly. That marker is the whole distinction, so it belongs on the throw.
  */
 export const MAX_PROPS_BYTES = 4096;
 export const MAX_PROPS_KEYS = 32;
@@ -62,12 +66,12 @@ export const logEvent = mutation({
     // Not a third rule: a bag that is not a bag has no size, so this is the precondition the
     // size check below is measured against rather than a shape check of its own.
     if (typeof props !== "object" || props === null || Array.isArray(props)) {
-      throw new Error("props must be an object");
+      throw new ConvexError("props must be an object");
     }
 
     const keyCount = Object.keys(props).length;
     if (keyCount > MAX_PROPS_KEYS) {
-      throw new Error(
+      throw new ConvexError(
         `props has ${keyCount} keys, over the ${MAX_PROPS_KEYS}-key limit`,
       );
     }
@@ -76,7 +80,7 @@ export const logEvent = mutation({
     // non-ASCII would be undercounted by up to a factor of three against a limit called "bytes".
     const serializedBytes = new TextEncoder().encode(JSON.stringify(props)).length;
     if (serializedBytes > MAX_PROPS_BYTES) {
-      throw new Error(
+      throw new ConvexError(
         `props is ${serializedBytes} bytes, over the ${MAX_PROPS_BYTES}-byte limit`,
       );
     }

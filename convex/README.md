@@ -79,6 +79,26 @@ would undercount a non-ASCII bag against a limit called "bytes".
 There is no schema check on individual property keys or types. Property vocabularies are expected
 to move during the PMF test, and a write-path check would turn every such move into a deploy.
 
+The HTTP action adds one thing to that list and only one: the body's fields must be **present and
+of the right kind** before they are handed to the mutation - `name` one of the 13, `installId` a
+non-empty string, `clientTs` a number.
+That is not a third rule so much as the same one applied where untrusted input enters: coercing a
+missing field with `String(...)` / `Number(...)` would write the literal string `"undefined"` and
+`NaN` into the two columns the whole funnel is counted on (`installId` is the cohort key K4 counts
+unique installs by; `clientTs` is what K1 is timed from), and such a row looks valid while being
+junk - worse than no row at all.
+It constrains presence and kind only: no length cap, no format or UUID-shape check, nothing about
+what a legitimate value contains.
+
+`logEvent` raises its own rejections as `ConvexError` rather than `Error`, which is what lets the
+action tell a rejection it asked for apart from a failure it did not - see the status codes below.
+
+**Known current gap:** `installId` is an unbounded `v.string()` while `props` is capped, so a
+hostile client can still write a very large row through that one field. This was reviewed during
+US-T03 and consciously accepted for this story: the sink is not yet reachable by any client, and
+US-T04 - which is where the identifier actually starts being sent - carries the acceptance
+criterion that bounds its length.
+
 ## HTTP action: `POST /logEvent` -> `204`
 
 `convex/http.ts`. Routed by `httpRouter` and served from the deployment's **`.convex.site`** origin
@@ -97,9 +117,17 @@ Content-Type: application/json
 ```
 
 - **`204 No Content`** - the row was inserted. No body.
-- **`400 Bad Request`** - malformed JSON, an unknown event name, or an oversized bag. No row was
-  inserted. The body carries the error message for a human; the client is fire-and-forget and
-  ignores the status either way.
+- **`400 Bad Request`** - the caller's fault: a body that is not valid JSON or not a JSON object, a
+  missing or wrong-kind `name` / `installId` / `clientTs`, an unknown event name, or an oversized
+  bag. No row was inserted. The body carries the error message for a human.
+- **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure. No row
+  was inserted. The body says only `internal error`; the detail stays in the deployment log rather
+  than being echoed to the caller.
+
+That split exists for a human, not for the client - US-T04's client is strictly fire-and-forget and
+swallows every error, so a sink outage answered as `400` would be invisible: events would simply
+stop arriving and nothing would say so. `4xx` versus `5xx` is the only signal anyone watching the
+PMF test gets, so a rejection the sink asked for and a failure it did not must not look alike.
 
 ### Pinned numeric convention
 
@@ -133,3 +161,5 @@ per-developer deployment state, not project configuration.
 Live validation evidence for this story - the `204`, the row read back with both timestamps
 populated, and the three rejections with the table proven still at one row - is in
 `artifacts/reports/US-T03/validation.md`.
+That transcript predates the post-review boundary checks and the `4xx`/`5xx` split, and says so
+where its recorded output no longer matches this code; it has not been re-run live.
