@@ -20,6 +20,10 @@ struct RepTodayApp: App {
     /// A no-op for a StoreKit-free container; never gates the core loop.
     private let transactionListener: Task<Void, Never>
 
+    /// Onboarding/tab routing, and - since US-T05 - the anonymous per-install identity the funnel
+    /// is cohorted by. Constructing it here is what mints `installId` and stamps `firstLaunchAt` on
+    /// a genuine first launch, so this is the one moment `isFirstLaunch` is knowable; US-T07's
+    /// `app_install` emission hangs off exactly this point rather than re-deriving it later.
     @State private var appState = AppState()
 
     init() {
