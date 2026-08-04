@@ -129,6 +129,21 @@ for now: `convexToJson` validates field *names*, not structural limits, so a mul
 (which measure `props` alone) and only then exceeds Convex's ~1MB document limit at the insert -
 landing on the `500` branch as a false outage signal rather than the `400` it deserves.
 Bounding `installId` in US-T04 closes that as well as the storage gap.
+
+**The residual is wider than that one case, and is stated here in full rather than as its cheapest
+example.** The pre-pass is a *field-name* classifier and nothing more: the SDK's `validateObjectField`
+checks a name's length against 1024, a leading `$`, and non-ASCII or control characters, and
+`convexToJson` recurses without a depth guard. It therefore says nothing about nesting depth, about
+value shapes, or about any other rule Convex only applies at write time. A caller-fault payload that
+violates one of those - `props` nested past Convex's 16-level value limit, say, which can be well
+under 100 bytes and so is far cheaper to send than a multi-hundred-KB `installId` - passes the name
+check, passes both `props` caps, and fails for the first time at `ctx.db.insert`, landing on the same
+`500` branch.
+Both are the same accepted consequence rather than two problems: the story's validation is deliberately
+"basic input validation only", so the `400` side is exactly the set of rules this sink states for
+itself plus the one it borrows, and everything Convex enforces beyond that is discovered at the insert
+and reported as ours. Note it when reading `500`s during the PMF test; do not read this as a promise
+that every caller fault is a `400`.
 Relatedly and also accepted: the route below is unauthenticated and unmetered by design - anonymous
 telemetry admits no client secret - so the caps are per-row rather than per-caller, and anyone who
 reads the `.convex.site` URL out of a shipped binary can add rows indistinguishable from real ones.
@@ -159,7 +174,9 @@ Content-Type: application/json
   message for a human.
 - **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure. No row
   was inserted. The body says only `internal error`; the detail stays in the deployment log rather
-  than being echoed to the caller.
+  than being echoed to the caller. (With the accepted residual noted under "Known current gap": a
+  caller fault that only a write-time Convex rule catches - an over-long `installId`, `props` nested
+  past the value-depth limit - reaches the insert and is reported here too.)
 
 That split exists for a human, not for the client - US-T04's client is strictly fire-and-forget and
 swallows every error, so a sink outage answered as `400` would be invisible: events would simply
@@ -201,7 +218,17 @@ Live validation evidence for this story is in `artifacts/reports/US-T03/validati
 the rows read back with both timestamps populated and `serverTs` stamped server-side, and every
 rejection above with the table then read back holding **only** the valid events, so the non-insert
 is proven by the table's contents rather than inferred from the errors.
-It records two runs - the original one at `7fe0b31`, and a re-run at `42c1310` that gates the
-post-review boundary checks, the `4xx`/`5xx` split, and the serialization classification live.
-The one thing it does **not** yet cover is `logEvent` being internal, which landed after that re-run
-and is gated by `npm run typecheck` alone; the file says so in place.
+It records three runs - the original one at `7fe0b31`; a re-run at `42c1310` that gates the
+post-review boundary checks, the `4xx`/`5xx` split, and the serialization classification live; and a
+third at `99a11d0` that gates `logEvent` being internal.
+That last one is a before/after pair of the *same* direct `.convex.cloud/api/mutation` call: at
+`42c1310` it answered `{"status":"success", …}` and inserted a row with an empty `installId` and a
+`clientTs` of `0`; at `99a11d0` it answers
+`Could not find public function for 'events:logEvent'` and inserts nothing.
+The transport status is `200` in both cases - Convex reports a missing public function in the
+response payload rather than as an HTTP status - so the proof is the payload plus the absent row, not
+a status code. The junk row that the pre-fix probe inserted was afterwards deleted, and the
+transcript records how; the table read back at `99a11d0` holds only valid rows.
+What no run covers is the fourth round's deletion of an unreachable branch in the action's error
+classifier, which landed after that third run and is gated by `npm run typecheck`; the transcript
+says so in place rather than implying the current commit was re-probed.

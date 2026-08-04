@@ -30,13 +30,13 @@ const isEventName = (value: unknown): value is AnalyticsEventName =>
 
 /**
  * `logEvent` raises the rejections this sink asks for as `ConvexError`; anything else that escapes
- * it is a runtime or database failure, which is ours rather than the caller's. The `name` check is
- * a fallback for the class identity not surviving the `runMutation` boundary - it reads a
- * structured field of the error, not its message text.
+ * it is a runtime or database failure, which is ours rather than the caller's. The class identity
+ * does survive the `runMutation` boundary: the SDK reconstructs a cross-isolate throw as a genuine
+ * `ConvexError` when it carries `data`, and as a plain `Error` otherwise - so `instanceof` is the
+ * whole test, and only the error's structured `data` is ever echoed, never a message text.
  */
 const rejectionMessage = (error: unknown): string | null => {
   if (error instanceof ConvexError) return String(error.data);
-  if (error instanceof Error && error.name === "ConvexError") return error.message;
   return null;
 };
 

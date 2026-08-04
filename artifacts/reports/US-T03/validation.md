@@ -7,22 +7,22 @@ table, one `logEvent` mutation, one `POST /logEvent` HTTP action.
 simulated and not inferred from a local type-check.
 
 > **Read this first (2026-08-04).** The transcript in the body records a live run against the code as
-> it stood at commit `7fe0b31`. Review then hardened `convex/http.ts` over two rounds, and those
-> fixes **have since been re-validated live** at commit `42c1310` - that second run is recorded under
-> "Post-review re-validation" at the end of this file, and it is where the current response bodies
-> come from. The body below is kept as the original record and is marked in place wherever its
-> recorded output no longer describes current behaviour; nothing in it was rewritten to predict
-> output that was never observed.
+> it stood at commit `7fe0b31`. Review then hardened `convex/http.ts` over three rounds, and every one
+> of those fixes **has since been re-validated live**: the first two at commit `42c1310` - recorded
+> under "Post-review re-validation", and where the current response bodies come from - and the third,
+> `logEvent` becoming an `internalMutation`, at commit `99a11d0`, recorded under "The direct-mutation
+> bypass" with the before/after pair that makes it legible. The body below is kept as the original
+> record and is marked in place wherever its recorded output no longer describes current behaviour;
+> nothing in it was rewritten to predict output that was never observed.
 >
 > What the original run still establishes unchanged: the `204` and both persisted rows, the
 > server-stamped `serverTs`, the untouched `props` pass-through, the two oversized-bag rejections,
 > the non-insert proven by reading the table back, and every shape assertion.
 >
-> One later change is **not** covered by either run: a third review round made `logEvent` an
-> `internalMutation` so the HTTP action is the sink's only entry point. That is gated by
-> `npm run typecheck` alone so far. The bypass it closes *was* observed live before the fix, and is
-> recorded under "The direct-mutation bypass" below; the post-fix probe has not been run and no
-> result for it is claimed here.
+> **The scope boundary, stated rather than glossed:** a fourth review round deleted an unreachable
+> branch of the action's error classifier in `convex/http.ts`, and that deletion landed *after* the
+> `99a11d0` run. So this transcript covers every behaviour through commit `99a11d0` and not the commit
+> that carries the deletion; no result is claimed for the latter.
 
 ---
 
@@ -221,6 +221,13 @@ Convex internals the original run recorded:**
 `npx convex data events` afterwards holds only the valid rows: **14 rejected POSTs, zero rows.** The
 non-insert is again proven by the table's contents rather than inferred from the responses.
 
+That claim is about the HTTP route and is scoped to it: none of those 14 rejected POSTs added a row.
+It is **not** a claim about the whole table at that moment, because the direct-mutation bypass probe
+recorded in the next section was run separately at this same commit and *did* add one row - through
+the `.convex.cloud` API endpoint, not through this route. That row's fate is recorded there, and the
+complete table listing at the end of this file is the authoritative statement of what the deployment
+holds now.
+
 Two review fixes are gated specifically by this run. The three former-`500` cases - the non-ASCII,
 `$`-prefixed, and over-long `props` keys - answer `400` now, which is the caller-fault
 re-classification working: the input was refused before the change too, but as *our* failure, which
@@ -229,10 +236,14 @@ the PMF test has. And the four `clientTs` cases confirm the string-coercion bran
 `"0x1f"`, and `" 12 "` are refused rather than silently reinterpreted into the column K1 is timed
 from.
 
-## The direct-mutation bypass (observed before the fix; post-fix probe not run)
+## The direct-mutation bypass - observed open, then observed closed
 
-`logEvent` was a public `mutation`, so it was reachable on the deployment's own API endpoint,
-skipping every boundary check above:
+The same request was sent twice: once at commit `42c1310`, while `logEvent` was still a public
+`mutation`, and once at commit `99a11d0`, after it became an `internalMutation`. The request is
+byte-for-byte identical, so the pair is what makes the fix's value legible.
+
+**Before the fix (commit `42c1310`).** `logEvent` was public, so it was reachable on the deployment's
+own API endpoint, skipping every boundary check above:
 
 ```
 POST https://courteous-dogfish-560.convex.cloud/api/mutation
@@ -249,10 +260,63 @@ shape the `400`s above exist to keep out of the two columns K4 and K1 are counte
 and `.convex.site` share a deployment slug, so anyone reading the HTTP-action URL out of a shipped
 US-T04 binary would have known this endpoint too.
 
-`logEvent` is an `internalMutation` now and the action calls it as `internal.events.logEvent`, which
-should make the same POST unreachable. **That is not claimed as observed:** the fix is gated by
-`npm run typecheck` (which does confirm `api.events.logEvent` no longer resolves and
-`internal.events.logEvent` does), and the live re-probe has not been run.
+**After the fix (commit `99a11d0`).** The identical request now finds no function to call and writes
+nothing:
+
+```
+POST https://courteous-dogfish-560.convex.cloud/api/mutation
+{"path":"events:logEvent",
+ "args":{"name":"app_install","installId":"","clientTs":0,"props":{}},
+ "format":"json"}
+
+HTTP 200
+{"status":"error",
+ "errorMessage":"[Request ID: cea9f35b743a3016] Server Error\nCould not find public function for 'events:logEvent'."}
+```
+
+Read the transport status carefully: it is `200` in **both** cases. Convex reports a missing public
+function in the response *payload*, not as an HTTP status, so this endpoint does not start answering
+`4xx` after the fix and nothing here should be described as it doing so. The proof is the two things
+that did change - the `errorMessage` in place of `{"status":"success", …}`, and the absent row.
+
+The HTTP route itself was re-run at the same commit and is unchanged by the switch: a valid
+`session_completed` (with `requested_minutes`, `completed_minutes`, `was_return`,
+`perceived_difficulty`) and a valid `day7_return` with `props` absent from the body entirely each
+answered `204`, while `name "landing_page_view"`, `installId ""`, `clientTs "1e3"`, `props {"café":1}`
+and a body of `not json` answered `400` with the same five sentences the table above records,
+verbatim.
+
+### What happened to the junk row
+
+The row the pre-fix bypass inserted, `j579gg022ndcfdb4qq282fdjbn8btryz`, **was deleted.** How it was
+deleted matters, because this file's whole method is proof-by-table-contents and because the repo
+claims to contain exactly one mutation: a scratch delete-by-id mutation was written **outside the
+repository** in a temporary working copy, deployed to the dev deployment, run once against that
+single document id (it returned `deleted`), and then removed again by redeploying this branch's own
+code. It was never committed. The repository still contains exactly one mutation, `logEvent`, and it
+is internal.
+
+### The table as it stands (commit `99a11d0`)
+
+`npx convex data events` - the complete table, not an excerpt:
+
+```
+j57576n6sdgxr546ekddf19ren8bty2c | clientTs 1785783050000 | installId "r4-NOPROPS"            | day7_return        | serverTs 1785854249727
+j57121ny3kr8xqpn3bvrypvsrs8btj32 | clientTs 1785783000000 | installId "r4-OK"                 | session_completed  | serverTs 1785854249456
+j5728zwm38mfhrswvd7ka7tess8bt5pp | clientTs 1785782050000 | installId "r3-NOPROPS"            | day7_return        | serverTs 1785853252403
+j57f1nb7z5btnq4fgxps2k7j4s8btspf | clientTs 1785782000000 | installId "r3-OK"                 | session_completed  | serverTs 1785853252141
+j571dvabbpm6aef09ax1kzkab58bv6y9 | clientTs 1785781100000 | installId "verify-OK"             | session_started    | serverTs 1785852078940
+j5711hh2654zq32h59f13em21s8bt6aj | clientTs 1785780700000 | installId "ust03-final-R1"        | ready_screen_shown | serverTs 1785850123781
+j5745cj8xgz584taynenzm43ws8bvvae | clientTs 1785780300000 | installId "ust03-validation-A1B2" | session_completed  | serverTs 1785849799366
+```
+
+The `props` column is not reproduced above; the two `*-NOPROPS` rows, whose POSTs omitted `props` from
+the body entirely, came back holding `{}`, which is the default the action supplies.
+
+Every row has a non-empty `installId`, a non-zero `clientTs`, and a `serverTs` distinct from its
+`clientTs`. The empty-`installId` row is absent. So the file's proof method holds end to end: what the
+table contains, not what the responses said, is the evidence - and what it contains is only valid
+events.
 
 ## Limitation
 
