@@ -276,10 +276,11 @@ actor MockAuthService: AuthServiceProtocol {
 /// In-memory analytics sink for tests and previews (US-T02).
 ///
 /// Records every event into `recordedEvents` in call order and does nothing else: no I/O, no
-/// network, no disk. It is the default `analyticsService` in `ServiceContainer.mock()` and, until
-/// the live Convex-backed transport lands (US-T04), also stands in for `live(context:)`. An `actor`
-/// so appends stay race-free once emission moves onto detached background tasks; tests read the
-/// recorded array with `await mock.recordedEvents`.
+/// network, no disk. It is the recording sink `ServiceContainer.mock()` wires, and the one tests
+/// and previews use when they need to assert on what was recorded - `live(context:)` wires the
+/// discarding `NoOpAnalyticsService` instead. An `actor` so appends stay race-free once emission
+/// moves onto detached background tasks; tests read the recorded array with
+/// `await mock.recordedEvents`.
 actor MockAnalyticsService: AnalyticsServiceProtocol {
     private(set) var recordedEvents: [AnalyticsEvent] = []
 

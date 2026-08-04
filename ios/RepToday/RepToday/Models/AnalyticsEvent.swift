@@ -4,8 +4,9 @@ import Foundation
 ///
 /// This file is the *seam only*: a typed event value plus the closed vocabularies it carries.
 /// It adds no emission call sites and no transport - US-T03 wires the Convex sink and US-T04
-/// lands the fire-and-forget `URLSession` POST. The event carries a random per-install ID
-/// (US-T05) and honours the opt-out flag (US-T06) at emission time, never any user identity.
+/// lands the fire-and-forget `URLSession` POST. Later stories will attach a random per-install ID
+/// (US-T05) and gate emission on the opt-out flag (US-T06); no user identity ever rides on the
+/// event.
 ///
 /// The names and property lists are pre-registered in `gtm/06-channels/event-metric-schema.md`
 /// and must not be edited to move a threshold. Like the domain enums in `Enums.swift`, the raw
