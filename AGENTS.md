@@ -1,19 +1,20 @@
-# CLAUDE.md
+# AGENTS.md
 
 Guidance for Claude Code when working in this repository.
+`CLAUDE.md` is a symlink to this file, so the two can never disagree - edit `AGENTS.md`, never the symlink.
 
 ## Project Overview
 
 Rep Today is a discipline-first micro-workout iOS app (5-60 min sessions) for busy, desk-bound adults.
 The user says how many minutes they have, and a deterministic on-device engine generates a complete zero-equipment session blending bodyweight strength and mobility - no browsing, no choosing, no thinking.
 Strength is earned, not the entry promise: every user starts in the **Discipline Phase** and earns the **Strength Phase** through sustained consistency plus demonstrated competence, so all MVP users resolve to Discipline with the `PhaseEvaluator` already in place.
-The MVP is Apple-native with no custom backend; AI/LLM features are deferred to Phase 2, do language only, and never generate or adapt a workout.
+The MVP is Apple-native with no custom backend behind the core loop (the `convex/` telemetry sink is beside it, not under it); AI/LLM features are deferred to Phase 2, do language only, and never generate or adapt a workout.
 
 ## Source of Truth
 
 - **Strategic plan:** the v6.0 strategic PRD under `.claude/agent/tasks/` (supersedes v5, kept for reference).
 - **Implementation PRD / live progress tracker:** `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` (~51 stories, US-A01 ... US-N05); acceptance checkboxes flip to `[x]` as stories land. Always check the story before building a feature.
-- **Second, in-progress PRD - anonymous product telemetry:** `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` (`US-T##`, tracked the same way); US-T01 (transport spike) and US-T02 (the analytics seam) have landed, emission call sites and transport are still ahead.
+- **Second, in-progress PRD - anonymous product telemetry:** `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` (`US-T##`, tracked the same way); US-T01 (transport spike), US-T02 (the analytics seam), and US-T03 (the Convex sink) have landed, emission call sites and the client transport between the seam and the sink are still ahead.
 - **What is already built:** `docs/implementation-log.md`. **Test coverage map:** `docs/test-coverage.md`. **Third-party asset source/license ledger:** `docs/asset-attribution.md` (an asset with no cleared row never ships).
 - The strategic plans reference a `CONTEXT.md` and `docs/adr/` that do not exist here; the task files above are authoritative.
 
@@ -40,6 +41,9 @@ The evidence suites (`PerSideSwapEvidenceTests`, `OnboardingBasicsEvidenceTests`
 A suite never rolls its own path: `EvidenceOutput.directory(for:)` is the one resolver, and `REPTODAY_EVIDENCE_DIR` names a **root** with the story folder appended - never the final directory - so one redirected run keeps the same `<root>/<story>/<file>` shape as the committed baselines instead of scattering suites' renders into different layouts.
 The XCUITest screenshots are produced on demand rather than committed: the suite always files them with its `.xcresult` too, so the two variables only decide where a second, browsable copy lands.
 Hosting a production surface to capture or read it likewise goes through `HostedSurface.host(_:size:)` and `AccessibilityTree`, so every suite gets the same run-loop settling rather than an ad-hoc copy that reads a half-drawn screen.
+
+`convex/` is a second, unrelated toolchain and no iOS command touches it: `npm install` once, then `npm run typecheck` (`tsc --noEmit` over `convex/`, against the committed `convex/_generated/`, so it needs no deployment) and `npx convex dev --once` to deploy to your own dev deployment.
+That typecheck is the sink's only re-runnable gate - nothing in `convex/` has a behavioural test and this repo has no CI - so a change to `convex/http.ts` is verified by hand against a deployment; see `convex/README.md`.
 
 ## Architecture
 
@@ -106,7 +110,7 @@ Utilities/ Resources/       AppState and helpers; Exercises.json, assets, .store
 
 ## Out of Scope (MVP Non-Goals)
 
-No LLM/AI calls in the loop, no custom backend, no XP/levels/badges, no social/leaderboards/challenges, no equipment-based exercises, no full Strength-Phase catalog, no Android/widgets/Live Activities/Apple Watch (see the PRD's Non-Goals for the full list).
+No LLM/AI calls in the loop, no custom backend behind the core loop (the telemetry sink is the one server-side thing that exists, and nothing in the loop reads it), no XP/levels/badges, no social/leaderboards/challenges, no equipment-based exercises, no full Strength-Phase catalog, no Android/widgets/Live Activities/Apple Watch (see the PRD's Non-Goals for the full list).
 
 ## Artifact Locations
 

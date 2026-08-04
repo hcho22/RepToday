@@ -200,6 +200,10 @@ Content-Type: application/json
 }
 ```
 
+`props` is the one optional field: omit it and the action sends an empty bag, so a valid event with
+no properties is a three-field body.
+The other three are required, and their absence is one of the `400`s below rather than a default.
+
 - **`204 No Content`** - the row was inserted. No body.
 - **`400 Bad Request`** - the caller's fault: a body that is not valid JSON or not a JSON object, a
   missing or wrong-kind `name` / `installId` / `clientTs`, an unknown event name, a `props` field
@@ -213,6 +217,10 @@ Content-Type: application/json
   past the value-depth limit - reaches the insert and is reported here too, as does a `props` bag
   past Convex's ~8 MiB argument bound, which fails during argument serialization before the bag caps
   themselves can run.)
+
+Every non-`204` answer is `application/json` in one shape, `{"error": "…"}`, so US-T04's client can
+read a rejection the same way whichever side of the split it came from - it just does not, being
+fire-and-forget. `204` carries no body at all.
 
 That split exists for a human, not for the client - US-T04's client is strictly fire-and-forget and
 swallows every error, so a sink outage answered as `400` would be invisible: events would simply
