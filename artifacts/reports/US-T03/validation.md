@@ -11,9 +11,12 @@ simulated and not inferred from a local type-check.
 > of those fixes **has since been re-validated live**: the first two at commit `42c1310` - recorded
 > under "Post-review re-validation", and where the current response bodies come from - and the third,
 > `logEvent` becoming an `internalMutation`, at commit `99a11d0`, recorded under "The direct-mutation
-> bypass" with the before/after pair that makes it legible. The body below is kept as the original
-> record and is marked in place wherever its recorded output no longer describes current behaviour;
-> nothing in it was rewritten to predict output that was never observed.
+> bypass" with the before/after pair that makes it legible. A fourth run sits between the first two,
+> at commit `84726ed`: "Interim verification run", which is where the `500`s that motivated the
+> `42c1310` re-classification were seen directly. The four sections appear in the order the runs
+> happened, which the `serverTs` values in the final table listing independently fix. The body below
+> is kept as the original record and is marked in place wherever its recorded output no longer
+> describes current behaviour; nothing in it was rewritten to predict output that was never observed.
 >
 > What the original run still establishes unchanged: the `204` and both persisted rows, the
 > server-stamped `serverTs`, the untouched `props` pass-through, the two oversized-bag rejections,
@@ -186,6 +189,67 @@ check) but 4211 UTF-8 bytes, which is correctly rejected.
   run green on an iPhone 16 Simulator so the "build and tests pass" criterion is observed rather
   than assumed.
 
+## Interim verification run (commit `84726ed`, 2026-08-04) - the run that motivated the next commit
+
+Between the original run above and the post-review pass below, one further verification was driven by
+hand against the same deployment (`courteous-dogfish-560`,
+`https://courteous-dogfish-560.convex.site/logEvent`), at commit `84726ed` - the first review round's
+boundary-validation fix, and one commit *before* the `convexToJson` pre-pass existed. It is recorded
+so that every row in the complete table listing at the end of this file traces to a request written
+down somewhere in it, rather than one row appearing from nowhere in a document whose whole method is
+proof-by-table-contents.
+
+Where it sits in the sequence is fixed by the deployment's own clock, not by recollection: the row it
+inserted carries `serverTs 1785852078940`, which is 1,955 seconds after the last row of the `7fe0b31`
+run (`ust03-final-R1`, `1785850123781`) and 1,173 seconds before the first row of the `42c1310` pass
+(`r3-OK`, `1785853252141`). `serverTs` is stamped by the deployment, so that ordering is not open to
+interpretation.
+
+**Accepted:**
+
+```
+POST {"name":"session_started","installId":"verify-OK","clientTs":1785781100000,
+      "props":{"requested_minutes":15}}
+
+HTTP 204          (empty body)
+```
+
+Read back later by `npx convex data events`:
+
+```
+j571dvabbpm6aef09ax1kzkab58bv6y9 | clientTs 1785781100000 | installId "verify-OK" | session_started | props { "requested_minutes": 15 } | serverTs 1785852078940
+```
+
+That is the `verify-OK` row in the final listing, and it is the only row this run added.
+
+**Rejected - and this is the run that made the case for the next commit.** Three `props` field-name
+POSTs were sent, and all three came back as the sink's own failure rather than the caller's:
+
+```
+props {"café":1}                  -> HTTP 500 {"error":"internal error"}
+props {"$evil":1}                 -> HTTP 500 {"error":"internal error"}
+props key of 1100 characters      -> HTTP 500 {"error":"internal error"}
+```
+
+None inserted a row. `84726ed` predates the `convexToJson` pre-pass, so an input Convex refuses on the
+caller's behalf was still reported as our outage. Those same three inputs answer
+`400 {"error":"props contains a field name Convex cannot store"}` in the next section, at `42c1310` -
+the commit written to fix exactly this. Read in order, the pair is a before/after, and these `500`s
+are not a stray aside: they are the observed evidence that motivated the change.
+
+Three further rejections were exercised in the same run, each answering `400` and inserting nothing:
+
+```
+installId absent   -> {"error":"installId must be a non-empty string"}
+clientTs absent    -> {"error":"clientTs must be a finite number of milliseconds since the epoch"}
+name unknown       -> {"error":"name must be one of the 13 pre-registered event names"}
+```
+
+Those three are the first review round's own fix observed under its own commit: neither presence check
+existed at `7fe0b31`, where `installId` and `clientTs` were coerced with `String(...)` / `Number(...)`
+instead, and the unknown name now answers in the action's own sentence rather than the
+`ArgumentValidationError` text the original run recorded above.
+
 ## Post-review re-validation (commit `42c1310`, 2026-08-04)
 
 The two review rounds that hardened `convex/http.ts` were re-run in full against the same dev
@@ -232,56 +296,13 @@ complete table listing at the end of this file is the authoritative statement of
 holds now.
 
 Two review fixes are gated specifically by this run. The three former-`500` cases - the non-ASCII,
-`$`-prefixed, and over-long `props` keys - answer `400` now, which is the caller-fault
+`$`-prefixed, and over-long `props` keys, seen returning `500` in the interim run directly above -
+answer `400` now, which is the caller-fault
 re-classification working: the input was refused before the change too, but as *our* failure, which
 a hostile client could have used to manufacture what looked like a sink outage on the only signal
 the PMF test has. And the four `clientTs` cases confirm the string-coercion branch is gone: `"1e3"`,
 `"0x1f"`, and `" 12 "` are refused rather than silently reinterpreted into the column K1 is timed
 from.
-
-### Interim verification run (commit `42c1310`) - the source of the `verify-OK` row
-
-Between the pass recorded above and the `99a11d0` re-run, one further verification was driven by hand
-against the same deployment (`courteous-dogfish-560`,
-`https://courteous-dogfish-560.convex.site/logEvent`) at commit `42c1310`. It is recorded here so that
-every row in the complete table listing at the end of this file traces to a request written down
-somewhere in it, rather than one row appearing from nowhere in a document whose whole method is
-proof-by-table-contents.
-
-**Accepted:**
-
-```
-POST {"name":"session_started","installId":"verify-OK","clientTs":1785781100000,
-      "props":{"requested_minutes":15}}
-
-HTTP 204          (empty body)
-```
-
-Read back later by `npx convex data events`:
-
-```
-j571dvabbpm6aef09ax1kzkab58bv6y9 | clientTs 1785781100000 | installId "verify-OK" | session_started | props { "requested_minutes": 15 } | serverTs 1785852078940
-```
-
-That is the `verify-OK` row in the listing below, and it is the only row this run added.
-
-**Rejected - and this run is where the misclassification was first seen directly.** Three `props`
-field-name POSTs were sent, and all three came back as the sink's own failure rather than the
-caller's:
-
-```
-props {"café":1}                  -> HTTP 500 {"error":"internal error"}
-props {"$evil":1}                 -> HTTP 500 {"error":"internal error"}
-props key of 1100 characters      -> HTTP 500 {"error":"internal error"}
-```
-
-None inserted a row. These are the pre-fix bodies: the deployment was still carrying the classifier
-as it stood before the `convexToJson` pre-pass, so an input Convex refuses on the caller's behalf was
-reported as our outage. The same three inputs answer
-`400 {"error":"props contains a field name Convex cannot store"}` in the re-validation table above,
-which is the `42c1310` re-classification working. The pair is recorded together because the `500`s
-are what made the case for that fix, and quoting only the `400`s would leave the file's own timeline
-missing its cause.
 
 ## The direct-mutation bypass - observed open, then observed closed
 
@@ -365,8 +386,11 @@ the body entirely, came back holding `{}`, which is the default the action suppl
 
 Every row traces to a POST recorded in this file: `r4-OK` and `r4-NOPROPS` to the `99a11d0` re-run
 described just above, `r3-OK` and `r3-NOPROPS` to the `42c1310` post-review pass, `verify-OK` to the
-interim run at that same commit, and `ust03-final-R1` and `ust03-validation-A1B2` to the original
-`7fe0b31` run under step 2. Seven rows, seven recorded requests, and nothing else in the table.
+interim run at `84726ed`, and `ust03-final-R1` and `ust03-validation-A1B2` to the original `7fe0b31`
+run under step 2. Seven rows, seven recorded requests, and nothing else in the table. Listed newest
+first as `npx convex data events` prints them, the `serverTs` column runs backwards through exactly
+that order - `99a11d0`, `42c1310`, `84726ed`, `7fe0b31` - so the file's narrative order and the
+deployment's own timestamps agree.
 
 Every row has a non-empty `installId`, a non-zero `clientTs`, and a `serverTs` distinct from its
 `clientTs`. The empty-`installId` row is absent. So the file's proof method holds end to end: what the

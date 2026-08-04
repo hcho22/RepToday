@@ -254,11 +254,13 @@ Live validation evidence for this story is in `artifacts/reports/US-T03/validati
 the rows read back with both timestamps populated and `serverTs` stamped server-side, and every
 rejection above with the table then read back holding **only** the valid events, so the non-insert
 is proven by the table's contents rather than inferred from the errors.
-It records four runs - the original one at `7fe0b31`; a re-run at `42c1310` that gates the
-post-review boundary checks, the `4xx`/`5xx` split, and the serialization classification live; an
-interim verification at that same commit, which is where the pre-fix `500`s on unstorable `props`
-field names were seen directly and which accounts for the one row in the final listing no other run
-produced; and a fourth at `99a11d0` that gates `logEvent` being internal.
+It records four runs, in the order they actually happened - the original one at `7fe0b31`; an interim
+verification at `84726ed`, which is where the pre-fix `500`s on unstorable `props` field names were
+seen directly and which accounts for the one row in the final listing no other run produced; a re-run
+at `42c1310` that gates the post-review boundary checks, the `4xx`/`5xx` split, and the serialization
+classification live, and whose `400`s on those same three inputs pair with the interim run's `500`s as
+a before/after across the commit that fixed them; and a fourth at `99a11d0` that gates `logEvent`
+being internal.
 That last one is a before/after pair of the *same* direct `.convex.cloud/api/mutation` call: at
 `42c1310` it answered `{"status":"success", …}` and inserted a row with an empty `installId` and a
 `clientTs` of `0`; at `99a11d0` it answers
