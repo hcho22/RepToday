@@ -94,7 +94,7 @@ There is no XP, no levels, and no badges in the MVP.
 | **Persistence** | CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) |
 | **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
 | **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
-| **Backend** | None in the MVP (`convex/` is an empty placeholder) |
+| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03) |
 | **Bundle ID** | `com.reptoday.app` |
 
 AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
@@ -173,7 +173,7 @@ RepToday/
 │   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
 │   ├── Utilities/           # AppState and shared helpers
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
-├── convex/                  # Empty placeholder; the MVP has no custom backend
+├── convex/                  # Anonymous-telemetry sink only (append-only events table); no backend behind the core loop
 ├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
 ├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)

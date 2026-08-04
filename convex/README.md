@@ -1,0 +1,135 @@
+# Rep Today telemetry sink (US-T03)
+
+The whole analytics backend: **one append-only table, one mutation, one HTTP route.**
+
+It exists so the anonymous funnel events defined in `gtm/06-channels/event-metric-schema.md` have
+somewhere to land during the 90-day PMF test.
+The client that fills it is `LiveAnalyticsService` (US-T04), which reaches this deployment with a
+plain `URLSession` POST and **no Convex SDK** - the US-T01 spike returned a no-go on `convex-swift`
+because it ships an arm64-only xcframework that would break every Simulator-hosted test suite in
+this repo on an Intel host (`artifacts/reports/US-T01/spike-note.md`).
+That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
+entry point.
+
+## Non-goal: no analysis in the backend
+
+**The sink is dumb by design.**
+There is no funnel modelling, no aggregation, no dedup, no cohort math, and no index beyond
+Convex's defaults.
+Every kill-criterion metric (K1-K8) is derivable from raw rows by a query written later, so keeping
+the backend dumb keeps the analysis revisable - a funnel baked into the write path would be a
+threshold decision made before there is any data to make it against.
+
+## Table: `events`
+
+`convex/schema.ts`. One table, five fields, no indexes.
+
+| Field       | Type         | Meaning |
+|-------------|--------------|---------|
+| `name`      | `v.string()` | One of the 13 pre-registered event names (below). |
+| `installId` | `v.string()` | Random per-install identifier (US-T05). Never a user identity - no email, IDFA, or Sign in with Apple id ever reaches here. |
+| `clientTs`  | `v.number()` | Client-side timestamp, ms since the Unix epoch. |
+| `serverTs`  | `v.number()` | Server-received timestamp, ms since the Unix epoch, stamped by the mutation. |
+| `props`     | `v.any()`    | The event's non-identifying property bag, stored exactly as it arrived. |
+
+## Mutation: `events:logEvent`
+
+`convex/events.ts`. Append-only: it validates, stamps `serverTs = Date.now()`, inserts exactly one
+row, and returns the document id. Nothing else.
+
+```
+logEvent({ name, installId, clientTs, props }) -> Id<"events">
+```
+
+### The 13 event names are a wire contract
+
+`name` is a `v.union` of exactly these string literals, which are the raw values of
+`AnalyticsEventName` in `ios/RepToday/RepToday/Models/AnalyticsEvent.swift`:
+
+```
+app_install          onboarding_started   onboarding_completed  ready_screen_shown
+session_started      session_completed    session_abandoned     day7_return
+day30_return         week_active          paywall_shown         trial_started
+subscribe
+```
+
+The two web-side events from the schema (`landing_page_view`, `waitlist_signup`) are handled
+outside the app and are deliberately absent.
+Changing a raw value on either side without the other breaks the contract; the case *names* on the
+Swift side may be refactored freely, the strings may not.
+
+### Validation - and only this validation
+
+"Basic input validation only" is an acceptance criterion, so `logEvent` rejects exactly two things
+and inspects nothing else:
+
+1. **An unknown event name** - the `v.union` above.
+2. **An oversized property bag** - more than **32 keys** or more than **4096 UTF-8 bytes**
+   serialized. (A `props` that is not an object at all is rejected under the same rule: a bag that
+   is not a bag has no size, so that is the precondition the size check is measured against rather
+   than a shape check of its own.)
+
+Rationale for those numbers: the largest bag any real event carries is `session_completed` with
+four small scalar keys (~120 bytes serialized), so both caps sit roughly two orders of magnitude
+above anything the app legitimately sends - they stop a malformed or hostile client from poisoning
+the table without ever policing a legitimate payload's shape.
+The byte count is UTF-8 (`TextEncoder`), not `String.length`, which counts UTF-16 code units and
+would undercount a non-ASCII bag against a limit called "bytes".
+
+There is no schema check on individual property keys or types. Property vocabularies are expected
+to move during the PMF test, and a write-path check would turn every such move into a deploy.
+
+## HTTP action: `POST /logEvent` -> `204`
+
+`convex/http.ts`. Routed by `httpRouter` and served from the deployment's **`.convex.site`** origin
+(not `.convex.cloud`).
+
+```
+POST https://<deployment>.convex.site/logEvent
+Content-Type: application/json
+
+{
+  "name": "session_completed",
+  "installId": "…",
+  "clientTs": 1785780300000,
+  "props": { "requested_minutes": 15, "completed_minutes": 15, "was_return": false }
+}
+```
+
+- **`204 No Content`** - the row was inserted. No body.
+- **`400 Bad Request`** - malformed JSON, an unknown event name, or an oversized bag. No row was
+  inserted. The body carries the error message for a human; the client is fire-and-forget and
+  ignores the status either way.
+
+### Pinned numeric convention
+
+`clientTs` and `serverTs` are `v.number()` - Convex **float64**.
+The action coerces the inbound `clientTs` with `Number(...)`, so the client sends a plain JSON
+number and the Convex `int64`-vs-`float64` trap the US-T01 spike documents (a `v.number()` field
+rejecting a Swift `Int` encoded as `{"$integer": …}` through the SDK) never reaches it.
+
+`generation_ms` is **not** a top-level scalar. It rides inside `props`, which the action passes
+through untouched and the schema stores as-is, so it is not reached by that coercion.
+
+## Layout and deployment
+
+Standard Convex layout: the npm project lives at the repo root (`package.json`, `package-lock.json`)
+and the functions live here in `convex/`.
+Convex bundles every file under the functions directory, so the functions directory cannot also be
+the npm project root - `node_modules` would be swept into the bundle.
+
+```bash
+npm install
+npx convex dev --once     # deploy schema + functions to the dev deployment
+npx convex data events    # read rows back from the deployment
+npm run typecheck         # tsc --noEmit over convex/
+```
+
+`convex/_generated/` **is committed** so `npm run typecheck` and an editor's type hints work in a
+fresh clone with no deployment configured.
+`.env.local` (which holds `CONVEX_DEPLOYMENT`) is gitignored and must never be committed - it is
+per-developer deployment state, not project configuration.
+
+Live validation evidence for this story - the `204`, the row read back with both timestamps
+populated, and the three rejections with the table proven still at one row - is in
+`artifacts/reports/US-T03/validation.md`.

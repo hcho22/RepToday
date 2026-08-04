@@ -1,7 +1,7 @@
 # PRD: Funnel Instrumentation - Anonymous Product Telemetry for the PMF Test
 
 **Opened:** 2026-08-03
-**Status:** In progress. US-T01 (transport spike) complete; its outcome re-scoped US-T03 and US-T04 (see the 2026-08-03 re-scope note under US-T03). US-T02 (event model, `AnalyticsService` seam, in-memory mock) complete - the seam only, with no emission call sites and no transport. US-T03 onward not started.
+**Status:** In progress. US-T01 (transport spike) complete; its outcome re-scoped US-T03 and US-T04 (see the 2026-08-03 re-scope note under US-T03). US-T02 (event model, `AnalyticsService` seam, in-memory mock) complete - the seam only, with no emission call sites and no transport. US-T03 (Convex sink: one append-only `events` table, `logEvent`, `POST /logEvent` -> `204`) complete and validated live against dev deployment `courteous-dogfish-560` (`artifacts/reports/US-T03/validation.md`); the sink exists but nothing emits into it yet. US-T04 onward not started.
 **Transport decision (2026-08-03):** the US-T01 spike returned a no-go on `convex-swift` and the captain adopted it. The transport is now a Convex HTTP action (`POST /logEvent`) reached by a plain `URLSession` POST, with **no** new Swift Package dependency. Reason: `convex-swift` ships an arm64-only binary xcframework (no `x86_64` slice), which would make every Simulator-hosted test suite in this repo unbuildable on the captain's Intel host. iOS 17 was never the blocker. See `artifacts/reports/US-T01/spike-note.md`.
 **Blocks:** The 90-day PMF evaluation against kill criteria K1-K8. Without this build, K1 (onboarding-to-first-session) and K4 (Weekly Active Exercisers) are unmeasurable, and K2/K3 are untrustworthy.
 **Story prefix:** `US-T##` (T for telemetry). See "Story numbering" note below.
@@ -142,14 +142,14 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 **Acceptance Criteria:**
 
-- [ ] The empty `convex/` placeholder (currently just `.gitkeep`) gains a real Convex project: a schema with **one** table (e.g. `events`) and **one** mutation, `logEvent`.
-- [ ] The `events` table stores: event name (string), install identifier (string), client timestamp (number, ms), server-received timestamp (number, ms, set by the mutation), and a JSON property bag (a Convex object/`any`).
-- [ ] `logEvent` is append-only: it inserts one row and returns. It performs **no** funnel modelling, no aggregation, no dedup, and no cohort math - the whole point is that analysis stays deferred.
-- [ ] Basic input validation only: the mutation rejects an unknown event name (a `v.union` of the 13 string literals, or an explicit check) and an oversized property bag, so a malformed client cannot poison the table, but it does nothing else.
-- [ ] A `convex/http.ts` HTTP action routes `POST /logEvent` and wraps the same `logEvent` mutation via `ctx.runMutation`, so the client reaches the sink over plain HTTPS with no Convex SDK. It reads the JSON body, coerces the scalar fields, calls `logEvent`, and returns `204` (the shape validated in US-T01).
-- [ ] The numeric convention is pinned explicitly. Convex distinguishes `int64` from `float64` (a `v.number()` field rejects a Swift `Int` sent through the SDK - the `$integer` vs float64 trap the US-T01 spike documents), but the HTTP action coerces the top-level `clientTs` scalar with `Number(...)`, so that timestamp lands as `float64` regardless of how the client formats it. Declare that top-level numeric field `v.number()` to match. `generation_ms` is **not** a top-level scalar: it travels inside the `props` bag (the Convex `any`/object the action passes through untouched), so it is not reached by the top-level `Number(...)` coercion and is stored as-is.
-- [ ] A short `convex/README.md` documents the table shape, the mutation contract, the HTTP action (`POST /logEvent` -> `204`), and the explicit non-goal ("no analysis in the backend; the sink is dumb by design").
-- [ ] No app code changes in this story. Build and tests pass (Convex functions carry their own TypeScript checks; the iOS build is untouched).
+- [x] The empty `convex/` placeholder (currently just `.gitkeep`) gains a real Convex project: a schema with **one** table (e.g. `events`) and **one** mutation, `logEvent`.
+- [x] The `events` table stores: event name (string), install identifier (string), client timestamp (number, ms), server-received timestamp (number, ms, set by the mutation), and a JSON property bag (a Convex object/`any`).
+- [x] `logEvent` is append-only: it inserts one row and returns. It performs **no** funnel modelling, no aggregation, no dedup, and no cohort math - the whole point is that analysis stays deferred.
+- [x] Basic input validation only: the mutation rejects an unknown event name (a `v.union` of the 13 string literals, or an explicit check) and an oversized property bag, so a malformed client cannot poison the table, but it does nothing else.
+- [x] A `convex/http.ts` HTTP action routes `POST /logEvent` and wraps the same `logEvent` mutation via `ctx.runMutation`, so the client reaches the sink over plain HTTPS with no Convex SDK. It reads the JSON body, coerces the scalar fields, calls `logEvent`, and returns `204` (the shape validated in US-T01).
+- [x] The numeric convention is pinned explicitly. Convex distinguishes `int64` from `float64` (a `v.number()` field rejects a Swift `Int` sent through the SDK - the `$integer` vs float64 trap the US-T01 spike documents), but the HTTP action coerces the top-level `clientTs` scalar with `Number(...)`, so that timestamp lands as `float64` regardless of how the client formats it. Declare that top-level numeric field `v.number()` to match. `generation_ms` is **not** a top-level scalar: it travels inside the `props` bag (the Convex `any`/object the action passes through untouched), so it is not reached by the top-level `Number(...)` coercion and is stored as-is.
+- [x] A short `convex/README.md` documents the table shape, the mutation contract, the HTTP action (`POST /logEvent` -> `204`), and the explicit non-goal ("no analysis in the backend; the sink is dumb by design").
+- [x] No app code changes in this story. Build and tests pass (Convex functions carry their own TypeScript checks; the iOS build is untouched).
 
 **Validation Test:**
 
