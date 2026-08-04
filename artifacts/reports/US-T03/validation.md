@@ -7,22 +7,31 @@ table, one `logEvent` mutation, one `POST /logEvent` HTTP action.
 simulated and not inferred from a local type-check.
 
 > **Partially superseded (post-review, 2026-08-04).** This transcript records a live run against the
-> code as it stood at commit `7fe0b31`. Two review findings were fixed in `convex/http.ts` afterwards
-> and **the fixes were not re-validated against a live deployment** - they were gated only by
-> `npm run typecheck`. Nothing below was re-run, and no output in this file has been edited to
-> predict what the new code would return; the individual sections that no longer describe current
-> behaviour are marked in place. What still holds unchanged: the `204` and both persisted rows, the
-> server-stamped `serverTs`, the untouched `props` pass-through, the two oversized-bag rejections,
-> the non-insert proven by reading the table back, and every shape assertion.
+> code as it stood at commit `7fe0b31`. Review findings were fixed in `convex/http.ts` afterwards -
+> two in a first round, two more in a second - and **none of those fixes was re-validated against a
+> live deployment**; they were gated only by `npm run typecheck`. Nothing below was re-run, and no
+> output in this file has been edited to predict what the new code would return; the individual
+> sections that no longer describe current behaviour are marked in place. What still holds
+> unchanged: the `204` and both persisted rows, the server-stamped `serverTs`, the untouched `props`
+> pass-through, the two oversized-bag rejections, the non-insert proven by reading the table back,
+> and every shape assertion.
 >
 > What changed:
-> 1. The action now requires `installId` to be a non-empty string and `clientTs` to coerce to a
->    finite number, rejecting instead of writing `"undefined"` / `NaN`. **No POST in this transcript
->    omitted either field, so no run below exercised the old behaviour** - this is new surface with
->    no live evidence either way, not a contradicted result.
+> 1. The action now requires `installId` to be a non-empty string, rejecting instead of writing the
+>    literal `"undefined"`. **No POST in this transcript omitted the field, so no run below exercised
+>    the old behaviour** - this is new surface with no live evidence either way, not a contradicted
+>    result.
 > 2. Rejections and internal failures no longer share a status. A caller's fault stays `400`; a
 >    deployment or database failure now answers `500` with no detail echoed. Every rejection
 >    recorded below is a caller's fault, so all of them remain `400`.
+> 3. `clientTs` must now be an actual JSON number rather than anything that coerces to a finite one,
+>    so a numeric string is refused with `400` instead of being reinterpreted. Every POST below sent
+>    a plain JSON number, which is the form that still passes, so nothing recorded here is affected.
+> 4. A `props` field name the Convex SDK's serializer refuses - one starting with `$`, one carrying a
+>    non-ASCII or control character, or one over 1024 characters - was already refused before this
+>    change but was classified as the sink's own failure; it is now classified as the caller's and
+>    answers `400`. No POST below carried such a key, so this too is new surface with no live
+>    evidence in this transcript.
 
 ---
 

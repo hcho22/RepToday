@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { ConvexError } from "convex/values";
+import { ConvexError, convexToJson, type Value } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { api } from "./_generated/api";
 import { EVENT_NAMES, type AnalyticsEventName } from "./events";
@@ -11,9 +11,11 @@ import { EVENT_NAMES, type AnalyticsEventName } from "./events";
  * (US-T04) reaches this sink with a plain `URLSession` POST and no Convex SDK. That makes this
  * route load-bearing rather than convenience: see `artifacts/reports/US-T01/spike-note.md`.
  *
- * `Number(...)` on `clientTs` is the pinned numeric convention - it lands the timestamp as float64
- * to match the `v.number()` schema field regardless of how the client formatted it, so the
- * `int64`/`float64` trap never reaches the client. `props` is passed through untouched.
+ * The pinned numeric convention is that `clientTs` crosses the wire as a plain JSON number. A JSON
+ * number already *is* float64, which is what the `v.number()` schema field stores, so the
+ * `int64`/`float64` trap the US-T01 spike documented - a Swift `Int` encoded by the SDK as
+ * `{"$integer": …}` and refused by a `v.number()` field - never reaches the client. `props` is
+ * passed through untouched.
  */
 const http = httpRouter();
 
@@ -36,6 +38,26 @@ const rejectionMessage = (error: unknown): string | null => {
   if (error instanceof ConvexError) return String(error.data);
   if (error instanceof Error && error.name === "ConvexError") return error.message;
   return null;
+};
+
+/**
+ * `ctx.runMutation` serializes its arguments with the SDK's own `convexToJson` inside this isolate
+ * before anything is sent, and that serializer refuses a field name which starts with `$`, carries
+ * a non-ASCII or control character, or runs past 1024 characters. Such a `props` key is therefore
+ * already rejected today - it just throws a plain `Error` rather than the mutation's `ConvexError`,
+ * so it lands on the wrong side of the split below and is reported as our outage instead of the
+ * caller's mistake. Running the same serializer up front corrects that classification without
+ * adding a rejection: it is not a rule of ours, so it cannot drift from what Convex enforces, and
+ * it inspects field names only - the per-key and per-type checks of `props` the story forbids stay
+ * absent.
+ */
+const isSerializableAsArgs = (args: unknown): boolean => {
+  try {
+    convexToJson(args as Value);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 http.route({
@@ -69,27 +91,28 @@ http.route({
       return jsonResponse(400, "installId must be a non-empty string");
     }
 
-    // Still `Number(...)`: the pinned convention lands the timestamp as float64 however the client
-    // formatted it, so the `int64`/`float64` trap never reaches Swift. The finite check only
-    // rejects what would otherwise have been stored as `NaN` or a coerced-from-nothing zero; a
-    // well-formed client sends a plain JSON number and is unaffected.
-    const rawClientTs = body.clientTs;
-    const clientTs =
-      typeof rawClientTs === "number" ||
-      (typeof rawClientTs === "string" && rawClientTs.trim() !== "")
-        ? Number(rawClientTs)
-        : Number.NaN;
-    if (!Number.isFinite(clientTs)) {
+    // An actual JSON number, which is what the contract says and what a well-formed client sends -
+    // and, being float64 already, is exactly why the `int64`/`float64` trap never reaches Swift.
+    // Coercing a numeric string instead would let `"1e3"` or `"0x1f"` land silently in the column
+    // K1 is timed from, so the kind check is the whole point rather than an obstacle to route past.
+    const clientTs = body.clientTs;
+    if (typeof clientTs !== "number" || !Number.isFinite(clientTs)) {
       return jsonResponse(400, "clientTs must be a finite number of milliseconds since the epoch");
     }
 
+    const args = {
+      name: body.name,
+      installId: body.installId,
+      clientTs,
+      props: body.props ?? {},
+    };
+
+    if (!isSerializableAsArgs(args)) {
+      return jsonResponse(400, "props contains a field name Convex cannot store");
+    }
+
     try {
-      await ctx.runMutation(api.events.logEvent, {
-        name: body.name,
-        installId: body.installId,
-        clientTs,
-        props: body.props ?? {},
-      });
+      await ctx.runMutation(api.events.logEvent, args);
     } catch (error) {
       const rejection = rejectionMessage(error);
       if (rejection !== null) {

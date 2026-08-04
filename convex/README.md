@@ -81,14 +81,24 @@ to move during the PMF test, and a write-path check would turn every such move i
 
 The HTTP action adds one thing to that list and only one: the body's fields must be **present and
 of the right kind** before they are handed to the mutation - `name` one of the 13, `installId` a
-non-empty string, `clientTs` a number.
+non-empty string, `clientTs` an actual JSON number (a numeric *string* like `"1e3"` is refused, not
+coerced).
 That is not a third rule so much as the same one applied where untrusted input enters: coercing a
-missing field with `String(...)` / `Number(...)` would write the literal string `"undefined"` and
-`NaN` into the two columns the whole funnel is counted on (`installId` is the cohort key K4 counts
-unique installs by; `clientTs` is what K1 is timed from), and such a row looks valid while being
-junk - worse than no row at all.
+missing or wrong-kind field with `String(...)` / `Number(...)` would write the literal string
+`"undefined"`, `NaN`, or a silently reinterpreted `"0x1f"` into the two columns the whole funnel is
+counted on (`installId` is the cohort key K4 counts unique installs by; `clientTs` is what K1 is
+timed from), and such a row looks valid while being junk - worse than no row at all.
 It constrains presence and kind only: no length cap, no format or UUID-shape check, nothing about
 what a legitimate value contains.
+
+The action also hands the assembled arguments to the Convex SDK's own `convexToJson` before calling
+the mutation. That is a **classification**, not a rejection: `ctx.runMutation` runs the same
+serializer anyway, so a `props` field name it refuses - one starting with `$`, one carrying a
+non-ASCII or control character, or one over 1024 characters - is already refused today; it simply
+threw a plain `Error` and so was reported as *our* `500` rather than the caller's `400`. Borrowing
+the SDK's function instead of restating its rule means this can never drift from what Convex
+actually enforces, and it inspects field names only - the per-key and per-type checks of `props`
+above stay absent.
 
 `logEvent` raises its own rejections as `ConvexError` rather than `Error`, which is what lets the
 action tell a rejection it asked for apart from a failure it did not - see the status codes below.
@@ -98,6 +108,9 @@ hostile client can still write a very large row through that one field. This was
 US-T03 and consciously accepted for this story: the sink is not yet reachable by any client, and
 US-T04 - which is where the identifier actually starts being sent - carries the acceptance
 criterion that bounds its length.
+Relatedly and also accepted: the route below is unauthenticated and unmetered by design - anonymous
+telemetry admits no client secret - so the caps are per-row rather than per-caller, and anyone who
+reads the `.convex.site` URL out of a shipped binary can add rows indistinguishable from real ones.
 
 ## HTTP action: `POST /logEvent` -> `204`
 
@@ -118,8 +131,9 @@ Content-Type: application/json
 
 - **`204 No Content`** - the row was inserted. No body.
 - **`400 Bad Request`** - the caller's fault: a body that is not valid JSON or not a JSON object, a
-  missing or wrong-kind `name` / `installId` / `clientTs`, an unknown event name, or an oversized
-  bag. No row was inserted. The body carries the error message for a human.
+  missing or wrong-kind `name` / `installId` / `clientTs`, an unknown event name, a `props` field
+  name Convex cannot store, or an oversized bag. No row was inserted. The body carries the error
+  message for a human.
 - **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure. No row
   was inserted. The body says only `internal error`; the detail stays in the deployment log rather
   than being echoed to the caller.
@@ -132,9 +146,11 @@ PMF test gets, so a rejection the sink asked for and a failure it did not must n
 ### Pinned numeric convention
 
 `clientTs` and `serverTs` are `v.number()` - Convex **float64**.
-The action coerces the inbound `clientTs` with `Number(...)`, so the client sends a plain JSON
-number and the Convex `int64`-vs-`float64` trap the US-T01 spike documents (a `v.number()` field
-rejecting a Swift `Int` encoded as `{"$integer": …}` through the SDK) never reaches it.
+The client sends `clientTs` as a plain JSON number, which *is* float64, so the Convex
+`int64`-vs-`float64` trap the US-T01 spike documents (a `v.number()` field rejecting a Swift `Int`
+encoded as `{"$integer": …}` through the SDK) never reaches it.
+That is the whole reason the wire form is a bare JSON number rather than anything the action has to
+reinterpret - and why the action requires one instead of coercing whatever it is handed.
 
 `generation_ms` is **not** a top-level scalar. It rides inside `props`, which the action passes
 through untouched and the schema stores as-is, so it is not reached by that coercion.
@@ -158,8 +174,10 @@ fresh clone with no deployment configured.
 `.env.local` (which holds `CONVEX_DEPLOYMENT`) is gitignored and must never be committed - it is
 per-developer deployment state, not project configuration.
 
-Live validation evidence for this story - the `204`, the row read back with both timestamps
-populated, and the three rejections with the table proven still at one row - is in
+Live validation evidence for this story - the `204`s, the rows read back with both timestamps
+populated, and the three rejections with the table then read back holding **only** the two valid
+events (six rejected POSTs across the two runs, zero rows) - is in
 `artifacts/reports/US-T03/validation.md`.
-That transcript predates the post-review boundary checks and the `4xx`/`5xx` split, and says so
-where its recorded output no longer matches this code; it has not been re-run live.
+That transcript predates the post-review boundary checks, the `4xx`/`5xx` split, and the
+serialization classification above, and says so where its recorded output no longer matches this
+code; it has not been re-run live.
