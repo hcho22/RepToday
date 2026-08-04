@@ -775,7 +775,7 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 ### Epic N - Apple-Native Integrations & Thin Proxy
 
-> Identity, sync, health, monetization, and the single backend piece: a thin stateless proxy that holds the model API key for the Variety Language slice. No scheduler, no data mirror.
+> Identity, sync, health, monetization, and the single backend piece in this PRD: a thin stateless proxy that holds the model API key for the Variety Language slice. No scheduler, no data mirror.
 
 #### US-N01: Sign in with Apple
 

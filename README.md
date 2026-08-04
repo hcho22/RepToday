@@ -94,7 +94,7 @@ There is no XP, no levels, and no badges in the MVP.
 | **Persistence** | CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) |
 | **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
 | **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
-| **Backend** | None in the MVP (`convex/` is an empty placeholder) |
+| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03) |
 | **Bundle ID** | `com.reptoday.app` |
 
 AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
@@ -173,11 +173,13 @@ RepToday/
 │   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
 │   ├── Utilities/           # AppState and shared helpers
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
-├── convex/                  # Empty placeholder; the MVP has no custom backend
+├── convex/                  # Anonymous-telemetry sink only (append-only events table); no backend behind the core loop
+├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
 ├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
-└── CLAUDE.md                # Repo guidance and architecture reference
+├── AGENTS.md                # Repo guidance and architecture reference - the real file
+└── CLAUDE.md                # Symlink to AGENTS.md; edit AGENTS.md
 ```
 
 ---
@@ -188,8 +190,9 @@ RepToday/
 |----------|---------|
 | The v6.0 strategic PRD under `.claude/agent/tasks/` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes the prior v5 strategic PRD (kept for reference). |
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
-| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02) has landed; emission call sites and the Convex transport are still ahead. |
-| `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. |
+| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02) and the Convex sink (US-T03) have landed; the emission call sites and the client transport that would connect them are still ahead. |
+| `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. It is a symlink to `AGENTS.md`, which is the file to edit. |
+| `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, the deliberate non-goals, and the gaps left open for US-T04. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
 | `docs/test-coverage.md` | The test-coverage map: one row per suite, added as the owning story lands. |
 | `docs/asset-attribution.md` | The source/license ledger every third-party asset must have a cleared row in before it ships. |
@@ -243,6 +246,21 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests \
 ```
 
 If xcodebuild cannot resolve the destination, list installed simulators with `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`.
+
+### The telemetry sink (`convex/`)
+
+Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it, and nothing in the app reaches this sink yet (that transport is US-T04).
+It needs **Node.js 18+** and npm; the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
+
+```bash
+npm install
+npm run typecheck         # tsc --noEmit over convex/ - the sink's only re-runnable gate
+npx convex dev --once     # deploy the schema + functions to your own dev deployment
+npx convex data events    # read rows back
+```
+
+`convex/_generated/` is committed, so `npm run typecheck` works in a fresh clone with no deployment configured.
+There is no automated behavioural test over `convex/` and this repo has no CI - see `convex/README.md` and `docs/test-coverage.md` for exactly what that leaves unprotected.
 
 ---
 

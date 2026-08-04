@@ -1,0 +1,18 @@
+{
+  "name": "reptoday-telemetry-sink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Append-only Convex sink for Rep Today's anonymous product telemetry (US-T03).",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "typecheck": "tsc --noEmit -p convex"
+  },
+  "dependencies": {
+    "convex": "^1.16.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
