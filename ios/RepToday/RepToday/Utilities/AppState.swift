@@ -17,8 +17,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 ///
 /// It is also the home of the anonymous per-install identity the funnel is cohorted by
 /// (US-T05): `installId`, `firstLaunchAt`, and `lastActiveAt`. `installId` is a random UUIDv4
-/// minted once and kept only in `UserDefaults` - it is deliberately **not** derived from the
-/// IDFA, `identifierForVendor`, the Sign in with Apple identifier, or an email, and it is
+/// minted on first launch and kept only in `UserDefaults` - it is deliberately **not** derived
+/// from the IDFA, `identifierForVendor`, the Sign in with Apple identifier, or an email, and it is
 /// deliberately **not** stored in the Keychain: a Keychain item survives a plain uninstall with
 /// no restore involved and would resurrect an identity the user believed they deleted.
 /// `UserDefaults` is much weaker than that, which is the point - but it is not nothing:
@@ -44,8 +44,10 @@ final class AppState {
         }
     }
 
-    /// The anonymous per-install identifier: a random UUIDv4, minted once and preserved by every
-    /// relaunch of that install. Never an identity, never a device id.
+    /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
+    /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
+    /// the id is the half of the identity that gets replaced, while a recorded origin is the half
+    /// that survives. Never an identity, never a device id.
     let installId: String
 
     /// When this install was first opened, or `nil` when that moment is genuinely unrecoverable.
@@ -60,15 +62,19 @@ final class AppState {
     /// never discarded, though - re-minting the id does not throw the origin away with it.
     let firstLaunchAt: Date?
 
-    /// The most recent open. Rewritten on every launch, and settable so a later foreground can
-    /// move it.
+    /// The most recent **cold** launch. `init` is the only thing that writes it, and `AppState` is
+    /// constructed once per process, so a resume from the background does not move it - and iOS
+    /// resumes a suspended app far more often than it cold-launches one, so this can lag real usage
+    /// by days. It is a settable `var` matching `isOnboarded`/`selectedTab`, which means a
+    /// foreground update *could* move it, but nothing wires one today and no story owns doing so;
+    /// nothing reads the value either. Read it as "last cold launch" until that changes.
     var lastActiveAt: Date {
         didSet {
             userDefaults.set(lastActiveAt, forKey: Keys.lastActiveAt)
         }
     }
 
-    /// The `lastActiveAt` the previous launch left behind, or `nil` when there was none.
+    /// The `lastActiveAt` the previous cold launch left behind, or `nil` when there was none.
     ///
     /// Nothing reads this today. It exists because `init` overwrites the persisted value with
     /// this launch's open time, so without a snapshot taken here the previous one is destroyed
