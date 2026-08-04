@@ -116,7 +116,7 @@ AI/LLM features are deferred to Phase 2 and, when they arrive, do language only 
                    │
 ┌──────────────────▼──────────────────────────────┐
 │  Service Protocols (Services/Protocols/)         │
-│  All methods async throws; mock implementations │
+│  Methods async throws; mock implementations     │
 └──────────────────┬──────────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────────┐
@@ -128,7 +128,7 @@ AI/LLM features are deferred to Phase 2 and, when they arrive, do language only 
 
 **Key design decisions:**
 
-- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched.
+- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched. Service methods are `async throws`, with one deliberate exception: `AnalyticsServiceProtocol.record(_:)` is `async` but never `throws`, because anonymous telemetry is strictly fire-and-forget and must not hand a caller a failure to think about.
 - **CoreData with domain separation** - domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`. The core loop works fully offline; CloudKit handles sync and backup when available.
 - **Deterministic engine** - the workout engine runs entirely on-device with no network or LLM calls (see below).
 - **Environment-based DI** - `ServiceContainer` holds all service instances, injected at the app root via a custom `EnvironmentKey`.
@@ -188,6 +188,7 @@ RepToday/
 |----------|---------|
 | The v6.0 strategic PRD under `.claude/agent/tasks/` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes the prior v5 strategic PRD (kept for reference). |
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
+| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02) has landed; emission call sites and the Convex transport are still ahead. |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
 | `docs/test-coverage.md` | The test-coverage map: one row per suite, added as the owning story lands. |

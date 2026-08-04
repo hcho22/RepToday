@@ -24,7 +24,8 @@ import UIKit
 ///
 /// New evidence suites resolve through `EvidenceOutput.directory(for:)` and write through
 /// `EvidenceOutput.write(_:named:for:)` rather than copying either. `OnboardingBasicsEvidenceTests`
-/// (unmerged, PR #67) still carries its own copy and should adopt this once that branch lands.
+/// has landed but still carries its own copy - and reads `REPTODAY_EVIDENCE_DIR` as the final
+/// directory rather than as a root - so it is the one suite yet to adopt this.
 enum EvidenceOutput {
 
     /// Each story keeps its evidence in its own folder, so a render belonging to one story's work

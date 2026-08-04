@@ -18,7 +18,12 @@ enum HostedSurface {
 
     /// How long a freshly hosted surface is given to finish its asynchronous layout, draw and `.task`
     /// work. Deliberately generous: it is a ceiling for a loaded machine, not a target.
-    static let settleInterval: TimeInterval = 2.5
+    ///
+    /// `nonisolated` because `host(_:size:settleFor:)` uses it as a default argument, and a default
+    /// argument expression is evaluated in the caller's context rather than the callee's isolation -
+    /// an error in the Swift 6 language mode. An immutable `Sendable` constant is safe to read from
+    /// anywhere, so opting it out of the enum's `@MainActor` isolation costs nothing.
+    nonisolated static let settleInterval: TimeInterval = 2.5
 
     /// Hosts `view` at `size` in a real key window and returns it laid out, drawn and settled.
     ///

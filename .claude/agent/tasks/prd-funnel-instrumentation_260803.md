@@ -1,7 +1,7 @@
 # PRD: Funnel Instrumentation - Anonymous Product Telemetry for the PMF Test
 
 **Opened:** 2026-08-03
-**Status:** Implementation-ready. US-T01 (transport spike) complete; its outcome re-scoped US-T03 and US-T04 (see the 2026-08-03 re-scope note under US-T03). US-T02 onward not started.
+**Status:** In progress. US-T01 (transport spike) complete; its outcome re-scoped US-T03 and US-T04 (see the 2026-08-03 re-scope note under US-T03). US-T02 (event model, `AnalyticsService` seam, in-memory mock) complete - the seam only, with no emission call sites and no transport. US-T03 onward not started.
 **Transport decision (2026-08-03):** the US-T01 spike returned a no-go on `convex-swift` and the captain adopted it. The transport is now a Convex HTTP action (`POST /logEvent`) reached by a plain `URLSession` POST, with **no** new Swift Package dependency. Reason: `convex-swift` ships an arm64-only binary xcframework (no `x86_64` slice), which would make every Simulator-hosted test suite in this repo unbuildable on the captain's Intel host. iOS 17 was never the blocker. See `artifacts/reports/US-T01/spike-note.md`.
 **Blocks:** The 90-day PMF evaluation against kill criteria K1-K8. Without this build, K1 (onboarding-to-first-session) and K4 (Weekly Active Exercisers) are unmeasurable, and K2/K3 are untrustworthy.
 **Story prefix:** `US-T##` (T for telemetry). See "Story numbering" note below.
@@ -114,13 +114,13 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 **Acceptance Criteria:**
 
-- [ ] A `Codable` value type (e.g. `AnalyticsEvent`) holds: the event name (a closed enum over the 13 event names), the millisecond timestamp, and a small string-keyed property bag (`[String: AnalyticsValue]` where `AnalyticsValue` is a closed union of the scalar types the schema uses - `Int`, `Double`, `String`, `Bool`).
-- [ ] The event name enum has exactly the 13 in-app cases from `gtm/06-channels/event-metric-schema.md`: `app_install`, `onboarding_started`, `onboarding_completed`, `ready_screen_shown`, `session_started`, `session_completed`, `session_abandoned`, `day7_return`, `day30_return`, `week_active`, `paywall_shown`, `trial_started`, `subscribe`. (The two web-side events `landing_page_view` and `waitlist_signup` are out of scope for the app build.)
-- [ ] `AnalyticsServiceProtocol` is declared in `Services/Protocols/ServiceProtocols.swift` alongside the existing service protocols. Its single emission method is `async throws` and is named to read as fire-and-forget at the call site (e.g. `func record(_ event: AnalyticsEvent) async`).
-- [ ] A `MockAnalyticsService` records every event into an in-memory array exposed for test assertions, performs no I/O, and never touches the network.
-- [ ] `analyticsService` is added as a property on `ServiceContainer` and wired in **both** `mock()` and `live(context:)` in `DI/ServiceContainer.swift` (live may temporarily point at the mock until US-T04 lands).
-- [ ] No emission call sites are added in this story - this is the seam only.
-- [ ] Uses `@Observable` only (never `ObservableObject`), all service methods `async`, `Theme` tokens where any UI appears (none here). Build and tests pass.
+- [x] A `Codable` value type (e.g. `AnalyticsEvent`) holds: the event name (a closed enum over the 13 event names), the millisecond timestamp, and a small string-keyed property bag (`[String: AnalyticsValue]` where `AnalyticsValue` is a closed union of the scalar types the schema uses - `Int`, `Double`, `String`, `Bool`).
+- [x] The event name enum has exactly the 13 in-app cases from `gtm/06-channels/event-metric-schema.md`: `app_install`, `onboarding_started`, `onboarding_completed`, `ready_screen_shown`, `session_started`, `session_completed`, `session_abandoned`, `day7_return`, `day30_return`, `week_active`, `paywall_shown`, `trial_started`, `subscribe`. (The two web-side events `landing_page_view` and `waitlist_signup` are out of scope for the app build.)
+- [x] `AnalyticsServiceProtocol` is declared in `Services/Protocols/ServiceProtocols.swift` alongside the existing service protocols. Its single emission method is `async throws` and is named to read as fire-and-forget at the call site (e.g. `func record(_ event: AnalyticsEvent) async`). - *shipped as `func record(_ event: AnalyticsEvent) async`, deliberately **not** `throws` - the criterion's two halves pulled against each other, and the parenthetical won: emission is strictly fire-and-forget, so a call site reads `await analytics.record(event)` with no `try`, and the live transport (US-T04) swallows every failure rather than surfacing it. This is the one departure from that file's `async throws` house style and is documented as such on the protocol, in `CLAUDE.md`, and in `README.md`.*
+- [x] A `MockAnalyticsService` records every event into an in-memory array exposed for test assertions, performs no I/O, and never touches the network.
+- [x] `analyticsService` is added as a property on `ServiceContainer` and wired in **both** `mock()` and `live(context:)` in `DI/ServiceContainer.swift` (live may temporarily point at the mock until US-T04 lands). - *live points at a `NoOpAnalyticsService` (`Services/Analytics/`) rather than the mock: the allowance was for an inert placeholder, but `MockAnalyticsService` is a recorder, so shipping it in production would grow an unbounded `recordedEvents` array the moment an emission story landed ahead of US-T04. The no-op carries the same "nothing leaves the process" guarantee with nothing retained.*
+- [x] No emission call sites are added in this story - this is the seam only.
+- [x] Uses `@Observable` only (never `ObservableObject`), all service methods `async`, `Theme` tokens where any UI appears (none here). Build and tests pass.
 
 **Validation Test:**
 
@@ -169,13 +169,15 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 
 > **Transport re-scope (US-T01 spike, adopted 2026-08-03):** this story previously mandated adding `get-convex/convex-swift` to `ios/RepToday/project.yml`. That is dropped. The US-T01 spike returned a no-go (`convex-swift` ships an arm64-only xcframework, which breaks every Simulator-hosted test suite on the captain's Intel host) and the captain adopted it. `LiveAnalyticsService` now posts JSON to the deployment's `.site/logEvent` HTTP action (US-T03) with `URLSession`. Lottie stays the app's only third-party package.
 
+> **Wire-shape note (US-T02):** `AnalyticsValue`'s `Codable` form is deliberately tagged (`{"type":...,"value":...}`) so `Int` and `Double` round-trip losslessly in process - that is a US-T02 requirement and stays. It is **not** the wire shape: US-T04 must flatten the property bag on the way out so the Convex sink stores plain scalars (e.g. `"props": {"generation_ms": 38}`), matching the rows the US-T01 spike persisted and US-T03's "stored as-is".
+
 **Acceptance Criteria:**
 
-- [ ] `LiveAnalyticsService` conforms to `AnalyticsServiceProtocol`, encodes an `AnalyticsEvent` as JSON, and `POST`s it to the deployment's `.site/logEvent` HTTP action with `URLSession`. No Convex SDK is used.
+- [ ] `LiveAnalyticsService` conforms to `AnalyticsServiceProtocol`, encodes an `AnalyticsEvent` as JSON, and `POST`s it to the deployment's `.site/logEvent` HTTP action with `URLSession`. No Convex SDK is used. The property bag is flattened to plain scalars for the wire (see the wire-shape note above), so `props` holds numbers, strings, and booleans rather than `AnalyticsValue`'s tagged in-process form.
 - [ ] **No new Swift Package dependency is added.** `ios/RepToday/project.yml` still lists Lottie as the only third-party package; `convex-swift` is **not** added. Only the deployment `.site` URL is new config (a build setting or plist value), alongside the install id from US-T05 and the opt-out flag from US-T06.
 - [ ] Emission is **strictly fire-and-forget**: `record(_:)` returns immediately, the send happens on a detached/background task (`Task.detached`), and no caller ever awaits network completion. A failed, slow, or offline send is swallowed (`try?`, best-effort), exactly like every other integration in this app (HealthKit, CloudKit, StoreKit observation).
 - [ ] The core loop is never blocked, degraded, or failed by telemetry: verified by the offline validation test below.
-- [ ] `live(context:)` in `DI/ServiceContainer.swift` swaps the temporary mock for `LiveAnalyticsService`; `mock()` keeps `MockAnalyticsService`. The environment/injection path (`@Environment(\.services)`) is unchanged.
+- [ ] `live(context:)` in `DI/ServiceContainer.swift` swaps the temporary `NoOpAnalyticsService` for `LiveAnalyticsService`; `mock()` keeps `MockAnalyticsService`. The environment/injection path (`@Environment(\.services)`) is unchanged.
 - [ ] Events carry the anonymous install identifier from US-T05 and honour the opt-out flag from US-T06 (integration wired here; the identifier and flag land in those stories - order T05/T06 before T04's final wiring, or stub then connect).
 - [ ] Build and tests pass; no test run performs a real network call. Unit tests either use `MockAnalyticsService` or exercise `LiveAnalyticsService` through a `URLProtocol` stub that intercepts the request in-process (asserting the URL, method, and JSON body without touching the network), so FR-13 holds with no live call.
 

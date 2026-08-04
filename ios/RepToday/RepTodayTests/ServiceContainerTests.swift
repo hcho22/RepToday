@@ -2,9 +2,18 @@ import XCTest
 @testable import RepToday
 
 final class ServiceContainerTests: XCTestCase {
+    /// Every property on the container is resolved and exercised here, so a service added to
+    /// `ServiceContainer` and left unwired fails rather than passing unnoticed. The property count
+    /// is asserted first so *adding* a service without extending this list is itself the failure.
     func testMockContainerResolvesEveryService() async throws {
         let services = ServiceContainer.mock()
         let user = MockPersistence.sampleUser
+
+        XCTAssertEqual(
+            Mirror(reflecting: services).children.count,
+            13,
+            "a service was added to ServiceContainer - resolve it below and update this count"
+        )
 
         _ = try await services.exerciseService.exercises()
         let policy = try await services.sessionPolicyService.currentPolicy(for: user)
@@ -23,6 +32,7 @@ final class ServiceContainerTests: XCTestCase {
         _ = try await services.healthKitService.authorizationStatus()
         _ = try await services.subscriptionService.currentSubscription()
         _ = try await services.authService.currentUserIdentifier()
+        await services.analyticsService.record(AnalyticsEvent(name: .appInstall, timestampMs: 0))
     }
 
     /// US-D04 validation test: the container resolves the session-policy service, its

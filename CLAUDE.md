@@ -13,6 +13,7 @@ The MVP is Apple-native with no custom backend; AI/LLM features are deferred to 
 
 - **Strategic plan:** the v6.0 strategic PRD under `.claude/agent/tasks/` (supersedes v5, kept for reference).
 - **Implementation PRD / live progress tracker:** `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` (~51 stories, US-A01 ... US-N05); acceptance checkboxes flip to `[x]` as stories land. Always check the story before building a feature.
+- **Second, in-progress PRD - anonymous product telemetry:** `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` (`US-T##`, tracked the same way); US-T01 (transport spike) and US-T02 (the analytics seam) have landed, emission call sites and transport are still ahead.
 - **What is already built:** `docs/implementation-log.md`. **Test coverage map:** `docs/test-coverage.md`. **Third-party asset source/license ledger:** `docs/asset-attribution.md` (an asset with no cleared row never ships).
 - The strategic plans reference a `CONTEXT.md` and `docs/adr/` that do not exist here; the task files above are authoritative.
 
@@ -50,6 +51,8 @@ Hosting a production surface to capture or read it likewise goes through `Hosted
 
 **Integrations & navigation:** Sign in with Apple, CloudKit, write-only HealthKit, and StoreKit 2 (free unlimited core, premium depth only) never gate the core loop and degrade quietly; `AppState` (`@Observable`, UserDefaults-persisted) controls onboarding vs. main tabs and the selected tab.
 
+**Anonymous product telemetry (funnel instrumentation, a separate PRD):** `AnalyticsServiceProtocol.record(_:)` takes an `AnalyticsEvent` - one of exactly 13 pre-registered event names (`gtm/06-channels/event-metric-schema.md`, snake_case raw values that are the wire contract), a millisecond client timestamp, and a non-identifying `[String: AnalyticsValue]` bag. As of US-T02 this is the **seam only**: nothing emits and nothing leaves the process - `mock()` wires the recording in-memory `MockAnalyticsService`, while `live(context:)` wires the discarding `NoOpAnalyticsService` (`Services/Analytics/`) so a shipping build accumulates nothing either, until US-T04 lands the Convex-backed fire-and-forget `URLSession` POST in its place.
+
 ## The Deterministic Engine
 
 Pure Swift, on-device, no network, no LLM, <100ms. Step 0 overrides (cold start, Return) run first and are no-ops in the steady state; the cold start also carries a **Start Seed** - a difficulty band `[startingDifficultyFloor, cappedMaxDifficulty]` over strength/primal plus a volume seed, both seeded from `profile.fitnessLevel`, eased a tier per `tooHard` rating, and retired at the handoff (which records the floor the week actually ran at so Step 5 does not treat a withheld chain as fresh).
@@ -74,7 +77,7 @@ No XP, no levels, no badges, no streak to break.
 
 ## Key Conventions
 
-- `@Observable` only, never `ObservableObject`/`@Published`. All service methods are `async throws`.
+- `@Observable` only, never `ObservableObject`/`@Published`. All service methods are `async throws` - the one exception is `AnalyticsServiceProtocol.record(_:)`, which is `async` but not `throws` because emission is strictly fire-and-forget, so a call site reads `await analytics.record(event)` with no `try`.
 - Enums are `Codable`, `CaseIterable`, and `Identifiable` where they have a stable id.
 - Always use `Theme.Colors` / `Theme.Typography` / `Theme.Spacing`; never hardcode colors, fonts, or spacing.
 - Button height 56pt, card radius 16pt, touch targets 44pt (60pt on active workout screens).
@@ -95,6 +98,7 @@ Services/Language/          Variety Language template, resolver, proxy client
 Services/Consistency/       Consistency Score, PhaseEvaluator, ConsistencyTrend
 Services/Progress/          Progress-tab analytics (free + premium-gated deep layer)
 Services/ActiveSession/     Resume store, completion recorder, session summary
+Services/Analytics/         Telemetry sinks (the discarding no-op today; live Convex POST at US-T04)
 Services/Auth|Health|Subscription/   Sign in with Apple, HealthKit writes, StoreKit 2
 DI/ ViewModels/ Views/      Container + injection, @Observable view models, SwiftUI screens
 Utilities/ Resources/       AppState and helpers; Exercises.json, assets, .storekit (no demo animation ships yet)

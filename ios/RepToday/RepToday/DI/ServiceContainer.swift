@@ -21,6 +21,10 @@ struct ServiceContainer {
     let healthKitService: any HealthKitServiceProtocol
     let subscriptionService: any SubscriptionServiceProtocol
     let authService: any AuthServiceProtocol
+    /// The anonymous product-telemetry sink (US-T02). Additive and never gates the core loop, but it
+    /// carries no initializer default: every construction site wires it explicitly, like every other
+    /// service here, so a container built without a sink is a build error rather than silent data loss.
+    let analyticsService: any AnalyticsServiceProtocol
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -34,7 +38,8 @@ struct ServiceContainer {
         sessionCompletionService: any SessionCompletionServiceProtocol,
         healthKitService: any HealthKitServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
-        authService: any AuthServiceProtocol
+        authService: any AuthServiceProtocol,
+        analyticsService: any AnalyticsServiceProtocol
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -48,6 +53,7 @@ struct ServiceContainer {
         self.healthKitService = healthKitService
         self.subscriptionService = subscriptionService
         self.authService = authService
+        self.analyticsService = analyticsService
     }
 
     static func mock() -> ServiceContainer {
@@ -106,7 +112,9 @@ struct ServiceContainer {
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
-            authService: MockAuthService()
+            authService: MockAuthService(),
+            // The in-memory telemetry sink (US-T02): records events for test assertions, no I/O.
+            analyticsService: MockAnalyticsService()
         )
     }
 
@@ -163,7 +171,11 @@ struct ServiceContainer {
             // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
             subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
-            authService: AppleAuthService.live()
+            authService: AppleAuthService.live(),
+            // US-T02 is the seam only, so production *discards* events: a shipping build emits
+            // nothing and accumulates nothing (the recording mock would grow an array nothing
+            // drains). The Convex-backed fire-and-forget `URLSession` transport swaps in at US-T04.
+            analyticsService: NoOpAnalyticsService()
         )
     }
 }

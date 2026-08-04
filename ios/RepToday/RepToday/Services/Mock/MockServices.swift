@@ -14,9 +14,15 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
     /// The validated catalog is the engine's exercise source; pulling it from the exercise service
     /// keeps a single, integrity-checked source of truth rather than re-loading the library here.
     private let exerciseService: any ExerciseServiceProtocol
+    /// The clock the assembler reads for pillar/pattern staleness. Defaults to the wall clock so
+    /// production is unchanged, but is injectable so a test can pin it - the codebase rule is that
+    /// engine logic never reads the wall clock inline, and a fixed clock keeps a hosted generation
+    /// reproducible instead of drifting with the calendar (`PerSideSwapEvidenceTests`).
+    private let now: () -> Date
 
-    init(exerciseService: any ExerciseServiceProtocol) {
+    init(exerciseService: any ExerciseServiceProtocol, now: @escaping () -> Date = { Date() }) {
         self.exerciseService = exerciseService
+        self.now = now
     }
 
     func generateWorkout(
@@ -39,7 +45,7 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
             library: library,
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
-            asOf: Date()
+            asOf: now()
         )
     }
 
@@ -262,5 +268,25 @@ actor MockAuthService: AuthServiceProtocol {
 
     func signOut() async throws {
         userIdentifier = nil
+    }
+}
+
+// MARK: - Analytics
+
+/// In-memory analytics sink for tests and previews (US-T02).
+///
+/// Records every event into `recordedEvents` in call order and does nothing else: no I/O, no
+/// network, no disk. It is the recording sink `ServiceContainer.mock()` wires, and the one tests
+/// and previews use when they need to assert on what was recorded - `live(context:)` wires the
+/// discarding `NoOpAnalyticsService` instead. An `actor` so appends stay race-free once emission
+/// moves onto detached background tasks; tests read the recorded array with
+/// `await mock.recordedEvents`.
+actor MockAnalyticsService: AnalyticsServiceProtocol {
+    private(set) var recordedEvents: [AnalyticsEvent] = []
+
+    init() {}
+
+    func record(_ event: AnalyticsEvent) async {
+        recordedEvents.append(event)
     }
 }
