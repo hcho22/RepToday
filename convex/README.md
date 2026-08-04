@@ -51,10 +51,13 @@ That matters because a public Convex function is exposed on `POST <deployment>.c
 and `.convex.cloud` shares its slug with the `.convex.site` origin a shipped client already carries -
 so a public `logEvent` would be a second entry point reachable by anyone who read the URL out of the
 binary, and one that bypasses every boundary check in `convex/http.ts`. It was public until review
-caught it, and a direct call did write a row with an empty `installId` and a `clientTs` of `0` -
-exactly the junk-row shape those checks exist to prevent in the two columns K4 and K1 are counted
-from. Making it internal is what makes "the HTTP action is the only entry point" a fact rather than
-a description of intent.
+caught it, and a direct call did write a row with an empty `installId` and a `clientTs` of `0`. The
+empty `installId` is precisely what the action refuses - it is the cohort key K4 counts unique
+installs by, and a blank one collapses every such row into one phantom install. The `clientTs` of
+`0` is *not*: the action checks presence and kind only, so `0` is a finite JSON number and would
+land through `POST /logEvent` too, as would any other finite absurdity. That is the pinned scope,
+not an oversight - see "Validation - and only this validation" below. Making the mutation internal
+is what makes "the HTTP action is the only entry point" a fact rather than a description of intent.
 
 ### The 13 event names are a wire contract
 
@@ -105,6 +108,11 @@ counted on (`installId` is the cohort key K4 counts unique installs by; `clientT
 timed from), and such a row looks valid while being junk - worse than no row at all.
 It constrains presence and kind only: no length cap, no format or UUID-shape check, nothing about
 what a legitimate value contains.
+Read that literally rather than as a promise of plausibility. A `clientTs` of `0`, or of `1e300`,
+is a finite JSON number and lands - the check rules out the *missing* and *wrong-kind* cases
+(`undefined`, `NaN`, `"1e3"`), not implausible ones. Range and sanity belong to a query written
+later against the raw rows, where they can be revised without a deploy, which is the same reason
+the sink is dumb everywhere else.
 
 The action also hands the assembled arguments to the Convex SDK's own `convexToJson` before calling
 the mutation. That is a **classification**, not a rejection: `ctx.runMutation` runs the same
@@ -146,11 +154,29 @@ violates one of those - `props` nested past Convex's 16-level value limit, say, 
 under 100 bytes and so is far cheaper to send than a multi-hundred-KB `installId` - passes the name
 check, passes both `props` caps, and fails for the first time at `ctx.db.insert`, landing on the same
 `500` branch.
-Both are the same accepted consequence rather than two problems: the story's validation is deliberately
-"basic input validation only", so the `400` side is exactly the set of rules this sink states for
-itself plus the one it borrows, and everything Convex enforces beyond that is discovered at the insert
-and reported as ours. Note it when reading `500`s during the PMF test; do not read this as a promise
-that every caller fault is a `400`.
+**One of the sink's own stated rules is reached by that residual too, which is worth separating out
+because it is a matter of ordering rather than of a rule this sink never claimed.** The `props` caps
+live inside the mutation, so they are evaluated only once `ctx.runMutation` has serialized its
+arguments - and Convex bounds a function's arguments (~8 MiB) far above where those caps sit. A bag
+past that bound therefore fails during argument serialization, as a plain `Error`, before the 32-key
+and 4096-byte checks can run, and so answers `500` rather than the `400` the caps promise. The caps
+answer `400` across the entire range a real client could plausibly send - the widest legitimate bag
+is ~120 bytes, and the caps are two orders of magnitude above it - and only a multi-megabyte bag,
+past Convex's own argument limit, comes back as a server error instead.
+That is accepted for US-T03 rather than fixed, and the reasoning is recorded rather than assumed: it
+takes a payload of several megabytes, which no accident produces; nothing can reach this endpoint at
+all until US-T04; a pre-mutation size check would be more boundary logic in a story that ships with
+no automated test to protect it; and it is the same shape as the oversized-`installId` case above, so
+accepting it keeps that treatment consistent. The concern is real all the same - a `500` is meant to
+mean the sink is broken, and this lets a caller manufacture one on the only outage signal a human
+watching the PMF test has - so it is carried as an unchecked US-T04 acceptance criterion beside the
+`installId` bound rather than left implicit.
+All three are the same accepted consequence rather than three problems: the story's validation is
+deliberately "basic input validation only", so the `400` side is exactly the set of rules this sink
+states for itself plus the one it borrows, evaluated where they are - and everything Convex enforces
+first or beyond that is discovered at serialization or at the insert and reported as ours. Note it
+when reading `500`s during the PMF test; do not read this as a promise that every caller fault is a
+`400`.
 Relatedly and also accepted: the route below is unauthenticated and unmetered by design - anonymous
 telemetry admits no client secret - so the caps are per-row rather than per-caller, and anyone who
 reads the `.convex.site` URL out of a shipped binary can add rows indistinguishable from real ones.
@@ -177,13 +203,16 @@ Content-Type: application/json
 - **`204 No Content`** - the row was inserted. No body.
 - **`400 Bad Request`** - the caller's fault: a body that is not valid JSON or not a JSON object, a
   missing or wrong-kind `name` / `installId` / `clientTs`, an unknown event name, a `props` field
-  name Convex cannot store, or an oversized bag. No row was inserted. The body carries the error
-  message for a human.
+  name Convex cannot store, or an oversized bag (across the whole range a real client could send;
+  see the `500` note for the multi-megabyte exception). No row was inserted. The body carries the
+  error message for a human.
 - **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure. No row
   was inserted. The body says only `internal error`; the detail stays in the deployment log rather
   than being echoed to the caller. (With the accepted residual noted under "Known current gap": a
   caller fault that only a write-time Convex rule catches - an over-long `installId`, `props` nested
-  past the value-depth limit - reaches the insert and is reported here too.)
+  past the value-depth limit - reaches the insert and is reported here too, as does a `props` bag
+  past Convex's ~8 MiB argument bound, which fails during argument serialization before the bag caps
+  themselves can run.)
 
 That split exists for a human, not for the client - US-T04's client is strictly fire-and-forget and
 swallows every error, so a sink outage answered as `400` would be invisible: events would simply
@@ -225,9 +254,11 @@ Live validation evidence for this story is in `artifacts/reports/US-T03/validati
 the rows read back with both timestamps populated and `serverTs` stamped server-side, and every
 rejection above with the table then read back holding **only** the valid events, so the non-insert
 is proven by the table's contents rather than inferred from the errors.
-It records three runs - the original one at `7fe0b31`; a re-run at `42c1310` that gates the
-post-review boundary checks, the `4xx`/`5xx` split, and the serialization classification live; and a
-third at `99a11d0` that gates `logEvent` being internal.
+It records four runs - the original one at `7fe0b31`; a re-run at `42c1310` that gates the
+post-review boundary checks, the `4xx`/`5xx` split, and the serialization classification live; an
+interim verification at that same commit, which is where the pre-fix `500`s on unstorable `props`
+field names were seen directly and which accounts for the one row in the final listing no other run
+produced; and a fourth at `99a11d0` that gates `logEvent` being internal.
 That last one is a before/after pair of the *same* direct `.convex.cloud/api/mutation` call: at
 `42c1310` it answered `{"status":"success", …}` and inserted a row with an empty `installId` and a
 `clientTs` of `0`; at `99a11d0` it answers

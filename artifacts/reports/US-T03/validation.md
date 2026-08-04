@@ -239,6 +239,50 @@ the PMF test has. And the four `clientTs` cases confirm the string-coercion bran
 `"0x1f"`, and `" 12 "` are refused rather than silently reinterpreted into the column K1 is timed
 from.
 
+### Interim verification run (commit `42c1310`) - the source of the `verify-OK` row
+
+Between the pass recorded above and the `99a11d0` re-run, one further verification was driven by hand
+against the same deployment (`courteous-dogfish-560`,
+`https://courteous-dogfish-560.convex.site/logEvent`) at commit `42c1310`. It is recorded here so that
+every row in the complete table listing at the end of this file traces to a request written down
+somewhere in it, rather than one row appearing from nowhere in a document whose whole method is
+proof-by-table-contents.
+
+**Accepted:**
+
+```
+POST {"name":"session_started","installId":"verify-OK","clientTs":1785781100000,
+      "props":{"requested_minutes":15}}
+
+HTTP 204          (empty body)
+```
+
+Read back later by `npx convex data events`:
+
+```
+j571dvabbpm6aef09ax1kzkab58bv6y9 | clientTs 1785781100000 | installId "verify-OK" | session_started | props { "requested_minutes": 15 } | serverTs 1785852078940
+```
+
+That is the `verify-OK` row in the listing below, and it is the only row this run added.
+
+**Rejected - and this run is where the misclassification was first seen directly.** Three `props`
+field-name POSTs were sent, and all three came back as the sink's own failure rather than the
+caller's:
+
+```
+props {"café":1}                  -> HTTP 500 {"error":"internal error"}
+props {"$evil":1}                 -> HTTP 500 {"error":"internal error"}
+props key of 1100 characters      -> HTTP 500 {"error":"internal error"}
+```
+
+None inserted a row. These are the pre-fix bodies: the deployment was still carrying the classifier
+as it stood before the `convexToJson` pre-pass, so an input Convex refuses on the caller's behalf was
+reported as our outage. The same three inputs answer
+`400 {"error":"props contains a field name Convex cannot store"}` in the re-validation table above,
+which is the `42c1310` re-classification working. The pair is recorded together because the `500`s
+are what made the case for that fix, and quoting only the `400`s would leave the file's own timeline
+missing its cause.
+
 ## The direct-mutation bypass - observed open, then observed closed
 
 The same request was sent twice: once at commit `42c1310`, while `logEvent` was still a public
@@ -258,10 +302,13 @@ HTTP 200
 {"status":"success","value":"j579gg022ndcfdb4qq282fdjbn8btryz"}
 ```
 
-That **inserted a row** with an empty `installId` and a `clientTs` of `0` - precisely the junk-row
-shape the `400`s above exist to keep out of the two columns K4 and K1 are counted from. `.convex.cloud`
-and `.convex.site` share a deployment slug, so anyone reading the HTTP-action URL out of a shipped
-US-T04 binary would have known this endpoint too.
+That **inserted a row** with an empty `installId` and a `clientTs` of `0`. The empty `installId` is
+precisely what the `400`s above keep out of the column K4 counts unique installs by; the `clientTs`
+of `0` is not, and should not be read as though it were - the route checks presence and kind only, so
+`0` is a finite JSON number that lands through `POST /logEvent` as well. What the bypass removed was
+the `installId` half, and that is the half this pair proves. `.convex.cloud` and `.convex.site` share
+a deployment slug, so anyone reading the HTTP-action URL out of a shipped US-T04 binary would have
+known this endpoint too.
 
 **After the fix (commit `99a11d0`).** The identical request now finds no function to call and writes
 nothing:
@@ -316,10 +363,20 @@ j5745cj8xgz584taynenzm43ws8bvvae | clientTs 1785780300000 | installId "ust03-val
 The `props` column is not reproduced above; the two `*-NOPROPS` rows, whose POSTs omitted `props` from
 the body entirely, came back holding `{}`, which is the default the action supplies.
 
+Every row traces to a POST recorded in this file: `r4-OK` and `r4-NOPROPS` to the `99a11d0` re-run
+described just above, `r3-OK` and `r3-NOPROPS` to the `42c1310` post-review pass, `verify-OK` to the
+interim run at that same commit, and `ust03-final-R1` and `ust03-validation-A1B2` to the original
+`7fe0b31` run under step 2. Seven rows, seven recorded requests, and nothing else in the table.
+
 Every row has a non-empty `installId`, a non-zero `clientTs`, and a `serverTs` distinct from its
 `clientTs`. The empty-`installId` row is absent. So the file's proof method holds end to end: what the
 table contains, not what the responses said, is the evidence - and what it contains is only valid
 events.
+
+The non-zero `clientTs` on every row is an observation about these seven rows, not a property the
+route enforces: the boundary check is presence and kind, so a `clientTs` of `0` sent through
+`POST /logEvent` would land. That is the pinned scope rather than a gap, and `convex/README.md`
+states it in the same terms.
 
 ## Limitations
 

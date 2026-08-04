@@ -57,8 +57,9 @@ export const MAX_PROPS_KEYS = 32;
  * deployment's own `.convex.cloud/api/mutation` endpoint, which shares its slug with the
  * `.convex.site` route a shipped client already carries. That second entry point skipped every
  * boundary check in `http.ts`: a direct call was observed inserting a row with an empty
- * `installId`, exactly the junk the checks exist to keep out of the columns K4 and K1 are counted
- * from. Internal makes the HTTP action the single entry point the story says it is.
+ * `installId`, which is exactly what the action's non-empty-string check keeps out of the column
+ * K4 counts unique installs by. Internal makes the HTTP action the single entry point the story
+ * says it is.
  */
 export const logEvent = internalMutation({
   args: {
