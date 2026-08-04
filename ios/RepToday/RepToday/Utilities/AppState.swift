@@ -52,11 +52,12 @@ final class AppState {
     /// Written once and never moved again, so it is the stable origin the install cohort is
     /// measured from.
     ///
-    /// It is `nil` for an install that already existed before this build shipped: such a launch
-    /// mints an id but has no honest first-launch date, and the upgrade date is not one. A
-    /// plausible-looking date would eventually be read without its caveat and would cohort the
-    /// install into the week it upgraded, so the unknown is modelled as an unknown and every
-    /// consumer has to decide what to do with it.
+    /// It is `nil` for an install that already existed before this build shipped and has no origin
+    /// recorded on disk: such a launch mints an id but has no honest first-launch date, and the
+    /// upgrade date is not one. A plausible-looking date would eventually be read without its
+    /// caveat and would cohort the install into the week it upgraded, so the unknown is modelled
+    /// as an unknown and every consumer has to decide what to do with it. A recorded origin is
+    /// never discarded, though - re-minting the id does not throw the origin away with it.
     let firstLaunchAt: Date?
 
     /// The most recent open. Rewritten on every launch, and settable so a later foreground can
@@ -77,9 +78,10 @@ final class AppState {
 
     /// True only for the launch that first opened this install. This is the one moment the fact
     /// is knowable - once `init` returns, a first launch and a relaunch look alike - so it is
-    /// captured here for the `app_install` emission that lands in US-T07. An install that
-    /// existed before this build shipped mints an id without this being true: it is a new
-    /// identity, not a new install.
+    /// captured here for the `app_install` emission that lands in US-T07. It is true only when
+    /// this launch stamped the origin itself: an install that existed before this build shipped,
+    /// or one whose origin was already on disk, mints an id without this being true - that is a
+    /// new identity, not a new install.
     let isFirstLaunch: Bool
 
     /// The coarse install cohort: the start of the week `firstLaunchAt` fell in, through the same
@@ -129,11 +131,14 @@ final class AppState {
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date
 
-        // The id and its origin are read as a pair: a half-written identity would cohort an
-        // install against a week it did not install in, so anything short of both being present
-        // is re-minted together. The origin can legitimately be absent, but only when this
-        // launch recorded it as unknown - a marker written with the id, so the three states
-        // (fresh install, upgraded install, relaunch of either) stay distinguishable.
+        // The id and its origin are resolved together, but they are not all-or-nothing: a missing
+        // or empty id is re-minted, while a stored origin is kept whenever there is one. An origin
+        // that survived is still the week this install really began, and discarding it would
+        // cohort the install against a week it did not install in - which is the thing the rule
+        // exists to prevent, not something it should cause. The origin falls back to unknown only
+        // when none is usable, and that unknown is recorded as a marker written beside the id, so
+        // the three states (a first launch, an install with no usable origin, and a relaunch of
+        // either) stay distinguishable across launches.
         let storedId = userDefaults.string(forKey: Keys.installId)
         let storedFirstLaunch = userDefaults.object(forKey: Keys.firstLaunchAt) as? Date
         let storedFirstLaunchUnknown = userDefaults.bool(forKey: Keys.firstLaunchUnknown)
@@ -143,20 +148,21 @@ final class AppState {
             isFirstLaunch = false
         } else {
             // An install that is already onboarded but carries no id existed before this build
-            // shipped: it is a new identity on an old install, so its true first launch is gone
-            // and the upgrade date is not a stand-in for it. The residual, accepted rather than
-            // chased: someone who installed an earlier build and never finished onboarding
-            // still reads as a fresh install here.
+            // shipped: it is a new identity on an old install, so with no origin on disk its true
+            // first launch is gone and the upgrade date is not a stand-in for it. The residual,
+            // accepted rather than chased: someone who installed an earlier build and never
+            // finished onboarding still reads as a fresh install here.
             let isPreExistingInstall = wasOnboarded
             installId = newInstallId()
-            firstLaunchAt = isPreExistingInstall ? nil : openedAt
-            isFirstLaunch = !isPreExistingInstall
+            firstLaunchAt = storedFirstLaunch ?? (isPreExistingInstall ? nil : openedAt)
+            isFirstLaunch = storedFirstLaunch == nil && !isPreExistingInstall
             userDefaults.set(installId, forKey: Keys.installId)
-            userDefaults.set(isPreExistingInstall, forKey: Keys.firstLaunchUnknown)
             if let firstLaunchAt {
                 userDefaults.set(firstLaunchAt, forKey: Keys.firstLaunchAt)
+                userDefaults.removeObject(forKey: Keys.firstLaunchUnknown)
             } else {
                 userDefaults.removeObject(forKey: Keys.firstLaunchAt)
+                userDefaults.set(true, forKey: Keys.firstLaunchUnknown)
             }
         }
 

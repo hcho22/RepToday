@@ -143,6 +143,30 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: "AppState.firstLaunchUnknown"), "a stamped origin is not an unknown one")
     }
 
+    /// The narrower rule: re-minting a missing identifier never throws away an origin that
+    /// survived. A recorded origin is the week this install really began, so cohorting against it
+    /// is right - only the id needs replacing.
+    func testAMissingIdentifierIsReMintedWithoutDiscardingAStoredOrigin() throws {
+        defaults.set(true, forKey: "AppState.isOnboarded")
+        let origin = Self.date(2026, 7, 21, hour: 8)
+        defaults.set(origin, forKey: "AppState.firstLaunchAt")
+        defaults.set("", forKey: "AppState.installId")
+        let launch = Self.date(2026, 8, 4, hour: 9)
+
+        let appState = AppState(userDefaults: defaults, now: { launch }, calendar: Self.calendar)
+
+        XCTAssertFalse(appState.installId.isEmpty)
+        XCTAssertNotNil(UUID(uuidString: appState.installId))
+        XCTAssertFalse(appState.isFirstLaunch, "an origin was already on disk, so this is not one")
+        XCTAssertEqual(appState.firstLaunchAt, origin, "a known origin is kept, not downgraded to unknown")
+        XCTAssertEqual(appState.installWeek, ConsistencyScore.startOfWeek(origin, Self.calendar))
+        XCTAssertEqual(defaults.object(forKey: "AppState.firstLaunchAt") as? Date, origin)
+        XCTAssertNil(
+            defaults.object(forKey: "AppState.firstLaunchUnknown"),
+            "the unknown marker records that no usable origin exists, and one does"
+        )
+    }
+
     func testInstallWeekIsTheCoarseWeekStartOfFirstLaunch() throws {
         // A Tuesday: the week start is behind it, so the precise install time is not recoverable.
         let launch = Self.date(2026, 8, 4, hour: 9)
