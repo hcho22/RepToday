@@ -58,10 +58,12 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotNil(UUID(uuidString: appState.installId), "the identifier is a UUIDv4")
         XCTAssertEqual(appState.firstLaunchAt, launch)
         XCTAssertEqual(appState.lastActiveAt, launch)
+        XCTAssertNil(appState.previousActiveAt, "there is no launch before the first one")
 
         XCTAssertEqual(defaults.string(forKey: "AppState.installId"), appState.installId)
         XCTAssertEqual(defaults.object(forKey: "AppState.firstLaunchAt") as? Date, launch)
         XCTAssertEqual(defaults.object(forKey: "AppState.lastActiveAt") as? Date, launch)
+        XCTAssertFalse(defaults.bool(forKey: "AppState.firstLaunchUnknown"))
     }
 
     func testRelaunchPreservesIdentityAndMovesOnlyLastActive() {
@@ -75,7 +77,42 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(reloaded.installId, original.installId)
         XCTAssertEqual(reloaded.firstLaunchAt, firstLaunch)
         XCTAssertEqual(reloaded.lastActiveAt, relaunch)
+        XCTAssertEqual(reloaded.previousActiveAt, firstLaunch, "the launch before this one is still readable")
         XCTAssertEqual(defaults.object(forKey: "AppState.lastActiveAt") as? Date, relaunch)
+    }
+
+    /// An install that already existed when this build shipped: it has no stored `installId`, but
+    /// it is onboarded, so its first launch happened before anything recorded one. It gets an id
+    /// without being counted as a new install, and no fabricated origin date.
+    func testAPreExistingInstallMintsAnIdWithoutBecomingANewInstall() {
+        defaults.set(true, forKey: "AppState.isOnboarded")
+        let upgrade = Self.date(2026, 8, 4, hour: 9)
+
+        let appState = AppState(userDefaults: defaults, now: { upgrade }, calendar: Self.calendar)
+
+        XCTAssertFalse(appState.isFirstLaunch, "an upgrade is not an install")
+        XCTAssertNotNil(UUID(uuidString: appState.installId))
+        XCTAssertNil(appState.firstLaunchAt, "the true first launch is unrecoverable, not the upgrade date")
+        XCTAssertNil(appState.installWeek)
+        XCTAssertEqual(appState.lastActiveAt, upgrade)
+        XCTAssertNil(defaults.object(forKey: "AppState.firstLaunchAt"))
+        XCTAssertTrue(defaults.bool(forKey: "AppState.firstLaunchUnknown"))
+    }
+
+    /// The upgraded shape - an id with no origin - is exactly what the half-written-pair rule
+    /// re-mints, so it only stays stable because the unknown is persisted as its own marker.
+    func testAPreExistingInstallKeepsItsIdentityAcrossRelaunches() {
+        defaults.set(true, forKey: "AppState.isOnboarded")
+        let upgrade = Self.date(2026, 8, 4, hour: 9)
+        let relaunch = Self.date(2026, 8, 11, hour: 18)
+
+        let upgraded = AppState(userDefaults: defaults, now: { upgrade }, calendar: Self.calendar)
+        let reloaded = AppState(userDefaults: defaults, now: { relaunch }, calendar: Self.calendar)
+
+        XCTAssertEqual(reloaded.installId, upgraded.installId)
+        XCTAssertFalse(reloaded.isFirstLaunch)
+        XCTAssertNil(reloaded.firstLaunchAt, "an unknown origin is never backfilled by a later launch")
+        XCTAssertEqual(reloaded.previousActiveAt, upgrade)
     }
 
     /// The reinstall leg of the PRD's validation test: an uninstall takes `UserDefaults` with it,
@@ -103,16 +140,43 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(appState.isFirstLaunch)
         XCTAssertNotEqual(appState.installId, "orphaned-id")
         XCTAssertEqual(appState.firstLaunchAt, launch)
+        XCTAssertFalse(defaults.bool(forKey: "AppState.firstLaunchUnknown"), "a stamped origin is not an unknown one")
     }
 
-    func testInstallWeekIsTheCoarseWeekStartOfFirstLaunch() {
+    func testInstallWeekIsTheCoarseWeekStartOfFirstLaunch() throws {
         // A Tuesday: the week start is behind it, so the precise install time is not recoverable.
         let launch = Self.date(2026, 8, 4, hour: 9)
 
         let appState = AppState(userDefaults: defaults, now: { launch }, calendar: Self.calendar)
 
-        XCTAssertEqual(appState.installWeek, ConsistencyScore.startOfWeek(launch, Self.calendar))
-        XCTAssertLessThan(appState.installWeek, launch)
+        let installWeek = try XCTUnwrap(appState.installWeek)
+        XCTAssertEqual(installWeek, ConsistencyScore.startOfWeek(launch, Self.calendar))
+        XCTAssertLessThan(installWeek, launch)
+    }
+
+    /// `install_week` is grouped across users server-side, so it is bucketed in one pinned
+    /// calendar rather than in whatever week the device happens to keep.
+    func testInstallWeekUsesThePinnedCohortCalendarRatherThanDeviceSettings() throws {
+        // Saturday evening in Pacific time, which is already Sunday in UTC.
+        let launch = Self.pacificDate(2026, 8, 8, hour: 21)
+
+        // No calendar argument: this is the production default.
+        let appState = AppState(userDefaults: defaults, now: { launch })
+
+        let installWeek = try XCTUnwrap(appState.installWeek)
+        XCTAssertEqual(installWeek, ConsistencyScore.startOfWeek(launch, AppState.cohortCalendar))
+        XCTAssertEqual(installWeek, Self.pacificDate(2026, 8, 2, hour: 0), "the Sunday that week began")
+        XCTAssertNotEqual(
+            installWeek,
+            ConsistencyScore.startOfWeek(launch, Self.calendar),
+            "a device-shaped calendar would bucket this install a week later"
+        )
+    }
+
+    func testCohortCalendarIsPinnedRatherThanReadFromTheDevice() {
+        XCTAssertEqual(AppState.cohortCalendar.identifier, .gregorian)
+        XCTAssertEqual(AppState.cohortCalendar.firstWeekday, 1, "Sunday-start, the US convention")
+        XCTAssertEqual(AppState.cohortCalendar.timeZone, TimeZone(identifier: "America/Los_Angeles"))
     }
 
     func testInstallWeekIsStableAcrossLaunchesLaterInTheSameWeek() {
@@ -147,5 +211,9 @@ final class AppStateTests: XCTestCase {
 
     private static func date(_ year: Int, _ month: Int, _ day: Int, hour: Int) -> Date {
         calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
+    private static func pacificDate(_ year: Int, _ month: Int, _ day: Int, hour: Int) -> Date {
+        AppState.cohortCalendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 }
