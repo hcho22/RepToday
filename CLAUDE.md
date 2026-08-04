@@ -13,6 +13,7 @@ The MVP is Apple-native with no custom backend; AI/LLM features are deferred to 
 
 - **Strategic plan:** the v6.0 strategic PRD under `.claude/agent/tasks/` (supersedes v5, kept for reference).
 - **Implementation PRD / live progress tracker:** `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` (~51 stories, US-A01 ... US-N05); acceptance checkboxes flip to `[x]` as stories land. Always check the story before building a feature.
+- **Second, in-progress PRD - anonymous product telemetry:** `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` (`US-T##`, tracked the same way); US-T01 (transport spike) and US-T02 (the analytics seam) have landed, emission call sites and transport are still ahead.
 - **What is already built:** `docs/implementation-log.md`. **Test coverage map:** `docs/test-coverage.md`. **Third-party asset source/license ledger:** `docs/asset-attribution.md` (an asset with no cleared row never ships).
 - The strategic plans reference a `CONTEXT.md` and `docs/adr/` that do not exist here; the task files above are authoritative.
 
@@ -97,6 +98,7 @@ Services/Language/          Variety Language template, resolver, proxy client
 Services/Consistency/       Consistency Score, PhaseEvaluator, ConsistencyTrend
 Services/Progress/          Progress-tab analytics (free + premium-gated deep layer)
 Services/ActiveSession/     Resume store, completion recorder, session summary
+Services/Analytics/         Telemetry sinks (the discarding no-op today; live Convex POST at US-T04)
 Services/Auth|Health|Subscription/   Sign in with Apple, HealthKit writes, StoreKit 2
 DI/ ViewModels/ Views/      Container + injection, @Observable view models, SwiftUI screens
 Utilities/ Resources/       AppState and helpers; Exercises.json, assets, .storekit (no demo animation ships yet)
