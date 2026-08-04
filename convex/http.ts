@@ -1,7 +1,7 @@
 import { httpRouter } from "convex/server";
 import { ConvexError, convexToJson, type Value } from "convex/values";
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { EVENT_NAMES, type AnalyticsEventName } from "./events";
 
 /**
@@ -112,7 +112,7 @@ http.route({
     }
 
     try {
-      await ctx.runMutation(api.events.logEvent, args);
+      await ctx.runMutation(internal.events.logEvent, args);
     } catch (error) {
       const rejection = rejectionMessage(error);
       if (rejection !== null) {

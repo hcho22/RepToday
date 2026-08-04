@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 
 /**
@@ -52,8 +52,15 @@ export const MAX_PROPS_KEYS = 32;
  * Append-only by construction: it validates, stamps `serverTs`, inserts exactly one row, and
  * returns the id. No aggregation, no dedup, no funnel modelling, no cohort math - analysis is
  * deferred to queries written against the raw rows later.
+ *
+ * `internalMutation`, not `mutation`: a public Convex function is callable directly on the
+ * deployment's own `.convex.cloud/api/mutation` endpoint, which shares its slug with the
+ * `.convex.site` route a shipped client already carries. That second entry point skipped every
+ * boundary check in `http.ts`: a direct call was observed inserting a row with an empty
+ * `installId`, exactly the junk the checks exist to keep out of the columns K4 and K1 are counted
+ * from. Internal makes the HTTP action the single entry point the story says it is.
  */
-export const logEvent = mutation({
+export const logEvent = internalMutation({
   args: {
     name: v.union(...EVENT_NAMES.map((name) => v.literal(name))),
     installId: v.string(),

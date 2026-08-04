@@ -6,32 +6,23 @@ table, one `logEvent` mutation, one `POST /logEvent` HTTP action.
 **Verdict:** PASS. Every step of the PRD's Validation Test was run against a live deployment, not
 simulated and not inferred from a local type-check.
 
-> **Partially superseded (post-review, 2026-08-04).** This transcript records a live run against the
-> code as it stood at commit `7fe0b31`. Review findings were fixed in `convex/http.ts` afterwards -
-> two in a first round, two more in a second - and **none of those fixes was re-validated against a
-> live deployment**; they were gated only by `npm run typecheck`. Nothing below was re-run, and no
-> output in this file has been edited to predict what the new code would return; the individual
-> sections that no longer describe current behaviour are marked in place. What still holds
-> unchanged: the `204` and both persisted rows, the server-stamped `serverTs`, the untouched `props`
-> pass-through, the two oversized-bag rejections, the non-insert proven by reading the table back,
-> and every shape assertion.
+> **Read this first (2026-08-04).** The transcript in the body records a live run against the code as
+> it stood at commit `7fe0b31`. Review then hardened `convex/http.ts` over two rounds, and those
+> fixes **have since been re-validated live** at commit `42c1310` - that second run is recorded under
+> "Post-review re-validation" at the end of this file, and it is where the current response bodies
+> come from. The body below is kept as the original record and is marked in place wherever its
+> recorded output no longer describes current behaviour; nothing in it was rewritten to predict
+> output that was never observed.
 >
-> What changed:
-> 1. The action now requires `installId` to be a non-empty string, rejecting instead of writing the
->    literal `"undefined"`. **No POST in this transcript omitted the field, so no run below exercised
->    the old behaviour** - this is new surface with no live evidence either way, not a contradicted
->    result.
-> 2. Rejections and internal failures no longer share a status. A caller's fault stays `400`; a
->    deployment or database failure now answers `500` with no detail echoed. Every rejection
->    recorded below is a caller's fault, so all of them remain `400`.
-> 3. `clientTs` must now be an actual JSON number rather than anything that coerces to a finite one,
->    so a numeric string is refused with `400` instead of being reinterpreted. Every POST below sent
->    a plain JSON number, which is the form that still passes, so nothing recorded here is affected.
-> 4. A `props` field name the Convex SDK's serializer refuses - one starting with `$`, one carrying a
->    non-ASCII or control character, or one over 1024 characters - was already refused before this
->    change but was classified as the sink's own failure; it is now classified as the caller's and
->    answers `400`. No POST below carried such a key, so this too is new surface with no live
->    evidence in this transcript.
+> What the original run still establishes unchanged: the `204` and both persisted rows, the
+> server-stamped `serverTs`, the untouched `props` pass-through, the two oversized-bag rejections,
+> the non-insert proven by reading the table back, and every shape assertion.
+>
+> One later change is **not** covered by either run: a third review round made `logEvent` an
+> `internalMutation` so the HTTP action is the sink's only entry point. That is gated by
+> `npm run typecheck` alone so far. The bypass it closes *was* observed live before the fix, and is
+> recorded under "The direct-mutation bypass" below; the post-fix probe has not been run and no
+> result for it is claimed here.
 
 ---
 
@@ -88,7 +79,7 @@ HTTP 204          (empty body)
 
 `session_completed` was chosen deliberately: it is the widest real bag in the pre-registered
 schema. Both payloads carry `generation_ms` inside `props` to prove the bag is passed through
-untouched rather than reached by the top-level `Number(...)` coercion.
+untouched rather than reached by the action's top-level handling of the scalar fields.
 
 Read back from the deployment with `npx convex data events` - an authenticated query round-trip
 against the persisted rows, so a false local success is ruled out:
@@ -131,7 +122,7 @@ matches `AnalyticsEventName` exactly - no additions, no omissions.
 > longer carries Convex's `ArgumentValidationError` text. The status is still `400` and still
 > inserts nothing, and the mutation's `v.union` is unchanged and still the contract - it is simply
 > no longer the thing that fires first, so this particular body is not what the current code
-> returns. Not re-run; no replacement output is claimed here.
+> returns. The body it does return was observed in the re-validation run below.
 
 ### Oversized bag - serialized bytes
 
@@ -155,8 +146,8 @@ HTTP 400
 > two rejections as `ConvexError` rather than `Error`, which is the marker the action uses to answer
 > `400` for a caller's fault and `5xx` for its own. The limits, the sentences they are phrased in,
 > the `400`, and the non-insert are all unchanged; what is gone is the `Uncaught Error:` prefix and
-> the trailing stack frame, which were the shape a raw throw surfaced as. Not re-run; the exact
-> current bodies are not claimed here.
+> the trailing stack frame, which were the shape a raw throw surfaced as. The bodies they return now
+> were observed in the re-validation run below.
 
 ### No row was inserted - read back, not inferred
 
@@ -191,6 +182,77 @@ check) but 4211 UTF-8 bytes, which is correctly rejected.
   and documentation only; `ios/` is untouched. The iOS build and `RepTodayTests` were nonetheless
   run green on an iPhone 16 Simulator so the "build and tests pass" criterion is observed rather
   than assumed.
+
+## Post-review re-validation (commit `42c1310`, 2026-08-04)
+
+The two review rounds that hardened `convex/http.ts` were re-run in full against the same dev
+deployment (`courteous-dogfish-560`, `https://courteous-dogfish-560.convex.site/logEvent`). These are
+observed responses, not predictions.
+
+**Accepted:**
+
+```
+session_completed, props {requested_minutes, completed_minutes, was_return, perceived_difficulty}
+  -> HTTP 204
+day7_return, props omitted from the body entirely
+  -> HTTP 204        (stored as {})
+```
+
+**Rejected - all `400`, and the response bodies are now the action's own sentences rather than the
+Convex internals the original run recorded:**
+
+| POST | Body |
+|---|---|
+| `props {"café":1}` | `{"error":"props contains a field name Convex cannot store"}` |
+| `props {"$evil":1}` | same |
+| `props` key of 1100 characters | same |
+| `clientTs "1e3"` | `{"error":"clientTs must be a finite number of milliseconds since the epoch"}` |
+| `clientTs "0x1f"` | same |
+| `clientTs " 12 "` | same |
+| `clientTs` absent | same |
+| `name "landing_page_view"` | `{"error":"name must be one of the 13 pre-registered event names"}` |
+| `installId` absent | `{"error":"installId must be a non-empty string"}` |
+| `installId ""` | same |
+| `props {blob: "é" * 2100}` | `{"error":"props is 4211 bytes, over the 4096-byte limit"}` |
+| `props` with 40 keys | `{"error":"props has 40 keys, over the 32-key limit"}` |
+| body `not json at all` | `{"error":"body is not valid JSON"}` |
+| body `[1,2,3]` | `{"error":"body must be a JSON object"}` |
+
+`npx convex data events` afterwards holds only the valid rows: **14 rejected POSTs, zero rows.** The
+non-insert is again proven by the table's contents rather than inferred from the responses.
+
+Two review fixes are gated specifically by this run. The three former-`500` cases - the non-ASCII,
+`$`-prefixed, and over-long `props` keys - answer `400` now, which is the caller-fault
+re-classification working: the input was refused before the change too, but as *our* failure, which
+a hostile client could have used to manufacture what looked like a sink outage on the only signal
+the PMF test has. And the four `clientTs` cases confirm the string-coercion branch is gone: `"1e3"`,
+`"0x1f"`, and `" 12 "` are refused rather than silently reinterpreted into the column K1 is timed
+from.
+
+## The direct-mutation bypass (observed before the fix; post-fix probe not run)
+
+`logEvent` was a public `mutation`, so it was reachable on the deployment's own API endpoint,
+skipping every boundary check above:
+
+```
+POST https://courteous-dogfish-560.convex.cloud/api/mutation
+{"path":"events:logEvent",
+ "args":{"name":"app_install","installId":"","clientTs":0,"props":{}},
+ "format":"json"}
+
+HTTP 200
+{"status":"success","value":"j579gg022ndcfdb4qq282fdjbn8btryz"}
+```
+
+That **inserted a row** with an empty `installId` and a `clientTs` of `0` - precisely the junk-row
+shape the `400`s above exist to keep out of the two columns K4 and K1 are counted from. `.convex.cloud`
+and `.convex.site` share a deployment slug, so anyone reading the HTTP-action URL out of a shipped
+US-T04 binary would have known this endpoint too.
+
+`logEvent` is an `internalMutation` now and the action calls it as `internal.events.logEvent`, which
+should make the same POST unreachable. **That is not claimed as observed:** the fix is gated by
+`npm run typecheck` (which does confirm `api.events.logEvent` no longer resolves and
+`internal.events.logEvent` does), and the live re-probe has not been run.
 
 ## Limitation
 

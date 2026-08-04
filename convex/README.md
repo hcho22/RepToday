@@ -10,6 +10,10 @@ because it ships an arm64-only xcframework that would break every Simulator-host
 this repo on an Intel host (`artifacts/reports/US-T01/spike-note.md`).
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
+It is now the *sink's* only entry point too, which this file previously claimed before it was true:
+`logEvent` was a public mutation until review caught it, so the deployment's own
+`.convex.cloud/api/mutation` endpoint was a second, undocumented way in that skipped every check the
+action performs. It is an `internalMutation` now - see below.
 
 ## Non-goal: no analysis in the backend
 
@@ -32,7 +36,7 @@ threshold decision made before there is any data to make it against.
 | `serverTs`  | `v.number()` | Server-received timestamp, ms since the Unix epoch, stamped by the mutation. |
 | `props`     | `v.any()`    | The event's non-identifying property bag, stored exactly as it arrived. |
 
-## Mutation: `events:logEvent`
+## Mutation: `events:logEvent` (internal)
 
 `convex/events.ts`. Append-only: it validates, stamps `serverTs = Date.now()`, inserts exactly one
 row, and returns the document id. Nothing else.
@@ -40,6 +44,17 @@ row, and returns the document id. Nothing else.
 ```
 logEvent({ name, installId, clientTs, props }) -> Id<"events">
 ```
+
+It is declared with `internalMutation`, so it is **not** callable from outside the deployment: the
+HTTP action below reaches it as `internal.events.logEvent`, and nothing else calls it at all.
+That matters because a public Convex function is exposed on `POST <deployment>.convex.cloud/api/mutation`,
+and `.convex.cloud` shares its slug with the `.convex.site` origin a shipped client already carries -
+so a public `logEvent` would be a second entry point reachable by anyone who read the URL out of the
+binary, and one that bypasses every boundary check in `convex/http.ts`. It was public until review
+caught it, and a direct call did write a row with an empty `installId` and a `clientTs` of `0` -
+exactly the junk-row shape those checks exist to prevent in the two columns K4 and K1 are counted
+from. Making it internal is what makes "the HTTP action is the only entry point" a fact rather than
+a description of intent.
 
 ### The 13 event names are a wire contract
 
@@ -108,9 +123,17 @@ hostile client can still write a very large row through that one field. This was
 US-T03 and consciously accepted for this story: the sink is not yet reachable by any client, and
 US-T04 - which is where the identifier actually starts being sent - carries the acceptance
 criterion that bounds its length.
+That gap also costs a little of the `4xx`/`5xx` precision described above, and this too is accepted
+for now: `convexToJson` validates field *names*, not structural limits, so a multi-hundred-KB
+`installId` passes the non-empty check, passes the serialization pre-pass, passes the `props` caps
+(which measure `props` alone) and only then exceeds Convex's ~1MB document limit at the insert -
+landing on the `500` branch as a false outage signal rather than the `400` it deserves.
+Bounding `installId` in US-T04 closes that as well as the storage gap.
 Relatedly and also accepted: the route below is unauthenticated and unmetered by design - anonymous
 telemetry admits no client secret - so the caps are per-row rather than per-caller, and anyone who
 reads the `.convex.site` URL out of a shipped binary can add rows indistinguishable from real ones.
+(That is the HTTP *route*; the mutation behind it is internal and not separately reachable. Guarding
+the route is US-T14.)
 
 ## HTTP action: `POST /logEvent` -> `204`
 
@@ -174,10 +197,11 @@ fresh clone with no deployment configured.
 `.env.local` (which holds `CONVEX_DEPLOYMENT`) is gitignored and must never be committed - it is
 per-developer deployment state, not project configuration.
 
-Live validation evidence for this story - the `204`s, the rows read back with both timestamps
-populated, and the three rejections with the table then read back holding **only** the two valid
-events (six rejected POSTs across the two runs, zero rows) - is in
-`artifacts/reports/US-T03/validation.md`.
-That transcript predates the post-review boundary checks, the `4xx`/`5xx` split, and the
-serialization classification above, and says so where its recorded output no longer matches this
-code; it has not been re-run live.
+Live validation evidence for this story is in `artifacts/reports/US-T03/validation.md`: the `204`s,
+the rows read back with both timestamps populated and `serverTs` stamped server-side, and every
+rejection above with the table then read back holding **only** the valid events, so the non-insert
+is proven by the table's contents rather than inferred from the errors.
+It records two runs - the original one at `7fe0b31`, and a re-run at `42c1310` that gates the
+post-review boundary checks, the `4xx`/`5xx` split, and the serialization classification live.
+The one thing it does **not** yet cover is `logEvent` being internal, which landed after that re-run
+and is gated by `npm run typecheck` alone; the file says so in place.

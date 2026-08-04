@@ -8,9 +8,11 @@ import { v } from "convex/values";
  * Convex's defaults. Every metric in `gtm/06-channels/event-metric-schema.md` is derivable from
  * raw rows by a query written later, so the sink stays dumb and the analysis stays revisable.
  *
- * Numeric convention (pinned by US-T03): both timestamps are `v.number()` - Convex float64 - and
- * the HTTP action coerces the inbound `clientTs` with `Number(...)`, so a client sending a plain
- * JSON number never meets the `int64` vs `float64` mismatch the US-T01 spike documents.
+ * Numeric convention (pinned by US-T03): both timestamps are `v.number()` - Convex float64 - and a
+ * plain JSON number already *is* float64, so a client sending one never meets the `int64` vs
+ * `float64` mismatch the US-T01 spike documents. The HTTP action requires that wire form rather
+ * than coercing whatever it is handed: anything that is not an actual finite JSON number is
+ * refused with `400`, so nothing reinterpreted lands in this column.
  * `generation_ms` and every other numeric property ride inside `props` and are stored as-is.
  */
 export default defineSchema({
