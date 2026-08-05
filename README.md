@@ -261,7 +261,7 @@ npx convex dev --once     # deploy the schema + functions to your own dev deploy
 npx convex data events    # read rows back
 ```
 
-`convex/_generated/` is committed, so both commands work in a fresh clone with no deployment configured.
+`convex/_generated/` is committed, so `npm run typecheck` and `npm test` both work in a fresh clone with no deployment configured (the two `npx convex` commands do need one).
 US-T04 added the behavioural suite (`convex/http.test.ts`), which drives the real functions in process against no deployment; this repo still has no CI, so it only runs when someone runs it - see `convex/README.md` and `docs/test-coverage.md` for what it covers and the one residual it cannot.
 
 ---

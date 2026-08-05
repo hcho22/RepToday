@@ -1,6 +1,7 @@
 # Test Coverage Map
 
 Per-area coverage of `ios/RepToday/RepTodayTests/` and `ios/RepToday/RepTodayUITests/`, extracted from `CLAUDE.md`.
+The two rows naming `convex/` are the exception and say so in place: that toolchain is not Swift, so its behavioural suite is `convex/http.test.ts` run by `npm test` (`vitest` + `convex-test`, US-T04), not XCTest.
 Each row is added as the owning story lands.
 
 | Area | Coverage |

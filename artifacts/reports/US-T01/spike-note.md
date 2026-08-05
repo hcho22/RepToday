@@ -137,6 +137,18 @@ The adopted `URLSession` transport sidesteps this entirely, because the HTTP act
 The app needs only best-effort, fire-and-forget ingest - no live queries, no subscriptions, no auth - so a plain HTTPS POST to a Convex HTTP action is a strictly better fit and carries zero new Swift dependencies.
 This was validated live in the spike.
 
+> **Marked in place, 2026-08-05.** The verdict below held and shipped, and the two code sketches are kept as written, but each is the spike's *proposal* and what landed diverges from it in one load-bearing way.
+> Read `convex/http.ts` and `Services/Analytics/` for what actually runs, and `convex/README.md` for the contract.
+>
+> - **Backend.** The shipped action does **not** coerce with `String(...)` / `Number(...)`; US-T03's review replaced that with a presence-and-kind check that answers `400`.
+>   Coercing a missing or wrong-kind field writes the literal string `"undefined"` or `NaN` into `installId` and `clientTs` - the two columns K4 and K1 are counted from - and a row that looks valid while being junk is worse than no row.
+>   The sentence above about the action's `Number(...)` making the `int64`/`float64` gotcha moot is superseded for the same reason: the client still sends a bare JSON number, which already *is* float64, so the conclusion holds, but because the action *requires* one rather than because it coerces whatever it is handed.
+>   US-T04 then added two size caps the sketch has no equivalent of, `installId` at 64 UTF-8 bytes and the request body at 64 KiB.
+> - **Client.** `LiveAnalyticsService` (US-T04) does **not** POST `JSONEncoder().encode(event)`.
+>   `AnalyticsValue`'s own `Codable` form is deliberately tagged (`{"type":"int","value":38}`) so `Int` and `Double` round-trip losslessly in process, which is a standing US-T02 requirement, while the sink wants plain scalars under different top-level key names.
+>   The wire body is therefore a **second** encoding, `AnalyticsWireBody`, and collapsing the two would send a body the sink stores wrong; `LiveAnalyticsServiceTests` asserts both forms side by side so a later "simplification" fails locally rather than at the sink.
+>   The shipped service is also `async`, reads an opt-out gate before doing anything, resolves its endpoint from `Info.plist` rather than a literal, and uses its own short-timeout ephemeral session rather than `URLSession.shared`.
+
 Backend side (US-T03 adds `convex/http.ts` alongside the `logEvent` mutation):
 
 ```ts

@@ -418,3 +418,16 @@ file as a standing guarantee would be reading it wrong: it says what was true at
 that gap is an unchecked acceptance criterion of US-T04 in
 `.claude/agent/tasks/prd-funnel-instrumentation_260803.md`, which names each behaviour left
 unprotected; `docs/test-coverage.md` states the same.
+
+> **Marked in place, 2026-08-05 (US-T04).** The paragraph above is left as written, because it
+> records what was true at `99a11d0`, but the gap it names is **closed**: `convex/http.test.ts`
+> (`npm test`, `vitest` + `convex-test` in process against an in-memory database) now re-runs the
+> `POST /logEvent` boundary, and the US-T04 acceptance criterion that carried it is checked. This
+> repository still has no CI, so `npm test` runs only when a human runs it, and one residual is
+> still unreachable there - a caller fault that only a *write-time* Convex rule catches, since
+> `convex-test`'s in-memory database does not enforce the value-depth limit. `convex/README.md`
+> records what the suite covers and what it does not. US-T04 also added two size caps the action
+> did not have when these runs were made - `installId` at 64 UTF-8 bytes and the request body at
+> 64 KiB - so an oversized identifier or bag no longer inserts a row or answers `500`; neither
+> payload appears above, and the before/after for both is probed live against this same deployment
+> in `artifacts/reports/US-T04/validation.md`.
