@@ -11,9 +11,8 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "isolatedModules": true,
-    "noEmit": true,
-    "types": ["vite/client"]
+    "noEmit": true
   },
   "include": ["./**/*.ts"],
-  "exclude": ["./_generated"]
+  "exclude": ["./_generated", "./**/*.test.ts"]
 }

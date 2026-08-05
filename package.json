@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
-    "typecheck": "tsc --noEmit -p convex",
+    "typecheck": "tsc --noEmit -p convex && tsc --noEmit -p convex/tsconfig.test.json",
     "test": "vitest run"
   },
   "dependencies": {

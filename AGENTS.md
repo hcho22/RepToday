@@ -43,6 +43,7 @@ The XCUITest screenshots are produced on demand rather than committed: the suite
 Hosting a production surface to capture or read it likewise goes through `HostedSurface.host(_:size:)` and `AccessibilityTree`, so every suite gets the same run-loop settling rather than an ad-hoc copy that reads a half-drawn screen.
 
 `convex/` is a second, unrelated toolchain and no iOS command touches it: `npm install` once, then `npm run typecheck` (`tsc --noEmit` over `convex/`, against the committed `convex/_generated/`, so it needs no deployment) and `npx convex dev --once` to deploy to your own dev deployment.
+There are two tsconfigs on purpose: `convex/tsconfig.json` is what the Convex CLI typechecks on every deploy, so it excludes `**/*.test.ts` and names no `types` array (naming one would switch off automatic `@types` inclusion for the deployed functions), and `convex/tsconfig.test.json` extends it with the test files plus the `vite/client` types; `npm run typecheck` runs both, so a deploy never depends on the test toolchain being installed while the suite stays typechecked.
 `npm test` (`vitest` + `convex-test`, added by US-T04) is the behavioural gate over the `POST /logEvent` boundary: it runs the real functions in process against an in-memory database and no deployment, so it needs neither network nor `.env.local`. This repo has no CI, so both commands only run when someone runs them; `convex/README.md` records what the suite covers and the one write-time residual it cannot reach.
 
 ## Architecture

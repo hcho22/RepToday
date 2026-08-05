@@ -340,9 +340,23 @@ describe("POST /logEvent - the property-bag caps", () => {
     ["an array", [1, 2, 3]],
     ["a string", "not a bag"],
     ["a number", 7],
-  ])("a props that is %s is rejected without inserting", async (_label, props) => {
+  ])("a props that is %s - a non-null non-object - is rejected without inserting", async (_label, props) => {
     const t = setup();
     await expectRejected(await post(t, validBody({ props })), t);
+  });
+
+  test("a props of null is treated as absent and stores an empty bag, by design", async () => {
+    const t = setup();
+    // The deliberate exception to the block above, and not the coercion `installId` and `clientTs`
+    // refuse: those are the columns K4 and K1 are counted from, where a coerced value is junk that
+    // looks valid. Nothing is counted from `props`, so an empty bag is a truthful "no properties"
+    // rather than a fabricated one - and `props` is the one optional field, so absent is already a
+    // legal way to send it.
+    const response = await post(t, validBody({ props: null }));
+    expect(response.status).toBe(204);
+    const inserted = await rows(t);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].props).toEqual({});
   });
 
   test("there is no per-key or per-type schema on props: an unregistered key lands", async () => {

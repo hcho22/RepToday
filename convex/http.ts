@@ -43,9 +43,12 @@ const http = httpRouter();
  * `Error` and came back `500` rather than the `400` the caps promise, letting a caller manufacture
  * the sink's only outage signal. Measuring the request body before anything is parsed or serialized
  * classifies that as the caller fault it is. 64 KiB is deliberately an order of magnitude above the
- * 4096-byte `props` cap, so it never pre-empts the mutation's own more specific rejection - a 5 KiB
- * bag still comes back with the byte-count message naming the real limit - and three orders of
- * magnitude below Convex's argument bound, so serialization can no longer be reached by size at all.
+ * 4096-byte `props` cap, so across the range a real client could send it does not pre-empt the
+ * mutation's own more specific rejection - a 5 KiB bag still comes back with the byte-count message
+ * naming the real limit. It is not an absolute ordering: a bag past 64 KiB is answered by this cap
+ * rather than the props one, which is still a caller's `400`, just the less specific of the two. And
+ * being three orders of magnitude below Convex's argument bound, serialization can no longer be
+ * reached by size.
  */
 export const MAX_INSTALL_ID_BYTES = 64;
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
@@ -163,6 +166,13 @@ http.route({
       return jsonResponse(400, "clientTs must be a finite number of milliseconds since the epoch");
     }
 
+    // `props` is the one optional field, so an absent bag - and a `null` one, which `??` treats the
+    // same way - becomes `{}` rather than a rejection. That coercion is deliberate and is not the
+    // one refused two checks above: `installId` and `clientTs` are the columns K4 and K1 are counted
+    // from, where a coerced value is junk sitting in a counted column looking valid. Nothing is
+    // counted from `props` - it has no schema and is stored as it arrived - so an empty bag is a
+    // truthful "this event carried no properties", not a fabricated value. A bag that is a non-null
+    // non-object still fails in the mutation, since a bag that is not a bag has no size to check.
     const args = {
       name: body.name,
       installId: body.installId,

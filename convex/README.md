@@ -91,9 +91,10 @@ and inspects nothing else:
 
 1. **An unknown event name** - the `v.union` above.
 2. **An oversized property bag** - more than **32 keys** or more than **4096 UTF-8 bytes**
-   serialized. (A `props` that is not an object at all is rejected under the same rule: a bag that
+   serialized. (A `props` that is a non-null non-object is rejected under the same rule: a bag that
    is not a bag has no size, so that is the precondition the size check is measured against rather
-   than a shape check of its own.)
+   than a shape check of its own. A `props` of `null` never reaches it - the action treats it as
+   absent, deliberately; see the `POST /logEvent` section below.)
 
 Rationale for those numbers: the largest bag any real event carries is `session_completed` with
 four small scalar keys (~120 bytes serialized), so both caps sit roughly two orders of magnitude
@@ -130,10 +131,13 @@ the sink is dumb everywhere else.
    anonymous id. It is a **length** bound and nothing more: `"not-a-uuid"` is accepted, because
    policing the identifier's *shape* would forbid a future story from changing it.
 4. **A request body over 64 KiB**, checked on the raw bytes before the body is even parsed. 64 KiB
-   is an order of magnitude above the 4096-byte `props` cap plus that identifier, so it never
-   pre-empts the mutation's own, more specific rejection - a 5 KiB bag still comes back told which
-   limit it broke - and it is far below any bound Convex applies to a function's arguments, so
-   serialization can no longer be reached by size at all.
+   is an order of magnitude above the 4096-byte `props` cap plus that identifier, so across the
+   range a real client could send it does not pre-empt the mutation's own, more specific rejection -
+   a 5 KiB bag still comes back told which limit it broke. That is not an absolute ordering, and the
+   suite asserts the other side of it too: a bag past 64 KiB is answered by *this* cap rather than
+   the `props` one, which is still a caller's `400`, just the less specific of the two. And it is
+   far below any bound Convex applies to a function's arguments, so serialization can no longer be
+   reached by size.
 
 Both are the same `400`-and-no-insert as every other caller fault, and both closed gaps this file
 used to carry as accepted; see "What used to be a gap here" below.
@@ -219,7 +223,18 @@ Content-Type: application/json
 
 `props` is the one optional field: omit it and the action sends an empty bag, so a valid event with
 no properties is a three-field body.
-The other three are required, and their absence is one of the `400`s below rather than a default.
+Sending it as `null` is the same thing - `props: body.props ?? {}` treats a null bag as an absent
+one, so it answers `204` and stores `{}`.
+
+That coercion is deliberate, and it is *not* the one `installId` and `clientTs` refuse. Those two
+are the columns K4 and K1 are counted from, where a coerced value is junk sitting
+in a counted column looking valid - the literal string `"undefined"`, or `NaN`. Nothing is counted
+from `props`: it carries no schema and is stored exactly as it arrived, so an empty bag is a truthful
+"this event carried no properties" rather than a fabricated value. The asymmetry is the rule doing
+its stated job, not an oversight, and the suite asserts it in place.
+
+The other three fields are required, and their absence is one of the `400`s below rather than a
+default.
 
 - **`204 No Content`** - the row was inserted. No body.
 - **`400 Bad Request`** - the caller's fault: a body that is not valid JSON, not a JSON object, or
@@ -266,9 +281,22 @@ the npm project root - `node_modules` would be swept into the bundle.
 npm install
 npx convex dev --once     # deploy schema + functions to the dev deployment
 npx convex data events    # read rows back from the deployment
-npm run typecheck         # tsc --noEmit over convex/
+npm run typecheck         # tsc --noEmit over both configs below
 npm test                  # vitest + convex-test: the boundary suite, in process, no deployment
 ```
+
+There are **two** tsconfigs here, and the split is load-bearing rather than tidiness.
+`convex/tsconfig.json` is the one the Convex CLI typechecks on every `convex dev` / `convex deploy`,
+so it must depend on nothing a production install omits: it excludes `**/*.test.ts` and sets no
+`types` array at all, since naming one would also switch off automatic inclusion of every other
+`@types` package for the deployed functions.
+`convex/tsconfig.test.json` extends it, adds back the test files, and carries the `vite/client` types
+`import.meta.glob` needs.
+`npm run typecheck` runs **both**, so the suite stays typechecked - an untypechecked test rots
+without saying so - while `npx convex deploy` no longer depends on the test toolchain being installed.
+The *bundler* was never the problem: it skips any filename with more than one dot, so `http.test.ts`
+was already excluded from the deployed functions. It was the CLI's typecheck of this config that the
+test file had quietly pulled the test toolchain into.
 
 `convex/_generated/` **is committed** so `npm run typecheck` and an editor's type hints work in a
 fresh clone with no deployment configured.
@@ -329,8 +357,10 @@ defaulting to `{}`, and two events being two rows); all 13 names accepted and un
 non-string/missing names refused; `installId` present, a string, non-empty, and within the 64-byte
 bound, counted as UTF-8 rather than UTF-16, with the bound asserted to be length-only; `clientTs` an
 actual finite JSON number, including `1e400` arriving as `Infinity` off the wire and a `clientTs` of
-`0` deliberately landing; the request-size cap, and that it does not pre-empt the `props` cap's more
-specific message; both `props` caps at their exact boundaries, with the byte cap counted in UTF-8;
+`0` deliberately landing; the request-size cap, both that a 5 KiB bag still gets the `props` cap's
+more specific message and that a bag past 64 KiB gets this one instead; both `props` caps at their
+exact boundaries, with the byte cap counted in UTF-8; a `props` that is a non-null non-object
+refused, beside a `props` of `null` deliberately answering `204` with an empty bag;
 the `convexToJson` field-name classification answering `400` rather than `500`; the `4xx`/`5xx`
 split, including that a `5xx` echoes no internal detail; and `logEvent` still being an
 `internalMutation`.

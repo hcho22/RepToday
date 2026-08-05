@@ -10,7 +10,7 @@
 > **1. The shipped diff contains no emission call site.** Nothing in the app calls `record(_:)`. US-T04 ships the transport and leaves it uncalled, exactly as US-T02 shipped the seam uncalled and US-T05 shipped the identity unread; the 13 emissions are US-T07 through US-T12. So the PRD's Validation Test - "complete onboarding, start a session, confirm events land in the Convex dashboard" - **cannot be run as written against the shipped build**, because the shipped build emits nothing when you do that. It was not made runnable by adding emission sites; that would be another story's scope landing here.
 > Instead, a **temporary, non-shipping probe** stood in for the emission sites that do not exist yet, and was removed before the commit. What the live legs below therefore prove is that **the transport and the sink work end to end against a real deployment** - not that the shipped build emits anything. It does not.
 >
-> **2. This is a point-in-time transcript and nothing re-runs it.** This repository has no CI; no check runs against a pull request. What *does* re-run, when a human runs it, is `npm test` (50 `convex-test` assertions over the `POST /logEvent` boundary, new in this story) and `xcodebuild ... -scheme RepToday test` (`LiveAnalyticsServiceTests`, which drives the transport through an in-process `URLProtocol` stub). Those two are the standing gate; everything below is a record of one afternoon.
+> **2. This is a point-in-time transcript and nothing re-runs it.** This repository has no CI; no check runs against a pull request. What *does* re-run, when a human runs it, is `npm test` (51 `convex-test` assertions over the `POST /logEvent` boundary, new in this story) and `xcodebuild ... -scheme RepToday test` (`LiveAnalyticsServiceTests`, which drives the transport through an in-process `URLProtocol` stub). Those two are the standing gate; everything below is a record of one afternoon.
 
 ---
 
@@ -129,8 +129,8 @@ Both were run locally, on this branch, after the probe was removed. This repo ha
 |---|---|---|
 | iOS unit | `xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday -destination 'id=32039CCE-…' test` | **863 tests, 0 failures** (862 as this story first landed; the review round below added one) |
 | iOS UI | `xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests -destination 'id=32039CCE-…' test` | **5 tests, 0 failures** (re-run after the review round below, since it is the only suite that installs and launches the app and the endpoint now reaches `Info.plist` through a build setting) |
-| Convex boundary | `npm test` (`vitest run`, `convex-test` in process) | **50 tests, 0 failures** |
-| Convex types | `npm run typecheck` | clean |
+| Convex boundary | `npm test` (`vitest run`, `convex-test` in process) | **51 tests, 0 failures** (50 as this story first landed; a later review round added the `props: null` case) |
+| Convex types | `npm run typecheck` | clean (both tsconfigs, after the split below) |
 
 No test in any of them performs a real network call. `LiveAnalyticsServiceTests` intercepts in process with a `URLProtocol` stub; `convex-test` runs the real functions against an in-memory database and no deployment. The UI run is quiet for a weaker reason worth naming: it launches the real app, whose container resolves the live transport against the dev deployment, so it emits nothing only because **no emission call site exists yet** - see the FR-13 note below.
 
@@ -153,6 +153,36 @@ $ plutil -extract RepTodayAnalyticsEndpoint raw -o - \
 ```
 
 So a Release build ships the key present and empty, which `LiveAnalyticsService.endpoint(fromOrigin:)` already rejects (unit-covered by `testUnusableEndpointConfigurationResolvesToNil`), and the container falls back to `NoOpAnalyticsService`. What this does **not** establish: that a Release build was installed and observed staying silent at runtime. It was not.
+
+### The deploy typecheck, uncoupled from the test toolchain - and what that proof does and does not cover
+
+A later review round found a regression this story introduced: adding `convex/http.test.ts` under
+`convex/tsconfig.json`'s `include` meant the config **the Convex CLI typechecks on every deploy** now
+needed `convex-test` and a `"types": ["vite/client"]` entry to resolve, so a deploy from a tree
+without devDependencies would fail on test-only tooling.
+The fix splits the two: `convex/tsconfig.json` excludes `**/*.test.ts` and names no `types` array at
+all (naming one had also switched off automatic `@types` inclusion for the deployed functions - a
+second defect inside the first), and a new `convex/tsconfig.test.json` extends it with the test files
+and the `vite/client` types. `npm run typecheck` runs both, so the suite stays typechecked.
+
+**Verified, not asserted.** The tree was copied to a scratch directory outside the repository with
+only `convex`'s own runtime dependency and `typescript` present - no `vite`, no `vitest`, no
+`convex-test`:
+
+```
+$ tsc --noEmit -p convex                     # the deploy config
+                                             # (no output: passes)
+$ tsc --noEmit -p convex/tsconfig.test.json  # the test config, same tree
+error TS2688: Cannot find type definition file for 'vite/client'.
+$ tsc --noEmit -p convex/tsconfig.old.json   # the pre-fix deploy config, same tree
+error TS2688: Cannot find type definition file for 'vite/client'.
+```
+
+So the deploy config now typechecks where the pre-fix one did not, and the test config's dependence
+on the test toolchain is real rather than theoretical - it is simply no longer on the deploy path.
+What this does **not** establish: no `npx convex deploy` was actually run from that dev-dependency-free
+tree, and no `npm ci --omit=dev` install was performed. The proof is `tsc` against the same config
+the CLI uses, not the CLI itself.
 
 ### FR-13, made structural in the same round - for the in-process suites
 

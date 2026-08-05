@@ -255,7 +255,7 @@ It needs **Node.js 18+** and npm; the npm project is at the repo root rather tha
 
 ```bash
 npm install
-npm run typecheck         # tsc --noEmit over convex/
+npm run typecheck         # tsc --noEmit over convex/ - the deploy config and the test one
 npm test                  # vitest + convex-test: the POST /logEvent boundary suite, in process
 npx convex dev --once     # deploy the schema + functions to your own dev deployment
 npx convex data events    # read rows back
