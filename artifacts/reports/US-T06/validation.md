@@ -1,0 +1,134 @@
+# US-T06 Validation Test - opt-out consent flag, Settings toggle, onboarding disclosure
+
+**Story:** `.claude/agent/tasks/prd-funnel-instrumentation_260803.md`, `### US-T06`.
+**Date:** 2026-08-05.
+**Setup:** Debug build of the real app, iPhone 16 Simulator (`32039CCE-BE1D-4233-A4D4-19CA9428DBF3`, iOS 18.6), deleted and reinstalled first so `UserDefaults` was clean.
+The build's `RepTodayAnalyticsEndpoint` was read out of the installed bundle rather than assumed: `https://courteous-dogfish-560.convex.site`, the dev deployment.
+The `events` table was read with `npx convex data events` against that same deployment, which is the dashboard's contents rather than a screenshot of it.
+
+**Outcome: run, PASS - and re-framed, the same way US-T04 re-framed its own.**
+
+## Why the test as written cannot be run, and what stood in for it
+
+Steps 2 and 4 say "start a session and confirm events land in Convex".
+That cannot be done against the shipped build, and this story did not make it possible: **nothing in the app calls `record(_:)`**, and adding an emission site would be US-T07 through US-T12's scope landing here.
+So the legs that needed a real emission were driven by the committed Debug harness (`TelemetryUITestHarness`, `-RepTodayTelemetryProbe YES`), which emits one `app_install` from `RepTodayApp.init()` - the exact name and the exact place US-T07's first real emission will use - plus, for the live legs only, a **temporary one-line edit** that let the probe reach the real deployment instead of the harness's in-process interceptor.
+That edit was reverted before the commit, along with two throwaway XCUITest drivers used to walk the app; `git status` was checked clean of them afterwards.
+
+**What the live legs therefore prove:** that the opt-out flag decides whether a real POST reaches a real Convex deployment.
+**What they do not prove:** that the shipped build emits anything. It does not, by design, until US-T07.
+
+## Steps and observations
+
+### 1. The disclosure appears in onboarding, with a privacy-policy link
+
+Fresh install, plain launch. The first onboarding screen carries, below the Sign in with Apple block:
+
+> Rep Today collects anonymous usage data to see whether it's working - you can turn that off anytime in Profile, under Settings.
+
+and a `Privacy Policy` link beneath it.
+Render: `01-onboarding-disclosure.png`.
+
+It sits on the **first** screen rather than the last on purpose: the first event the app will emit hangs off app entry (US-T07's `app_install`), so a disclosure at the end of onboarding would arrive after the thing it discloses.
+
+Onboarding *completing* was not re-walked by hand here - `OnboardingImperialUITests.testImperialAnswersCarryThroughOnboardingToAReadySession` walks the whole flow to a ready session in the real app and passes on this branch, which is a stronger check than a manual pass would have been.
+That is stated rather than glossed: this leg confirms the disclosure is on the screen where it lands, not that a human completed the flow around it.
+
+The app's own preferences plist after that first launch:
+
+```
+"AppState.firstLaunchAt" => 2026-08-05 14:13:37 +0000
+"AppState.installId"     => "21F29912-CD04-495A-B18F-A4B45B280F1F"
+```
+
+`AppState.analyticsEnabled` is **absent**, which is the point of the read: the flag is not written until the user answers, and absence resolves to opted *in*.
+A naive `bool(forKey:)` would have read that same absence as opted out and shipped every install silent.
+
+### 2. With telemetry on (the default), an event reaches Convex
+
+Rows in `events` carrying this install's id, before: **0**.
+
+Launch with `-RepTodayTelemetryProbe YES` and no consent argument (so the shipped default applies). After ~8s:
+
+```
+clientTs      | installId                              | name         | props
+1785939250436 | "21F29912-CD04-495A-B18F-A4B45B280F1F" | "app_install"| { "install_week": "probe" }
+```
+
+One row, carrying the installed app's own `installId` read out of its own plist - not a test double.
+
+### 3. With telemetry off, nothing lands
+
+Same launch plus `-AppState.analyticsEnabled NO`. After 12s, rows for this install: still **1**. No new row.
+
+That is the launch-argument path, which is the one an out-of-process test can reach: `UserDefaults` reads the argument domain ahead of the persisted one, so the argument closes the same gate the Settings toggle writes.
+
+### 4. Toggling off and back on in Settings, with no restart
+
+Driven through the real UI - Profile tab -> Settings row -> the switch - against the live deployment, in one launch, with no relaunch anywhere in the sequence:
+
+| step | telemetry | new row in Convex |
+|---|---|---|
+| app entry | on (default) | yes - `clientTs 1785939342314` |
+| tap "Emit probe" | on | yes - `clientTs 1785939353561` |
+| toggle **off** in Settings, tap "Emit probe" | off | **no** |
+| toggle back **on**, tap "Emit probe" | on | yes - `clientTs 1785939375843` |
+
+Three rows for four emission attempts, and the missing one is the attempt made while the toggle was off.
+The ~22s gap between the second and third rows is the toggle-off, the swallowed attempt, and the toggle-on.
+
+Renders of the surface this was driven through: `02-profile-settings-row.png`, `03-settings-privacy-toggle-off.png` (launched opted out - the toggle shows the real stored state, not a default-on), `04-settings-privacy-toggle-on.png`.
+
+### 5. Cleanup
+
+All four probe rows were deleted from the dev deployment afterwards, by a scratch `internalMutation` deployed, run, deleted, and redeployed away - the same treatment US-T03 and US-T04 gave their own junk rows.
+`npx convex data events` reports 0 rows for this install id, and `git status convex/` is clean.
+
+## Expected Result vs. what happened
+
+| Expected | Observed |
+|---|---|
+| The disclosure appears in onboarding | Yes, on the first screen, with the privacy-policy link |
+| With the toggle on, events land | Yes - one row per emission, carrying the app's own `installId` |
+| With the toggle off, **no** new rows appear for that install | Yes - zero new rows, by launch argument and by the in-app toggle |
+| The app behaves identically | Yes - no error, no delay; the gate returns before any task, encode, or request is created |
+| Toggling back on resumes emission without a restart | Yes - all four legs in step 4 happened in one app launch |
+
+**Failure Indicator, checked:** no event landed while the toggle was off; the toggle is reachable (Profile -> Settings, asserted hittable) and labelled ("Share anonymous usage data"); the disclosure is present; nothing needed a restart.
+
+## What re-runs, and what does not
+
+This transcript is a point-in-time record. This repo has **no CI**, so nothing here re-runs by itself.
+
+What *is* re-runnable is `RepTodayUITests/TelemetryOptOutUITests`, which asserts the same gate out of process without touching the network (the harness's interceptor is in place there, so FR-13 holds).
+Its honesty was checked by breaking the thing it tests: with `isEnabled: AppState.analyticsGate` replaced by `isEnabled: { true }` in `ServiceContainer.live(...)`, the suite fails with
+
+```
+testTelemetryOffMeansTheAppDispatchesNothing: ("1") is not equal to ("0") -
+  the app tried to send telemetry while the user was opted out
+testTogglingTelemetryOffAndOnIsHonouredWithoutARestart: ("3") is not equal to ("2") -
+  an event was sent after the user turned telemetry off
+```
+
+and passes again once the gate is restored.
+That is the answer to "would this test pass for reasons that have nothing to do with the flag": it would not.
+
+**What that re-runnable suite does not prove:** it counts at the `URLProtocol` boundary inside the app, so an attempt means the transport built and dispatched a request, not that bytes reached Convex - that half is what the live legs above are for, and they do not re-run.
+It also says nothing about a Release build, which compiles none of the harness and today has no configured endpoint at all.
+
+## Documentation sweep
+
+Every prose-bearing artefact this branch touches, plus every file in the repo naming US-T06 or the seams this story changed, was swept for two things: prose gone stale, and prose claiming a stronger guarantee than the code delivers.
+
+**32 checked, 22 touched (15 edited, 7 written new), 10 verified accurate and left alone.**
+
+Edited because they described US-T06 as not-yet-landed, or over-claimed: the PRD's status header and its US-T04 / US-T07 cross-references, `AGENTS.md`'s telemetry paragraph and two of its pointers, `docs/implementation-log.md` (the US-T04 stub-then-connect sentence and the out-of-process one), `docs/test-coverage.md`'s `CoreDataServicesTests` and `LiveAnalyticsServiceTests` rows, `ServiceContainer.live`'s doc, `LiveAnalyticsService`'s `isEnabled` doc and the gate comment in `record(_:)`, `PaywallView`'s legal-links doc, and the doc comments in `AnalyticsServiceTests` and `LiveAnalyticsServiceTests` that spoke of US-T06 in the future tense.
+
+Left alone after checking: `CoreDataServicesTests`' header (already accurate), `ServiceProtocols.swift`, `NoOpAnalyticsService`, `AnalyticsWireBody`, `AnalyticsEvent`, `project.yml`, `convex/README.md` (all still true - "nothing calls `record(_:)`" remains the case), and the US-T03/T04/T05 validation transcripts, which are point-in-time records this repo deliberately does not rewrite.
+
+## Test runs on this branch
+
+Local runs only - this repo has no CI, so no PR check gates any of it.
+
+- `xcodebuild -scheme RepToday test` (iPhone 16, 18.6): **877 tests, 0 failures** (863 before this story).
+- `xcodebuild -scheme RepTodayUITests test` (same device): **9 tests, 0 failures** (5 before this story).

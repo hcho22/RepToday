@@ -163,9 +163,10 @@ final class AnalyticsServiceTests: XCTestCase {
     ///
     /// That seam is structural for **in-process** tests only. `RepTodayUITests` launches the real app
     /// out of process, so it never builds a container this side can parameterise, and its only gate is
-    /// `LiveAnalyticsService`'s enabled-by-default `isEnabled` closure; closing that half needs a
-    /// launch-argument-overridable persisted flag, which is US-T06's story (see US-T07's criteria in
-    /// the funnel PRD). Nothing leaks today because no emission call site exists yet.
+    /// `LiveAnalyticsService`'s `isEnabled` closure. US-T06 closed that half by backing the closure
+    /// with the persisted `AppState.analyticsEnabled` flag, which `-AppState.analyticsEnabled NO`
+    /// overrides from the launch-argument domain; every XCUITest suite passes it, and
+    /// `TelemetryOptOutUITests` proves the gate holds there.
     func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")

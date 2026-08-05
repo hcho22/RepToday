@@ -221,10 +221,11 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.captured.count, 1)
     }
 
-    // MARK: - The opt-out gate (US-T06 connects it; this is the seam)
+    // MARK: - The opt-out gate, as a seam
 
     /// With the gate closed there is no request at all - not a dropped response, no network call.
-    /// "Zero emission when off" is a US-T06 criterion and this is the seam it will point at.
+    /// "Zero emission when off" is US-T06's criterion; these two drive the seam with a hand-written
+    /// closure, and the pair further down drives it with the persisted flag US-T06 actually wired.
     func testDisabledGateEmitsNothing() async throws {
         StubURLProtocol.onRequest = { _ in
             XCTFail("a request was sent while telemetry was disabled")
@@ -238,8 +239,8 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertTrue(StubURLProtocol.captured.isEmpty)
     }
 
-    /// The gate is read per emission, not captured at construction, so US-T06's toggle takes effect
-    /// without an app restart.
+    /// The gate is read per emission, not captured at construction, which is what makes US-T06's
+    /// toggle take effect without an app restart.
     func testGateIsReReadOnEveryEmission() async throws {
         let enabled = UncheckedBox(false)
         let sent = expectation(description: "request intercepted once re-enabled")
@@ -255,6 +256,87 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         await fulfillment(of: [sent], timeout: 5)
         XCTAssertEqual(StubURLProtocol.captured.count, 1)
     }
+
+    // MARK: - The gate, backed by US-T06's persisted flag
+
+    /// The gate the app actually holds is `AppState.isAnalyticsEnabled(in:)` over `UserDefaults`, so
+    /// this drives the real transport through the real reader rather than through a hand-written
+    /// `{ false }`: a fresh install emits, writing the flag stops emission on the very next event,
+    /// and writing it back resumes - all without rebuilding the service, which is what "honoured
+    /// immediately, without an app restart" means.
+    func testThePersistedOptOutFlagStopsAndResumesEmissionWithoutRebuildingTheService() async throws {
+        let suiteName = "RepToday.LiveAnalyticsServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: "install-42",
+            session: StubURLProtocol.makeSession(),
+            // Reconstructed inside the closure from a `Sendable` name, so nothing non-`Sendable` is
+            // captured; it is the same suite either way.
+            isEnabled: { AppState.isAnalyticsEnabled(in: UserDefaults(suiteName: suiteName) ?? .standard) }
+        )
+
+        let optedIn = expectation(description: "the default opted-in state emits")
+        StubURLProtocol.onRequest = { _ in optedIn.fulfill() }
+        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        await fulfillment(of: [optedIn], timeout: 5)
+        XCTAssertEqual(StubURLProtocol.captured.count, 1, "a fresh install must be opted in")
+
+        defaults.set(false, forKey: AppState.analyticsEnabledKey)
+        StubURLProtocol.onRequest = { _ in XCTFail("an event was sent after the user opted out") }
+        await service.record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(StubURLProtocol.captured.count, 1, "opting out did not take effect until a restart")
+
+        let resumed = expectation(description: "opting back in resumes emission")
+        defaults.set(true, forKey: AppState.analyticsEnabledKey)
+        StubURLProtocol.onRequest = { _ in resumed.fulfill() }
+        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        await fulfillment(of: [resumed], timeout: 5)
+        XCTAssertEqual(StubURLProtocol.captured.count, 2)
+    }
+
+    /// The production container wires that flag, rather than the initializer's enabled-by-default
+    /// stub. Asserted by reading the built service's own gate, so nothing is emitted to find out -
+    /// and so a future edit that drops `isEnabled:` from the `configured(...)` call fails here.
+    ///
+    /// Debug-only because a Release build has no configured endpoint and therefore wires
+    /// `NoOpAnalyticsService`, which has no gate to read (`AnalyticsServiceTests` asserts that half).
+    #if DEBUG
+    func testTheProductionContainersGateIsThePersistedOptOutFlag() throws {
+        let standard = UserDefaults.standard
+        let original = standard.object(forKey: AppState.analyticsEnabledKey)
+        defer {
+            if let original {
+                standard.set(original, forKey: AppState.analyticsEnabledKey)
+            } else {
+                standard.removeObject(forKey: AppState.analyticsEnabledKey)
+            }
+        }
+
+        let controller = MockPersistence.controller()
+        let container = ServiceContainer.live(context: controller.viewContext, installId: "container-install")
+        let service = try XCTUnwrap(
+            container.analyticsService as? LiveAnalyticsService,
+            "the Debug container must wire the live transport"
+        )
+
+        standard.removeObject(forKey: AppState.analyticsEnabledKey)
+        XCTAssertTrue(service.isEmissionEnabled, "a fresh install must be opted in")
+
+        standard.set(false, forKey: AppState.analyticsEnabledKey)
+        XCTAssertFalse(
+            service.isEmissionEnabled,
+            "the container's gate is not backed by the persisted opt-out flag"
+        )
+
+        standard.set(true, forKey: AppState.analyticsEnabledKey)
+        XCTAssertTrue(service.isEmissionEnabled)
+    }
+    #endif
 
     // MARK: - Configuration: missing or malformed is inert, never fatal
 

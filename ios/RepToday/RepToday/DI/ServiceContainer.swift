@@ -148,8 +148,9 @@ struct ServiceContainer {
     ///     (FR-13) is held here by the code instead of by discipline - but only for tests running
     ///     *in this process*. `RepTodayUITests` launches the real app out of process, which builds
     ///     its own container from the defaults below, so nothing passed here reaches it; that half
-    ///     rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 points at a persisted
-    ///     flag a launch argument can override. See US-T07's criteria in the funnel PRD.
+    ///     now rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 pointed at
+    ///     `AppState.analyticsEnabled` - a persisted flag the `-AppState.analyticsEnabled NO` launch
+    ///     argument overrides, and the mechanism every XCUITest suite uses to stay off the wire.
     static func live(
         context: NSManagedObjectContext,
         installId: String,
@@ -168,6 +169,17 @@ struct ServiceContainer {
         // Health, resolving MET values from the exercise catalog for the energy estimate. Shared so the
         // completion recorder writes through the same instance exposed on the container.
         let healthKitService = HealthKitService(exerciseService: exerciseService)
+        // The telemetry transport keeps its own session in every ordinary build. The one exception is
+        // an XCUITest run launched with the US-T06 probe argument, where it is swapped for an
+        // in-process counting interceptor so an out-of-process test can observe the opt-out gate
+        // without a single byte leaving the app (`TelemetryUITestHarness`). `nil` means "keep your
+        // own", so nothing about the production path changes.
+        let analyticsSession: URLSession?
+        #if DEBUG
+        analyticsSession = TelemetryUITestHarness.interceptingSession()
+        #else
+        analyticsSession = nil
+        #endif
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -210,8 +222,18 @@ struct ServiceContainer {
             // is the honest answer to "is this build configured to emit?" rather than a promise
             // that it is. An explicit `analyticsService` overrides both branches; nothing else
             // about this wiring changes when it does.
+            //
+            // `AppState.analyticsGate` is US-T06's opt-out flag, read fresh from `UserDefaults` on
+            // every emission rather than captured here - which is what makes turning the Settings
+            // toggle off take effect on the next event instead of the next launch, and what lets the
+            // `-AppState.analyticsEnabled NO` launch argument close the gate in an app this process
+            // never built.
             analyticsService: analyticsService
-                ?? LiveAnalyticsService.configured(installId: installId)
+                ?? LiveAnalyticsService.configured(
+                    installId: installId,
+                    session: analyticsSession,
+                    isEnabled: AppState.analyticsGate
+                )
                 ?? NoOpAnalyticsService()
         )
     }
