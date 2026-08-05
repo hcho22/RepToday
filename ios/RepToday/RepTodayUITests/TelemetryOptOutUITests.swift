@@ -42,32 +42,123 @@ final class TelemetryOptOutUITests: XCTestCase {
     }
 
     override func tearDown() {
+        // Closes the one ordering the entry check cannot see: a raw launch that happens after the
+        // last helper launch, with nothing following it to trip the check on the way in.
+        assertNobodyLaunchedBehindOurBack()
+        lastArgumentsSetHere = nil
         app = nil
         super.tearDown()
     }
 
     // MARK: - Launching
 
-    /// Launches the real app with the probe harness on, onboarding already complete (so the Profile
-    /// tab and its Settings screen are reachable), and - optionally - the consent flag pinned.
+    /// How a launch keeps itself off the wire. **Every launch in this suite must pick one**, and the
+    /// point of modelling it as an enum is that "neither" is not representable.
+    ///
+    /// This exists because it was got wrong once, here, inside the story whose whole purpose is the
+    /// guarantee: a render leg opened with a raw `app.launchArguments = [...]` carrying no guard at
+    /// all, which built the real transport against the dev deployment with the gate open. It was
+    /// harmless only because nothing calls `record(_:)` yet - the moment US-T07 hangs `app_install`
+    /// off app entry, that launch would POST a live row on every run. US-T04 faced the same shape of
+    /// problem and answered it the same way, reworking FR-13 so it held "structural rather than a
+    /// reading of the current code"; a per-launch opt-in guard that a raw assignment silently
+    /// bypasses is exactly a guarantee that holds only while every future author remembers.
+    ///
+    /// Note that the invariant is **not** "consent is always off". Two tests need the gate genuinely
+    /// open - the positive control, without which the zero-attempts assertion is vacuous, and the
+    /// runtime-toggle test - and they are safe because the probe harness swaps the transport's
+    /// `URLSession` for an in-process counting `URLProtocol`. So there are two ways to be safe, and
+    /// each case below carries at least one of them.
+    private enum TelemetryPosture {
+        /// Consent pinned off by `-AppState.analyticsEnabled NO`, and **no probe harness** - so
+        /// nothing can be dispatched, and no HUD stands over the screen. This is the posture for
+        /// renders, where the probe overlay would be in the picture.
+        case optedOutWithNoProbe
+
+        /// Probe harness on, consent left at the shipped default (on). The gate is open and the
+        /// interceptor is what keeps the run off the network.
+        case probeWithConsentDefaultOn
+
+        /// Probe harness on *and* consent pinned off - both guards, for the tests that assert the
+        /// gate closes.
+        case probeWithConsentOff
+
+        /// The launch arguments this posture contributes, beyond onboarding routing.
+        var arguments: [String] {
+            switch self {
+            case .optedOutWithNoProbe:
+                return ["-AppState.analyticsEnabled", "NO"]
+            case .probeWithConsentDefaultOn:
+                return ["-RepTodayTelemetryProbe", "YES"]
+            case .probeWithConsentOff:
+                return ["-RepTodayTelemetryProbe", "YES", "-AppState.analyticsEnabled", "NO"]
+            }
+        }
+    }
+
+    /// The **only** sanctioned way to launch in this suite. Every call names its telemetry posture,
+    /// and no posture leaves the app able to reach the network.
     ///
     /// `UserDefaults` reads the argument domain ahead of the persisted one, so `-AppState.*` values
-    /// land without the test reaching into the installed app's container. Passing no consent argument
-    /// leaves the app on the shipped default, which the harness has just reset to, so a run never
-    /// inherits what the previous one's toggling left behind.
-    private func launch(consent: String? = nil) {
-        var arguments = [
-            "-AppState.isOnboarded", "YES",
-            "-RepTodayTelemetryProbe", "YES"
-        ]
-        if let consent {
-            arguments += ["-AppState.analyticsEnabled", consent]
-        }
-        app.launchArguments = arguments
+    /// land without the test reaching into the installed app's container - a run never inherits what
+    /// the previous one's toggling left behind.
+    ///
+    /// - Parameter onboarded: `false` parks the app on onboarding, for the disclosure render.
+    private func launch(_ posture: TelemetryPosture, onboarded: Bool = true) {
+        assertNobodyLaunchedBehindOurBack()
+        app.launchArguments =
+            ["-AppState.isOnboarded", onboarded ? "YES" : "NO"] + posture.arguments
+        lastArgumentsSetHere = app.launchArguments
         app.launch()
         // The main tabs raise the Health share prompt as they appear (US-N03); it stands over the
         // probe HUD and the Profile tab alike, so it is answered before anything is read.
         answerHealthAccessSheetIfPresented(in: app)
+    }
+
+    /// What `launch(_:onboarded:)` last wrote, so a change made by anything else is detectable.
+    private var lastArgumentsSetHere: [String]?
+
+    /// The net under the enum, for a launch that never went through `launch(_:onboarded:)` at all.
+    ///
+    /// `TelemetryPosture` makes an unguarded launch unrepresentable *through the helper*, but a
+    /// future `app.launchArguments = [...]` written straight into a test sails past the type system -
+    /// which is precisely how this suite acquired the hole in the first place. So the bypass is
+    /// caught by state instead: `launchArguments` persists on the application object, so any value
+    /// there that this helper did not write came from somewhere else.
+    ///
+    /// **This is checked on entry to every launch, not only at teardown, and the difference is the
+    /// whole point.** Teardown alone sees only the *final* arguments, and the bug this exists to
+    /// catch was a test that launched unguarded and then launched again through the helper - the
+    /// second launch overwrites the first, so teardown finds a guarded array and reports nothing.
+    /// That is not a hypothetical: this net was written teardown-only, and a deliberate re-injection
+    /// of the original bug passed it. Checking here as well closes the raw-then-helper ordering,
+    /// and the teardown call closes a raw launch that happens last.
+    private func assertNobodyLaunchedBehindOurBack(
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        guard let app else { return }
+        let arguments = app.launchArguments
+        // Nothing has launched yet, or these are exactly the arguments this helper installed.
+        guard !arguments.isEmpty, arguments != lastArgumentsSetHere else { return }
+
+        let optedOut = zip(arguments, arguments.dropFirst())
+            .contains { $0 == "-AppState.analyticsEnabled" && $1 == "NO" }
+        let probed = zip(arguments, arguments.dropFirst())
+            .contains { $0 == "-RepTodayTelemetryProbe" && $1 == "YES" }
+
+        XCTAssertTrue(
+            optedOut || probed,
+            """
+            a launch in this suite bypassed `launch(_:onboarded:)` and carried neither telemetry \
+            guard: \(arguments). Every launch must either pin consent off \
+            (-AppState.analyticsEnabled NO) or arm the probe harness (-RepTodayTelemetryProbe YES), \
+            which intercepts the transport in process. Without one of the two, the launch builds the \
+            real transport against the dev deployment with the gate open, and will POST live rows \
+            into the telemetry table once US-T07 adds an emission call site. Launch through \
+            `launch(_:onboarded:)` and name a `TelemetryPosture`.
+            """,
+            file: file, line: line
+        )
     }
 
     /// The HUD's running count of telemetry requests the transport dispatched this launch.
@@ -111,7 +202,7 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// **The criterion.** Launched with telemetry off, the real app dispatches no telemetry request
     /// at all - not one that fails, not one that is dropped: none is built.
     func testTelemetryOffMeansTheAppDispatchesNothing() throws {
-        launch(consent: "NO")
+        launch(.probeWithConsentOff)
 
         settleForAnyPendingSend()
 
@@ -125,7 +216,7 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// with the flag left at its default emits, so the zero is the gate's doing rather than the
     /// absence of anything to emit.
     func testTelemetryOnMeansTheSameLaunchDoesDispatch() throws {
-        launch()
+        launch(.probeWithConsentDefaultOn)
 
         waitForAttemptCount(1)
     }
@@ -134,13 +225,13 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// out renders its Settings toggle off, which is what makes the two halves the same gate rather
     /// than two that happen to agree.
     func testTheLaunchArgumentAndTheSettingsToggleAreTheSameFlag() throws {
-        launch(consent: "NO")
+        launch(.probeWithConsentOff)
 
         let toggle = openSettingsToggle()
         XCTAssertEqual(toggle.value as? String, "0", "the launch argument did not reach the user-facing control")
 
         app.terminate()
-        launch()
+        launch(.probeWithConsentDefaultOn)
 
         XCTAssertEqual(openSettingsToggle().value as? String, "1", "the default install is not opted in")
     }
@@ -151,7 +242,7 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// This is the only leg that needs the HUD's emit button - every real emission site is still ahead
     /// (US-T07 through US-T12), so there is nothing else in the app to press that produces an event.
     func testTogglingTelemetryOffAndOnIsHonouredWithoutARestart() throws {
-        launch()
+        launch(.probeWithConsentDefaultOn)
         waitForAttemptCount(1)
 
         let emit = app.buttons["telemetry.probe.emit"]
@@ -242,8 +333,10 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// by a count. Each render is filed with the result bundle, so it needs no directory of its own.
     func testRendersTheConsentSurfacesAndTheGateChangingTheCount() throws {
         // 1. The disclosure, on the *first* onboarding screen, with no probe HUD standing over it.
-        app.launchArguments = ["-AppState.isOnboarded", "NO"]
-        app.launch()
+        // `.optedOutWithNoProbe` is what makes that true and safe at once: no harness means no HUD in
+        // the picture, and consent pinned off means this launch cannot dispatch even once US-T07
+        // lands an emission site at app entry.
+        launch(.optedOutWithNoProbe, onboarded: false)
         XCTAssertTrue(
             app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 20),
             "onboarding never reached its first screen"
@@ -253,7 +346,7 @@ final class TelemetryOptOutUITests: XCTestCase {
 
         // 2. Everything below is one launch, so what the renders show is a live toggle rather than a
         // sequence of relaunches into pre-set states.
-        launch()
+        launch(.probeWithConsentDefaultOn)
         waitForAttemptCount(1)
 
         let profile = app.tabBars.buttons["Profile"]

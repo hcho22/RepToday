@@ -103,17 +103,32 @@ All four probe rows were deleted from the dev deployment afterwards, by a scratc
 This transcript is a point-in-time record. This repo has **no CI**, so nothing here re-runs by itself.
 
 What *is* re-runnable is `RepTodayUITests/TelemetryOptOutUITests`, which asserts the same gate out of process without touching the network (the harness's interceptor is in place there, so FR-13 holds).
-Its honesty was checked by breaking the thing it tests: with `isEnabled: AppState.analyticsGate` replaced by `isEnabled: { true }` in `ServiceContainer.live(...)`, the suite fails with
+Its honesty was checked twice, by breaking each thing it protects and confirming it fails.
+
+**Sabotage 1 - the gate.** With `isEnabled: analyticsGate` replaced by `isEnabled: { true }` in `ServiceContainer.live(...)`, three of the suite's tests fail:
 
 ```
 testTelemetryOffMeansTheAppDispatchesNothing: ("1") is not equal to ("0") -
   the app tried to send telemetry while the user was opted out
 testTogglingTelemetryOffAndOnIsHonouredWithoutARestart: ("3") is not equal to ("2") -
   an event was sent after the user turned telemetry off
+testRendersTheConsentSurfacesAndTheGateChangingTheCount: ("3") is not equal to ("2") -
+  an event was sent after the user turned telemetry off
 ```
 
-and passes again once the gate is restored.
+and all three pass again once the gate is restored.
 That is the answer to "would this test pass for reasons that have nothing to do with the flag": it would not.
+
+**Sabotage 2 - the launch guard, and this one failed the first time.** Every launch in the suite must carry one of two guards: consent pinned off, or the probe harness armed (which intercepts the transport in process). The guard was first written as a single `tearDown` assertion over the app's final `launchArguments`. Re-injecting the original defect - the render leg opening with a raw, unguarded `app.launchArguments = ["-AppState.isOnboarded", "NO"]` - **passed**, because that test launches twice and the second, guarded launch overwrites the arguments the first one set, so teardown finds a guarded array and reports nothing. The net could not see the very bug shape it was written for.
+It is now checked on **entry to every launch** as well as at teardown, against a record of what the helper itself last wrote, so a raw launch before, between, or after a helper launch is all caught. Re-injecting the same defect now fails:
+
+```
+testRendersTheConsentSurfacesAndTheGateChangingTheCount: XCTAssertTrue failed -
+  a launch in this suite bypassed `launch(_:onboarded:)` and carried neither telemetry
+  guard: ["-AppState.isOnboarded", "NO"]
+```
+
+That first failure is recorded rather than quietly fixed, because it is the whole argument for running the check: a safety assertion nobody breaks on purpose is indistinguishable from one that cannot fail.
 
 **What that re-runnable suite does not prove:** it counts at the `URLProtocol` boundary inside the app, so an attempt means the transport built and dispatched a request, not that bytes reached Convex - that half is what the live legs above are for, and they do not re-run.
 It also says nothing about a Release build, which compiles none of the harness and today has no configured endpoint at all.
@@ -132,5 +147,7 @@ Left alone after checking: `CoreDataServicesTests`' header (already accurate), `
 
 Local runs only - this repo has no CI, so no PR check gates any of it.
 
-- `xcodebuild -scheme RepToday test` (iPhone 16, 18.6): **877 tests, 0 failures** (863 before this story).
-- `xcodebuild -scheme RepTodayUITests test` (same device): **9 tests, 0 failures** (5 before this story).
+- `xcodebuild -scheme RepToday test` (iPhone 16, 18.6): **879 tests, 0 failures** (863 before this story).
+- `xcodebuild -scheme RepTodayUITests test` (same device): **10 tests, 0 failures** (5 before this story).
+
+Those counts are from the branch tip after the review rounds, not from the original commit; the live legs above were run against the original commit, which is why they are reported separately.
