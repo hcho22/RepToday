@@ -146,7 +146,7 @@ final class AppStateTests: XCTestCase {
     /// The narrower rule: re-minting a missing identifier never throws away an origin that
     /// survived. A recorded origin is the week this install really began, so cohorting against it
     /// is right - only the id needs replacing.
-    func testAMissingIdentifierIsReMintedWithoutDiscardingAStoredOrigin() throws {
+    func testAMissingIdentifierIsReMintedWithoutDiscardingAStoredOrigin() {
         defaults.set(true, forKey: "AppState.isOnboarded")
         let origin = Self.date(2026, 7, 21, hour: 8)
         defaults.set(origin, forKey: "AppState.firstLaunchAt")
