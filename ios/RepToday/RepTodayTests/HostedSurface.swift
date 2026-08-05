@@ -11,8 +11,11 @@ import UIKit
 /// Every evidence suite therefore hosts through `host(_:size:)` instead of carrying its own preamble,
 /// so there is one settling policy rather than one per suite.
 ///
-/// `OnboardingBasicsEvidenceTests` (unmerged, PR #67) still hosts its own and should adopt this once
-/// that branch lands.
+/// `OnboardingBasicsEvidenceTests` is the one suite that has not adopted it: it still builds its own
+/// hosting controller, window, pump and accessibility lookup, captures at `format.scale = 2` rather
+/// than `captureScale`, and resolves `REPTODAY_EVIDENCE_DIR` verbatim instead of through
+/// `EvidenceOutput.directory(for:)`. That divergence is owed work, not a sanctioned second policy -
+/// its scope is recorded under "Owed work" in `docs/implementation-log.md`.
 @MainActor
 enum HostedSurface {
 

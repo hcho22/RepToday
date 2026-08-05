@@ -15,6 +15,14 @@ import SwiftUI
 /// The render is written to a per-run temporary directory unless `REPTODAY_WRITE_EVIDENCE=1` /
 /// `REPTODAY_EVIDENCE_DIR` redirect it, matching `PerSideSwapEvidenceTests`, so a plain test run
 /// never dirties the worktree.
+///
+/// This suite is the **one exception** to the shared test seams the other evidence suites go through,
+/// and it is owed work rather than a second sanctioned way of doing it: the hosting controller,
+/// window, run-loop pump and accessibility lookup below predate `HostedSurface`/`AccessibilityTree`,
+/// the capture scale is 2 against `HostedSurface.captureScale`'s 3, and the path above reads
+/// `REPTODAY_EVIDENCE_DIR` as the final directory where `EvidenceOutput.directory(for:)` reads it as a
+/// root with the story folder appended. Scope of the adoption is recorded under "Owed work" in
+/// `docs/implementation-log.md`; do not copy this preamble into a new suite.
 @MainActor
 final class OnboardingBasicsEvidenceTests: XCTestCase {
 

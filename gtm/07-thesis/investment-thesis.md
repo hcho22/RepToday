@@ -176,10 +176,21 @@ v2 also adds K9, a post-launch word-of-mouth criterion, because bet (d)'s word-o
 Kill thresholds are checked on cohorts at least four weeks after launch and after at least one fix iteration, so a bad first week does not trigger a false kill.
 PRD targets referenced below: onboarding-to-first-session 60% by month 3, D7 20%, D30 10%, Weekly Active Exercisers 35% of installs, free-to-paid 4%.
 
-Two instrument rules apply to every criterion below, because at the channel plan's forecast volumes a single weekly cohort separates the expected band from the kill threshold by one to three users, which is noise.
+Two instrument rules apply to every criterion below, because at the channel plan's forecast volumes a single weekly cohort separates the expected band from the kill threshold by one to three users, which is noise; a third, stated after them, arrived with the telemetry opt-out and governs how the denominator itself is read.
 Minimum cohort rule: no rate criterion (K1-K4, K6, K7; K5 counts installs directly) is judged on fewer than 200 users [ASSUMPTION: no external standard exists for this; 200 is a judgment call that widens the expected-band-to-kill-line margin from one to three users to several, and it is not a power calculation]. Weekly cohorts are pooled across consecutive weeks until the floor is met.
 Fixed evaluation dates: the pooled reads happen at the week-8 and week-12 reviews already scheduled in the channel plan, not at dates of the founder's choosing.
 The honest statistical caveat: even pooled, these samples carry wide confidence intervals, and if 90 days of volume cannot fill the pools, the review's verdict is "insufficient data", which extends the experiment rather than passing it.
+
+A third instrument rule arrived with the anonymous-telemetry opt-out (US-T06 of the funnel-instrumentation PRD): **K1-K8 are shares of *consenting* installs, not of installs.**
+An install whose user turns telemetry off emits nothing at all, so it is missing from the numerator *and* the denominator, and the sink cannot tell it apart from an install that never ran; 06-channels/event-metric-schema.md carries the same caveat at the schema.
+For the rate criteria (K1-K4, K6, K7) that mostly cancels: opt-out removes the same install from both halves of the ratio, so the share it reports is the share among the consenting, which is the population the rate was always about.
+K5 is the exception, and it is the one that bites, on exactly the distinction the minimum-cohort rule above already draws when it sets K5 apart as the criterion that "counts installs directly".
+K5 is read against an **absolute** floor of ~90/week, so every opted-out install deflates it one-for-one rather than cancelling: at a 10% opt-out rate a true 95 installs/week reads as about 86/week, which sits below the kill line, and K5 fires with nothing actually wrong.
+The correction is to read K5's install count off App Store Connect units rather than off the telemetry install count - the same instrument this document already relies on for K9's organic App Store search impressions, pointed at a second question rather than a new dependency added.
+The 200-user minimum cohort floor likewise now means 200 *consenting* users, which takes more than 200 real installs to reach.
+No band, threshold or floor moves in response, and that is a decision rather than an oversight: the opt-out rate is unobservable from the sink by construction and unknown until something ships, so re-cutting the 90/week floor or the 200-user rule now would mean setting a pre-registered number on a guess - and a floor set too high buys "insufficient data" verdicts that stall the decision instead of informing it.
+Revisit trigger, stated as a condition rather than a caveat so a future reader can tell whether it has fired: the revisit becomes due the first time App Store Connect units and the telemetry install count both exist for the same period, because the gap between those two numbers *is* the opt-out rate, measurable at that moment and not before.
+Until it fires, every number below is read exactly as written.
 
 | # | Metric | Expected band (90 days) | Kill threshold | Why this threshold |
 | --- | --- | --- | --- | --- |

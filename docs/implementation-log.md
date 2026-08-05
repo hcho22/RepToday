@@ -571,3 +571,15 @@ Both timers now run on one `Countdown` value type: absolute deadline, `pause`/`r
 Roughly eighty mirrored lines went with it.
 What the two genuinely do differently stays in the view model where it is visible - a hold has sides and banks a set at zero, a rest has extend/skip and only cues.
 The view half of this duplication had already been collapsed into one `CountdownRing`; collapsing the state half is what made the rest fix a consequence of the hold fix rather than a second thing to remember.
+
+## Owed work
+
+Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.
+
+**`OnboardingBasicsEvidenceTests` should adopt the shared evidence-suite seams.**
+`AGENTS.md` states two rules in the absolute - a suite never rolls its own evidence path (`EvidenceOutput.directory(for:)` is the one resolver, and `REPTODAY_EVIDENCE_DIR` names a **root** with the story folder appended), and hosting a production surface goes through `HostedSurface.host(_:size:)` / `AccessibilityTree` so every suite gets the same run-loop settling.
+Both rules stand as written, and every suite written since honours them. `OnboardingBasicsEvidenceTests` is the single exception, and it predates them: it landed with its own preamble and was never migrated, so the absolutes describe the bar rather than the current state of that one file.
+Adoption covers five things, listed because a partial migration would leave the file looking converted while still diverging: its private `UIHostingController`, its `UIWindow`, its private `pump(...)`, its private accessibility walk / `accessibilityElement(labeledWithPrefix:in:)`, and its `evidenceRoot` - which resolves `REPTODAY_EVIDENCE_DIR` as the **final** directory, with no `us-o04` folder appended, so one redirected run scatters its render into a different layout from every other suite's baselines.
+A sixth is a value rather than a seam and is the one with a visible output: the suite captures at `format.scale = 2` while `HostedSurface.captureScale` is 3, so the committed `artifacts/reports/us-o04/` baseline is at a different scale from every other committed render and adopting `HostedSurface.capture(_:size:)` will regenerate it larger. That is expected, not a regression, and the refresh is part of the work.
+Deliberately not done inside US-T06: it is a code change to a suite that story has no business refactoring, and the alternative - softening the two `AGENTS.md` sentences to match reality - would have lowered a bar the repo set on purpose while leaving a future reader unable to tell a weakened rule from an intended one.
+Pointers back to this entry sit at `HostedSurface.swift`'s doc comment, at the head of `OnboardingBasicsEvidenceTests`, and in `AGENTS.md` beside the two rules.
