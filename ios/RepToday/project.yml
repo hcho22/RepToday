@@ -57,6 +57,21 @@ targets:
         # Health write is best-effort/skipped when unavailable (e.g. an unsigned Simulator build
         # with no provisioning), so the core loop is never gated.
         CODE_SIGN_ENTITLEMENTS: RepToday/RepToday.entitlements
+      # The anonymous-telemetry deployment origin (US-T04), split per configuration and expanded
+      # into `Info.plist`'s `RepTodayAnalyticsEndpoint` key. Debug points at the *development*
+      # deployment; Release carries nothing, because no production deployment has been chosen -
+      # that is an open question in `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` and
+      # it stays open here rather than being guessed at. An empty value takes the existing inert
+      # path: `LiveAnalyticsService.configured(...)` returns nil and the container falls back to
+      # `NoOpAnalyticsService`, so an unconfigured Release build emits nothing and fails nothing.
+      # The worst case is therefore silently no data rather than silently the wrong destination.
+      # Choosing and setting the production origin here is a precondition for shipping any build
+      # that emits (US-T07 onward).
+      configs:
+        Debug:
+          REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
+        Release:
+          REPTODAY_ANALYTICS_ENDPOINT: ""
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.

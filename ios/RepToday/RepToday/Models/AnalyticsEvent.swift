@@ -2,11 +2,18 @@ import Foundation
 
 /// The anonymous product-telemetry event model (US-T02).
 ///
-/// This file is the *seam only*: a typed event value plus the closed vocabularies it carries.
-/// It adds no emission call sites and no transport - US-T03 wires the Convex sink and US-T04
-/// lands the fire-and-forget `URLSession` POST. Later stories will attach a random per-install ID
-/// (US-T05) and gate emission on the opt-out flag (US-T06); no user identity ever rides on the
-/// event.
+/// This file is the *model only*: a typed event value plus the closed vocabularies it carries. It
+/// adds no emission call sites - nothing in the app calls `record(_:)` yet, and the 13 emission
+/// sites are US-T07 through US-T12. The sink it reaches landed in US-T03, the transport that
+/// carries it in US-T04, and the per-install identifier it travels beside in US-T05; that
+/// identifier is deliberately **not** on this type - it is attached when the event is encoded for
+/// the wire (`AnalyticsWireBody`), so no user identity ever rides on the event, and one is not
+/// modelled here as if it might.
+///
+/// **The `Codable` conformance below is the in-process form, not the wire form.** It is tagged on
+/// purpose (see `AnalyticsValue`), while the sink stores plain scalars under different top-level
+/// key names. `AnalyticsWireBody` owns that second encoding; encoding this type with a
+/// `JSONEncoder` and POSTing the result would send a body the sink stores wrong.
 ///
 /// The names and property lists are pre-registered in `gtm/06-channels/event-metric-schema.md`
 /// and must not be edited to move a threshold. Like the domain enums in `Enums.swift`, the raw
@@ -104,7 +111,7 @@ enum AnalyticsValue: Codable, Equatable, Sendable {
 
 /// One anonymous telemetry event: a pre-registered name, a millisecond client timestamp, and a
 /// small string-keyed property bag. A value type so it crosses concurrency domains freely when
-/// US-T04 sends it off the calling path on a detached task.
+/// `LiveAnalyticsService` sends it off the calling path on a detached task.
 struct AnalyticsEvent: Codable, Equatable, Sendable {
     /// The pre-registered event name.
     let name: AnalyticsEventName

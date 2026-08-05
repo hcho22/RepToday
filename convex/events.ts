@@ -37,7 +37,9 @@ export type AnalyticsEventName = (typeof EVENT_NAMES)[number];
  * keys (~120 bytes serialized), so these caps sit roughly two orders of magnitude above anything
  * the app legitimately sends: they exist only to stop a malformed or hostile client from poisoning
  * the table, not to police shape. Per the story's "basic input validation only" criterion, an
- * unknown event name and an oversized bag are the *only* two rejections.
+ * unknown event name and an oversized bag are the *only* two rejections **this mutation** makes.
+ * The boundary checks live in `http.ts`, where untrusted input actually enters: field presence and
+ * kind, plus the two size caps US-T04 added once a real client existed to need them.
  *
  * They are raised as `ConvexError` rather than `Error` so the HTTP action can tell a rejection it
  * asked for apart from a runtime or database failure it did not, and answer `400` or `5xx`

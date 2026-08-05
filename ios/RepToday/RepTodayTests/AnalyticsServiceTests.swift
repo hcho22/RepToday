@@ -4,6 +4,9 @@ import XCTest
 
 /// US-T02 validation: the analytics seam records events in order with names, timestamps, and
 /// property bags intact, and the value type / event-name vocabulary hold their contract.
+///
+/// The *wire* form of the same events - `AnalyticsWireBody`, flattened and differently keyed - is
+/// `LiveAnalyticsServiceTests`' subject, not this file's.
 final class AnalyticsServiceTests: XCTestCase {
 
     // MARK: - Mock records events in order, no network
@@ -128,44 +131,71 @@ final class AnalyticsServiceTests: XCTestCase {
         }
     }
 
-    // MARK: - The seam, exercised through the containers a call site actually resolves
+    // MARK: - The seam, exercised through the container a call site actually resolves
 
     /// Walks one anonymous user's whole funnel - install through subscribe, all 13 pre-registered
-    /// events with the schema's own property names - through `analyticsService` as resolved from both
-    /// `ServiceContainer.mock()` and the production `ServiceContainer.live(context:)`, and asserts the
-    /// recorded events, the snake_case names that serialise, and a lossless `Codable` round-trip.
+    /// events with the schema's own property names - through `analyticsService` as resolved from
+    /// `ServiceContainer.mock()`, and asserts the recorded events, the snake_case names that
+    /// serialise, and a lossless `Codable` round-trip.
     ///
-    /// It claims nothing about the request body US-T04 will POST: that body is one event per request
-    /// carrying an install identifier (`name` / `installId` / `clientTs` / `props`), and `installId`
-    /// does not land on this model until US-T05. What is gated here is the seam and the model.
+    /// It claims nothing about the request body: that is `AnalyticsWireBody`'s shape, a *different*
+    /// encoding of the same event (flattened scalars, and `installId` / `clientTs` key names), and
+    /// it is covered by `LiveAnalyticsServiceTests`. What is gated here is the seam and the model.
     ///
-    /// This is the end-to-end read of the seam rather than of the model: every emission is written the
-    /// way a US-T03 call site must write it - `await services.analyticsService.record(event)`, no `try`
-    /// - so the deliberate `async`-but-not-`throws` signature is exercised as a call site, not asserted
-    /// about. Neither container sends anything, which is what "no transport yet" looks like from the
-    /// outside: nothing leaves the process. They differ in what they do with the event, and that
-    /// difference is asserted - the mock records it for tests to read, while production discards it
-    /// through `NoOpAnalyticsService`, so a shipping build accumulates no unbounded in-memory backlog.
-    func testFunnelRecordedThroughBothContainersRoundTripsLosslessly() async throws {
+    /// This is the end-to-end read of the seam rather than of the model: every emission is written
+    /// the way an emission call site must write it - `await services.analyticsService.record(event)`,
+    /// no `try` - so the deliberate `async`-but-not-`throws` signature is exercised as a call site,
+    /// not asserted about.
+    ///
+    /// **Only the mock container records here, and that is deliberate.** Before US-T04 the
+    /// production container wired the discarding `NoOpAnalyticsService`, so driving the whole funnel
+    /// through it cost nothing; it now wires `LiveAnalyticsService` against the configured
+    /// deployment, so recording through it would put 13 real POSTs on the wire from a unit test,
+    /// which FR-13 forbids. The transport itself is exercised through an in-process `URLProtocol`
+    /// stub in `LiveAnalyticsServiceTests`.
+    ///
+    /// FR-13 is not left resting on that reading, though: `live(context:installId:analyticsService:)`
+    /// takes a sink, so any test that builds the production container for reasons unrelated to
+    /// telemetry substitutes an inert one and is structurally unable to reach the network even after
+    /// US-T07 through US-T12 add the emission call sites (`CoreDataServicesTests` does exactly that).
+    /// This test deliberately does *not* pass one, because the wiring the **default** resolves to is
+    /// the thing being asserted.
+    ///
+    /// That seam is structural for **in-process** tests only. `RepTodayUITests` launches the real app
+    /// out of process, so it never builds a container this side can parameterise, and its only gate is
+    /// `LiveAnalyticsService`'s enabled-by-default `isEnabled` closure; closing that half needs a
+    /// launch-argument-overridable persisted flag, which is US-T06's story (see US-T07's criteria in
+    /// the funnel PRD). Nothing leaks today because no emission call site exists yet.
+    func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
-        let live = ServiceContainer.live(context: controller.viewContext)
+        let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")
         let mock = ServiceContainer.mock()
 
         let funnel = Self.funnelJourney
 
-        // Exactly how a US-T03 call site reads: awaited, unhandled, no `try`, no result to check.
+        // Exactly how an emission call site reads: awaited, unhandled, no `try`, no result to check.
         for event in funnel {
-            await live.analyticsService.record(event)
             await mock.analyticsService.record(event)
         }
 
-        // Production must not hold on to what it cannot send: until the transport lands (US-T04)
-        // `live(context:)` wires the discarding sink, not the recording mock, so a shipping build
-        // never grows an in-memory backlog nothing drains.
+        // The production container's default sink follows the build's own configuration, and never
+        // the recording mock, which would grow an in-memory backlog nothing drains. Asserted by type
+        // rather than by emitting - nothing in this test may reach the network.
+        #if DEBUG
+        // Debug configures the dev deployment (`REPTODAY_ANALYTICS_ENDPOINT` in `project.yml`), so
+        // the default must resolve to the live transport.
+        XCTAssertTrue(
+            live.analyticsService is LiveAnalyticsService,
+            "the production container must wire the live Convex transport when an endpoint is configured"
+        )
+        #else
+        // Release carries no endpoint until a production deployment is chosen, so the default must
+        // resolve to the inert sink - the same fallback a mistyped endpoint takes, not a second one.
         XCTAssertTrue(
             live.analyticsService is NoOpAnalyticsService,
-            "production must discard events until US-T04, not accumulate them in a recording sink"
+            "an unconfigured build must fall back to the inert sink rather than wiring a transport"
         )
+        #endif
         let mockSink = try XCTUnwrap(mock.analyticsService as? MockAnalyticsService)
         let recorded = await mockSink.recordedEvents
         XCTAssertEqual(recorded, funnel, "the mock container's sink lost or reordered events")

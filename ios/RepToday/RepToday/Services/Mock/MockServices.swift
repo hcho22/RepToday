@@ -183,7 +183,7 @@ final class MockHealthKitService: HealthKitServiceProtocol {
 
     func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws {
         // No-op: the mock container never touches Health. The real write-only integration is
-        // `HealthKitService` (US-N03), wired in `ServiceContainer.live(context:)`.
+        // `HealthKitService` (US-N03), wired in `ServiceContainer.live(...)`.
     }
 }
 
@@ -277,9 +277,10 @@ actor MockAuthService: AuthServiceProtocol {
 ///
 /// Records every event into `recordedEvents` in call order and does nothing else: no I/O, no
 /// network, no disk. It is the recording sink `ServiceContainer.mock()` wires, and the one tests
-/// and previews use when they need to assert on what was recorded - `live(context:)` wires the
-/// discarding `NoOpAnalyticsService` instead. An `actor` so appends stay race-free once emission
-/// moves onto detached background tasks; tests read the recorded array with
+/// and previews use when they need to assert on what was recorded - `live(context:installId:)`
+/// wires the real `LiveAnalyticsService` instead, so a test that wants assertions rather than
+/// requests wants this one. An `actor` so appends stay race-free against the detached background
+/// tasks the live transport sends on; tests read the recorded array with
 /// `await mock.recordedEvents`.
 actor MockAnalyticsService: AnalyticsServiceProtocol {
     private(set) var recordedEvents: [AnalyticsEvent] = []

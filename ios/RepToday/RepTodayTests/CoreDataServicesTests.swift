@@ -3,13 +3,20 @@ import XCTest
 @testable import RepToday
 
 /// Tests for the CoreData-backed `UserServiceProtocol`/`WorkoutLogServiceProtocol` and the
-/// production `ServiceContainer.live(context:)` wiring (US-N02).
+/// production `ServiceContainer.live(...)` wiring (US-N02).
 ///
 /// Each test runs against a fresh in-memory `MockPersistence` stack (the single-store,
 /// CloudKit-free test path), so they stay isolated and never touch the device store or iCloud.
 /// The contract: a saved user/log reloads equal, re-saving overwrites in place (never
 /// duplicates), logs are queryable by date range, deletes clear, and the production container
 /// composes those CoreData services so a write through one is read back through another.
+///
+/// The two container tests want that CoreData wiring and nothing else, but building the production
+/// container is also what wires the live telemetry transport (US-T04), so they pass
+/// `NoOpAnalyticsService` through the factory's sink parameter. That is what keeps them off the
+/// network once US-T07 through US-T12 add the emission call sites, rather than leaving it to the
+/// fact that none exist yet (FR-13) - a guarantee that covers in-process tests like these ones, not
+/// the out-of-process `RepTodayUITests` launches, which US-T06's persisted opt-out flag closes.
 final class CoreDataServicesTests: XCTestCase {
 
     private var controller: PersistenceController!
@@ -126,10 +133,14 @@ final class CoreDataServicesTests: XCTestCase {
     // MARK: - Production container wiring
 
     /// The production container composes the CoreData-backed services over one shared context, so
-    /// a user and log written through it read back through it - proving `live(context:)` wires the
+    /// a user and log written through it read back through it - proving `live(...)` wires the
     /// same on-device (and synced) history everyone reads.
     func testLiveContainerComposesCoreDataServices() async throws {
-        let services = ServiceContainer.live(context: context)
+        let services = ServiceContainer.live(
+            context: context,
+            installId: "test-install",
+            analyticsService: NoOpAnalyticsService()
+        )
 
         let user = makeUser(id: "apple-user-1", score: 70)
         try await services.userService.save(user)
@@ -152,7 +163,11 @@ final class CoreDataServicesTests: XCTestCase {
     /// The completion recorder wired into the production container writes a durable log through
     /// the CoreData log service (the US-L01 loop, now cross-launch persistent, US-N02).
     func testLiveContainerCompletionRecorderWritesDurableLog() async throws {
-        let services = ServiceContainer.live(context: context)
+        let services = ServiceContainer.live(
+            context: context,
+            installId: "test-install",
+            analyticsService: NoOpAnalyticsService()
+        )
         let user = makeUser(id: "apple-user-1", score: 70)
         try await services.userService.save(user)
 

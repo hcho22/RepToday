@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// Views read this from `@Environment(\.services)`, and view models receive the service
 /// values they need from views. Replacing an implementation is localized here: change the
-/// matching argument in `mock()` (or the production `live(context:)` factory) from `Mock...`
+/// matching argument in `mock()` (or the production `live(...)` factory) from `Mock...`
 /// to the real service.
 struct ServiceContainer {
     let exerciseService: any ExerciseServiceProtocol
@@ -21,9 +21,10 @@ struct ServiceContainer {
     let healthKitService: any HealthKitServiceProtocol
     let subscriptionService: any SubscriptionServiceProtocol
     let authService: any AuthServiceProtocol
-    /// The anonymous product-telemetry sink (US-T02). Additive and never gates the core loop, but it
-    /// carries no initializer default: every construction site wires it explicitly, like every other
-    /// service here, so a container built without a sink is a build error rather than silent data loss.
+    /// The anonymous product-telemetry sink (US-T02; live transport at US-T04). Additive and never
+    /// gates the core loop, but it carries no initializer default: every construction site wires it
+    /// explicitly, like every other service here, so a container built without a sink is a build
+    /// error rather than silent data loss.
     let analyticsService: any AnalyticsServiceProtocol
 
     init(
@@ -130,7 +131,30 @@ struct ServiceContainer {
     ///
     /// Subscription is the real StoreKit 2 service (US-N04), HealthKit is the real write-only
     /// integration (US-N03), and auth is the real Keychain-backed Sign in with Apple (US-N01).
-    static func live(context: NSManagedObjectContext) -> ServiceContainer {
+    ///
+    /// - Parameters:
+    ///   - installId: The anonymous per-install identifier (US-T05), which the telemetry
+    ///     transport puts on every event. It is passed in rather than resolved here because
+    ///     `AppState.init` is the *only* thing that mints it and decides which of the three launch
+    ///     states an install is in; a second resolution path could disagree with the first about
+    ///     whether an install is new. `RepTodayApp.init()` therefore builds `AppState` first and
+    ///     hands its id down. Callers other than the app (tests) pass a fixed id.
+    ///   - analyticsService: The telemetry sink, `nil` (the default, and what the app passes by
+    ///     omitting it) meaning "resolve production's own". The seam exists so that a test building
+    ///     this container for reasons unrelated to telemetry - it is the only way to get the
+    ///     CoreData-backed services composed - can substitute an inert sink and be structurally
+    ///     unable to reach the network, rather than relying on no emission call site existing yet.
+    ///     Once US-T07 through US-T12 add those call sites, "no test performs a real network call"
+    ///     (FR-13) is held here by the code instead of by discipline - but only for tests running
+    ///     *in this process*. `RepTodayUITests` launches the real app out of process, which builds
+    ///     its own container from the defaults below, so nothing passed here reaches it; that half
+    ///     rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 points at a persisted
+    ///     flag a launch argument can override. See US-T07's criteria in the funnel PRD.
+    static func live(
+        context: NSManagedObjectContext,
+        installId: String,
+        analyticsService: (any AnalyticsServiceProtocol)? = nil
+    ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
         let exerciseService = try! MockExerciseService()
@@ -172,10 +196,23 @@ struct ServiceContainer {
             subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: AppleAuthService.live(),
-            // US-T02 is the seam only, so production *discards* events: a shipping build emits
-            // nothing and accumulates nothing (the recording mock would grow an array nothing
-            // drains). The Convex-backed fire-and-forget `URLSession` transport swaps in at US-T04.
-            analyticsService: NoOpAnalyticsService()
+            // The live Convex-backed transport (US-T04): one fire-and-forget `URLSession` POST per
+            // event to the deployment's `POST /logEvent` action, carrying the install id above.
+            // Nothing calls it yet - the 13 emission sites are US-T07 through US-T12 - so a build
+            // today wires a transport that stays silent, exactly as US-T02 shipped the seam
+            // uncalled and US-T05 shipped the identity unread.
+            //
+            // `configured` returns `nil` when the deployment endpoint is missing or unusable, and
+            // that build falls back to the inert sink rather than trapping or logging: a telemetry
+            // misconfiguration must cost nothing on a path the core loop shares. That is also the
+            // *normal* Release state today, not only a mistake - `REPTODAY_ANALYTICS_ENDPOINT` is
+            // empty under Release until a production deployment is chosen - so the type wired here
+            // is the honest answer to "is this build configured to emit?" rather than a promise
+            // that it is. An explicit `analyticsService` overrides both branches; nothing else
+            // about this wiring changes when it does.
+            analyticsService: analyticsService
+                ?? LiveAnalyticsService.configured(installId: installId)
+                ?? NoOpAnalyticsService()
         )
     }
 }
