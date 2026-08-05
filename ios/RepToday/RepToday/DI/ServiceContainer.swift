@@ -132,13 +132,25 @@ struct ServiceContainer {
     /// Subscription is the real StoreKit 2 service (US-N04), HealthKit is the real write-only
     /// integration (US-N03), and auth is the real Keychain-backed Sign in with Apple (US-N01).
     ///
-    /// - Parameter installId: The anonymous per-install identifier (US-T05), which the telemetry
-    ///   transport puts on every event. It is passed in rather than resolved here because
-    ///   `AppState.init` is the *only* thing that mints it and decides which of the three launch
-    ///   states an install is in; a second resolution path could disagree with the first about
-    ///   whether an install is new. `RepTodayApp.init()` therefore builds `AppState` first and
-    ///   hands its id down. Callers other than the app (tests) pass a fixed id.
-    static func live(context: NSManagedObjectContext, installId: String) -> ServiceContainer {
+    /// - Parameters:
+    ///   - installId: The anonymous per-install identifier (US-T05), which the telemetry
+    ///     transport puts on every event. It is passed in rather than resolved here because
+    ///     `AppState.init` is the *only* thing that mints it and decides which of the three launch
+    ///     states an install is in; a second resolution path could disagree with the first about
+    ///     whether an install is new. `RepTodayApp.init()` therefore builds `AppState` first and
+    ///     hands its id down. Callers other than the app (tests) pass a fixed id.
+    ///   - analyticsService: The telemetry sink, `nil` (the default, and what the app passes by
+    ///     omitting it) meaning "resolve production's own". The seam exists so that a test building
+    ///     this container for reasons unrelated to telemetry - it is the only way to get the
+    ///     CoreData-backed services composed - can substitute an inert sink and be structurally
+    ///     unable to reach the network, rather than relying on no emission call site existing yet.
+    ///     Once US-T07 through US-T12 add those call sites, "no test performs a real network call"
+    ///     (FR-13) is held here by the code instead of by discipline.
+    static func live(
+        context: NSManagedObjectContext,
+        installId: String,
+        analyticsService: (any AnalyticsServiceProtocol)? = nil
+    ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
         // defect, so `try!` surfaces it loudly rather than shipping an empty catalog.
         let exerciseService = try! MockExerciseService()
@@ -188,9 +200,14 @@ struct ServiceContainer {
             //
             // `configured` returns `nil` when the deployment endpoint is missing or unusable, and
             // that build falls back to the inert sink rather than trapping or logging: a telemetry
-            // misconfiguration must cost nothing on a path the core loop shares. The type wired
-            // here is therefore also the honest answer to "is this build configured to emit?".
-            analyticsService: LiveAnalyticsService.configured(installId: installId)
+            // misconfiguration must cost nothing on a path the core loop shares. That is also the
+            // *normal* Release state today, not only a mistake - `REPTODAY_ANALYTICS_ENDPOINT` is
+            // empty under Release until a production deployment is chosen - so the type wired here
+            // is the honest answer to "is this build configured to emit?" rather than a promise
+            // that it is. An explicit `analyticsService` overrides both branches; nothing else
+            // about this wiring changes when it does.
+            analyticsService: analyticsService
+                ?? LiveAnalyticsService.configured(installId: installId)
                 ?? NoOpAnalyticsService()
         )
     }

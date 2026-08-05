@@ -10,14 +10,17 @@
 	</array>
 	<!-- The anonymous-telemetry sink's deployment origin (US-T04): the Convex deployment's `.site`
 	     host, with the `/logEvent` route appended by `LiveAnalyticsService`. It is configuration
-	     rather than a Swift literal so the deployment can move without a code change. This points
-	     at the *development* deployment `courteous-dogfish-560`; no production deployment has been
-	     chosen yet - which account and plan host the production sink is an open question in
-	     `.claude/agent/tasks/prd-funnel-instrumentation_260803.md`. Remove or mistype the value and
-	     the build is simply inert: `LiveAnalyticsService.configured(...)` returns nil and the
-	     container falls back to `NoOpAnalyticsService`, emitting nothing and failing nothing. -->
+	     rather than a Swift literal so the deployment can move without a code change, and it is
+	     expanded from the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in
+	     `ios/RepToday/project.yml` rather than written here, so the destination is a build choice
+	     rather than a source edit. Debug carries the *development* deployment
+	     `courteous-dogfish-560`; Release carries nothing, because no production deployment has been
+	     chosen - which account and plan host the production sink is an open question in
+	     `.claude/agent/tasks/prd-funnel-instrumentation_260803.md`. An empty, missing, or mistyped
+	     value makes the build simply inert: `LiveAnalyticsService.configured(...)` returns nil and
+	     the container falls back to `NoOpAnalyticsService`, emitting nothing and failing nothing. -->
 	<key>RepTodayAnalyticsEndpoint</key>
-	<string>https://courteous-dogfish-560.convex.site</string>
+	<string>$(REPTODAY_ANALYTICS_ENDPOINT)</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today writes your completed sessions to Health so your movement counts where you already track it. It only ever adds workouts and never reads your Health data.</string>
 </dict>

@@ -250,6 +250,7 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 ### The telemetry sink (`convex/`)
 
 Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), but nothing calls it yet: the emission sites are US-T07 through US-T12.
+Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at a dev deployment, and Release points at nothing and stays inert, because no production deployment has been chosen yet.
 It needs **Node.js 18+** and npm; the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
 
 ```bash

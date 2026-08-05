@@ -294,9 +294,50 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertNil(LiveAnalyticsService.configured(bundle: testBundle, installId: "install-42"))
     }
 
-    /// The app bundle *does* carry one, and the service built from it posts to that deployment's
-    /// `/logEvent`. The expected host is read back out of the same `Info.plist` rather than
-    /// hard-coded, so moving the deployment does not turn this into a failing test.
+    /// The endpoint is split per build configuration (`REPTODAY_ANALYTICS_ENDPOINT` in
+    /// `ios/RepToday/project.yml`, expanded into `Info.plist`), and the split is read out of the
+    /// **running app bundle** rather than asserted in prose: Debug carries the dev deployment,
+    /// Release carries nothing, because no production deployment has been chosen.
+    ///
+    /// **Only the Debug half actually runs, and that limit is stated rather than glossed.** This
+    /// project sets `ENABLE_TESTABILITY` on the Debug configuration only, so `@testable import
+    /// RepToday` cannot resolve under `-configuration Release` and no Release test run exists to
+    /// execute the `#else` branch - a pre-existing property of the project, not of this test, and
+    /// not worth de-optimising the shipping binary to change. The Release half is verified instead
+    /// by reading `RepTodayAnalyticsEndpoint` out of the **built Release app bundle** (recorded in
+    /// `artifacts/reports/US-T04/validation.md`), where it is the empty string that
+    /// `endpoint(fromOrigin:)` already rejects under `testUnusableEndpointConfigurationResolvesToNil`.
+    /// The branch is kept because it is the assertion that becomes runnable the moment a Release
+    /// test run is - it is not a claim that one happens today.
+    func testTheAppBundlesEndpointFollowsTheBuildConfiguration() throws {
+        let configured = Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.endpointInfoPlistKey)
+
+        #if DEBUG
+        let origin = try XCTUnwrap(configured as? String, "the Debug build carries no analytics endpoint")
+        XCTAssertFalse(origin.isEmpty, "the Debug build's analytics endpoint expanded to nothing")
+        let endpoint = try XCTUnwrap(
+            LiveAnalyticsService.endpoint(fromOrigin: origin),
+            "the Debug build's analytics endpoint is not a usable HTTPS origin: \(origin)"
+        )
+        XCTAssertEqual(endpoint.scheme, "https")
+        XCTAssertEqual(endpoint.path, "/logEvent")
+        XCTAssertNotNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
+        #else
+        // Nothing to point at, so nothing to send to. A Release build stays inert until someone
+        // deliberately configures a deployment: the worst case is silently no data rather than
+        // silently the wrong destination. It resolves through the one existing notion of
+        // "unconfigured" - `endpoint(fromOrigin:)` rejects an empty or absent value - rather than a
+        // second, parallel one, whether the build setting expands to "" or drops the key entirely.
+        XCTAssertNil(LiveAnalyticsService.endpoint(fromOrigin: configured))
+        XCTAssertNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
+        #endif
+    }
+
+    /// A configured bundle builds a service that posts to that deployment's `/logEvent`. The
+    /// expected host is read back out of the same `Info.plist` rather than hard-coded, so moving the
+    /// deployment does not turn this into a failing test. It is a Debug-only assertion because a
+    /// Release build has no endpoint to build a service from - that half is asserted above.
+    #if DEBUG
     func testConfiguredReadsTheAppBundlesEndpointAndPostsToItsRoute() async throws {
         let configured = try XCTUnwrap(
             Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.endpointInfoPlistKey) as? String
@@ -321,6 +362,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(url.host, expectedHost)
         XCTAssertEqual(url.path, "/logEvent")
     }
+    #endif
 }
 
 // MARK: - In-process interception
@@ -386,6 +428,16 @@ final class StubURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        // Snapshot the configuration *before* `onRequest` announces the request. A test that
+        // reconfigures the stub after awaiting that announcement - the failure/success pair in
+        // `testTransportFailureIsSwallowedAndTheServiceKeepsSending` does exactly that - would
+        // otherwise race this thread and could answer the first request from the second request's
+        // settings, quietly making the leg it names vacuous while still passing.
+        let failure = Self.failure
+        let statusCode = Self.statusCode
+        let responseBody = Self.responseBody
+        let holdSeconds = Self.holdSeconds
+
         // `URLSession` moves `httpBody` into `httpBodyStream` before a `URLProtocol` sees the
         // request, so reading `httpBody` here would silently yield `nil` and make every body
         // assertion vacuous.
@@ -393,23 +445,23 @@ final class StubURLProtocol: URLProtocol {
         Self.captured.append(CapturedRequest(request, body: body))
         Self.onRequest?(request)
 
-        if Self.holdSeconds > 0 {
-            Thread.sleep(forTimeInterval: Self.holdSeconds)
+        if holdSeconds > 0 {
+            Thread.sleep(forTimeInterval: holdSeconds)
         }
 
-        if let failure = Self.failure {
+        if let failure {
             client?.urlProtocol(self, didFailWithError: failure)
             return
         }
 
         let response = HTTPURLResponse(
             url: request.url!,
-            statusCode: Self.statusCode,
+            statusCode: statusCode,
             httpVersion: "HTTP/1.1",
             headerFields: nil
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        if let responseBody = Self.responseBody {
+        if let responseBody {
             client?.urlProtocol(self, didLoad: responseBody)
         }
         client?.urlProtocolDidFinishLoading(self)

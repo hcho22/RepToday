@@ -31,7 +31,10 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     /// rather than in configuration so the code that knows the contract owns it.
     static let routePath = "logEvent"
 
-    /// The `Info.plist` key carrying the deployment's `.site` origin. See `configured(...)`.
+    /// The `Info.plist` key carrying the deployment's `.site` origin. The value is expanded from the
+    /// per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`,
+    /// so which deployment a build talks to is a build choice rather than a source edit. See
+    /// `configured(...)`.
     static let endpointInfoPlistKey = "RepTodayAnalyticsEndpoint"
 
     /// A telemetry POST is worth a short wait and nothing more; the answer is discarded either way.
@@ -68,12 +71,19 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     /// Builds the service from the deployment origin in the app's `Info.plist`, or returns `nil`
     /// when that configuration is absent or unusable.
     ///
-    /// **A misconfigured build must be inert, never fatal.** No `fatalError`, no `try!`, no noisy
+    /// **An unconfigured build must be inert, never fatal.** No `fatalError`, no `try!`, no noisy
     /// logging on a path the core loop shares: shipping a build that emits nothing is a far better
     /// outcome than one that traps or spams because a telemetry URL was mistyped. `nil` is what
-    /// that inertness is expressed as, and `ServiceContainer.live(context:installId:)` answers it
-    /// by wiring `NoOpAnalyticsService` - a sink that already means exactly "emit nothing, keep
-    /// nothing" - rather than by growing a second, invisible do-nothing branch in here.
+    /// that inertness is expressed as, and `ServiceContainer.live(...)` answers it by wiring
+    /// `NoOpAnalyticsService` - a sink that already means exactly "emit nothing, keep nothing" -
+    /// rather than by growing a second, invisible do-nothing branch in here.
+    ///
+    /// That path is not only the misconfiguration path. `REPTODAY_ANALYTICS_ENDPOINT` is set for
+    /// Debug (the dev deployment) and deliberately **empty for Release**, because no production
+    /// deployment has been chosen; a Release build therefore returns `nil` here by design and stays
+    /// silent until someone configures one. Choosing that deployment is a precondition for shipping
+    /// any build that emits (US-T07 onward), and the worst case until then is no data rather than
+    /// data at the wrong destination.
     ///
     /// "Unusable" is checked rather than assumed, because `URL(string:)` accepts almost any string
     /// as a relative URL: the value must parse, carry an `https` scheme, and have a host. A
@@ -98,10 +108,12 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     }
 
     /// Resolves a configured deployment origin into the route this service POSTs to, or `nil` if
-    /// the value is missing, not a string, or not a usable HTTPS origin.
+    /// the value is missing, empty, not a string, or not a usable HTTPS origin.
     ///
     /// The configured value is the deployment's `.site` **origin**
-    /// (`https://<deployment>.convex.site`); `routePath` is appended here.
+    /// (`https://<deployment>.convex.site`); `routePath` is appended here. This is the one notion
+    /// of "unconfigured" in the app: a build setting that expands to nothing and a key that is
+    /// absent entirely both land on the same `nil` rather than on two parallel branches.
     static func endpoint(fromOrigin origin: Any?) -> URL? {
         guard
             let origin = origin as? String,

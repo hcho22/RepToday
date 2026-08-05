@@ -37,7 +37,8 @@ const http = httpRouter();
  * free to change the identifier's shape, and this must not be the thing that forbids it.
  *
  * `MAX_REQUEST_BODY_BYTES`: the `props` caps live inside `logEvent`, so they run only *after*
- * `ctx.runMutation` has serialized its arguments - and Convex bounds those arguments (~8 MiB) far
+ * `ctx.runMutation` has serialized its arguments - and Convex bounds those arguments (~24 MB,
+ * measured against the dev deployment rather than assumed; see `convex/README.md`) far
  * above where the caps sit, so a multi-megabyte bag failed during argument serialization as a plain
  * `Error` and came back `500` rather than the `400` the caps promise, letting a caller manufacture
  * the sink's only outage signal. Measuring the request body before anything is parsed or serialized

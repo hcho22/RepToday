@@ -151,9 +151,15 @@ final class AnalyticsServiceTests: XCTestCase {
     /// production container wired the discarding `NoOpAnalyticsService`, so driving the whole funnel
     /// through it cost nothing; it now wires `LiveAnalyticsService` against the configured
     /// deployment, so recording through it would put 13 real POSTs on the wire from a unit test,
-    /// which FR-13 forbids. The production container's wiring is asserted below *without* emitting,
-    /// and the transport itself is exercised through an in-process `URLProtocol` stub in
-    /// `LiveAnalyticsServiceTests`.
+    /// which FR-13 forbids. The transport itself is exercised through an in-process `URLProtocol`
+    /// stub in `LiveAnalyticsServiceTests`.
+    ///
+    /// FR-13 is not left resting on that reading, though: `live(context:installId:analyticsService:)`
+    /// takes a sink, so any test that builds the production container for reasons unrelated to
+    /// telemetry substitutes an inert one and is structurally unable to reach the network even after
+    /// US-T07 through US-T12 add the emission call sites (`CoreDataServicesTests` does exactly that).
+    /// This test deliberately does *not* pass one, because the wiring the **default** resolves to is
+    /// the thing being asserted.
     func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")
@@ -166,14 +172,24 @@ final class AnalyticsServiceTests: XCTestCase {
             await mock.analyticsService.record(event)
         }
 
-        // The production container wires the live transport (US-T04): not the recording mock, which
-        // would grow an in-memory backlog nothing drains, and not the inert sink, which is now only
-        // the fallback for a build carrying no usable endpoint. Asserted by type rather than by
-        // emitting - nothing in this test may reach the network.
+        // The production container's default sink follows the build's own configuration, and never
+        // the recording mock, which would grow an in-memory backlog nothing drains. Asserted by type
+        // rather than by emitting - nothing in this test may reach the network.
+        #if DEBUG
+        // Debug configures the dev deployment (`REPTODAY_ANALYTICS_ENDPOINT` in `project.yml`), so
+        // the default must resolve to the live transport.
         XCTAssertTrue(
             live.analyticsService is LiveAnalyticsService,
             "the production container must wire the live Convex transport when an endpoint is configured"
         )
+        #else
+        // Release carries no endpoint until a production deployment is chosen, so the default must
+        // resolve to the inert sink - the same fallback a mistyped endpoint takes, not a second one.
+        XCTAssertTrue(
+            live.analyticsService is NoOpAnalyticsService,
+            "an unconfigured build must fall back to the inert sink rather than wiring a transport"
+        )
+        #endif
         let mockSink = try XCTUnwrap(mock.analyticsService as? MockAnalyticsService)
         let recorded = await mockSink.recordedEvents
         XCTAssertEqual(recorded, funnel, "the mock container's sink lost or reordered events")

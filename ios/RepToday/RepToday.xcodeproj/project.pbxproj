@@ -1136,6 +1136,7 @@
 				);
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.reptoday.app;
+				REPTODAY_ANALYTICS_ENDPOINT = "https://courteous-dogfish-560.convex.site";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1270,6 +1271,7 @@
 				);
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.reptoday.app;
+				REPTODAY_ANALYTICS_ENDPOINT = "";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

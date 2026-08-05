@@ -288,7 +288,7 @@ describe("POST /logEvent - the body itself", () => {
 
   test("a body over the request-size cap is the caller's 400, not the sink's 500 (US-T04)", async () => {
     const t = setup();
-    // Under Convex's ~8 MiB argument bound but far over the caps: before this story it failed
+    // Under Convex's ~24 MB argument bound but far over the caps: before this story it failed
     // during argument serialization as a plain Error and answered 500, letting any caller
     // manufacture the sink's only outage signal.
     const oversized = validBody({ props: { blob: "x".repeat(MAX_REQUEST_BODY_BYTES + 1_000) } });
@@ -359,7 +359,7 @@ describe("POST /logEvent - the 4xx/5xx split", () => {
   test("a props field name Convex cannot store is classified as the caller's 400, not a 500", async () => {
     // The `convexToJson` pre-pass. Without it, `ctx.runMutation`'s own serialization throws a plain
     // Error and the caller's mistake is reported as our outage.
-    for (const key of ["$leading_dollar", "controlchar", "x".repeat(1_100)]) {
+    for (const key of ["$leading_dollar", "control\u0001char", "x".repeat(1_100)]) {
       const t = setup();
       const response = await post(t, validBody({ props: { [key]: 1 } }));
       expect(response.status, `props key ${JSON.stringify(key.slice(0, 20))} was not a 400`).toBe(400);

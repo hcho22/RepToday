@@ -20,7 +20,7 @@
 |---|---|
 | Device | iPhone 16 Simulator, `32039CCE-BE1D-4233-A4D4-19CA9428DBF3` |
 | Bundle | `com.reptoday.app`, Debug build, installed and launched by the `RepTodayUITests` scheme |
-| Endpoint the app used | the shipped `Info.plist` value, `https://courteous-dogfish-560.convex.site`, with `/logEvent` appended by `LiveAnalyticsService` |
+| Endpoint the app used | the `Info.plist` value this **Debug** build resolved, `https://courteous-dogfish-560.convex.site`, with `/logEvent` appended by `LiveAnalyticsService`. A review round after this run split that value per build configuration (`REPTODAY_ANALYTICS_ENDPOINT` in `project.yml`), so the Debug origin above is unchanged and every leg here still describes what a Debug build does - while a **Release** build now carries no endpoint at all and is inert. The live legs below were not re-run for that change; all four suites in section 4 were |
 | Sink-side probes | `curl` against the same origin |
 | Rows read back with | `npx convex data events` |
 
@@ -127,14 +127,36 @@ Both were run locally, on this branch, after the probe was removed. This repo ha
 
 | Suite | Command | Result |
 |---|---|---|
-| iOS unit | `xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday -destination 'id=32039CCE-…' test` | **862 tests, 0 failures** |
-| iOS UI | `xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests -destination 'id=32039CCE-…' test` | **5 tests, 0 failures** |
+| iOS unit | `xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday -destination 'id=32039CCE-…' test` | **863 tests, 0 failures** (862 as this story first landed; the review round below added one) |
+| iOS UI | `xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests -destination 'id=32039CCE-…' test` | **5 tests, 0 failures** (re-run after the review round below, since it is the only suite that installs and launches the app and the endpoint now reaches `Info.plist` through a build setting) |
 | Convex boundary | `npm test` (`vitest run`, `convex-test` in process) | **50 tests, 0 failures** |
 | Convex types | `npm run typecheck` | clean |
 
 No test in any of them performs a real network call. The Swift ones intercept in process with a `URLProtocol` stub; `convex-test` runs the real functions against an in-memory database and no deployment.
 
 One consequence of the transport landing is recorded in `docs/test-coverage.md` and worth repeating here: the US-T02 container test used to drive all 13 events through `ServiceContainer.live(context:)` for free, because production wired the discarding no-op. It cannot any more - that container now wires a real transport pointed at a real deployment, and recording through it from a unit test would put 13 POSTs on the wire. The test now asserts the production container's wiring **by type**, and emits only through the mock.
+
+### The per-configuration endpoint split, verified at the artifact
+
+A review round after this run split `REPTODAY_ANALYTICS_ENDPOINT` per build configuration. The intended shape was to assert both halves from the running app bundle and run the suite twice, once per configuration. **The Release run does not build**, and that was found by trying it rather than assumed: this project sets `ENABLE_TESTABILITY` on the Debug configuration only, so `@testable import RepToday` cannot resolve and `xcodebuild ... -configuration Release test` fails at compile with `unable to resolve Swift module dependency to a compatible module: 'RepToday'`. Turning testability on for Release would de-optimise the shipping binary to make one test runnable, which is a worse trade than the gap, so it was not done.
+
+The Release half is therefore verified at the **built artifact** rather than by a test run - which is a direct observation of what ships, not an inference about it:
+
+```
+$ xcodebuild ... -configuration Release -sdk iphonesimulator build   # ** BUILD SUCCEEDED **
+$ plutil -extract RepTodayAnalyticsEndpoint raw -o - \
+    "$DD/Debug-iphonesimulator/RepToday.app/Info.plist"
+https://courteous-dogfish-560.convex.site
+$ plutil -extract RepTodayAnalyticsEndpoint raw -o - \
+    "$DD/Release-iphonesimulator/RepToday.app/Info.plist"
+                       # the empty string
+```
+
+So a Release build ships the key present and empty, which `LiveAnalyticsService.endpoint(fromOrigin:)` already rejects (unit-covered by `testUnusableEndpointConfigurationResolvesToNil`), and the container falls back to `NoOpAnalyticsService`. What this does **not** establish: that a Release build was installed and observed staying silent at runtime. It was not.
+
+### FR-13, made structural in the same round
+
+That tripwire fired only because that one test happened to emit; `CoreDataServicesTests` builds the same production container for its CoreData wiring and does not emit, so it was quiet by luck, and US-T07 through US-T12 would have taken the luck away. `live(...)` now accepts an optional `analyticsService` (defaulting to production's own resolution, so the funnel test still asserts the default), and the two CoreData container tests pass `NoOpAnalyticsService`. "No test performs a real network call" is now held by the code rather than by the absence of emission call sites.
 
 ---
 
@@ -143,6 +165,7 @@ One consequence of the transport landing is recorded in `docs/test-coverage.md` 
 - **That the shipped build emits anything.** It does not. See the note at the top. Every row above was produced by a probe that is not in the diff.
 - **Airplane mode.** A black-holed endpoint was used instead, for the reason given in section 3, and it does not exercise the OS's immediate offline-error path (the unit suite does).
 - **A real device, a real App Store build, or real network conditions.** Simulator, Debug, one Mac, one afternoon. The Simulator shares the host's network stack, so nothing here says anything about cellular, captive portals, or a device with genuinely no radio.
-- **The production deployment.** There isn't one. The shipped `Info.plist` points at the dev deployment `courteous-dogfish-560`; which account and plan host the production sink is still an open question in the PRD, and moving it is a one-line configuration change.
+- **The production deployment.** There isn't one. A **Debug** build resolves the dev deployment `courteous-dogfish-560`; a **Release** build resolves nothing and is inert, which is the deliberate state until one is chosen (`REPTODAY_ANALYTICS_ENDPOINT` in `project.yml`). Which account and plan host the production sink is still an open question in the PRD; choosing and configuring it is a precondition for shipping any build that emits, and it is a configuration change rather than a source edit.
+- **The Release configuration end to end.** The Release app was *built* and its `Info.plist` read (section 4), which shows it carries no endpoint. It was not installed, launched, or observed staying silent, and the Release **test** run does not build at all in this project - so nothing here exercises the Release code path at runtime.
 - **Volume.** 160 rows from one install. Nothing here says what the sink does at launch scale, and the route is still unauthenticated and unmetered - that is US-T14.
 - **Any future commit.** Point-in-time, no CI, nothing re-runs it. The `npm test` and `LiveAnalyticsServiceTests` suites are the parts that do.

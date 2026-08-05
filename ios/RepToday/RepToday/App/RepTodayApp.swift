@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// US-A01 wired the minimal app shell; US-A04 attached the CoreData stack. US-N02 makes that
 /// stack the CloudKit-backed production stack and wires the production `ServiceContainer`
-/// (`live(context:)`) over it, so the user, their history, and the in-force policy persist
+/// (`live(...)`) over it, so the user, their history, and the in-force policy persist
 /// across relaunch and sync across devices. The stack still works fully offline and with no
 /// iCloud account - sync is additive and never gates the core loop. The `ServiceContainer` and
 /// `AppState` (US-A05) are injected here as the top-level app dependencies.
