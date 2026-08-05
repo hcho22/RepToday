@@ -56,6 +56,10 @@ The 300 KB row (`j57bgfkkede805gq4pzsn2d6758bxe39`) existed only because the pre
 
 The table read back afterwards holds the seven US-T03 rows plus this story's two intended ones (`CURL-LIVE-US-T04-0001`, and the 64-`b` row that proves the bound accepts its own limit), and nothing else.
 
+A **second** junk row was inserted a day later, by the no-mistakes validation pipeline's own test run rather than by this one, and it was deleted the same way.
+Read [section 5](#5-a-second-junk-row-from-the-validation-pipelines-own-test-run-and-its-deletion-2026-08-05) alongside this passage: it records that row, its deletion, and what the table held afterwards.
+The sentence above is what was read back on 2026-08-04, and the table has moved since.
+
 ---
 
 ## 2. The transport, end to end, from the real installed app
@@ -189,6 +193,57 @@ the CLI uses, not the CLI itself.
 That tripwire fired only because that one test happened to emit; `CoreDataServicesTests` builds the same production container for its CoreData wiring and does not emit, so it was quiet by luck, and US-T07 through US-T12 would have taken the luck away. `live(...)` now accepts an optional `analyticsService` (defaulting to production's own resolution, so the funnel test still asserts the default), and the two CoreData container tests pass `NoOpAnalyticsService`. "No test performs a real network call" is now held by the code rather than by the absence of emission call sites.
 
 A third round bounded that sentence rather than extending it, because it was over-claiming. A container parameter can only bind a container **this process** builds, and `RepTodayUITests` launches the real Debug app out of process - it resolves its own default sink, `LiveAnalyticsService` against `courteous-dogfish-560`, and the only gate left is the enabled-by-default `isEnabled` closure. So the guarantee is structural for the in-process suites and rests on a default for the out-of-process one. Nothing leaks today because no emission call site exists; US-T07 is where it would, since `app_install` hangs off app entry and therefore off *every* XCUITest launch (earlier than US-T08's onboarding hooks). The only mechanism that can reach an out-of-process launch is a launch argument landing in persisted settings, and that is US-T06's `analyticsEnabled` criterion word for word - building it here would have been writing US-T06 early, against this story's instructions. It is recorded on US-T06's and US-T07's acceptance criteria instead. No code changed for it in this story.
+
+---
+
+## 5. A second junk row, from the validation pipeline's own test run, and its deletion (2026-08-05)
+
+A day after everything above, the no-mistakes validation pipeline ran its own TEST step over this branch (run `01KZ7SS969FYRHJ0JZ1E31418M`, 2026-08-05) and probed the new 64-byte `installId` bound from *below*.
+That probe was accepted, it wrote a row, and the row was deleted out of band the same day.
+This is a second, later instance of the same situation as [the 300 KB row in section 1](#the-junk-row-the-before-probe-inserted-was-deleted), handled by the same method.
+
+**The row.**
+
+| | |
+|---|---|
+| `_id` | `j57202ccxkvy47gx5d12vrtz398bx66h` |
+| `name` | `ready_screen_shown` |
+| `installId` | the character `b` repeated **63** times |
+| `clientTs` | `1785715200000` |
+| `props` | `{"__evidence_probe":"unused"}` |
+| `_creationTime` | `1785906453553.2827` |
+
+It did not come from the app, and it was not a defect in the sink.
+A 63-byte `installId` sits one byte under the 64-byte cap, so the sink answered `204` and wrote the row exactly as designed; the probe was checking the boundary from below.
+It was left behind because the pipeline's repo copy carries no deployment credentials - no `.env.local`, no admin key - so its process could neither read the row's id back nor delete it.
+
+**The deletion.**
+
+It was performed out of band on 2026-08-05, from the task worktree, which does carry credentials.
+The method matters, because this file's whole method is proof-by-table-contents and the repository claims to contain exactly one mutation.
+A scratch `deleteById` `internalMutation` was written **outside the repository**, in a temporary copy of this branch's own `convex/` tree extracted at commit `acadcb33` - at that commit specifically, so the deployment did not drift from branch HEAD while the scratch function existed.
+That tree was deployed to `courteous-dogfish-560`, the mutation was run **once** against that single document id (it returned `"deleted"`), and it was then removed by redeploying the same tree without it.
+The deployment was afterwards confirmed to expose only `events:logEvent`.
+The scratch mutation was never committed: the repository still contains exactly one mutation, `logEvent`, and it is still internal.
+This is the same method, and the same reasoning, as the 300 KB row above.
+The deletion was keyed on the **document id alone** - not on a predicate, not on an `installId` pattern, and not on anything that could have matched a second row.
+
+**The verified after-state.**
+
+The table went from 170 rows to 169: it dropped by exactly one, and `j57202ccxkvy47gx5d12vrtz398bx66h` is no longer present.
+
+`j57f0hcx0fn72r7aqxhhg0ra398bxj0n` **survives, and that is deliberate and load-bearing.**
+It is the 64-`b` row, and it is not junk: section 1 records it as the proof that the length bound accepts a value at exactly its own limit, so deleting it would have destroyed evidence this story depends on.
+The two rows are adjacent in appearance - 63 versus 64 repeated `b` characters - and that is precisely why the deletion was keyed on the document id rather than on the `installId`'s shape.
+
+All 169 remaining rows were then enumerated, not sampled.
+160 carry the US-T05 app probe's `installId` (`FBC91D46-3D56-4FDF-AFF8-7E390921E9A7`), and each of those is a `ready_screen_shown` with `props` of `{"generation_ms": 38}`, which is that probe's shape (section 2).
+The remaining 9 are the 64-`b` boundary row, `CURL-LIVE-US-T04-0001`, and the seven US-T03 rows (`r4-NOPROPS`, `r4-OK`, `r3-NOPROPS`, `r3-OK`, `verify-OK`, `ust03-final-R1`, `ust03-validation-A1B2`).
+Each of those 9 traces to a probe recorded in this file or in `artifacts/reports/US-T03/validation.md`, and each of the 169 rows carries an event name from the 13.
+
+**That is what was checked, on 2026-08-05, and it is a point-in-time observation rather than a standing claim about the table.**
+`courteous-dogfish-560` is a shared dev deployment whose `POST /logEvent` route is unauthenticated by design until US-T14, so anyone holding the URL can add rows.
+Nothing in this section says what the table holds today or will hold later.
 
 ---
 
