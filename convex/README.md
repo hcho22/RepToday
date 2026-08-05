@@ -11,6 +11,11 @@ test suite in this repo on an Intel host (`artifacts/reports/US-T01/spike-note.m
 The wire now has both ends and the wire itself; what it does **not** yet have is a caller. Nothing
 in the app calls `record(_:)` - the 13 emission sites are US-T07 through US-T12 - so a shipping
 build carries a working transport that nothing triggers.
+It also has a consent gate in front of it (US-T06, landed): the transport re-reads the user's
+`AppState.analyticsEnabled` flag on every emission, so once the sites land this table only ever
+receives rows from installs that have not opted out. That is a **client-side** gate and this sink
+knows nothing about it - it has no notion of consent, and no way to tell an install that opted out
+from one that never ran. An install is simply absent, and this table cannot say which it was.
 Nor is there a production deployment. Which one the app talks to is a per-configuration build
 setting (`REPTODAY_ANALYTICS_ENDPOINT` in `ios/RepToday/project.yml`): a Debug build points at the
 dev deployment, and a **Release build points nowhere at all** and is inert, because none has been

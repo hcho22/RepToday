@@ -82,6 +82,11 @@ There is no XP, no levels, and no badges in the MVP.
 - **Progress tab** - the reflection surface: a calendar marking every completed day, a Consistency Score trend chart (each point the real forgiving score sampled at an earlier week's vantage, so the chart's right edge always equals the headline number), the longest chain surfaced as pride, and a legibility layer (pillar balance, progression-chain position, personal bests) with deeper analytics gated behind premium - all reading real workout history.
 - **Identity-framed copy** - "you're someone who moves," never loss-framed.
 
+### Privacy
+
+- **Anonymous usage data, disclosed and optional** - the first onboarding screen says in one sentence what is collected and where the off switch is, and Profile -> Settings -> Privacy carries a "Share anonymous usage data" toggle that takes effect on the next event rather than the next launch. It is on by default (opt-out, not opt-in), counted against a random per-install number that is never a name, an email, or a device identifier, and turning it off leaves that number untouched rather than minting a new one.
+- **Nothing to opt out of yet** - the pipeline is complete, consented, and gated, but no screen emits into it: the call sites are still ahead, so a build today sends nothing either way.
+
 ---
 
 ## Tech Stack
@@ -94,7 +99,7 @@ There is no XP, no levels, and no badges in the MVP.
 | **Persistence** | CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) |
 | **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
 | **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
-| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03), reached by a plain `URLSession` POST (US-T04) |
+| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03), reached by a plain `URLSession` POST (US-T04) that the user's opt-out flag gates (US-T06) |
 | **Bundle ID** | `com.reptoday.app` |
 
 AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
@@ -170,8 +175,8 @@ RepToday/
 │   │   └── ActiveSession/   # In-progress session persistence seam (ActiveSessionStore protocol + InMemoryActiveSessionStore) so an abandoned session survives backgrounding/relaunch and can be resumed or discarded (US-K04); the post-session recorder (SessionCompletionService + protocol) that writes the WorkoutLog and does the completion bookkeeping - Consistency Score refresh + cold-start handoff (US-L01) plus the minimal, cold-start-safe in-place rating update recordPerceivedDifficulty (US-L02) - and the pure SessionSummary behind the celebration screen's muscle/mobility coverage (US-L01)
 │   ├── DI/                  # ServiceContainer + environment injection
 │   ├── ViewModels/          # @Observable view models
-│   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress)
-│   ├── Utilities/           # AppState (routing, plus the anonymous per-install telemetry identity from US-T05) and shared helpers
+│   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress, Settings)
+│   ├── Utilities/           # AppState (routing, the anonymous per-install telemetry identity from US-T05, and the telemetry opt-out flag from US-T06), LegalLinks (the one privacy-policy / Terms URL every surface links to), and shared helpers
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
 ├── convex/                  # Anonymous-telemetry sink only (append-only events table); no backend behind the core loop
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
@@ -190,7 +195,7 @@ RepToday/
 |----------|---------|
 | The v6.0 strategic PRD under `.claude/agent/tasks/` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes the prior v5 strategic PRD (kept for reference). |
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
-| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02), the Convex sink (US-T03), the anonymous per-install identity on `AppState` (US-T05), and the live fire-and-forget transport between them (US-T04) have landed; the emission call sites that would trigger it are still ahead, so a build today carries a working pipeline that nothing calls. |
+| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02), the Convex sink (US-T03), the anonymous per-install identity on `AppState` (US-T05), the live fire-and-forget transport between them (US-T04), and the opt-out consent flag with its Settings toggle and onboarding disclosure (US-T06) have landed; the emission call sites that would trigger it are still ahead, so a build today carries a working, consented pipeline that nothing calls. |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. It is a symlink to `AGENTS.md`, which is the file to edit. |
 | `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, its boundary suite, the deliberate non-goals, and the residual it still carries. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
@@ -251,6 +256,7 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 
 Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), but nothing calls it yet: the emission sites are US-T07 through US-T12.
 Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at a dev deployment, and Release points at nothing and stays inert, because no production deployment has been chosen yet.
+Whether it talks at all is the user's call once the emission sites land: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` - which every XCUITest suite passes - posts nothing to any deployment.
 It needs **Node.js 18+** and npm; the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
 
 ```bash

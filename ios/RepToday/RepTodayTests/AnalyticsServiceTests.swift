@@ -154,8 +154,9 @@ final class AnalyticsServiceTests: XCTestCase {
     /// which FR-13 forbids. The transport itself is exercised through an in-process `URLProtocol`
     /// stub in `LiveAnalyticsServiceTests`.
     ///
-    /// FR-13 is not left resting on that reading, though: `live(context:installId:analyticsService:)`
-    /// takes a sink, so any test that builds the production container for reasons unrelated to
+    /// FR-13 is not left resting on that reading, though:
+    /// `live(context:installId:analyticsGate:analyticsService:)` takes a sink as its last parameter,
+    /// so any test that builds the production container for reasons unrelated to
     /// telemetry substitutes an inert one and is structurally unable to reach the network even after
     /// US-T07 through US-T12 add the emission call sites (`CoreDataServicesTests` does exactly that).
     /// This test deliberately does *not* pass one, because the wiring the **default** resolves to is
@@ -165,8 +166,11 @@ final class AnalyticsServiceTests: XCTestCase {
     /// out of process, so it never builds a container this side can parameterise, and its only gate is
     /// `LiveAnalyticsService`'s `isEnabled` closure. US-T06 closed that half by backing the closure
     /// with the persisted `AppState.analyticsEnabled` flag, which `-AppState.analyticsEnabled NO`
-    /// overrides from the launch-argument domain; every XCUITest suite passes it, and
-    /// `TelemetryOptOutUITests` proves the gate holds there.
+    /// overrides from the launch-argument domain, and `TelemetryOptOutUITests` proves the gate holds
+    /// there. The argument is the mechanism, not a blanket property of the bundle:
+    /// `OnboardingImperialUITests` passes it on every launch, while `TelemetryOptOutUITests` passes it
+    /// only on the legs that assert being opted out - its opted-in legs rely on the probe harness's
+    /// in-process interceptor, and its screenshot leg carries neither guard.
     func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")

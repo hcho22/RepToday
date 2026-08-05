@@ -173,6 +173,13 @@ extension SubscriptionServiceProtocol {
 /// `try`, and a failed, slow, or offline send is swallowed by `LiveAnalyticsService` (US-T04),
 /// never surfaced to a caller and never allowed to gate the core loop. Nothing calls this yet; the
 /// 13 emission sites are US-T07 through US-T12.
+///
+/// **A call site never checks consent.** The user's opt-out (US-T06, `AppState.analyticsEnabled`)
+/// is enforced inside `LiveAnalyticsService.record(_:)`, which re-reads it per emission, so an
+/// emission site calls this unconditionally and an opted-out install simply produces no request.
+/// Re-reading the flag at a call site would be a second gate that could disagree with the first.
+/// `MockAnalyticsService` deliberately has no gate at all: it records everything, because a test
+/// asserting on emission wants the event, not the consent decision.
 protocol AnalyticsServiceProtocol {
     func record(_ event: AnalyticsEvent) async
 }

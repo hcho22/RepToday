@@ -150,7 +150,12 @@ struct ServiceContainer {
     ///     its own container from the defaults below, so nothing passed here reaches it; that half
     ///     now rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 pointed at
     ///     `AppState.analyticsEnabled` - a persisted flag the `-AppState.analyticsEnabled NO` launch
-    ///     argument overrides, and the mechanism every XCUITest suite uses to stay off the wire.
+    ///     argument overrides, and the only mechanism an out-of-process suite has to stay off the
+    ///     wire. Read that as available rather than as universally applied: `OnboardingImperialUITests`
+    ///     passes it on every launch, and `TelemetryOptOutUITests` passes it only where being opted
+    ///     out *is* the assertion - its opted-in legs stay off the wire through the probe harness's
+    ///     in-process interceptor instead, and its screenshot leg launches with neither. That last
+    ///     one is harmless only while no emission call site exists.
     ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
     ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
     ///     to the store its own `AppState` writes rather than letting this side re-derive which
