@@ -256,7 +256,8 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 
 Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), but nothing calls it yet: the emission sites are US-T07 through US-T12.
 Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at a dev deployment, and Release points at nothing and stays inert, because no production deployment has been chosen yet.
-Whether it talks at all is the user's call once the emission sites land: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` - which every XCUITest suite passes - posts nothing to any deployment.
+Whether it talks at all is the user's call once the emission sites land: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` posts nothing to any deployment - the one mechanism that reaches an app the test process launched but never built.
+Read that as available to every XCUITest launch rather than passed by every one: `OnboardingImperialUITests` passes it always, and `TelemetryOptOutUITests` passes it only where being opted out is the assertion, holding its opted-in legs off the wire with the probe harness's in-process interceptor instead - see `docs/test-coverage.md` for which leg carries which guard, and for the one that carries neither.
 It needs **Node.js 18+** and npm; the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
 
 ```bash

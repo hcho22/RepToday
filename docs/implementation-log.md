@@ -517,7 +517,8 @@ Under it the app clears its persisted flag (so a run never inherits the last one
 A Release build compiles none of it, and an ordinary Debug run without the argument is byte-for-byte the app it was.
 
 The suite has a **positive control**, without which the zero is the vacuous case wearing a disguise: the identical launch with the flag at its default reports one attempt.
-Its honesty was then checked by breaking the thing it tests - `isEnabled: AppState.analyticsGate` replaced by `isEnabled: { true }` makes two of the four fail with the messages they were written to print, and restoring it makes them pass.
+Its honesty was then checked by breaking the thing it tests - the `isEnabled:` argument in `ServiceContainer.live(...)` replaced by `isEnabled: { true }` makes `testTelemetryOffMeansTheAppDispatchesNothing` and `testTogglingTelemetryOffAndOnIsHonouredWithoutARestart` fail with the messages they were written to print, and restoring it makes them pass.
+The recipe is written against the argument rather than against what it was spelled at the time: the sabotage was first run when that line read `isEnabled: AppState.analyticsGate`, and the review round that bound the gate to `AppState`'s own store made it `isEnabled: analyticsGate` (the factory parameter), so the older spelling no longer compiles. Naming the two tests rather than counting them is deliberate for the same reason - the suite has grown since.
 What it proves is bounded and stated rather than implied: the count is taken at the `URLProtocol` boundary - the same boundary `LiveAnalyticsServiceTests` already treats as authoritative for "a POST happened" - so an attempt means the transport built and dispatched a request, **not** that bytes reached Convex.
 That is deliberate; a run that let real bytes out would break FR-13.
 The bytes-actually-reach-Convex half is the live validation instead, and it does not re-run.
@@ -533,7 +534,7 @@ So the live legs prove the opt-out decides whether a real POST reaches a real de
 Transcript, renders, and what each leg does not prove: `artifacts/reports/US-T06/validation.md`.
 
 No "reset telemetry identity" control was added, and that is a constraint rather than an omission: clearing `installId` alone is exactly the re-minted-identity state US-T07 has to decide about, so the opt-out gates emission and touches nothing else - asserted in two places rather than intended.
-Verified by `xcodebuild ... -scheme RepToday test` (879 tests, 0 failures, from 863 - 877 at the story's own commit, plus the two guards review round 2 added) and `-scheme RepTodayUITests test` (9 tests, 0 failures, from 5) on an iPhone 16 Simulator. This repo has no CI, so those local runs are the whole gate.
+Verified by `xcodebuild ... -scheme RepToday test` (879 tests, 0 failures, from 863 - 877 at the story's own commit, plus the two guards review round 2 added) and `-scheme RepTodayUITests test` (10 tests, 0 failures, from 5 - 9 at the story's own commit, plus the render leg the later evidence-refresh round added) on an iPhone 16 Simulator. This repo has no CI, so those local runs are the whole gate.
 
 ### A hold is not a rest, and modelling it as one cost three review rounds
 
