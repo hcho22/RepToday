@@ -4,10 +4,13 @@ The whole analytics backend: **one append-only table, one mutation, one HTTP rou
 
 It exists so the anonymous funnel events defined in `gtm/06-channels/event-metric-schema.md` have
 somewhere to land during the 90-day PMF test.
-The client that fills it is `LiveAnalyticsService` (US-T04), which reaches this deployment with a
-plain `URLSession` POST and **no Convex SDK** - the US-T01 spike returned a no-go on `convex-swift`
-because it ships an arm64-only xcframework that would break every Simulator-hosted test suite in
-this repo on an Intel host (`artifacts/reports/US-T01/spike-note.md`).
+The client that fills it is `LiveAnalyticsService` (US-T04, landed), which reaches this deployment
+with a plain `URLSession` POST and **no Convex SDK** - the US-T01 spike returned a no-go on
+`convex-swift` because it ships an arm64-only xcframework that would break every Simulator-hosted
+test suite in this repo on an Intel host (`artifacts/reports/US-T01/spike-note.md`).
+The wire now has both ends and the wire itself; what it does **not** yet have is a caller. Nothing
+in the app calls `record(_:)` - the 13 emission sites are US-T07 through US-T12 - so a shipping
+build carries a working transport that nothing triggers.
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
 It is now the *sink's* only entry point too, which this file previously claimed before it was true:
@@ -97,22 +100,38 @@ would undercount a non-ASCII bag against a limit called "bytes".
 There is no schema check on individual property keys or types. Property vocabularies are expected
 to move during the PMF test, and a write-path check would turn every such move into a deploy.
 
-The HTTP action adds one thing to that list and only one: the body's fields must be **present and
-of the right kind** before they are handed to the mutation - `name` one of the 13, `installId` a
-non-empty string, `clientTs` an actual JSON number (a numeric *string* like `"1e3"` is refused, not
-coerced).
+The HTTP action adds to that list, and the additions are enumerated rather than summarised. First,
+the body's fields must be **present and of the right kind** before they are handed to the mutation -
+`name` one of the 13, `installId` a non-empty string, `clientTs` an actual JSON number (a numeric
+*string* like `"1e3"` is refused, not coerced).
 That is not a third rule so much as the same one applied where untrusted input enters: coercing a
 missing or wrong-kind field with `String(...)` / `Number(...)` would write the literal string
 `"undefined"`, `NaN`, or a silently reinterpreted `"0x1f"` into the two columns the whole funnel is
 counted on (`installId` is the cohort key K4 counts unique installs by; `clientTs` is what K1 is
 timed from), and such a row looks valid while being junk - worse than no row at all.
-It constrains presence and kind only: no length cap, no format or UUID-shape check, nothing about
-what a legitimate value contains.
+That constrains presence and kind: no format or UUID-shape check, nothing about what a legitimate
+value contains.
 Read that literally rather than as a promise of plausibility. A `clientTs` of `0`, or of `1e300`,
 is a finite JSON number and lands - the check rules out the *missing* and *wrong-kind* cases
 (`undefined`, `NaN`, `"1e3"`), not implausible ones. Range and sanity belong to a query written
 later against the raw rows, where they can be revised without a deploy, which is the same reason
 the sink is dumb everywhere else.
+
+**Two size caps, added by US-T04** (`MAX_INSTALL_ID_BYTES` and `MAX_REQUEST_BODY_BYTES` in
+`http.ts`), which is when a real client first started sending anything here:
+
+3. **An `installId` over 64 UTF-8 bytes.** US-T05's identifier is a UUIDv4 - 36 ASCII characters -
+   so the bound sits well clear of a legitimate value while leaving room for a differently-shaped
+   anonymous id. It is a **length** bound and nothing more: `"not-a-uuid"` is accepted, because
+   policing the identifier's *shape* would forbid a future story from changing it.
+4. **A request body over 64 KiB**, checked on the raw bytes before the body is even parsed. 64 KiB
+   is an order of magnitude above the 4096-byte `props` cap plus that identifier, so it never
+   pre-empts the mutation's own, more specific rejection - a 5 KiB bag still comes back told which
+   limit it broke - and it is far below any bound Convex applies to a function's arguments, so
+   serialization can no longer be reached by size at all.
+
+Both are the same `400`-and-no-insert as every other caller fault, and both closed gaps this file
+used to carry as accepted; see "What used to be a gap here" below.
 
 The action also hands the assembled arguments to the Convex SDK's own `convexToJson` before calling
 the mutation. That is a **classification**, not a rejection: `ctx.runMutation` runs the same
@@ -133,51 +152,44 @@ reconstructs a cross-isolate throw from is reached by a relative import rather t
 test would fail and every property-bag rejection would silently become a `500` - precisely the false
 outage the split exists to prevent. `Symbol.for` is registry-global and does not care.
 
-**Known current gap:** `installId` is an unbounded `v.string()` while `props` is capped, so a
-hostile client can still write a very large row through that one field. This was reviewed during
-US-T03 and consciously accepted for this story: the sink is not yet reachable by any client, and
-US-T04 - which is where the identifier actually starts being sent - carries the acceptance
-criterion that bounds its length.
-That gap also costs a little of the `4xx`/`5xx` precision described above, and this too is accepted
-for now: `convexToJson` validates field *names*, not structural limits, so a multi-hundred-KB
-`installId` passes the non-empty check, passes the serialization pre-pass, passes the `props` caps
-(which measure `props` alone) and only then exceeds Convex's ~1MB document limit at the insert -
-landing on the `500` branch as a false outage signal rather than the `400` it deserves.
-Bounding `installId` in US-T04 closes that as well as the storage gap.
+### What used to be a gap here, and what is left of it
 
-**The residual is wider than that one case, and is stated here in full rather than as its cheapest
-example.** The pre-pass is a *field-name* classifier and nothing more: the SDK's `validateObjectField`
-checks a name's length against 1024, a leading `$`, and non-ASCII or control characters, and
-`convexToJson` recurses without a depth guard. It therefore says nothing about nesting depth, about
-value shapes, or about any other rule Convex only applies at write time. A caller-fault payload that
-violates one of those - `props` nested past Convex's 16-level value limit, say, which can be well
-under 100 bytes and so is far cheaper to send than a multi-hundred-KB `installId` - passes the name
-check, passes both `props` caps, and fails for the first time at `ctx.db.insert`, landing on the same
-`500` branch.
-**One of the sink's own stated rules is reached by that residual too, which is worth separating out
-because it is a matter of ordering rather than of a rule this sink never claimed.** The `props` caps
-live inside the mutation, so they are evaluated only once `ctx.runMutation` has serialized its
-arguments - and Convex bounds a function's arguments (~8 MiB) far above where those caps sit. A bag
-past that bound therefore fails during argument serialization, as a plain `Error`, before the 32-key
-and 4096-byte checks can run, and so answers `500` rather than the `400` the caps promise. The caps
-answer `400` across the entire range a real client could plausibly send - the widest legitimate bag
-is ~120 bytes, and the caps are two orders of magnitude above it - and only a multi-megabyte bag,
-past Convex's own argument limit, comes back as a server error instead.
-That is accepted for US-T03 rather than fixed, and the reasoning is recorded rather than assumed: it
-takes a payload of several megabytes, which no accident produces; nothing can reach this endpoint at
-all until US-T04; a pre-mutation size check would be more boundary logic in a story that ships with
-no automated test to protect it; and it is the same shape as the oversized-`installId` case above, so
-accepting it keeps that treatment consistent. The concern is real all the same - a `500` is meant to
-mean the sink is broken, and this lets a caller manufacture one on the only outage signal a human
-watching the PMF test has - so it is carried as an unchecked US-T04 acceptance criterion beside the
-`installId` bound rather than left implicit.
-All three are the same accepted consequence rather than three problems: the story's validation is
-deliberately "basic input validation only", so the `400` side is exactly the set of rules this sink
-states for itself plus the one it borrows, evaluated where they are - and everything Convex enforces
-first or beyond that is discovered at serialization or at the insert and reported as ours. Note it
-when reading `500`s during the PMF test; do not read this as a promise that every caller fault is a
-`400`.
-Relatedly and also accepted: the route below is unauthenticated and unmetered by design - anonymous
+US-T03 shipped two size gaps knowingly, on the reasoning that no client could reach this endpoint
+yet. **US-T04 closed both**, and probed each against the real dev deployment before and after
+(`artifacts/reports/US-T04/validation.md`). Two of the observations corrected what this file used to
+predict, so they are recorded rather than quietly overwritten:
+
+- `installId` was an unbounded `v.string()` while `props` was capped, and this file predicted that a
+  multi-hundred-KB identifier would fail at the insert and be misreported as a `500`. It did not: a
+  **300 KB `installId` was accepted and inserted a 300 KB row**, because Convex's document limit is
+  around 1 MB. The false-outage `500` only began at ~1.5 MB. So the gap was worse than written up -
+  not a misclassified status but a real row in the evidence table, through the one field with no
+  ceiling. Both cases now answer `400`.
+- The `props` caps live inside the mutation, so they run only once `ctx.runMutation` has serialized
+  its arguments, and a bag past Convex's argument bound therefore failed during serialization as a
+  plain `Error` and answered `500` - letting a caller manufacture the sink's only outage signal.
+  That reproduced, but **at ~24 MB, not the ~8 MiB this file used to cite**: 3 MB and 16 MB bags
+  both came back as the mutation's own `400`. The concern was real and the number was not.
+
+**The residual that remains is narrower, and is stated here in full rather than as its cheapest
+example.** The `convexToJson` pre-pass is a *field-name* classifier and nothing more: the SDK's
+`validateObjectField` checks a name's length against 1024, a leading `$`, and non-ASCII or control
+characters, and `convexToJson` recurses without a depth guard. It therefore says nothing about
+nesting depth, about value shapes, or about any other rule Convex only applies at write time. A
+caller-fault payload that violates one of those - `props` nested past Convex's value-depth limit,
+say, which can be well under 100 bytes and so passes both size caps easily - passes the name check,
+passes both `props` caps, and fails for the first time at `ctx.db.insert`, landing on the `500`
+branch. That is left open deliberately: closing it would mean the per-key and per-type validation of
+`props` the story forbids, and property vocabularies are expected to move during the PMF test.
+It is also the one boundary behaviour the automated suite cannot assert, because `convex-test`'s
+in-memory database does not enforce the value-depth limit - the suite reaches the `500` branch by
+substituting a mutation that throws instead.
+So: the `400` side is exactly the set of rules this sink states for itself, plus the one it borrows,
+plus the two size caps, evaluated where they are - and a caller fault that only a *write-time* Convex
+rule catches is still discovered at the insert and reported as ours. Note that when reading `500`s
+during the PMF test; do not read this as a promise that every caller fault is a `400`.
+
+Relatedly and still accepted: the route below is unauthenticated and unmetered by design - anonymous
 telemetry admits no client secret - so the caps are per-row rather than per-caller, and anyone who
 reads the `.convex.site` URL out of a shipped binary can add rows indistinguishable from real ones.
 (That is the HTTP *route*; the mutation behind it is internal and not separately reachable. Guarding
@@ -205,27 +217,26 @@ no properties is a three-field body.
 The other three are required, and their absence is one of the `400`s below rather than a default.
 
 - **`204 No Content`** - the row was inserted. No body.
-- **`400 Bad Request`** - the caller's fault: a body that is not valid JSON or not a JSON object, a
-  missing or wrong-kind `name` / `installId` / `clientTs`, an unknown event name, a `props` field
-  name Convex cannot store, or an oversized bag (across the whole range a real client could send;
-  see the `500` note for the multi-megabyte exception). No row was inserted. The body carries the
-  error message for a human.
+- **`400 Bad Request`** - the caller's fault: a body that is not valid JSON, not a JSON object, or
+  over 64 KiB; a missing or wrong-kind `name` / `installId` / `clientTs`; an unknown event name; an
+  `installId` over 64 bytes; a `props` field name Convex cannot store; or an oversized bag. No row
+  was inserted. The body carries the error message for a human.
 - **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure. No row
   was inserted. The body says only `internal error`; the detail stays in the deployment log rather
-  than being echoed to the caller. (With the accepted residual noted under "Known current gap": a
-  caller fault that only a write-time Convex rule catches - an over-long `installId`, `props` nested
-  past the value-depth limit - reaches the insert and is reported here too, as does a `props` bag
-  past Convex's ~8 MiB argument bound, which fails during argument serialization before the bag caps
-  themselves can run.)
+  than being echoed to the caller. (With the residual noted under "What used to be a gap here": a
+  caller fault that only a *write-time* Convex rule catches - `props` nested past the value-depth
+  limit, say - reaches the insert and is reported here too. The two size cases that used to land
+  here no longer do.)
 
-Every non-`204` answer is `application/json` in one shape, `{"error": "…"}`, so US-T04's client can
-read a rejection the same way whichever side of the split it came from - it just does not, being
+Every non-`204` answer is `application/json` in one shape, `{"error": "…"}`, so the client can read
+a rejection the same way whichever side of the split it came from - it just does not, being
 fire-and-forget. `204` carries no body at all.
 
-That split exists for a human, not for the client - US-T04's client is strictly fire-and-forget and
-swallows every error, so a sink outage answered as `400` would be invisible: events would simply
-stop arriving and nothing would say so. `4xx` versus `5xx` is the only signal anyone watching the
-PMF test gets, so a rejection the sink asked for and a failure it did not must not look alike.
+That split exists for a human, not for the client - `LiveAnalyticsService` is strictly
+fire-and-forget and swallows every error, so a sink outage answered as `400` would be invisible:
+events would simply stop arriving and nothing would say so. `4xx` versus `5xx` is the only signal
+anyone watching the PMF test gets, so a rejection the sink asked for and a failure it did not must
+not look alike.
 
 ### Pinned numeric convention
 
@@ -251,6 +262,7 @@ npm install
 npx convex dev --once     # deploy schema + functions to the dev deployment
 npx convex data events    # read rows back from the deployment
 npm run typecheck         # tsc --noEmit over convex/
+npm test                  # vitest + convex-test: the boundary suite, in process, no deployment
 ```
 
 `convex/_generated/` **is committed** so `npm run typecheck` and an editor's type hints work in a
@@ -258,7 +270,8 @@ fresh clone with no deployment configured.
 `.env.local` (which holds `CONVEX_DEPLOYMENT`) is gitignored and must never be committed - it is
 per-developer deployment state, not project configuration.
 
-Live validation evidence for this story is in `artifacts/reports/US-T03/validation.md`: the `204`s,
+Live validation evidence for the sink as US-T03 shipped it is in
+`artifacts/reports/US-T03/validation.md`: the `204`s,
 the rows read back with both timestamps populated and `serverTs` stamped server-side, and every
 rejection above with the table then read back holding **only** the valid events, so the non-insert
 is proven by the table's contents rather than inferred from the errors.
@@ -284,10 +297,44 @@ classifier, and the fifth changed how the remaining branch recognises a `ConvexE
 `instanceof` matched and so leaves every response above unchanged. The transcript says so in place
 rather than implying the current commit was re-probed.
 
-**Nothing here has an automated behavioural test, and this repo has no CI.** The gate is
-`npm run typecheck` plus the one-time transcript above, so a regression in the 13-name check, the
-`installId`/`clientTs` validation, the field-name classification, the `props` caps, the `4xx`/`5xx`
-split, or `logEvent` staying internal would not be caught by anything that re-runs. That is recorded
-as an unchecked acceptance criterion of US-T04 in
-`.claude/agent/tasks/prd-funnel-instrumentation_260803.md` - the story that first sends real traffic
-through this boundary and the first to edit `http.ts` after US-T03 - and in `docs/test-coverage.md`.
+US-T04's own live evidence is separate, in `artifacts/reports/US-T04/validation.md`: the two new size
+rejections probed against the pre-US-T04 action and then against this one, on the same deployment, so
+each is a before/after pair rather than a claim about what used to happen; the row a 300 KB
+`installId` used to insert, and its deletion; and the transport driven from the real installed app,
+whose rows carry the app's own `installId` read out of its preferences plist and a `props` bag of
+plain scalars. That transcript also states, at the top and in its own words, that the shipped build
+contains **no** emission call site, so what its live legs prove is that the transport and this sink
+work end to end - not that the app emits anything yet.
+
+## The boundary suite (US-T04)
+
+`convex/http.test.ts`, run with `npm test`. US-T03 shipped this boundary gated by
+`npm run typecheck` plus the one-time transcript above, which left nothing that re-runs: `tsc`
+cannot catch a regression in a validation *rule*, and this repo has no CI. That gap is closed for
+everything the endpoint can be made to do from outside itself.
+
+`convex-test` executes the real functions in process, in the edge runtime Convex uses, against an
+in-memory database and no deployment, so the suite needs no network and no `.env.local`. It drives
+`t.fetch("/logEvent", …)` - the same route a client hits - and asserts, for **every** rejection, that
+the table is still empty afterwards: a `400` that inserted anyway would be worse than no check at
+all, so the proof is the row count rather than the status code.
+
+Covered: the happy path (`204`, one row, both timestamps, `props` stored as-is, an omitted bag
+defaulting to `{}`, and two events being two rows); all 13 names accepted and unknown/empty/
+non-string/missing names refused; `installId` present, a string, non-empty, and within the 64-byte
+bound, counted as UTF-8 rather than UTF-16, with the bound asserted to be length-only; `clientTs` an
+actual finite JSON number, including `1e400` arriving as `Infinity` off the wire and a `clientTs` of
+`0` deliberately landing; the request-size cap, and that it does not pre-empt the `props` cap's more
+specific message; both `props` caps at their exact boundaries, with the byte cap counted in UTF-8;
+the `convexToJson` field-name classification answering `400` rather than `500`; the `4xx`/`5xx`
+split, including that a `5xx` echoes no internal detail; and `logEvent` still being an
+`internalMutation`.
+
+Two notes on how two of those are reached, since neither can be provoked by input:
+
+- The `500` branch is exercised by handing `convexTest` a module map with `logEvent` swapped for a
+  mutation that throws a plain `Error` carrying a would-be-secret message. `http.ts` is untouched.
+- `logEvent` staying internal is asserted on the registration object's own `isInternal` flag - the
+  one Convex's `internalMutationGeneric` sets and the server reads - and **not** on
+  `api.events.logEvent`, which can say nothing: the generated `api` is `anyApi`, a proxy that answers
+  every property access whether the function exists or not.

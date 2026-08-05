@@ -11,6 +11,9 @@ import { EVENT_NAMES, type AnalyticsEventName } from "./events";
  * (US-T04) reaches this sink with a plain `URLSession` POST and no Convex SDK. That makes this
  * route load-bearing rather than convenience: see `artifacts/reports/US-T01/spike-note.md`.
  *
+ * `convex/http.test.ts` drives everything below in process with `convex-test`, against no
+ * deployment - so the boundary this file is has a gate that re-runs, which is what US-T04 added.
+ *
  * The pinned numeric convention is that `clientTs` crosses the wire as a plain JSON number. A JSON
  * number already *is* float64, which is what the `v.number()` schema field stores, so the
  * `int64`/`float64` trap the US-T01 spike documented - a Swift `Int` encoded by the SDK as
@@ -18,6 +21,33 @@ import { EVENT_NAMES, type AnalyticsEventName } from "./events";
  * passed through untouched.
  */
 const http = httpRouter();
+
+/**
+ * The two caps the *action* enforces. (`props`'s 32-key / 4096-byte caps live in the mutation -
+ * `MAX_PROPS_KEYS` / `MAX_PROPS_BYTES` in `events.ts`.) Both were gaps US-T03 shipped knowingly,
+ * on the reasoning that nothing could reach this endpoint until a client existed; US-T04 is that
+ * client, so they close here, together, because they are one shape of problem.
+ *
+ * `MAX_INSTALL_ID_BYTES`: `installId` was an unbounded `v.string()` while `props` was capped, which
+ * made it the one client-controlled field with no ceiling - a hostile caller could push a row
+ * toward Convex's ~1MB document limit through it, failing at the insert and so reported as *our*
+ * `500` rather than the caller's `400`. US-T05's identifier is a UUIDv4, 36 ASCII characters, and
+ * 64 bytes leaves room for a differently-shaped anonymous id while never admitting a large row. It
+ * is a **length** bound and nothing else: no format check, no UUID-shape check. A later story is
+ * free to change the identifier's shape, and this must not be the thing that forbids it.
+ *
+ * `MAX_REQUEST_BODY_BYTES`: the `props` caps live inside `logEvent`, so they run only *after*
+ * `ctx.runMutation` has serialized its arguments - and Convex bounds those arguments (~8 MiB) far
+ * above where the caps sit, so a multi-megabyte bag failed during argument serialization as a plain
+ * `Error` and came back `500` rather than the `400` the caps promise, letting a caller manufacture
+ * the sink's only outage signal. Measuring the request body before anything is parsed or serialized
+ * classifies that as the caller fault it is. 64 KiB is deliberately an order of magnitude above the
+ * 4096-byte `props` cap, so it never pre-empts the mutation's own more specific rejection - a 5 KiB
+ * bag still comes back with the byte-count message naming the real limit - and three orders of
+ * magnitude below Convex's argument bound, so serialization can no longer be reached by size at all.
+ */
+export const MAX_INSTALL_ID_BYTES = 64;
+export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 
 const jsonResponse = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -74,9 +104,23 @@ http.route({
   path: "/logEvent",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    // Size first, before the body is even parsed. This is what keeps an oversized payload from
+    // reaching `ctx.runMutation` and failing during argument serialization as a plain `Error` -
+    // which would answer `500` and so let a caller fake an outage. See `MAX_REQUEST_BODY_BYTES`.
+    // Measured on the raw bytes rather than on the decoded string, because the limit is bytes and
+    // a JS string's length counts UTF-16 code units - the same distinction the `props` byte cap
+    // makes for the same reason.
+    const rawBody = await request.arrayBuffer();
+    if (rawBody.byteLength > MAX_REQUEST_BODY_BYTES) {
+      return jsonResponse(
+        400,
+        `body is ${rawBody.byteLength} bytes, over the ${MAX_REQUEST_BODY_BYTES}-byte limit`,
+      );
+    }
+
     let body: Record<string, unknown>;
     try {
-      const parsed = await request.json();
+      const parsed = JSON.parse(new TextDecoder().decode(rawBody));
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         return jsonResponse(400, "body must be a JSON object");
       }
@@ -96,9 +140,17 @@ http.route({
     // Coercing these two would have written the literal string "undefined" and `NaN` into exactly
     // the columns the funnel is counted on - `installId` is the cohort key K4 counts unique
     // installs by, `clientTs` is what K1 is timed from - and a junk row is worse than no row.
-    // Presence only: no length, format, or shape constraint on what a legitimate client sends.
+    // Presence, kind, and - since US-T04 put a real identifier on the wire - length. Still no
+    // format or shape constraint on what a legitimate client sends.
     if (typeof body.installId !== "string" || body.installId === "") {
       return jsonResponse(400, "installId must be a non-empty string");
+    }
+    const installIdBytes = new TextEncoder().encode(body.installId).length;
+    if (installIdBytes > MAX_INSTALL_ID_BYTES) {
+      return jsonResponse(
+        400,
+        `installId is ${installIdBytes} bytes, over the ${MAX_INSTALL_ID_BYTES}-byte limit`,
+      );
     }
 
     // An actual JSON number, which is what the contract says and what a well-formed client sends -

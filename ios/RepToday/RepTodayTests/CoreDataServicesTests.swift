@@ -3,7 +3,7 @@ import XCTest
 @testable import RepToday
 
 /// Tests for the CoreData-backed `UserServiceProtocol`/`WorkoutLogServiceProtocol` and the
-/// production `ServiceContainer.live(context:)` wiring (US-N02).
+/// production `ServiceContainer.live(context:installId:)` wiring (US-N02).
 ///
 /// Each test runs against a fresh in-memory `MockPersistence` stack (the single-store,
 /// CloudKit-free test path), so they stay isolated and never touch the device store or iCloud.
@@ -129,7 +129,7 @@ final class CoreDataServicesTests: XCTestCase {
     /// a user and log written through it read back through it - proving `live(context:)` wires the
     /// same on-device (and synced) history everyone reads.
     func testLiveContainerComposesCoreDataServices() async throws {
-        let services = ServiceContainer.live(context: context)
+        let services = ServiceContainer.live(context: context, installId: "test-install")
 
         let user = makeUser(id: "apple-user-1", score: 70)
         try await services.userService.save(user)
@@ -152,7 +152,7 @@ final class CoreDataServicesTests: XCTestCase {
     /// The completion recorder wired into the production container writes a durable log through
     /// the CoreData log service (the US-L01 loop, now cross-launch persistent, US-N02).
     func testLiveContainerCompletionRecorderWritesDurableLog() async throws {
-        let services = ServiceContainer.live(context: context)
+        let services = ServiceContainer.live(context: context, installId: "test-install")
         let user = makeUser(id: "apple-user-1", score: 70)
         try await services.userService.save(user)
 

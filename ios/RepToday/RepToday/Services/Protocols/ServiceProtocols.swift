@@ -170,8 +170,9 @@ extension SubscriptionServiceProtocol {
 /// tests assert on `MockAnalyticsService`'s in-memory record with no network. `record(_:)` is
 /// `async` but **not** `throws` - unlike the rest of this file's `async throws` house style - because
 /// emission is strictly fire-and-forget: a call site reads `await analytics.record(event)` with no
-/// `try`, and a failed, slow, or offline send is swallowed by the live implementation (US-T04),
-/// never surfaced to a caller and never allowed to gate the core loop.
+/// `try`, and a failed, slow, or offline send is swallowed by `LiveAnalyticsService` (US-T04),
+/// never surfaced to a caller and never allowed to gate the core loop. Nothing calls this yet; the
+/// 13 emission sites are US-T07 through US-T12.
 protocol AnalyticsServiceProtocol {
     func record(_ event: AnalyticsEvent) async
 }

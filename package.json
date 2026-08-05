@@ -7,12 +7,16 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
-    "typecheck": "tsc --noEmit -p convex"
+    "typecheck": "tsc --noEmit -p convex",
+    "test": "vitest run"
   },
   "dependencies": {
     "convex": "^1.16.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "@edge-runtime/vm": "^5.0.0",
+    "convex-test": "^0.0.55",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.10"
   }
 }
