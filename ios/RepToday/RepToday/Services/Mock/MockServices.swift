@@ -183,7 +183,7 @@ final class MockHealthKitService: HealthKitServiceProtocol {
 
     func saveWorkoutLog(_ log: WorkoutLog, user: User) async throws {
         // No-op: the mock container never touches Health. The real write-only integration is
-        // `HealthKitService` (US-N03), wired in `ServiceContainer.live(context:)`.
+        // `HealthKitService` (US-N03), wired in `ServiceContainer.live(...)`.
     }
 }
 

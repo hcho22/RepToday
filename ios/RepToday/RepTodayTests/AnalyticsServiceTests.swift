@@ -160,6 +160,12 @@ final class AnalyticsServiceTests: XCTestCase {
     /// US-T07 through US-T12 add the emission call sites (`CoreDataServicesTests` does exactly that).
     /// This test deliberately does *not* pass one, because the wiring the **default** resolves to is
     /// the thing being asserted.
+    ///
+    /// That seam is structural for **in-process** tests only. `RepTodayUITests` launches the real app
+    /// out of process, so it never builds a container this side can parameterise, and its only gate is
+    /// `LiveAnalyticsService`'s enabled-by-default `isEnabled` closure; closing that half needs a
+    /// launch-argument-overridable persisted flag, which is US-T06's story (see US-T07's criteria in
+    /// the funnel PRD). Nothing leaks today because no emission call site exists yet.
     func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")

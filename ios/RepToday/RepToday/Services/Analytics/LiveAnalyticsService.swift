@@ -56,6 +56,11 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     ///     seam lets that story point the gate at the real flag without reshaping the service.
     ///     Reading it per emission - not once at construction - is what makes turning telemetry off
     ///     take effect immediately rather than at the next launch, which is a US-T06 criterion.
+    ///     It is also the *only* gate an out-of-process test can ever reach: `RepTodayUITests`
+    ///     launches the real app, which builds its own container, so `ServiceContainer.live(...)`'s
+    ///     sink parameter cannot bind there. Until US-T06 backs this closure with a persisted flag a
+    ///     launch argument can flip, that path is gated by this default alone - harmless while no
+    ///     emission call site exists, and US-T07's criteria record where it stops being harmless.
     init(
         endpoint: URL,
         installId: String,

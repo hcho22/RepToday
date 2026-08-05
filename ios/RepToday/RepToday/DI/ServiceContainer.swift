@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// Views read this from `@Environment(\.services)`, and view models receive the service
 /// values they need from views. Replacing an implementation is localized here: change the
-/// matching argument in `mock()` (or the production `live(context:)` factory) from `Mock...`
+/// matching argument in `mock()` (or the production `live(...)` factory) from `Mock...`
 /// to the real service.
 struct ServiceContainer {
     let exerciseService: any ExerciseServiceProtocol
@@ -145,7 +145,11 @@ struct ServiceContainer {
     ///     CoreData-backed services composed - can substitute an inert sink and be structurally
     ///     unable to reach the network, rather than relying on no emission call site existing yet.
     ///     Once US-T07 through US-T12 add those call sites, "no test performs a real network call"
-    ///     (FR-13) is held here by the code instead of by discipline.
+    ///     (FR-13) is held here by the code instead of by discipline - but only for tests running
+    ///     *in this process*. `RepTodayUITests` launches the real app out of process, which builds
+    ///     its own container from the defaults below, so nothing passed here reaches it; that half
+    ///     rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 points at a persisted
+    ///     flag a launch argument can override. See US-T07's criteria in the funnel PRD.
     static func live(
         context: NSManagedObjectContext,
         installId: String,

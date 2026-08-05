@@ -132,7 +132,7 @@ Both were run locally, on this branch, after the probe was removed. This repo ha
 | Convex boundary | `npm test` (`vitest run`, `convex-test` in process) | **50 tests, 0 failures** |
 | Convex types | `npm run typecheck` | clean |
 
-No test in any of them performs a real network call. The Swift ones intercept in process with a `URLProtocol` stub; `convex-test` runs the real functions against an in-memory database and no deployment.
+No test in any of them performs a real network call. `LiveAnalyticsServiceTests` intercepts in process with a `URLProtocol` stub; `convex-test` runs the real functions against an in-memory database and no deployment. The UI run is quiet for a weaker reason worth naming: it launches the real app, whose container resolves the live transport against the dev deployment, so it emits nothing only because **no emission call site exists yet** - see the FR-13 note below.
 
 One consequence of the transport landing is recorded in `docs/test-coverage.md` and worth repeating here: the US-T02 container test used to drive all 13 events through `ServiceContainer.live(context:)` for free, because production wired the discarding no-op. It cannot any more - that container now wires a real transport pointed at a real deployment, and recording through it from a unit test would put 13 POSTs on the wire. The test now asserts the production container's wiring **by type**, and emits only through the mock.
 
@@ -154,9 +154,11 @@ $ plutil -extract RepTodayAnalyticsEndpoint raw -o - \
 
 So a Release build ships the key present and empty, which `LiveAnalyticsService.endpoint(fromOrigin:)` already rejects (unit-covered by `testUnusableEndpointConfigurationResolvesToNil`), and the container falls back to `NoOpAnalyticsService`. What this does **not** establish: that a Release build was installed and observed staying silent at runtime. It was not.
 
-### FR-13, made structural in the same round
+### FR-13, made structural in the same round - for the in-process suites
 
 That tripwire fired only because that one test happened to emit; `CoreDataServicesTests` builds the same production container for its CoreData wiring and does not emit, so it was quiet by luck, and US-T07 through US-T12 would have taken the luck away. `live(...)` now accepts an optional `analyticsService` (defaulting to production's own resolution, so the funnel test still asserts the default), and the two CoreData container tests pass `NoOpAnalyticsService`. "No test performs a real network call" is now held by the code rather than by the absence of emission call sites.
+
+A third round bounded that sentence rather than extending it, because it was over-claiming. A container parameter can only bind a container **this process** builds, and `RepTodayUITests` launches the real Debug app out of process - it resolves its own default sink, `LiveAnalyticsService` against `courteous-dogfish-560`, and the only gate left is the enabled-by-default `isEnabled` closure. So the guarantee is structural for the in-process suites and rests on a default for the out-of-process one. Nothing leaks today because no emission call site exists; US-T07 is where it would, since `app_install` hangs off app entry and therefore off *every* XCUITest launch (earlier than US-T08's onboarding hooks). The only mechanism that can reach an out-of-process launch is a launch argument landing in persisted settings, and that is US-T06's `analyticsEnabled` criterion word for word - building it here would have been writing US-T06 early, against this story's instructions. It is recorded on US-T06's and US-T07's acceptance criteria instead. No code changed for it in this story.
 
 ---
 
