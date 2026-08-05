@@ -39,6 +39,12 @@ final class TelemetryOptOutUITests: XCTestCase {
         super.setUp()
         continueAfterFailure = false
         app = XCUIApplication()
+        // A previous test case's app survives into this one - `XCUIApplication` is rebuilt per test,
+        // the app process is not - and a leftover would be indistinguishable from a launch this test
+        // made behind the guard's back. Terminating here is what makes "the app is running" mean
+        // "something in *this* test started it", which is the precondition the enumeration on
+        // `assertNobodyLaunchedBehindOurBack` rests on.
+        app.terminate()
     }
 
     override func tearDown() {
@@ -133,13 +139,56 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// That is not a hypothetical: this net was written teardown-only, and a deliberate re-injection
     /// of the original bug passed it. Checking here as well closes the raw-then-helper ordering,
     /// and the teardown call closes a raw launch that happens last.
+    ///
+    /// **The complete space of observable launch states**, enumerated so a future reader can test a
+    /// new bypass shape against it rather than re-deriving the analysis. `launchArguments` and
+    /// `app.state` are the only two things this side can observe, and between them there are exactly
+    /// three cells:
+    ///
+    /// 1. `launchArguments` **non-empty** - whatever launched wrote arguments. Either they are the
+    ///    ones this helper installed (fine), or they came from elsewhere and are put to the
+    ///    guarded/unguarded check below.
+    /// 2. `launchArguments` **empty** and the app is **running** - a bypass. A bare `app.launch()`
+    ///    with no arguments set at all leaves the array empty, so cell 1 never sees it, yet that
+    ///    launch builds the real transport against the dev deployment with the gate at its shipped
+    ///    default (on). This is the case the third correction to this guard added.
+    /// 3. `launchArguments` **empty** and the app is **not running** - nothing has launched, so there
+    ///    is nothing to catch. This is the pre-first-launch state every test starts in, and the only
+    ///    inert cell.
+    ///
+    /// There is no fourth cell: a launch either wrote arguments or it did not, and the app either
+    /// started or it did not.
+    ///
+    /// Cell 2 is only a bypass because `setUp` terminates any app a previous test case left running.
+    /// Without that, "running" would also describe a leftover from the test before this one, and the
+    /// check reported every guarded test in the suite as a bypass - which is how the precondition was
+    /// found: by observing it fail, not by reasoning about `app.state`.
     private func assertNobodyLaunchedBehindOurBack(
         file: StaticString = #filePath, line: UInt = #line
     ) {
         guard let app else { return }
         let arguments = app.launchArguments
-        // Nothing has launched yet, or these are exactly the arguments this helper installed.
-        guard !arguments.isEmpty, arguments != lastArgumentsSetHere else { return }
+        if arguments.isEmpty {
+            // Cell 2 vs. cell 3: a running app that this helper never launched got there some other
+            // way, and carried no guard doing it.
+            XCTAssertTrue(
+                app.state == .notRunning && lastArgumentsSetHere == nil,
+                """
+                a launch in this suite bypassed `launch(_:onboarded:)` and set no launch arguments \
+                at all, so it carried neither telemetry guard. Every launch must either pin consent \
+                off (-AppState.analyticsEnabled NO) or arm the probe harness \
+                (-RepTodayTelemetryProbe YES), which intercepts the transport in process. Without \
+                one of the two, the launch builds the real transport against the dev deployment \
+                with the gate open, and will POST live rows into the telemetry table once US-T07 \
+                adds an emission call site. Launch through `launch(_:onboarded:)` and name a \
+                `TelemetryPosture`.
+                """,
+                file: file, line: line
+            )
+            return
+        }
+        // Cell 1, already accounted for: exactly the arguments this helper installed.
+        guard arguments != lastArgumentsSetHere else { return }
 
         let optedOut = zip(arguments, arguments.dropFirst())
             .contains { $0 == "-AppState.analyticsEnabled" && $1 == "NO" }

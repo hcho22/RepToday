@@ -167,10 +167,14 @@ final class AnalyticsServiceTests: XCTestCase {
     /// `LiveAnalyticsService`'s `isEnabled` closure. US-T06 closed that half by backing the closure
     /// with the persisted `AppState.analyticsEnabled` flag, which `-AppState.analyticsEnabled NO`
     /// overrides from the launch-argument domain, and `TelemetryOptOutUITests` proves the gate holds
-    /// there. The argument is the mechanism, not a blanket property of the bundle:
+    /// there. The argument is one of two mechanisms, not a blanket property of the bundle:
     /// `OnboardingImperialUITests` passes it on every launch, while `TelemetryOptOutUITests` passes it
-    /// only on the legs that assert being opted out - its opted-in legs rely on the probe harness's
-    /// in-process interceptor, and its screenshot leg carries neither guard.
+    /// only on the legs that assert being opted out and keeps its opted-in legs off the wire by
+    /// **interception** - the probe harness replaces the transport's `URLSession` with an in-process
+    /// counting `URLProtocol`, which is what lets those legs run with the gate genuinely open. So
+    /// every launch in that suite carries consent-off **or** the probe, an invariant held by
+    /// construction: one sanctioned launch helper, a `TelemetryPosture` enum in which neither is not
+    /// representable, and a runtime check for a launch that goes around the helper.
     func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")

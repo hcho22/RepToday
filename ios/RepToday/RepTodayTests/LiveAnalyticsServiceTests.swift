@@ -308,14 +308,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     #if DEBUG
     func testTheProductionContainersGateIsThePersistedOptOutFlag() throws {
         let standard = UserDefaults.standard
-        let original = standard.object(forKey: AppState.analyticsEnabledKey)
-        defer {
-            if let original {
-                standard.set(original, forKey: AppState.analyticsEnabledKey)
-            } else {
-                standard.removeObject(forKey: AppState.analyticsEnabledKey)
-            }
-        }
+        restoreAfterTest(AppState.analyticsEnabledKey, in: standard)
 
         let controller = MockPersistence.controller()
         let container = ServiceContainer.live(context: controller.viewContext, installId: "container-install")

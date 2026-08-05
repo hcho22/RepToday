@@ -283,14 +283,7 @@ final class AppStateTests: XCTestCase {
     /// because that is the store production reads; the key is cleaned up either way.
     func testTheAnalyticsGateFollowsTheStandardStoreWithoutBeingRebuilt() {
         let standard = UserDefaults.standard
-        let original = standard.object(forKey: AppState.analyticsEnabledKey)
-        defer {
-            if let original {
-                standard.set(original, forKey: AppState.analyticsEnabledKey)
-            } else {
-                standard.removeObject(forKey: AppState.analyticsEnabledKey)
-            }
-        }
+        restoreAfterTest(AppState.analyticsEnabledKey, in: standard)
 
         let gate = AppState.analyticsGate()
 
@@ -314,14 +307,7 @@ final class AppStateTests: XCTestCase {
     /// user who had opted out. So the gate is asked to disagree with `.standard` on purpose.
     func testTheGateFollowsTheStoreItsAppStateWrites() {
         let standard = UserDefaults.standard
-        let original = standard.object(forKey: AppState.analyticsEnabledKey)
-        defer {
-            if let original {
-                standard.set(original, forKey: AppState.analyticsEnabledKey)
-            } else {
-                standard.removeObject(forKey: AppState.analyticsEnabledKey)
-            }
-        }
+        restoreAfterTest(AppState.analyticsEnabledKey, in: standard)
 
         let appState = AppState(userDefaults: defaults)
         let gate = appState.analyticsGate

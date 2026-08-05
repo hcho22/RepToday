@@ -150,12 +150,16 @@ struct ServiceContainer {
     ///     its own container from the defaults below, so nothing passed here reaches it; that half
     ///     now rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 pointed at
     ///     `AppState.analyticsEnabled` - a persisted flag the `-AppState.analyticsEnabled NO` launch
-    ///     argument overrides, and the only mechanism an out-of-process suite has to stay off the
-    ///     wire. Read that as available rather than as universally applied: `OnboardingImperialUITests`
-    ///     passes it on every launch, and `TelemetryOptOutUITests` passes it only where being opted
-    ///     out *is* the assertion - its opted-in legs stay off the wire through the probe harness's
-    ///     in-process interceptor instead, and its screenshot leg launches with neither. That last
-    ///     one is harmless only while no emission call site exists.
+    ///     argument overrides. Read that as one of two mechanisms rather than as universally applied:
+    ///     `OnboardingImperialUITests` passes it on every launch, while `TelemetryOptOutUITests`
+    ///     passes it only where being opted out *is* the assertion and holds its opted-in legs off
+    ///     the wire by **interception** instead - the probe harness swaps the transport's
+    ///     `URLSession` for an in-process counting `URLProtocol`, so those launches need the gate
+    ///     genuinely open and are safe anyway. That suite's invariant is therefore not "consent is
+    ///     always off" but "consent off **or** the probe armed", and it holds by construction: every
+    ///     launch goes through one sanctioned helper naming a `TelemetryPosture`, an enum with no
+    ///     case meaning neither, backed by a runtime check for a launch that bypasses the helper
+    ///     entirely.
     ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
     ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
     ///     to the store its own `AppState` writes rather than letting this side re-derive which
