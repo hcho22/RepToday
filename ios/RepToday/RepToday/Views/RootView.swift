@@ -123,28 +123,26 @@ private struct PlaceholderTabView: View {
     let subtitle: String
 
     var body: some View {
-        ZStack {
-            Theme.Colors.background
-                .ignoresSafeArea()
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: icon)
+                .font(.system(size: 36, weight: .semibold))
+                .foregroundStyle(Theme.Colors.accent)
+                .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
 
-            VStack(spacing: Theme.Spacing.md) {
-                Image(systemName: icon)
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.accent)
-                    .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
+            Text(title)
+                .font(Theme.Typography.title)
+                .foregroundStyle(Theme.Colors.textPrimary)
 
-                Text(title)
-                    .font(Theme.Typography.title)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-
-                Text(subtitle)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.lg)
-            }
-            .padding(Theme.Spacing.lg)
+            Text(subtitle)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.lg)
         }
+        .padding(Theme.Spacing.lg)
+        // Fills whatever it is given and centres inside it, which is what pins the Settings row
+        // below it to the bottom of the tab. The enclosing screen owns the background.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

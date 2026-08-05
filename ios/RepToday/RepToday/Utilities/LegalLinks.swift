@@ -12,7 +12,9 @@ import Foundation
 /// Today's real policy is a precondition for App Store submission, and doing so is a single edit
 /// here rather than a search across the views that link to it.
 enum LegalLinks {
-    /// PLACEHOLDER - replace with Rep Today's real privacy-policy URL before App Store submission.
+    /// PLACEHOLDER. Authoring and hosting the real policy is a blocking item on
+    /// `gtm/08-redteam/pre-publication-checklist.md` ("Author the privacy policy", under Legal /
+    /// naming), which is where the requirement and its current status live - not here.
     static let privacyPolicy = URL(string: "https://example.com/reptoday-privacy-policy-PLACEHOLDER")!
 
     /// Apple's standard auto-renewable-subscription EULA, the default Terms of Use when the app

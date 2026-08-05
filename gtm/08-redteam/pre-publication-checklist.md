@@ -8,7 +8,7 @@ Items marked (blocking: X) block only that asset.
 
 - [ ] **USPTO trademark search for "Rep Today"** (ideally with counsel), and App Store Connect name reservation for "Rep Today, Rest Tomorrow". (blocking: everything public)
 - [ ] Decide on the reptoday.com domain ($3,895 buy-now at HugeDomains as fetched 2026-07-15) or commit to reptoday.app; register before any asset carrying a URL ships.
-- [ ] **Author the privacy policy** and host it; link it from the site footer and FAQ, and align App Store privacy nutrition labels with the on-device / optional-iCloud / HealthKit-opt-in story. (blocking: site, submission)
+- [ ] **Author the privacy policy** and host it; link it from the site footer and FAQ, and align App Store privacy nutrition labels with the on-device / optional-iCloud / HealthKit-opt-in story. The app already links to it from a single constant (`LegalLinks.privacyPolicy`) that still points at an `example.com` placeholder, so hosting the document and setting that one value are the same task. **As of US-T06 this item's reach and severity both grew, though not its status:** the link is no longer only on the paywall behind a premium entry point - it is on the *first* onboarding screen every new user sees and in Settings, sitting directly beside the anonymous-usage-data consent disclosure, which makes it the document that justifies the collection rather than a footnote on a purchase screen. A dead link there is materially worse than a dead link on a paywall. Still blocking for submission, as it always was. (blocking: site, submission)
 - [ ] Account deletion path: because optional Sign in with Apple exists, App Store Guideline 5.1.1(v) account-deletion requirements attach - verify the build satisfies them before submission.
 
 ## Substantiation
