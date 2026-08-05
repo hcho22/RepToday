@@ -57,6 +57,26 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
             "the explanatory sentence is not on screen: \(labels)"
         )
 
+        // Present once, not once per place it happens to be attached. It used to be both the
+        // section's text *and* the toggle's hint, so VoiceOver read the whole paragraph twice in a
+        // row. Counted over labels and hints together rather than pinned to whichever view renders
+        // it, so a future re-duplication fails here in whatever shape it takes.
+        let spoken = AccessibilityTree.spokenStrings(in: root)
+        XCTAssertEqual(
+            spoken.filter { $0 == SettingsView.explanation }.count,
+            1,
+            "the explanation is announced more than once: \(spoken)"
+        )
+
+        // A hint says what activating the control does; it is not a second copy of the body copy.
+        let toggle = try XCTUnwrap(
+            AccessibilityTree.element(labeled: SettingsView.toggleTitle, in: root),
+            "the toggle is not an accessibility element"
+        )
+        let hint = try XCTUnwrap(toggle.accessibilityHint, "the toggle vends no hint to VoiceOver")
+        XCTAssertNotEqual(hint, SettingsView.explanation, "the toggle's hint restates the body copy")
+        XCTAssertLessThan(hint.count, 80, "a VoiceOver hint should be one short clause: \"\(hint)\"")
+
         // Identity-framed and honest: it names what the data is for and what it is *not* attached to.
         XCTAssertTrue(SettingsView.explanation.contains("helps us see whether Rep Today is working"))
         XCTAssertTrue(SettingsView.explanation.contains("never your name"))

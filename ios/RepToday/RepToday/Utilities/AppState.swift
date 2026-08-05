@@ -166,14 +166,34 @@ final class AppState {
     /// The opt-out gate as `LiveAnalyticsService` holds it: a closure re-read on every emission, so
     /// turning telemetry off in Settings takes effect on the next event rather than the next launch.
     ///
-    /// It reads `UserDefaults.standard` rather than capturing an `AppState`, because
-    /// `ServiceContainer.live(...)` is built from an install id, not from the state object, and a
-    /// captured object would also make the gate outlive whatever built it.
-    static let analyticsGate: @Sendable () -> Bool = { AppState.isAnalyticsEnabled() }
+    /// It captures a `UserDefaults`, never an `AppState`: `ServiceContainer.live(...)` is built from
+    /// an install id and not from the state object, and a captured object would also make the gate
+    /// outlive whatever built it. Which store it reads is *handed in* rather than assumed, so the
+    /// reader here and the writer in `analyticsEnabled`'s `didSet` are bound to the same instance by
+    /// construction instead of by both happening to name `.standard`. `RepTodayApp.init()` passes the
+    /// store its own `AppState` was built on, exactly as it passes `installId` down rather than
+    /// letting a second path re-derive it.
+    static func analyticsGate(in userDefaults: UserDefaults = .standard) -> @Sendable () -> Bool {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return { isAnalyticsEnabled(in: store.wrapped) }
+    }
+
+    /// This instance's gate: the same reader, bound to the very store this `AppState` persists the
+    /// flag to. This is what production hands the container, so the toggle the user sees and the
+    /// gate the transport asks cannot read different stores.
+    var analyticsGate: @Sendable () -> Bool { AppState.analyticsGate(in: userDefaults) }
 
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
 
+    /// - Parameter userDefaults: The store this state reads and writes, and - through
+    ///   `analyticsGate` - the store the telemetry gate reads. Production leaves it at `.standard`,
+    ///   which is load-bearing for the out-of-process opt-out proof: `NSArgumentDomain` sits at the
+    ///   head of `UserDefaults.standard`'s search list, which is what lets the XCUITest launch
+    ///   argument `-AppState.analyticsEnabled NO` close the gate in an app the test process never
+    ///   built. Moving this off `.standard` (an app-group suite for a widget or extension, say) is
+    ///   therefore not a free change: verify the argument domain is still reachable through the new
+    ///   store first, or that override silently stops working.
     init(
         userDefaults: UserDefaults = .standard,
         now: () -> Date = Date.init,
@@ -253,6 +273,15 @@ final class AppState {
         static let firstLaunchUnknown = "AppState.firstLaunchUnknown"
         static let lastActiveAt = "AppState.lastActiveAt"
     }
+}
+
+/// Carries a `UserDefaults` into the `@Sendable` telemetry gate.
+///
+/// The gate is `@Sendable` because the transport reads it from a detached task, and `UserDefaults`
+/// is thread-safe by documentation but carries no `Sendable` conformance. The box is what makes that
+/// gap an explicit, one-line assertion here rather than a warning at every capture site.
+private struct SendableUserDefaults: @unchecked Sendable {
+    let wrapped: UserDefaults
 }
 
 private extension UserDefaults {

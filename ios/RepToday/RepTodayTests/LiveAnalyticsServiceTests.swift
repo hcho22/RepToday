@@ -336,6 +336,39 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         standard.set(true, forKey: AppState.analyticsEnabledKey)
         XCTAssertTrue(service.isEmissionEnabled)
     }
+
+    /// And the container uses the gate it is *handed* rather than resolving one of its own, which is
+    /// what lets the app pass a gate bound to the same store its `AppState` writes. Driven from a
+    /// non-default suite so a container that quietly fell back to `.standard` would fail here.
+    func testTheContainerUsesTheGateItIsHanded() throws {
+        let suiteName = "RepToday.LiveAnalyticsServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(userDefaults: defaults)
+        let controller = MockPersistence.controller()
+        let container = ServiceContainer.live(
+            context: controller.viewContext,
+            installId: "container-install",
+            analyticsGate: appState.analyticsGate
+        )
+        let service = try XCTUnwrap(
+            container.analyticsService as? LiveAnalyticsService,
+            "the Debug container must wire the live transport"
+        )
+
+        XCTAssertTrue(service.isEmissionEnabled, "a fresh install must be opted in")
+
+        appState.analyticsEnabled = false
+        XCTAssertFalse(
+            service.isEmissionEnabled,
+            "the container did not use the gate it was handed; an opted-out user would still emit"
+        )
+
+        appState.analyticsEnabled = true
+        XCTAssertTrue(service.isEmissionEnabled)
+    }
     #endif
 
     // MARK: - Configuration: missing or malformed is inert, never fatal

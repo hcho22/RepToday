@@ -23,13 +23,7 @@ struct SettingsView: View {
                 .tint(Theme.Colors.accent)
                 .frame(minHeight: Theme.Spacing.minTouchTarget)
                 .accessibilityLabel(Self.toggleTitle)
-                .accessibilityHint(Self.explanation)
-
-                Text(Self.explanation)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .listRowSeparator(.hidden)
+                .accessibilityHint(Self.toggleHint)
 
                 Link(destination: LegalLinks.privacyPolicy) {
                     HStack(spacing: Theme.Spacing.sm) {
@@ -48,6 +42,11 @@ struct SettingsView: View {
                 Text("Privacy")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
+            } footer: {
+                Text(Self.explanation)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .listRowBackground(Theme.Colors.surface)
         }
@@ -62,8 +61,17 @@ struct SettingsView: View {
     /// that presses it - so the three cannot drift apart.
     static let toggleTitle = "Share anonymous usage data"
 
+    /// What activating the switch *does*, which is what a VoiceOver hint is for. It deliberately
+    /// does not restate `explanation`: that sentence is the section's footer, which VoiceOver reads
+    /// once, and repeating it here would make the screen speak the whole paragraph twice in a row.
+    /// State-neutral because the switch already vends its own on/off value.
+    static let toggleHint = "Turns sharing anonymous usage data on or off"
+
     /// Honest and identity-framed, never dark-patterned: it says what is collected, what it is for,
     /// and what it is *not* tied to, without arguing the user out of turning it off.
+    ///
+    /// It renders as the Privacy section's **footer** - where iOS natively puts explanatory text,
+    /// where VoiceOver reads it exactly once, and where it does not look like another tappable row.
     static let explanation = """
         Anonymous usage data helps us see whether Rep Today is working. It's counted against a \
         random per-install number - never your name, your email, or your device.

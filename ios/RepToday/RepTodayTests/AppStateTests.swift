@@ -292,7 +292,7 @@ final class AppStateTests: XCTestCase {
             }
         }
 
-        let gate = AppState.analyticsGate
+        let gate = AppState.analyticsGate()
 
         standard.removeObject(forKey: AppState.analyticsEnabledKey)
         XCTAssertTrue(gate(), "an install that never answered is opted in")
@@ -302,6 +302,45 @@ final class AppStateTests: XCTestCase {
 
         standard.set(true, forKey: AppState.analyticsEnabledKey)
         XCTAssertTrue(gate())
+    }
+
+    /// The writer and the reader must be bound to the *same* store, not to two that agree today.
+    ///
+    /// This is the only configuration that can fail, and the reason nothing else here catches it:
+    /// every other test drives one store on both sides. If the gate re-read `.standard` while an
+    /// `AppState` persisted the flag somewhere else - an app-group suite for a widget, say - the
+    /// Settings toggle would keep rendering and persisting correctly while the transport read a key
+    /// nobody writes, resolved it as absent, answered the shipped default `true`, and emitted for a
+    /// user who had opted out. So the gate is asked to disagree with `.standard` on purpose.
+    func testTheGateFollowsTheStoreItsAppStateWrites() {
+        let standard = UserDefaults.standard
+        let original = standard.object(forKey: AppState.analyticsEnabledKey)
+        defer {
+            if let original {
+                standard.set(original, forKey: AppState.analyticsEnabledKey)
+            } else {
+                standard.removeObject(forKey: AppState.analyticsEnabledKey)
+            }
+        }
+
+        let appState = AppState(userDefaults: defaults)
+        let gate = appState.analyticsGate
+
+        // The two stores are pinned to opposite answers, so following the wrong one is visible.
+        standard.set(true, forKey: AppState.analyticsEnabledKey)
+        appState.analyticsEnabled = false
+        XCTAssertFalse(
+            gate(),
+            "the gate read a store this AppState does not write; an opted-out user would still emit"
+        )
+
+        standard.set(false, forKey: AppState.analyticsEnabledKey)
+        appState.analyticsEnabled = true
+        XCTAssertTrue(gate(), "the gate did not follow its own store back on")
+
+        // And it is still re-read per call rather than captured, on whichever store it is bound to.
+        defaults.set(false, forKey: AppState.analyticsEnabledKey)
+        XCTAssertFalse(gate(), "the same closure did not see the change; the gate was captured")
     }
 
     /// The opt-out gates emission and nothing else. Turning it off must not clear the install

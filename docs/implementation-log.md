@@ -497,7 +497,10 @@ The fresh-install default is an *absence* rather than a stored `true`, confirmed
 `analyticsEnabledKey` is the one non-private key on `AppState`, because three things must name it: the object, the gate, and the XCUITest launch argument.
 
 The gate the transport holds is `AppState.analyticsGate`, a closure re-read on every emission rather than captured at construction - US-T04 built it that way for exactly this - so turning the toggle off takes effect on the next event instead of the next launch.
-It reads `UserDefaults.standard` rather than capturing an `AppState`, because `ServiceContainer.live(...)` is built from an install id and not from the state object, and a captured object would outlive whatever built it.
+It captures a `UserDefaults` and never an `AppState`, because `ServiceContainer.live(...)` is built from an install id and not from the state object, and a captured object would outlive whatever built it.
+*Which* store it reads is handed in rather than assumed: `RepTodayApp.init()` passes `appState.analyticsGate` to `ServiceContainer.live(...)` alongside `installId`, so the reader and the writer of the flag are bound to the same instance by construction rather than by both happening to name `.standard` - the same "passed down, not re-read" rule US-T05 set for the identifier, applied to the gate.
+Production still resolves to `.standard`, which is load-bearing rather than incidental: `NSArgumentDomain` sits at the head of that store's search list, and that is what lets `-AppState.analyticsEnabled NO` close the gate out of process.
+Moving `AppState` off `.standard` later (an app-group suite for a widget, say) is therefore not a free change, and `AppState.init`'s `userDefaults` parameter says so where a future story will read it.
 
 The Settings surface is a real one, per the captain's answer to the story's Open Question: `SettingsView` with a sectioned `List`, pushed from a plain navigation row on the Profile tab, carrying a `Privacy` section as its only content today.
 Shaped so a broader Profile/Settings story extends it with another `Section` rather than replaces it; the Profile placeholder around it is untouched.
@@ -530,7 +533,7 @@ So the live legs prove the opt-out decides whether a real POST reaches a real de
 Transcript, renders, and what each leg does not prove: `artifacts/reports/US-T06/validation.md`.
 
 No "reset telemetry identity" control was added, and that is a constraint rather than an omission: clearing `installId` alone is exactly the re-minted-identity state US-T07 has to decide about, so the opt-out gates emission and touches nothing else - asserted in two places rather than intended.
-Verified by `xcodebuild ... -scheme RepToday test` (877 tests, 0 failures, from 863) and `-scheme RepTodayUITests test` (9 tests, 0 failures, from 5) on an iPhone 16 Simulator. This repo has no CI, so those local runs are the whole gate.
+Verified by `xcodebuild ... -scheme RepToday test` (879 tests, 0 failures, from 863 - 877 at the story's own commit, plus the two guards review round 2 added) and `-scheme RepTodayUITests test` (9 tests, 0 failures, from 5) on an iPhone 16 Simulator. This repo has no CI, so those local runs are the whole gate.
 
 ### A hold is not a rest, and modelling it as one cost three review rounds
 

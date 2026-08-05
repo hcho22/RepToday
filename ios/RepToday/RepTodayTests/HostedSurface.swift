@@ -111,6 +111,25 @@ enum AccessibilityTree {
         return labels
     }
 
+    /// Every string VoiceOver would speak in `root` - each element's label *and* its hint, in
+    /// traversal order.
+    ///
+    /// `labels(in:)` cannot answer "is this sentence announced once?", because a sentence attached
+    /// to one element as a label and to another as a hint is spoken twice while appearing once in
+    /// the labels. Counting over both is what makes that duplication assertable.
+    static func spokenStrings(in root: UIView) -> [String] {
+        activate()
+
+        var spoken: [String] = []
+        walk(root) { node in
+            guard node.isAccessibilityElement else { return true }
+            if let label = node.accessibilityLabel { spoken.append(label) }
+            if let hint = node.accessibilityHint { spoken.append(hint) }
+            return true
+        }
+        return spoken
+    }
+
     /// The element carrying `label`, so a test can activate it exactly the way VoiceOver's double-tap
     /// does - driving the production control rather than reaching past it into the view model.
     static func element(labeled label: String, in root: UIView) -> NSObject? {

@@ -47,10 +47,14 @@ struct RepTodayApp: App {
         _appState = State(initialValue: appState)
 
         // The production services are backed by the shared stack's main-queue context, so every
-        // CoreData-backed store reads and writes the one on-device (and synced) history.
+        // CoreData-backed store reads and writes the one on-device (and synced) history. The
+        // telemetry gate travels the same way the install id does - built from this `AppState`, so
+        // it is bound to the store the Settings toggle writes rather than to one it is assumed to
+        // share.
         let services = ServiceContainer.live(
             context: PersistenceController.shared.viewContext,
-            installId: appState.installId
+            installId: appState.installId,
+            analyticsGate: appState.analyticsGate
         )
         self.services = services
         self.transactionListener = services.subscriptionService.startObservingTransactions()

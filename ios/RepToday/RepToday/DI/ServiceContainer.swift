@@ -151,9 +151,15 @@ struct ServiceContainer {
     ///     now rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 pointed at
     ///     `AppState.analyticsEnabled` - a persisted flag the `-AppState.analyticsEnabled NO` launch
     ///     argument overrides, and the mechanism every XCUITest suite uses to stay off the wire.
+    ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
+    ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
+    ///     to the store its own `AppState` writes rather than letting this side re-derive which
+    ///     store to read. The default reads `.standard`, which is where production's `AppState`
+    ///     lives, so a test that only wants the CoreData services keeps its existing call.
     static func live(
         context: NSManagedObjectContext,
         installId: String,
+        analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
@@ -223,16 +229,16 @@ struct ServiceContainer {
             // that it is. An explicit `analyticsService` overrides both branches; nothing else
             // about this wiring changes when it does.
             //
-            // `AppState.analyticsGate` is US-T06's opt-out flag, read fresh from `UserDefaults` on
-            // every emission rather than captured here - which is what makes turning the Settings
-            // toggle off take effect on the next event instead of the next launch, and what lets the
-            // `-AppState.analyticsEnabled NO` launch argument close the gate in an app this process
-            // never built.
+            // `analyticsGate` is US-T06's opt-out flag, read fresh from the `UserDefaults` it was
+            // built against on every emission rather than captured here - which is what makes
+            // turning the Settings toggle off take effect on the next event instead of the next
+            // launch, and what lets the `-AppState.analyticsEnabled NO` launch argument close the
+            // gate in an app this process never built.
             analyticsService: analyticsService
                 ?? LiveAnalyticsService.configured(
                     installId: installId,
                     session: analyticsSession,
-                    isEnabled: AppState.analyticsGate
+                    isEnabled: analyticsGate
                 )
                 ?? NoOpAnalyticsService()
         )
