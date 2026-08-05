@@ -172,12 +172,16 @@ RepToday/
 │   │   ├── Mock/            # Mock implementations wired in ServiceContainer
 │   │   ├── Engine/          # Deterministic workout-engine pipeline steps (pure, on-device)
 │   │   ├── Programmer/      # Deterministic AI Programmer (re-program trigger detection, plateau diagnosis, Default Duration learning, templated policy note, and the persistence-backed re-weighting service that composes them; pure logic on-device)
-│   │   └── ActiveSession/   # In-progress session persistence seam (ActiveSessionStore protocol + InMemoryActiveSessionStore) so an abandoned session survives backgrounding/relaunch and can be resumed or discarded (US-K04); the post-session recorder (SessionCompletionService + protocol) that writes the WorkoutLog and does the completion bookkeeping - Consistency Score refresh + cold-start handoff (US-L01) plus the minimal, cold-start-safe in-place rating update recordPerceivedDifficulty (US-L02) - and the pure SessionSummary behind the celebration screen's muscle/mobility coverage (US-L01)
+│   │   ├── ActiveSession/   # In-progress session persistence seam (ActiveSessionStore protocol + InMemoryActiveSessionStore) so an abandoned session survives backgrounding/relaunch and can be resumed or discarded (US-K04); the post-session recorder (SessionCompletionService + protocol) that writes the WorkoutLog and does the completion bookkeeping - Consistency Score refresh + cold-start handoff (US-L01) plus the minimal, cold-start-safe in-place rating update recordPerceivedDifficulty (US-L02) - and the pure SessionSummary behind the celebration screen's muscle/mobility coverage (US-L01)
+│   │   ├── Analytics/       # Telemetry sinks: the live Convex POST (US-T04), the inert no-op fallback, and the Debug-only XCUITest probe harness (US-T06)
+│   │   └── …                # Consistency/, Progress/, Language/, Auth/, Health/, Subscription/ - see AGENTS.md for the full listing
 │   ├── DI/                  # ServiceContainer + environment injection
 │   ├── ViewModels/          # @Observable view models
-│   ├── Views/               # SwiftUI screens (Onboarding, Home, Active session, Post-session, Progress, Settings)
+│   ├── Views/               # SwiftUI screens (Onboarding, Ready, ActiveSession, Progress, Paywall, Settings, plus RootView)
 │   ├── Utilities/           # AppState (routing, the anonymous per-install telemetry identity from US-T05, and the telemetry opt-out flag from US-T06), LegalLinks (the one privacy-policy / Terms URL every surface links to), and shared helpers
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
+├── ios/RepToday/RepTodayTests/     # The default suite (XCTestCase + @testable import), plus the shared seams every suite is expected to use instead of its own copy: EvidenceOutput, HostedSurface/AccessibilityTree, DefaultsSnapshot
+├── ios/RepToday/RepTodayUITests/   # The out-of-process XCUITest bundle under its own scheme, for the few things only a real touch can exercise; HealthAccessPrompt is its shared helper
 ├── convex/                  # Anonymous-telemetry sink only (append-only events table); no backend behind the core loop
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
@@ -254,11 +258,11 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 
 ### The telemetry sink (`convex/`)
 
-Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), but nothing calls it yet: the emission sites are US-T07 through US-T12.
+Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), but nothing in a shipping build calls it yet: the emission sites are US-T07 through US-T12, and the only caller today is US-T06's Debug-only, launch-argument-gated XCUITest probe.
 Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at a dev deployment, and Release points at nothing and stays inert, because no production deployment has been chosen yet.
 Whether it talks at all is the user's call once the emission sites land: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` posts nothing to any deployment - the one mechanism that reaches an app the test process launched but never built.
 Read that as one of two guards rather than as passed by every launch: `OnboardingImperialUITests` passes it always, and `TelemetryOptOutUITests` passes it only where being opted out is the assertion, holding its opted-in legs off the wire by interception instead - the probe harness swaps the transport's `URLSession` for an in-process counting `URLProtocol`, which is what lets those legs run with the gate genuinely open.
-So every launch in that suite carries consent-off **or** the probe, and neither is not representable: the postures are a `TelemetryPosture` enum behind one sanctioned launch helper, with a runtime check for a launch that bypasses it - see `docs/test-coverage.md` for which leg carries which guard.
+So every launch in that suite carries consent-off **or** the probe, and neither is not representable: the postures are a `TelemetryPosture` enum behind one sanctioned launch helper, with a runtime check for a launch that bypasses it - run on entry to every launch as well as at teardown, and resting on `setUp` terminating a leftover app. See `docs/test-coverage.md` for which leg carries which guard, and why each of those two details is there rather than obvious.
 It needs **Node.js 18+** and npm; the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
 
 ```bash

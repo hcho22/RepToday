@@ -103,7 +103,7 @@ All four probe rows were deleted from the dev deployment afterwards, by a scratc
 This transcript is a point-in-time record. This repo has **no CI**, so nothing here re-runs by itself.
 
 What *is* re-runnable is `RepTodayUITests/TelemetryOptOutUITests`, which asserts the same gate out of process without touching the network (the harness's interceptor is in place there, so FR-13 holds).
-Its honesty was checked twice, by breaking each thing it protects and confirming it fails.
+Its honesty was checked three times, by breaking each thing it protects and confirming it fails.
 
 **Sabotage 1 - the gate.** With `isEnabled: analyticsGate` replaced by `isEnabled: { true }` in `ServiceContainer.live(...)`, three of the suite's tests fail:
 
