@@ -79,6 +79,8 @@ The ~22s gap between the second and third rows is the toggle-off, the swallowed 
 
 Renders of the surface this was driven through: `02-profile-settings-row.png`, `03-settings-privacy-toggle-off.png` (launched opted out - the toggle shows the real stored state, not a default-on), `04-settings-privacy-toggle-on.png`.
 
+Those last two Settings renders were **refreshed at the branch tip**, under the same launches, after the consent copy moved from a row inside the card to the section footer, so they show what ships rather than the layout the original run photographed; the observation they illustrate is unchanged.
+
 ### 5. Cleanup
 
 All four probe rows were deleted from the dev deployment afterwards, by a scratch `internalMutation` deployed, run, deleted, and redeployed away - the same treatment US-T03 and US-T04 gave their own junk rows.

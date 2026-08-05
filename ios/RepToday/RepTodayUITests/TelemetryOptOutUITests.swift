@@ -198,8 +198,24 @@ final class TelemetryOptOutUITests: XCTestCase {
     }
 
     /// Puts the toggle into `on` and returns to the tab root, so the HUD's emit button is clear again.
-    private func setSettingsToggle(on: Bool, file: StaticString = #filePath, line: UInt = #line) {
+    ///
+    /// `whileOnSettings` runs after the switch has settled and before Settings is popped, which is
+    /// where a render of the control in its new state has to be taken from.
+    private func setSettingsToggle(
+        on: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        whileOnSettings: () -> Void = {}
+    ) {
         let toggle = openSettingsToggle(file: file, line: line)
+        move(toggle, on: on, file: file, line: line)
+        whileOnSettings()
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+    }
+
+    /// Drives the switch itself to `on` and waits for it to report that state.
+    private func move(_ toggle: XCUIElement, on: Bool, file: StaticString = #filePath, line: UInt = #line) {
         let wanted = on ? "1" : "0"
         if toggle.value as? String != wanted {
             // Pressed on the switch itself rather than on the element's centre: the accessibility
@@ -213,7 +229,67 @@ final class TelemetryOptOutUITests: XCTestCase {
         if XCTWaiter().wait(for: [matched], timeout: 5) != .completed {
             XCTFail("the toggle would not move to \(wanted)", file: file, line: line)
         }
+    }
 
+    // MARK: - What a reviewer sees
+
+    /// Renders the surfaces this story adds, from the running app, in the order a user meets them:
+    /// the onboarding disclosure, the Profile row that leads to Settings, and the toggle in both
+    /// states with the probe HUD's attempt count beside it.
+    ///
+    /// The assertions here are already made by the tests above; what this adds is a picture, because
+    /// "the opt-out is findable and honestly worded" is a claim about a screen and cannot be settled
+    /// by a count. Each render is filed with the result bundle, so it needs no directory of its own.
+    func testRendersTheConsentSurfacesAndTheGateChangingTheCount() throws {
+        // 1. The disclosure, on the *first* onboarding screen, with no probe HUD standing over it.
+        app.launchArguments = ["-AppState.isOnboarded", "NO"]
+        app.launch()
+        XCTAssertTrue(
+            app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 20),
+            "onboarding never reached its first screen"
+        )
+        capture("01-onboarding-disclosure")
+        app.terminate()
+
+        // 2. Everything below is one launch, so what the renders show is a live toggle rather than a
+        // sequence of relaunches into pre-set states.
+        launch()
+        waitForAttemptCount(1)
+
+        let profile = app.tabBars.buttons["Profile"]
+        XCTAssertTrue(profile.waitForExistence(timeout: 20), "the app never reached the main tabs")
+        profile.tap()
+        capture("02-profile-settings-row")
+
+        openSettingsToggle()
+        capture("03-settings-toggle-on")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // 3. One attempt from app entry, a second from the HUD, then the toggle goes off and the
+        // third attempt is never dispatched - the count in the render is the gate's answer.
+        let emit = app.buttons["telemetry.probe.emit"]
+        XCTAssertTrue(emit.waitForExistence(timeout: 10), "the probe HUD has no emit control")
+        emit.tap()
+        waitForAttemptCount(2)
+
+        setSettingsToggle(on: false) { capture("04-settings-toggle-off") }
+        emit.tap()
+        settleForAnyPendingSend()
+        capture("05-hud-after-emitting-while-opted-out")
+        XCTAssertEqual(attemptCount(), 2, "an event was sent after the user turned telemetry off")
+
+        setSettingsToggle(on: true)
+        emit.tap()
+        waitForAttemptCount(3)
+        capture("06-hud-after-turning-telemetry-back-on")
+    }
+
+    /// Files a full-screen render with the result bundle under `name`, kept whether or not the test
+    /// fails - the point of these is to be looked at on a green run.
+    private func capture(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }
