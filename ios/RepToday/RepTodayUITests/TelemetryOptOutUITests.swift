@@ -104,6 +104,18 @@ final class TelemetryOptOutUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 4)
     }
 
+    /// Settles the launch's startup emissions, then reads the count as a stable **baseline** to measure
+    /// deltas from. The launch total is no longer a fixed number to hard-code: as of US-T09 a *real*
+    /// emission site (`ready_screen_shown`, on the Ready Screen the onboarded probe launch lands on)
+    /// dispatches alongside the probe's own stand-in `app_install`, and US-T10 through US-T12 add more.
+    /// `ready_screen_shown` fires once per Ready Screen open, so after this settle the count is stable
+    /// except for the emit button's explicit taps - which is what makes the delta assertions
+    /// deterministic while staying blind to how many startup emissions there happen to be.
+    private func settledBaselineCount(file: StaticString = #filePath, line: UInt = #line) -> Int {
+        settleForAnyPendingSend()
+        return attemptCount(file: file, line: line)
+    }
+
     // MARK: - The gate
 
     /// **The criterion.** Launched with telemetry off, the real app dispatches no telemetry request
@@ -125,7 +137,13 @@ final class TelemetryOptOutUITests: XCTestCase {
     func testTelemetryOnMeansTheSameLaunchDoesDispatch() throws {
         app.launch(.probeWithConsentDefaultOn)
 
-        waitForAttemptCount(1)
+        // On means the launch dispatched at least once. The exact number is not pinned: the probe's
+        // stand-in `app_install` and the real `ready_screen_shown` (US-T09, on the Ready Screen this
+        // launch lands on) both dispatch, so this asserts the gate opened the wire, not a count.
+        XCTAssertGreaterThanOrEqual(
+            settledBaselineCount(), 1,
+            "telemetry on dispatched nothing - the positive control is vacuous"
+        )
     }
 
     /// The launch argument reaches the same flag the user's own control shows: an app parked opted
@@ -143,28 +161,33 @@ final class TelemetryOptOutUITests: XCTestCase {
         XCTAssertEqual(openSettingsToggle().value as? String, "1", "the default install is not opted in")
     }
 
-    /// Turning the toggle off is honoured on the very next event, with no relaunch: one attempt from
-    /// launch, none while off, and emission resumes when it goes back on.
+    /// Turning the toggle off is honoured on the very next event, with no relaunch: emission adds one
+    /// while on, adds none while off, and resumes when it goes back on - measured as **deltas** from the
+    /// launch's settled baseline rather than absolute counts, since real emission sites now contribute
+    /// an unpinned number of startup dispatches.
     ///
-    /// This is the only leg that needs the HUD's emit button - every real emission site is still ahead
-    /// (US-T07 through US-T12), so there is nothing else in the app to press that produces an event.
+    /// This leg still needs the HUD's emit button: the real emission sites that fire on a probe launch
+    /// (the stand-in `app_install` at entry, US-T09's `ready_screen_shown` on the Ready Screen) each
+    /// fire on their own trigger and cannot be re-fired on demand mid-launch, so the emit button is the
+    /// only control that produces an event when the runtime toggle needs exercising.
     func testTogglingTelemetryOffAndOnIsHonouredWithoutARestart() throws {
         app.launch(.probeWithConsentDefaultOn)
-        waitForAttemptCount(1)
+        let baseline = settledBaselineCount()
+        XCTAssertGreaterThanOrEqual(baseline, 1, "telemetry on dispatched nothing at launch")
 
         let emit = app.buttons["telemetry.probe.emit"]
         XCTAssertTrue(emit.waitForExistence(timeout: 10), "the probe HUD has no emit control")
         emit.tap()
-        waitForAttemptCount(2)
+        waitForAttemptCount(baseline + 1) // on: the event dispatches
 
         setSettingsToggle(on: false)
         emit.tap()
         settleForAnyPendingSend()
-        XCTAssertEqual(attemptCount(), 2, "an event was sent after the user turned telemetry off")
+        XCTAssertEqual(attemptCount(), baseline + 1, "an event was sent after the user turned telemetry off")
 
         setSettingsToggle(on: true)
         emit.tap()
-        waitForAttemptCount(3)
+        waitForAttemptCount(baseline + 2) // on again: dispatch resumes on the very next event
     }
 
     // MARK: - Reaching Settings the way a user does
@@ -254,7 +277,8 @@ final class TelemetryOptOutUITests: XCTestCase {
         // 2. Everything below is one launch, so what the renders show is a live toggle rather than a
         // sequence of relaunches into pre-set states.
         app.launch(.probeWithConsentDefaultOn)
-        waitForAttemptCount(1)
+        let baseline = settledBaselineCount()
+        XCTAssertGreaterThanOrEqual(baseline, 1, "telemetry on dispatched nothing at launch")
 
         let profile = app.tabBars.buttons["Profile"]
         XCTAssertTrue(profile.waitForExistence(timeout: 20), "the app never reached the main tabs")
@@ -265,22 +289,22 @@ final class TelemetryOptOutUITests: XCTestCase {
         capture("03-settings-toggle-on")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        // 3. One attempt from app entry, a second from the HUD, then the toggle goes off and the
-        // third attempt is never dispatched - the count in the render is the gate's answer.
+        // 3. The launch's startup attempts form the baseline; the HUD adds one, then the toggle goes
+        // off and the next attempt is never dispatched - the delta in the render is the gate's answer.
         let emit = app.buttons["telemetry.probe.emit"]
         XCTAssertTrue(emit.waitForExistence(timeout: 10), "the probe HUD has no emit control")
         emit.tap()
-        waitForAttemptCount(2)
+        waitForAttemptCount(baseline + 1)
 
         setSettingsToggle(on: false) { capture("04-settings-toggle-off") }
         emit.tap()
         settleForAnyPendingSend()
         capture("05-hud-after-emitting-while-opted-out")
-        XCTAssertEqual(attemptCount(), 2, "an event was sent after the user turned telemetry off")
+        XCTAssertEqual(attemptCount(), baseline + 1, "an event was sent after the user turned telemetry off")
 
         setSettingsToggle(on: true)
         emit.tap()
-        waitForAttemptCount(3)
+        waitForAttemptCount(baseline + 2)
         capture("06-hud-after-turning-telemetry-back-on")
     }
 

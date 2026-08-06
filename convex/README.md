@@ -11,9 +11,10 @@ test suite in this repo on an Intel host (`artifacts/reports/US-T01/spike-note.m
 The wire now has both ends, the wire itself, and - since US-T07 - its **first production callers**:
 `RepTodayApp.init()` emits the three app-entry events (`app_install`, `day7_return`, `day30_return`)
 through `AppEntryTelemetry.eventsForLaunch(...)`, and US-T08 added the second call site - the
-onboarding flow emits `onboarding_started` and `onboarding_completed` through `OnboardingViewModel`.
-That is five of the 13 emission sites (US-T09 through US-T12 add the other 8). So `record(_:)` is now
-called at app entry and through onboarding - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
+onboarding flow emits `onboarding_started` and `onboarding_completed` through `OnboardingViewModel`,
+and US-T09 added the third - `ReadyView`'s view model emits `ready_screen_shown` with a measured `generation_ms`.
+That is six of the 13 emission sites (US-T10 through US-T12 add the other 7). So `record(_:)` is now
+called at app entry, through onboarding, and on the Ready Screen - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
 `NoOpAnalyticsService` and the events go nowhere until a production deployment is chosen (below),
 while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process

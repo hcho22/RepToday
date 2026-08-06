@@ -575,6 +575,87 @@ final class ReadyViewModelTests: XCTestCase {
         let recorded = await policyService.reprogrammedWith
         XCTAssertEqual(recorded.count, 1, "a tab re-appear does not re-fire the on-open re-program")
     }
+
+    // MARK: - Ready Screen telemetry (US-T09)
+
+    /// A view model whose injected clock is the shared, advanceable clock the engine mutates during
+    /// generation, so `generation_ms` is deterministic and can be asserted exactly.
+    private func makeTelemetryViewModel(
+        analytics: any AnalyticsServiceProtocol,
+        clock: ReadyMutableClock,
+        engine: any WorkoutEngineProtocol,
+        user: User? = nil
+    ) -> ReadyViewModel {
+        ReadyViewModel(
+            userService: MockUserService(user: user ?? onboardedUser(defaultMinutes: 15)),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: engine,
+            workoutLogService: MockWorkoutLogService(logs: []),
+            activeSessionStore: InMemoryActiveSessionStore(),
+            analytics: analytics,
+            now: { clock.now }
+        )
+    }
+
+    /// The first load emits exactly one `ready_screen_shown` carrying the `generation_ms` measured
+    /// around the engine call - the whole-millisecond delta the clock advanced across generation.
+    func testFirstLoadEmitsReadyScreenShownWithMeasuredGenerationMs() async {
+        let analytics = MockAnalyticsService()
+        let clock = ReadyMutableClock(fixedDate)
+        // The engine advances the shared clock by 0.25s (exactly representable) inside the call, so the
+        // measured span is exactly 250 whole milliseconds.
+        let engine = ClockAdvancingWorkoutEngine(clock: clock, advanceBy: 0.25)
+        let vm = makeTelemetryViewModel(analytics: analytics, clock: clock, engine: engine)
+
+        await vm.load()
+
+        let shown = await analytics.recordedEvents.filter { $0.name == .readyScreenShown }
+        XCTAssertEqual(shown.count, 1, "exactly one ready_screen_shown on the first load")
+        XCTAssertEqual(shown[0].properties, ["generation_ms": .int(250)])
+        XCTAssertEqual(vm.lastGenerationMs, 250, "the engine call span is measured, not the view work")
+    }
+
+    /// A duration-chip regeneration does not re-emit `ready_screen_shown` (that would inflate the
+    /// count), but `generation_ms` is still measured on that path for internal debugging.
+    func testChipRegenerationDoesNotReEmitButStillMeasures() async {
+        let analytics = MockAnalyticsService()
+        let clock = ReadyMutableClock(fixedDate)
+        let engine = ClockAdvancingWorkoutEngine(clock: clock, advanceBy: 0.25)
+        let vm = makeTelemetryViewModel(analytics: analytics, clock: clock, engine: engine)
+
+        await vm.load()
+        await vm.selectDuration(30) // a chip tap: regenerates, measures, but must not re-emit
+
+        let shown = await analytics.recordedEvents.filter { $0.name == .readyScreenShown }
+        XCTAssertEqual(shown.count, 1, "a chip-tap regeneration does not re-emit ready_screen_shown")
+        XCTAssertEqual(engine.generateCallCount, 2, "one generation on load, one on the chip tap")
+        XCTAssertEqual(vm.lastGenerationMs, 250, "generation_ms is still measured on the chip-tap path")
+    }
+
+    /// A tab re-appear (`load()` re-fires) does not re-emit `ready_screen_shown`: the one-shot guard is
+    /// scoped to the first load and survives a refresh, so the funnel counts one open, not every appear.
+    func testReappearDoesNotReEmitReadyScreenShown() async {
+        let analytics = MockAnalyticsService()
+        let clock = ReadyMutableClock(fixedDate)
+        let engine = ClockAdvancingWorkoutEngine(clock: clock, advanceBy: 0.25)
+        let vm = makeTelemetryViewModel(analytics: analytics, clock: clock, engine: engine)
+
+        await vm.load()
+        await vm.load() // the Today tab re-appearing
+
+        let shown = await analytics.recordedEvents.filter { $0.name == .readyScreenShown }
+        XCTAssertEqual(shown.count, 1, "a tab re-appear does not re-fire ready_screen_shown")
+    }
+
+    /// The emission is optional: a view model built with no analytics sink loads the Ready Screen
+    /// without trapping.
+    func testReadyScreenTelemetryIsOptional() async {
+        let vm = makeViewModel(user: onboardedUser())
+
+        await vm.load()
+
+        XCTAssertNotNil(vm.workout, "the Ready Screen loads with no analytics sink wired")
+    }
 }
 
 // MARK: - Test doubles
@@ -751,6 +832,59 @@ private final class PillarByDurationEngine: WorkoutEngineProtocol {
             createdAt: Date(timeIntervalSinceReferenceDate: 0),
             shape: .singleFocus,
             focusPillar: pillarByMinutes[requestedMinutes],
+            requestedMinutes: requestedMinutes,
+            wasReturn: false,
+            blocks: []
+        )
+    }
+
+    func swapExercise(
+        _ prescription: PrescribedExercise,
+        in workout: Workout,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
+    ) async throws -> SwapOutcome {
+        .noAlternative
+    }
+}
+
+// MARK: - Ready Screen telemetry doubles (US-T09)
+
+/// An advanceable clock the view model reads through its injected `now`, so a test can pin the exact
+/// span an engine call takes and assert the `generation_ms` measured around it.
+private final class ReadyMutableClock {
+    var now: Date
+    init(_ start: Date) { now = start }
+    func advance(_ interval: TimeInterval) { now += interval }
+}
+
+/// A workout engine that advances a shared clock by a fixed interval *inside* `generateWorkout`, so
+/// the wall-time delta the view model measures around the engine call (US-T09) is deterministic and
+/// exactly assertable. It advances only during the call, so surrounding view work reads a still clock.
+private final class ClockAdvancingWorkoutEngine: WorkoutEngineProtocol {
+    private let clock: ReadyMutableClock
+    private let advanceBy: TimeInterval
+    private(set) var generateCallCount = 0
+
+    init(clock: ReadyMutableClock, advanceBy: TimeInterval) {
+        self.clock = clock
+        self.advanceBy = advanceBy
+    }
+
+    func generateWorkout(
+        requestedMinutes: Int,
+        user: User,
+        recentLogs: [WorkoutLog],
+        sessionPolicy: SessionPolicy
+    ) async throws -> Workout {
+        generateCallCount += 1
+        clock.advance(advanceBy)
+        return Workout(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 0),
+            shape: .blend,
+            focusPillar: nil,
             requestedMinutes: requestedMinutes,
             wasReturn: false,
             blocks: []
