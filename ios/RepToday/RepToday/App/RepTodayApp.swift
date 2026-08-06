@@ -59,10 +59,34 @@ struct RepTodayApp: App {
         self.services = services
         self.transactionListener = services.subscriptionService.startObservingTransactions()
 
-        // The US-T06 out-of-process proof needs something for the opt-out gate to block, and no
-        // emission call site exists yet (US-T07 through US-T12 add them). Under the probe launch
-        // argument only, one `app_install` goes through the container's own sink from exactly the
-        // place US-T07's real one will - intercepted in process, so nothing reaches the network.
+        // US-T07: the three app-entry funnel events - `app_install`, `day7_return`, `day30_return` -
+        // decided from the identity `AppState` just settled and a single wall-clock read, then handed
+        // to the sink fire-and-forget. This site emits **unconditionally**: consent lives inside the
+        // sink (`LiveAnalyticsService.record(_:)` reads the opt-out gate per emission), so re-checking
+        // the flag here would only be a second gate that could disagree with the first. The decision
+        // unit is what makes the window/dedup logic testable off an injected clock; here it takes the
+        // one `Date()` this entry point is allowed. `record(_:)` returns immediately after dispatching
+        // to its own detached task, so the wrapping `Task` only bridges `init`'s synchronous context.
+        let entryEvents = AppEntryTelemetry.eventsForLaunch(
+            isFirstLaunch: appState.isFirstLaunch,
+            firstLaunchAt: appState.firstLaunchAt,
+            installWeek: appState.installWeek,
+            now: Date(),
+            defaults: .standard
+        )
+        let analytics = services.analyticsService
+        Task {
+            for event in entryEvents {
+                await analytics.record(event)
+            }
+        }
+
+        // The US-T06 out-of-process proof needs something for the opt-out gate to block that fires on
+        // *every* probe launch. US-T07's real emission above cannot serve that role: the probe suite
+        // launches onboarded, so `isFirstLaunch` is false and `app_install` never fires there. The
+        // probe therefore keeps emitting its own `app_install` from this exact place - intercepted in
+        // process, so nothing reaches the network - and the two never collide, because no probe launch
+        // is ever a genuine first launch.
         #if DEBUG
         TelemetryUITestHarness.emitProbeEventIfActive(through: services.analyticsService)
         #endif
