@@ -180,6 +180,22 @@ extension SubscriptionServiceProtocol {
 /// Re-reading the flag at a call site would be a second gate that could disagree with the first.
 /// `MockAnalyticsService` deliberately has no gate at all: it records everything, because a test
 /// asserting on emission wants the event, not the consent decision.
+///
+/// That rule says where the one gate lives; it does not make the gate structural. Consent is
+/// enforced inside `LiveAnalyticsService.record(_:)`, so the privacy invariant is a property of
+/// **that implementation** rather than of this protocol: a second emitting sink would have to
+/// re-implement it from memory, and neither the type system nor any existing test would catch its
+/// absence. The rule above still stands either way - a call site must not check consent itself, and
+/// none of this is a hint to start. The trigger is written as a condition to check rather than a
+/// caveat, so a reader can answer it by looking instead of by judgement: **count the emitting
+/// conformers of this protocol.** Today there is exactly one. `NoOpAnalyticsService` discards,
+/// `MockAnalyticsService` records in memory, and the Debug-only probe harness intercepts in process,
+/// so none of them can reach the network. If that count is ever greater than one while the gate
+/// still lives inside a concrete sink - a batching queue, a retry wrapper, a secondary transport -
+/// the decorator is already overdue: the gate moves to a `ConsentGatedAnalyticsService` applied once
+/// in `ServiceContainer.live`, so it holds for any sink rather than for one. A trigger that depends
+/// on somebody noticing a defect is the weaker kind, which is why this one is a count. The item is
+/// filed in firstmate's work queue as well, so the sequencing does not rest on this paragraph.
 protocol AnalyticsServiceProtocol {
     func record(_ event: AnalyticsEvent) async
 }
