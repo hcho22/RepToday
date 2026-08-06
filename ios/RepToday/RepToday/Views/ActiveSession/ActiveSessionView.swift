@@ -38,6 +38,7 @@ struct ActiveSessionView: View {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
@@ -50,7 +51,8 @@ struct ActiveSessionView: View {
                 sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
-                completionService: completionService
+                completionService: completionService,
+                analytics: analytics
             )
         )
     }
@@ -66,6 +68,7 @@ struct ActiveSessionView: View {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
@@ -78,7 +81,8 @@ struct ActiveSessionView: View {
                 sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
-                completionService: completionService
+                completionService: completionService,
+                analytics: analytics
             )
         )
     }
@@ -92,6 +96,11 @@ struct ActiveSessionView: View {
     /// the last queued write has landed, so the Ready Screen's resume card reflects the position the
     /// user actually left rather than the one before it.
     private func close() {
+        // US-T10: emit the single lifecycle terminal event (completed vs abandoned) at this one
+        // dismiss choke point, before dismissing, so it reads the final play state - including any
+        // perceived-difficulty rating the user just gave on the completion screen - and the
+        // completed/abandoned split stays keyed off the same `isComplete` the resume signal uses.
+        viewModel.recordSessionEnd()
         let pendingWrite = viewModel.persistenceTask
         let completed = viewModel.isComplete
         let report = onFinish

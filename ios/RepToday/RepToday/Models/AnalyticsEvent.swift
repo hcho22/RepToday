@@ -48,6 +48,36 @@ enum AnalyticsEventName: String, Codable, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 }
 
+// MARK: - Abandon point
+
+/// Where in a session the user abandoned it (US-T10) - the closed vocabulary the `abandon_point`
+/// property on `session_abandoned` carries. Per the schema's stated convention that
+/// `abandon_point`/`entry_point` are small, non-identifying closed enums (never free text), this
+/// collapses the whole session into three coarse buckets: the warm-up and cooldown bookends, and a
+/// single `mainWork` bucket covering every training block in between (strength/mobility/primal).
+///
+/// Like `AnalyticsEventName`, the raw values are the wire contract - the exact strings the Convex
+/// `events` table stores - so the case *names* may be refactored freely but the raw *values* must
+/// not change. `mainWork` is spelled to match the schema and the US-T10 validation verbatim.
+enum AbandonPoint: String, Codable, CaseIterable, Identifiable, Hashable {
+    case warmup
+    case mainWork
+    case cooldown
+
+    var id: String { rawValue }
+
+    /// The abandon bucket for the block a step sits in: the warm-up and cooldown bookends map to
+    /// themselves; every training block folds into `mainWork`, so the enum stays coarse and
+    /// non-identifying rather than leaking which exercise the user quit on.
+    init(blockCategory: ExerciseCategory) {
+        switch blockCategory {
+        case .warmup: self = .warmup
+        case .cooldown: self = .cooldown
+        case .strength, .mobility, .primal: self = .mainWork
+        }
+    }
+}
+
 // MARK: - Property value
 
 /// A single non-identifying property value: the closed set of scalar types the schema's property

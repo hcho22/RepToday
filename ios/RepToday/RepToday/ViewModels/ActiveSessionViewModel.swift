@@ -195,6 +195,26 @@ final class ActiveSessionViewModel {
     /// user is wired, where completion simply records nothing.
     private let completionService: (any SessionCompletionServiceProtocol)?
 
+    // MARK: - Analytics (US-T10)
+
+    /// Anonymous product-telemetry sink (US-T10). Optional exactly like `ReadyViewModel.analytics`,
+    /// so previews and tests that do not exercise the funnel construct the player unchanged; when
+    /// absent the lifecycle emissions are simply skipped. Every emission goes through it
+    /// **unconditionally** - consent (US-T06) is enforced inside the sink, so this view model never
+    /// re-checks the opt-out flag (a second gate could disagree with the first).
+    private let analytics: (any AnalyticsServiceProtocol)?
+
+    /// The most recently launched telemetry emission, chained so the events land in call order and
+    /// exposed only so tests can await the sink settling. The UI never awaits it: emission is strictly
+    /// fire-and-forget, so the player never stalls on the network.
+    private(set) var analyticsTask: Task<Void, Never>?
+
+    /// Ensures exactly one lifecycle *terminal* event (`session_completed` xor `session_abandoned`)
+    /// is emitted per session (US-T10). Both fire from the single dismiss choke point `recordSessionEnd()`,
+    /// so this one-shot makes a repeated dismiss a no-op and no terminal event double-fires. Not
+    /// persisted: the funnel counts distinct installs and the backend dedups by `installId`.
+    private var hasEmittedTerminalEvent = false
+
     /// The fire-and-forget completion write launched at `finish()`, exposed only so tests can await
     /// the recording settling. The UI never awaits it: like persistence, the write is best-effort and
     /// the player never stalls on it. A rating given on the completion screen (US-L02) chains behind it
@@ -232,6 +252,7 @@ final class ActiveSessionViewModel {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
@@ -243,6 +264,7 @@ final class ActiveSessionViewModel {
         self.store = store
         self.userId = userId
         self.completionService = completionService
+        self.analytics = analytics
         self.now = now
         self.feedback = feedback
 
@@ -292,6 +314,7 @@ final class ActiveSessionViewModel {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
@@ -304,6 +327,7 @@ final class ActiveSessionViewModel {
             store: store,
             userId: userId,
             completionService: completionService,
+            analytics: analytics,
             now: now,
             feedback: feedback
         )
@@ -341,6 +365,10 @@ final class ActiveSessionViewModel {
     func start() {
         guard startedAt == nil else { return }
         startedAt = now()
+        // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
+        // idempotency that gates the clock start, carrying the requested minutes. Fire-and-forget
+        // through the sink, so telemetry never delays the first render.
+        emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
         // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
         persist()
     }
@@ -828,6 +856,75 @@ final class ActiveSessionViewModel {
         // mid-flight) routes through - so the win is durable even if the user quits on the completion screen.
         completedLog = buildCompletionLog()
         recordCompletion()
+    }
+
+    // MARK: - Lifecycle telemetry (US-T10)
+
+    /// Emit exactly one lifecycle *terminal* event as the player is dismissed, keyed off whether the
+    /// session completed. `ActiveSessionView.close()` routes every exit through here (US-K04), so the
+    /// completed/abandoned split is structural: a completed session emits `session_completed` and
+    /// never `session_abandoned`; an abandoned session (`isComplete == false`) emits `session_abandoned`
+    /// and never `session_completed`. The one-shot guard makes a repeated dismiss a no-op, so no
+    /// terminal event double-fires.
+    ///
+    /// `session_completed` is emitted *here*, at dismissal, rather than at the `finish()` transition,
+    /// so it carries the perceived-difficulty rating the user gives on the completion screen - which
+    /// `finish()` cannot have, because `rate()` only runs after the session is already complete
+    /// (US-T10 decision, Option B). It reads all four properties off the completion log built at
+    /// `finish()` (`perceived_difficulty` omitted when the user left the session unrated, since the
+    /// bag carries no null). `session_abandoned` carries the minutes exercised so far and a coarse,
+    /// non-identifying `abandon_point` derived from where the user was in the session.
+    ///
+    /// Accepted tradeoff (US-T10 decision): a session the user finishes but force-quits from the
+    /// celebration screen *before* tapping Done emits no `session_completed`, even though its
+    /// `WorkoutLog` still persists - a known, rare blind spot in the >=80% session-completion-rate
+    /// metric, recorded here and in `docs/test-coverage.md` rather than left silent.
+    func recordSessionEnd() {
+        guard !hasEmittedTerminalEvent else { return }
+        hasEmittedTerminalEvent = true
+        if isComplete {
+            guard let log = completedLog else { return }
+            var properties: [String: AnalyticsValue] = [
+                "requested_minutes": .int(log.requestedMinutes),
+                "completed_minutes": .int(log.durationMinutes),
+                "was_return": .bool(log.wasReturn)
+            ]
+            if let difficulty = log.perceivedDifficulty {
+                properties["perceived_difficulty"] = .string(difficulty.rawValue)
+            }
+            emit(.sessionCompleted, properties: properties)
+        } else {
+            emit(.sessionAbandoned, properties: [
+                "completed_minutes": .int(completedDurationMinutes()),
+                "abandon_point": .string(abandonPoint().rawValue)
+            ])
+        }
+    }
+
+    /// The coarse `abandon_point` bucket for where the user quit (US-T10) - the block the current step
+    /// sits in at dismissal, mapped through `AbandonPoint`. The current step is always present on the
+    /// abandoned path (a complete session is the only one with no current step), so the `.strength`
+    /// fallback is purely defensive; either way it resolves to a non-identifying warm-up/main-work/cooldown.
+    private func abandonPoint() -> AbandonPoint {
+        AbandonPoint(blockCategory: currentStep?.blockCategory ?? .strength)
+    }
+
+    /// The current millisecond client timestamp off the injected clock - the same encoding
+    /// `AnalyticsEvent` carries everywhere, with no raw `Date()` read, so emissions stay deterministic
+    /// under a test clock.
+    private func timestampMs() -> Int {
+        Int(now().timeIntervalSince1970 * 1000)
+    }
+
+    /// Hand one telemetry event to the sink, fire-and-forget. A `nil` sink (previews / tests that do
+    /// not exercise the funnel) simply skips it. Emissions are chained behind the previous one so they
+    /// land in call order - `session_started` before either terminal event - even though each is
+    /// launched off the calling path and never awaited by the UI.
+    private func emit(_ name: AnalyticsEventName, properties: [String: AnalyticsValue] = [:]) {
+        guard let analytics else { return }
+        let event = AnalyticsEvent(name: name, timestampMs: timestampMs(), properties: properties)
+        let previous = analyticsTask
+        analyticsTask = Task { _ = await previous?.value; await analytics.record(event) }
     }
 
     // MARK: - Snapshot & persistence (US-K04)
