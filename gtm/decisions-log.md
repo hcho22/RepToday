@@ -1,9 +1,11 @@
 # Decisions Log
 
-Every autonomous decision made during the GTM runs, per the master prompt's §2.6.
+Every decision that moves the GTM package or its kill criteria, whatever produced it - the GTM runs' own autonomous calls per the master prompt's §2.6, plus later decisions made outside a run that change something in this package.
 Format: decision, alternative rejected, and why.
 Entries D-001 through D-010 are the v1 run (2026-07-15, `gtm-master-prompt.md`).
-Entries D-101 onward are the v2 update run (2026-08-01, `gtm-master-prompt-v2.md`).
+Entries D-101 through D-107 are the v2 update run (2026-08-01, `gtm-master-prompt-v2.md`).
+Entries D-108 onward arrived outside a GTM run, from engineering stories whose consequences land here.
+The tag on each heading records **who** decided: `[DECIDED BY AGENT]` is an autonomous agent call, `[DECIDED BY FOUNDER]` is the founder's own.
 
 ## D-101 - v2 is an update run: v1 assets carry forward unless a v2 delta invalidates them [DECIDED BY AGENT]
 
@@ -57,6 +59,22 @@ The red-team investor and competitor personas independently showed K0's kill lin
 Resolution applied everywhere identically: K0 reads only bank-relative saves per 1k impressions, watch-through, and comment sentiment (200-impression floor, with a named "K0 under-sampled" state); waitlist-dependent signals activate only once the waitlist exists (pre-publication action #1); the single ladder is day-14 midpoint (kill losers, rebuild the matrix once) -> week 8 no angle clears its floor (bet (c) revised, one listening-informed rebuild) -> week 16 still nothing (K0 trips, bet (c) failed, walk-away observation).
 A new K9 makes word of mouth measurable post-launch (unattributed-install share plus organic search impressions, direction not level); pre-launch WOM is declared an unmeasured assumption and ships as a surviving objection.
 **Rejected alternative:** keeping the richer signal set (profile visits, shares) and the softer week-8 wording - a kill criterion with unmeasurable inputs or a menu of escalation ladders is not pre-registered, which was the whole point.
+
+## D-108 - K5's install count is read off App Store Connect units, not off the telemetry `app_install` count [DECIDED BY FOUNDER]
+
+The anonymous-telemetry opt-out (US-T06 of the funnel-instrumentation PRD) makes an opted-out install invisible to the sink - absent from numerator and denominator both, and indistinguishable from an install that never ran - so every criterion read off the telemetry plane is a share of *consenting* installs.
+For the rate criteria that largely cancels, but K5 counts installs against an **absolute** floor of ~90/week, so opt-out deflates it one-for-one: at a 10% opt-out rate a true 95/week reads as about 86/week and K5 fires with nothing wrong.
+App Store Connect units are the true install denominator, and that is not a new dependency - the thesis already uses App Store Connect as an instrument for K9, whose own absolute total-installs leg takes this correction verbatim.
+Full write-up beside the criteria it affects: `07-thesis/investment-thesis.md` (third instrument rule); wiring it is a checklist item in `08-redteam/pre-publication-checklist.md`.
+**Rejected alternative:** leaving K5 on the telemetry install count and discounting it by an assumed opt-out rate - that rate is unobservable from the sink by construction, so the discount would be a guess applied to a pre-registered kill line.
+
+## D-109 - No band, threshold, or the 200-user minimum-cohort floor moves in response to the opt-out [DECIDED BY FOUNDER]
+
+Recorded because it was a decision, not an omission: the opt-out rate is unobservable from the sink by construction and unknown until something ships, so re-cutting a pre-registered number now would mean setting it on a guess, and a floor set too high buys "insufficient data" verdicts that stall the decision instead of informing it.
+The 200-user minimum-cohort floor now means 200 *consenting* users, which takes more than 200 real installs to reach.
+Revisit trigger, carried as a condition rather than a caveat: it becomes due the first time App Store Connect units and the telemetry install count both exist for the same period, because the gap between them *is* the opt-out rate.
+Stated in full at `07-thesis/investment-thesis.md`; the trigger is checked from `08-redteam/pre-publication-checklist.md`.
+**Rejected alternative:** widening the 90/week floor or the 200-user rule now to absorb an expected opt-out rate - it would re-cut pre-registered numbers on an estimate nobody can yet check, which is what pre-registration exists to prevent.
 
 ## D-001 - Output location is `/Users/hcho/Developer/RepToday/gtm/` [DECIDED BY AGENT]
 

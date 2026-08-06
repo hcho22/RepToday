@@ -22,9 +22,13 @@ Derived from `prd-fitsnack-mvp-v6_0702.md` and `prd-rebrand-fitsnack-to-rep-toda
 
 ## Status (be honest about this everywhere)
 
+**Every claim in this block was re-verified 2026-08-05** - the two App Store facts confirmed by the founder, the two build facts checked against the repo.
+Two of them had drifted and are corrected below: `DEVELOPMENT_TEAM` is now set, and the test count had moved.
+That drift is pre-existing and was found while working US-T06; the story did not cause it, and `AGENTS.md` already notes that historical device notes describing the signing team as empty are point-in-time records.
+
 - Pre-launch. iOS-first. **Zero users. Zero downloads. Zero revenue. Zero testimonials.**
-- Not yet submitted to the App Store; `DEVELOPMENT_TEAM` unset; no App Store Connect record.
-- 667/667 tests pass; app boots in the iPhone 16 Simulator; the MVP core loop (Epics A-N) is implemented.
+- Not yet submitted to the App Store; no App Store Connect record. `DEVELOPMENT_TEAM` is set (`QH9S83CX4Y`), so entitlement-gated paths build for device - it was unset when this brief was first written.
+- 879/879 tests pass in the `RepToday` unit scheme, plus 10/10 in the separate `RepTodayUITests` scheme; app boots in the iPhone 16 Simulator; the MVP core loop (Epics A-N) is implemented.
 - `reptoday.com` is registered by a domain investor (HugeDomains, buy-it-now $3,895 as of 2026-07-14); purchase deferred by the founder. Bundle root `com.reptoday.app` locked (Apple does not verify domain ownership).
 
 ## What it is NOT (say so when honesty demands)
