@@ -171,10 +171,11 @@ extension SubscriptionServiceProtocol {
 /// `async` but **not** `throws` - unlike the rest of this file's `async throws` house style - because
 /// emission is strictly fire-and-forget: a call site reads `await analytics.record(event)` with no
 /// `try`, and a failed, slow, or offline send is swallowed by `LiveAnalyticsService` (US-T04),
-/// never surfaced to a caller and never allowed to gate the core loop. Nothing in a shipping build
-/// calls this yet - the only caller anywhere is US-T06's `#if DEBUG`, launch-argument-gated
-/// `TelemetryUITestHarness`, whose events are intercepted in process - and the 13 production
-/// emission sites are US-T07 through US-T12.
+/// never surfaced to a caller and never allowed to gate the core loop. The first production caller
+/// landed in US-T07 - `RepTodayApp.init()` emits the three app-entry events through
+/// `AppEntryTelemetry` - and the other 10 of the 13 emission sites are US-T08 through US-T12;
+/// US-T06's `#if DEBUG`, launch-argument-gated `TelemetryUITestHarness` also calls this, with its
+/// events intercepted in process.
 ///
 /// **A call site never checks consent.** The user's opt-out (US-T06, `AppState.analyticsEnabled`)
 /// is enforced inside `LiveAnalyticsService.record(_:)`, which re-reads it per emission, so an

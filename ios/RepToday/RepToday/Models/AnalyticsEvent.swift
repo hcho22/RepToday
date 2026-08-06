@@ -3,10 +3,11 @@ import Foundation
 /// The anonymous product-telemetry event model (US-T02).
 ///
 /// This file is the *model only*: a typed event value plus the closed vocabularies it carries. It
-/// adds no emission call sites - nothing in a shipping build calls `record(_:)` yet (the only
-/// caller anywhere is US-T06's Debug-only, launch-argument-gated `TelemetryUITestHarness`, which
-/// builds one of these values to stand in for the site that does not exist), and the 13 production
-/// emission sites are US-T07 through US-T12. The sink it reaches landed in US-T03, the transport
+/// adds no emission call sites of its own - the first production caller landed in US-T07
+/// (`RepTodayApp.init()` emits the three app-entry events through `AppEntryTelemetry`), and the
+/// other 10 of the 13 emission sites are US-T08 through US-T12. US-T06's Debug-only,
+/// launch-argument-gated `TelemetryUITestHarness` also builds one of these values, to keep its own
+/// `app_install` firing on every probe launch. The sink it reaches landed in US-T03, the transport
 /// that carries it in US-T04, and the per-install identifier it travels beside in US-T05; that
 /// identifier is deliberately **not** on this type - it is attached when the event is encoded for
 /// the wire (`AnalyticsWireBody`), so no user identity ever rides on the event, and one is not

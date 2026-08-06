@@ -231,12 +231,12 @@ struct ServiceContainer {
             authService: AppleAuthService.live(),
             // The live Convex-backed transport (US-T04): one fire-and-forget `URLSession` POST per
             // event to the deployment's `POST /logEvent` action, carrying the install id above.
-            // Nothing in a shipping build calls it yet - the 13 production emission sites are
-            // US-T07 through US-T12 - so a build today wires a transport that stays silent,
-            // exactly as US-T02 shipped the seam uncalled and US-T05 shipped the identity unread.
-            // The one caller anywhere is US-T06's Debug-only, launch-argument-gated
-            // `TelemetryUITestHarness`, and it emits through the intercepting session wired above,
-            // so even that attempt never leaves the process.
+            // US-T07 added the first production caller - `RepTodayApp.init()` emits the three
+            // app-entry events through `AppEntryTelemetry` - and the other 10 of the 13 emission
+            // sites are US-T08 through US-T12. So a Debug build now POSTs at app entry, while a
+            // Release build stays silent because its endpoint is empty (below). US-T06's Debug-only,
+            // launch-argument-gated `TelemetryUITestHarness` also emits, through the intercepting
+            // session wired above, so that attempt never leaves the process.
             //
             // `configured` returns `nil` when the deployment endpoint is missing or unusable, and
             // that build falls back to the inert sink rather than trapping or logging: a telemetry

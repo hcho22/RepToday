@@ -183,6 +183,15 @@ final class AppState {
     /// gate the transport asks cannot read different stores.
     var analyticsGate: @Sendable () -> Bool { AppState.analyticsGate(in: userDefaults) }
 
+    /// The store the app-entry telemetry dedup state lives in: the very store this `AppState`
+    /// reads its identity (`firstLaunchAt`, `installWeek`) from. `RepTodayApp.init()` hands this to
+    /// `AppEntryTelemetry.eventsForLaunch(...)` instead of naming `.standard` again, so the day-7 /
+    /// day-30 emit-once flags and the origin they window off cannot be stranded in different stores.
+    /// Production resolves to `.standard` because that is the store production's `AppState` is built
+    /// on; if that ever moves (an app-group suite, say), the dedup flags move with the identity by
+    /// construction rather than being left behind.
+    var telemetryDefaults: UserDefaults { userDefaults }
+
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
 

@@ -9,10 +9,12 @@ import SwiftUI
 /// **Why it exists at all.** `RepTodayUITests` launches the real app; the test process never builds
 /// the `ServiceContainer`, so US-T04's `analyticsService` parameter cannot reach it and the only
 /// gate there is `LiveAnalyticsService`'s `isEnabled` closure. Proving that gate holds needs two
-/// things the shipping app does not provide: something that *attempts* an emission (no emission call
-/// site exists yet - they are US-T07 through US-T12), and somewhere the attempt can be counted from
-/// another process. Without both, "zero network calls with telemetry off" passes for reasons that
-/// have nothing to do with the flag, and would keep passing if the flag were deleted.
+/// things the out-of-process suite needs: something that *attempts* an emission on **every** probe
+/// launch (US-T07's real `app_install` fires only on a genuine first launch, which a probe run -
+/// launched onboarded - is not, so it never fires there and the probe stands in), and somewhere the
+/// attempt can be counted from another process. Without both, "zero network calls with telemetry
+/// off" passes for reasons that have nothing to do with the flag, and would keep passing if the
+/// flag were deleted.
 ///
 /// **What it does.** Under `-RepTodayTelemetryProbe YES`:
 /// 1. the app's persisted opt-out flag is cleared at startup, so a probe run starts from the shipped
@@ -21,7 +23,7 @@ import SwiftUI
 ///    `TelemetryProbeURLProtocol`, which counts each request the transport dispatches and answers it
 ///    from memory - so a probe run cannot reach the network even with telemetry on (FR-13);
 /// 3. one `app_install` event is emitted at app entry, through the container's own resolved sink -
-///    the same place and the same sink US-T07's real emission will use;
+///    the same place and the same sink US-T07's real emission uses;
 /// 4. a small HUD renders the running count, with an accessibility identifier the test reads and a
 ///    button that emits another probe event on demand, so the *runtime* toggle can be exercised
 ///    without relaunching.
