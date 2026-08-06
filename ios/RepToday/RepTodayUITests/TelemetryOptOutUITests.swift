@@ -140,10 +140,9 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// of the original bug passed it. Checking here as well closes the raw-then-helper ordering,
     /// and the teardown call closes a raw launch that happens last.
     ///
-    /// **The complete space of observable launch states**, enumerated so a future reader can test a
-    /// new bypass shape against it rather than re-deriving the analysis. `launchArguments` and
-    /// `app.state` are the only two things this side can observe, and between them there are exactly
-    /// three cells:
+    /// The states this guard inspects. **This is not a complete account of the ways a launch can
+    /// bypass it, and an earlier version of this comment wrongly said it was** - see the known gap
+    /// below before trusting it.
     ///
     /// 1. `launchArguments` **non-empty** - whatever launched wrote arguments. Either they are the
     ///    ones this helper installed (fine), or they came from elsewhere and are put to the
@@ -151,18 +150,40 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// 2. `launchArguments` **empty** and the app is **running** - a bypass. A bare `app.launch()`
     ///    with no arguments set at all leaves the array empty, so cell 1 never sees it, yet that
     ///    launch builds the real transport against the dev deployment with the gate at its shipped
-    ///    default (on). This is the case the third correction to this guard added.
+    ///    default (on).
     /// 3. `launchArguments` **empty** and the app is **not running** - nothing has launched, so there
     ///    is nothing to catch. This is the pre-first-launch state every test starts in, and the only
     ///    inert cell.
-    ///
-    /// There is no fourth cell: a launch either wrote arguments or it did not, and the app either
-    /// started or it did not.
     ///
     /// Cell 2 is only a bypass because `setUp` terminates any app a previous test case left running.
     /// Without that, "running" would also describe a leftover from the test before this one, and the
     /// check reported every guarded test in the suite as a bypass - which is how the precondition was
     /// found: by observing it fail, not by reasoning about `app.state`.
+    ///
+    /// **KNOWN GAP - cell 2 is closed for one launch ordering and open for the other.** The
+    /// enumeration above is over argument-state and app-state, and misses a third dimension:
+    /// *when* the bypassing launch happens relative to a helper launch.
+    ///
+    /// - A bare `app.launch()` **followed by** a helper launch **is** caught, by the entry check
+    ///   above, which is the ordering the original defect had.
+    /// - A bare `app.launch()` used as the **only** launch in a test is **not caught**. The teardown
+    ///   call is meant to cover exactly this and does not fire. **The root cause is undiagnosed**;
+    ///   it is recorded as unknown rather than guessed at.
+    ///
+    /// Verified by sabotage in both orderings, which is the only reason the split is known: the
+    /// second ordering was previously reported as closed on the strength of testing only the first.
+    /// A test that bare-launches today still fails - but on `the telemetry probe HUD never appeared`,
+    /// which is **incidental**, because the tests that exist happen to assert on the HUD. A future
+    /// bare-launching test that asserted on anything else would pass silently and would POST once
+    /// US-T07 adds an emission site.
+    ///
+    /// **This is deliberately not being patched a fourth time.** Three corrections have each closed
+    /// one shape and revealed another, which is the signature of an approach that leaks by nature.
+    /// The answer is a wrapper making a raw `XCUIApplication` unreachable from tests, so a bypass
+    /// cannot compile rather than being detected after the fact. That must land **before** the first
+    /// emission call site (US-T07), and the dependency is recorded in `docs/test-coverage.md`, on
+    /// US-T07's own criteria, and - so it is enforced rather than merely written - as a blocking
+    /// item in firstmate's work queue.
     private func assertNobodyLaunchedBehindOurBack(
         file: StaticString = #filePath, line: UInt = #line
     ) {

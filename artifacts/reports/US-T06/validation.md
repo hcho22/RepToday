@@ -130,7 +130,7 @@ testRendersTheConsentSurfacesAndTheGateChangingTheCount: XCTAssertTrue failed -
 
 That first failure is recorded rather than quietly fixed, because it is the whole argument for running the check: a safety assertion nobody breaks on purpose is indistinguishable from one that cannot fail.
 
-**Sabotage 3 - the launch guard's empty-arguments hole, and this one also corrected the check before it caught anything.** A review round pointed out that the guard above only inspects a *non-empty* `launchArguments`, so the simplest bypass of all was invisible: a bare `app.launch()` with no arguments set at all leaves the array empty, and neither the entry check nor the teardown check fires - yet that launch builds the real transport against the dev deployment with the gate at its shipped default (on). The check now treats "arguments empty **and** the app is running **and** the helper wrote nothing" as a bypass, and its doc comment writes down the complete space of observable launch states as an enumeration, so a new bypass shape can be tested against it rather than re-derived.
+**Sabotage 3 - the launch guard's empty-arguments hole, and this one also corrected the check before it caught anything.** A review round pointed out that the guard above only inspects a *non-empty* `launchArguments`, so the simplest bypass of all was invisible: a bare `app.launch()` with no arguments set at all leaves the array empty, and neither the entry check nor the teardown check fires - yet that launch builds the real transport against the dev deployment with the gate at its shipped default (on). The check now treats "arguments empty **and** the app is running **and** the helper wrote nothing" as a bypass. Its doc comment enumerates the argument-state and app-state cells - but that enumeration is **not** a complete account of the ways a launch can bypass the guard, and both this record and that comment previously said it was. See "Sabotage 3b" below, which is what found that out.
 
 Adding that condition alone made **all five** tests in the suite fail immediately, before any launch, on entirely unmodified test bodies:
 
@@ -155,7 +155,17 @@ Executed 1 test, with 1 failure (0 unexpected) in 5.483 seconds
 ```
 
 Removing the injected line returns the suite to 10/0.
-**What this guard still does not do:** it *detects* a bypass rather than *preventing* one - a raw launch written into a future test still compiles. The structural answer is a wrapper making a raw `XCUIApplication` unreachable from tests; it is deferred with a named trigger on US-T07's criteria, which is where this guard starts protecting real emissions rather than a hypothetical.
+
+**Sabotage 3b - re-running Sabotage 3 from a different injection point, which falsified its conclusion.** Sabotage 3 injected the bare `app.launch()` *at the top of* a test, ahead of that test's normal helper launch, and concluded cell 2 was closed. Re-running it with the bare launch **replacing** the helper launch - so no helper launch follows it - shows the split:
+
+- bare `app.launch()` **followed by** a helper launch: **caught**, by the entry check, with the bypass message above. This is the ordering Sabotage 3 tested, so its result was true for what it tested.
+- bare `app.launch()` as the **only** launch in the test: **not caught**. The teardown call is meant to cover exactly this and does not fire. **The root cause is undiagnosed** and is recorded as unknown rather than guessed at.
+
+The test does still fail in the second case, but on `the telemetry probe HUD never appeared - the harness did not arm`. That failure is **incidental**: it comes from this particular test asserting on the HUD, not from the guard working. A future test that bare-launched and asserted on anything else would pass silently, and would POST once US-T07 adds an emission call site.
+
+So the honest statement of what this guard covers is: it catches a bypass that precedes a helper launch, and it does not catch a bypass that stands alone.
+
+**What this guard still does not do, and why it is not being patched again:** it *detects* a bypass rather than *preventing* one - a raw launch written into a future test still compiles. Three corrections have now each closed one shape and revealed another, which is the signature of an approach that leaks by nature rather than one patch short, so a fourth patch was deliberately declined. The structural answer is a wrapper making a raw `XCUIApplication` unreachable from tests. **A bypass is already known and documented, so that wrapper is a precondition on US-T07 rather than a contingency: it must land before the first emission call site does.** The dependency is recorded on `docs/test-coverage.md` and on US-T07's own criteria, and is additionally enforced as a blocking item in firstmate's work queue, so the sequencing does not rest on prose alone.
 
 **What that re-runnable suite does not prove:** it counts at the `URLProtocol` boundary inside the app, so an attempt means the transport built and dispatched a request, not that bytes reached Convex - that half is what the live legs above are for, and they do not re-run.
 It also says nothing about a Release build, which compiles none of the harness and today has no configured endpoint at all.
