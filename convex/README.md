@@ -8,15 +8,19 @@ The client that fills it is `LiveAnalyticsService` (US-T04, landed), which reach
 with a plain `URLSession` POST and **no Convex SDK** - the US-T01 spike returned a no-go on
 `convex-swift` because it ships an arm64-only xcframework that would break every Simulator-hosted
 test suite in this repo on an Intel host (`artifacts/reports/US-T01/spike-note.md`).
-The wire now has both ends and the wire itself; what it does **not** yet have is a production
-caller. Nothing in a shipping build calls `record(_:)` - the 13 emission sites are US-T07 through
-US-T12 - so a shipping build carries a working transport that nothing triggers. The one caller that
-does exist is US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its
-own in-process interceptor in front of it; pointed at a real deployment deliberately, as the US-T06
-validation run did, it writes ordinary rows here, so probe rows are a thing this table can contain
-and are deleted by hand afterwards.
+The wire now has both ends, the wire itself, and - since US-T07 - its **first production caller**:
+`RepTodayApp.init()` emits the three app-entry events (`app_install`, `day7_return`, `day30_return`)
+through `AppEntryTelemetry.eventsForLaunch(...)`, the first three of the 13 emission sites (US-T08
+through US-T12 add the other 10). So `record(_:)` is now called at app entry - but a **Release build
+still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
+`NoOpAnalyticsService` and the events go nowhere until a production deployment is chosen (below),
+while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
+US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process
+interceptor in front of it; pointed at a real deployment deliberately, as the US-T06 validation run
+did, it writes ordinary rows here, so probe rows are a thing this table can contain and are deleted
+by hand afterwards.
 It also has a consent gate in front of it (US-T06, landed): the transport re-reads the user's
-`AppState.analyticsEnabled` flag on every emission, so once the sites land this table only ever
+`AppState.analyticsEnabled` flag on every emission, so this table only ever
 receives rows from installs that have not opted out. That is a **client-side** gate and this sink
 knows nothing about it - it has no notion of consent, and no way to tell an install that opted out
 from one that never ran. An install is simply absent, and this table cannot say which it was.
