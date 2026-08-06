@@ -225,6 +225,129 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotEqual(other.installId, appState.installId)
     }
 
+    // MARK: - Opt-out consent flag (US-T06)
+
+    /// The trap this flag is most likely to fall into: `bool(forKey:)` answers `false` for a key
+    /// that was never written, so a naive read would ship every fresh install opted **out** while
+    /// the code read as if it defaulted to on. Absence must resolve to the shipped default.
+    func testAFreshInstallIsOptedIn() {
+        XCTAssertNil(defaults.object(forKey: AppState.analyticsEnabledKey), "precondition: never written")
+
+        XCTAssertTrue(AppState.isAnalyticsEnabled(in: defaults))
+        XCTAssertTrue(AppState(userDefaults: defaults).analyticsEnabled)
+    }
+
+    func testTurningTelemetryOffPersistsAndSurvivesRelaunch() {
+        let appState = AppState(userDefaults: defaults)
+        appState.analyticsEnabled = false
+
+        XCTAssertEqual(defaults.object(forKey: AppState.analyticsEnabledKey) as? Bool, false)
+        XCTAssertFalse(AppState.isAnalyticsEnabled(in: defaults))
+        XCTAssertFalse(AppState(userDefaults: defaults).analyticsEnabled, "the choice did not survive a relaunch")
+    }
+
+    func testTurningTelemetryBackOnPersistsToo() {
+        let appState = AppState(userDefaults: defaults)
+        appState.analyticsEnabled = false
+        appState.analyticsEnabled = true
+
+        XCTAssertTrue(AppState.isAnalyticsEnabled(in: defaults))
+        XCTAssertTrue(AppState(userDefaults: defaults).analyticsEnabled)
+    }
+
+    /// The XCUITest launch argument `-AppState.analyticsEnabled NO` lands in `UserDefaults`' argument
+    /// domain as a **string**, not a `Bool`. That is the shape the out-of-process gate depends on, so
+    /// it is asserted here rather than only exercised end to end: an `object(forKey:) as? Bool` read
+    /// would miss it entirely and leave the app emitting under a test that believes it is silent.
+    func testALaunchArgumentStringClosesTheGate() {
+        for stringValue in ["NO", "0", "false"] {
+            defaults.set(stringValue, forKey: AppState.analyticsEnabledKey)
+            XCTAssertFalse(
+                AppState.isAnalyticsEnabled(in: defaults),
+                "\"\(stringValue)\" in the argument domain must read as opted out"
+            )
+            XCTAssertFalse(AppState(userDefaults: defaults).analyticsEnabled)
+        }
+
+        for stringValue in ["YES", "1", "true"] {
+            defaults.set(stringValue, forKey: AppState.analyticsEnabledKey)
+            XCTAssertTrue(
+                AppState.isAnalyticsEnabled(in: defaults),
+                "\"\(stringValue)\" in the argument domain must read as opted in"
+            )
+        }
+    }
+
+    /// The gate the transport actually holds reads `UserDefaults.standard` fresh on every call, so a
+    /// change takes effect on the next event rather than the next launch. Asserted against `.standard`
+    /// because that is the store production reads; the key is cleaned up either way.
+    func testTheAnalyticsGateFollowsTheStandardStoreWithoutBeingRebuilt() {
+        let standard = UserDefaults.standard
+        restoreAfterTest(AppState.analyticsEnabledKey, in: standard)
+
+        let gate = AppState.analyticsGate()
+
+        standard.removeObject(forKey: AppState.analyticsEnabledKey)
+        XCTAssertTrue(gate(), "an install that never answered is opted in")
+
+        standard.set(false, forKey: AppState.analyticsEnabledKey)
+        XCTAssertFalse(gate(), "the same closure did not see the change; the gate was captured, not re-read")
+
+        standard.set(true, forKey: AppState.analyticsEnabledKey)
+        XCTAssertTrue(gate())
+    }
+
+    /// The writer and the reader must be bound to the *same* store, not to two that agree today.
+    ///
+    /// This is the only configuration that can fail, and the reason nothing else here catches it:
+    /// every other test drives one store on both sides. If the gate re-read `.standard` while an
+    /// `AppState` persisted the flag somewhere else - an app-group suite for a widget, say - the
+    /// Settings toggle would keep rendering and persisting correctly while the transport read a key
+    /// nobody writes, resolved it as absent, answered the shipped default `true`, and emitted for a
+    /// user who had opted out. So the gate is asked to disagree with `.standard` on purpose.
+    func testTheGateFollowsTheStoreItsAppStateWrites() {
+        let standard = UserDefaults.standard
+        restoreAfterTest(AppState.analyticsEnabledKey, in: standard)
+
+        let appState = AppState(userDefaults: defaults)
+        let gate = appState.analyticsGate
+
+        // The two stores are pinned to opposite answers, so following the wrong one is visible.
+        standard.set(true, forKey: AppState.analyticsEnabledKey)
+        appState.analyticsEnabled = false
+        XCTAssertFalse(
+            gate(),
+            "the gate read a store this AppState does not write; an opted-out user would still emit"
+        )
+
+        standard.set(false, forKey: AppState.analyticsEnabledKey)
+        appState.analyticsEnabled = true
+        XCTAssertTrue(gate(), "the gate did not follow its own store back on")
+
+        // And it is still re-read per call rather than captured, on whichever store it is bound to.
+        defaults.set(false, forKey: AppState.analyticsEnabledKey)
+        XCTAssertFalse(gate(), "the same closure did not see the change; the gate was captured")
+    }
+
+    /// The opt-out gates emission and nothing else. Turning it off must not clear the install
+    /// identifier: that would put the install into the re-minted-identity state US-T07 has to decide
+    /// about, which US-T06 is explicitly forbidden from reaching.
+    func testTurningTelemetryOffLeavesTheInstallIdentityAlone() {
+        let launch = Self.date(2026, 8, 4, hour: 9)
+        let appState = AppState(userDefaults: defaults, now: { launch }, calendar: Self.calendar)
+        let originalId = appState.installId
+
+        appState.analyticsEnabled = false
+
+        XCTAssertEqual(appState.installId, originalId)
+        XCTAssertEqual(defaults.string(forKey: "AppState.installId"), originalId)
+        XCTAssertEqual(appState.firstLaunchAt, launch)
+
+        let relaunched = AppState(userDefaults: defaults, now: { launch }, calendar: Self.calendar)
+        XCTAssertEqual(relaunched.installId, originalId, "opting out re-minted the identifier")
+        XCTAssertFalse(relaunched.analyticsEnabled)
+    }
+
     // MARK: - Helpers
 
     private static let calendar: Calendar = {

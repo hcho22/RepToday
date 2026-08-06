@@ -188,7 +188,33 @@ private struct WelcomeStep: View {
             // user signs in, the record is keyed by their stable Apple identifier; if they skip it
             // (or it fails offline), onboarding falls back to a local identifier and moves on.
             signInSection
+
+            // The anonymous-usage-data disclosure (US-T06). It sits on the *first* screen rather
+            // than the last because the first event the app emits hangs off app entry (US-T07's
+            // `app_install`), so a disclosure shown at the end of onboarding would come after the
+            // thing it discloses. It says where the off switch is, which is what makes an opt-out
+            // model honest rather than merely legal.
+            telemetryDisclosure
         }
+    }
+
+    private var telemetryDisclosure: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text("Rep Today collects anonymous usage data to see whether it's working - you can turn that off anytime in Profile, under Settings.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Link(destination: LegalLinks.privacyPolicy) {
+                Text("Privacy Policy")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget, alignment: .leading)
+            }
+            .accessibilityLabel("Privacy Policy")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, Theme.Spacing.sm)
     }
 
     @ViewBuilder

@@ -17,13 +17,18 @@ Derived from `prd-fitsnack-mvp-v6_0702.md` and `prd-rebrand-fitsnack-to-rep-toda
 - **No XP, no levels, no badges, no leaderboards. Anywhere.** Including ad copy.
 - **Pricing:** free tier = unlimited workouts forever. Premium ~$7.99/mo or ~$59.99/yr with 14-day trial unlocks depth (deeper analytics, Strength Phase, later AI reports). The paywall never gates the core loop.
 - **Apple-native:** iOS 17+, SwiftUI, Sign in with Apple, CloudKit private sync, HealthKit writes, StoreKit 2. Works fully offline and without an account.
+- **Anonymous usage measurement, on by default with a real off switch** (funnel-instrumentation PRD, US-T06; schema in `06-channels/event-metric-schema.md`). The launch build sends a short list of anonymous product events to Rep Today's own endpoint - no third-party analytics SDK, no IDFA, no ATT prompt, no cross-app tracking. Events carry a random per-install number and never a name, an email, or a device identifier. It is opt-out rather than opt-in: the **first** onboarding screen discloses it in one sentence beside the privacy-policy link, and **Profile -> Settings -> Privacy** carries a "Share anonymous usage data" toggle that takes effect on the next event rather than the next launch. Turning it off stops emission and leaves the per-install number alone. This is the sanctioned fact to write data-practices copy from (`02-brand/brand-guidelines.md` rule 12); do not invent detail beyond it. **Tense matters:** the pipeline, the consent flag, and both disclosure surfaces are built, but no screen emits into it yet - the event call sites are still ahead - so a build today sends nothing either way, and copy should describe what the *launch* build does. The landing FAQ still omits the off switch, deliberately, because the pair is a live A/B test; reconciling it is a blocking item on `08-redteam/pre-publication-checklist.md`.
 - **Two-phase journey:** everyone starts in the Discipline Phase (consistency is the only goal); the Strength Phase is earned by sustained consistency plus cleared movement tiers, never self-selected.
 
 ## Status (be honest about this everywhere)
 
+**Every claim in this block was re-verified 2026-08-05** - the two App Store facts confirmed by the founder, the two build facts checked against the repo.
+Two of them had drifted and are corrected below: `DEVELOPMENT_TEAM` is now set, and the test count had moved.
+That drift is pre-existing and was found while working US-T06; the story did not cause it, and `AGENTS.md` already notes that historical device notes describing the signing team as empty are point-in-time records.
+
 - Pre-launch. iOS-first. **Zero users. Zero downloads. Zero revenue. Zero testimonials.**
-- Not yet submitted to the App Store; `DEVELOPMENT_TEAM` unset; no App Store Connect record.
-- 667/667 tests pass; app boots in the iPhone 16 Simulator; the MVP core loop (Epics A-N) is implemented.
+- Not yet submitted to the App Store; no App Store Connect record. `DEVELOPMENT_TEAM` is set (`QH9S83CX4Y`), so entitlement-gated paths build for device - it was unset when this brief was first written.
+- 879/879 tests pass in the `RepToday` unit scheme, plus 10/10 in the separate `RepTodayUITests` scheme; app boots in the iPhone 16 Simulator; the MVP core loop (Epics A-N) is implemented.
 - `reptoday.com` is registered by a domain investor (HugeDomains, buy-it-now $3,895 as of 2026-07-14); purchase deferred by the founder. Bundle root `com.reptoday.app` locked (Apple does not verify domain ownership).
 
 ## What it is NOT (say so when honesty demands)

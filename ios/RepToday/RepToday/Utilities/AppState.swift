@@ -10,10 +10,13 @@ enum AppTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Small, persisted app state for routing and anonymous install identity.
+/// Small, persisted app state for routing, anonymous install identity, and telemetry consent.
 ///
 /// `isOnboarded` chooses between onboarding and the main tabs. `selectedTab` restores the
 /// user's last main-tab context. This uses the Observation framework (`@Observable`).
+///
+/// `analyticsEnabled` (US-T06) is the user's opt-out flag: on by default, turned off from the
+/// Settings screen, and the value the telemetry transport's gate reads on every emission.
 ///
 /// It is also the home of the anonymous per-install identity the funnel is cohorted by
 /// (US-T05): `installId`, `firstLaunchAt`, and `lastActiveAt`. `installId` is a random UUIDv4
@@ -41,6 +44,21 @@ final class AppState {
     var selectedTab: AppTab {
         didSet {
             userDefaults.set(selectedTab.rawValue, forKey: Keys.selectedTab)
+        }
+    }
+
+    /// The opt-out consent flag (US-T06): `true` means anonymous usage data may be emitted.
+    ///
+    /// Telemetry is on by default and turned off from Settings, so this is the *user's* copy of the
+    /// gate `LiveAnalyticsService` reads on every emission. Writing it persists immediately, and the
+    /// transport re-reads `UserDefaults` per event, so a toggle takes effect with no app restart.
+    ///
+    /// Nothing here clears `installId`: this flag gates emission only. Adding a "reset telemetry
+    /// identity" control would put an install into the re-minted-identity state US-T07 has to decide
+    /// about first, and that story's criteria forbid pre-empting it.
+    var analyticsEnabled: Bool {
+        didSet {
+            userDefaults.set(analyticsEnabled, forKey: AppState.analyticsEnabledKey)
         }
     }
 
@@ -117,9 +135,65 @@ final class AppState {
         return calendar
     }()
 
+    /// The `UserDefaults` key the opt-out flag lives under (US-T06).
+    ///
+    /// This is the one key here that is not private, because three things have to agree on it by
+    /// name: this object, the telemetry transport's gate (`analyticsGate`, read fresh per emission
+    /// rather than through an `AppState` instance the container has no handle on), and the XCUITest
+    /// launch argument `-AppState.analyticsEnabled NO`. `UserDefaults` reads the argument domain
+    /// ahead of the persisted one, so that argument needs no plumbing beyond a shared key - it is
+    /// the only mechanism that can reach an app launched out of process.
+    static let analyticsEnabledKey = "AppState.analyticsEnabled"
+
+    /// Reads the opt-out flag the way every consumer must read it.
+    ///
+    /// **Absent is not off.** `bool(forKey:)` answers `false` for a key that was never written, so a
+    /// naive read would ship every fresh install opted *out* while looking like it defaults to on.
+    /// Absence is therefore checked first and answered with the shipped default (`true`), and only a
+    /// value that is actually present is coerced - which is also what lets the launch argument work,
+    /// since the argument domain stores `NO` as a *string* that `object(forKey:)` sees and
+    /// `bool(forKey:)` reads as false.
+    ///
+    /// One consequence worth naming: a launch argument outranks the persisted value permanently, so
+    /// a run launched with `-AppState.analyticsEnabled NO` stays off even if the Settings toggle is
+    /// flipped on during it. That is right for a test harness pinning a state, and unreachable in
+    /// production, where nothing passes launch arguments.
+    static func isAnalyticsEnabled(in userDefaults: UserDefaults = .standard) -> Bool {
+        guard userDefaults.object(forKey: analyticsEnabledKey) != nil else { return true }
+        return userDefaults.bool(forKey: analyticsEnabledKey)
+    }
+
+    /// The opt-out gate as `LiveAnalyticsService` holds it: a closure re-read on every emission, so
+    /// turning telemetry off in Settings takes effect on the next event rather than the next launch.
+    ///
+    /// It captures a `UserDefaults`, never an `AppState`: `ServiceContainer.live(...)` is built from
+    /// an install id and not from the state object, and a captured object would also make the gate
+    /// outlive whatever built it. Which store it reads is *handed in* rather than assumed, so the
+    /// reader here and the writer in `analyticsEnabled`'s `didSet` are bound to the same instance by
+    /// construction instead of by both happening to name `.standard`. `RepTodayApp.init()` passes the
+    /// store its own `AppState` was built on, exactly as it passes `installId` down rather than
+    /// letting a second path re-derive it.
+    static func analyticsGate(in userDefaults: UserDefaults = .standard) -> @Sendable () -> Bool {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return { isAnalyticsEnabled(in: store.wrapped) }
+    }
+
+    /// This instance's gate: the same reader, bound to the very store this `AppState` persists the
+    /// flag to. This is what production hands the container, so the toggle the user sees and the
+    /// gate the transport asks cannot read different stores.
+    var analyticsGate: @Sendable () -> Bool { AppState.analyticsGate(in: userDefaults) }
+
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
 
+    /// - Parameter userDefaults: The store this state reads and writes, and - through
+    ///   `analyticsGate` - the store the telemetry gate reads. Production leaves it at `.standard`,
+    ///   which is load-bearing for the out-of-process opt-out proof: `NSArgumentDomain` sits at the
+    ///   head of `UserDefaults.standard`'s search list, which is what lets the XCUITest launch
+    ///   argument `-AppState.analyticsEnabled NO` close the gate in an app the test process never
+    ///   built. Moving this off `.standard` (an app-group suite for a widget or extension, say) is
+    ///   therefore not a free change: verify the argument domain is still reachable through the new
+    ///   store first, or that override silently stops working.
     init(
         userDefaults: UserDefaults = .standard,
         now: () -> Date = Date.init,
@@ -133,6 +207,10 @@ final class AppState {
 
         let savedTab = userDefaults.string(forKey: Keys.selectedTab)
         selectedTab = savedTab.flatMap(AppTab.init(rawValue:)) ?? .home
+
+        // Telemetry is opt-*out*, so an install that has never answered is on. See
+        // `isAnalyticsEnabled(in:)` for why that cannot be a plain `bool(forKey:)`.
+        analyticsEnabled = AppState.isAnalyticsEnabled(in: userDefaults)
 
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date
@@ -184,6 +262,9 @@ final class AppState {
         return appState
     }
 
+    /// The persisted keys. The opt-out flag's key is deliberately *not* here - it is
+    /// `AppState.analyticsEnabledKey`, non-private because the telemetry gate and the XCUITest
+    /// launch argument both name it.
     private enum Keys {
         static let isOnboarded = "AppState.isOnboarded"
         static let selectedTab = "AppState.selectedTab"
@@ -192,6 +273,15 @@ final class AppState {
         static let firstLaunchUnknown = "AppState.firstLaunchUnknown"
         static let lastActiveAt = "AppState.lastActiveAt"
     }
+}
+
+/// Carries a `UserDefaults` into the `@Sendable` telemetry gate.
+///
+/// The gate is `@Sendable` because the transport reads it from a detached task, and `UserDefaults`
+/// is thread-safe by documentation but carries no `Sendable` conformance. The box is what makes that
+/// gap an explicit, one-line assertion here rather than a warning at every capture site.
+private struct SendableUserDefaults: @unchecked Sendable {
+    let wrapped: UserDefaults
 }
 
 private extension UserDefaults {

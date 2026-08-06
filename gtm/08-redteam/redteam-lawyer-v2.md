@@ -32,6 +32,8 @@ The FAQ says "Your history lives on your device ... There is nothing to sell", w
 "Never sold" can be promised; "nothing to sell" is a data-practices absolute beyond the documented architecture, the exact claim class positioning.md's hygiene rules ban (the killed "that is the only fact the app records" line is the named cautionary example), and it will contradict the privacy nutrition label the app must file.
 Smallest honest fix: replace "There is nothing to sell." with "It is never sold.", and when instrumentation ships add one sentence disclosing minimal anonymous usage measurement so the FAQ, the schema, and the nutrition label tell one story.
 
+(Superseded in part by US-T06 of the funnel-instrumentation PRD, which shipped a user-facing off switch the app advertises on its first onboarding screen and in Profile -> Settings -> Privacy, so one disclosure sentence alone no longer makes the FAQ, the schema, and the nutrition label tell one story - a FAQ that discloses the measurement and omits the off switch still diverges. The prescription above is preserved as the dated finding it is; the operative requirement is the "Reconcile the landing FAQ, the event schema, and the privacy nutrition label with the shipped opt-out" item in `pre-publication-checklist.md`, which carries the fuller version including the off switch and the trigger that fires it. Act on the checklist.)
+
 ### 4. Day-2 social draft states unverified facts: a review date and founder-conduct quantities
 
 Target: `05-social-pmf/week-1-drafts.md`, Day 2 (shot 1 attribution "Real App Store review of a fitness app, 2020"; shot 2 "the most common complaint ... I found in months of research"; caption "I read hundreds like it before building").

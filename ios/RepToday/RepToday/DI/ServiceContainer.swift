@@ -148,11 +148,31 @@ struct ServiceContainer {
     ///     (FR-13) is held here by the code instead of by discipline - but only for tests running
     ///     *in this process*. `RepTodayUITests` launches the real app out of process, which builds
     ///     its own container from the defaults below, so nothing passed here reaches it; that half
-    ///     rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 points at a persisted
-    ///     flag a launch argument can override. See US-T07's criteria in the funnel PRD.
+    ///     now rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 pointed at
+    ///     `AppState.analyticsEnabled` - a persisted flag the `-AppState.analyticsEnabled NO` launch
+    ///     argument overrides. Read that as one of two mechanisms rather than as universally applied:
+    ///     `OnboardingImperialUITests` passes it on every launch, while `TelemetryOptOutUITests`
+    ///     passes it only where being opted out *is* the assertion and holds its opted-in legs off
+    ///     the wire by **interception** instead - the probe harness swaps the transport's
+    ///     `URLSession` for an in-process counting `URLProtocol`, so those launches need the gate
+    ///     genuinely open and are safe anyway. That suite's invariant is therefore not "consent is
+    ///     always off" but "consent off **or** the probe armed", and it holds by construction *for
+    ///     launches that go through the helper*: every one of those names a `TelemetryPosture`, an
+    ///     enum with no case meaning neither. A launch that goes around the helper entirely is only
+    ///     **detected**, by a runtime check, and not all of them are - a bare `app.launch()`
+    ///     standing alone as a test's only launch slips past it (`assertNobodyLaunchedBehindOurBack`
+    ///     records the split and why it is not being patched again). The wrapper that makes a raw
+    ///     `XCUIApplication` unreachable is a precondition on US-T07, since that is where a bypass
+    ///     starts costing live rows.
+    ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
+    ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
+    ///     to the store its own `AppState` writes rather than letting this side re-derive which
+    ///     store to read. The default reads `.standard`, which is where production's `AppState`
+    ///     lives, so a test that only wants the CoreData services keeps its existing call.
     static func live(
         context: NSManagedObjectContext,
         installId: String,
+        analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
@@ -168,6 +188,17 @@ struct ServiceContainer {
         // Health, resolving MET values from the exercise catalog for the energy estimate. Shared so the
         // completion recorder writes through the same instance exposed on the container.
         let healthKitService = HealthKitService(exerciseService: exerciseService)
+        // The telemetry transport keeps its own session in every ordinary build. The one exception is
+        // an XCUITest run launched with the US-T06 probe argument, where it is swapped for an
+        // in-process counting interceptor so an out-of-process test can observe the opt-out gate
+        // without a single byte leaving the app (`TelemetryUITestHarness`). `nil` means "keep your
+        // own", so nothing about the production path changes.
+        let analyticsSession: URLSession?
+        #if DEBUG
+        analyticsSession = TelemetryUITestHarness.interceptingSession()
+        #else
+        analyticsSession = nil
+        #endif
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -198,9 +229,12 @@ struct ServiceContainer {
             authService: AppleAuthService.live(),
             // The live Convex-backed transport (US-T04): one fire-and-forget `URLSession` POST per
             // event to the deployment's `POST /logEvent` action, carrying the install id above.
-            // Nothing calls it yet - the 13 emission sites are US-T07 through US-T12 - so a build
-            // today wires a transport that stays silent, exactly as US-T02 shipped the seam
-            // uncalled and US-T05 shipped the identity unread.
+            // Nothing in a shipping build calls it yet - the 13 production emission sites are
+            // US-T07 through US-T12 - so a build today wires a transport that stays silent,
+            // exactly as US-T02 shipped the seam uncalled and US-T05 shipped the identity unread.
+            // The one caller anywhere is US-T06's Debug-only, launch-argument-gated
+            // `TelemetryUITestHarness`, and it emits through the intercepting session wired above,
+            // so even that attempt never leaves the process.
             //
             // `configured` returns `nil` when the deployment endpoint is missing or unusable, and
             // that build falls back to the inert sink rather than trapping or logging: a telemetry
@@ -210,8 +244,18 @@ struct ServiceContainer {
             // is the honest answer to "is this build configured to emit?" rather than a promise
             // that it is. An explicit `analyticsService` overrides both branches; nothing else
             // about this wiring changes when it does.
+            //
+            // `analyticsGate` is US-T06's opt-out flag, read fresh from the `UserDefaults` it was
+            // built against on every emission rather than captured here - which is what makes
+            // turning the Settings toggle off take effect on the next event instead of the next
+            // launch, and what lets the `-AppState.analyticsEnabled NO` launch argument close the
+            // gate in an app this process never built.
             analyticsService: analyticsService
-                ?? LiveAnalyticsService.configured(installId: installId)
+                ?? LiveAnalyticsService.configured(
+                    installId: installId,
+                    session: analyticsSession,
+                    isEnabled: analyticsGate
+                )
                 ?? NoOpAnalyticsService()
         )
     }

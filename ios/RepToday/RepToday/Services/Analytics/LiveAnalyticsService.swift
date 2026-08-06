@@ -19,7 +19,11 @@ import Foundation
 ///
 /// **This service is not called anywhere in production.** US-T04 ships the transport; US-T07
 /// through US-T12 add the emission call sites. That is the same shape as US-T02 shipping the seam
-/// uncalled and US-T05 shipping the identity unread.
+/// uncalled and US-T05 shipping the identity unread. The one place `record(_:)` runs today is
+/// US-T06's Debug-only, launch-argument-gated `TelemetryUITestHarness`, which emits one probe event
+/// at app entry - and `ServiceContainer.live` hands this service a `session` whose only protocol is
+/// that harness's counting interceptor, so the attempt is dispatched and counted without leaving
+/// the process.
 ///
 /// **Identity comes from exactly one place.** `installId` is passed in from `AppState` (US-T05),
 /// which is the only thing that mints it or resolves which of the three launch states an install
@@ -50,17 +54,16 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     ///   - installId: The anonymous per-install identifier from `AppState` (US-T05).
     ///   - session: The session the POST goes out on; injected so tests can intercept it in
     ///     process with a `URLProtocol` stub and never touch the network (FR-13).
-    ///   - isEnabled: The opt-out gate, read fresh on every emission. It defaults to enabled and is
-    ///     deliberately a closure rather than a stored flag: US-T06 owns the persisted
-    ///     `analyticsEnabled` setting, its Settings toggle, and the onboarding disclosure, and this
-    ///     seam lets that story point the gate at the real flag without reshaping the service.
-    ///     Reading it per emission - not once at construction - is what makes turning telemetry off
-    ///     take effect immediately rather than at the next launch, which is a US-T06 criterion.
+    ///   - isEnabled: The opt-out gate, read fresh on every emission. It defaults to enabled, and
+    ///     production passes `AppState.analyticsGate` (US-T06), which reads the persisted
+    ///     `AppState.analyticsEnabled` flag the Settings toggle writes. It is deliberately a closure
+    ///     rather than a stored flag: reading it per emission - not once at construction - is what
+    ///     makes turning telemetry off take effect immediately rather than at the next launch.
     ///     It is also the *only* gate an out-of-process test can ever reach: `RepTodayUITests`
     ///     launches the real app, which builds its own container, so `ServiceContainer.live(...)`'s
-    ///     sink parameter cannot bind there. Until US-T06 backs this closure with a persisted flag a
-    ///     launch argument can flip, that path is gated by this default alone - harmless while no
-    ///     emission call site exists, and US-T07's criteria record where it stops being harmless.
+    ///     sink parameter cannot bind there. Because the flag lives in `UserDefaults`, the
+    ///     `-AppState.analyticsEnabled NO` launch argument closes this gate in an app the test
+    ///     process never built, which is how FR-13's out-of-process half is held.
     init(
         endpoint: URL,
         installId: String,
@@ -146,13 +149,21 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
         return URLSession(configuration: configuration)
     }
 
+    /// The opt-out gate as it reads *right now*, which is exactly what `record(_:)` will ask.
+    ///
+    /// It exists so a test can assert what a built service's gate is backed by - notably that
+    /// `ServiceContainer.live(...)` wired the persisted `AppState.analyticsEnabled` flag and not the
+    /// enabled-by-default stub - without emitting anything to find out. Read-only, and no production
+    /// caller reads it.
+    var isEmissionEnabled: Bool { isEnabled() }
+
     // MARK: - AnalyticsServiceProtocol
 
     func record(_ event: AnalyticsEvent) async {
         // The gate is read here, on the calling path, so it reflects the user's choice at the
         // moment of the emission. When telemetry is off there is no task, no encode, and no
-        // request - "zero network calls when off" is a US-T06 criterion and is satisfied by there
-        // being nothing after this line.
+        // request - "zero network calls when off" is US-T06's criterion and is satisfied by there
+        // being nothing after this line, in process and out of it alike.
         guard isEnabled() else { return }
 
         let endpoint = self.endpoint

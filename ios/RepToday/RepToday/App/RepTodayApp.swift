@@ -31,6 +31,14 @@ struct RepTodayApp: App {
     @State private var appState: AppState
 
     init() {
+        // Before anything reads the opt-out flag: an XCUITest run launched with the US-T06 probe
+        // argument starts from the shipped default rather than from whatever the previous run's
+        // toggling left in the installed app's container. Inert in every other launch, and compiled
+        // out of Release entirely.
+        #if DEBUG
+        TelemetryUITestHarness.resetPersistedConsentIfActive()
+        #endif
+
         // First, because the container is built from its install id (US-T04/US-T05). `AppState` is
         // the sole resolver of that identity - it mints the id, stamps the origin, and decides
         // which of the three launch states this launch is - so the id travels *from* here rather
@@ -39,13 +47,25 @@ struct RepTodayApp: App {
         _appState = State(initialValue: appState)
 
         // The production services are backed by the shared stack's main-queue context, so every
-        // CoreData-backed store reads and writes the one on-device (and synced) history.
+        // CoreData-backed store reads and writes the one on-device (and synced) history. The
+        // telemetry gate travels the same way the install id does - built from this `AppState`, so
+        // it is bound to the store the Settings toggle writes rather than to one it is assumed to
+        // share.
         let services = ServiceContainer.live(
             context: PersistenceController.shared.viewContext,
-            installId: appState.installId
+            installId: appState.installId,
+            analyticsGate: appState.analyticsGate
         )
         self.services = services
         self.transactionListener = services.subscriptionService.startObservingTransactions()
+
+        // The US-T06 out-of-process proof needs something for the opt-out gate to block, and no
+        // emission call site exists yet (US-T07 through US-T12 add them). Under the probe launch
+        // argument only, one `app_install` goes through the container's own sink from exactly the
+        // place US-T07's real one will - intercepted in process, so nothing reaches the network.
+        #if DEBUG
+        TelemetryUITestHarness.emitProbeEventIfActive(through: services.analyticsService)
+        #endif
     }
 
     var body: some Scene {

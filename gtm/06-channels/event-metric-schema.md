@@ -12,7 +12,7 @@ Web-side events are the only ones that exist before launch; in-app events ship w
 |---|---|---|---|---|
 | `landing_page_view` | Web | Landing page loads | `referrer_source` (utm or none) | Pre-launch top of funnel; K5 channel signal |
 | `waitlist_signup` | Web | Email submitted to waitlist | `referrer_source` | Pre-launch conversion; launch-day install channel size |
-| `app_install` | In-app | First open of the app ever | `install_week` (coarse, for cohorting) | Denominator for D7, D30, WAE, free-to-paid; K5 |
+| `app_install` | In-app | First open of the app ever | `install_week` (coarse, for cohorting) | Denominator for D7, D30, WAE, free-to-paid. **Not K5** - see the honest constraints below: K5's absolute install floor is read off App Store Connect units, because an opted-out install is missing here |
 | `onboarding_started` | In-app | First onboarding screen shown | none | Onboarding funnel numerator base |
 | `onboarding_completed` | In-app | Last onboarding step finished | `elapsed_seconds` | Onboarding -> 1st session (60% / 70%) |
 | `ready_screen_shown` | In-app | Ready-on-open session screen renders | `generation_ms` | Generation latency (<100ms); K8 wedge check |
@@ -42,7 +42,7 @@ Web-side events are the only ones that exist before launch; in-app events ship w
 
 ## Pre-registration note
 
-Every threshold above comes from the PRD Success Metrics table (`.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md`) and the kill criteria in `gtm/07-thesis/investment-thesis.md` (K1-K8, minimum-cohort rule, fixed week-8 and week-12 reviews).
+Every threshold above comes from the PRD Success Metrics table (`.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md`) and the kill criteria in `gtm/07-thesis/investment-thesis.md` (K1-K8, minimum-cohort rule, the consenting-installs rule US-T06 added, fixed week-8 and week-12 reviews).
 This schema defines how the numbers are produced; it does not change any threshold, and it must not be edited to move one after data starts arriving.
 
 ## Honest constraints (why first-party events are the primary plane)
@@ -53,4 +53,8 @@ RepToday runs zero paid spend pre-launch anyway (see `gtm/01-research/ios-attrib
 Because the app never tracks across apps and never shares identifiers, it does not need to show the ATT prompt at all, which keeps the privacy posture intact.
 [SETTLED by US-T01 through US-T04] Event delivery is a self-hosted endpoint, not an SDK, and it does **not** batch: one anonymous fire-and-forget `URLSession` POST per event to a Convex HTTP action (`POST /logEvent`), with no third-party analytics SDK and no new Swift Package.
 Each event carries only its name, the random per-install id, a client timestamp, and the property bag above; a failed or offline send is dropped rather than queued, because telemetry is best-effort and must never gate the core loop.
+[SETTLED by US-T06] Collection is **opt-out with disclosure**, not opt-in: it is on by default, the first onboarding screen discloses it in one sentence alongside the privacy-policy link, and a "Share anonymous usage data" toggle in Settings turns it off, effective on the next event rather than the next launch.
+Opting out gates emission only and leaves the per-install id untouched, so an opted-out install stops appearing in every event above - it does not reappear as a second install.
+That is the honest constraint this adds to the plane: opted-out installs are silently absent from both the numerators and the denominators here, and the sink cannot distinguish them from installs that never ran, so every rate defined above is measured over consenting installs rather than over all of them.
+A rate mostly survives that, since the missing install leaves both halves of the ratio; an absolute count does not, which is why the thesis's K5 install floor is read off App Store Connect units rather than off the telemetry install count (`gtm/07-thesis/investment-thesis.md`, third instrument rule).
 See `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` for the stories and `convex/README.md` for the receiving end of the contract.
