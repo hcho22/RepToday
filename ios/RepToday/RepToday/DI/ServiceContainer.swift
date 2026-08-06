@@ -157,13 +157,15 @@ struct ServiceContainer {
     ///     `URLSession` for an in-process counting `URLProtocol`, so those launches need the gate
     ///     genuinely open and are safe anyway. That suite's invariant is therefore not "consent is
     ///     always off" but "consent off **or** the probe armed", and it holds by construction *for
-    ///     launches that go through the helper*: every one of those names a `TelemetryPosture`, an
-    ///     enum with no case meaning neither. A launch that goes around the helper entirely is only
-    ///     **detected**, by a runtime check, and not all of them are - a bare `app.launch()`
-    ///     standing alone as a test's only launch slips past it (`assertNobodyLaunchedBehindOurBack`
-    ///     records the split and why it is not being patched again). The wrapper that makes a raw
-    ///     `XCUIApplication` unreachable is a precondition on US-T07, since that is where a bypass
-    ///     starts costing live rows.
+    ///     launches that go through the helper*: the sole `TestApp` wrapper
+    ///     (`RepTodayUITests/TestApp.swift`) owns the only `XCUIApplication`, and its one launch entry
+    ///     point takes a `TelemetryPosture` by value - an enum with no case meaning neither - so a
+    ///     launch that names no posture is not expressible through the suite's API. Because
+    ///     `XCUIApplication` is a framework type any file can still construct, that guarantee is
+    ///     "cannot ship a bypass" rather than "cannot type one": `UITestLaunchGuardTests`
+    ///     (`RepTodayTests/UITestLaunchGuardTests.swift`, in the unit bundle) scans every
+    ///     `RepTodayUITests` source and fails the routinely-run `-scheme RepToday test` gate if
+    ///     `XCUIApplication(` is constructed anywhere but `TestApp.swift`.
     ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
     ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
     ///     to the store its own `AppState` writes rather than letting this side re-derive which

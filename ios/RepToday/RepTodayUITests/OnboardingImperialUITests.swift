@@ -54,22 +54,24 @@ final class OnboardingImperialUITests: XCTestCase {
     private let stepButtonSide: CGFloat = 44
     private let dividerWidth: CGFloat = 1
 
-    private var app: XCUIApplication!
+    private var app: TestApp!
 
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        app = XCUIApplication()
-        // `UserDefaults` reads the argument domain first, so this parks the app on onboarding without
-        // reaching into the installed app's container - a run never depends on what the last one left.
+        app = TestApp(self)
+        // This suite launches through the same `TestApp` wrapper `TelemetryOptOutUITests` does, so it
+        // cannot hold a launchable raw `XCUIApplication` and every launch names a `TelemetryPosture`.
         //
-        // `-AppState.analyticsEnabled NO` is the same mechanism pointed at US-T06's opt-out flag, and
-        // it is what keeps this suite off the wire: it launches the real Debug app, which builds its
-        // own container against the dev deployment, so no in-process seam can reach it. Nothing emits
-        // today, but `app_install` hangs off app entry (US-T07) and would fire on **every** launch
-        // here; the argument is set now so that story cannot turn this suite into a live POST.
-        app.launchArguments = ["-AppState.isOnboarded", "NO", "-AppState.analyticsEnabled", "NO"]
-        app.launch()
+        // `.optedOutWithNoProbe` contributes `-AppState.analyticsEnabled NO`, which is what keeps this
+        // suite off the wire: it launches the real Debug app, which builds its own container against
+        // the dev deployment, so no in-process seam can reach it. Nothing emits today, but `app_install`
+        // hangs off app entry (US-T07) and would fire on **every** launch here; the posture pins consent
+        // off now so that story cannot turn this suite into a live POST. `onboarded: false` parks it on
+        // onboarding (read from the argument domain, so it never depends on what the last run left), and
+        // `answersHealthPrompt: false` because the flow starts before the main tabs raise that sheet -
+        // this suite answers it by hand later, in the one test that walks through to a ready session.
+        app.launch(.optedOutWithNoProbe, onboarded: false, answersHealthPrompt: false)
     }
 
     override func tearDown() {
@@ -303,7 +305,7 @@ final class OnboardingImperialUITests: XCTestCase {
         // The ready screen is reached above; it is *met* through the Health prompt, which the main
         // tabs raise as they appear. Answered here so the render below shows the session rather than
         // the sheet sitting over it.
-        answerHealthAccessSheetIfPresented(in: app)
+        app.answerHealthPromptIfPresented()
         waitUntilMainTabsAreUncovered()
         attach(screenshot: XCUIScreen.main.screenshot(), named: "live-ready-after-imperial-onboarding.png")
     }

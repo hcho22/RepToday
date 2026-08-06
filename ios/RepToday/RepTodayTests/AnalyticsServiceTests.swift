@@ -173,8 +173,13 @@ final class AnalyticsServiceTests: XCTestCase {
     /// **interception** - the probe harness replaces the transport's `URLSession` with an in-process
     /// counting `URLProtocol`, which is what lets those legs run with the gate genuinely open. So
     /// every launch in that suite carries consent-off **or** the probe, an invariant held by
-    /// construction: one sanctioned launch helper, a `TelemetryPosture` enum in which neither is not
-    /// representable, and a runtime check for a launch that goes around the helper.
+    /// construction: the sole `TestApp` wrapper (`RepTodayUITests/TestApp.swift`) owns the only
+    /// `XCUIApplication`, and its one launch entry point takes a `TelemetryPosture` by value - an enum
+    /// in which neither is not representable - so no launch through the suite's API can name no posture.
+    /// A raw `XCUIApplication` is a framework type any file can construct, so the guarantee is "cannot
+    /// ship a bypass" rather than "cannot type one": `UITestLaunchGuardTests`
+    /// (`RepTodayTests/UITestLaunchGuardTests.swift`) fails the default `-scheme RepToday test` run if
+    /// `XCUIApplication(` is constructed outside `TestApp.swift`.
     func testFunnelRecordedThroughMockContainerRoundTripsLosslessly() async throws {
         let controller = MockPersistence.controller()
         let live = ServiceContainer.live(context: controller.viewContext, installId: "container-install")
