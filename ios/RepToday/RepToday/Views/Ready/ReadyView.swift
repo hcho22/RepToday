@@ -34,7 +34,8 @@ struct ReadyView: View {
                 workoutEngine: services.workoutEngine,
                 workoutLogService: services.workoutLogService,
                 consistencyService: services.consistencyService,
-                activeSessionStore: services.activeSessionStore
+                activeSessionStore: services.activeSessionStore,
+                analytics: services.analyticsService
             )
         )
     }

@@ -69,7 +69,15 @@ final class ReadyViewModel {
     /// Where an in-progress session is read from (US-K04) so an abandoned session can be resumed or
     /// discarded from the Ready Screen. The player writes to this same store while a session is live.
     private let activeSessionStore: any ActiveSessionStore
-    /// Injected clock so the recent-log lookback window is testable.
+    /// Anonymous product telemetry sink (US-T09). Optional exactly like `OnboardingViewModel.analytics`,
+    /// so previews and tests that do not exercise the funnel construct the view model unchanged; when
+    /// absent the `ready_screen_shown` emission is simply skipped. The emission goes through it
+    /// **unconditionally** - consent (US-T06) is enforced inside the sink, so this view model never
+    /// re-checks the opt-out flag (a second gate could disagree with the first).
+    private let analytics: (any AnalyticsServiceProtocol)?
+    /// Injected clock so the recent-log lookback window is testable. It also anchors the
+    /// `generation_ms` measurement (US-T09), captured immediately before and after the engine call,
+    /// so that measurement is deterministic under a test clock rather than a raw `Date()` read.
     private let now: () -> Date
 
     /// The background re-program kicked off on open (US-J02), exposed only so tests can await it.
@@ -100,6 +108,19 @@ final class ReadyViewModel {
     /// but preserves the user's in-session chip choice rather than snapping back to the default.
     private var hasSeededSelection = false
 
+    /// Ensures `ready_screen_shown` is emitted exactly once per Ready Screen appearance (US-T09),
+    /// scoped to the first successful load. Emission lives in `load()`, not the shared `generate()`,
+    /// so a duration-chip regeneration (which reaches the engine only through `selectDuration()`)
+    /// structurally cannot trip it and inflate the funnel count. Not persisted across launches: the
+    /// funnel counts distinct installs and the backend dedups by `installId`.
+    private var hasEmittedReadyScreenShown = false
+
+    /// The wall-time the most recent session generation took, in whole milliseconds, measured off the
+    /// injected clock around the engine call specifically (US-T09). Measured on every `generate()` -
+    /// including chip-tap regenerations, useful for internal debugging - but only the first-load value
+    /// is emitted as `ready_screen_shown`'s `generation_ms`.
+    private(set) var lastGenerationMs: Int = 0
+
     init(
         userService: any UserServiceProtocol,
         sessionPolicyService: any SessionPolicyServiceProtocol,
@@ -108,6 +129,7 @@ final class ReadyViewModel {
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
         varietyLanguageResolver: VarietyLanguageResolver = VarietyLanguageResolver(),
         activeSessionStore: any ActiveSessionStore = InMemoryActiveSessionStore(),
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.userService = userService
@@ -117,6 +139,7 @@ final class ReadyViewModel {
         self.consistencyService = consistencyService
         self.varietyLanguageResolver = varietyLanguageResolver
         self.activeSessionStore = activeSessionStore
+        self.analytics = analytics
         self.now = now
     }
 
@@ -158,6 +181,23 @@ final class ReadyViewModel {
             policy = try await sessionPolicyService.currentPolicy(for: user)
 
             try await generate()
+
+            // US-T09: `ready_screen_shown` fires once per Ready Screen appearance, scoped to the first
+            // successful load, carrying the `generation_ms` just measured in `generate()`. Guarded like
+            // the `hasComputedConsistency` / `hasCheckedReprogramOnOpen` one-shots below, and emitted
+            // here rather than inside `generate()` so a chip-tap regeneration (which never runs `load()`)
+            // cannot re-emit and inflate the count. Fire-and-forget through the sink: it returns
+            // immediately and swallows any failure, so telemetry never gates the session render or Start.
+            if !hasEmittedReadyScreenShown {
+                hasEmittedReadyScreenShown = true
+                await analytics?.record(
+                    AnalyticsEvent(
+                        name: .readyScreenShown,
+                        timestampMs: timestampMs(),
+                        properties: ["generation_ms": .int(lastGenerationMs)]
+                    )
+                )
+            }
 
             // The session is now generated and rendering (the view prioritizes the workout over the
             // loading state), so Start is interactive from here on. The Variety Language line is
@@ -295,6 +335,12 @@ final class ReadyViewModel {
         resumableSession = nil
     }
 
+    /// The current millisecond client timestamp off the injected clock (US-T09) - the same encoding
+    /// `AnalyticsEvent` carries everywhere, with no raw `Date()` read.
+    private func timestampMs() -> Int {
+        Int(now().timeIntervalSince1970 * 1000)
+    }
+
     /// Generate today's session at `selectedMinutes` from the cached engine inputs. Shared by the
     /// initial load and every chip regeneration so both take the identical path. The requested
     /// minutes are captured before the await so a superseded, slower generation (an older chip tap
@@ -302,14 +348,21 @@ final class ReadyViewModel {
     private func generate() async throws {
         guard let user else { return }
         let requested = selectedMinutes
+        // Measure the generation call specifically (US-T09) - the injected clock read straddles only
+        // the engine await, not the surrounding view work, so `generation_ms` stays planning-honest.
+        // Clamped at 0 defensively, mirroring US-T08's `elapsed_seconds`, so a non-monotonic clock read
+        // can never produce a negative latency.
+        let generationStart = now()
         let generated = try await workoutEngine.generateWorkout(
             requestedMinutes: requested,
             user: user,
             recentLogs: recentLogs,
             sessionPolicy: policy
         )
+        let generationMs = max(0, Int(now().timeIntervalSince(generationStart) * 1000))
         guard requested == selectedMinutes else { return }
         workout = generated
+        lastGenerationMs = generationMs
 
         // Recompute the Variety Language line from the freshly generated session, so a duration chip
         // that shifts today's lead pillar never leaves the header describing a contrast this session
