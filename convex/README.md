@@ -8,11 +8,12 @@ The client that fills it is `LiveAnalyticsService` (US-T04, landed), which reach
 with a plain `URLSession` POST and **no Convex SDK** - the US-T01 spike returned a no-go on
 `convex-swift` because it ships an arm64-only xcframework that would break every Simulator-hosted
 test suite in this repo on an Intel host (`artifacts/reports/US-T01/spike-note.md`).
-The wire now has both ends, the wire itself, and - since US-T07 - its **first production caller**:
+The wire now has both ends, the wire itself, and - since US-T07 - its **first production callers**:
 `RepTodayApp.init()` emits the three app-entry events (`app_install`, `day7_return`, `day30_return`)
-through `AppEntryTelemetry.eventsForLaunch(...)`, the first three of the 13 emission sites (US-T08
-through US-T12 add the other 10). So `record(_:)` is now called at app entry - but a **Release build
-still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
+through `AppEntryTelemetry.eventsForLaunch(...)`, and US-T08 added the second call site - the
+onboarding flow emits `onboarding_started` and `onboarding_completed` through `OnboardingViewModel`.
+That is five of the 13 emission sites (US-T09 through US-T12 add the other 8). So `record(_:)` is now
+called at app entry and through onboarding - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
 `NoOpAnalyticsService` and the events go nowhere until a production deployment is chosen (below),
 while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process
