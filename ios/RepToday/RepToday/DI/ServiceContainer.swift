@@ -156,10 +156,14 @@ struct ServiceContainer {
     ///     the wire by **interception** instead - the probe harness swaps the transport's
     ///     `URLSession` for an in-process counting `URLProtocol`, so those launches need the gate
     ///     genuinely open and are safe anyway. That suite's invariant is therefore not "consent is
-    ///     always off" but "consent off **or** the probe armed", and it holds by construction: every
-    ///     launch goes through one sanctioned helper naming a `TelemetryPosture`, an enum with no
-    ///     case meaning neither, backed by a runtime check for a launch that bypasses the helper
-    ///     entirely.
+    ///     always off" but "consent off **or** the probe armed", and it holds by construction *for
+    ///     launches that go through the helper*: every one of those names a `TelemetryPosture`, an
+    ///     enum with no case meaning neither. A launch that goes around the helper entirely is only
+    ///     **detected**, by a runtime check, and not all of them are - a bare `app.launch()`
+    ///     standing alone as a test's only launch slips past it (`assertNobodyLaunchedBehindOurBack`
+    ///     records the split and why it is not being patched again). The wrapper that makes a raw
+    ///     `XCUIApplication` unreachable is a precondition on US-T07, since that is where a bypass
+    ///     starts costing live rows.
     ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
     ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
     ///     to the store its own `AppState` writes rather than letting this side re-derive which
@@ -225,9 +229,12 @@ struct ServiceContainer {
             authService: AppleAuthService.live(),
             // The live Convex-backed transport (US-T04): one fire-and-forget `URLSession` POST per
             // event to the deployment's `POST /logEvent` action, carrying the install id above.
-            // Nothing calls it yet - the 13 emission sites are US-T07 through US-T12 - so a build
-            // today wires a transport that stays silent, exactly as US-T02 shipped the seam
-            // uncalled and US-T05 shipped the identity unread.
+            // Nothing in a shipping build calls it yet - the 13 production emission sites are
+            // US-T07 through US-T12 - so a build today wires a transport that stays silent,
+            // exactly as US-T02 shipped the seam uncalled and US-T05 shipped the identity unread.
+            // The one caller anywhere is US-T06's Debug-only, launch-argument-gated
+            // `TelemetryUITestHarness`, and it emits through the intercepting session wired above,
+            // so even that attempt never leaves the process.
             //
             // `configured` returns `nil` when the deployment endpoint is missing or unusable, and
             // that build falls back to the inert sink rather than trapping or logging: a telemetry

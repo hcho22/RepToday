@@ -30,7 +30,7 @@ open 04-video/launch-video.mp4
 | `07-thesis/` | Investment thesis with kill criteria K0-K9 |
 | `08-redteam/` | v2 personas + dossier + pre-publication checklist, v1 persona history |
 | `09-extras/` | Investor teaser, App Store screenshot comps, social launch kit, review-response playbook (invented deliverable), `marketing-agent/` build spec + creative loop |
-| `decisions-log.md` | Every [DECIDED BY AGENT] call (v2: D-101..D-106) |
+| `decisions-log.md` | Every [DECIDED BY AGENT] call (v2: D-101..D-107) |
 | `sources.md` | Every URL cited, with fetch timestamp (v1 + v2 runs) |
 | `self-grade.md` | Self-grade record |
 | `gtm-master-prompt.md` / `gtm-master-prompt-v2.md` | The two master prompts |

@@ -19,7 +19,11 @@ import Foundation
 ///
 /// **This service is not called anywhere in production.** US-T04 ships the transport; US-T07
 /// through US-T12 add the emission call sites. That is the same shape as US-T02 shipping the seam
-/// uncalled and US-T05 shipping the identity unread.
+/// uncalled and US-T05 shipping the identity unread. The one place `record(_:)` runs today is
+/// US-T06's Debug-only, launch-argument-gated `TelemetryUITestHarness`, which emits one probe event
+/// at app entry - and `ServiceContainer.live` hands this service a `session` whose only protocol is
+/// that harness's counting interceptor, so the attempt is dispatched and counted without leaving
+/// the process.
 ///
 /// **Identity comes from exactly one place.** `installId` is passed in from `AppState` (US-T05),
 /// which is the only thing that mints it or resolves which of the three launch states an install

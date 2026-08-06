@@ -12,7 +12,7 @@ Web-side events are the only ones that exist before launch; in-app events ship w
 |---|---|---|---|---|
 | `landing_page_view` | Web | Landing page loads | `referrer_source` (utm or none) | Pre-launch top of funnel; K5 channel signal |
 | `waitlist_signup` | Web | Email submitted to waitlist | `referrer_source` | Pre-launch conversion; launch-day install channel size |
-| `app_install` | In-app | First open of the app ever | `install_week` (coarse, for cohorting) | Denominator for D7, D30, WAE, free-to-paid; K5 |
+| `app_install` | In-app | First open of the app ever | `install_week` (coarse, for cohorting) | Denominator for D7, D30, WAE, free-to-paid. **Not K5** - see the honest constraints below: K5's absolute install floor is read off App Store Connect units, because an opted-out install is missing here |
 | `onboarding_started` | In-app | First onboarding screen shown | none | Onboarding funnel numerator base |
 | `onboarding_completed` | In-app | Last onboarding step finished | `elapsed_seconds` | Onboarding -> 1st session (60% / 70%) |
 | `ready_screen_shown` | In-app | Ready-on-open session screen renders | `generation_ms` | Generation latency (<100ms); K8 wedge check |
@@ -42,7 +42,7 @@ Web-side events are the only ones that exist before launch; in-app events ship w
 
 ## Pre-registration note
 
-Every threshold above comes from the PRD Success Metrics table (`.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md`) and the kill criteria in `gtm/07-thesis/investment-thesis.md` (K1-K8, minimum-cohort rule, fixed week-8 and week-12 reviews).
+Every threshold above comes from the PRD Success Metrics table (`.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md`) and the kill criteria in `gtm/07-thesis/investment-thesis.md` (K1-K8, minimum-cohort rule, the consenting-installs rule US-T06 added, fixed week-8 and week-12 reviews).
 This schema defines how the numbers are produced; it does not change any threshold, and it must not be edited to move one after data starts arriving.
 
 ## Honest constraints (why first-party events are the primary plane)

@@ -180,6 +180,8 @@ Edited because they described US-T06 as not-yet-landed, or over-claimed: the PRD
 
 Left alone after checking: `CoreDataServicesTests`' header (already accurate), `ServiceProtocols.swift`, `NoOpAnalyticsService`, `AnalyticsWireBody`, `AnalyticsEvent`, `project.yml`, `convex/README.md` (all still true - "nothing calls `record(_:)`" remains the case), and the US-T03/T04/T05 validation transcripts, which are point-in-time records this repo deliberately does not rewrite.
 
+**Correction, recorded rather than smoothed over:** the parenthetical above was wrong on its own terms. This story *added* a caller - `TelemetryUITestHarness` calls `record(_:)` from `RepTodayApp.init()` in a Debug probe run, through the container's own resolved sink - so "nothing calls `record(_:)`" stopped being literally true the moment the harness landed, and the four unqualified spellings of it (`ServiceProtocols.swift`, `AnalyticsEvent.swift`, `LiveAnalyticsService.swift`, the sink comment in `ServiceContainer.live`) were left standing on a check that had used the sentence's *intent* - no production emission site exists - as if it were its wording. A later documentation pass qualified all four to "nothing in a **shipping build** calls it, and the only caller anywhere is the Debug-only, launch-argument-gated harness", which is what `AGENTS.md` had said correctly all along. Nothing about the code or about FR-13 changes: the probe's attempt is intercepted in process by the counting `URLProtocol` this same harness installs. `ServiceProtocols.swift` was separately extended afterwards with the consent-gate seam trigger, so it is no longer in the left-alone set either.
+
 ## Test runs on this branch
 
 Local runs only - this repo has no CI, so no PR check gates any of it.
