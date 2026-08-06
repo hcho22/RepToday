@@ -19,7 +19,8 @@ struct OnboardingView: View {
             viewModel: OnboardingViewModel(
                 userService: services.userService,
                 sessionPolicyService: services.sessionPolicyService,
-                authService: services.authService
+                authService: services.authService,
+                analytics: services.analyticsService
             ),
             onComplete: onComplete
         )
@@ -62,6 +63,13 @@ struct OnboardingView: View {
             .padding(.top, Theme.Spacing.md)
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.step)
+        .onAppear {
+            // US-T08: `onboarding_started` fires on the first onboarding screen's appearance. The view
+            // model guards it to one emission per flow, so a re-`onAppear` does not double-fire; the
+            // sink enforces consent, so an opted-out install produces no request. Fire-and-forget, so
+            // the wrapping `Task` only bridges `onAppear`'s synchronous context.
+            Task { await viewModel.onboardingStarted() }
+        }
     }
 
     // MARK: - Progress

@@ -401,6 +401,105 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isLastStep)
         XCTAssertTrue(vm.canAdvance, "a duration is preselected; finish is never gated")
     }
+
+    // MARK: - Onboarding funnel telemetry (US-T08)
+
+    /// An advanceable clock so a test can pin distinct instants to `onboarding_started` and the
+    /// `finish()` that emits `onboarding_completed`, and assert the exact `elapsed_seconds`.
+    private final class MutableClock {
+        var now: Date
+        init(_ start: Date) { now = start }
+        func advance(_ interval: TimeInterval) { now += interval }
+    }
+
+    private func makeTelemetryViewModel(
+        analytics: any AnalyticsServiceProtocol,
+        clock: MutableClock,
+        userService: any UserServiceProtocol = MockUserService()
+    ) -> OnboardingViewModel {
+        OnboardingViewModel(
+            userService: userService,
+            sessionPolicyService: MockSessionPolicyService(),
+            analytics: analytics,
+            userIdentifier: { "onboarding-telemetry-user" },
+            now: { clock.now }
+        )
+    }
+
+    /// `onboardingStarted()` emits exactly one `onboarding_started` with no properties.
+    func testOnboardingStartedEmitsOnceWithNoProperties() async {
+        let analytics = MockAnalyticsService()
+        let clock = MutableClock(fixedDate)
+        let vm = makeTelemetryViewModel(analytics: analytics, clock: clock)
+
+        await vm.onboardingStarted()
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.onboardingStarted])
+        XCTAssertTrue(events[0].properties.isEmpty, "onboarding_started carries no properties")
+    }
+
+    /// A re-`onAppear` within the same flow must not double-fire `onboarding_started`.
+    func testOnboardingStartedIsIdempotent() async {
+        let analytics = MockAnalyticsService()
+        let clock = MutableClock(fixedDate)
+        let vm = makeTelemetryViewModel(analytics: analytics, clock: clock)
+
+        await vm.onboardingStarted()
+        await vm.onboardingStarted()
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.filter { $0.name == .onboardingStarted }.count, 1)
+    }
+
+    /// A successful `finish()` after `onboardingStarted()` emits exactly one `onboarding_completed`
+    /// carrying `elapsed_seconds` as `.int`, equal to the whole seconds the clock advanced (including
+    /// sub-second truncation).
+    func testFinishEmitsOnboardingCompletedWithElapsedSeconds() async {
+        let analytics = MockAnalyticsService()
+        let clock = MutableClock(fixedDate)
+        let vm = makeTelemetryViewModel(analytics: analytics, clock: clock)
+        fillAnswers(vm)
+
+        await vm.onboardingStarted()
+        clock.advance(42.9) // truncates to 42 whole seconds
+        let ok = await vm.finish()
+        XCTAssertTrue(ok)
+
+        let completed = await analytics.recordedEvents.filter { $0.name == .onboardingCompleted }
+        XCTAssertEqual(completed.count, 1)
+        XCTAssertEqual(completed[0].properties, ["elapsed_seconds": .int(42)])
+    }
+
+    /// A failed `finish()` (the user service throws) emits no `onboarding_completed`.
+    func testFailedFinishEmitsNoOnboardingCompleted() async {
+        let analytics = MockAnalyticsService()
+        let clock = MutableClock(fixedDate)
+        let vm = makeTelemetryViewModel(
+            analytics: analytics,
+            clock: clock,
+            userService: FailingUserService()
+        )
+        fillAnswers(vm)
+
+        await vm.onboardingStarted()
+        clock.advance(10)
+        let ok = await vm.finish()
+        XCTAssertFalse(ok)
+
+        let completed = await analytics.recordedEvents.filter { $0.name == .onboardingCompleted }
+        XCTAssertTrue(completed.isEmpty, "onboarding_completed never fires on the failure branch")
+    }
+
+    /// The two funnel emissions are optional: a view model built with no analytics sink completes
+    /// onboarding without trapping.
+    func testTelemetryIsOptional() async {
+        let vm = makeViewModel()
+        fillAnswers(vm)
+        await vm.onboardingStarted()
+        let ok = await vm.finish()
+        XCTAssertTrue(ok, "onboarding completes with no analytics sink wired")
+    }
 }
 
 // MARK: - Test doubles
