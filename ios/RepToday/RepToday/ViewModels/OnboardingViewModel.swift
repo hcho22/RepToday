@@ -114,24 +114,64 @@ final class OnboardingViewModel {
     /// sign-in construct the view model without it; when absent, identity falls back to
     /// `userIdentifier` below.
     private let authService: (any AuthServiceProtocol)?
+    /// Anonymous product telemetry sink (US-T08). Optional exactly like `authService`, so previews
+    /// and tests that do not exercise the funnel construct the view model unchanged; when absent the
+    /// two onboarding-funnel emissions are simply skipped. Emissions go through it **unconditionally**
+    /// - consent (US-T06) is enforced inside the sink, so this view model never re-checks the opt-out
+    /// flag (a second gate could disagree with the first).
+    private let analytics: (any AnalyticsServiceProtocol)?
     /// The local fallback identity source, used only when the user has not signed in with Apple, so
     /// the offline-first core loop always has a stable key without requiring an iCloud account.
     private let userIdentifier: () -> String
     /// Injected clock, so `createdAt` stays testable and the view model has no hidden wall-clock read.
+    /// It also anchors the onboarding-funnel `elapsed_seconds` (US-T08), so that measurement is
+    /// deterministic under a test clock rather than a raw `Date()` read.
     private let now: () -> Date
 
     init(
         userService: any UserServiceProtocol,
         sessionPolicyService: any SessionPolicyServiceProtocol,
         authService: (any AuthServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         userIdentifier: @escaping () -> String = { UUID().uuidString },
         now: @escaping () -> Date = { Date() }
     ) {
         self.userService = userService
         self.sessionPolicyService = sessionPolicyService
         self.authService = authService
+        self.analytics = analytics
         self.userIdentifier = userIdentifier
         self.now = now
+    }
+
+    // MARK: - Onboarding funnel telemetry (US-T08)
+
+    /// Guards `onboarding_started` to exactly one emission per view-model lifetime, so a re-`onAppear`
+    /// within the same flow does not double-fire. This is not persisted across launches: the funnel
+    /// counts distinct installs and the backend dedups by `installId`, so emitting once per
+    /// presentation is correct.
+    private var didEmitOnboardingStarted = false
+
+    /// The instant `onboarding_started` was emitted, captured off the injected clock. It anchors the
+    /// `elapsed_seconds` `onboarding_completed` carries. `nil` until the first `onboardingStarted()`
+    /// call, so a `finish()` that somehow ran without one omits the elapsed anchor cleanly rather than
+    /// fabricating a start.
+    private var onboardingStartInstant: Date?
+
+    /// Emits `onboarding_started` (no properties) on the first onboarding screen's appearance, exactly
+    /// once per flow, and records the start instant that anchors `elapsed_seconds`. Fire-and-forget:
+    /// the sink returns immediately and swallows any failure, so this never gates onboarding.
+    func onboardingStarted() async {
+        guard !didEmitOnboardingStarted else { return }
+        didEmitOnboardingStarted = true
+        onboardingStartInstant = now()
+        await analytics?.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: timestampMs()))
+    }
+
+    /// The current millisecond client timestamp off the injected clock - the same encoding
+    /// `AnalyticsEvent` carries everywhere, with no raw `Date()` read.
+    private func timestampMs() -> Int {
+        Int(now().timeIntervalSince1970 * 1000)
     }
 
     // MARK: - Sign in with Apple (US-N01)
@@ -218,6 +258,20 @@ final class OnboardingViewModel {
             // Seed the cold-start policy after the user is saved, so a warmed-up engine never reads
             // a contract for a user that failed to persist. The engine's Step 0 needs both.
             _ = try await sessionPolicyService.seedInitialPolicy(for: user)
+            // US-T08: `onboarding_completed` fires only here, on the success branch that also triggers
+            // `onComplete` - never on the failure branch below. `elapsed_seconds` is whole seconds from
+            // the `onboarding_started` instant to now, off the injected clock, clamped at 0 defensively.
+            // Fire-and-forget through the sink, after the durable work, so telemetry never gates the
+            // save/seed. If no start instant was recorded (the emission site was never reached), elapsed
+            // is treated as 0 rather than fabricating a start.
+            let elapsedSeconds = onboardingStartInstant.map { max(0, Int(now().timeIntervalSince($0))) } ?? 0
+            await analytics?.record(
+                AnalyticsEvent(
+                    name: .onboardingCompleted,
+                    timestampMs: timestampMs(),
+                    properties: ["elapsed_seconds": .int(elapsedSeconds)]
+                )
+            )
             return true
         } catch {
             errorMessage = "We couldn't finish setting up. Please try again."
