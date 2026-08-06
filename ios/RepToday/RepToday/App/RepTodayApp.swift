@@ -72,7 +72,7 @@ struct RepTodayApp: App {
             firstLaunchAt: appState.firstLaunchAt,
             installWeek: appState.installWeek,
             now: Date(),
-            defaults: .standard
+            defaults: appState.telemetryDefaults
         )
         let analytics = services.analyticsService
         Task {

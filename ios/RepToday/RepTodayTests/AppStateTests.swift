@@ -329,6 +329,20 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(gate(), "the same closure did not see the change; the gate was captured")
     }
 
+    /// The app-entry dedup store must follow the store `AppState` writes, not name `.standard`
+    /// independently. If `RepTodayApp.init()` handed `AppEntryTelemetry.eventsForLaunch(...)` a
+    /// hardcoded `.standard` while `AppState` persisted its identity in an app-group suite, the
+    /// day-7 / day-30 emit-once flags would be stranded in a store the origin does not live in, and
+    /// return events could re-fire or mis-window. So the accessor is asked to disagree with
+    /// `.standard` on purpose.
+    func testTheEntryDedupStoreFollowsTheStoreItsAppStateWrites() {
+        let appState = AppState(userDefaults: defaults)
+        XCTAssertTrue(
+            appState.telemetryDefaults === defaults,
+            "the dedup store did not follow the store AppState writes; a future .standard regression would strand the emit-once flags"
+        )
+    }
+
     /// The opt-out gates emission and nothing else. Turning it off must not clear the install
     /// identifier: that would put the install into the re-minted-identity state US-T07 has to decide
     /// about, which US-T06 is explicitly forbidden from reaching.
