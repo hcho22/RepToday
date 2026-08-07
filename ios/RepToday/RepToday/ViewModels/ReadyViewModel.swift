@@ -329,10 +329,61 @@ final class ReadyViewModel {
 
     /// Discard the abandoned session so it is no longer offered (US-K04) - the user chose to let it
     /// go. Clears the store and the surfaced state. A no-op before a user has loaded.
+    ///
+    /// This is a **true give-up** of a resumable session, so it is where `session_abandoned` fires
+    /// (US-T10) - not the player's mid-session dismiss, which is a pause the physical session can still
+    /// be resumed and completed from. Emitting off the persisted snapshot (rather than in the player)
+    /// is what keeps one physical session to a single terminal event across the resume path.
     func discardResumableSession() async {
         guard let user else { return }
+        let abandoned = resumableSession
         try? await activeSessionStore.clear(for: user.id)
         resumableSession = nil
+        if let abandoned { await emitSessionAbandoned(for: abandoned) }
+    }
+
+    /// The user tapped Start with a paused session still resumable: starting fresh overwrites that
+    /// session in the store (keyed by the user's id, single slot), so the paused one is being given up
+    /// (US-T10). Emit its `session_abandoned` off the persisted snapshot before the fresh player's
+    /// first persist overwrites it, and drop it from the surfaced state so the Resume card clears. A
+    /// no-op when nothing is resumable (the ordinary fresh start). Together with Discard this covers
+    /// both true give-up paths, so a resumable session that never completes still emits exactly one
+    /// terminal event rather than none.
+    func abandonResumableSessionForOverwrite() async {
+        guard let abandoned = resumableSession else { return }
+        resumableSession = nil
+        await emitSessionAbandoned(for: abandoned)
+    }
+
+    /// Emit `session_abandoned` for a resumable session the user has given up (US-T10). Both true
+    /// give-up paths - Discard and overwrite - route through here, so the abandonment fires exactly
+    /// once per given-up physical session and reads its coarse `abandon_point` and exercised-minutes
+    /// straight off the persisted snapshot (the player that produced them is already gone). The
+    /// emission goes through the sink **unconditionally** - consent (US-T06) is enforced inside the
+    /// sink - and is fire-and-forget, so the give-up UI never waits on it. A `nil` sink (previews /
+    /// tests not exercising the funnel) simply skips it.
+    private func emitSessionAbandoned(for state: ActiveSessionState) async {
+        guard let analytics else { return }
+        // The block the current step sits in maps to a coarse, non-identifying bucket. The index is
+        // clamped exactly as the player clamps a restored position, so a truncated snapshot resolves
+        // to a real slot rather than trapping; `.strength` (-> mainWork) is a purely defensive fallback.
+        let category: ExerciseCategory
+        if state.slots.isEmpty {
+            category = .strength
+        } else {
+            let index = min(max(state.currentStepIndex, 0), state.slots.count - 1)
+            category = state.slots[index].blockCategory
+        }
+        await analytics.record(
+            AnalyticsEvent(
+                name: .sessionAbandoned,
+                timestampMs: timestampMs(),
+                properties: [
+                    "completed_minutes": .int(state.exercisedMinutes ?? 0),
+                    "abandon_point": .string(AbandonPoint(blockCategory: category).rawValue)
+                ]
+            )
+        )
     }
 
     /// The current millisecond client timestamp off the injected clock (US-T09) - the same encoding

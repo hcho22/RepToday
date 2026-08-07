@@ -38,6 +38,7 @@ struct ActiveSessionView: View {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
@@ -50,7 +51,8 @@ struct ActiveSessionView: View {
                 sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
-                completionService: completionService
+                completionService: completionService,
+                analytics: analytics
             )
         )
     }
@@ -66,6 +68,7 @@ struct ActiveSessionView: View {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
@@ -78,7 +81,8 @@ struct ActiveSessionView: View {
                 sessionPolicy: sessionPolicy,
                 store: store,
                 userId: userId,
-                completionService: completionService
+                completionService: completionService,
+                analytics: analytics
             )
         )
     }
@@ -92,6 +96,12 @@ struct ActiveSessionView: View {
     /// the last queued write has landed, so the Ready Screen's resume card reflects the position the
     /// user actually left rather than the one before it.
     private func close() {
+        // US-T10: report the session's end at this one dismiss choke point, before dismissing. A
+        // completed session emits `session_completed` here, reading the final play state - including
+        // any perceived-difficulty rating the user just gave on the completion screen. A dismiss that
+        // leaves the session resumable is a *pause*, not an abandonment, so it emits nothing here; the
+        // abandonment fires only on a true give-up (Discard / overwrite) from the Ready Screen.
+        viewModel.recordSessionEnd()
         let pendingWrite = viewModel.persistenceTask
         let completed = viewModel.isComplete
         let report = onFinish

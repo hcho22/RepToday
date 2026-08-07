@@ -177,6 +177,170 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.resumableSession, "an abandoned session is offered back")
     }
 
+    // MARK: - Give-up abandonment telemetry (US-T10)
+
+    /// A view model wired with an analytics sink and a specific store, for the give-up telemetry tests.
+    private func makeViewModel(user: User?, store: any ActiveSessionStore, analytics: MockAnalyticsService) -> ReadyViewModel {
+        ReadyViewModel(
+            userService: MockUserService(user: user),
+            sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
+            workoutEngine: CapturingWorkoutEngine(),
+            workoutLogService: MockWorkoutLogService(logs: []),
+            activeSessionStore: store,
+            analytics: analytics,
+            now: { self.fixedDate }
+        )
+    }
+
+    private func rep(_ id: String) -> PrescribedExercise {
+        let exercise = Exercise(
+            id: id, displayName: id.capitalized, pillar: .strength, movementPattern: .push,
+            category: .strength, difficulty: 2, phase: .discipline, equipment: [], isHold: false,
+            defaultReps: 10, defaultDurationSeconds: nil, estimatedTimePerSetSeconds: 40, metValue: 4,
+            progressionChainId: "\(id)_chain", progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "3x12", apartmentFriendly: true
+        )
+        return PrescribedExercise(id: UUID(), exercise: exercise, sets: 2, reps: 10, durationSeconds: nil, restSeconds: 0)
+    }
+
+    /// A three-block (warm-up/strength/cooldown) workout, so a resumable snapshot can be parked in any
+    /// `abandon_point` bucket by choosing `currentStepIndex`.
+    private func multiBlockWorkout() -> Workout {
+        Workout(
+            id: UUID(), createdAt: fixedDate, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false,
+            blocks: [
+                WorkoutBlock(id: UUID(), title: "Warm-up", category: .warmup, exercises: [rep("cat_cow")]),
+                WorkoutBlock(id: UUID(), title: "Strength", category: .strength, exercises: [rep("push_up")]),
+                WorkoutBlock(id: UUID(), title: "Cooldown", category: .cooldown, exercises: [rep("stretch")])
+            ]
+        )
+    }
+
+    /// A resumable snapshot parked at `currentStepIndex`, started (so it carries an origin) and
+    /// carrying `exercisedMinutes` - exactly the shape a paused player persists.
+    private func multiBlockResumableState(currentStepIndex: Int, exercisedMinutes: Int) -> ActiveSessionState {
+        let workout = multiBlockWorkout()
+        let slots = workout.blocks.flatMap { block in
+            block.exercises.map { ActiveSessionState.Slot(blockTitle: block.title, blockCategory: block.category, prescription: $0) }
+        }
+        return ActiveSessionState(
+            workout: workout, slots: slots, currentStepIndex: currentStepIndex, currentSet: 1,
+            completedSets: [:], skippedStepIDs: [], startedAt: fixedDate, rest: nil, hold: nil,
+            exercisedMinutes: exercisedMinutes
+        )
+    }
+
+    /// Discarding a resumable session is a *true give-up*, so it emits `session_abandoned` off the
+    /// persisted snapshot - carrying the exercised minutes and the coarse `abandon_point` for where the
+    /// user was - and never `session_completed`.
+    func testDiscardEmitsSessionAbandoned() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.save(multiBlockResumableState(currentStepIndex: 1, exercisedMinutes: 4), for: "preview-user")
+        let analytics = MockAnalyticsService()
+        let vm = makeViewModel(user: onboardedUser(), store: store, analytics: analytics)
+        await vm.load()
+        XCTAssertNotNil(vm.resumableSession)
+
+        await vm.discardResumableSession()
+
+        let events = await analytics.recordedEvents
+        let abandoned = try XCTUnwrap(events.first { $0.name == .sessionAbandoned })
+        XCTAssertEqual(abandoned.properties["completed_minutes"], .int(4))
+        XCTAssertEqual(abandoned.properties["abandon_point"], .string("mainWork"))
+        XCTAssertEqual(events.filter { $0.name == .sessionCompleted }.count, 0, "a give-up never emits completed")
+    }
+
+    /// `abandon_point` is read off the block the snapshot's current step sits in: the warm-up bookend.
+    func testDiscardAbandonPointWarmup() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.save(multiBlockResumableState(currentStepIndex: 0, exercisedMinutes: 1), for: "preview-user")
+        let analytics = MockAnalyticsService()
+        let vm = makeViewModel(user: onboardedUser(), store: store, analytics: analytics)
+        await vm.load()
+
+        await vm.discardResumableSession()
+
+        let events = await analytics.recordedEvents
+        let abandoned = try XCTUnwrap(events.first { $0.name == .sessionAbandoned })
+        XCTAssertEqual(abandoned.properties["abandon_point"], .string("warmup"))
+    }
+
+    /// `abandon_point` for the cooldown bookend - parked on the last block, still short of completion.
+    func testDiscardAbandonPointCooldown() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.save(multiBlockResumableState(currentStepIndex: 2, exercisedMinutes: 9), for: "preview-user")
+        let analytics = MockAnalyticsService()
+        let vm = makeViewModel(user: onboardedUser(), store: store, analytics: analytics)
+        await vm.load()
+
+        await vm.discardResumableSession()
+
+        let events = await analytics.recordedEvents
+        let abandoned = try XCTUnwrap(events.first { $0.name == .sessionAbandoned })
+        XCTAssertEqual(abandoned.properties["abandon_point"], .string("cooldown"))
+    }
+
+    /// Starting fresh over a still-resumable session overwrites it, so that paused session is given up:
+    /// it emits `session_abandoned` and is dropped from the surfaced state before the fresh player runs.
+    func testOverwriteEmitsSessionAbandoned() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.save(multiBlockResumableState(currentStepIndex: 1, exercisedMinutes: 6), for: "preview-user")
+        let analytics = MockAnalyticsService()
+        let vm = makeViewModel(user: onboardedUser(), store: store, analytics: analytics)
+        await vm.load()
+        XCTAssertNotNil(vm.resumableSession)
+
+        await vm.abandonResumableSessionForOverwrite()
+
+        XCTAssertNil(vm.resumableSession, "the paused session is dropped when the user starts fresh over it")
+        let events = await analytics.recordedEvents
+        let abandoned = try XCTUnwrap(events.first { $0.name == .sessionAbandoned })
+        XCTAssertEqual(abandoned.properties["completed_minutes"], .int(6))
+        XCTAssertEqual(abandoned.properties["abandon_point"], .string("mainWork"))
+    }
+
+    /// An ordinary fresh start - nothing paused to overwrite - emits no abandonment.
+    func testOverwriteWithNothingResumableEmitsNothing() async {
+        let analytics = MockAnalyticsService()
+        let vm = makeViewModel(user: onboardedUser(), store: InMemoryActiveSessionStore(), analytics: analytics)
+        await vm.load()
+
+        await vm.abandonResumableSessionForOverwrite()
+
+        let abandoned = (await analytics.recordedEvents).filter { $0.name == .sessionAbandoned }
+        XCTAssertTrue(abandoned.isEmpty, "an ordinary fresh start with nothing paused emits no abandonment")
+    }
+
+    /// The whole give-up path across the physical session: the player emits `session_started` and is
+    /// paused (no terminal event), then the Ready Screen's Discard emits `session_abandoned`. Both share
+    /// one sink, so the physical session lands exactly one started and one abandoned, never a completed.
+    func testPauseThenDiscardEmitsExactlyOneAbandonedAcrossThePhysicalSession() async throws {
+        let store = InMemoryActiveSessionStore()
+        let analytics = MockAnalyticsService()
+
+        let player = ActiveSessionViewModel(
+            workout: multiBlockWorkout(), store: store, userId: "preview-user",
+            analytics: analytics, now: { self.fixedDate }
+        )
+        player.start()            // session_started + persists a resumable snapshot
+        player.completeSet()      // advance into the strength block, still mid-session
+        player.recordSessionEnd() // a resumable pause: no terminal event
+        await player.persistenceTask?.value
+        await player.analyticsTask?.value
+
+        let vm = makeViewModel(user: onboardedUser(), store: store, analytics: analytics)
+        await vm.load()
+        XCTAssertNotNil(vm.resumableSession, "the paused session is offered back")
+
+        await vm.discardResumableSession() // true give-up
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.filter { $0.name == .sessionStarted }.count, 1, "started fires once for the physical session")
+        XCTAssertEqual(events.filter { $0.name == .sessionAbandoned }.count, 1, "the give-up abandons exactly once")
+        XCTAssertEqual(events.filter { $0.name == .sessionCompleted }.count, 0, "a given-up session never completes")
+    }
+
     /// On load the session is generated at the user's Default Duration and exposed, with no error.
     func testLoadGeneratesSessionAtDefaultDuration() async {
         let engine = CapturingWorkoutEngine()

@@ -195,6 +195,27 @@ final class ActiveSessionViewModel {
     /// user is wired, where completion simply records nothing.
     private let completionService: (any SessionCompletionServiceProtocol)?
 
+    // MARK: - Analytics (US-T10)
+
+    /// Anonymous product-telemetry sink (US-T10). Optional exactly like `ReadyViewModel.analytics`,
+    /// so previews and tests that do not exercise the funnel construct the player unchanged; when
+    /// absent the lifecycle emissions are simply skipped. Every emission goes through it
+    /// **unconditionally** - consent (US-T06) is enforced inside the sink, so this view model never
+    /// re-checks the opt-out flag (a second gate could disagree with the first).
+    private let analytics: (any AnalyticsServiceProtocol)?
+
+    /// The most recently launched telemetry emission, chained so the events land in call order and
+    /// exposed only so tests can await the sink settling. The UI never awaits it: emission is strictly
+    /// fire-and-forget, so the player never stalls on the network.
+    private(set) var analyticsTask: Task<Void, Never>?
+
+    /// Ensures `session_completed` is emitted at most once per player (US-T10). It fires from the
+    /// single dismiss choke point `recordSessionEnd()`, so this one-shot makes a repeated dismiss a
+    /// no-op and the completion never double-fires. (The abandonment terminal event is not emitted by
+    /// the player at all - a resumable pause is not an abandonment; see `recordSessionEnd()`.) Not
+    /// persisted: the funnel counts distinct installs and the backend dedups by `installId`.
+    private var hasEmittedTerminalEvent = false
+
     /// The fire-and-forget completion write launched at `finish()`, exposed only so tests can await
     /// the recording settling. The UI never awaits it: like persistence, the write is best-effort and
     /// the player never stalls on it. A rating given on the completion screen (US-L02) chains behind it
@@ -232,6 +253,7 @@ final class ActiveSessionViewModel {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
@@ -243,6 +265,7 @@ final class ActiveSessionViewModel {
         self.store = store
         self.userId = userId
         self.completionService = completionService
+        self.analytics = analytics
         self.now = now
         self.feedback = feedback
 
@@ -292,6 +315,7 @@ final class ActiveSessionViewModel {
         store: (any ActiveSessionStore)? = nil,
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         feedback: RestTimerFeedback = SystemRestTimerFeedback()
     ) {
@@ -304,6 +328,7 @@ final class ActiveSessionViewModel {
             store: store,
             userId: userId,
             completionService: completionService,
+            analytics: analytics,
             now: now,
             feedback: feedback
         )
@@ -341,6 +366,10 @@ final class ActiveSessionViewModel {
     func start() {
         guard startedAt == nil else { return }
         startedAt = now()
+        // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
+        // idempotency that gates the clock start, carrying the requested minutes. Fire-and-forget
+        // through the sink, so telemetry never delays the first render.
+        emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
         // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
         persist()
     }
@@ -830,6 +859,69 @@ final class ActiveSessionViewModel {
         recordCompletion()
     }
 
+    // MARK: - Lifecycle telemetry (US-T10)
+
+    /// Emit the `session_completed` terminal event as the player is dismissed, when - and only when -
+    /// the session actually completed. `ActiveSessionView.close()` routes every exit through here
+    /// (US-K04), and the one-shot guard makes a repeated dismiss a no-op, so `session_completed` never
+    /// double-fires.
+    ///
+    /// A dismiss that leaves the session *resumable* is a PAUSE, not an abandonment (US-T10 refinement
+    /// of the AC's literal "emit at dismiss-with-completed==false"): the physical session lives on in
+    /// the store and can still be resumed and completed, so emitting `session_abandoned` here would let
+    /// one physical session emit *both* an abandon (on the pause) and a completion (after the resume),
+    /// double-counting the >=80% completion metric. Abandonment therefore fires on **true give-up** of
+    /// a resumable session instead - an explicit Discard, or an overwrite by a fresh Start - both owned
+    /// by `ReadyViewModel`, which still holds the persisted snapshot after this player is gone. The net
+    /// invariant across the full resume path is one terminal event per physical session (completed xor
+    /// abandoned), never both and never neither-when-an-outcome-occurred.
+    ///
+    /// `session_completed` is emitted *here*, at dismissal, rather than at the `finish()` transition,
+    /// so it carries the perceived-difficulty rating the user gives on the completion screen - which
+    /// `finish()` cannot have, because `rate()` only runs after the session is already complete
+    /// (US-T10 decision, Option B). It reads all four properties off the completion log built at
+    /// `finish()` (`perceived_difficulty` omitted when the user left the session unrated, since the
+    /// bag carries no null).
+    ///
+    /// Accepted tradeoff (US-T10 decision): a session the user finishes but force-quits from the
+    /// celebration screen *before* tapping Done emits no `session_completed`, even though its
+    /// `WorkoutLog` still persists - a known, rare blind spot in the >=80% session-completion-rate
+    /// metric, recorded here and in `docs/test-coverage.md` rather than left silent.
+    func recordSessionEnd() {
+        guard !hasEmittedTerminalEvent else { return }
+        // Only a completed session emits a terminal event from the player; a resumable pause emits
+        // nothing (its abandonment, if it ever comes, fires from the give-up path in ReadyViewModel).
+        guard isComplete, let log = completedLog else { return }
+        hasEmittedTerminalEvent = true
+        var properties: [String: AnalyticsValue] = [
+            "requested_minutes": .int(log.requestedMinutes),
+            "completed_minutes": .int(log.durationMinutes),
+            "was_return": .bool(log.wasReturn)
+        ]
+        if let difficulty = log.perceivedDifficulty {
+            properties["perceived_difficulty"] = .string(difficulty.rawValue)
+        }
+        emit(.sessionCompleted, properties: properties)
+    }
+
+    /// The current millisecond client timestamp off the injected clock - the same encoding
+    /// `AnalyticsEvent` carries everywhere, with no raw `Date()` read, so emissions stay deterministic
+    /// under a test clock.
+    private func timestampMs() -> Int {
+        Int(now().timeIntervalSince1970 * 1000)
+    }
+
+    /// Hand one telemetry event to the sink, fire-and-forget. A `nil` sink (previews / tests that do
+    /// not exercise the funnel) simply skips it. Emissions are chained behind the previous one so they
+    /// land in call order - `session_started` before either terminal event - even though each is
+    /// launched off the calling path and never awaited by the UI.
+    private func emit(_ name: AnalyticsEventName, properties: [String: AnalyticsValue] = [:]) {
+        guard let analytics else { return }
+        let event = AnalyticsEvent(name: name, timestampMs: timestampMs(), properties: properties)
+        let previous = analyticsTask
+        analyticsTask = Task { _ = await previous?.value; await analytics.record(event) }
+    }
+
     // MARK: - Snapshot & persistence (US-K04)
 
     /// A snapshot of the current play state for persistence - the current lineup (reflecting any
@@ -859,7 +951,11 @@ final class ActiveSessionViewModel {
             skippedStepIDs: skippedStepIDs,
             startedAt: startedAt,
             rest: rest,
-            hold: hold
+            hold: hold,
+            // Captured here, at each meaningful change while the session is active, so a later
+            // give-up (Discard / overwrite) reports the minutes actually exercised as of the last
+            // active moment (US-T10) rather than wall-clock elapsed measured at the give-up instant.
+            exercisedMinutes: completedDurationMinutes()
         )
     }
 
