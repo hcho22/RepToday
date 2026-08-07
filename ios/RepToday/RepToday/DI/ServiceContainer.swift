@@ -235,9 +235,9 @@ struct ServiceContainer {
                 policyStore: policyStore,
                 healthKitService: healthKitService,
                 // The `week_active` emission site (US-T11): the same resolved sink the container exposes,
-                // so consent and destination match every other emission. The clock and emit-once store
-                // default to `Date.init` / `.standard`; the cadence buckets in `AppState.cohortCalendar`
-                // (the initializer's default), not `Calendar.current`.
+                // so consent and destination match every other emission. The emit-once store defaults to
+                // `.standard` and the event timestamp is stamped from `log.completedAt`; the cadence
+                // buckets in `AppState.cohortCalendar` (the initializer's default), not `Calendar.current`.
                 analytics: resolvedAnalyticsService
             ),
             healthKitService: healthKitService,

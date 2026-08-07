@@ -13,9 +13,10 @@ The wire now has both ends, the wire itself, and - since US-T07 - its **first pr
 through `AppEntryTelemetry.eventsForLaunch(...)`, and US-T08 added the second call site - the
 onboarding flow emits `onboarding_started` and `onboarding_completed` through `OnboardingViewModel`,
 and US-T09 added the third - `ReadyView`'s view model emits `ready_screen_shown` with a measured `generation_ms`,
-and US-T10 added the next three - the active-session player's `session_started`, `session_completed`, and `session_abandoned` lifecycle events.
-That is nine of the 13 emission sites (US-T11 and US-T12 add the other 4). So `record(_:)` is now
-called at app entry, through onboarding, on the Ready Screen, and across the session lifecycle - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
+and US-T10 added the next three - the active-session player's `session_started`, `session_completed`, and `session_abandoned` lifecycle events,
+and US-T11 added the weekly rollup's `week_active`, emitted once per active week from `SessionCompletionService`.
+That is ten of the 13 emission sites (US-T12 adds the other 3). So `record(_:)` is now
+called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, and on the weekly rollup - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
 `NoOpAnalyticsService` and the events go nowhere until a production deployment is chosen (below),
 while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process
