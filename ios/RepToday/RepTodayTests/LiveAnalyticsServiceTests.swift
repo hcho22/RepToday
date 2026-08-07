@@ -20,13 +20,19 @@ final class LiveAnalyticsServiceTests: XCTestCase {
 
     private let endpoint = URL(string: "https://example-deployment.convex.site/logEvent")!
 
+    /// A default shared secret for tests that do not care about its value, and the value the header
+    /// assertion checks against.
+    private static let testSecret = "wire-secret-abc123"
+
     private func makeService(
         installId: String = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+        secret: String = LiveAnalyticsServiceTests.testSecret,
         isEnabled: @escaping @Sendable () -> Bool = { true }
     ) -> LiveAnalyticsService {
         LiveAnalyticsService(
             endpoint: endpoint,
             installId: installId,
+            secret: secret,
             session: StubURLProtocol.makeSession(),
             isEnabled: isEnabled
         )
@@ -89,6 +95,27 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(props["completed_minutes"] as? Double, 19.5)
         XCTAssertEqual(props["was_return"] as? Bool, false)
         XCTAssertEqual(props["perceived_difficulty"] as? String, "justRight")
+    }
+
+    /// US-T14: every POST carries the shared secret on its header, sourced from the build. The value
+    /// is read off the request the service actually built, intercepted in process - nothing leaves
+    /// the process (FR-13).
+    func testRecordAttachesTheSharedSecretHeader() async throws {
+        let sent = expectation(description: "request intercepted")
+        StubURLProtocol.onRequest = { _ in sent.fulfill() }
+
+        let service = makeService(secret: "s3cr3t-value-xyz")
+        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        await fulfillment(of: [sent], timeout: 5)
+
+        let request = try XCTUnwrap(StubURLProtocol.captured.first)
+        // The header name is the exact one `convex/http.ts` reads (`ANALYTICS_SECRET_HEADER`).
+        XCTAssertEqual(LiveAnalyticsService.secretHeaderField, "X-RepToday-Analytics-Secret")
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: LiveAnalyticsService.secretHeaderField),
+            "s3cr3t-value-xyz",
+            "the shared secret was not attached to the POST"
+        )
     }
 
     /// An event with no properties still sends a bag, as an empty JSON object.
@@ -273,6 +300,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let service = LiveAnalyticsService(
             endpoint: endpoint,
             installId: "install-42",
+            secret: Self.testSecret,
             session: StubURLProtocol.makeSession(),
             // Reconstructed inside the closure from a `Sendable` name, so nothing non-`Sendable` is
             // captured; it is the same suite either way.
@@ -393,6 +421,51 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(resolved.absoluteString, "https://example-deployment.convex.site/logEvent")
     }
 
+    // MARK: - The shared secret follows the same inert-when-empty rule as the endpoint (US-T14)
+
+    /// A missing, empty, whitespace-only, or non-string secret is the same "unconfigured" state as a
+    /// missing endpoint: it resolves to `nil`, so the build stays inert rather than firing requests
+    /// the sink will only ever `401`.
+    func testUnusableSecretConfigurationResolvesToNil() {
+        XCTAssertNil(LiveAnalyticsService.secret(fromValue: nil))
+        XCTAssertNil(LiveAnalyticsService.secret(fromValue: ""))
+        XCTAssertNil(LiveAnalyticsService.secret(fromValue: "   "))
+        XCTAssertNil(LiveAnalyticsService.secret(fromValue: 42))
+    }
+
+    /// A usable secret resolves to its trimmed value.
+    func testUsableSecretResolvesTrimmed() throws {
+        let resolved = try XCTUnwrap(LiveAnalyticsService.secret(fromValue: "  abc123  "))
+        XCTAssertEqual(resolved, "abc123")
+    }
+
+    /// The secret is split per build configuration (`REPTODAY_ANALYTICS_SECRET` in
+    /// `ios/RepToday/project.yml`, expanded into `Info.plist`) exactly as the endpoint is, and the
+    /// split is read out of the **running app bundle** rather than asserted in prose: Debug carries
+    /// the dev deployment's secret, Release carries nothing.
+    ///
+    /// Only the Debug half runs, for the same `ENABLE_TESTABILITY`-is-Debug-only reason
+    /// `testTheAppBundlesEndpointFollowsTheBuildConfiguration` documents; the Release half is
+    /// verified against the built Release artifact (recorded alongside the endpoint's).
+    func testTheAppBundlesSecretFollowsTheBuildConfiguration() throws {
+        let configured = Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.secretInfoPlistKey)
+
+        #if DEBUG
+        let secret = try XCTUnwrap(configured as? String, "the Debug build carries no analytics secret")
+        XCTAssertFalse(secret.isEmpty, "the Debug build's analytics secret expanded to nothing")
+        XCTAssertNotNil(
+            LiveAnalyticsService.secret(fromValue: secret),
+            "the Debug build's analytics secret does not resolve"
+        )
+        // With both an endpoint and a secret present, the Debug build resolves a live service.
+        XCTAssertNotNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
+        #else
+        // Nothing configured, so nothing to authenticate with - inert exactly like the endpoint.
+        XCTAssertNil(LiveAnalyticsService.secret(fromValue: configured))
+        XCTAssertNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
+        #endif
+    }
+
     /// A bundle without the key configures nothing - which is the whole "inert, not fatal" claim,
     /// exercised against a real `Bundle` rather than a stand-in. The unit-test bundle carries no
     /// `RepTodayAnalyticsEndpoint`.
@@ -465,10 +538,24 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
 
-        let url = try XCTUnwrap(StubURLProtocol.captured.first?.url)
+        let request = try XCTUnwrap(StubURLProtocol.captured.first)
+        let url = try XCTUnwrap(request.url)
         XCTAssertEqual(url.scheme, "https")
         XCTAssertEqual(url.host, expectedHost)
         XCTAssertEqual(url.path, "/logEvent")
+
+        // The configured service carries the app bundle's secret on the header the sink reads,
+        // rather than an empty or hard-coded one (US-T14). The expected value is read back out of the
+        // same `Info.plist` so rotating the dev secret does not turn this into a failing test.
+        let expectedSecret = try XCTUnwrap(
+            LiveAnalyticsService.secret(
+                fromValue: Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.secretInfoPlistKey)
+            )
+        )
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: LiveAnalyticsService.secretHeaderField),
+            expectedSecret
+        )
     }
     #endif
 }

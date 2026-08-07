@@ -44,11 +44,26 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     /// `configured(...)`.
     static let endpointInfoPlistKey = "RepTodayAnalyticsEndpoint"
 
+    /// The `Info.plist` key carrying the shared secret US-T14 sends on every POST. Like the
+    /// endpoint, it is expanded from a per-configuration build setting (`REPTODAY_ANALYTICS_SECRET`)
+    /// rather than written in source: Debug carries the dev deployment's secret, Release carries
+    /// nothing (no production deployment chosen yet), so an unconfigured build is inert exactly as it
+    /// already is for the endpoint. See `configured(...)`.
+    static let secretInfoPlistKey = "RepTodayAnalyticsSecret"
+
+    /// The header the shared secret rides on. Matches `ANALYTICS_SECRET_HEADER` in `convex/http.ts`.
+    ///
+    /// **This secret is a cost-raiser, not a guarantee.** It is embedded in the shipped binary, so
+    /// anyone willing to unpack the app can extract it; it stops opportunistic flooding of a
+    /// freshly-discovered endpoint, not a determined attacker. See `convex/README.md`.
+    static let secretHeaderField = "X-RepToday-Analytics-Secret"
+
     /// A telemetry POST is worth a short wait and nothing more; the answer is discarded either way.
     static let requestTimeoutSeconds: TimeInterval = 10
 
     private let endpoint: URL
     private let installId: String
+    private let secret: String
     private let session: URLSession
     private let isEnabled: @Sendable () -> Bool
 
@@ -67,14 +82,20 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     ///     sink parameter cannot bind there. Because the flag lives in `UserDefaults`, the
     ///     `-AppState.analyticsEnabled NO` launch argument closes this gate in an app the test
     ///     process never built, which is how FR-13's out-of-process half is held.
+    ///   - secret: The shared secret sent on every POST (US-T14), sourced the same way the endpoint
+    ///     is - a per-configuration build setting. `configured(...)` refuses to build a service
+    ///     without one, so a live build always carries a non-empty secret; a Release build has none
+    ///     and resolves to `NoOpAnalyticsService` before it ever gets here.
     init(
         endpoint: URL,
         installId: String,
+        secret: String,
         session: URLSession = LiveAnalyticsService.makeSession(),
         isEnabled: @escaping @Sendable () -> Bool = { true }
     ) {
         self.endpoint = endpoint
         self.installId = installId
+        self.secret = secret
         self.session = session
         self.isEnabled = isEnabled
     }
@@ -107,12 +128,21 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
         session: URLSession? = nil,
         isEnabled: @escaping @Sendable () -> Bool = { true }
     ) -> LiveAnalyticsService? {
-        guard let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)) else {
+        guard
+            let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)),
+            let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
+        else {
+            // Missing *either* the endpoint or the secret is the one "unconfigured" state, resolved
+            // to the same inert `nil`. A build with an endpoint but no secret would only ever earn
+            // `401`s from the guarded sink, so treating a blank secret as unconfigured keeps the
+            // "inert, never spam" discipline the endpoint already follows rather than firing doomed
+            // requests. Release carries neither, so it was already inert.
             return nil
         }
         return LiveAnalyticsService(
             endpoint: endpoint,
             installId: installId,
+            secret: secret,
             session: session ?? makeSession(),
             isEnabled: isEnabled
         )
@@ -136,6 +166,16 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
             return nil
         }
         return url.appendingPathComponent(routePath)
+    }
+
+    /// Resolves the configured shared secret, or `nil` if it is missing, not a string, or empty
+    /// after trimming. An empty value is the same "unconfigured" state as a missing endpoint - the
+    /// build is inert, never fatal (US-T14), so a Release build with no secret sends nothing rather
+    /// than earning a stream of `401`s.
+    static func secret(fromValue value: Any?) -> String? {
+        guard let value = value as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// The session telemetry goes out on: ephemeral (no cookie, credential, or disk cache to
@@ -171,6 +211,7 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
 
         let endpoint = self.endpoint
         let installId = self.installId
+        let secret = self.secret
         let session = self.session
 
         // The caller's `await` completes here. Everything below - encoding included - runs on a
@@ -182,6 +223,9 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
             request.httpMethod = "POST"
             request.timeoutInterval = LiveAnalyticsService.requestTimeoutSeconds
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            // The US-T14 shared secret, on every POST. The sink rejects a request without it (`401`),
+            // which - being fire-and-forget - this client neither sees nor retries.
+            request.setValue(secret, forHTTPHeaderField: LiveAnalyticsService.secretHeaderField)
             request.httpBody = body
 
             // Every outcome is the same outcome. The sink answers `204` on success and

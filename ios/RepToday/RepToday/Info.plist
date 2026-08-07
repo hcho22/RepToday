@@ -21,6 +21,17 @@
 	     the container falls back to `NoOpAnalyticsService`, emitting nothing and failing nothing. -->
 	<key>RepTodayAnalyticsEndpoint</key>
 	<string>$(REPTODAY_ANALYTICS_ENDPOINT)</string>
+	<!-- The anonymous-telemetry shared secret (US-T14), sent on every `POST /logEvent` so a stranger
+	     who finds the endpoint URL cannot flood the `events` table. Like the endpoint above, it is
+	     expanded from the per-configuration `REPTODAY_ANALYTICS_SECRET` build setting rather than
+	     written here: Debug carries the *development* deployment's secret; Release carries nothing,
+	     because no production deployment has been chosen. An empty or missing value is the same inert
+	     state as a missing endpoint - `LiveAnalyticsService.configured(...)` returns nil and the
+	     container falls back to `NoOpAnalyticsService` - so an unconfigured build sends nothing rather
+	     than a stream of rejected requests. This secret is a *cost-raiser*, not a guarantee: it ships
+	     inside the binary and is extractable by anyone who unpacks the app. See `convex/README.md`. -->
+	<key>RepTodayAnalyticsSecret</key>
+	<string>$(REPTODAY_ANALYTICS_SECRET)</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today writes your completed sessions to Health so your movement counts where you already track it. It only ever adds workouts and never reads your Health data.</string>
 </dict>

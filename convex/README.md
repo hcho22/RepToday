@@ -1,6 +1,6 @@
 # Rep Today telemetry sink (US-T03)
 
-The whole analytics backend: **one append-only table, one mutation, one HTTP route.**
+The whole analytics backend: **one append-only evidence table, one mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
 
 It exists so the anonymous funnel events defined in `gtm/06-channels/event-metric-schema.md` have
 somewhere to land during the 90-day PMF test.
@@ -52,7 +52,7 @@ threshold decision made before there is any data to make it against.
 
 ## Table: `events`
 
-`convex/schema.ts`. One table, five fields, no indexes.
+`convex/schema.ts`. The evidence table: five fields, no indexes. (`schema.ts` also defines the ephemeral `rateLimits` helper US-T14 added - a throttle counter store, not an evidence surface, and the one place indexes are carried; see "Abuse guard" below.)
 
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|
@@ -216,11 +216,102 @@ plus the two size caps, evaluated where they are - and a caller fault that only 
 rule catches is still discovered at the insert and reported as ours. Note that when reading `500`s
 during the PMF test; do not read this as a promise that every caller fault is a `400`.
 
-Relatedly and still accepted: the route below is unauthenticated and unmetered by design - anonymous
-telemetry admits no client secret - so the caps are per-row rather than per-caller, and anyone who
-reads the `.convex.site` URL out of a shipped binary can add rows indistinguishable from real ones.
-(That is the HTTP *route*; the mutation behind it is internal and not separately reachable. Guarding
-the route is US-T14.)
+Relatedly, the route below used to be entirely unauthenticated and unmetered - the caps were
+per-row, not per-caller, so anyone who read the `.convex.site` URL out of a shipped binary could add
+rows indistinguishable from real ones. **US-T14 closed that**, with a shared-secret check and
+per-caller rate limiting; see "Abuse guard" below. Both raise the *cost* of a flood rather than
+making one impossible, and that honest limit is stated there in full.
+
+## Abuse guard (US-T14): a shared secret and per-caller rate limiting
+
+The `POST /logEvent` route is public and internet-reachable, and it feeds the table the launch
+checkpoint reads kill criteria K1/K2/K4 off. A stranger who found the URL could flood it with junk
+rows and poison that read. US-T14 raises the cost of doing so with two checks, both run in the
+action **before** `ctx.runMutation`, so a rejected request never inserts a row.
+
+### 1. A client-embedded shared secret
+
+Every `POST` must carry the shared secret on the `X-RepToday-Analytics-Secret` header. The action
+compares it (constant-time) against the deployment's `ANALYTICS_SHARED_SECRET` environment variable:
+
+```bash
+npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; never committed to Convex
+```
+
+The client sources the same value from a per-configuration build setting
+(`REPTODAY_ANALYTICS_SECRET` in `ios/RepToday/project.yml`, expanded into `Info.plist`), exactly the
+way it sources the endpoint: Debug carries the dev deployment's secret, Release carries nothing (no
+production deployment chosen yet), so a Release build is inert. The Debug build setting's value and
+the deployment's env var must match.
+
+- A **missing or wrong** secret is a caller fault: **`401`**, no insert. Never `5xx`, so it never
+  looks like a sink outage on the `4xx`/`5xx` signal a human watches during the PMF test.
+- **The deployment having no secret configured at all is *our* fault, and the action fails closed:
+  `500`, no insert, logged loudly.** An unguarded sink silently taking writes is the exact failure
+  this story prevents, so a visible failure is deliberately chosen over a silent hole. Setting
+  `ANALYTICS_SHARED_SECRET` on the deployment is therefore a precondition for the route to serve at
+  all.
+
+**This is a cost-raiser, not a guarantee, and saying so is a US-T14 acceptance criterion.** The
+secret is embedded in the shipped app binary, so anyone willing to unpack the app can extract it. It
+stops opportunistic flooding of a freshly-discovered endpoint URL - the case this guard exists for -
+but it does **not** stop a determined attacker who reads the secret out of the binary.
+
+### 2. Per-caller rate limiting
+
+`convex/rateLimit.ts`. The action calls `internal.rateLimit.checkAndBump` before the insert; a
+request over the ceiling is a **`429`** with no insert. The whole read-increment-compare is one
+serializable Convex mutation, so two concurrent floods for one key cannot both slip under the
+ceiling.
+
+- **Keyed on the per-install identifier** carried in the request body (the primary key), **with the
+  coarse source IP as a backstop** (`x-forwarded-for`'s first hop, or `cf-connecting-ip`). The two
+  get different ceilings, since shared egress (corporate/carrier NAT) puts many legitimate installs
+  behind one IP:
+
+  | Key | Ceiling | Window |
+  |-----|---------|--------|
+  | per-install id | `MAX_EVENTS_PER_INSTALL_PER_WINDOW` (60) | 60 s |
+  | source IP (backstop) | `MAX_EVENTS_PER_IP_PER_WINDOW` (600) | 60 s |
+
+  A real client emits on the order of ten events in a busy minute, so the per-install ceiling is
+  generous headroom, not a real-usage limit.
+- **The shared secret is never a rate-limit key.** Every client build embeds the same secret, so
+  keying on it would collapse the whole user base into one bucket - throttling everyone while
+  stopping nothing.
+- The window is anchored to **server** time, never the client-supplied `clientTs` (which a flooder
+  controls and could pin to keep landing in a fresh window).
+
+**Also a cost-raiser, and the honest limit is the same shape.** The per-install identifier is
+generated by the client and freely rotatable, so a determined abuser can mint unlimited fresh ones
+and stay under the per-install ceiling forever. The source IP is the only key the client does not
+choose - and even that is weakened by proxies and shared egress. So per-install keying stops
+accidental floods and casual abuse, not a determined attacker.
+
+### The counter store (`rateLimits`) is not a second evidence surface
+
+FR-6 permits the throttle state in exactly one of two shapes; this uses the first, a **dedicated
+helper table**. It is `schema.ts`'s `rateLimits` table and nothing wider. It carries **no identity**
+(a `bucketKey` is a coarse throttle key, not a person), accumulates **no history** (each row is one
+`<scope>:<identity>:<windowStart>` window and is deleted once that window rolls), is read **only** by
+the throttle check, and is **not** part of the K1/K2/K4 evidence base. A scheduled cron
+(`convex/crons.ts`, ~once a minute, `internal.rateLimit.reclaimExpired`) reclaims expired rows in
+bounded batches (`RECLAIM_BATCH` = 2000) **off the request path**, and, crucially, the throttle's hot
+path (`checkAndBump`) does **only** point operations on the caller's own bucket, never a scan or
+delete across a shared range, so concurrent requests from different installs never contend under
+Convex's optimistic concurrency (an earlier per-request sweep did, and could fail closed under exactly
+the concurrent launch load the guard exists to survive). Reclamation is therefore **best-effort at a
+fixed cadence rather than instant**: `RECLAIM_BATCH` is sized to comfortably outpace one flooding IP's
+ceiling-bounded inflow (`MAX_EVENTS_PER_IP_PER_WINDOW` = 600 reclaimable rows/min) at the ~1/min
+cadence, so under normal and casual-abuse load the table stays small; but a *sustained* single-source
+flood can still transiently outpace one tick and let this table grow for the duration of the attack,
+draining once it stops. That is an accepted residual, not a hole: these rows are tiny and never an
+evidence surface, the `events` table's own rate limit is unaffected regardless, and a sustained or
+massively-distributed flood is the determined-attacker case this guard explicitly does not defend
+against - the same cost-raiser framing that governs the secret and the client-rotatable install id. Unlike `events`, this table carries indexes (by key and by window) - "the
+sink stays dumb" is a rule about the *evidence* table, not about a throttle whose job is to be fast
+and forgetful. The `events` table itself is untouched: same single, append-only shape, same five columns
+(`name`, `installId`, `clientTs`, `serverTs`, `props`), no identity added anywhere.
 
 ## HTTP action: `POST /logEvent` -> `204`
 
@@ -255,11 +346,17 @@ The other three fields are required, and their absence is one of the `400`s belo
 default.
 
 - **`204 No Content`** - the row was inserted. No body.
+- **`401 Unauthorized`** - the caller's fault (US-T14): a missing or wrong shared secret. No row was
+  inserted. Checked first, before the body is even buffered.
 - **`400 Bad Request`** - the caller's fault: a body that is not valid JSON, not a JSON object, or
   over 64 KiB; a missing or wrong-kind `name` / `installId` / `clientTs`; an unknown event name; an
   `installId` over 64 bytes; a `props` field name Convex cannot store; or an oversized bag. No row
   was inserted. The body carries the error message for a human.
-- **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure. No row
+- **`429 Too Many Requests`** - the caller's fault (US-T14): the per-install id or the source-IP
+  backstop is over its rate-limit ceiling for the current window. No row was inserted.
+- **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure - or
+  (US-T14) `ANALYTICS_SHARED_SECRET` not being configured on the deployment, which the action fails
+  closed on rather than accepting unguarded writes. No row
   was inserted. The body says only `internal error`; the detail stays in the deployment log rather
   than being echoed to the caller. (With the residual noted under "What used to be a gap here": a
   caller fault that only a *write-time* Convex rule catches - `props` nested past the value-depth
@@ -403,11 +500,30 @@ the `convexToJson` field-name classification answering `400` rather than `500`; 
 split, including that a `5xx` echoes no internal detail; and `logEvent` still being an
 `internalMutation`.
 
+Also covered, since US-T14: the shared secret (a correct one under the ceiling inserts; a missing or
+wrong one is `401` with no insert; a right-length-but-wrong one still fails, exercising the
+constant-time compare; and the deployment having no secret configured fails closed with `500` and no
+insert) and its ordering (a wrong-secret flood consumes no rate-limit budget, so the secret check
+runs first); and rate limiting (the per-install ceiling inserting exactly up to the limit and `429`
+past it; the source-IP backstop tripping on many distinct installs from one IP; `x-forwarded-for`'s
+first hop being the key so a proxy chain does not multiply the budget; the shared secret **not**
+being a key, proved by a second install with the same secret not being throttled; and the counter
+store being ephemeral - a window roll resetting the count while the stale row survives until the cron
+reclaims it, `checkAndBump` touching only the caller's own bucket and never another install's or a
+prior window's row, and `reclaimExpired` reaping only expired windows in a bounded per-tick batch so
+a backlog drains over several ticks). The secret-bearing default is baked into the test's `post(...)` helper, and
+the suite sets `ANALYTICS_SHARED_SECRET` on `process.env` in a `beforeEach`, so every pre-US-T14
+assertion keeps meaning what it meant.
+
 Two notes on how two of those are reached, since neither can be provoked by input:
 
 - The `500` branch is exercised by handing `convexTest` a module map with `logEvent` swapped for a
   mutation that throws a plain `Error` carrying a would-be-secret message. `http.ts` is untouched.
+  (The US-T14 misconfiguration `500` is separate and *is* provoked by input - by deleting the env
+  var - so it needs no such swap.)
 - `logEvent` staying internal is asserted on the registration object's own `isInternal` flag - the
   one Convex's `internalMutationGeneric` sets and the server reads - and **not** on
   `api.events.logEvent`, which can say nothing: the generated `api` is `anyApi`, a proxy that answers
   every property access whether the function exists or not.
+- The window-roll and bounded-cleanup cases drive `internal.rateLimit.checkAndBump` directly with a
+  controlled `nowMs`, since the `t.fetch` path uses real server time and cannot be rewound.

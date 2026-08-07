@@ -28,4 +28,37 @@ export default defineSchema({
     /** The event's non-identifying property bag, stored exactly as it arrived. */
     props: v.any(),
   }),
+
+  /**
+   * US-T14's rate-limit counter store, and nothing else.
+   *
+   * This is the second - and, per FR-6, last permitted - table the sink may hold: a dedicated
+   * helper carrying only ephemeral per-key counters. It is **not** a second evidence surface. It
+   * carries no identity (`bucketKey` is a coarse throttle key, not a person), accumulates no
+   * history (each row is one time window and is deleted once that window rolls), is read only by
+   * the throttle check in `rateLimit.ts`, and is **not** part of the evidence base for K1/K2/K4.
+   * It exists solely to answer "has this key exceeded its window", and its contents are transient.
+   *
+   * Unlike `events`, this table carries indexes: the throttle check looks a bucket up by key on
+   * every request (`by_bucketKey`), and the `reclaimExpired` cron sweeps expired buckets by window
+   * (`by_windowStart`), and a full scan of a hot counter table would be the opposite of cheap. "The
+   * sink stays dumb" is a rule about the *evidence* table, not about a throttle whose whole job is
+   * to be fast and forgetful.
+   */
+  rateLimits: defineTable({
+    /**
+     * The window-scoped throttle key: `"<scope>:<identity>:<windowStart>"`, where scope is
+     * `install` or `ip`, identity is the per-install id or coarse source IP, and `windowStart` is
+     * the window this row counts. Baking the window into the key makes each window a distinct row,
+     * so a rolled window is a fresh insert rather than a mutated counter and stale windows are
+     * cleanly deletable.
+     */
+    bucketKey: v.string(),
+    /** The start of this row's window, ms since the epoch. Used to sweep expired rows. */
+    windowStart: v.number(),
+    /** How many requests this key has made in this window. */
+    count: v.number(),
+  })
+    .index("by_bucketKey", ["bucketKey"])
+    .index("by_windowStart", ["windowStart"]),
 });
