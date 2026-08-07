@@ -7,7 +7,7 @@ import { internal } from "./_generated/api";
 import { EVENT_NAMES, MAX_PROPS_BYTES, MAX_PROPS_KEYS, logEvent } from "./events";
 import { ANALYTICS_SECRET_HEADER, MAX_INSTALL_ID_BYTES, MAX_REQUEST_BODY_BYTES } from "./http";
 import {
-  CLEANUP_BATCH,
+  RECLAIM_BATCH,
   MAX_EVENTS_PER_INSTALL_PER_WINDOW,
   MAX_EVENTS_PER_IP_PER_WINDOW,
   RATE_LIMIT_WINDOW_MS,
@@ -666,7 +666,9 @@ describe("the rate-limit counter store is ephemeral and bounded (US-T14)", () =>
   const runCheck = (t: ReturnType<typeof setup>, installId: string, sourceIp: string | null, nowMs: number) =>
     t.mutation(internal.rateLimit.checkAndBump, { installId, sourceIp, nowMs });
 
-  test("a counter resets when its window rolls, and the stale row is reaped", async () => {
+  const reclaim = (t: ReturnType<typeof setup>) => t.mutation(internal.rateLimit.reclaimExpired, {});
+
+  test("a counter resets when its window rolls; the stale row survives until the cron reclaims it", async () => {
     const t = setup();
     const now = 1_785_715_200_000;
     // Fill the install's window to the ceiling.
@@ -681,21 +683,63 @@ describe("the rate-limit counter store is ephemeral and bounded (US-T14)", () =>
     const nextWindow = now + RATE_LIMIT_WINDOW_MS;
     expect((await runCheck(t, "roll-me", null, nextWindow)).allowed).toBe(true);
 
-    // ...and the previous window's row was swept, so the store does not accumulate stale counters.
-    const remaining = await rateLimitRows(t);
+    // ...but the hot path no longer reaps: the prior window's row is still present, because
+    // `checkAndBump` only touches the caller's own current bucket. Both rows exist here.
     const staleWindowStart = now - (now % RATE_LIMIT_WINDOW_MS);
-    expect(remaining.some((r) => r.windowStart === staleWindowStart)).toBe(false);
-    // Exactly the current window's bucket remains.
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0].windowStart).toBe(nextWindow - (nextWindow % RATE_LIMIT_WINDOW_MS));
+    const currentWindowStart = nextWindow - (nextWindow % RATE_LIMIT_WINDOW_MS);
+    const beforeReclaim = await rateLimitRows(t);
+    expect(beforeReclaim.some((r) => r.windowStart === staleWindowStart)).toBe(true);
+    expect(beforeReclaim.some((r) => r.windowStart === currentWindowStart)).toBe(true);
+
+    // The cron's reclamation is what sweeps the stale row - and only the stale one. The current
+    // window's row (expired relative to `Date.now()`, which is far in the future of these synthetic
+    // timestamps) is also swept here; what matters is the hot path did not delete anything.
+    await reclaim(t);
+    const afterReclaim = await rateLimitRows(t);
+    expect(afterReclaim.some((r) => r.windowStart === staleWindowStart)).toBe(false);
   });
 
-  test("cleanup is bounded per call, so the sweep cannot itself become an unbounded scan", async () => {
+  test("checkAndBump touches only the caller's own bucket - never another install's or a prior window's row", async () => {
     const t = setup();
-    const base = 1_000 * RATE_LIMIT_WINDOW_MS;
-    // Seed more stale buckets than one call may reap, each in its own past window.
+    const now = 1_785_715_200_000;
+    // Install A bumps once in this window.
+    await runCheck(t, "install-a", null, now);
+    // Install B bumps once in the same window; a distinct key, so a distinct row.
+    await runCheck(t, "install-b", null, now);
+    // A prior window's row for A, seeded directly, must be left untouched by any bump above/below.
+    const priorWindow = now - RATE_LIMIT_WINDOW_MS;
     await t.run(async (ctx) => {
-      for (let i = 0; i < CLEANUP_BATCH + 25; i++) {
+      await ctx.db.insert("rateLimits", {
+        bucketKey: `install:install-a:${priorWindow - (priorWindow % RATE_LIMIT_WINDOW_MS)}`,
+        windowStart: priorWindow - (priorWindow % RATE_LIMIT_WINDOW_MS),
+        count: 5,
+      });
+    });
+    // A second bump for A in the current window - a point patch on A's own row only.
+    await runCheck(t, "install-a", null, now);
+
+    const rows = await rateLimitRows(t);
+    const windowStart = now - (now % RATE_LIMIT_WINDOW_MS);
+    const aCurrent = rows.find((r) => r.bucketKey === `install:install-a:${windowStart}`);
+    const bCurrent = rows.find((r) => r.bucketKey === `install:install-b:${windowStart}`);
+    const aPrior = rows.find((r) => r.windowStart === priorWindow - (priorWindow % RATE_LIMIT_WINDOW_MS));
+    // A bumped twice, B once, and the prior-window row is exactly as seeded - no bump deleted or
+    // mutated any row but its own current-window bucket.
+    expect(aCurrent?.count).toBe(2);
+    expect(bCurrent?.count).toBe(1);
+    expect(aPrior?.count).toBe(5);
+    expect(rows).toHaveLength(3);
+  });
+
+  test("reclaimExpired is bounded per run, so a backlog drains over several ticks", async () => {
+    const t = setup();
+    // Seed more stale buckets than one tick may reap, each far enough in the past that it is expired
+    // relative to the real `Date.now()` the cron reads. `base` is well before 2020, so every seeded
+    // window is < the current window.
+    const base = 1_000 * RATE_LIMIT_WINDOW_MS;
+    const seededCount = RECLAIM_BATCH + 25;
+    await t.run(async (ctx) => {
+      for (let i = 0; i < seededCount; i++) {
         const windowStart = base + i * RATE_LIMIT_WINDOW_MS;
         await ctx.db.insert("rateLimits", {
           bucketKey: `install:stale-${i}:${windowStart}`,
@@ -704,17 +748,43 @@ describe("the rate-limit counter store is ephemeral and bounded (US-T14)", () =>
         });
       }
     });
-    const seeded = (await rateLimitRows(t)).length;
-    expect(seeded).toBe(CLEANUP_BATCH + 25);
+    expect((await rateLimitRows(t)).length).toBe(seededCount);
 
-    // A check in a window far in the future: everything seeded is expired relative to it.
-    const future = base + 10_000 * RATE_LIMIT_WINDOW_MS;
-    await runCheck(t, "future-caller", null, future);
+    // One tick deletes exactly RECLAIM_BATCH and leaves the overflow.
+    const first = await reclaim(t);
+    expect(first.deleted).toBe(RECLAIM_BATCH);
+    expect((await rateLimitRows(t)).length).toBe(seededCount - RECLAIM_BATCH);
 
-    // One call reaped at most CLEANUP_BATCH rows (leaving the seeded overflow), then inserted its own
-    // bucket. The point is that the sweep is bounded, not that it clears everything in one pass.
+    // A second tick drains the remainder.
+    const second = await reclaim(t);
+    expect(second.deleted).toBe(seededCount - RECLAIM_BATCH);
+    expect((await rateLimitRows(t)).length).toBe(0);
+  });
+
+  test("reclaimExpired reaps only expired windows, never the current-or-future ones", async () => {
+    const t = setup();
+    // Deterministic without racing the wall clock: seed one row whose window is far in the past
+    // (expired for any plausible `Date.now()`) and one whose window is far in the future (never
+    // expired), then confirm reclamation deletes exactly the past one.
+    const past = 1_000 * RATE_LIMIT_WINDOW_MS;
+    const future = Date.now() + 10_000 * RATE_LIMIT_WINDOW_MS;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("rateLimits", {
+        bucketKey: `install:expired:${past}`,
+        windowStart: past,
+        count: 1,
+      });
+      await ctx.db.insert("rateLimits", {
+        bucketKey: `install:future:${future}`,
+        windowStart: future,
+        count: 1,
+      });
+    });
+
+    const result = await reclaim(t);
+    expect(result.deleted).toBe(1);
     const after = await rateLimitRows(t);
-    const remainingStale = after.filter((r) => r.bucketKey.startsWith("install:stale-")).length;
-    expect(remainingStale).toBe(25);
+    expect(after).toHaveLength(1);
+    expect(after[0].windowStart).toBe(future);
   });
 });

@@ -294,11 +294,16 @@ FR-6 permits the throttle state in exactly one of two shapes; this uses the firs
 helper table**. It is `schema.ts`'s `rateLimits` table and nothing wider. It carries **no identity**
 (a `bucketKey` is a coarse throttle key, not a person), accumulates **no history** (each row is one
 `<scope>:<identity>:<windowStart>` window and is deleted once that window rolls), is read **only** by
-the throttle check, and is **not** part of the K1/K2/K4 evidence base. Every check sweeps a bounded
-batch (`CLEANUP_BATCH`) of expired rows, so the table cannot grow without limit as abusers churn
-through identifiers. Unlike `events`, this table carries indexes (by key and by window) - "the sink
-stays dumb" is a rule about the *evidence* table, not about a throttle whose job is to be fast and
-forgetful. The `events` table itself is untouched: same single, append-only shape, same five columns
+the throttle check, and is **not** part of the K1/K2/K4 evidence base. A scheduled cron
+(`convex/crons.ts`, ~once a minute, `internal.rateLimit.reclaimExpired`) reclaims expired rows in
+bounded batches (`RECLAIM_BATCH`) **off the request path**, so the table cannot grow without limit as
+abusers churn through identifiers - and, crucially, the throttle's hot path (`checkAndBump`) does
+**only** point operations on the caller's own bucket, never a scan or delete across a shared range,
+so concurrent requests from different installs never contend under Convex's optimistic concurrency
+(an earlier per-request sweep did, and could fail closed under exactly the concurrent launch load the
+guard exists to survive). Unlike `events`, this table carries indexes (by key and by window) - "the
+sink stays dumb" is a rule about the *evidence* table, not about a throttle whose job is to be fast
+and forgetful. The `events` table itself is untouched: same single, append-only shape, same five columns
 (`name`, `installId`, `clientTs`, `serverTs`, `props`), no identity added anywhere.
 
 ## HTTP action: `POST /logEvent` -> `204`
@@ -496,8 +501,10 @@ runs first); and rate limiting (the per-install ceiling inserting exactly up to 
 past it; the source-IP backstop tripping on many distinct installs from one IP; `x-forwarded-for`'s
 first hop being the key so a proxy chain does not multiply the budget; the shared secret **not**
 being a key, proved by a second install with the same secret not being throttled; and the counter
-store being ephemeral - a window roll resetting the count and reaping the stale row - and its cleanup
-being bounded per call). The secret-bearing default is baked into the test's `post(...)` helper, and
+store being ephemeral - a window roll resetting the count while the stale row survives until the cron
+reclaims it, `checkAndBump` touching only the caller's own bucket and never another install's or a
+prior window's row, and `reclaimExpired` reaping only expired windows in a bounded per-tick batch so
+a backlog drains over several ticks). The secret-bearing default is baked into the test's `post(...)` helper, and
 the suite sets `ANALYTICS_SHARED_SECRET` on `process.env` in a `beforeEach`, so every pre-US-T14
 assertion keeps meaning what it meant.
 

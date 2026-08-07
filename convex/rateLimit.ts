@@ -28,10 +28,13 @@ import { v } from "convex/values";
  * secret carries, and both are documented in `convex/README.md`.
  *
  * **Bounded and ephemeral.** Baking the window into `bucketKey` makes each window its own row, so a
- * key that has gone quiet leaves a row belonging to a past window rather than a live counter. Every
- * call sweeps a bounded batch of those expired rows, so the table cannot grow without limit as
- * abusers churn through identifiers - as long as request volume keeps pace with key churn, expired
- * rows are reaped. That is the "window-bucketed keys that are cleaned up" shape FR-6 permits.
+ * key that has gone quiet leaves a row belonging to a past window rather than a live counter. A
+ * scheduled cron (`convex/crons.ts`, ~once a minute) reclaims those expired rows in bounded batches
+ * via `reclaimExpired`, so the table cannot grow without limit as abusers churn through identifiers.
+ * That reclamation runs **off** the request path on purpose: the hot path does only point operations
+ * on the caller's own bucket, so concurrent requests from different installs never contend on a
+ * shared range under Convex's optimistic concurrency. That is the "window-bucketed keys that are
+ * cleaned up" shape FR-6 permits.
  */
 
 /**
@@ -48,11 +51,11 @@ export const MAX_EVENTS_PER_INSTALL_PER_WINDOW = 60;
 export const MAX_EVENTS_PER_IP_PER_WINDOW = 600;
 
 /**
- * How many expired rows one call may reap. A bound rather than "all of them" so the throttle stays
- * cheap under load: the sweep is opportunistic cleanup riding on the request path, not a scan that
- * grows with the table. Over many requests the reaping keeps pace with key churn.
+ * How many expired rows one `reclaimExpired` tick may delete. A bound rather than "all of them" so a
+ * single cron run does constant work regardless of how large the backlog has grown: a large backlog
+ * is drained over several ticks, bounded per run by design.
  */
-export const CLEANUP_BATCH = 100;
+export const RECLAIM_BATCH = 100;
 
 type LimitedBy = "install" | "ip";
 
@@ -122,18 +125,42 @@ export const checkAndBump = internalMutation({
         ? false
         : await bump(ctx, "ip", sourceIp, windowStart, MAX_EVENTS_PER_IP_PER_WINDOW);
 
-    // Opportunistic, bounded cleanup of rows from windows that have already rolled. Runs once per
-    // request rather than once per key, on the same indexed lookup, so it adds a constant cost.
-    const expired = await ctx.db
-      .query("rateLimits")
-      .withIndex("by_windowStart", (q: any) => q.lt("windowStart", windowStart))
-      .take(CLEANUP_BATCH);
-    for (const row of expired) {
-      await ctx.db.delete(row._id);
-    }
+    // The hot path does only point operations on the caller's own bucket(s) - the install bump and
+    // the optional IP bump above - and never scans or deletes across the table. Reclaiming expired
+    // rows is a scheduled cron's job (`reclaimExpired`), off the request path, so two requests from
+    // different installs never contend on a shared range under Convex's optimistic concurrency.
 
     // The install key is reported first when both trip, since it is the more specific of the two.
     const limitedBy: LimitedBy | null = installOver ? "install" : ipOver ? "ip" : null;
     return { allowed: limitedBy === null, limitedBy };
+  },
+});
+
+/**
+ * Reclaim expired rate-limit rows in a bounded batch. Scheduled by `convex/crons.ts` to run roughly
+ * once a minute, off the request path, so the throttle's hot path never scans or deletes across the
+ * shared table and concurrent requests from different installs cannot contend.
+ *
+ * A row is expired once its window has fully rolled: `windowStart < currentWindowStart`. `Date.now()`
+ * is read here rather than injected because this is not the engine and there is no caller to thread a
+ * clock through - a Convex mutation may read the wall clock (the `logEvent` mutation already does),
+ * and reclamation is best-effort maintenance of the ephemeral helper table, not a decision anything
+ * depends on. At most `RECLAIM_BATCH` rows are deleted per tick, so a large backlog drains over
+ * several ticks rather than turning one run into an unbounded scan.
+ */
+export const reclaimExpired = internalMutation({
+  args: {},
+  returns: v.object({ deleted: v.number() }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const currentWindowStart = now - (now % RATE_LIMIT_WINDOW_MS);
+    const expired = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_windowStart", (q: any) => q.lt("windowStart", currentWindowStart))
+      .take(RECLAIM_BATCH);
+    for (const row of expired) {
+      await ctx.db.delete(row._id);
+    }
+    return { deleted: expired.length };
   },
 });

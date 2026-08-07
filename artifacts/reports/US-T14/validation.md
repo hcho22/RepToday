@@ -61,6 +61,16 @@ rows for ust14-probe-burst3: 60
   before `logEvent` is reached, so those 2 also inserted nothing (again, row count is 60). A real
   client never contends with itself this hard; the case here is a deliberate synthetic flood.
 
+> **Post-review note (historical transcript).** This probe ran against the *first* implementation,
+> in which `checkAndBump` reclaimed expired rows opportunistically on every request via a shared
+> `by_windowStart` range scan. A later code review flagged that this made unrelated installs contend
+> on that shared range under OCC - not just one install hammering itself, but any concurrent launch
+> crowd - so the per-request sweep was replaced by an off-path `internal.rateLimit.reclaimExpired`
+> cron (`convex/crons.ts`, ~1/min), leaving the hot path to do only point operations on the caller's
+> own bucket. The `2 x 500` above is the pre-fix artifact this transcript preserves; the current code
+> does not run that sweep on the request path, so cross-install contention of this kind no longer
+> occurs. The numbers here are the point-in-time record, not a re-run of the shipped code.
+
 ## Cleanup
 
 All probe rows were deleted from the `events` evidence table afterwards, exactly as US-T03/US-T04

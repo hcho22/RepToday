@@ -39,10 +39,11 @@ export default defineSchema({
    * the throttle check in `rateLimit.ts`, and is **not** part of the evidence base for K1/K2/K4.
    * It exists solely to answer "has this key exceeded its window", and its contents are transient.
    *
-   * Unlike `events`, this table carries indexes: the throttle check must look a bucket up by key on
-   * every request and sweep expired buckets by window, and a full scan of a hot counter table would
-   * be the opposite of cheap. "The sink stays dumb" is a rule about the *evidence* table, not about
-   * a throttle whose whole job is to be fast and forgetful.
+   * Unlike `events`, this table carries indexes: the throttle check looks a bucket up by key on
+   * every request (`by_bucketKey`), and the `reclaimExpired` cron sweeps expired buckets by window
+   * (`by_windowStart`), and a full scan of a hot counter table would be the opposite of cheap. "The
+   * sink stays dumb" is a rule about the *evidence* table, not about a throttle whose whole job is
+   * to be fast and forgetful.
    */
   rateLimits: defineTable({
     /**
