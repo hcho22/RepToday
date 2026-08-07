@@ -15,8 +15,9 @@ final class WeekActiveEventTests: XCTestCase {
     /// Gregorian, Sunday-start, pinned to Pacific, deliberately *not* `Calendar.current`.
     private let calendar = AppState.cohortCalendar
 
-    /// A mutable clock the service reads for the event timestamp; the week bucketing itself is keyed off
-    /// each log's `completedAt`, so advancing "into the next week" is expressed by the log date below.
+    /// A mutable clock the tests advance to place each session's `completedAt` in a given week; both the
+    /// week bucketing and the emitted event timestamp are keyed off that same `completedAt`, so advancing
+    /// "into the next week" is expressed by the log date below.
     private var clock = Date(timeIntervalSince1970: 0)
 
     override func setUp() {
@@ -83,7 +84,6 @@ final class WeekActiveEventTests: XCTestCase {
             policyStore: InMemorySessionPolicyStore(),
             healthKitService: nil,
             analytics: analytics,
-            now: { self.clock },
             emissionCalendar: self.calendar,
             userDefaults: .standard
         )

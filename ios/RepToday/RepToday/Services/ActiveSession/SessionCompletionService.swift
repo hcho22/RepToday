@@ -77,9 +77,6 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     /// on the real completion path in `ServiceContainer.live`. This is the site the `week_active` event
     /// emits from, because it is the one place that holds both the just-completed log and the sink.
     private let analytics: (any AnalyticsServiceProtocol)?
-    /// Clock seam for the emission's millisecond timestamp; production uses `Date.init`, tests inject.
-    /// Never read inside the essential bookkeeping - that stays a pure function of the persisted history.
-    private let now: () -> Date
     /// The calendar the `week_active` cadence is bucketed in (US-T11 decision): `AppState.cohortCalendar`
     /// (Gregorian, Sunday-start, pinned Pacific), **not** `Calendar.current`. See `emitWeekActive`.
     private let emissionCalendar: Calendar
@@ -100,7 +97,6 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         policyStore: any SessionPolicyStore,
         healthKitService: (any HealthKitServiceProtocol)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
-        now: @escaping () -> Date = { Date() },
         emissionCalendar: Calendar = AppState.cohortCalendar,
         userDefaults: UserDefaults = .standard
     ) {
@@ -110,7 +106,6 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         self.policyStore = policyStore
         self.healthKitService = healthKitService
         self.analytics = analytics
-        self.now = now
         self.emissionCalendar = emissionCalendar
         self.userDefaults = userDefaults
     }
@@ -203,8 +198,15 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         emitted.append(weekKey)
         userDefaults.set(emitted, forKey: Self.weekActiveEmittedWeeksKey)
 
-        // `week_active` carries no properties, per the pre-registered schema.
-        let event = AnalyticsEvent(name: .weekActive, timestampMs: Int(now().timeIntervalSince1970 * 1000))
+        // `week_active` carries no properties, per the pre-registered schema. The timestamp is stamped
+        // from `log.completedAt` - the *same vantage* the dedup week-key is bucketed from - so the device
+        // dedup-week and the server's client-timestamp bucket-week agree by construction, and a session
+        // completing near the Sunday-midnight-Pacific boundary can't be deduped against week W yet
+        // server-bucketed into W+1.
+        let event = AnalyticsEvent(
+            name: .weekActive,
+            timestampMs: Int(log.completedAt.timeIntervalSince1970 * 1000)
+        )
         await analytics.record(event)
     }
 
