@@ -628,7 +628,7 @@ Because the give-up happens when the view model is already gone, `abandon_point`
 The load-bearing design decision here was **where `session_completed` fires**, and it was escalated rather than guessed.
 The AC said "emit from the `finish()` transition," but `session_completed` must carry `perceived_difficulty`, and the rating is collected on the *completion screen* via `rate()` (guarded by `isComplete`) - i.e. strictly **after** `finish()`.
 So a literal `finish()`-emit would always carry a `nil` rating and fail this story's own Validation Test / Failure Indicator ("`perceived_difficulty` missing").
-The captain chose **Option B** (`data/ust10-session-lifecycle/decision-completed-emit-point.md`): emit both terminal events at the dismiss choke point so the completed event carries the final rating.
+The captain chose **Option B**: emit both terminal events at the dismiss choke point so the completed event carries the final rating.
 **Accepted, recorded tradeoff:** a session the user finishes but force-quits from the celebration screen *before* tapping Done emits no `session_completed`, even though its `WorkoutLog` still persists - a rare, documented blind spot in the >=80% session-completion-rate metric, noted at the emission site and in `docs/test-coverage.md` rather than left silent.
 An unrated completion omits the `perceived_difficulty` key (the property bag carries no null); `perceived_difficulty` goes on the wire as the `PerceivedDifficulty` raw value (`too_hard` etc.), matching the domain enum's existing snake_case wire form.
 
