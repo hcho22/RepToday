@@ -288,6 +288,26 @@ reinterpret - and why the action requires one instead of coercing whatever it is
 `generation_ms` is **not** a top-level scalar. It rides inside `props`, which the action passes
 through untouched and the schema stores as-is, so it is not reached by that coercion.
 
+## Read path: `reconcile:eventsForInstalls` (internal, US-T13 harness)
+
+`convex/reconcile.ts`. The one function the offline US-T13 reconciliation harness reads through.
+It is an `internalQuery` for the same reason `logEvent` is an `internalMutation`: the sink keeps a
+single, internal-only way in. It adds **no** public Convex function and **no** HTTP route, so it does
+not widen the surface US-T14 will harden. It is read-only, adds no field to the row shape, selects
+the rows whose `installId` is in the supplied set, and returns the five wire columns
+(`name`/`installId`/`clientTs`/`serverTs`/`props`). With no index on the table (the sink stays dumb),
+it does a full scan and filters in memory - adequate for the one-off ~25-install cohort read, not a
+hot path; a larger cohort would justify a deliberate `by_installId` index in `schema.ts`.
+
+This does not break "no analysis in the backend": the query only *selects* rows. All funnel
+tabulation and anomaly detection is a **pure, offline** function in `tools/reconcile/` (unit-tested
+by `npm test` via `convex/reconcile/tabulate.test.ts`), never a deployed Convex function. Reach the
+query with a deploy/admin key:
+`npx convex run reconcile:eventsForInstalls '{"installIds":["..."]}' --prod`. See
+`tools/reconcile/README.md` for the runner and the standing caveat that this is the US-T13 *harness*,
+with the reconciliation report against real observed sessions still pending the moderated cohort, the
+named non-founder coder, and a frozen rubric - so US-T13's PRD acceptance boxes remain unchecked.
+
 ## Layout and deployment
 
 Standard Convex layout: the npm project lives at the repo root (`package.json`, `package-lock.json`)
