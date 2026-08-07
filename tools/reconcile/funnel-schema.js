@@ -5,8 +5,9 @@
  * authoritative schema in `gtm/06-channels/event-metric-schema.md`.
  *
  * The 13 in-app event names and their order are the wire contract. This file mirrors that contract
- * so the pure tabulator has no network or Convex-runtime dependency, and `funnel-schema.test.ts`
- * asserts `FUNNEL_EVENTS.map(e => e.name)` is exactly `EVENT_NAMES` from `convex/events.ts` (itself
+ * so the pure tabulator has no network or Convex-runtime dependency, and
+ * `convex/reconcile/tabulate.test.ts` asserts `FUNNEL_EVENT_NAMES` (i.e. `FUNNEL_EVENTS.map(e =>
+ * e.name)`) is exactly `EVENT_NAMES` from `convex/events.ts` (itself
  * pinned verbatim to the schema md and to the Swift `AnalyticsEventName`). So this is validated
  * against the source of truth, not a hand-maintained guess: a drift in either list fails the suite.
  *
