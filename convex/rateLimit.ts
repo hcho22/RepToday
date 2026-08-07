@@ -54,8 +54,13 @@ export const MAX_EVENTS_PER_IP_PER_WINDOW = 600;
  * How many expired rows one `reclaimExpired` tick may delete. A bound rather than "all of them" so a
  * single cron run does constant work regardless of how large the backlog has grown: a large backlog
  * is drained over several ticks, bounded per run by design.
+ *
+ * Sized to comfortably outpace one flooding IP at the ~once-a-minute cron cadence: a single source is
+ * capped at `MAX_EVENTS_PER_IP_PER_WINDOW` (600) fresh install rows per window, so at most ~600 rows
+ * per minute become reclaimable once that window rolls, and 2000 per tick drains that faster than it
+ * accrues while staying well within a Convex mutation's per-transaction write budget.
  */
-export const RECLAIM_BATCH = 100;
+export const RECLAIM_BATCH = 2000;
 
 type LimitedBy = "install" | "ip";
 

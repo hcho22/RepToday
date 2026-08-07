@@ -296,12 +296,19 @@ helper table**. It is `schema.ts`'s `rateLimits` table and nothing wider. It car
 `<scope>:<identity>:<windowStart>` window and is deleted once that window rolls), is read **only** by
 the throttle check, and is **not** part of the K1/K2/K4 evidence base. A scheduled cron
 (`convex/crons.ts`, ~once a minute, `internal.rateLimit.reclaimExpired`) reclaims expired rows in
-bounded batches (`RECLAIM_BATCH`) **off the request path**, so the table cannot grow without limit as
-abusers churn through identifiers - and, crucially, the throttle's hot path (`checkAndBump`) does
-**only** point operations on the caller's own bucket, never a scan or delete across a shared range,
-so concurrent requests from different installs never contend under Convex's optimistic concurrency
-(an earlier per-request sweep did, and could fail closed under exactly the concurrent launch load the
-guard exists to survive). Unlike `events`, this table carries indexes (by key and by window) - "the
+bounded batches (`RECLAIM_BATCH` = 2000) **off the request path**, and, crucially, the throttle's hot
+path (`checkAndBump`) does **only** point operations on the caller's own bucket, never a scan or
+delete across a shared range, so concurrent requests from different installs never contend under
+Convex's optimistic concurrency (an earlier per-request sweep did, and could fail closed under exactly
+the concurrent launch load the guard exists to survive). Reclamation is therefore **best-effort at a
+fixed cadence rather than instant**: `RECLAIM_BATCH` is sized to comfortably outpace one flooding IP's
+ceiling-bounded inflow (`MAX_EVENTS_PER_IP_PER_WINDOW` = 600 reclaimable rows/min) at the ~1/min
+cadence, so under normal and casual-abuse load the table stays small; but a *sustained* single-source
+flood can still transiently outpace one tick and let this table grow for the duration of the attack,
+draining once it stops. That is an accepted residual, not a hole: these rows are tiny and never an
+evidence surface, the `events` table's own rate limit is unaffected regardless, and a sustained or
+massively-distributed flood is the determined-attacker case this guard explicitly does not defend
+against - the same cost-raiser framing that governs the secret and the client-rotatable install id. Unlike `events`, this table carries indexes (by key and by window) - "the
 sink stays dumb" is a rule about the *evidence* table, not about a throttle whose job is to be fast
 and forgetful. The `events` table itself is untouched: same single, append-only shape, same five columns
 (`name`, `installId`, `clientTs`, `serverTs`, `props`), no identity added anywhere.
