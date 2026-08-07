@@ -209,9 +209,10 @@ final class ActiveSessionViewModel {
     /// fire-and-forget, so the player never stalls on the network.
     private(set) var analyticsTask: Task<Void, Never>?
 
-    /// Ensures exactly one lifecycle *terminal* event (`session_completed` xor `session_abandoned`)
-    /// is emitted per session (US-T10). Both fire from the single dismiss choke point `recordSessionEnd()`,
-    /// so this one-shot makes a repeated dismiss a no-op and no terminal event double-fires. Not
+    /// Ensures `session_completed` is emitted at most once per player (US-T10). It fires from the
+    /// single dismiss choke point `recordSessionEnd()`, so this one-shot makes a repeated dismiss a
+    /// no-op and the completion never double-fires. (The abandonment terminal event is not emitted by
+    /// the player at all - a resumable pause is not an abandonment; see `recordSessionEnd()`.) Not
     /// persisted: the funnel counts distinct installs and the backend dedups by `installId`.
     private var hasEmittedTerminalEvent = false
 
@@ -860,20 +861,27 @@ final class ActiveSessionViewModel {
 
     // MARK: - Lifecycle telemetry (US-T10)
 
-    /// Emit exactly one lifecycle *terminal* event as the player is dismissed, keyed off whether the
-    /// session completed. `ActiveSessionView.close()` routes every exit through here (US-K04), so the
-    /// completed/abandoned split is structural: a completed session emits `session_completed` and
-    /// never `session_abandoned`; an abandoned session (`isComplete == false`) emits `session_abandoned`
-    /// and never `session_completed`. The one-shot guard makes a repeated dismiss a no-op, so no
-    /// terminal event double-fires.
+    /// Emit the `session_completed` terminal event as the player is dismissed, when - and only when -
+    /// the session actually completed. `ActiveSessionView.close()` routes every exit through here
+    /// (US-K04), and the one-shot guard makes a repeated dismiss a no-op, so `session_completed` never
+    /// double-fires.
+    ///
+    /// A dismiss that leaves the session *resumable* is a PAUSE, not an abandonment (US-T10 refinement
+    /// of the AC's literal "emit at dismiss-with-completed==false"): the physical session lives on in
+    /// the store and can still be resumed and completed, so emitting `session_abandoned` here would let
+    /// one physical session emit *both* an abandon (on the pause) and a completion (after the resume),
+    /// double-counting the >=80% completion metric. Abandonment therefore fires on **true give-up** of
+    /// a resumable session instead - an explicit Discard, or an overwrite by a fresh Start - both owned
+    /// by `ReadyViewModel`, which still holds the persisted snapshot after this player is gone. The net
+    /// invariant across the full resume path is one terminal event per physical session (completed xor
+    /// abandoned), never both and never neither-when-an-outcome-occurred.
     ///
     /// `session_completed` is emitted *here*, at dismissal, rather than at the `finish()` transition,
     /// so it carries the perceived-difficulty rating the user gives on the completion screen - which
     /// `finish()` cannot have, because `rate()` only runs after the session is already complete
     /// (US-T10 decision, Option B). It reads all four properties off the completion log built at
     /// `finish()` (`perceived_difficulty` omitted when the user left the session unrated, since the
-    /// bag carries no null). `session_abandoned` carries the minutes exercised so far and a coarse,
-    /// non-identifying `abandon_point` derived from where the user was in the session.
+    /// bag carries no null).
     ///
     /// Accepted tradeoff (US-T10 decision): a session the user finishes but force-quits from the
     /// celebration screen *before* tapping Done emits no `session_completed`, even though its
@@ -881,32 +889,19 @@ final class ActiveSessionViewModel {
     /// metric, recorded here and in `docs/test-coverage.md` rather than left silent.
     func recordSessionEnd() {
         guard !hasEmittedTerminalEvent else { return }
+        // Only a completed session emits a terminal event from the player; a resumable pause emits
+        // nothing (its abandonment, if it ever comes, fires from the give-up path in ReadyViewModel).
+        guard isComplete, let log = completedLog else { return }
         hasEmittedTerminalEvent = true
-        if isComplete {
-            guard let log = completedLog else { return }
-            var properties: [String: AnalyticsValue] = [
-                "requested_minutes": .int(log.requestedMinutes),
-                "completed_minutes": .int(log.durationMinutes),
-                "was_return": .bool(log.wasReturn)
-            ]
-            if let difficulty = log.perceivedDifficulty {
-                properties["perceived_difficulty"] = .string(difficulty.rawValue)
-            }
-            emit(.sessionCompleted, properties: properties)
-        } else {
-            emit(.sessionAbandoned, properties: [
-                "completed_minutes": .int(completedDurationMinutes()),
-                "abandon_point": .string(abandonPoint().rawValue)
-            ])
+        var properties: [String: AnalyticsValue] = [
+            "requested_minutes": .int(log.requestedMinutes),
+            "completed_minutes": .int(log.durationMinutes),
+            "was_return": .bool(log.wasReturn)
+        ]
+        if let difficulty = log.perceivedDifficulty {
+            properties["perceived_difficulty"] = .string(difficulty.rawValue)
         }
-    }
-
-    /// The coarse `abandon_point` bucket for where the user quit (US-T10) - the block the current step
-    /// sits in at dismissal, mapped through `AbandonPoint`. The current step is always present on the
-    /// abandoned path (a complete session is the only one with no current step), so the `.strength`
-    /// fallback is purely defensive; either way it resolves to a non-identifying warm-up/main-work/cooldown.
-    private func abandonPoint() -> AbandonPoint {
-        AbandonPoint(blockCategory: currentStep?.blockCategory ?? .strength)
+        emit(.sessionCompleted, properties: properties)
     }
 
     /// The current millisecond client timestamp off the injected clock - the same encoding
@@ -956,7 +951,11 @@ final class ActiveSessionViewModel {
             skippedStepIDs: skippedStepIDs,
             startedAt: startedAt,
             rest: rest,
-            hold: hold
+            hold: hold,
+            // Captured here, at each meaningful change while the session is active, so a later
+            // give-up (Discard / overwrite) reports the minutes actually exercised as of the last
+            // active moment (US-T10) rather than wall-clock elapsed measured at the give-up instant.
+            exercisedMinutes: completedDurationMinutes()
         )
     }
 

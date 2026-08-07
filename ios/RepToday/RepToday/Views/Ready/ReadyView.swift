@@ -186,7 +186,14 @@ struct ReadyView: View {
     /// Screen never gates Start behind an unanswered question. Tapping it opens the active-session
     /// player (US-K01) for the already-generated session.
     private var startBar: some View {
-        Button(action: { presentedPlayer = viewModel.workout.map(PlayerPresentation.fresh) }) {
+        Button(action: {
+            guard let workout = viewModel.workout else { return }
+            // Starting fresh while a paused session is still resumable overwrites it in the store, so
+            // that paused session is being given up - emit its abandonment before the fresh player's
+            // first persist replaces it (US-T10). A no-op when nothing is resumable.
+            Task { await viewModel.abandonResumableSessionForOverwrite() }
+            presentedPlayer = .fresh(workout)
+        }) {
             Text("Start")
                 .font(Theme.Typography.button)
                 .frame(maxWidth: .infinity)

@@ -74,6 +74,14 @@ struct ActiveSessionState: Codable, Equatable {
     /// running countdown - that is in-memory only.
     /// Optional and defaulted, so a snapshot written before US-O03 decodes unchanged.
     var hold: Hold?
+    /// The whole minutes exercised as of the last active moment (US-T10), captured in the snapshot so
+    /// a give-up emission (Discard or overwrite) can report `session_abandoned`'s `completed_minutes`
+    /// off the persisted state rather than recomputing wall-clock elapsed at the give-up instant -
+    /// which, for a session paused and then discarded much later, would fold the idle gap into the
+    /// exercised total. Carries the player's `completedDurationMinutes` value (floored at 1, capped at
+    /// `requestedMinutes`), so "completed minutes" means the same thing on both terminal events.
+    /// Optional and defaulted, so a snapshot written before US-T10 decodes unchanged.
+    var exercisedMinutes: Int?
 
     /// A fresh, not-yet-started snapshot for `workout` - the lineup flattened from its blocks with the
     /// player parked at the first set. Used so the player's fresh and resumed construction paths share
@@ -90,6 +98,7 @@ struct ActiveSessionState: Codable, Equatable {
         self.startedAt = nil
         self.rest = nil
         self.hold = nil
+        self.exercisedMinutes = nil
     }
 
     init(
@@ -101,7 +110,8 @@ struct ActiveSessionState: Codable, Equatable {
         skippedStepIDs: Set<UUID>,
         startedAt: Date?,
         rest: Rest?,
-        hold: Hold? = nil
+        hold: Hold? = nil,
+        exercisedMinutes: Int? = nil
     ) {
         self.workout = workout
         self.slots = slots
@@ -112,5 +122,6 @@ struct ActiveSessionState: Codable, Equatable {
         self.startedAt = startedAt
         self.rest = rest
         self.hold = hold
+        self.exercisedMinutes = exercisedMinutes
     }
 }

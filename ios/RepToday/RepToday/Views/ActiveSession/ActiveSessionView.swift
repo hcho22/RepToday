@@ -96,10 +96,11 @@ struct ActiveSessionView: View {
     /// the last queued write has landed, so the Ready Screen's resume card reflects the position the
     /// user actually left rather than the one before it.
     private func close() {
-        // US-T10: emit the single lifecycle terminal event (completed vs abandoned) at this one
-        // dismiss choke point, before dismissing, so it reads the final play state - including any
-        // perceived-difficulty rating the user just gave on the completion screen - and the
-        // completed/abandoned split stays keyed off the same `isComplete` the resume signal uses.
+        // US-T10: report the session's end at this one dismiss choke point, before dismissing. A
+        // completed session emits `session_completed` here, reading the final play state - including
+        // any perceived-difficulty rating the user just gave on the completion screen. A dismiss that
+        // leaves the session resumable is a *pause*, not an abandonment, so it emits nothing here; the
+        // abandonment fires only on a true give-up (Discard / overwrite) from the Ready Screen.
         viewModel.recordSessionEnd()
         let pendingWrite = viewModel.persistenceTask
         let completed = viewModel.isComplete

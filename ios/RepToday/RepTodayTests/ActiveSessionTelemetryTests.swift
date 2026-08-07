@@ -1,14 +1,16 @@
 import XCTest
 @testable import RepToday
 
-/// Tests the session-lifecycle telemetry emissions (US-T10).
+/// Tests the *player's* half of the session-lifecycle telemetry (US-T10).
 ///
-/// The player emits `session_started` once at `start()`, and exactly one *terminal* event -
-/// `session_completed` xor `session_abandoned` - from the single dismiss choke point
-/// `recordSessionEnd()`, keyed off `isComplete`. The load-bearing property is that a completed
-/// session emits `started` then `completed` and never `abandoned`, an abandoned one emits `started`
-/// then `abandoned` and never `completed`, and no lifecycle event double-fires. These tests drive
-/// that structurally through `MockAnalyticsService` with an injected clock, so the decisions are
+/// The player emits `session_started` once at `start()` (never re-emitted on resume), and
+/// `session_completed` at the dismiss choke point `recordSessionEnd()` when the session actually
+/// completed. A mid-session dismiss that leaves the session resumable is a *pause*, not an
+/// abandonment, so the player emits no terminal event then; `session_abandoned` fires only on a true
+/// give-up (Discard / overwrite) owned by `ReadyViewModel`, covered in `ReadyViewModelTests`. The
+/// load-bearing property is that across the full resume path one physical session emits exactly one
+/// terminal event - never both, never neither-when-an-outcome-occurred. These tests drive that
+/// structurally through `MockAnalyticsService` with an injected clock, so the decisions are
 /// deterministic and no real time passes.
 final class ActiveSessionTelemetryTests: XCTestCase {
 
@@ -143,63 +145,92 @@ final class ActiveSessionTelemetryTests: XCTestCase {
         XCTAssertEqual(completed.properties["was_return"], .bool(false))
     }
 
-    // MARK: - session_abandoned
+    // MARK: - Pause is not an abandonment (US-T10 refinement)
 
-    /// An abandoned session emits `session_started` then `session_abandoned` - never `session_completed` -
-    /// carrying the minutes exercised so far and the `abandon_point` for where the user was.
-    func testAbandonedDuringMainWorkEmitsStartedThenAbandoned() async {
+    /// A mid-session dismiss that leaves the session *resumable* is a pause, not an abandonment: the
+    /// player emits no terminal event at all (only the earlier `session_started`), so a later resume +
+    /// completion cannot be double-counted against a spurious abandon. The abandonment, if it ever
+    /// comes, fires from the give-up path in `ReadyViewModel` (see `ReadyViewModelTests`).
+    func testMidSessionDismissEmitsNoTerminalEvent() async {
         let analytics = MockAnalyticsService()
         let clock = MutableClock(start)
         let vm = makeViewModel(threeBlockWorkout(requestedMinutes: 20), analytics: analytics, clock: clock)
 
         vm.start()
-        vm.completeSet()        // past the warm-up, now on the strength block (main work)
-        XCTAssertEqual(vm.currentStep?.blockCategory, .strength)
-        clock.advance(180)      // 3 minutes in
-        vm.recordSessionEnd()   // the X on the player: dismissed before completion
+        vm.completeSet()        // past the warm-up, still mid-session
+        XCTAssertFalse(vm.isComplete)
+        vm.recordSessionEnd()   // the X on the player: a resumable pause
 
         let events = await recorded(analytics, vm)
-        XCTAssertEqual(events.map(\.name), [.sessionStarted, .sessionAbandoned], "started then abandoned, in order")
-        XCTAssertFalse(events.contains { $0.name == .sessionCompleted }, "an abandoned session never emits completed")
-
-        let abandoned = events.first { $0.name == .sessionAbandoned }!
-        XCTAssertEqual(abandoned.properties["completed_minutes"], .int(3))
-        XCTAssertEqual(abandoned.properties["abandon_point"], .string("mainWork"))
+        XCTAssertEqual(events.map(\.name), [.sessionStarted], "a pause emits started only - no terminal event")
+        XCTAssertFalse(events.contains { $0.name == .sessionAbandoned }, "a pause never emits abandoned")
+        XCTAssertFalse(events.contains { $0.name == .sessionCompleted }, "a pause never emits completed")
     }
 
-    /// `abandon_point` is derived from the block the current step sits in: the warm-up bookend.
-    func testAbandonPointWarmup() async {
-        let analytics = MockAnalyticsService()
+    /// A resumed player restores `startedAt`, so its `start()` is a no-op for telemetry: the physical
+    /// session's `session_started` is not re-emitted on resume, keeping it to one per physical session.
+    func testResumedPlayerDoesNotReEmitSessionStarted() async {
         let clock = MutableClock(start)
-        let vm = makeViewModel(threeBlockWorkout(), analytics: analytics, clock: clock)
+        let seed = ActiveSessionViewModel(workout: threeBlockWorkout(), now: { clock.now })
+        seed.start()                      // stamps startedAt
+        let state = seed.snapshot()
+        XCTAssertNotNil(state.startedAt)
 
-        vm.start()             // still on the warm-up (index 0)
-        vm.recordSessionEnd()
+        let analytics = MockAnalyticsService()
+        let resumed = ActiveSessionViewModel(state: state, analytics: analytics, now: { clock.now })
+        resumed.start()                   // startedAt already set -> no-op
 
-        let abandoned = await recorded(analytics, vm).first { $0.name == .sessionAbandoned }!
-        XCTAssertEqual(abandoned.properties["abandon_point"], .string("warmup"))
+        let started = await recorded(analytics, resumed).filter { $0.name == .sessionStarted }
+        XCTAssertEqual(started.count, 0, "a resumed session's start() does not re-emit session_started")
     }
 
-    /// `abandon_point` for the cooldown bookend - the last block, still short of completion.
-    func testAbandonPointCooldown() async {
+    /// The whole resume path across two physical player lifetimes: start -> pause(dismiss) -> resume ->
+    /// finish emits exactly one `session_started` and one `session_completed`, and never a
+    /// `session_abandoned`. Both players share one sink, exactly as production does.
+    func testResumeThenFinishEmitsOneStartedAndOneCompleted() async throws {
+        let store = InMemoryActiveSessionStore()
         let analytics = MockAnalyticsService()
         let clock = MutableClock(start)
-        let vm = makeViewModel(threeBlockWorkout(), analytics: analytics, clock: clock)
+        let workout = threeBlockWorkout(requestedMinutes: 20)
+
+        let player1 = ActiveSessionViewModel(workout: workout, store: store, userId: "u", analytics: analytics, now: { clock.now })
+        player1.start()          // session_started + persists
+        player1.completeSet()    // advance + persist a resumable snapshot
+        player1.recordSessionEnd()   // a resumable pause: no terminal event
+        await player1.persistenceTask?.value
+        await player1.analyticsTask?.value
+
+        let loaded = try await store.load(for: "u")
+        let saved = try XCTUnwrap(loaded, "the paused session is resumable")
+        let player2 = ActiveSessionViewModel(state: saved, store: store, userId: "u", analytics: analytics, now: { clock.now })
+        player2.start()          // resumed: no re-emit
+        completeAllSets(player2)
+        player2.recordSessionEnd()   // session_completed
+        await player2.analyticsTask?.value
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.filter { $0.name == .sessionStarted }.count, 1, "started fires once for the physical session")
+        XCTAssertEqual(events.filter { $0.name == .sessionCompleted }.count, 1, "completed fires exactly once")
+        XCTAssertEqual(events.filter { $0.name == .sessionAbandoned }.count, 0, "a resumed-then-completed session never abandons")
+    }
+
+    /// The exercised-minutes the give-up emission reports are captured in the snapshot at the last
+    /// active moment, off the same `completedDurationMinutes` semantics the completion log uses, so a
+    /// session paused and later discarded reports minutes actually exercised rather than wall-clock idle.
+    func testSnapshotCapturesExercisedMinutes() {
+        let clock = MutableClock(start)
+        let vm = makeViewModel(threeBlockWorkout(requestedMinutes: 20), analytics: MockAnalyticsService(), clock: clock)
 
         vm.start()
-        vm.completeSet() // warm-up done -> push_up set 1
-        vm.completeSet() // push_up set 1 -> set 2
-        vm.completeSet() // push_up set 2 done -> cooldown "stretch"
-        XCTAssertEqual(vm.currentStep?.blockCategory, .cooldown)
-        vm.recordSessionEnd()
+        clock.advance(180)   // three minutes exercised
+        vm.completeSet()     // persist captures the exercised minutes as of now
 
-        let abandoned = await recorded(analytics, vm).first { $0.name == .sessionAbandoned }!
-        XCTAssertEqual(abandoned.properties["abandon_point"], .string("cooldown"))
+        XCTAssertEqual(vm.snapshot().exercisedMinutes, 3)
     }
 
     // MARK: - One-terminal-event invariant
 
-    /// A repeated dismiss never double-fires a terminal event (the one-shot guard), on either outcome.
+    /// A repeated dismiss never double-fires the completion terminal event (the one-shot guard).
     func testRecordSessionEndIsIdempotent() async {
         let analytics = MockAnalyticsService()
         let clock = MutableClock(start)
@@ -215,32 +246,20 @@ final class ActiveSessionTelemetryTests: XCTestCase {
         XCTAssertEqual(events.filter { $0.name == .sessionAbandoned }.count, 0)
     }
 
-    /// The dismiss choke point emits exactly one terminal event whether or not the session completed,
-    /// so a completed session dismissed and an abandoned session dismissed each carry one terminal event.
-    func testExactlyOneTerminalEventPerOutcome() async {
-        // Abandoned.
-        let abandonAnalytics = MockAnalyticsService()
-        let abandonClock = MutableClock(start)
-        let abandonVM = makeViewModel(threeBlockWorkout(), analytics: abandonAnalytics, clock: abandonClock)
-        abandonVM.start()
-        abandonVM.completeSet()
-        abandonVM.recordSessionEnd()
-        let abandonTerminals = await recorded(abandonAnalytics, abandonVM).filter {
-            $0.name == .sessionCompleted || $0.name == .sessionAbandoned
-        }
-        XCTAssertEqual(abandonTerminals.map(\.name), [.sessionAbandoned])
+    /// A straight completion dismissed emits exactly one terminal event, and it is `session_completed`.
+    func testStraightCompletionEmitsExactlyOneTerminalEvent() async {
+        let analytics = MockAnalyticsService()
+        let clock = MutableClock(start)
+        let vm = makeViewModel(threeBlockWorkout(), analytics: analytics, clock: clock)
 
-        // Completed.
-        let completeAnalytics = MockAnalyticsService()
-        let completeClock = MutableClock(start)
-        let completeVM = makeViewModel(threeBlockWorkout(), analytics: completeAnalytics, clock: completeClock)
-        completeVM.start()
-        completeAllSets(completeVM)
-        completeVM.recordSessionEnd()
-        let completeTerminals = await recorded(completeAnalytics, completeVM).filter {
+        vm.start()
+        completeAllSets(vm)
+        vm.recordSessionEnd()
+
+        let terminals = await recorded(analytics, vm).filter {
             $0.name == .sessionCompleted || $0.name == .sessionAbandoned
         }
-        XCTAssertEqual(completeTerminals.map(\.name), [.sessionCompleted])
+        XCTAssertEqual(terminals.map(\.name), [.sessionCompleted])
     }
 
     // MARK: - Optional sink
