@@ -173,7 +173,8 @@ extension SubscriptionServiceProtocol {
 /// `try`, and a failed, slow, or offline send is swallowed by `LiveAnalyticsService` (US-T04),
 /// never surfaced to a caller and never allowed to gate the core loop. The first production caller
 /// landed in US-T07 - `RepTodayApp.init()` emits the three app-entry events through
-/// `AppEntryTelemetry` - and the other 10 of the 13 emission sites are US-T08 through US-T12;
+/// `AppEntryTelemetry` - and the other 10 of the 13 emission sites landed across US-T08 through
+/// US-T12, so all 13 events now have their emission sites;
 /// US-T06's `#if DEBUG`, launch-argument-gated `TelemetryUITestHarness` also calls this, with its
 /// events intercepted in process.
 ///

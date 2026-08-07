@@ -144,8 +144,8 @@ struct ServiceContainer {
     ///     this container for reasons unrelated to telemetry - it is the only way to get the
     ///     CoreData-backed services composed - can substitute an inert sink and be structurally
     ///     unable to reach the network, rather than relying on no emission call site existing yet.
-    ///     Once US-T07 through US-T12 add those call sites, "no test performs a real network call"
-    ///     (FR-13) is held here by the code instead of by discipline - but only for tests running
+    ///     Now that US-T07 through US-T12 have added those call sites, "no test performs a real
+    ///     network call" (FR-13) is held here by the code instead of by discipline - but only for tests running
     ///     *in this process*. `RepTodayUITests` launches the real app out of process, which builds
     ///     its own container from the defaults below, so nothing passed here reaches it; that half
     ///     now rests on `LiveAnalyticsService`'s `isEnabled` gate, which US-T06 pointed at
@@ -250,9 +250,9 @@ struct ServiceContainer {
             // the completion recorder's `week_active` emission (US-T11) share one instance and one
             // consent gate. It is the live Convex-backed transport (US-T04) when an endpoint is
             // configured (Debug), the inert no-op when it is not (Release today, with an empty
-            // `REPTODAY_ANALYTICS_ENDPOINT`), or an explicit override a test passed. Emission sites
-            // US-T07 through US-T11 have landed (app entry, onboarding, Ready Screen, session lifecycle,
-            // weekly rollup); US-T12 (the paywall funnel) remains.
+            // `REPTODAY_ANALYTICS_ENDPOINT`), or an explicit override a test passed. All emission
+            // sites US-T07 through US-T12 have landed (app entry, onboarding, Ready Screen, session
+            // lifecycle, weekly rollup, and the paywall funnel), so all 13 events now emit.
             analyticsService: resolvedAnalyticsService
         )
     }

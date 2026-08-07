@@ -5,7 +5,8 @@ import Foundation
 /// This file is the *model only*: a typed event value plus the closed vocabularies it carries. It
 /// adds no emission call sites of its own - the first production caller landed in US-T07
 /// (`RepTodayApp.init()` emits the three app-entry events through `AppEntryTelemetry`), and the
-/// other 10 of the 13 emission sites are US-T08 through US-T12. US-T06's Debug-only,
+/// other 10 of the 13 emission sites landed across US-T08 through US-T12, so all 13 events now
+/// have their emission sites. US-T06's Debug-only,
 /// launch-argument-gated `TelemetryUITestHarness` also builds one of these values, to keep its own
 /// `app_install` firing on every probe launch. The sink it reaches landed in US-T03, the transport
 /// that carries it in US-T04, and the per-install identifier it travels beside in US-T05; that

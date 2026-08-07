@@ -14,8 +14,8 @@ import XCTest
 /// The two container tests want that CoreData wiring and nothing else, but building the production
 /// container is also what wires the live telemetry transport (US-T04), so they pass
 /// `NoOpAnalyticsService` through the factory's sink parameter. That is what keeps them off the
-/// network once US-T07 through US-T12 add the emission call sites, rather than leaving it to the
-/// fact that none exist yet (FR-13) - a guarantee that covers in-process tests like these ones, not
+/// network now that US-T07 through US-T12 have added the emission call sites, rather than leaving it to the
+/// fact that none exist (FR-13) - a guarantee that covers in-process tests like these ones, not
 /// the out-of-process `RepTodayUITests` launches, which US-T06's persisted opt-out flag closes.
 final class CoreDataServicesTests: XCTestCase {
 
