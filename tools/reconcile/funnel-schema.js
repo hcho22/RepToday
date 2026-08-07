@@ -57,9 +57,13 @@ export const FUNNEL_EVENT_NAMES = Object.freeze(FUNNEL_EVENTS.map((e) => e.name)
  * Funnel prerequisite edges: `[downstream, upstream]` means an install that emitted `downstream`
  * must also have emitted `upstream`; the reverse absence is a missing-event anomaly. These come
  * straight from the emission-site contracts (e.g. `onboarding_completed` only fires after
- * `onboarding_started`; `week_active` fires *from* a completed session; `subscribe`/`trial_started`
- * only fire from the paywall). `app_install` is deliberately not a prerequisite of anything: it
- * fires only on the first-ever open, so a returning install legitimately has none.
+ * `onboarding_started`; `subscribe`/`trial_started` only fire from the paywall). `app_install` is
+ * deliberately not a prerequisite of anything: it fires only on the first-ever open, so a returning
+ * install legitimately has none. `week_active` is deliberately *not* an edge to `session_completed`:
+ * it emits at `finish()` while `session_completed` emits only at dismissal (US-T10 Option B), so a
+ * user who force-quits the celebration screen legitimately has `week_active` with no
+ * `session_completed` - the documented gap that also surfaces as the informational
+ * `UNTERMINATED_SESSION` note, and an edge here would double-count it as a defect.
  *
  * @type {readonly [string, string][]}
  */
@@ -67,7 +71,6 @@ export const FUNNEL_PREREQUISITES = Object.freeze([
   ["onboarding_completed", "onboarding_started"],
   ["session_completed", "session_started"],
   ["session_abandoned", "session_started"],
-  ["week_active", "session_completed"],
   ["trial_started", "paywall_shown"],
   ["subscribe", "paywall_shown"],
 ]);
