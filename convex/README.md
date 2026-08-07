@@ -1,6 +1,6 @@
 # Rep Today telemetry sink (US-T03)
 
-The whole analytics backend: **one append-only table, one mutation, one HTTP route.**
+The whole analytics backend: **one append-only evidence table, one mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
 
 It exists so the anonymous funnel events defined in `gtm/06-channels/event-metric-schema.md` have
 somewhere to land during the 90-day PMF test.
@@ -52,7 +52,7 @@ threshold decision made before there is any data to make it against.
 
 ## Table: `events`
 
-`convex/schema.ts`. One table, five fields, no indexes.
+`convex/schema.ts`. The evidence table: five fields, no indexes. (`schema.ts` also defines the ephemeral `rateLimits` helper US-T14 added - a throttle counter store, not an evidence surface, and the one place indexes are carried; see "Abuse guard" below.)
 
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|

@@ -99,7 +99,7 @@ There is no XP, no levels, and no badges in the MVP.
 | **Persistence** | CoreData backed by `NSPersistentCloudKitContainer` (entities `CDUser`, `CDWorkoutLog`, `CDSessionPolicy`, `CDActiveSession`) |
 | **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
 | **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
-| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03), reached by a plain `URLSession` POST (US-T04) that the user's opt-out flag gates (US-T06) |
+| **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03), reached by a plain `URLSession` POST (US-T04) that the user's opt-out flag gates (US-T06) and a shared-secret + per-caller rate-limit abuse guard fronts (US-T14) |
 | **Bundle ID** | `com.reptoday.app` |
 
 AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
@@ -182,7 +182,7 @@ RepToday/
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
 ├── ios/RepToday/RepTodayTests/     # The default suite (XCTestCase + @testable import), plus the shared seams every suite is expected to use instead of its own copy: EvidenceOutput, HostedSurface/AccessibilityTree, DefaultsSnapshot
 ├── ios/RepToday/RepTodayUITests/   # The out-of-process XCUITest bundle under its own scheme, for the few things only a real touch can exercise; HealthAccessPrompt is its shared helper
-├── convex/                  # Anonymous-telemetry sink only (append-only events table); no backend behind the core loop
+├── convex/                  # Anonymous-telemetry sink only (append-only events table, plus US-T14's ephemeral rateLimits throttle helper); no backend behind the core loop
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
 ├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
@@ -199,9 +199,9 @@ RepToday/
 |----------|---------|
 | The v6.0 strategic PRD under `.claude/agent/tasks/` | Strategic plan (v6.0) - the discipline-first vision plus the v6 wedge (a daily-adaptive AI Programmer that writes a per-user Session Policy the deterministic engine runs on). Supersedes the prior v5 strategic PRD (kept for reference). |
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
-| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02), the Convex sink (US-T03), the anonymous per-install identity on `AppState` (US-T05), the live fire-and-forget transport between them (US-T04), and the opt-out consent flag with its Settings toggle and onboarding disclosure (US-T06) have landed, and every emission call site has followed - app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`); all 13 events now have their emission sites, so a Debug build emits across the whole funnel while a Release build stays inert until a production deployment is chosen. |
+| `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02), the Convex sink (US-T03), the anonymous per-install identity on `AppState` (US-T05), the live fire-and-forget transport between them (US-T04), and the opt-out consent flag with its Settings toggle and onboarding disclosure (US-T06) have landed, and every emission call site has followed - app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`); all 13 events now have their emission sites, so a Debug build emits across the whole funnel while a Release build stays inert until a production deployment is chosen. US-T14 has since abuse-hardened the public `POST /logEvent` (a client-embedded shared secret plus per-install/per-IP rate limiting, both ahead of the insert), leaving US-T13 (ground-truth reconciliation) as the one open story. |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. It is a symlink to `AGENTS.md`, which is the file to edit. |
-| `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, its boundary suite, the deliberate non-goals, and the residual it still carries. |
+| `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, the US-T14 abuse guard (shared secret + rate limiting), its boundary suite, the deliberate non-goals, and the residual it still carries. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
 | `docs/test-coverage.md` | The test-coverage map: one row per suite, added as the owning story lands. |
 | `docs/asset-attribution.md` | The source/license ledger every third-party asset must have a cleared row in before it ships. |
@@ -259,7 +259,7 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 ### The telemetry sink (`convex/`)
 
 Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), and every emission site now calls it in a Debug build - app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`) - so all 13 events emit while a Release build stays inert; the other caller is US-T06's Debug-only, launch-argument-gated XCUITest probe.
-Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at a dev deployment, and Release points at nothing and stays inert, because no production deployment has been chosen yet.
+Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at a dev deployment, and Release points at nothing and stays inert, because no production deployment has been chosen yet. US-T14 added a companion `REPTODAY_ANALYTICS_SECRET` build setting, split the same way (Debug carries the dev secret, Release nothing so the build stays inert), sent on every POST and checked against the deployment's `ANALYTICS_SHARED_SECRET` - a cost-raiser, not a guarantee (extractable from the binary); see `convex/README.md`'s "Abuse guard" section.
 Whether it talks at all is the user's call once the emission sites land: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` posts nothing to any deployment - the one mechanism that reaches an app the test process launched but never built.
 Read that as one of two guards rather than as passed by every launch: `OnboardingImperialUITests` passes it always, and `TelemetryOptOutUITests` passes it only where being opted out is the assertion, holding its opted-in legs off the wire by interception instead - the probe harness swaps the transport's `URLSession` for an in-process counting `URLProtocol`, which is what lets those legs run with the gate genuinely open.
 So every launch in that suite carries consent-off **or** the probe, and neither is not representable: the postures are a `TelemetryPosture` enum with no case meaning neither, and every launch goes through `TestApp` (`RepTodayUITests/TestApp.swift`), the bundle's sole `XCUIApplication`, whose only launch entry point takes a posture by value - so a test cannot hold a raw launchable app.
@@ -273,6 +273,7 @@ npm install
 npm run typecheck         # tsc --noEmit over convex/ - the deploy config and the test one
 npm test                  # vitest + convex-test: the POST /logEvent boundary suite, in process
 npx convex dev --once     # deploy the schema + functions to your own dev deployment
+npx convex env set ANALYTICS_SHARED_SECRET <secret>   # US-T14: without it the route fails closed (500)
 npx convex data events    # read rows back
 ```
 
