@@ -67,11 +67,22 @@ targets:
       # The worst case is therefore silently no data rather than silently the wrong destination.
       # Choosing and setting the production origin here is a precondition for shipping any build
       # that emits (US-T07 onward).
+      # The US-T14 shared secret, split the same way and for the same reasons: Debug carries the
+      # *development* deployment's secret and Release carries nothing (no production deployment
+      # chosen). It is sent on every `POST /logEvent` so a stranger who discovers the endpoint URL
+      # cannot flood the `events` table. It is a *cost-raiser, not a guarantee* - committed here and
+      # shipped in the binary, so it is extractable by anyone who unpacks the app; it stops
+      # opportunistic flooding, not a determined attacker (see `convex/README.md`). The Debug value
+      # must match the deployment's `ANALYTICS_SHARED_SECRET` env var (`npx convex env set`). An empty
+      # value is inert exactly like an empty endpoint: `LiveAnalyticsService.configured(...)` returns
+      # nil and the container falls back to `NoOpAnalyticsService`.
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
+          REPTODAY_ANALYTICS_SECRET: d8f3a1c07b9e4256a1c3e5f7091b2d4e
         Release:
           REPTODAY_ANALYTICS_ENDPOINT: ""
+          REPTODAY_ANALYTICS_SECRET: ""
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.

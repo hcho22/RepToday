@@ -20,6 +20,15 @@ import { EVENT_NAMES, type AnalyticsEventName } from "./events";
  * `{"$integer": …}` and refused by a `v.number()` field - never reaches the client. `props` is
  * passed through untouched.
  */
+/**
+ * Convex's runtime exposes deployment environment variables on `process.env`, but the deploy
+ * tsconfig deliberately pulls in no `@types/node`, so `process` is untyped here. This minimal,
+ * type-only declaration satisfies the typecheck for the one variable US-T14 reads
+ * (`ANALYTICS_SHARED_SECRET`); it is erased at emit and never ships (the bundler also skips it as a
+ * matter of course - `process` is a real global on the deployment).
+ */
+declare const process: { readonly env: Readonly<Record<string, string | undefined>> };
+
 const http = httpRouter();
 
 /**
@@ -52,6 +61,53 @@ const http = httpRouter();
  */
 export const MAX_INSTALL_ID_BYTES = 64;
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
+
+/**
+ * US-T14's shared-secret header (its name only; the value is a per-deployment Convex environment
+ * variable, `ANALYTICS_SHARED_SECRET`, and never appears in source). The client embeds the matching
+ * value from a per-configuration build setting and sends it on every POST.
+ *
+ * **This is a cost-raiser, not a guarantee, and the honesty of that claim is a criterion.** The
+ * secret is embedded in the shipped app binary, so anyone willing to unpack the app can extract it.
+ * It stops opportunistic flooding of a freshly-discovered endpoint URL - the case this guard exists
+ * for - but it does not stop a determined attacker who reads the secret out of the binary. See
+ * `convex/README.md`.
+ */
+export const ANALYTICS_SECRET_HEADER = "X-RepToday-Analytics-Secret";
+
+/**
+ * A length-checked, constant-time string comparison, so the secret check does not leak the secret
+ * one byte at a time through response timing. The threat is largely theoretical here - the secret
+ * is extractable from the binary anyway, so a timing side channel buys an attacker nothing they
+ * could not get more cheaply - but the comparison is cheap and removes the question.
+ */
+const secretsMatch = (presented: string, expected: string): boolean => {
+  if (presented.length !== expected.length) {
+    return false;
+  }
+  let mismatch = 0;
+  for (let i = 0; i < presented.length; i++) {
+    mismatch |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return mismatch === 0;
+};
+
+/**
+ * The coarse source IP the rate-limit backstop keys on, or `null` when the edge handed the action
+ * no usable client address. `x-forwarded-for`'s first hop is the conventional client address;
+ * `cf-connecting-ip` is Convex's Cloudflare-edge fallback. Both are set by the edge and can be
+ * spoofed or flattened by a proxy - which is exactly why the IP is a *backstop* to the per-install
+ * key, not the primary one, and why `convex/README.md` states its limits plainly.
+ */
+const clientIpFrom = (request: Request): string | null => {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const cloudflare = request.headers.get("cf-connecting-ip")?.trim();
+  return cloudflare ? cloudflare : null;
+};
 
 const jsonResponse = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), {
@@ -108,6 +164,25 @@ http.route({
   path: "/logEvent",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    // Shared secret first - a header check, so an unauthenticated flood is rejected before the body
+    // is even buffered (US-T14). Both this and the rate-limit check below run *before*
+    // `ctx.runMutation`, so a rejected request never inserts a row - the whole point of the guard.
+    const expectedSecret = process.env.ANALYTICS_SHARED_SECRET;
+    if (!expectedSecret) {
+      // Fail closed on *our* misconfiguration. An unguarded sink taking writes is the exact failure
+      // this story prevents, so a loud 500 is safer than silently accepting unauthenticated writes.
+      // This is deliberately the `5xx` (ours) side of the split, not the `4xx` (caller's) side: no
+      // caller can cause it, and it is the one the operator must see. Documented in the README.
+      console.error("ANALYTICS_SHARED_SECRET is not configured; refusing all writes to keep the sink guarded");
+      return jsonResponse(500, "internal error");
+    }
+    const presentedSecret = request.headers.get(ANALYTICS_SECRET_HEADER);
+    if (presentedSecret === null || !secretsMatch(presentedSecret, expectedSecret)) {
+      // A caller fault: missing or wrong credential. `401`, never `5xx`, so it never looks like a
+      // sink outage on the `4xx`/`5xx` signal a human watches during the PMF test.
+      return jsonResponse(401, "missing or invalid analytics secret");
+    }
+
     // Size first, before the body is even parsed. This is what keeps an oversized payload from
     // reaching `ctx.runMutation` and failing during argument serialization as a plain `Error` -
     // which would answer `500` and so let a caller fake an outage. See `MAX_REQUEST_BODY_BYTES`.
@@ -164,6 +239,21 @@ http.route({
     const clientTs = body.clientTs;
     if (typeof clientTs !== "number" || !Number.isFinite(clientTs)) {
       return jsonResponse(400, "clientTs must be a finite number of milliseconds since the epoch");
+    }
+
+    // Rate limit (US-T14), keyed on the per-install identifier just validated and, as a backstop,
+    // the coarse source IP. This runs *before* the insert, and the whole read-increment-compare is
+    // one serializable mutation, so two concurrent floods for the same key cannot both slip under
+    // the ceiling. The window is anchored to *server* time (`Date.now()`), never the client-supplied
+    // `clientTs`, which a flooder controls and could pin to keep landing in a fresh window. An
+    // over-ceiling request is a `429` with no insert - a caller fault, never `5xx`.
+    const decision = await ctx.runMutation(internal.rateLimit.checkAndBump, {
+      installId: body.installId,
+      sourceIp: clientIpFrom(request),
+      nowMs: Date.now(),
+    });
+    if (!decision.allowed) {
+      return jsonResponse(429, `rate limit exceeded (${decision.limitedBy})`);
     }
 
     // `props` is the one optional field, so an absent bag - and a `null` one, which `??` treats the

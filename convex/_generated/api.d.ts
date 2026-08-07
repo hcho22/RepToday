@@ -10,6 +10,8 @@
 
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as rateLimit from "../rateLimit.js";
+import type * as reconcile from "../reconcile.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +22,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   events: typeof events;
   http: typeof http;
+  rateLimit: typeof rateLimit;
+  reconcile: typeof reconcile;
 }>;
 
 /**
