@@ -72,19 +72,47 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     /// records nothing to Health. When wired, the completed session is written to Health as a workout,
     /// fully isolated so it can never disrupt the essential bookkeeping or block the completion.
     private let healthKitService: (any HealthKitServiceProtocol)?
+    /// Anonymous product-telemetry sink (US-T11). Optional exactly like the other emission sites'
+    /// (`ReadyViewModel`/`ActiveSessionViewModel`): `nil` in previews and the in-memory mock, wired only
+    /// on the real completion path in `ServiceContainer.live`. This is the site the `week_active` event
+    /// emits from, because it is the one place that holds both the just-completed log and the sink.
+    private let analytics: (any AnalyticsServiceProtocol)?
+    /// Clock seam for the emission's millisecond timestamp; production uses `Date.init`, tests inject.
+    /// Never read inside the essential bookkeeping - that stays a pure function of the persisted history.
+    private let now: () -> Date
+    /// The calendar the `week_active` cadence is bucketed in (US-T11 decision): `AppState.cohortCalendar`
+    /// (Gregorian, Sunday-start, pinned Pacific), **not** `Calendar.current`. See `emitWeekActive`.
+    private let emissionCalendar: Calendar
+    /// Where the persisted set of already-emitted week-starts lives (US-T11), so a second session in the
+    /// same week never re-emits and the once-per-week guarantee survives relaunch. Production uses
+    /// `.standard`; tests inject a restorable store.
+    private let userDefaults: UserDefaults
+
+    /// The `UserDefaults` key holding the emit-once set: an array of already-emitted week-start instants
+    /// (whole seconds since the Unix epoch) in `emissionCalendar`. Internal so the tests that must write
+    /// the real defaults can restore it via `restoreAfterTest`.
+    static let weekActiveEmittedWeeksKey = "telemetry.weekActiveEmittedWeeks"
 
     init(
         workoutLogService: any WorkoutLogServiceProtocol,
         userService: any UserServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol,
         policyStore: any SessionPolicyStore,
-        healthKitService: (any HealthKitServiceProtocol)? = nil
+        healthKitService: (any HealthKitServiceProtocol)? = nil,
+        analytics: (any AnalyticsServiceProtocol)? = nil,
+        now: @escaping () -> Date = { Date() },
+        emissionCalendar: Calendar = AppState.cohortCalendar,
+        userDefaults: UserDefaults = .standard
     ) {
         self.workoutLogService = workoutLogService
         self.userService = userService
         self.consistencyService = consistencyService
         self.policyStore = policyStore
         self.healthKitService = healthKitService
+        self.analytics = analytics
+        self.now = now
+        self.emissionCalendar = emissionCalendar
+        self.userDefaults = userDefaults
     }
 
     func recordCompletedSession(_ log: WorkoutLog, user: User, recentLogs: [WorkoutLog]) async throws {
@@ -136,6 +164,48 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         if let healthKitService {
             try? await healthKitService.saveWorkoutLog(log, user: latest)
         }
+
+        // 8. Emit `week_active` at most once per distinct active week (US-T11). This is last and fully
+        //    isolated from the throwing bookkeeping above - a telemetry emission must never affect
+        //    whether the completion the user earned is recorded.
+        await emitWeekActive(for: log)
+    }
+
+    /// Emit `week_active` iff this completed session is the first the account has logged in its calendar
+    /// week - the "Weekly Active Exercisers" North Star and kill-criterion K4 signal (US-T11).
+    ///
+    /// **Reuses the existing rollup's bucketing rather than re-deriving one.** `ProgressAnalytics`
+    /// keys its `sessionsByWeek` off `ConsistencyScore.startOfWeek(log.completedAt, calendar)`; this
+    /// keys off that *same function and the same `log.completedAt` vantage*, so "which week" is defined
+    /// once. What differs is the calendar handed in: the emission cadence buckets in
+    /// `AppState.cohortCalendar` (Gregorian, Sunday-start, Pacific), **not** the `Calendar.current` the
+    /// on-device rollup uses. That is the one decision US-T11 owns, and it mirrors the split US-T05
+    /// established for `install_week`: `week_active` carries no properties, so the server can only bucket
+    /// it by client timestamp; emitting on each device's own week boundary would let one install land
+    /// twice inside one server week and zero in another, so K4's numerator (device-local weeks) and
+    /// denominator (pinned cohort weeks) would be two different definitions of "week". The Consistency
+    /// Score stays on `Calendar.current` because a user's training week is their local week - the two
+    /// calendars are coupled, change one only with the other.
+    ///
+    /// Emit-once is enforced by a *persisted* set of already-emitted week-starts, so a second session in
+    /// the same week is a no-op that survives relaunch. The week is marked before the fire-and-forget
+    /// `record(_:)` and independently of consent: consent lives only in the sink (US-T06), and an
+    /// emission site must never re-check the gate itself - so an opted-out week is still consumed,
+    /// exactly as the app-entry return events treat their launch-state dedup.
+    private func emitWeekActive(for log: WorkoutLog) async {
+        guard let analytics else { return }
+
+        let weekStart = ConsistencyScore.startOfWeek(log.completedAt, emissionCalendar)
+        let weekKey = Int(weekStart.timeIntervalSince1970.rounded())
+
+        var emitted = userDefaults.array(forKey: Self.weekActiveEmittedWeeksKey) as? [Int] ?? []
+        guard !emitted.contains(weekKey) else { return }
+        emitted.append(weekKey)
+        userDefaults.set(emitted, forKey: Self.weekActiveEmittedWeeksKey)
+
+        // `week_active` carries no properties, per the pre-registered schema.
+        let event = AnalyticsEvent(name: .weekActive, timestampMs: Int(now().timeIntervalSince1970 * 1000))
+        await analytics.record(event)
     }
 
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {

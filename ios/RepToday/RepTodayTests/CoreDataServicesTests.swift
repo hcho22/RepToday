@@ -163,6 +163,9 @@ final class CoreDataServicesTests: XCTestCase {
     /// The completion recorder wired into the production container writes a durable log through
     /// the CoreData log service (the US-L01 loop, now cross-launch persistent, US-N02).
     func testLiveContainerCompletionRecorderWritesDurableLog() async throws {
+        // The completion recorder now emits `week_active` (US-T11), whose persisted emit-once set lives
+        // in `.standard` on the production path; restore it so this test does not leak the key.
+        restoreAfterTest(SessionCompletionService.weekActiveEmittedWeeksKey)
         let services = ServiceContainer.live(
             context: context,
             installId: "test-install",
