@@ -158,4 +158,113 @@ final class PaywallViewModelTests: XCTestCase {
         XCTAssertFalse(vm.didUnlockPremium)
         XCTAssertNotNil(vm.message)
     }
+
+    // MARK: - Telemetry (US-T12)
+    //
+    // These prove the monetization funnel emissions through `MockAnalyticsService` (in-process, no
+    // network per FR-13). The live StoreKit purchase legs verify only on device / the `.storekit`
+    // test configuration; what these unit tests prove is the view model's emission decisions - which
+    // event fires, with which property, on which outcome - given a resolved purchase, not that a real
+    // App Store purchase resolves.
+
+    private let trialPremium = Subscription(
+        tier: .premium,
+        provider: .apple,
+        expiresAt: nil,
+        trialEndsAt: Date(timeIntervalSince1970: 10_000)
+    )
+
+    func testLoadEmitsPaywallShownOnceWithEntryPoint() async {
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(
+            subscriptionService: StubService(),
+            analytics: analytics,
+            entryPoint: .progressUpsell
+        )
+
+        await vm.load()
+        await vm.load() // a re-appear must not re-emit
+
+        let events = await analytics.recordedEvents
+        let shown = events.filter { $0.name == .paywallShown }
+        XCTAssertEqual(shown.count, 1, "paywall_shown fires once per presentation, not per load()")
+        XCTAssertEqual(shown.first?.properties["entry_point"], .string(EntryPoint.progressUpsell.rawValue))
+    }
+
+    func testDirectPaidPurchaseEmitsSubscribeWithPlan() async {
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(subscriptionService: StubService(purchaseOutcome: premium), analytics: analytics)
+        let plan = SubscriptionPlan.samples[0]
+
+        await vm.purchase(plan)
+
+        let events = await analytics.recordedEvents
+        let subscribe = events.filter { $0.name == .subscribe }
+        XCTAssertEqual(subscribe.count, 1, "a direct paid purchase emits subscribe")
+        XCTAssertEqual(subscribe.first?.properties["plan"], .string(plan.id))
+        XCTAssertTrue(events.allSatisfy { $0.name != .trialStarted }, "a non-trial purchase never emits trial_started")
+    }
+
+    func testTrialPurchaseEmitsTrialStartedNotSubscribe() async {
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(subscriptionService: StubService(purchaseOutcome: trialPremium), analytics: analytics)
+
+        await vm.purchase(SubscriptionPlan.samples[0])
+
+        let events = await analytics.recordedEvents
+        let trial = events.filter { $0.name == .trialStarted }
+        XCTAssertEqual(trial.count, 1, "a trial-bearing purchase emits trial_started")
+        XCTAssertTrue(trial.first?.properties.isEmpty ?? false, "trial_started carries no properties")
+        XCTAssertTrue(events.allSatisfy { $0.name != .subscribe }, "a trial start does not also emit subscribe")
+    }
+
+    func testCancelledPurchaseEmitsNoMonetizationEvent() async {
+        // A cancel resolves to the unchanged (free) entitlement - no grant, so nothing fires.
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(subscriptionService: StubService(purchaseOutcome: .free), analytics: analytics)
+
+        await vm.purchase(SubscriptionPlan.samples[0])
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.allSatisfy { $0.name != .subscribe && $0.name != .trialStarted },
+                      "a cancelled purchase emits neither subscribe nor trial_started")
+    }
+
+    func testPendingPurchaseEmitsNoMonetizationEvent() async {
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(subscriptionService: StubService(purchaseIsPending: true), analytics: analytics)
+
+        await vm.purchase(SubscriptionPlan.samples[0])
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.allSatisfy { $0.name != .subscribe && $0.name != .trialStarted },
+                      "a pending purchase grants nothing yet, so it emits no monetization event")
+    }
+
+    func testFailedPurchaseEmitsNoMonetizationEvent() async {
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(
+            subscriptionService: StubService(purchaseError: SubscriptionError.failed("declined")),
+            analytics: analytics
+        )
+
+        await vm.purchase(SubscriptionPlan.samples[0])
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.allSatisfy { $0.name != .subscribe && $0.name != .trialStarted },
+                      "a failed purchase emits no monetization event")
+    }
+
+    func testRestoreDoesNotEmitSubscribeOrTrialStarted() async {
+        // Restore re-grants an already-owned entitlement; it is not a new purchase, so it must not
+        // re-emit the monetization funnel events.
+        let analytics = MockAnalyticsService()
+        let vm = PaywallViewModel(subscriptionService: StubService(restoreOutcome: premium), analytics: analytics)
+
+        await vm.restore()
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.allSatisfy { $0.name != .subscribe && $0.name != .trialStarted },
+                      "restoring a prior purchase does not emit subscribe or trial_started")
+    }
 }

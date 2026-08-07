@@ -14,8 +14,19 @@ struct PaywallView: View {
     @State private var viewModel: PaywallViewModel
     private let onUnlock: () -> Void
 
-    init(subscriptionService: any SubscriptionServiceProtocol, onUnlock: @escaping () -> Void = {}) {
-        _viewModel = State(initialValue: PaywallViewModel(subscriptionService: subscriptionService))
+    init(
+        subscriptionService: any SubscriptionServiceProtocol,
+        analyticsService: (any AnalyticsServiceProtocol)? = nil,
+        entryPoint: EntryPoint = .progressUpsell,
+        onUnlock: @escaping () -> Void = {}
+    ) {
+        _viewModel = State(
+            initialValue: PaywallViewModel(
+                subscriptionService: subscriptionService,
+                analytics: analyticsService,
+                entryPoint: entryPoint
+            )
+        )
         self.onUnlock = onUnlock
     }
 

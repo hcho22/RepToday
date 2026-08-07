@@ -78,6 +78,23 @@ enum AbandonPoint: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Entry point
+
+/// Where the user opened the paywall from (US-T12) - the closed vocabulary the `entry_point`
+/// property on `paywall_shown` carries. Per the schema's stated convention that
+/// `abandon_point`/`entry_point` are small, non-identifying closed enums (never free text), this
+/// starts with the single presentation path that exists today - the Progress-tab premium upsell
+/// (`ProgressTabView`'s `PremiumUpsellCard`) - and gains a case as each new entry point appears.
+///
+/// Like `AnalyticsEventName` and `AbandonPoint`, the raw values are the wire contract - the exact
+/// strings the Convex `events` table stores - so the case *names* may be refactored freely but the
+/// raw *values* must not change.
+enum EntryPoint: String, Codable, CaseIterable, Identifiable, Hashable {
+    case progressUpsell = "progress_upsell"
+
+    var id: String { rawValue }
+}
+
 // MARK: - Property value
 
 /// A single non-identifying property value: the closed set of scalar types the schema's property
