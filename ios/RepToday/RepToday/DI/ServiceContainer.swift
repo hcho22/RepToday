@@ -201,6 +201,18 @@ struct ServiceContainer {
         #else
         analyticsSession = nil
         #endif
+        // Resolve the telemetry sink once, so the completion recorder's `week_active` emission (US-T11)
+        // and the container's own sink are the same instance and share the consent gate. An explicit
+        // `analyticsService` overrides the build-configured resolution; otherwise it is the live
+        // transport when an endpoint is configured (Debug) and the inert no-op when it is not (Release
+        // today), so a Release build's completion path stays silent exactly like every other site.
+        let resolvedAnalyticsService: any AnalyticsServiceProtocol = analyticsService
+            ?? LiveAnalyticsService.configured(
+                installId: installId,
+                session: analyticsSession,
+                isEnabled: analyticsGate
+            )
+            ?? NoOpAnalyticsService()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -221,7 +233,12 @@ struct ServiceContainer {
                 userService: userService,
                 consistencyService: consistencyService,
                 policyStore: policyStore,
-                healthKitService: healthKitService
+                healthKitService: healthKitService,
+                // The `week_active` emission site (US-T11): the same resolved sink the container exposes,
+                // so consent and destination match every other emission. The emit-once store defaults to
+                // `.standard` and the event timestamp is stamped from `log.completedAt`; the cadence
+                // buckets in `AppState.cohortCalendar` (the initializer's default), not `Calendar.current`.
+                analytics: resolvedAnalyticsService
             ),
             healthKitService: healthKitService,
             // Real StoreKit 2 subscriptions and paywall (US-N04): entitlement drives the US-M02 depth
@@ -229,36 +246,14 @@ struct ServiceContainer {
             subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: AppleAuthService.live(),
-            // The live Convex-backed transport (US-T04): one fire-and-forget `URLSession` POST per
-            // event to the deployment's `POST /logEvent` action, carrying the install id above.
-            // US-T07 added the first production caller - `RepTodayApp.init()` emits the three
-            // app-entry events through `AppEntryTelemetry` - and the other 10 of the 13 emission
-            // sites are US-T08 through US-T12. So a Debug build now POSTs at app entry, while a
-            // Release build stays silent because its endpoint is empty (below). US-T06's Debug-only,
-            // launch-argument-gated `TelemetryUITestHarness` also emits, through the intercepting
-            // session wired above, so that attempt never leaves the process.
-            //
-            // `configured` returns `nil` when the deployment endpoint is missing or unusable, and
-            // that build falls back to the inert sink rather than trapping or logging: a telemetry
-            // misconfiguration must cost nothing on a path the core loop shares. That is also the
-            // *normal* Release state today, not only a mistake - `REPTODAY_ANALYTICS_ENDPOINT` is
-            // empty under Release until a production deployment is chosen - so the type wired here
-            // is the honest answer to "is this build configured to emit?" rather than a promise
-            // that it is. An explicit `analyticsService` overrides both branches; nothing else
-            // about this wiring changes when it does.
-            //
-            // `analyticsGate` is US-T06's opt-out flag, read fresh from the `UserDefaults` it was
-            // built against on every emission rather than captured here - which is what makes
-            // turning the Settings toggle off take effect on the next event instead of the next
-            // launch, and what lets the `-AppState.analyticsEnabled NO` launch argument close the
-            // gate in an app this process never built.
-            analyticsService: analyticsService
-                ?? LiveAnalyticsService.configured(
-                    installId: installId,
-                    session: analyticsSession,
-                    isEnabled: analyticsGate
-                )
-                ?? NoOpAnalyticsService()
+            // The same telemetry sink resolved above (`resolvedAnalyticsService`), so the container and
+            // the completion recorder's `week_active` emission (US-T11) share one instance and one
+            // consent gate. It is the live Convex-backed transport (US-T04) when an endpoint is
+            // configured (Debug), the inert no-op when it is not (Release today, with an empty
+            // `REPTODAY_ANALYTICS_ENDPOINT`), or an explicit override a test passed. Emission sites
+            // US-T07 through US-T11 have landed (app entry, onboarding, Ready Screen, session lifecycle,
+            // weekly rollup); US-T12 (the paywall funnel) remains.
+            analyticsService: resolvedAnalyticsService
         )
     }
 }
