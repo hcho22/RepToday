@@ -19,6 +19,11 @@ struct ProgressTabView: View {
     /// model so the upsell can present the paywall sheet; the mock keeps previews rendering.
     private let subscriptionService: any SubscriptionServiceProtocol
 
+    /// The telemetry sink the presented paywall emits `paywall_shown`/`trial_started`/`subscribe`
+    /// through (US-T12). Held alongside `subscriptionService` and threaded into `PaywallView`; the
+    /// preview/test seam leaves it `nil` so those surfaces stay off the wire.
+    private let analyticsService: (any AnalyticsServiceProtocol)?
+
     init(services: ServiceContainer) {
         _viewModel = State(
             initialValue: ProgressViewModel(
@@ -30,15 +35,18 @@ struct ProgressTabView: View {
             )
         )
         self.subscriptionService = services.subscriptionService
+        self.analyticsService = services.analyticsService
     }
 
     /// Test/preview seam so a fixed clock and pre-seeded view model can be injected.
     init(
         viewModel: ProgressViewModel,
-        subscriptionService: any SubscriptionServiceProtocol = MockSubscriptionService()
+        subscriptionService: any SubscriptionServiceProtocol = MockSubscriptionService(),
+        analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.subscriptionService = subscriptionService
+        self.analyticsService = analyticsService
     }
 
     var body: some View {
@@ -56,7 +64,11 @@ struct ProgressTabView: View {
             // On a successful unlock the paywall dismisses itself and calls this, so the gated depth
             // layer swaps in without leaving the tab. The reload is best-effort; the core loop and the
             // free surfaces are never affected.
-            PaywallView(subscriptionService: subscriptionService) {
+            PaywallView(
+                subscriptionService: subscriptionService,
+                analyticsService: analyticsService,
+                entryPoint: .progressUpsell
+            ) {
                 Task { await viewModel.load() }
             }
         }

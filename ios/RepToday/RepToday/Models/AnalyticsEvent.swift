@@ -5,7 +5,8 @@ import Foundation
 /// This file is the *model only*: a typed event value plus the closed vocabularies it carries. It
 /// adds no emission call sites of its own - the first production caller landed in US-T07
 /// (`RepTodayApp.init()` emits the three app-entry events through `AppEntryTelemetry`), and the
-/// other 10 of the 13 emission sites are US-T08 through US-T12. US-T06's Debug-only,
+/// other 10 of the 13 emission sites landed across US-T08 through US-T12, so all 13 events now
+/// have their emission sites. US-T06's Debug-only,
 /// launch-argument-gated `TelemetryUITestHarness` also builds one of these values, to keep its own
 /// `app_install` firing on every probe launch. The sink it reaches landed in US-T03, the transport
 /// that carries it in US-T04, and the per-install identifier it travels beside in US-T05; that
@@ -76,6 +77,23 @@ enum AbandonPoint: String, Codable, CaseIterable, Identifiable, Hashable {
         case .strength, .mobility, .primal: self = .mainWork
         }
     }
+}
+
+// MARK: - Entry point
+
+/// Where the user opened the paywall from (US-T12) - the closed vocabulary the `entry_point`
+/// property on `paywall_shown` carries. Per the schema's stated convention that
+/// `abandon_point`/`entry_point` are small, non-identifying closed enums (never free text), this
+/// starts with the single presentation path that exists today - the Progress-tab premium upsell
+/// (`ProgressTabView`'s `PremiumUpsellCard`) - and gains a case as each new entry point appears.
+///
+/// Like `AnalyticsEventName` and `AbandonPoint`, the raw values are the wire contract - the exact
+/// strings the Convex `events` table stores - so the case *names* may be refactored freely but the
+/// raw *values* must not change.
+enum EntryPoint: String, Codable, CaseIterable, Identifiable, Hashable {
+    case progressUpsell = "progress_upsell"
+
+    var id: String { rawValue }
 }
 
 // MARK: - Property value

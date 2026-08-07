@@ -5,11 +5,11 @@ import XCTest
 /// **Why this suite is hard to make mean anything, and what was done about it.** `RepTodayUITests`
 /// launches the real app, so the test process never builds the `ServiceContainer` and US-T04's
 /// `analyticsService` parameter cannot reach it; the only gate there is `LiveAnalyticsService`'s
-/// `isEnabled` closure, which US-T06 points at the persisted `AppState.analyticsEnabled` flag. But no
-/// emission call site exists yet - they are US-T07 through US-T12 - so "zero network calls with
-/// telemetry off" is *trivially* true today for reasons that have nothing to do with the flag. A test
-/// asserting it as written would pass with the flag deleted, and would keep passing when US-T07
-/// starts POSTing on every launch.
+/// `isEnabled` closure, which US-T06 points at the persisted `AppState.analyticsEnabled` flag. But when
+/// this suite was written no emission call site existed yet - they landed across US-T07 through US-T12 -
+/// so "zero network calls with telemetry off" would be *trivially* true for reasons that have nothing to
+/// do with the flag. A test asserting it as written would pass with the flag deleted, and would keep
+/// passing once US-T07 started POSTing on every launch.
 ///
 /// So the app carries a Debug-only, launch-argument-gated harness (`TelemetryUITestHarness`) that
 /// supplies the two things the shipping build does not: an emission attempt for the gate to block,
@@ -107,7 +107,7 @@ final class TelemetryOptOutUITests: XCTestCase {
     /// Settles the launch's startup emissions, then reads the count as a stable **baseline** to measure
     /// deltas from. The launch total is no longer a fixed number to hard-code: as of US-T09 a *real*
     /// emission site (`ready_screen_shown`, on the Ready Screen the onboarded probe launch lands on)
-    /// dispatches alongside the probe's own stand-in `app_install`, and US-T10 through US-T12 add more.
+    /// dispatches alongside the probe's own stand-in `app_install`, and US-T10 through US-T12 added more.
     /// `ready_screen_shown` fires once per Ready Screen open, so after this settle the count is stable
     /// except for the emit button's explicit taps - which is what makes the delta assertions
     /// deterministic while staying blind to how many startup emissions there happen to be.
