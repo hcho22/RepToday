@@ -23,6 +23,11 @@ final class AccountDeletionViewModel {
     /// invoked again while the first run is still in flight.
     private(set) var isDeleting = false
 
+    /// Whether the teardown failed and the failure alert should show. Bound by `SettingsView`. Set when
+    /// `deleteAccount(appState:)` throws, so the user is told deletion did not complete rather than being
+    /// left with a silently dismissed confirmation. The teardown is idempotent, so retrying is safe.
+    var isFailureAlertPresented = false
+
     private let accountDeletionService: any AccountDeletionServiceProtocol
     private let authService: any AuthServiceProtocol
     private let credentialStateProvider: any AppleCredentialStateProviding
@@ -63,9 +68,11 @@ final class AccountDeletionViewModel {
             }
         } catch {
             // The teardown is idempotent and saves each step as it goes, and the routing reset is its
-            // last step - so a throw leaves the user on Settings with a consistent, retryable state
-            // rather than half-signed-out. Surfacing a dedicated error UI is out of scope; the guard
-            // has already been released by `defer`, so the user can simply try again.
+            // last step - so a throw leaves the user on Settings still onboarded, with a consistent,
+            // retryable state rather than half-signed-out. Surface an honest failure alert so the user
+            // knows deletion did not complete and can retry, instead of a silently dismissed
+            // confirmation that looks like nothing happened.
+            isFailureAlertPresented = true
         }
     }
 

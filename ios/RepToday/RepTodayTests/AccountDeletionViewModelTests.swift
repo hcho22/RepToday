@@ -76,6 +76,45 @@ final class AccountDeletionViewModelTests: XCTestCase {
         XCTAssertFalse(appState.showAppleSignOutGuidance)
     }
 
+    // MARK: - Failure surfacing: a thrown teardown must not route to onboarding and must be visible
+
+    /// A teardown that throws leaves the user onboarded (the service's routing reset is its last step,
+    /// so it never ran) and arms the failure alert, rather than silently dismissing the confirmation.
+    func testTeardownFailureSurfacesAlertAndDoesNotRouteToOnboarding() async {
+        let appState = makeAppState()
+        appState.isOnboarded = true
+        let spy = SpyAccountDeletionService()
+        spy.errorToThrow = SpyTeardownError.boom
+        let model = makeModel(service: spy, appState: appState, auth: MockAuthService(userIdentifier: nil))
+
+        await model.confirmDeletion()
+
+        XCTAssertEqual(spy.callCount, 1, "the teardown must have been attempted")
+        XCTAssertTrue(model.isFailureAlertPresented, "a thrown teardown must surface the failure alert")
+        XCTAssertTrue(appState.isOnboarded, "a failed teardown must not route the user to onboarding")
+        XCTAssertFalse(model.isDeleting, "the re-entrancy guard must be released so the user can retry")
+    }
+
+    /// The Apple-ID guidance must not be armed when the teardown fails - it belongs only to a completed
+    /// deletion that actually routed to onboarding.
+    func testTeardownFailureDoesNotArmAppleGuidance() async {
+        let appState = makeAppState()
+        let spy = SpyAccountDeletionService()
+        spy.errorToThrow = SpyTeardownError.boom
+        let model = makeModel(
+            service: spy,
+            appState: appState,
+            auth: MockAuthService(userIdentifier: "apple-user-123"),
+            credentialStatus: .authorized
+        )
+
+        await model.deleteAccountTapped()
+        await model.confirmDeletion()
+
+        XCTAssertTrue(model.isFailureAlertPresented)
+        XCTAssertFalse(appState.showAppleSignOutGuidance, "a failed teardown must not arm the Apple guidance")
+    }
+
     // MARK: - US-AD04: re-entrancy
 
     /// Confirming twice while the first teardown is still in flight runs it exactly once.
@@ -131,6 +170,7 @@ private struct StubCredentialStateProvider: AppleCredentialStateProviding {
 private final class SpyAccountDeletionService: AccountDeletionServiceProtocol, @unchecked Sendable {
     private(set) var callCount = 0
     var block = false
+    var errorToThrow: Error?
     private var continuation: CheckedContinuation<Void, Never>?
 
     func deleteAccount(appState: AppState) async throws {
@@ -138,10 +178,18 @@ private final class SpyAccountDeletionService: AccountDeletionServiceProtocol, @
         if block {
             await withCheckedContinuation { continuation = $0 }
         }
+        if let errorToThrow {
+            throw errorToThrow
+        }
     }
 
     func release() {
         continuation?.resume()
         continuation = nil
     }
+}
+
+/// A stand-in teardown failure so the view model's failure path can be driven without a real store.
+private enum SpyTeardownError: Error {
+    case boom
 }

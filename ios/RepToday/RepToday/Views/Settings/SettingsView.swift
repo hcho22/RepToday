@@ -109,6 +109,23 @@ struct SettingsView: View {
         } message: {
             Text(deletion?.usedAppleCredential == true ? Self.confirmMessageApple : Self.confirmMessageLocal)
         }
+        // An honest failure surface: if the teardown throws, the routing reset (its last step) never
+        // ran, so the user is still here and onboarded. Tell them deletion did not complete rather than
+        // letting the confirmation dismiss silently. The teardown is idempotent, so "Try Again" is safe.
+        .alert(
+            "Couldn't delete your account",
+            isPresented: Binding(
+                get: { deletion?.isFailureAlertPresented ?? false },
+                set: { deletion?.isFailureAlertPresented = $0 }
+            )
+        ) {
+            Button("Try Again") {
+                if let deletion { Task { await deletion.confirmDeletion() } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(Self.deleteFailureMessage)
+        }
     }
 
     /// Builds the deletion view model on first use and caches it. `@State` cannot capture the
@@ -140,6 +157,14 @@ struct SettingsView: View {
     static let confirmMessageApple = """
         This permanently deletes your profile, your workout history, and your Sign in with Apple \
         link on this device. This can't be undone.
+        """
+
+    /// The failure body shown when the teardown throws. Honest about what happened - nothing was
+    /// partially left signed out, since the routing reset is the teardown's last step - and points at
+    /// the safe next action, since the teardown is idempotent.
+    static let deleteFailureMessage = """
+        Something went wrong and your account wasn't deleted. Your profile and history are still on \
+        this device. Please try again.
         """
 
     /// The confirmation body for the local-only account (never signed in with Apple): identical, minus
