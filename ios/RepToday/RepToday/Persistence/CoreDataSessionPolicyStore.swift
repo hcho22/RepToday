@@ -36,4 +36,18 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
             }
         }
     }
+
+    func delete(for userId: String) async throws {
+        // Account deletion (US-AD02/US-AD03): remove this user's one policy record and save so the
+        // CloudKit mirror tombstones it, mirroring `save`'s per-user, in-place shape.
+        try await context.perform {
+            let request = CDSessionPolicy.fetchRequest(userId: userId)
+            for record in try self.context.fetch(request) {
+                self.context.delete(record)
+            }
+            if self.context.hasChanges {
+                try self.context.save()
+            }
+        }
+    }
 }

@@ -34,6 +34,11 @@ enum Theme {
 
         /// Text/icon color drawn on top of the accent color.
         static let onAccent = Color.white
+
+        /// Destructive / irreversible actions (e.g. the Settings "Delete Account" control, US-AD01).
+        /// The system red so it reads as danger in both light and dark and tracks accessibility
+        /// contrast settings, rather than a hardcoded `.red` at the call site.
+        static let danger = Color(uiColor: .systemRed)
     }
 
     // MARK: - Typography

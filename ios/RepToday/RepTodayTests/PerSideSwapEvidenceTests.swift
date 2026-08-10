@@ -490,6 +490,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         let policyStore = InMemorySessionPolicyStore()
         let consistencyService = ConsistencyScoreService(now: { self.asOf }, calendar: self.calendar)
         let workoutLogService = MockWorkoutLogService(logs: history())
+        let activeSessionStore = InMemoryActiveSessionStore()
+        let authService = MockAuthService()
         return ServiceContainer(
             exerciseService: exerciseService,
             // Pin the assembler's clock so the hosted Ready Screen generates the same lineup as
@@ -503,15 +505,22 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
             userService: userService,
             workoutLogService: workoutLogService,
-            activeSessionStore: InMemoryActiveSessionStore(),
+            activeSessionStore: activeSessionStore,
             sessionCompletionService: SessionCompletionService(
                 workoutLogService: workoutLogService, userService: userService,
                 consistencyService: consistencyService, policyStore: policyStore
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
-            authService: MockAuthService(),
-            analyticsService: MockAnalyticsService()
+            authService: authService,
+            analyticsService: MockAnalyticsService(),
+            accountDeletionService: AccountDeletionService(
+                userService: userService,
+                workoutLogService: workoutLogService,
+                sessionPolicyStore: policyStore,
+                activeSessionStore: activeSessionStore,
+                authService: authService
+            )
         )
     }
 

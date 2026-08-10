@@ -118,6 +118,7 @@ final class TestApp {
 
     var staticTexts: XCUIElementQuery { app.staticTexts }
     var buttons: XCUIElementQuery { app.buttons }
+    var alerts: XCUIElementQuery { app.alerts }
     var switches: XCUIElementQuery { app.switches }
     var tabBars: XCUIElementQuery { app.tabBars }
     var navigationBars: XCUIElementQuery { app.navigationBars }

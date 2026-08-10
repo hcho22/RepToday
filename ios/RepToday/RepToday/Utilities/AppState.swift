@@ -47,6 +47,15 @@ final class AppState {
         }
     }
 
+    /// One-shot, **never-persisted** UI flag set by the account-deletion flow (US-AD05) when the
+    /// deleted account used Sign in with Apple, so `RootView` can surface the "also stop using your
+    /// Apple ID in Settings" guidance *after* the teardown has routed back to onboarding - a point
+    /// where the Settings screen that triggered it has already been torn down, so the alert has to be
+    /// hosted somewhere that survives the transition. Deliberately not written to `UserDefaults` (no
+    /// `didSet`): it is transient guidance, reset to `false` the moment it is dismissed, and it starts
+    /// `false` on every launch. It gates emission of nothing and cohorts nothing.
+    var showAppleSignOutGuidance: Bool = false
+
     /// The opt-out consent flag (US-T06): `true` means anonymous usage data may be emitted.
     ///
     /// Telemetry is on by default and turned off from Settings, so this is the *user's* copy of the

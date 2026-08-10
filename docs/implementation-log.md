@@ -662,6 +662,36 @@ US-T12 (`Models/AnalyticsEvent.swift`, `ViewModels/PaywallViewModel.swift`, `Vie
 
 **Verification (honest framing, mirroring US-T04/T06's live-leg records).** Verified on an iPhone 16 Simulator: `-scheme RepToday test` = 928 tests, 0 failures (from 920, +8 US-T12 cases in `PaywallViewModelTests`). Those cases prove the view model's **emission decisions given a resolved purchase outcome** through the recording `MockAnalyticsService` in process (no network, FR-13): `paywall_shown` once across two `load()`s with `entry_point = progress_upsell`; a direct paid grant -> one `subscribe` with `plan == plan.id` and no `trial_started`; a trial grant -> one property-less `trial_started` and no `subscribe`; and a cancel, a pending, a failure, and a restore each -> neither. What they do **not** prove is that a live App Store purchase resolves: these paths are entitlement-gated and StoreKit 2 live purchases run only on device or via the `.storekit` test configuration against a dev deployment, never on the plain Simulator - that end-to-end leg (an actual trial/paid purchase driving the resolved branch, and the event landing in Convex) was not run here and is the same hardware-only check the PRD's Validation Test specifies. This repo has no CI, so the local unit run is the gate for what is automatable.
 
+US-AD01..US-AD05 (`Services/Account/AccountDeletionService.swift`, `Services/Auth/AppleCredentialState.swift`, `ViewModels/AccountDeletionViewModel.swift`, `Views/Settings/SettingsView.swift`, `Views/RootView.swift`, `DI/ServiceContainer.swift`, plus the two persistence bulk deletes and their conformers) land the **mandatory account-deletion flow** so the app satisfies **App Store Guideline 5.1.1(v)** - it ships Sign in with Apple, so a deletion path is a hard submission blocker.
+US-AD06 (HealthKit sample removal) is deliberately out of scope, a separate optional follow-on.
+
+**US-AD02 - two bulk deletes on the persistence seams.**
+`WorkoutLogServiceProtocol.deleteAllLogs(for:)` and `SessionPolicyStore.delete(for:)`, each implemented on the CoreData store (object-by-object `context.delete` + `save`, never `NSBatchDeleteRequest`, so the change flows through the view context and the CloudKit mirror the same way the existing `deleteLog(id:)` does - a batch delete goes straight to the store and would leave the merged history and the mirror to reconcile out of band) and mirrored on the in-memory doubles.
+`CDWorkoutLog` carries **no** owner column and the app is single-user, so `deleteAllLogs(for:)` clears the whole history; the `userId` parameter matches the shape of the other per-user deletes (`delete(for:)`, `clear(for:)`).
+
+**US-AD03 - `AccountDeletionService`, the teardown orchestrator.**
+It composes only protocols the container already holds and deletes the container already implements, so it carries no persistence knowledge of its own - it sequences the teardown in the fixed order and does the final routing: (1) delete every durable record across **both** store configurations - `CDUser`/`CDWorkoutLog`/`CDSessionPolicy` in the CloudKit-mirrored **Cloud** store via `deleteCurrentUser()` + the two AD02 deletes, and `CDActiveSession` in the device-local **Local** store via the existing `ActiveSessionStore.clear(for:)` - each saved as it goes so the tombstones mirror; (2) clear the Keychain identifier through `AuthServiceProtocol.signOut()` (non-optional - the Keychain item outlives a reinstall, so skipping it resurrects a deleted identity, and it is a no-op for the local-UUID user); (3) reset `AppState` (`isOnboarded` -> false, `selectedTab` -> `.home`) on the main actor, which routes back to onboarding.
+It is **idempotent** and safe when there is no user aggregate at all (never-fully-onboarded): the per-user deletes key off `currentUser()?.id`, and the routing reset is the last step so a throw earlier leaves a consistent, retryable state rather than a stranded half-delete.
+Wired through both `ServiceContainer.mock()` and `.live(...)`, which now hold the active-session store and auth service as locals so the deletion service tears down the **very instances** the container exposes rather than a second copy.
+
+**US-AD01 - the Settings control.**
+A destructive `Section` added to the existing `SettingsView` (not a second Settings surface, and the placeholder Profile tab is untouched), tinted via a new `Theme.Colors.danger` token rather than a hardcoded `.red`.
+The `AccountDeletionViewModel` is built lazily from `@Environment` (services + `AppState`) on first use, because a `@State` default cannot capture the environment at init.
+
+**US-AD04 - the confirmation.**
+A `.alert` naming exactly what is destroyed - profile, workout history, and the Sign in with Apple link only when this account used it - with the destructive button carrying `role: .destructive` (rendered red, **not** the default; `.cancel` is).
+The teardown runs **exactly once even on double-tap** via an `isDeleting` re-entrancy guard on the view model (the guard is set before the first suspension, so a second confirm arriving mid-teardown sees it and returns).
+
+**US-AD05 - Sign in with Apple credential handling, captain's Option (a): on-device guidance, no backend.**
+`AppleCredentialStateProviding` wraps `ASAuthorizationAppleIDProvider().getCredentialState(forUserID:)` behind a framework-free `AppleCredentialStatus` enum so the Apple-vs-local decision is unit-testable with a stub.
+Guidance surfaces **only** when a stored Apple identifier exists and Apple still recognizes the pairing (not `.notFound`); the local-UUID user gets none.
+Because the teardown routes to onboarding and tears down the Settings screen that triggered it, the guidance alert is hosted on `RootView` (which survives the transition), armed via a **transient, never-persisted** `AppState.showAppleSignOutGuidance` flag the view model sets only on a successful Apple-account deletion.
+No token revoke, no revoke endpoint stood up; the "Open Settings" button uses the public `UIApplication.openSettingsURLString` (there is no public deep link to the exact Apple ID screen, so the guidance text names the path: Settings -> your name -> Sign-In & Security -> Sign in with Apple).
+
+**Verification.** iPhone 16 Simulator: `-scheme RepToday test` = 949 tests, 0 failures (the `ServiceContainerTests` service-count guard bumped 13 -> 14).
+Unit coverage: `AccountDeletionServiceTests` (AD02 doubles + AD03 orchestration incl. the local-UUID and no-user paths and idempotency), `AccountDeletionViewModelTests` (AD04 re-entrancy + AD05 guidance decision), and AD02 CoreData deletes in `CoreDataServicesTests`.
+`RepTodayUITests/AccountDeletionUITests` drives the whole flow out of process through the shared `TestApp` wrapper (Profile -> Settings -> Delete Account -> confirm -> onboarding; and cancel leaves the user in place) - both cases green locally; CI compile-checks the UITests scheme and runs the unit gate.
+
 ### A hold is not a rest, and modelling it as one cost three review rounds
 
 The Hold Timer was written by mirroring the rest timer: same absolute deadline, same pause-on-background, same restore-from-snapshot, same on-appear resume.

@@ -9,6 +9,11 @@ import SwiftUI
 /// Privacy is its only section today; nothing else about Profile changes here.
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.services) private var services
+
+    /// The account-deletion flow's view model (US-AD01/US-AD04/US-AD05). Built lazily on first use
+    /// from the environment (services + `AppState`), which a `@State` default cannot capture at init.
+    @State private var deletion: AccountDeletionViewModel?
 
     var body: some View {
         @Bindable var appState = appState
@@ -49,13 +54,100 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .listRowBackground(Theme.Colors.surface)
+
+            // US-AD01: the mandatory account-deletion path (App Store Guideline 5.1.1(v)). A
+            // destructive, clearly-labelled row in its own section, so it is findable in one tap from
+            // the Profile tab's Settings and never mistaken for a benign control.
+            Section {
+                Button(role: .destructive) {
+                    let model = deletionModel()
+                    Task { await model.deleteAccountTapped() }
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "trash")
+                        Text(Self.deleteAccountTitle)
+                            .font(Theme.Typography.body)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(Theme.Colors.danger)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .accessibilityLabel(Self.deleteAccountTitle)
+                .accessibilityHint("Permanently deletes your profile and workout history")
+            } header: {
+                Text("Account")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } footer: {
+                Text(Self.deleteAccountFooter)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Theme.Colors.surface)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        // US-AD04: the confirmation naming exactly what is destroyed. The destructive button carries
+        // `role: .destructive` so it renders red and is *not* the default; `.cancel` is. The message
+        // names the Apple sign-in link only when this account used it (US-AD05), resolved before the
+        // alert is presented.
+        .alert(
+            "Delete your account?",
+            isPresented: Binding(
+                get: { deletion?.isConfirmationPresented ?? false },
+                set: { deletion?.isConfirmationPresented = $0 }
+            )
+        ) {
+            Button("Delete Account", role: .destructive) {
+                if let deletion { Task { await deletion.confirmDeletion() } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(deletion?.usedAppleCredential == true ? Self.confirmMessageApple : Self.confirmMessageLocal)
+        }
     }
+
+    /// Builds the deletion view model on first use and caches it. `@State` cannot capture the
+    /// environment at init, so it is created here from the live `services` and `AppState`.
+    private func deletionModel() -> AccountDeletionViewModel {
+        if let deletion { return deletion }
+        let model = AccountDeletionViewModel(
+            accountDeletionService: services.accountDeletionService,
+            authService: services.authService,
+            appState: appState
+        )
+        deletion = model
+        return model
+    }
+
+    /// The one label the Delete Account control is known by - to a reader, to VoiceOver, and to the
+    /// XCUITest that presses it (US-AD01) - so they cannot drift apart.
+    static let deleteAccountTitle = "Delete Account"
+
+    /// The section footer. Stays generic - it does not assert a Sign in with Apple link, which a
+    /// local-only account does not have; the confirmation alert names that only when it applies.
+    static let deleteAccountFooter = """
+        Permanently deletes your profile and workout history from this device and iCloud. This \
+        can't be undone.
+        """
+
+    /// The confirmation body for an account that used Sign in with Apple (US-AD04/US-AD05): it names
+    /// the Apple link among what is destroyed.
+    static let confirmMessageApple = """
+        This permanently deletes your profile, your workout history, and your Sign in with Apple \
+        link on this device. This can't be undone.
+        """
+
+    /// The confirmation body for the local-only account (never signed in with Apple): identical, minus
+    /// the Apple link it does not have.
+    static let confirmMessageLocal = """
+        This permanently deletes your profile and your workout history on this device. This can't \
+        be undone.
+        """
 
     /// The one label the toggle is known by - to a reader, to VoiceOver, and to the XCUITest suite
     /// that presses it - so the three cannot drift apart.

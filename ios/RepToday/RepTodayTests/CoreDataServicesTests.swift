@@ -130,6 +130,51 @@ final class CoreDataServicesTests: XCTestCase {
         XCTAssertEqual(remaining.map(\.id), [keep.id])
     }
 
+    // MARK: - US-AD02 bulk deletes (account deletion)
+
+    func testWorkoutLogServiceDeleteAllLogsClearsWholeHistory() async throws {
+        let service = CoreDataWorkoutLogService(context: context)
+        for offset in [0.0, 1.0, 2.0] {
+            try await service.save(makeLog(completedAt: base + offset * day, id: UUID()))
+        }
+
+        // The single-user app has no owner column, so account deletion clears everything.
+        try await service.deleteAllLogs(for: "apple-user-1")
+
+        let remaining = try await service.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(remaining.isEmpty)
+        XCTAssertTrue(try context.fetch(CDWorkoutLog.fetchRequest()).isEmpty)
+    }
+
+    func testWorkoutLogServiceDeleteAllLogsOnEmptyHistoryIsANoOp() async throws {
+        let service = CoreDataWorkoutLogService(context: context)
+        // No logs saved: deleting must not throw and must leave the store empty.
+        try await service.deleteAllLogs(for: "apple-user-1")
+        let remaining = try await service.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
+    func testSessionPolicyStoreDeleteClearsThePolicy() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        try await store.save(.default, for: "apple-user-1")
+        let stored = try await store.policy(for: "apple-user-1")
+        XCTAssertNotNil(stored)
+
+        try await store.delete(for: "apple-user-1")
+
+        let cleared = try await store.policy(for: "apple-user-1")
+        XCTAssertNil(cleared)
+        XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
+    }
+
+    func testSessionPolicyStoreDeleteWithNoStoredPolicyIsANoOp() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        // Nothing stored for this user: deleting must not throw.
+        try await store.delete(for: "apple-user-1")
+        let cleared = try await store.policy(for: "apple-user-1")
+        XCTAssertNil(cleared)
+    }
+
     // MARK: - Production container wiring
 
     /// The production container composes the CoreData-backed services over one shared context, so

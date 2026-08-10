@@ -222,6 +222,9 @@ protocol SessionPolicyStore {
     func policy(for userId: String) async throws -> SessionPolicy?
     /// Overwrite the current policy for `userId` in place (insert or update).
     func save(_ policy: SessionPolicy, for userId: String) async throws
+    /// Delete the stored policy for `userId` for account deletion (US-AD02), then save so the
+    /// CloudKit mirror propagates the tombstone. A no-op (never an error) when none is stored.
+    func delete(for userId: String) async throws
 }
 
 /// An in-memory `SessionPolicyStore` for tests, previews, and the mock container. Deterministic and
@@ -239,5 +242,9 @@ actor InMemorySessionPolicyStore: SessionPolicyStore {
 
     func save(_ policy: SessionPolicy, for userId: String) async throws {
         policies[userId] = policy
+    }
+
+    func delete(for userId: String) async throws {
+        policies.removeValue(forKey: userId)
     }
 }
