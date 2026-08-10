@@ -189,10 +189,50 @@
     font-weight: 600;
     color: var(--ink);
   }
-  .hero-proof .aside {
+
+  /* ---------- Waitlist (Kit embed container) ---------- */
+
+  .waitlist {
     margin: 16px 0 0;
+    padding: 20px;
+    max-width: 32em;
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+    background: var(--paper);
+    box-shadow: var(--card-shadow);
+  }
+  .waitlist .waitlist-head {
+    margin: 0;
+    font-size: 19px;
+    line-height: 25px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .waitlist .waitlist-sub {
+    margin: 6px 0 14px;
+    max-width: none;
+    font-size: 15px;
+    line-height: 22px;
     color: var(--slate);
   }
+  .waitlist .waitlist-fallback {
+    margin: 0;
+    max-width: none;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--slate);
+  }
+  /* Kit renders its own form into this container; keep it from overflowing
+     the paper card and let its inputs use the full width. */
+  .waitlist form,
+  .waitlist .formkit-form { max-width: 100%; }
+
+  /* Closing waitlist band: Night palette for a calm end-of-page CTA, with the
+     paper card kept light so Kit's own light-background form stays legible. */
+  section.signup { background: var(--night); color: var(--bone); }
+  section.signup .h1 { color: var(--bone); }
+  section.signup .lead { margin: 16px 0 0; color: var(--mist); font-size: 19px; line-height: 29px; }
+  section.signup .waitlist { margin: 32px 0 0; }
 
   /* ---------- Phone mock (Night tokens, section 4 dark palette) ---------- */
 
@@ -720,7 +760,12 @@
 
         <div class="hero-proof">
           <p class="proof-line">No streaks, no badges, no XP, anywhere. A missed day can dent your score. Nothing can ever zero it.</p>
-          <p class="aside">Rep Today is pre-launch. Nothing to sign up for today; a waitlist opens before this page ever goes live.</p>
+          <div class="waitlist" role="group" aria-labelledby="waitlist-hero-head">
+            <p class="waitlist-head" id="waitlist-hero-head">Join the waitlist</p>
+            <p class="waitlist-sub">Rep Today is pre-launch and not yet on the App Store. Add your email and we'll tell you the day it ships.</p>
+            <script async data-uid="e89d4fc82c" src="https://rep-today.kit.com/e89d4fc82c/index.js"></script>
+            <noscript><p class="waitlist-fallback">The signup form needs JavaScript. Email <a href="mailto:hello@reptoday.app">hello@reptoday.app</a> to join the waitlist.</p></noscript>
+          </div>
         </div>
       </div>
     </div>
@@ -990,16 +1035,32 @@
           <summary>Is my data sold?</summary>
           <div class="answer">
             <p>Never sold. There are no ads, and the core loop needs no account: your history lives on your device, with optional sync to your own private iCloud, and workouts are written to Apple Health only if you choose.</p>
-            <p>Two things to be plain about. The app plans minimal anonymous usage measurement - events like session starts and completions, carrying a random per-install ID, never an email or advertising ID. And when the pre-launch waitlist opens, it will hold the email you give it, tagged with where you came from. None of that is ever sold either.</p>
+            <p>Two things to be plain about. The app plans minimal anonymous usage measurement - events like session starts and completions, carrying a random per-install ID, never an email or advertising ID. And the pre-launch waitlist holds the email you add to it, so we can tell you when the app ships - nothing more. None of that is ever sold either.</p>
           </div>
         </details>
 
         <details>
           <summary>When does it launch?</summary>
           <div class="answer">
-            <p>It hasn't yet. Rep Today is pre-launch: the core loop is built and tested, but the app is not on the App Store. iOS first, iOS 17 or later, no Android at launch. There is nothing to sign up for today; opening a waitlist is the first step planned before this page ever goes live. No date to announce.</p>
+            <p>It hasn't yet. Rep Today is pre-launch: the core loop is built and tested, but the app is not on the App Store. iOS first, iOS 17 or later, no Android at launch. The waitlist is open now - add your email and we'll tell you the day it ships - but there is no date to announce yet.</p>
           </div>
         </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="signup">
+    <div class="container">
+      <div class="section-head">
+        <p class="overline" style="color: var(--fern);">Before it ships</p>
+        <h2 class="h1">Be there on day one.</h2>
+        <p class="lead">Rep Today is pre-launch. Join the waitlist and we'll email you the moment it's on the App Store - no date to announce yet, no spam, one message.</p>
+      </div>
+      <div class="waitlist" role="group" aria-labelledby="waitlist-foot-head">
+        <p class="waitlist-head" id="waitlist-foot-head">Join the waitlist</p>
+        <p class="waitlist-sub">Add your email and we'll tell you the day it ships.</p>
+        <script async data-uid="e89d4fc82c" src="https://rep-today.kit.com/e89d4fc82c/index.js"></script>
+        <noscript><p class="waitlist-fallback">The signup form needs JavaScript. Email <a href="mailto:hello@reptoday.app">hello@reptoday.app</a> to join the waitlist.</p></noscript>
       </div>
     </div>
   </section>
