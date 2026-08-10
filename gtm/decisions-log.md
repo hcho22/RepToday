@@ -76,6 +76,15 @@ Revisit trigger, carried as a condition rather than a caveat: it becomes due the
 Stated in full at `07-thesis/investment-thesis.md`; the trigger is checked from `08-redteam/pre-publication-checklist.md`.
 **Rejected alternative:** widening the 90/week floor or the 200-user rule now to absorb an expected opt-out rate - it would re-cut pre-registered numbers on an estimate nobody can yet check, which is what pre-registration exists to prevent.
 
+## D-110 - The landing site is prepped for Cloudflare Pages and `reptoday.app` is purchased, but nothing is deployed yet [DECIDED BY FOUNDER]
+
+Recorded because it moves the package off "nothing purchased or deployed": the `reptoday.app` domain has been bought through Cloudflare, and `03-site/` now carries a `_headers` file (Cloudflare Pages format) plus `03-site/DEPLOY.md` so a deploy is a single `npx wrangler pages deploy gtm/03-site` away.
+This is repo-side prep only - no deploy was performed, no DNS was changed, and no page content or styling moved (both self-contained variants and the Kit waitlist embed were verified to render as-is, so no asset-path fixes were needed).
+The one Cloudflare-account/DNS step - binding the custom domain in the Pages project - is left as the founder's single manual click, spelled out in `03-site/DEPLOY.md`.
+Deliberate omissions, all documented in `_headers`/`DEPLOY.md`: no HSTS header (`.app` is HSTS-preloaded and Pages is HTTPS-only with auto-TLS, so it would be redundant), no Content-Security-Policy (a wrong CSP would silently break the `rep-today.kit.com` waitlist embed; a verified CSP is a follow-up), and no `_redirects` file (Pages serves `index.html` at `/` on its own).
+True A/B splitting `index.html` against `index-b.html` at one URL needs a Cloudflare Worker and is explicitly out of scope; until then variant B lives at `/index-b`.
+**Rejected alternative:** authoring a Content-Security-Policy and a Worker-based A/B split in the same pass - shipping a CSP unverified against the third-party Kit form would break signups silently, and the Worker is a separate build, so both are named as follow-ups rather than done blind.
+
 ## D-001 - Output location is `/Users/hcho/Developer/RepToday/gtm/` [DECIDED BY AGENT]
 
 The session's configured working directory (`/Users/hcho/Developer/FitSnack`) no longer exists; the repo was renamed to `RepToday` on 2026-07-14.
