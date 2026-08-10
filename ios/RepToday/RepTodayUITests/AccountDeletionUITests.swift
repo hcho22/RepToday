@@ -42,6 +42,7 @@ final class AccountDeletionUITests: XCTestCase {
         let deleteRow = app.buttons["Delete Account"]
         XCTAssertTrue(deleteRow.waitForExistence(timeout: 10), "Settings has no Delete Account control")
         XCTAssertTrue(deleteRow.isHittable, "the Delete Account row is not reachable by a finger")
+        attachScreenshot(named: "01-settings-delete-account-row")
         deleteRow.tap()
 
         // US-AD04: the confirmation alert, with a destructive confirm distinct from Cancel.
@@ -51,6 +52,7 @@ final class AccountDeletionUITests: XCTestCase {
             app.alerts.buttons["Cancel"].exists,
             "the confirmation has no non-destructive Cancel"
         )
+        attachScreenshot(named: "02-delete-account-confirmation-alert")
         confirm.tap()
 
         // US-AD03: the teardown routes back to onboarding's first screen.
@@ -58,6 +60,7 @@ final class AccountDeletionUITests: XCTestCase {
             app.staticTexts["Welcome to Rep Today"].waitForExistence(timeout: 20),
             "deleting the account did not route back to onboarding"
         )
+        attachScreenshot(named: "03-routed-back-to-onboarding")
         // And the main tabs are gone - there is no Profile tab on the onboarding flow.
         XCTAssertFalse(
             app.tabBars.buttons["Profile"].exists,
@@ -95,5 +98,14 @@ final class AccountDeletionUITests: XCTestCase {
             app.staticTexts["Welcome to Rep Today"].exists,
             "cancelling must not route to onboarding"
         )
+    }
+
+    /// Files the running app's screen as a `.keepAlways` `.xcresult` attachment, so a reviewer opens a
+    /// picture of the actual delete flow on a green run rather than reading a selector transcript.
+    private func attachScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }
