@@ -67,11 +67,12 @@ final class AccountDeletionViewModel {
                 appState.showAppleSignOutGuidance = true
             }
         } catch {
-            // The teardown is idempotent and saves each step as it goes, and the routing reset is its
-            // last step - so a throw leaves the user on Settings still onboarded, with a consistent,
-            // retryable state rather than half-signed-out. Surface an honest failure alert so the user
-            // knows deletion did not complete and can retry, instead of a silently dismissed
-            // confirmation that looks like nothing happened.
+            // The teardown deletes durable records first and saves each step, and the routing reset is
+            // its last step - so a throw leaves the user on Settings still onboarded, but a late-step
+            // throw may already have deleted some records. The teardown is idempotent, so a retry
+            // completes it. Surface an honest failure alert so the user knows deletion did not fully
+            // complete and can retry, instead of a silently dismissed confirmation that looks like
+            // nothing happened.
             isFailureAlertPresented = true
         }
     }

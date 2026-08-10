@@ -159,12 +159,12 @@ struct SettingsView: View {
         link on this device. This can't be undone.
         """
 
-    /// The failure body shown when the teardown throws. Honest about what happened - nothing was
-    /// partially left signed out, since the routing reset is the teardown's last step - and points at
-    /// the safe next action, since the teardown is idempotent.
+    /// The failure body shown when the teardown throws. Honest about what happened - the teardown
+    /// deletes durable records first and saves each step, so a late-step throw may already have
+    /// removed some data; it does not claim anything is still intact - and points at the safe next
+    /// action, since the teardown is idempotent and a retry completes it.
     static let deleteFailureMessage = """
-        Something went wrong and your account wasn't deleted. Your profile and history are still on \
-        this device. Please try again.
+        Something went wrong and your account may not be fully deleted. Please try again.
         """
 
     /// The confirmation body for the local-only account (never signed in with Apple): identical, minus
