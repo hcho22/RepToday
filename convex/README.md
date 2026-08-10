@@ -478,8 +478,10 @@ work end to end - not that the app emits anything yet.
 
 `convex/http.test.ts`, run with `npm test`. US-T03 shipped this boundary gated by
 `npm run typecheck` plus the one-time transcript above, which left nothing that re-runs: `tsc`
-cannot catch a regression in a validation *rule*, and this repo has no CI. That gap is closed for
-everything the endpoint can be made to do from outside itself.
+cannot catch a regression in a validation *rule*, and when US-T03 shipped no CI ran anything. That
+gap is closed for everything the endpoint can be made to do from outside itself - and
+`.github/workflows/ci.yml` now runs `npm test` (with `npm run typecheck`) on every PR into `main`,
+so the suite re-runs by itself rather than only when a human runs it.
 
 `convex-test` executes the real functions in process, in the edge runtime Convex uses, against an
 in-memory database and no deployment, so the suite needs no network and no `.env.local`. It drives
