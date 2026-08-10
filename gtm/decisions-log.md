@@ -85,6 +85,14 @@ Deliberate omissions, all documented in `_headers`/`DEPLOY.md`: no HSTS header (
 True A/B splitting `index.html` against `index-b.html` at one URL needs a Cloudflare Worker and is explicitly out of scope; until then variant B lives at `/index-b`.
 **Rejected alternative:** authoring a Content-Security-Policy and a Worker-based A/B split in the same pass - shipping a CSP unverified against the third-party Kit form would break signups silently, and the Worker is a separate build, so both are named as follow-ups rather than done blind.
 
+## D-111 - App Store privacy nutrition label: declare Usage Data + Device ID, and wire telemetry on at submission [DECIDED BY FOUNDER]
+
+Recorded because the label authored in `08-redteam/app-store-privacy-labels.md` rested on two classification calls that are product/compliance judgments, not facts readable from the code, and both were resolved by the captain.
+(A) The random per-install UUID is declared under **Identifiers -> Device ID** (marked *not linked to identity* / *not used for tracking*, purpose Analytics) rather than left undeclared.
+(B) The submitted build **wires telemetry on** (a production `REPTODAY_ANALYTICS_ENDPOINT` configured before submission) and declares **Usage Data -> Product Interaction** up front, instead of shipping the current empty-endpoint non-collecting build and declaring "Data Not Collected."
+So the definitive label is the two-type set matching the funnel PRD's FR-12; the ship-non-collecting path is preserved only as Appendix A of that spec.
+**Rejected alternative:** the ship-non-collecting build with a "Data Not Collected" label - honest for that specific artifact, but it would force a label update and a new submission the moment any emitting build is distributed, so measurement would not be available from day one.
+
 ## D-001 - Output location is `/Users/hcho/Developer/RepToday/gtm/` [DECIDED BY AGENT]
 
 The session's configured working directory (`/Users/hcho/Developer/FitSnack`) no longer exists; the repo was renamed to `RepToday` on 2026-07-14.
