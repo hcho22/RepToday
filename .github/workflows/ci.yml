@@ -52,10 +52,13 @@ jobs:
   # ---------------------------------------------------------------------------
   # Toolchain 2: iOS SwiftUI app - macOS.
   #
-  # Runner/Xcode/simulator are pinned to a natively-compatible triple that exists
-  # on the macos-15 image: Xcode 16.4 (the image default, in the project's
-  # documented 16.x line per ios/RepToday/project.yml) and its bundled iOS 18.5
-  # simulator runtime on an iPhone 16.
+  # Runner/Xcode are pinned to a natively-compatible pair that exists on the
+  # macos-15 image: Xcode 16.4 (the image default, in the project's documented
+  # 16.x line per ios/RepToday/project.yml). The simulator destination pins the
+  # device (iPhone 16) but NOT the iOS runtime version: the exact bundled runtime
+  # moves as the hosted image is refreshed (a hard OS pin like OS=18.5 breaks the
+  # moment that runtime is dropped), so xcodebuild resolves against whichever iOS
+  # runtime the image currently ships for the iPhone 16.
   #
   # Signing: the app carries CloudKit / HealthKit / Sign in with Apple
   # entitlements, so a fully unsigned build (CODE_SIGNING_ALLOWED=NO) cannot launch
@@ -80,7 +83,7 @@ jobs:
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      DESTINATION: 'platform=iOS Simulator,name=iPhone 16,OS=18.5'
+      DESTINATION: 'platform=iOS Simulator,name=iPhone 16'
       SIGNING_FLAGS: >-
         CODE_SIGNING_ALLOWED=YES
         CODE_SIGNING_REQUIRED=NO
