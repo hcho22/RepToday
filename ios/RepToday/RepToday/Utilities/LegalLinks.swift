@@ -8,14 +8,14 @@ import Foundation
 /// say what is collected (US-T06). They must point at the same document: two placeholder URLs would
 /// drift, and the one that drifted would be the one nobody looked at.
 ///
-/// **`privacyPolicy` is a placeholder** and is deliberately obvious about it. Replacing it with Rep
-/// Today's real policy is a precondition for App Store submission, and doing so is a single edit
-/// here rather than a search across the views that link to it.
+/// `privacyPolicy` points at Rep Today's hosted policy on the landing site. It is the single edit
+/// point for all three surfaces that link to it, rather than a search across the views.
 enum LegalLinks {
-    /// PLACEHOLDER. Authoring and hosting the real policy is a blocking item on
-    /// `gtm/08-redteam/pre-publication-checklist.md` ("Author the privacy policy", under Legal /
-    /// naming), which is where the requirement and its current status live - not here.
-    static let privacyPolicy = URL(string: "https://example.com/reptoday-privacy-policy-PLACEHOLDER")!
+    /// The hosted privacy policy at `reptoday.app/privacy` (source: `gtm/03-site/privacy.html`,
+    /// deployed with the landing site). The document is an engineering draft grounded in the app's
+    /// documented data practices and is pending a legal review before go-live - see the blocking
+    /// item on `gtm/08-redteam/pre-publication-checklist.md` ("Author the privacy policy").
+    static let privacyPolicy = URL(string: "https://reptoday.app/privacy")!
 
     /// Apple's standard auto-renewable-subscription EULA, the default Terms of Use when the app
     /// ships no custom one.

@@ -514,7 +514,9 @@ The Settings surface is a real one, per the captain's answer to the story's Open
 Shaped so a broader Profile/Settings story extends it with another `Section` rather than replaces it; the Profile placeholder around it is untouched.
 A prominent row rather than a toolbar gear, because a control that has to be *found* to be worth anything should not sit behind an icon.
 The onboarding disclosure sits on the **welcome** step, not the last one, because US-T07's `app_install` fires at app entry - a disclosure at the end of the flow would arrive after the thing it discloses.
-Both link to `LegalLinks.privacyPolicy`, lifted out of `PaywallView`'s private static so the App Store Review 3.1.2 link and the consent surfaces cannot drift onto two placeholders; it is still an obvious placeholder and a test asserts it still says so.
+Both link to `LegalLinks.privacyPolicy`, lifted out of `PaywallView`'s private static so the App Store Review 3.1.2 link and the consent surfaces cannot drift onto two placeholders.
+That constant now points at the hosted policy `https://reptoday.app/privacy` (source `gtm/03-site/privacy.html`, deployed with the landing site), which replaced the `example.com` placeholder; the test that once asserted it was still a placeholder was retired deliberately, per its own instruction, and now pins it to the hosted `reptoday.app/privacy` value.
+The policy page itself is an engineering draft grounded in the app's documented data practices and is flagged, in the page and in its PR, as pending a legal review before go-live.
 The explanation sentence renders as the Privacy section's **footer** rather than as a row of its own, which is iOS's native home for it and also the fix to a real defect: it had been both a row and the toggle's `accessibilityHint`, so VoiceOver read the whole paragraph twice in succession while the screen showed it once.
 The toggle now carries a short action-shaped hint instead of restating it, and the assertion moved with the fix - `AccessibilityTree.spokenStrings(in:)` counts labels **and** hints together, because `labels(in:)` structurally cannot see a sentence that is spoken twice but appears once.
 

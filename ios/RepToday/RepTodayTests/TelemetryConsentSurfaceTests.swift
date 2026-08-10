@@ -169,15 +169,16 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
     /// Store Review 3.1.2 requires it, and the onboarding disclosure and Settings because an opt-out
     /// consent model has to say what is collected. They share one constant, so the *sharing* is
     /// structural rather than asserted here (there is no second URL to compare against). What is
-    /// asserted is that the shared value is usable, and that it is still the obvious placeholder it
-    /// claims to be - so replacing it before submission stays a visible, deliberate act.
-    func testTheSharedPrivacyPolicyURLIsUsableAndStillAnObviousPlaceholder() throws {
+    /// asserted is that the shared value is the hosted Rep Today policy at `reptoday.app/privacy`.
+    /// (The earlier placeholder guard - "still an obvious placeholder" - was retired deliberately
+    /// here, per its own instruction, when the real hosted policy replaced `example.com`.)
+    func testTheSharedPrivacyPolicyURLIsTheHostedRepTodayPolicy() throws {
         XCTAssertEqual(LegalLinks.privacyPolicy.scheme, "https")
-        XCTAssertNotNil(LegalLinks.privacyPolicy.host)
-        XCTAssertTrue(
+        XCTAssertEqual(LegalLinks.privacyPolicy.host, "reptoday.app")
+        XCTAssertEqual(LegalLinks.privacyPolicy.path, "/privacy")
+        XCTAssertFalse(
             LegalLinks.privacyPolicy.absoluteString.contains("PLACEHOLDER"),
-            "the privacy-policy URL is no longer self-evidently a placeholder - if it is now real, "
-                + "drop this assertion deliberately rather than letting it be edited around"
+            "the privacy-policy URL must no longer be the example.com placeholder"
         )
         XCTAssertEqual(LegalLinks.termsOfUse.host, "www.apple.com")
     }
