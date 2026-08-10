@@ -130,6 +130,51 @@ final class CoreDataServicesTests: XCTestCase {
         XCTAssertEqual(remaining.map(\.id), [keep.id])
     }
 
+    // MARK: - US-AD02 bulk deletes (account deletion)
+
+    func testWorkoutLogServiceDeleteAllLogsClearsWholeHistory() async throws {
+        let service = CoreDataWorkoutLogService(context: context)
+        for offset in [0.0, 1.0, 2.0] {
+            try await service.save(makeLog(completedAt: base + offset * day, id: UUID()))
+        }
+
+        // The single-user app has no owner column, so account deletion clears everything.
+        try await service.deleteAllLogs()
+
+        let remaining = try await service.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(remaining.isEmpty)
+        XCTAssertTrue(try context.fetch(CDWorkoutLog.fetchRequest()).isEmpty)
+    }
+
+    func testWorkoutLogServiceDeleteAllLogsOnEmptyHistoryIsANoOp() async throws {
+        let service = CoreDataWorkoutLogService(context: context)
+        // No logs saved: deleting must not throw and must leave the store empty.
+        try await service.deleteAllLogs()
+        let remaining = try await service.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
+    func testSessionPolicyStoreDeleteAllClearsEveryRecord() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        try await store.save(.default, for: "apple-user-1")
+        let stored = try await store.policy(for: "apple-user-1")
+        XCTAssertNotNil(stored)
+
+        // Account deletion clears the policy wholesale, with no user id to key it off.
+        try await store.deleteAll()
+
+        let cleared = try await store.policy(for: "apple-user-1")
+        XCTAssertNil(cleared)
+        XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
+    }
+
+    func testSessionPolicyStoreDeleteAllOnEmptyStoreIsANoOp() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        // Nothing stored: deleting wholesale must not throw and leaves the store empty.
+        try await store.deleteAll()
+        XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
+    }
+
     // MARK: - Production container wiring
 
     /// The production container composes the CoreData-backed services over one shared context, so

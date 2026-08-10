@@ -65,4 +65,21 @@ final class CoreDataWorkoutLogService: WorkoutLogServiceProtocol, @unchecked Sen
             }
         }
     }
+
+    func deleteAllLogs() async throws {
+        // Rep Today has one local user and `CDWorkoutLog` carries no owner column (US-A04), so the
+        // whole history is this user's history: account deletion (US-AD02/US-AD03) clears every
+        // record. Deleted object-by-object rather than via `NSBatchDeleteRequest` so the change
+        // flows through the view context and CloudKit mirroring the same way `deleteLog(id:)` does -
+        // a batch delete goes straight to the store and would leave the merged history and the
+        // CloudKit mirror to reconcile out of band.
+        try await context.perform {
+            for record in try self.context.fetch(CDWorkoutLog.fetchRequest()) {
+                self.context.delete(record)
+            }
+            if self.context.hasChanges {
+                try self.context.save()
+            }
+        }
+    }
 }

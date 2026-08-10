@@ -122,6 +122,12 @@ protocol WorkoutLogServiceProtocol {
     func workoutLogs(from startDate: Date?, to endDate: Date?) async throws -> [WorkoutLog]
     func save(_ log: WorkoutLog) async throws
     func deleteLog(id: UUID) async throws
+    /// Bulk-deletes every workout log for account deletion (US-AD02/US-AD03), then saves so the
+    /// CloudKit mirror propagates the tombstones. Rep Today has exactly one local user and
+    /// `CDWorkoutLog` carries no owner column, so this clears the whole history without needing a
+    /// decodable user id - matching its sibling teardown deletes (`SessionPolicyStore.deleteAll()`,
+    /// `ActiveSessionStore.clearAll()`). A no-op (never an error) when there are no logs.
+    func deleteAllLogs() async throws
 }
 
 /// Coordinates HealthKit authorization and workout writes.

@@ -36,4 +36,20 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
             }
         }
     }
+
+    func deleteAll() async throws {
+        // Account deletion (US-AD02/US-AD03): remove every policy record without a user id, so
+        // teardown completes even when the `CDUser` aggregate is unreadable, and save so the CloudKit
+        // mirror tombstones it. Deleted object-by-object rather than via `NSBatchDeleteRequest` so the
+        // change flows through the view context and CloudKit mirror like `save` does. Single-user, so
+        // this is the one stored record.
+        try await context.perform {
+            for record in try self.context.fetch(CDSessionPolicy.fetchRequest()) {
+                self.context.delete(record)
+            }
+            if self.context.hasChanges {
+                try self.context.save()
+            }
+        }
+    }
 }

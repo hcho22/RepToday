@@ -50,4 +50,19 @@ final class CoreDataActiveSessionStore: ActiveSessionStore, @unchecked Sendable 
             }
         }
     }
+
+    func clearAll() async throws {
+        // Account deletion (US-AD02/US-AD03): remove every in-progress session record without a
+        // user id, so teardown completes even when the `CDUser` aggregate is unreadable. Deleted
+        // object-by-object rather than via `NSBatchDeleteRequest` so the change flows through the view
+        // context the same way `clear(for:)` does. Single-user, so this is the same one record.
+        try await context.perform {
+            for record in try self.context.fetch(CDActiveSession.fetchRequest()) {
+                self.context.delete(record)
+            }
+            if self.context.hasChanges {
+                try self.context.save()
+            }
+        }
+    }
 }

@@ -26,6 +26,10 @@ struct ServiceContainer {
     /// explicitly, like every other service here, so a container built without a sink is a build
     /// error rather than silent data loss.
     let analyticsService: any AnalyticsServiceProtocol
+    /// Erases the user's on-device account (US-AD03): the App Store 5.1.1(v) deletion path behind the
+    /// Settings "Delete Account" control. Composes the same user/log/policy/active-session/auth seams
+    /// this container already wires, so a delete clears exactly what the rest of the app reads.
+    let accountDeletionService: any AccountDeletionServiceProtocol
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -40,7 +44,8 @@ struct ServiceContainer {
         healthKitService: any HealthKitServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
         authService: any AuthServiceProtocol,
-        analyticsService: any AnalyticsServiceProtocol
+        analyticsService: any AnalyticsServiceProtocol,
+        accountDeletionService: any AccountDeletionServiceProtocol
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -55,6 +60,7 @@ struct ServiceContainer {
         self.subscriptionService = subscriptionService
         self.authService = authService
         self.analyticsService = analyticsService
+        self.accountDeletionService = accountDeletionService
     }
 
     static func mock() -> ServiceContainer {
@@ -76,6 +82,11 @@ struct ServiceContainer {
         // A single log service so a session written by the completion recorder (US-L01) is the same
         // history the Ready Screen and the Programmer read back.
         let workoutLogService = MockWorkoutLogService()
+        // In-memory active-session store and mock auth, held as locals so the account-deletion
+        // service (US-AD03) tears down the very instances this container exposes, rather than a
+        // second copy a delete would leave the app still reading from.
+        let activeSessionStore = InMemoryActiveSessionStore()
+        let authService = MockAuthService()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -101,7 +112,7 @@ struct ServiceContainer {
             // discarded from the Ready Screen. `CoreDataActiveSessionStore` (tested in isolation) is
             // ready to be swapped in for true cross-relaunch survival when the production CoreData
             // container is wired (US-N02), alongside the CoreData user/log/policy stores.
-            activeSessionStore: InMemoryActiveSessionStore(),
+            activeSessionStore: activeSessionStore,
             // Records a finished session (US-L01): writes the log and does the post-session bookkeeping
             // (Consistency Score refresh, cold-start handoff) over the same user, log, and policy stores
             // the rest of the container reads, so the win is durable and reflected everywhere.
@@ -113,9 +124,19 @@ struct ServiceContainer {
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
-            authService: MockAuthService(),
+            authService: authService,
             // The in-memory telemetry sink (US-T02): records events for test assertions, no I/O.
-            analyticsService: MockAnalyticsService()
+            analyticsService: MockAnalyticsService(),
+            // The account-deletion orchestrator (US-AD03), composed over the same in-memory user, log,
+            // policy, active-session, and auth seams this container exposes, so a delete from Settings
+            // clears exactly what previews and tests read back.
+            accountDeletionService: AccountDeletionService(
+                userService: userService,
+                workoutLogService: workoutLogService,
+                sessionPolicyStore: policyStore,
+                activeSessionStore: activeSessionStore,
+                authService: authService
+            )
         )
     }
 
@@ -190,6 +211,12 @@ struct ServiceContainer {
         // Health, resolving MET values from the exercise catalog for the energy estimate. Shared so the
         // completion recorder writes through the same instance exposed on the container.
         let healthKitService = HealthKitService(exerciseService: exerciseService)
+        // The CoreData active-session store (US-K04) and the real Keychain-backed Sign in with Apple
+        // (US-N01), held as locals so the account-deletion service (US-AD03) clears the very
+        // active-session record and Keychain identifier this container exposes - the `CDActiveSession`
+        // row in the device-local store and the Keychain item that outlives a reinstall.
+        let activeSessionStore = CoreDataActiveSessionStore(context: context)
+        let authService = AppleAuthService.live()
         // The telemetry transport keeps its own session in every ordinary build. The one exception is
         // an XCUITest run launched with the US-T06 probe argument, where it is swapped for an
         // in-process counting interceptor so an out-of-process test can observe the opt-out gate
@@ -227,7 +254,7 @@ struct ServiceContainer {
             workoutLogService: workoutLogService,
             // The CoreData active-session store: an abandoned session now survives a full
             // relaunch (it lives in the device-local `Local` store, never synced).
-            activeSessionStore: CoreDataActiveSessionStore(context: context),
+            activeSessionStore: activeSessionStore,
             sessionCompletionService: SessionCompletionService(
                 workoutLogService: workoutLogService,
                 userService: userService,
@@ -245,7 +272,7 @@ struct ServiceContainer {
             // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
             subscriptionService: StoreKitSubscriptionService.live(),
             // Real Keychain-backed Sign in with Apple (US-N01).
-            authService: AppleAuthService.live(),
+            authService: authService,
             // The same telemetry sink resolved above (`resolvedAnalyticsService`), so the container and
             // the completion recorder's `week_active` emission (US-T11) share one instance and one
             // consent gate. It is the live Convex-backed transport (US-T04) when an endpoint is
@@ -253,7 +280,18 @@ struct ServiceContainer {
             // `REPTODAY_ANALYTICS_ENDPOINT`), or an explicit override a test passed. All emission
             // sites US-T07 through US-T12 have landed (app entry, onboarding, Ready Screen, session
             // lifecycle, weekly rollup, and the paywall funnel), so all 13 events now emit.
-            analyticsService: resolvedAnalyticsService
+            analyticsService: resolvedAnalyticsService,
+            // The account-deletion orchestrator (US-AD03), over the same CoreData user/log/policy and
+            // device-local active-session stores plus the Keychain-backed auth this container wires -
+            // so a delete tombstones the CloudKit-mirrored records, drops the local active session,
+            // and clears the reinstall-surviving Keychain identifier in one pass.
+            accountDeletionService: AccountDeletionService(
+                userService: userService,
+                workoutLogService: workoutLogService,
+                sessionPolicyStore: policyStore,
+                activeSessionStore: activeSessionStore,
+                authService: authService
+            )
         )
     }
 }

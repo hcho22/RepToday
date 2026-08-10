@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Top-level router for the app shell.
 struct RootView: View {
@@ -24,6 +25,28 @@ struct RootView: View {
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
         // nothing here.
         .telemetryProbeHUD()
+        // US-AD05: the post-deletion Apple-ID guidance. Hosted here, at the router, because account
+        // deletion routes back to onboarding and tears down the Settings screen that triggered it -
+        // so the alert has to live above that transition to survive it. Shown only when the deleted
+        // account used Sign in with Apple (`AccountDeletionViewModel` arms the flag only in that case,
+        // and only on a successful teardown). Option (a): on-device guidance, no token revoke.
+        .alert("One more step", isPresented: $appState.showAppleSignOutGuidance) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+                appState.showAppleSignOutGuidance = false
+            }
+            Button("Done", role: .cancel) {
+                appState.showAppleSignOutGuidance = false
+            }
+        } message: {
+            Text(
+                "Your Rep Today data is deleted. To also stop using your Apple ID with Rep Today, "
+                + "open Settings, tap your name, then Sign-In & Security \u{2192} Sign in with Apple, "
+                + "and choose Rep Today."
+            )
+        }
     }
 }
 

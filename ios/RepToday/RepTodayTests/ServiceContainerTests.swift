@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            13,
+            14,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -33,6 +33,9 @@ final class ServiceContainerTests: XCTestCase {
         _ = try await services.subscriptionService.currentSubscription()
         _ = try await services.authService.currentUserIdentifier()
         await services.analyticsService.record(AnalyticsEvent(name: .appInstall, timestampMs: 0))
+        // Resolved but not exercised: running it would tear down the container's stores and mutate an
+        // AppState. Its teardown is covered by `AccountDeletionServiceTests`.
+        _ = services.accountDeletionService
     }
 
     /// US-D04 validation test: the container resolves the session-policy service, its
