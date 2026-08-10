@@ -496,6 +496,27 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(afterClear, "cleared session is no longer resumable")
     }
 
+    func testCoreDataActiveSessionStoreClearAllClearsWithoutAUserId() async throws {
+        let store = CoreDataActiveSessionStore(context: context)
+        try await store.save(makeActiveSessionState(), for: "u")
+        let stored = try await store.load(for: "u")
+        XCTAssertNotNil(stored)
+
+        // Account deletion clears the device-local session wholesale, with no user id to key it off.
+        try await store.clearAll()
+
+        let afterClear = try await store.load(for: "u")
+        XCTAssertNil(afterClear, "the session survived clearAll")
+        XCTAssertTrue(try context.fetch(CDActiveSession.fetchRequest()).isEmpty)
+    }
+
+    func testCoreDataActiveSessionStoreClearAllOnEmptyStoreIsANoOp() async throws {
+        let store = CoreDataActiveSessionStore(context: context)
+        // Nothing saved: clearing wholesale must not throw and leaves the store empty.
+        try await store.clearAll()
+        XCTAssertTrue(try context.fetch(CDActiveSession.fetchRequest()).isEmpty)
+    }
+
     private func insert(_ state: ActiveSessionState, userId: String, save: Bool = true) throws {
         try CDActiveSession(context: context).update(from: state, userId: userId)
         if save { try context.save() }

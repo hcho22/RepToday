@@ -60,6 +60,40 @@ final class AccountDeletionServiceTests: XCTestCase {
         XCTAssertNil(cleared)
     }
 
+    func testInMemorySessionPolicyStoreDeleteAllClearsEveryRecord() async throws {
+        let store = InMemorySessionPolicyStore(policies: ["preview-user": .default, "other": .default])
+        try await store.deleteAll()
+        let first = try await store.policy(for: "preview-user")
+        let second = try await store.policy(for: "other")
+        XCTAssertNil(first)
+        XCTAssertNil(second)
+    }
+
+    func testInMemorySessionPolicyStoreDeleteAllOnEmptyIsANoOp() async throws {
+        let store = InMemorySessionPolicyStore()
+        try await store.deleteAll()
+        let cleared = try await store.policy(for: "preview-user")
+        XCTAssertNil(cleared)
+    }
+
+    func testInMemoryActiveSessionStoreClearAllClearsEveryRecord() async throws {
+        let store = InMemoryActiveSessionStore(
+            sessions: ["preview-user": resumableState(), "other": resumableState()]
+        )
+        try await store.clearAll()
+        let first = try await store.load(for: "preview-user")
+        let second = try await store.load(for: "other")
+        XCTAssertNil(first)
+        XCTAssertNil(second)
+    }
+
+    func testInMemoryActiveSessionStoreClearAllOnEmptyIsANoOp() async throws {
+        let store = InMemoryActiveSessionStore()
+        try await store.clearAll()
+        let cleared = try await store.load(for: "preview-user")
+        XCTAssertNil(cleared)
+    }
+
     // MARK: - US-AD03 orchestration
 
     func testDeleteAccountClearsEverythingForASignedInUser() async throws {
@@ -143,7 +177,7 @@ final class AccountDeletionServiceTests: XCTestCase {
             sessionPolicyStore: policies, activeSessionStore: sessions, authService: auth
         )
         try await service.deleteAccount(appState: appState)
-        // Second call: no user to key per-user deletes off, nothing to clear, must not throw.
+        // Second call: nothing left to clear, must not throw.
         try await service.deleteAccount(appState: appState)
 
         let user = try await userService.currentUser()
@@ -173,6 +207,36 @@ final class AccountDeletionServiceTests: XCTestCase {
         XCTAssertTrue(remainingLogs.isEmpty)
         let identifier = try await auth.currentUserIdentifier()
         XCTAssertNil(identifier)
+        await MainActor.run { XCTAssertFalse(appState.isOnboarded) }
+    }
+
+    /// A corrupt or unreadable `CDUser` makes `currentUser()` throw (it decodes JSON). The teardown
+    /// must not key any delete off that read: policy and active-session records are still cleared
+    /// wholesale, the Keychain is cleared, the app routes, and deletion reports success - so a
+    /// corrupt user can never leave residual data behind a "delete account" that says done.
+    func testDeleteAccountWithUnreadableUserStillClearsPolicyAndActiveSession() async throws {
+        let userService = ThrowingUserService()
+        let logs = MockWorkoutLogService(logs: [makeLog(), makeLog()])
+        let policies = InMemorySessionPolicyStore(policies: ["preview-user": .default])
+        let sessions = InMemoryActiveSessionStore(sessions: ["preview-user": resumableState()])
+        let auth = MockAuthService(userIdentifier: "apple-user-123")
+        let appState = makeAppState(isOnboarded: true, selectedTab: .progress)
+
+        let service = AccountDeletionService(
+            userService: userService, workoutLogService: logs,
+            sessionPolicyStore: policies, activeSessionStore: sessions, authService: auth
+        )
+        try await service.deleteAccount(appState: appState)
+
+        let remainingLogs = try await logs.workoutLogs(from: nil, to: nil)
+        XCTAssertTrue(remainingLogs.isEmpty, "logs survived deletion")
+        let policy = try await policies.policy(for: "preview-user")
+        XCTAssertNil(policy, "the policy survived a delete that could not read the user")
+        let session = try await sessions.load(for: "preview-user")
+        XCTAssertNil(session, "the active session survived a delete that could not read the user")
+        let identifier = try await auth.currentUserIdentifier()
+        XCTAssertNil(identifier, "the Sign in with Apple identifier survived deletion")
+        XCTAssertTrue(userService.didDelete, "the user record was not deleted")
         await MainActor.run { XCTAssertFalse(appState.isOnboarded) }
     }
 
@@ -213,4 +277,17 @@ final class AccountDeletionServiceTests: XCTestCase {
         )
         return ActiveSessionState(fresh: workout)
     }
+}
+
+/// A `UserServiceProtocol` double whose `currentUser()` always throws - modelling a corrupt/unreadable
+/// `CDUser` blob that fails to decode on read - while `deleteCurrentUser()` still succeeds (a real
+/// delete fetches and removes without decoding). Used to prove the teardown keys nothing off reading
+/// the user.
+private final class ThrowingUserService: UserServiceProtocol, @unchecked Sendable {
+    struct Unreadable: Error {}
+    private(set) var didDelete = false
+
+    func currentUser() async throws -> User? { throw Unreadable() }
+    func save(_ user: User) async throws {}
+    func deleteCurrentUser() async throws { didDelete = true }
 }

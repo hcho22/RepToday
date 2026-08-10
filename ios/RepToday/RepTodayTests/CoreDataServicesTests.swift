@@ -175,6 +175,27 @@ final class CoreDataServicesTests: XCTestCase {
         XCTAssertNil(cleared)
     }
 
+    func testSessionPolicyStoreDeleteAllClearsEveryRecord() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        try await store.save(.default, for: "apple-user-1")
+        let stored = try await store.policy(for: "apple-user-1")
+        XCTAssertNotNil(stored)
+
+        // Account deletion clears the policy wholesale, with no user id to key it off.
+        try await store.deleteAll()
+
+        let cleared = try await store.policy(for: "apple-user-1")
+        XCTAssertNil(cleared)
+        XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
+    }
+
+    func testSessionPolicyStoreDeleteAllOnEmptyStoreIsANoOp() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        // Nothing stored: deleting wholesale must not throw and leaves the store empty.
+        try await store.deleteAll()
+        XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
+    }
+
     // MARK: - Production container wiring
 
     /// The production container composes the CoreData-backed services over one shared context, so

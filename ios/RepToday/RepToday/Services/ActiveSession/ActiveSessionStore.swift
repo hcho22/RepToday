@@ -17,6 +17,11 @@ protocol ActiveSessionStore {
     func save(_ state: ActiveSessionState, for userId: String) async throws
     /// Remove the in-progress session for `userId`. A no-op when none is saved.
     func clear(for userId: String) async throws
+    /// Remove every in-progress session record, regardless of user id, for account deletion
+    /// (US-AD02/US-AD03). Rep Today is single-user, so this clears the same one record `clear(for:)`
+    /// would, but without needing a decodable user id - so teardown completes even when the `CDUser`
+    /// aggregate is corrupt. A no-op (never an error) when none is saved.
+    func clearAll() async throws
 }
 
 /// An in-memory `ActiveSessionStore` for tests, previews, and the mock container. Deterministic and
@@ -39,5 +44,9 @@ actor InMemoryActiveSessionStore: ActiveSessionStore {
 
     func clear(for userId: String) async throws {
         sessions.removeValue(forKey: userId)
+    }
+
+    func clearAll() async throws {
+        sessions.removeAll()
     }
 }

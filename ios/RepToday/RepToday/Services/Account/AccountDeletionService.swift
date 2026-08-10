@@ -51,21 +51,15 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     }
 
     func deleteAccount(appState: AppState) async throws {
-        // The user id keys the per-user records (policy, active session). Read it before deleting the
-        // user. It is `nil` only for an install with no user aggregate at all (never fully onboarded);
-        // the per-user stores are then empty, so there is nothing to key a delete off. The logs and
-        // the user record are cleared regardless - the log store carries no owner column, and the user
-        // delete clears whatever single aggregate exists.
-        let userId = try? await userService.currentUser()?.id
-
         // 1. Durable records across both store configurations, each saved as it goes so CloudKit
-        //    tombstones mirror. The log store clears the whole history (single-user, no owner column);
-        //    the policy and active-session stores are keyed by the user id.
-        try await workoutLogService.deleteAllLogs(for: userId ?? "")
-        if let userId {
-            try await sessionPolicyStore.delete(for: userId)
-            try await activeSessionStore.clear(for: userId)
-        }
+        //    tombstones mirror. Every delete is wholesale and single-user - the log store carries no
+        //    owner column, and the policy and active-session stores clear their one record without a
+        //    user id - so teardown never depends on decoding the `CDUser` aggregate. A corrupt or
+        //    unreadable user therefore cannot leave the per-user policy or the device-local active
+        //    session orphaned behind a "delete account" that reports done.
+        try await workoutLogService.deleteAllLogs(for: "")
+        try await sessionPolicyStore.deleteAll()
+        try await activeSessionStore.clearAll()
         try await userService.deleteCurrentUser()
 
         // 2. The Keychain identifier - mandatory, since it outlives a reinstall. A no-op for the
