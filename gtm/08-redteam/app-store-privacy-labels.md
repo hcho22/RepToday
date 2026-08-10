@@ -161,13 +161,13 @@ The label, the privacy policy, and the landing FAQ must tell one story (checklis
 
 | Claim | This label | Privacy policy (`privacy.html`) | Landing FAQ (`index.html` / `index-b.html`) | Aligned? |
 |---|---|---|---|---|
-| History on-device, no server behind the core loop | Not collected | Section 1-2 | "Is my data sold?" line 147 | Yes |
-| Optional sync = user's own private iCloud | Not collected | Section 3 | line 147 | Yes |
-| Apple Health write-only | Not collected | Section 5 | line 147 | Yes |
-| Sign in with Apple identifier stays in Keychain; no name/email collected | Not collected | Section 4 | line 139 | Yes |
-| Anonymous usage w/ per-install UUID; no email/IDFA | Usage Data + Device ID, not linked, not tracking | Section 6 | line 148 | Yes |
+| History on-device, no server behind the core loop | Not collected | Section 1-2 | "Is my data sold?" 1034 / 1037 | Yes |
+| Optional sync = user's own private iCloud | Not collected | Section 3 | "Is my data sold?" 1034 / 1037 | Yes |
+| Apple Health write-only | Not collected | Section 5 | "Is my data sold?" 1034 / 1037 | Yes |
+| Sign in with Apple identifier stays in Keychain; no name/email collected | Not collected | Section 4 | "Sign in with Apple" 923 / 1013 | Yes |
+| Anonymous usage w/ per-install UUID; no email/IDFA | Usage Data + Device ID, not linked, not tracking | Section 6 | "Is my data sold?" 1034 / 1037 | Yes |
 | Opt-out of usage measurement | Reflected (not linked / not tracking; disclosed) | Section 6 "You can turn it off" | **FAQ omits the off switch** | **Flag** |
-| No ATT prompt, no IDFA, no ad SDKs, not sold | No ATT / IDFA; no tracking | Section 7 | line 148 | Yes |
+| No ATT prompt, no IDFA, no ad SDKs, not sold | No ATT / IDFA; no tracking | Section 7 | "Is my data sold?" 1034 / 1037 | Yes |
 
 **Inconsistency to flag (do not fix here):** the landing FAQ's "Is my data sold?" answer describes the anonymous measurement but **does not mention the opt-out**, while the policy and the app's first onboarding screen do.
 The checklist already tracks this (`pre-publication-checklist.md:12`) and deliberately leaves the A/B-tested FAQ copy untouched until a distributed emitting build ships or the test concludes.
