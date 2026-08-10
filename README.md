@@ -266,7 +266,7 @@ So every launch in that suite carries consent-off **or** the probe, and neither 
 `XCUIApplication` is a framework type any file can still construct, so the guarantee is "cannot ship a bypass" rather than "cannot type one": `UITestLaunchGuardTests` (`RepTodayTests/UITestLaunchGuardTests.swift`, in the unit bundle so it runs on the routinely-run `-scheme RepToday test` gate) scans every `RepTodayUITests` source and fails that run if `XCUIApplication(` is constructed anywhere but `TestApp.swift`.
 That build guard replaced the retired runtime detector, which only detected a bypass after the fact and had a verified blind spot - a standalone bare `app.launch()` as a test's only launch; a source scan has no launch orderings to miss.
 See `docs/test-coverage.md` for which leg carries which guard, why each of those details is there rather than obvious, and the coverage the guard honestly has.
-It needs **Node.js 18+** and npm; the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
+It needs **Node.js 20+** and npm (vitest ^4 requires Node 20+, which is what CI pins); the npm project is at the repo root rather than inside `convex/`, because Convex bundles every file under the functions directory.
 
 ```bash
 npm install
@@ -278,7 +278,11 @@ npx convex data events    # read rows back
 ```
 
 `convex/_generated/` is committed, so `npm run typecheck` and `npm test` both work in a fresh clone with no deployment configured (the two `npx convex` commands do need one).
-US-T04 added the behavioural suite (`convex/http.test.ts`), which drives the real functions in process against no deployment; this repo still has no CI, so it only runs when someone runs it - see `convex/README.md` and `docs/test-coverage.md` for what it covers and the one residual it cannot.
+US-T04 added the behavioural suite (`convex/http.test.ts`), which drives the real functions in process against no deployment; `.github/workflows/ci.yml` runs it (with `npm run typecheck`) on every PR into `main`, and it runs locally on demand - see `convex/README.md` and `docs/test-coverage.md` for what it covers and the one residual it cannot.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` gates every PR into `main` (and pushes to it) on both toolchains in parallel jobs: `sink` (ubuntu: `npm ci` + `npm run typecheck` + `npm run test`) and `ios` (macos-15, Xcode 16.4, iPhone 16 / iOS 18.5 simulator - `xcodegen generate`, then build and **run** the `RepToday` unit suite as the gate plus a **build-for-testing-only** compile of the `RepTodayUITests` scheme, since XCUITests launch the app out of process and are slow/flaky on a hosted runner). It needs no secrets: the app's CloudKit/HealthKit/Sign in with Apple entitlements make a fully unsigned build crash the app-hosted test runner, so CI uses cert-less ad-hoc signing (`CODE_SIGN_IDENTITY=-`, team/profile cleared) which loads entitlements on the simulator without any certificate. The local `no-mistakes` pipeline is unchanged.
 
 ---
 
