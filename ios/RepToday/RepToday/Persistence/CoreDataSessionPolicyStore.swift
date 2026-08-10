@@ -37,25 +37,12 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
         }
     }
 
-    func delete(for userId: String) async throws {
-        // Account deletion (US-AD02/US-AD03): remove this user's one policy record and save so the
-        // CloudKit mirror tombstones it, mirroring `save`'s per-user, in-place shape.
-        try await context.perform {
-            let request = CDSessionPolicy.fetchRequest(userId: userId)
-            for record in try self.context.fetch(request) {
-                self.context.delete(record)
-            }
-            if self.context.hasChanges {
-                try self.context.save()
-            }
-        }
-    }
-
     func deleteAll() async throws {
         // Account deletion (US-AD02/US-AD03): remove every policy record without a user id, so
         // teardown completes even when the `CDUser` aggregate is unreadable, and save so the CloudKit
-        // mirror tombstones it. Deleted object-by-object rather than via `NSBatchDeleteRequest` for the
-        // same reason `delete(for:)` is. Single-user, so this is the same one record.
+        // mirror tombstones it. Deleted object-by-object rather than via `NSBatchDeleteRequest` so the
+        // change flows through the view context and CloudKit mirror like `save` does. Single-user, so
+        // this is the one stored record.
         try await context.perform {
             for record in try self.context.fetch(CDSessionPolicy.fetchRequest()) {
                 self.context.delete(record)

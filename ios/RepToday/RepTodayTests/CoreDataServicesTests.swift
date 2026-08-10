@@ -154,27 +154,6 @@ final class CoreDataServicesTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
-    func testSessionPolicyStoreDeleteClearsThePolicy() async throws {
-        let store = CoreDataSessionPolicyStore(context: context)
-        try await store.save(.default, for: "apple-user-1")
-        let stored = try await store.policy(for: "apple-user-1")
-        XCTAssertNotNil(stored)
-
-        try await store.delete(for: "apple-user-1")
-
-        let cleared = try await store.policy(for: "apple-user-1")
-        XCTAssertNil(cleared)
-        XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
-    }
-
-    func testSessionPolicyStoreDeleteWithNoStoredPolicyIsANoOp() async throws {
-        let store = CoreDataSessionPolicyStore(context: context)
-        // Nothing stored for this user: deleting must not throw.
-        try await store.delete(for: "apple-user-1")
-        let cleared = try await store.policy(for: "apple-user-1")
-        XCTAssertNil(cleared)
-    }
-
     func testSessionPolicyStoreDeleteAllClearsEveryRecord() async throws {
         let store = CoreDataSessionPolicyStore(context: context)
         try await store.save(.default, for: "apple-user-1")

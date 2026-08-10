@@ -43,23 +43,6 @@ final class AccountDeletionServiceTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
-    func testInMemorySessionPolicyStoreDeleteClearsAndIsScopedToTheUser() async throws {
-        let store = InMemorySessionPolicyStore(policies: ["preview-user": .default, "other": .default])
-        try await store.delete(for: "preview-user")
-        let cleared = try await store.policy(for: "preview-user")
-        XCTAssertNil(cleared)
-        // Only the named user's policy is removed; a second user's is untouched.
-        let other = try await store.policy(for: "other")
-        XCTAssertNotNil(other)
-    }
-
-    func testInMemorySessionPolicyStoreDeleteOnEmptyIsANoOp() async throws {
-        let store = InMemorySessionPolicyStore()
-        try await store.delete(for: "preview-user")
-        let cleared = try await store.policy(for: "preview-user")
-        XCTAssertNil(cleared)
-    }
-
     func testInMemorySessionPolicyStoreDeleteAllClearsEveryRecord() async throws {
         let store = InMemorySessionPolicyStore(policies: ["preview-user": .default, "other": .default])
         try await store.deleteAll()
