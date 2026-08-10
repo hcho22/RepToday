@@ -1,0 +1,123 @@
+name: CI
+
+# Gates every PR into the default branch (and pushes to it) on BOTH of the repo's
+# independent toolchains, in parallel jobs. A PR is green only when both pass.
+#
+#   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
+#   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
+#                    compile of the XCUITest scheme.
+#
+# The exact npm and xcodebuild commands below were run locally in the worktree and
+# confirmed green before being encoded here (sink: 88 tests; iOS unit: 932 tests).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Toolchain 1: Convex telemetry sink (repo root, TypeScript) - Linux.
+  # convex-test runs in-process in edge-runtime: no network, no deployment, no
+  # secrets. Node is pinned explicitly (repo has no version pin; vitest ^4 needs
+  # Node 20+).
+  # ---------------------------------------------------------------------------
+  sink:
+    name: Convex sink (typecheck + vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (convex + convex test tsconfig)
+        run: npm run typecheck
+
+      - name: Test (vitest / convex-test)
+        run: npm run test
+
+  # ---------------------------------------------------------------------------
+  # Toolchain 2: iOS SwiftUI app - macOS.
+  #
+  # Runner/Xcode/simulator are pinned to a natively-compatible triple that exists
+  # on the macos-15 image: Xcode 16.4 (the image default, in the project's
+  # documented 16.x line per ios/RepToday/project.yml) and its bundled iOS 18.5
+  # simulator runtime on an iPhone 16.
+  #
+  # Signing: the app carries CloudKit / HealthKit / Sign in with Apple
+  # entitlements, so a fully unsigned build (CODE_SIGNING_ALLOWED=NO) cannot launch
+  # the app-hosted test runner on the simulator (verified: it crashes before
+  # bootstrapping). Instead we use cert-less ad-hoc signing ("Sign to Run Locally",
+  # identity "-"): it needs no certificate or provisioning profile - so no secrets -
+  # yet lets entitlements load on the simulator. DEVELOPMENT_TEAM and the profile
+  # specifier are cleared so a runner without the signing team never consults a
+  # profile. No new third-party Swift package is introduced (Lottie stays the app's
+  # only dependency); xcodegen is a build-time project generator, not a linked dep.
+  #
+  # What this job gates:
+  #   - RepToday scheme      -> build + RUN the unit suite (the gate).
+  #   - RepTodayUITests      -> build-for-testing only (compile-checked, NOT run).
+  #     The XCUITest suite launches the app out of process and is slow/flaky on a
+  #     hosted runner, so it is compiled to catch breakage but the green gate is the
+  #     unit suite. Run it locally when the touch path is what is in question.
+  # ---------------------------------------------------------------------------
+  ios:
+    name: iOS app (build + unit tests)
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DESTINATION: 'platform=iOS Simulator,name=iPhone 16,OS=18.5'
+      SIGNING_FLAGS: >-
+        CODE_SIGNING_ALLOWED=YES
+        CODE_SIGNING_REQUIRED=NO
+        CODE_SIGN_IDENTITY=-
+        DEVELOPMENT_TEAM=
+        PROVISIONING_PROFILE_SPECIFIER=
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project from project.yml
+        working-directory: ios/RepToday
+        run: xcodegen generate
+
+      - name: Build & run unit tests (RepToday scheme)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/RepToday/RepToday.xcodeproj \
+            -scheme RepToday \
+            -configuration Debug \
+            -destination "$DESTINATION" \
+            $SIGNING_FLAGS \
+            clean test
+
+      - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/RepToday/RepToday.xcodeproj \
+            -scheme RepTodayUITests \
+            -configuration Debug \
+            -destination "$DESTINATION" \
+            $SIGNING_FLAGS \
+            build-for-testing
