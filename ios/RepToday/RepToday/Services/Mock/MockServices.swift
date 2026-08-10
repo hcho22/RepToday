@@ -169,9 +169,9 @@ actor MockWorkoutLogService: WorkoutLogServiceProtocol {
         logs.removeAll { $0.id == id }
     }
 
-    func deleteAllLogs(for userId: String) async throws {
+    func deleteAllLogs() async throws {
         // Single-user app, and the mock keeps no owner column, so account deletion (US-AD02) clears
-        // the whole in-memory history - matching `CoreDataWorkoutLogService.deleteAllLogs(for:)`.
+        // the whole in-memory history - matching `CoreDataWorkoutLogService.deleteAllLogs()`.
         logs.removeAll()
     }
 }

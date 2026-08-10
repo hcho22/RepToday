@@ -66,7 +66,7 @@ final class CoreDataWorkoutLogService: WorkoutLogServiceProtocol, @unchecked Sen
         }
     }
 
-    func deleteAllLogs(for userId: String) async throws {
+    func deleteAllLogs() async throws {
         // Rep Today has one local user and `CDWorkoutLog` carries no owner column (US-A04), so the
         // whole history is this user's history: account deletion (US-AD02/US-AD03) clears every
         // record. Deleted object-by-object rather than via `NSBatchDeleteRequest` so the change

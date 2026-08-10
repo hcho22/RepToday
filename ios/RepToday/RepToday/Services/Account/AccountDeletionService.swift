@@ -57,7 +57,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         //    user id - so teardown never depends on decoding the `CDUser` aggregate. A corrupt or
         //    unreadable user therefore cannot leave the per-user policy or the device-local active
         //    session orphaned behind a "delete account" that reports done.
-        try await workoutLogService.deleteAllLogs(for: "")
+        try await workoutLogService.deleteAllLogs()
         try await sessionPolicyStore.deleteAll()
         try await activeSessionStore.clearAll()
         try await userService.deleteCurrentUser()

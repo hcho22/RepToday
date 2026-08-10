@@ -31,14 +31,14 @@ final class AccountDeletionServiceTests: XCTestCase {
 
     func testMockWorkoutLogServiceDeleteAllLogsClearsHistory() async throws {
         let logs = MockWorkoutLogService(logs: [makeLog(), makeLog(), makeLog()])
-        try await logs.deleteAllLogs(for: "preview-user")
+        try await logs.deleteAllLogs()
         let remaining = try await logs.workoutLogs(from: nil, to: nil)
         XCTAssertTrue(remaining.isEmpty)
     }
 
     func testMockWorkoutLogServiceDeleteAllLogsOnEmptyIsANoOp() async throws {
         let logs = MockWorkoutLogService(logs: [])
-        try await logs.deleteAllLogs(for: "preview-user")
+        try await logs.deleteAllLogs()
         let remaining = try await logs.workoutLogs(from: nil, to: nil)
         XCTAssertTrue(remaining.isEmpty)
     }

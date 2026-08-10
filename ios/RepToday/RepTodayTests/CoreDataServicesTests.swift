@@ -139,7 +139,7 @@ final class CoreDataServicesTests: XCTestCase {
         }
 
         // The single-user app has no owner column, so account deletion clears everything.
-        try await service.deleteAllLogs(for: "apple-user-1")
+        try await service.deleteAllLogs()
 
         let remaining = try await service.workoutLogs(from: nil, to: nil)
         XCTAssertTrue(remaining.isEmpty)
@@ -149,7 +149,7 @@ final class CoreDataServicesTests: XCTestCase {
     func testWorkoutLogServiceDeleteAllLogsOnEmptyHistoryIsANoOp() async throws {
         let service = CoreDataWorkoutLogService(context: context)
         // No logs saved: deleting must not throw and must leave the store empty.
-        try await service.deleteAllLogs(for: "apple-user-1")
+        try await service.deleteAllLogs()
         let remaining = try await service.workoutLogs(from: nil, to: nil)
         XCTAssertTrue(remaining.isEmpty)
     }
