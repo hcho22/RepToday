@@ -36,6 +36,11 @@ import XCTest
 /// markdown block delimited by `BENCH_BEGIN`/`BENCH_END` to the test log (a Simulator-hosted bundle
 /// inherits no shell environment, so stdout is the transport), plus one loose non-flaky assertion per
 /// lane so it is a legitimate, greppable test rather than an assertion-free one.
+///
+/// **Opt-in.** It is skipped by default (so a plain `xcodebuild test` and the CI `ios` gate never
+/// pay its ~17.5k-generation cost); pass `RUN_SESSION_BENCHMARK=1` to `xcodebuild` to run it. The
+/// flag reaches the Simulator-hosted process through the `RepToday` scheme's environment (a bundle
+/// inherits no shell env), forwarded exactly like `REPTODAY_WRITE_EVIDENCE`.
 final class SessionGenerationBenchmarkTests: XCTestCase {
 
     // MARK: - Tunables
@@ -200,6 +205,7 @@ final class SessionGenerationBenchmarkTests: XCTestCase {
     // MARK: - The benchmark
 
     func testSessionGenerationLatencyBenchmark() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_SESSION_BENCHMARK"] == "1", "opt-in latency benchmark; pass RUN_SESSION_BENCHMARK=1 to xcodebuild to run")
         let library = try await MockExerciseService().exercises()
         let user = benchmarkUser()
         let logs = history()

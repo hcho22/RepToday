@@ -74,12 +74,16 @@ Harness: `ios/RepToday/RepTodayTests/SessionGenerationBenchmarkTests.swift`, tes
 
 ### One-line command to reproduce
 
+The benchmark is **opt-in and skipped by default** (so a plain `xcodebuild test` and the CI `ios` gate never pay its ~17.5k-generation cost); pass `RUN_SESSION_BENCHMARK=1` to run it.
+The flag reaches the Simulator-hosted process through the `RepToday` scheme's forwarded environment, exactly like `REPTODAY_WRITE_EVIDENCE`.
+
 Simulator (proxy):
 
 ```bash
 cd ios/RepToday && xcodegen generate
 xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
   -destination 'platform=iOS Simulator,name=iPhone 16' \
+  RUN_SESSION_BENCHMARK=1 \
   -only-testing:RepTodayTests/SessionGenerationBenchmarkTests test
 ```
 
@@ -88,6 +92,7 @@ Real device (authoritative) - **same harness, unchanged; only `-destination` dif
 ```bash
 xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
   -destination 'platform=iOS,name=<iPhone XS device name>' \
+  RUN_SESSION_BENCHMARK=1 \
   -only-testing:RepTodayTests/SessionGenerationBenchmarkTests test
 ```
 
@@ -139,7 +144,7 @@ Do-this-exactly:
 
 1. Install a Debug build on the device (`xcodebuild ... -destination 'platform=iOS,name=<device>'`); the harness needs no
    network and no Convex deployment - it times the engine call directly, so no `.env`/endpoint setup is required.
-2. Run `-only-testing:RepTodayTests/SessionGenerationBenchmarkTests test`.
+2. Run `RUN_SESSION_BENCHMARK=1 -only-testing:RepTodayTests/SessionGenerationBenchmarkTests test` (the benchmark is opt-in and skips without that flag).
 3. Copy the printed p50/p95/max for cold and warm across 5-60 into the row below; record the device, iOS build, and date.
 4. If any device's **p95 (cold or warm, any duration) >= 100 ms**, that is a **blocking finding**: change the number in
    every asset (site, video, screenshots, social, investor teaser) rather than ship an unsupported claim.
