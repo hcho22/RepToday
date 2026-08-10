@@ -1,8 +1,9 @@
 # Rep Today - App Store privacy nutrition labels (App Privacy data-type declarations)
 
-**Status: engineering specification, evidence-grounded, with two open captain decisions (see below). Not a legal review.**
+**Status: engineering specification, evidence-grounded, captain decisions resolved. Not a legal review.**
 
 This document specifies, for each Apple "App Privacy" data type, whether Rep Today collects it and how it is classified, so the captain can transcribe it directly into App Store Connect -> App Privacy.
+The two classification calls that were product/compliance judgments have been decided by the captain (see [Decisions](#decisions-resolved-by-the-captain)); this document states that single chosen path as definitive.
 Every classification is grounded in the app's actual behavior (code and the event schema), cited with `file:line` or a doc reference, not in assumptions.
 It exists because the pre-publication red-team checklist (`gtm/08-redteam/pre-publication-checklist.md:11-12`) requires the App Store privacy label to be aligned with the app's real data story and to tell **one story** consistent with the privacy policy (`gtm/03-site/privacy.html`) and the landing FAQ.
 
@@ -16,38 +17,38 @@ It does **not** attempt the legal review of the privacy policy - that is a separ
 - The only thing an emitting build sends to a Rep Today-controlled endpoint is **anonymous product-usage telemetry** carrying a **random per-install UUID** and non-identifying event properties - **no name, no email, no advertising identifier**.
 - **No ATT prompt. No IDFA. No IDFV. No advertising SDKs. No third-party analytics/tracking SDKs. No cross-app tracking.** (Confirmed by code search - see [No ATT / IDFA](#no-att--idfa--advertising).)
 - On-device workout history and profile, optional **user-owned private iCloud** sync (CloudKit private DB), **write-only** Apple Health, and the **Keychain-stored Sign in with Apple identifier** are, per Apple's rules, **not developer data collection** and therefore carry **no label entry**.
-- The intended label is therefore small: **Usage Data (Product Interaction)** and **Identifiers (Device ID)**, both marked **not linked to identity** and **not used for tracking**, purpose **Analytics** - matching the funnel PRD's FR-12 and the checklist.
-
-Two things are genuine decisions, not facts readable from the code, and are escalated in [Open decisions](#open-decisions-captain).
+- The label is therefore small: **Usage Data (Product Interaction)** and **Identifiers (Device ID)**, both marked **not linked to identity** and **not used for tracking**, purpose **Analytics** - matching the funnel PRD's FR-12 and the checklist.
+- **This label presumes telemetry is enabled at submission time.** See [Prerequisites before submission](#prerequisites-before-submission).
 
 ---
 
-## Open decisions (captain)
+## Decisions (resolved by the captain)
 
-These are the only two classifications that are product/compliance judgment calls rather than facts.
-Both are named explicitly as decision points in the task brief and in the checklist.
-Each has a recommendation, but the captain owns the final call because getting a label wrong is a compliance risk.
+Two classifications were product/compliance judgment calls rather than facts readable from the code.
+The captain has decided both; this document states the chosen path as definitive.
+The alternative that was **not** chosen is preserved only as [Appendix A](#appendix-a---the-alternative-not-chosen) for the record.
 
-### Decision A - Declare the per-install UUID as Identifiers -> Device ID?
+### Decision A - the per-install UUID -> CHOSEN: declare as Identifiers -> Device ID
 
-- **What it is:** a random UUIDv4 minted on first launch, kept only in `UserDefaults`, sent with every telemetry event to correlate events from the same install. It is explicitly **not** the IDFA, `identifierForVendor`, the Sign in with Apple identifier, or an email (`ios/RepToday/RepToday/Utilities/AppState.swift:22-27`, `:74-78`).
-- **Why it is a judgment call:** Apple's "Device ID" category is broad ("any other identifier that uniquely identifies a device"), but a per-install, app-scoped, non-IDFA/non-IDFV random id is arguably not a *device* identifier at all. The checklist itself phrases it conditionally: "Usage Data (and a Device ID **if** the per-install UUID is classed as one)" (`pre-publication-checklist.md:11`).
-- **Options:**
-  - **A1 (recommended): Declare it as Identifiers -> Device ID**, Not linked to identity, Not used for tracking, purpose Analytics. Conservative and defensible - it is an identifier that accompanies collected usage data.
-  - **A2: Do not declare an identifier**, on the theory that a per-install random UUID that is not a system/device identifier is not "Device ID." Higher risk of an App Review mismatch given that the id is transmitted with analytics.
-- **Recommendation: A1.** Declaring it costs nothing (it is honestly not-linked, not-tracking) and removes an avoidable App Review dispute. This is the classification the rest of this document assumes.
+The random per-install UUID (minted on first launch, kept only in `UserDefaults`, sent with every telemetry event; explicitly **not** IDFA/`identifierForVendor`/Sign in with Apple identifier/email - `ios/RepToday/RepToday/Utilities/AppState.swift:22-27`, `:74-78`) is declared under **Identifiers -> Device ID**, marked **not linked to identity** and **not used for tracking**, purpose **Analytics**.
 
-### Decision B - Does the build being submitted actually collect anything?
+### Decision B - what the submitted build collects -> CHOSEN: wire it on, declare it
 
-- **The fact:** a **Release** build's telemetry endpoint (`REPTODAY_ANALYTICS_ENDPOINT`) is **empty**, so `ServiceContainer.live` resolves `NoOpAnalyticsService` and the app sends **zero bytes** off device (`ios/RepToday/RepToday/Services/Analytics/LiveAnalyticsService.swift:113-141`; class doc `:22-29`). All 13 emission call sites exist, but a distributed build reaches no live sink.
-- **Why it is a judgment call:** Apple privacy labels describe the **data practices of the build being submitted**. A Release build shipped *today* genuinely collects nothing -> strictly, "Data Not Collected." But the app is *designed* to collect anonymous usage data, and configuring a production deployment is the stated precondition for shipping any emitting build (`LiveAnalyticsService.swift:113-118`).
-- **Options:**
-  - **B1 (recommended): Configure the production analytics endpoint before submission, then submit and declare the Usage Data + Device ID label below.** The build then does what its design intends, the label matches, and no resubmission is owed. Requires choosing + wiring the production Convex deployment first (also gates US-T07+).
-  - **B2: Submit a Release build with the empty endpoint (collects nothing) and declare "Data Not Collected."** Honest for *that* build, but the label must be updated to the set below **before** a build with telemetry enabled is distributed - and because the endpoint is a per-configuration build setting, enabling it already means a new build/submission anyway.
-- **Recommendation: B1.** It is the intended end state, gives measurement from day one, and avoids a label that is immediately stale. If the captain prefers B2, the label is "Data Not Collected" for that build and this document's tables become the target for the first emitting build.
+The label reflects the **intended shipped behavior with telemetry enabled** (the production endpoint configured at submission time), **not** the current empty-endpoint no-op state.
+So the submitted build declares **Usage Data (Product Interaction)** collected for **Analytics**, marked **not linked to identity** and **not used for tracking**, with **no ATT prompt and no IDFA / advertising identifier**.
 
-**The tables below specify the label for an emitting build (Decision B1 + Decision A1).**
-If B2 is chosen, the submitted build declares **Data Not Collected**, and this table is what must be entered when collection is turned on.
+Today a **Release** build's telemetry endpoint (`REPTODAY_ANALYTICS_ENDPOINT`) is empty, so `ServiceContainer.live` resolves `NoOpAnalyticsService` and sends zero bytes (`ios/RepToday/RepToday/Services/Analytics/LiveAnalyticsService.swift:113-141`, doc `:22-29`).
+The captain's decision is to close that gap before submission rather than ship a non-collecting build - see [Prerequisites before submission](#prerequisites-before-submission).
+
+**The tables below are the definitive label for the submitted (telemetry-enabled) build.**
+
+## Prerequisites before submission
+
+This label presumes telemetry is enabled at submit time.
+The following are **separate tasks tracked by firstmate**, not part of this document, but they must be true before a build carrying this label is submitted:
+
+- **Wire the production telemetry endpoint:** choose and configure the production Convex deployment so the Release `REPTODAY_ANALYTICS_ENDPOINT` is non-empty and `ServiceContainer.live` resolves `LiveAnalyticsService` rather than `NoOpAnalyticsService` (`LiveAnalyticsService.swift:113-118`). Until then, a distributed build collects nothing and this label would overstate the current behavior.
+- **Reconcile the site to the collecting story:** update the landing FAQ / event schema so the FAQ, the privacy policy, and this label tell one story once collection is live - notably the FAQ's missing opt-out mention flagged in [One-story alignment](#one-story-alignment-cross-check). This is A/B-sensitive copy work owned elsewhere.
 
 ---
 
@@ -66,12 +67,12 @@ Telemetry properties are non-identifying by construction - `requested_minutes`, 
 
 ---
 
-## The label - master declaration (emitting build)
+## The label - master declaration (submitted, telemetry-enabled build)
 
 | Apple category -> type | Collected? | Linked to identity? | Used for tracking? | Purpose(s) | Evidence / reason |
 |---|---|---|---|---|---|
 | **Usage Data -> Product Interaction** | **Yes** | **No** | **No** | Analytics | The 13 funnel events (installs, onboarding, session lifecycle, weekly rollup, paywall/subscribe). `event-metric-schema.md:11-27`; `LiveAnalyticsService.swift:205-237`. Not linked: no name/email/account tied to the id. Not tracking: never shared with data brokers, never joined to other apps' data. |
-| **Identifiers -> Device ID** | **Yes** (Decision A1) | **No** | **No** | Analytics | The random per-install UUID sent with each event. `AnalyticsWireBody.swift`; `AppState.swift:74-78`. Not IDFA/IDFV/Apple-ID/email (`AppState.swift:22-27`). |
+| **Identifiers -> Device ID** | **Yes** | **No** | **No** | Analytics | The random per-install UUID sent with each event. `AnalyticsWireBody.swift`; `AppState.swift:74-78`. Not IDFA/IDFV/Apple-ID/email (`AppState.swift:22-27`). |
 | Everything else (all categories below) | **No** | - | - | - | See [full checklist](#full-apple-data-type-checklist) and [reasoning notes](#per-integration-reasoning-notes). |
 
 Both collected types are **Not linked to the user's identity** and **Not used for tracking**, so **no ATT prompt is required**.
@@ -81,7 +82,7 @@ Both collected types are **Not linked to the user's identity** and **Not used fo
 ## Full Apple data-type checklist
 
 Every Apple App Privacy data type, with a Collected Y/N and the reason.
-Scan for "Yes"; there are exactly two (or, under Decision B2 for the current Release build, zero).
+Scan for "Yes"; there are exactly two.
 
 | Category | Type | Collected? | Reason |
 |---|---|---|---|
@@ -97,7 +98,7 @@ Scan for "Yes"; there are exactly two (or, under Decision B2 for the current Rel
 | User Content | Emails/Messages, Photos/Videos, Audio, Gameplay, Customer Support, Other | No | No such content collected off device. The onboarding "why" free text and profile stay on-device / private iCloud and are never sent in telemetry. |
 | Browsing History | Browsing History | No | Not applicable. |
 | Search History | Search History | No | No search feature. |
-| **Identifiers** | **Device ID** | **Yes** (Decision A1) | Per-install random UUID sent with telemetry. See master table. |
+| **Identifiers** | **Device ID** | **Yes** | Per-install random UUID sent with telemetry. See master table. |
 | Identifiers | User ID | No | No account/user id is sent off device. The Sign in with Apple identifier stays in the Keychain and is never transmitted (`AppleAuthService.swift:31,51`). |
 | Purchases | Purchase History | No (see [note](#reviewer-judgment-note-monetization-events)) | Monetization events are classified as Product Interaction; `plan` is a StoreKit product id on an interaction event, not a financial/billing record. |
 | **Usage Data** | **Product Interaction** | **Yes** | The funnel events. See master table. |
@@ -179,3 +180,14 @@ Per that item and the task's scope, this document only **flags** the gap; it doe
 Re-verify this specification whenever any of the cited paths change:
 the telemetry wire body (`AnalyticsWireBody.swift`), the endpoint configuration or no-op fallback (`LiveAnalyticsService.swift`), the event schema (`gtm/06-channels/event-metric-schema.md`), HealthKit read/write posture (`HealthKitService.swift`), the CloudKit database scope (`PersistenceController.swift`), or the Sign in with Apple handling (`Services/Auth/`).
 A new event property or a new integration can add a data type; keep this label, the privacy policy, and the FAQ telling one story.
+
+---
+
+## Appendix A - the alternative not chosen
+
+For the record only. The captain chose the **wire-on-and-declare** path (Decision B above); this appendix documents the option that was **not** taken, so a future reader understands why the label declares collection on a build whose Release endpoint is currently empty.
+
+**Not chosen: ship a non-collecting build and declare "Data Not Collected."**
+A Release build submitted with the empty `REPTODAY_ANALYTICS_ENDPOINT` sends zero bytes (`LiveAnalyticsService.swift:113-141`), so that specific build could honestly declare **Data Not Collected**.
+The label would then have to be updated to the Usage Data + Device ID set - and a new build submitted, since the endpoint is a per-configuration build setting - before any telemetry-enabled build is distributed.
+The captain chose instead to enable telemetry at submission and declare it up front (see [Prerequisites before submission](#prerequisites-before-submission)), so measurement is available from day one and the label is not immediately stale.
