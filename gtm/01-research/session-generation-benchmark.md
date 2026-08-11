@@ -1,5 +1,10 @@
 # Session-generation benchmark - substantiation for the "under 100 milliseconds" claim
 
+> **Superseded (2026-08-10) by `gtm/01-research/session-generation-benchmark-2026-08-10.md`**, which adds a committed,
+> re-runnable XCTest harness (`ios/RepToday/RepTodayTests/SessionGenerationBenchmarkTests.swift`) and an optimistic
+> **Simulator proxy** run of it. This file remains the record of the device *method*; the numbers, the harness, and the
+> live PENDING iPhone XS / iOS 17 table now live in the dated file. The on-device p95 is still the outstanding blocking box.
+
 Substantiation record for the pre-publication checklist item
 (`gtm/08-redteam/pre-publication-checklist.md`, "Device benchmark record for the 'under 100 milliseconds' claim")
 and the acceptance criterion in US-T09 (`.claude/agent/tasks/prd-funnel-instrumentation_260803.md`).

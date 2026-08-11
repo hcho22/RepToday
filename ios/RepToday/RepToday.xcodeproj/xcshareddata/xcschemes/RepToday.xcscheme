@@ -64,6 +64,11 @@
             value = "$(REPTODAY_WRITE_EVIDENCE)"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "RUN_SESSION_BENCHMARK"
+            value = "$(RUN_SESSION_BENCHMARK)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
    </TestAction>
    <LaunchAction
@@ -99,6 +104,11 @@
             value = "$(REPTODAY_WRITE_EVIDENCE)"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "RUN_SESSION_BENCHMARK"
+            value = "$(RUN_SESSION_BENCHMARK)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
       <StoreKitConfigurationFileReference
          identifier = "../../RepToday/Resources/RepToday.storekit">
@@ -131,6 +141,11 @@
          <EnvironmentVariable
             key = "REPTODAY_WRITE_EVIDENCE"
             value = "$(REPTODAY_WRITE_EVIDENCE)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "RUN_SESSION_BENCHMARK"
+            value = "$(RUN_SESSION_BENCHMARK)"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

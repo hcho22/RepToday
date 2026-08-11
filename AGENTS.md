@@ -33,6 +33,7 @@ xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepTodayUITests \
 ```
 
 The `RepToday` scheme builds the app and runs `RepTodayTests` - that is the default run, and everything except the XCUITests lives in it; if the destination will not resolve, use `xcrun simctl list devices available` and pass `-destination 'id=<UDID>'`.
+One suite in `RepTodayTests` is deliberately held out of that default run: `SessionGenerationBenchmarkTests`, the re-runnable session-generation latency harness behind the `<100ms` claim (`gtm/01-research/session-generation-benchmark-2026-08-10.md`), is **opt-in and skipped** (so the gate and CI never pay its ~17.5k-generation cost) unless you pass `RUN_SESSION_BENCHMARK=1` to xcodebuild - a build setting the `RepToday` scheme forwards into the Simulator process exactly like `REPTODAY_WRITE_EVIDENCE` below; it is re-targetable to a real device unchanged via `-destination`, and the Simulator run is an optimistic proxy, not the authoritative iPhone XS / iOS 17 number.
 Target iOS 17.0+, Swift 5.9, Xcode 16.3, bundle id `com.reptoday.app`.
 `RepTodayUITests` is a second scheme on purpose: it installs and launches the app in a booted Simulator and drives it out of process, so folding it into `RepToday` would make every unit run wait on an app launch and inherit its failure modes.
 Run it when the touch path is what is in question - it is the only place a production control is actually pressed rather than hosted.
