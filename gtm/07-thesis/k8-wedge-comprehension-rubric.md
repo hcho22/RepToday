@@ -153,7 +153,7 @@ These are the thesis's numbers, cited to their lines; this rubric operationalize
   Source: `investment-thesis.md` line 210.
   "Under-sampled" is a named state distinct from pass and from fire; a sample below 25 runs is never reported as a pass, and the description-pool count is reported alongside it.
 
-- **Severity context (not a threshold this rubric sets):** K8 is one of the two criteria whose firing is on its own a walk-away signal - "K1/K8 firing at all" is the walk-away line (`investment-thesis.md` line 236). This rubric does not adjudicate that; it only produces the coded inputs.
+- **Severity context (not a threshold this rubric sets):** K8 is one of the two criteria whose firing is on its own a walk-away signal - "K1/K8 firing at all" is the walk-away line (`investment-thesis.md` line 237). This rubric does not adjudicate that; it only produces the coded inputs.
 
 No number in this section may be edited without editing the thesis first; the thesis is authoritative.
 
