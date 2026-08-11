@@ -255,6 +255,86 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
+    // MARK: - Movement Practice is one set per stretch, at every length and shape
+
+    /// The core guard for the one-set rule: a stretch is prescribed at exactly one set no matter how long
+    /// the session is or which shape it takes. This is the turned-into-a-test form of the reported bug -
+    /// "Cat-Cow Flow 2x10", "Pigeon Pose 4x0:45 per side" - so a future timing-fit change that reaches for
+    /// the set lever on the Movement Practice block fails here. It runs the full supported range (single-
+    /// focus 5-10 and every blend) against a mobility-stale history, which both makes the mobility block
+    /// present and drives it to its cap - the exact configuration in which the old code padded stretches.
+    func testMovementPracticeIsAlwaysOneSetAtEveryLengthAndShape() async throws {
+        let library = try await library()
+        // Mobility six days stale, strength worked yesterday: the mobility block leads and is shaped
+        // toward the larger share, so this is the worst case for the one-set rule.
+        let mobilityStale = [
+            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
+        ]
+        for minutes in [5, 10, 15, 20, 30, 45, 60] {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
+            let practiceBlocks = workout.blocks.filter { $0.category == .mobility }
+            XCTAssertFalse(practiceBlocks.isEmpty, "\(minutes) min: expected a Movement Practice block")
+            for block in practiceBlocks {
+                for prescription in block.exercises {
+                    XCTAssertEqual(
+                        prescription.sets, 1,
+                        "\(minutes) min: Movement Practice '\(prescription.exercise.id)' has "
+                            + "\(prescription.sets) sets - a stretch must always be one set"
+                    )
+                }
+            }
+        }
+    }
+
+    /// The other half of the rule: the block fills a longer session by adding distinct movement *types*,
+    /// not sets. A longer request must give the Movement Practice block strictly more exercises than a
+    /// short one (up to its cap), while every exercise stays at one set - so growth is by count, never by
+    /// set. Guards against a regression that filled time by re-padding sets while keeping the count flat.
+    func testMovementPracticeGrowsByExerciseCountNotSetCount() async throws {
+        let library = try await library()
+        let mobilityStale = [
+            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
+        ]
+        func practiceCount(_ minutes: Int) throws -> Int {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
+            let block = try XCTUnwrap(workout.blocks.first { $0.category == .mobility })
+            XCTAssertTrue(block.exercises.allSatisfy { $0.sets == 1 }, "\(minutes) min: every stretch is one set")
+            return block.exercises.count
+        }
+        let short = try practiceCount(15)
+        let long = try practiceCount(60)
+        XCTAssertGreaterThan(
+            long, short,
+            "a longer session must grow Movement Practice by exercise count (\(short) -> \(long)), not sets"
+        )
+        XCTAssertLessThanOrEqual(
+            long, SessionAssembly.maxMobilityTrainingExercises,
+            "the block never exceeds its distinct-movement cap"
+        )
+    }
+
+    /// The whole session still lands within the ±1 minute promise at the two long durations the one-set
+    /// change stressed most - 45 and 60 minutes - where a mobility-leaning blend can no longer pad
+    /// stretches and the strength/primal set lever (`maxTrainingSets`) carries the remaining time instead.
+    func testLongSessionsLandWithinToleranceWithOneSetMobility() async throws {
+        let library = try await library()
+        let mobilityStale = [
+            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
+        ]
+        for minutes in [45, 60] {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
+            let planned = SessionAssembly.plannedSeconds(of: workout)
+            XCTAssertLessThanOrEqual(
+                abs(planned - minutes * 60),
+                SessionAssembly.toleranceSeconds,
+                "\(minutes) min mobility-leaning planned \(planned)s is outside ±60s of \(minutes * 60)s"
+            )
+        }
+    }
+
     // MARK: - Latency under 100ms
 
     func testGenerationLatencyUnder100ms() async throws {

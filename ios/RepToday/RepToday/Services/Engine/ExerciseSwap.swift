@@ -82,12 +82,16 @@ enum ExerciseSwap {
     /// that to the same flat gate is maximum false precision on the one slot with no recourse: it does
     /// not make the session more accurate, it just refuses the swap.
     ///
-    /// The share is read off the shipped catalog rather than picked: across all 57 movements, the
-    /// widest gap between a movement's own per-set work at its default and its *nearest* in-band peer's
-    /// is 30% (`mobility_pigeon` at 100s against `mobility_9090_hip` at 70s; the 95th percentile is
-    /// 14%). So a 30% band is exactly wide enough to admit every pair the catalog itself authors as
-    /// equivalent work, and no wider. It is additive over the flat gate rather than replacing it, so a
-    /// very small slot keeps the flat allowance instead of being handed a tighter one.
+    /// The share was read off the shipped catalog rather than picked: when it was set, across all 57
+    /// movements the widest gap between a movement's own per-set work at its default and its *nearest*
+    /// in-band peer's was 30% (`mobility_pigeon` at 100s against `mobility_9090_hip` at 70s; the 95th
+    /// percentile 14%). So a 30% band was exactly wide enough to admit every pair the catalog then
+    /// authored as equivalent work, and no wider. The later one-set Movement Practice mobility expansion
+    /// only narrowed those gaps - `mobility_lizard_lunge` at 90s now sits between pigeon and 90/90 - so
+    /// 0.3 is now a safe, slightly conservative upper bound rather than a tight fit, and the whole-library
+    /// coverage sweep confirms it still admits every authored-equivalent pair. It is additive over the
+    /// flat gate rather than replacing it, so a very small slot keeps the flat allowance instead of being
+    /// handed a tighter one.
     static let softSlotToleranceShare = 0.3
 
     /// How far this slot's planned seconds may move, given the estimated work it carries and whether
@@ -162,8 +166,9 @@ enum ExerciseSwap {
         )
 
         // Whether the slot the user is replacing is one the assembler's own timing fit may move set
-        // counts on. The structural bookends are not (`allowSetAdjust: false` on the warm-up and the
-        // cooldown), so a swapped warm-up stretch stays the one set it was built as.
+        // counts on. The one-set blocks are not (`allowSetAdjust: false` on the warm-up, the cooldown,
+        // and the mobility Movement Practice block), so a swapped stretch stays the one set it was built
+        // as - a stretch is one set at every length, and a swap never reintroduces a multi-set stretch.
         let setsAreAdjustable = blockIsSetAdjustable(containing: prescription, in: workout)
 
         // How far this slot may move, measured against the slot the user actually has: the flat gate on
@@ -304,16 +309,19 @@ enum ExerciseSwap {
     }
 
     /// Whether the block holding `prescription` is one the assembler's timing fit may move set counts
-    /// on. The warm-up and the cooldown are built with `allowSetAdjust: false` - they are one set of a
-    /// stretch by construction - so a swap must not use the set lever there either; the training blocks
-    /// are adjustable. A slot the workout does not contain is treated as fixed, the conservative default.
+    /// on. The warm-up, the cooldown, **and the mobility Movement Practice block** are all built with
+    /// `allowSetAdjust: false` - a stretch is one set by construction, at every length (see
+    /// `SessionAssembly.mobilityBlock`) - so a swap must not use the set lever on any of them either; a
+    /// substituted stretch stays the one set it was built as, and only the strength/primal training
+    /// blocks are adjustable. A slot the workout does not contain is treated as fixed, the conservative
+    /// default.
     private static func blockIsSetAdjustable(containing prescription: PrescribedExercise, in workout: Workout) -> Bool {
         guard let block = workout.blocks.first(where: { block in
             block.exercises.contains { $0.id == prescription.id }
         }) else { return false }
         switch block.category {
-        case .warmup, .cooldown: return false
-        case .strength, .mobility, .primal: return true
+        case .warmup, .cooldown, .mobility: return false
+        case .strength, .primal: return true
         }
     }
 

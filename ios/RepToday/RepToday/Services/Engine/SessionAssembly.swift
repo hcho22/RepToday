@@ -9,8 +9,11 @@ import Foundation
 /// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend.
 /// - **Pillars** (Step 2, `PillarPlan`) decide which pillar a single-focus trains, or - for a blend -
 ///   how the training time splits: the staleness `PillarWeights` size the blocks, so the staler pillar
-///   both leads and gets the larger share. A short/full blend sizes strength (primal folded in) and
-///   mobility; an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block.
+///   leads and is shaped toward the larger share. (The mobility block is one-set and capped at
+///   `maxMobilityTrainingExercises`, so on a long mobility-stale blend it can hit that cap short of its
+///   weighted share; the overflow is carried by the strength/primal set lever rather than by padding
+///   stretches with redundant sets.) A short/full blend sizes strength (primal folded in) and mobility;
+///   an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
 ///   exercise in each, and that exercise's capacity-relative reps/sets/hold. During cold start Step
@@ -53,16 +56,34 @@ enum SessionAssembly {
     /// Set-count rails the timing-fit pass may move a *training* block's exercises between. The
     /// per-set target (reps/seconds) from Step 6 is never touched; only how many sets are done is a
     /// timing lever, and only within these rails so a fit never produces an absurd set count.
+    ///
+    /// The upper rail is deliberately the lever that carries a **long** session. Multiple sets are
+    /// redundant for a stretch but legitimate training for strength, so Movement Practice is pinned at
+    /// one set (`mobilityBlock`, `allowSetAdjust: false`) and the strength/primal blocks instead take
+    /// the extra time up to this ceiling. It is set to the smallest value that lets a 45- and 60-minute
+    /// mobility-leaning blend still land within `toleranceSeconds` once mobility is capped at
+    /// `maxMobilityTrainingExercises` one-set movements: a 60-minute session opens the strength/primal
+    /// movements to 5 sets rather than filling the hour with 20+ distinct stretches. It applies across
+    /// the board, but only ever binds on a session long enough for the fit to need the time - a short
+    /// session never reaches it, because adding a set there would overshoot the request.
     static let minTrainingSets = 1
-    static let maxTrainingSets = 4
+    static let maxTrainingSets = 5
 
     /// Per-block ceilings on how many distinct movements each mobility-sourced block may draw from the
-    /// shared 12-movement pool. The warm-up and the cooldown reserve their movements first (the
-    /// cooldown before any Movement Practice block - see `buildBlocks`); the elastic Movement Practice
-    /// block then takes whatever remains and makes up any shortfall with its set-count lever, so no
-    /// block ever starves the cooldown of its static holds.
+    /// shared mobility pool. The warm-up and the cooldown reserve their movements first (the cooldown
+    /// before any Movement Practice block - see `buildBlocks`), so no block ever starves the cooldown of
+    /// its static holds. The Movement Practice block then takes whatever remains, up to this ceiling, at
+    /// **one set each**: it fills a longer session by promoting more distinct movement *types* from its
+    /// reserve, never by adding sets to a stretch (see `mobilityBlock`).
+    ///
+    /// `maxMobilityTrainingExercises` is deliberately bounded well below the mobility pool: a session is
+    /// never a 20+ stretch flow, and the unused remainder gives day-to-day variety real headroom (a
+    /// mobility-heavy day cannot consume the whole catalog). On a long session the mobility share the
+    /// Step 2 weights ask for can exceed what this cap of one-set stretches supplies; the overflow is
+    /// carried by the strength/primal blocks' set lever (`maxTrainingSets`), not by set-padding the
+    /// stretches, so the total still lands within tolerance while stretches stay at one set.
     static let maxWarmupExercises = 3
-    static let maxMobilityTrainingExercises = 8
+    static let maxMobilityTrainingExercises = 14
     static let maxCooldownExercises = 4
 
     /// Sessions longer than this many minutes close with a cooldown stretch (so 15/20/30 get one,
@@ -90,7 +111,7 @@ enum SessionAssembly {
     /// the floor and back up is much the same work whatever the movement is.
     ///
     /// The value is calibrated from the *holds*, where setup is observed rather than fitted: across the
-    /// catalog's 17 holds the authored remainder is 5-25 seconds with a median of exactly 10. Taking
+    /// catalog's 26 holds the authored remainder is 5-25 seconds with a median of exactly 10. Taking
     /// the constant from a different family of movements than the ones it is then applied to is what
     /// keeps it from being circular - the previous per-rep constant was calibrated from the four
     /// rep-based entries it subsequently assigned zero setup to, which is no calibration at all.
@@ -505,10 +526,12 @@ enum SessionAssembly {
             }
             if let next = block.reserve.first {
                 // A reserve may be promoted at any set count within the rails, not only at the count
-                // Step 6 prescribed. Without that, a block whose items already sit at `maxTrainingSets`
-                // (an advanced cold-start Start Seed opens at 4) has no fine-grained lever left at all:
-                // its only move is a whole extra exercise at full volume, which a short session cannot
-                // absorb, and the greedy fit parks minutes away from the request.
+                // Step 6 prescribed. Without that, a set-adjustable block whose items already sit at
+                // `maxTrainingSets` (a capacity-grown or cold-start-seeded strength block can) has no
+                // fine-grained lever left at all: its only move is a whole extra exercise at full volume,
+                // which a short session cannot absorb, and the greedy fit parks minutes away from the
+                // request. A non-set-adjustable block (warm-up, cooldown, Movement Practice) promotes its
+                // reserve only at the item's own one set - so Movement Practice grows purely by count.
                 let counts = block.allowSetAdjust
                     ? Array(minTrainingSets...max(minTrainingSets, next.sets))
                     : [next.sets]
@@ -618,7 +641,9 @@ struct PlannedBlock {
     let category: ExerciseCategory
     var items: [PlannedItem]
     var reserve: [PlannedItem]
-    /// Training blocks let timing fit add/drop sets; warm-up and cooldown stay at one set each.
+    /// Whether timing fit may add/drop sets on this block's exercises. The strength and primal training
+    /// blocks set it; the warm-up, cooldown, and the mobility Movement Practice block do not, staying at
+    /// one set each and growing only by promoting more distinct movements from their reserve.
     let allowSetAdjust: Bool
     /// The minimum exercises this block must retain (timing fit never trims below it).
     let minItems: Int
@@ -788,7 +813,12 @@ private struct Builder {
     }
 
     /// A mobility training block (Movement Practice): mobility movements ordered by staleness/variety,
-    /// set counts adjustable for timing. `nil` when no mobility movement is left to fill it.
+    /// **one set each at every session length**. Movement Practice is mobility/stretch practice, where a
+    /// second set of a stretch is redundant, so - like the warm-up and cooldown bookends - it is not
+    /// set-adjustable (`allowSetAdjust: false`). Its only lever to fill a longer session is promoting
+    /// more distinct movement *types* from its reserve (up to `cap`, and always at one set, since reserve
+    /// promotion for a non-set-adjustable block occurs at the item's own set count). `nil` when no
+    /// mobility movement is left to fill it.
     private mutating func mobilityBlock(title: String, cap: Int) -> PlannedBlock? {
         let items = mobilityItems(from: orderedMobility(holdsOnly: false), cap: cap)
         guard !items.isEmpty else { return nil }
@@ -797,7 +827,7 @@ private struct Builder {
             category: .mobility,
             items: [items[0]],
             reserve: Array(items.dropFirst()),
-            allowSetAdjust: true,
+            allowSetAdjust: false,
             minItems: 1
         )
     }
