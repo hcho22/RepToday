@@ -27,7 +27,7 @@ open 04-video/launch-video.mp4
 | `04-video/` | Launch video, VO script, build scripts, ffprobe report, frames, gate report |
 | `05-social-pmf/` | Week-one PMF kit: 16 angles, 6 A/B pairs, 14-day cadence, read-the-results guide, week-1 drafts |
 | `06-channels/` | v2 channel plan, event/metric schema, retained v1 plan (`channel-plan-v1.md`) |
-| `07-thesis/` | Investment thesis with kill criteria K0-K9 |
+| `07-thesis/` | Investment thesis with kill criteria K0-K9, plus the pre-registered K8 wedge-comprehension coding rubric (`k8-wedge-comprehension-rubric.md`) |
 | `08-redteam/` | v2 personas + dossier + pre-publication checklist + App Store privacy nutrition labels spec (`app-store-privacy-labels.md`), v1 persona history |
 | `09-extras/` | Investor teaser, App Store screenshot comps, social launch kit, review-response playbook (invented deliverable), `marketing-agent/` build spec + creative loop |
 | `decisions-log.md` | Every decision moving this package or its kill criteria (v2 run: D-101..D-107; outside a run: D-108..D-111), tagged by who decided |
