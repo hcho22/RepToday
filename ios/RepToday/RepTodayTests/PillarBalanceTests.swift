@@ -6,9 +6,9 @@ import XCTest
 ///
 /// Two halves: `PillarStaleness` tests pin the days-since-worked computation read back from
 /// logs (most-recent wins, skips don't count, never-worked is nil); the `PillarPlan.select`
-/// tests pin single-focus selection (stalest pillar, the desk-worker mobility lean and its
-/// strong-staleness exception, the documented no-history defaults) and blend weighting (time
-/// split by relative staleness, both pillars always included).
+/// tests pin single-focus selection (always strength, US-001, independent of staleness and the
+/// desk-sitting signal) and blend weighting (time split by relative staleness, both pillars
+/// always included).
 final class PillarBalanceTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -140,74 +140,38 @@ final class PillarBalanceTests: XCTestCase {
         XCTAssertFalse(PillarStaleness.isStaler(3, than: 3))
     }
 
-    // MARK: - Single-focus selection
+    // MARK: - Single-focus selection (US-001: always strength)
 
-    /// The validation test: strength worked yesterday, mobility six days ago, 10-min single
-    /// focus -> the stalest pillar (mobility), regardless of the desk-sitting signal.
-    func testSingleFocusPicksStalestPillar() {
+    /// US-001 invariant: a single-focus session on a fresh (no-history) desk-worker profile -
+    /// the originally-reported all-mobility failure case - now leads **strength**. Mobility can no
+    /// longer be a single-focus training pillar; it survives only as the structural warm-up.
+    func testSingleFocusFreshDeskWorkerLeadsStrength() {
+        XCTAssertEqual(plan(.singleFocus, logs: [], sitsLong: true), .single(.strength))
+    }
+
+    /// A fresh active (non-desk-bound) profile also leads strength.
+    func testSingleFocusFreshActiveUserLeadsStrength() {
+        XCTAssertEqual(plan(.singleFocus, logs: [], sitsLong: false), .single(.strength))
+    }
+
+    /// Single-focus is strength regardless of staleness: even when mobility is by far the stalest
+    /// pillar (worked-strength-yesterday, mobility-six-days-ago), the session still leads strength.
+    func testSingleFocusIsStrengthEvenWhenMobilityIsStalest() {
         let logs = [
             log(pillars: [.strength], daysAgo: 1),
             log(pillars: [.mobility], daysAgo: 6),
         ]
-        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: false), .single(.mobility))
-        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.mobility))
-    }
-
-    func testSingleFocusPicksStrengthWhenStrengthIsStalest() {
-        let logs = [
-            log(pillars: [.strength], daysAgo: 6),
-            log(pillars: [.mobility], daysAgo: 1),
-        ]
         XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: false), .single(.strength))
-    }
-
-    /// No desk-sitting signal: equal staleness is a tie that defaults to strength.
-    func testSingleFocusTieDefaultsToStrengthWhenNotSitsLong() {
-        let logs = [log(pillars: [.strength, .mobility], daysAgo: 3)]
-        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: false), .single(.strength))
-    }
-
-    /// Desk worker: equal staleness breaks toward mobility for same-day relief.
-    func testSingleFocusTieBreaksToMobilityWhenSitsLong() {
-        let logs = [log(pillars: [.strength, .mobility], daysAgo: 3)]
-        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.mobility))
-    }
-
-    /// Desk worker, short session: leans mobility even when strength is somewhat staler, as
-    /// long as strength has not crossed the strong-staleness threshold.
-    func testSitsLongLeansMobilityWhenStrengthNotStronglyStale() {
-        let logs = [
-            log(pillars: [.strength], daysAgo: 3), // staler than mobility, but < threshold (5)
-            log(pillars: [.mobility], daysAgo: 1),
-        ]
-        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.mobility))
-    }
-
-    /// Once strength crosses the strong-staleness threshold, it reclaims the session from the
-    /// desk-worker mobility lean.
-    func testSitsLongYieldsToStronglyStaleStrength() {
-        let logs = [
-            log(pillars: [.strength], daysAgo: 6), // >= threshold (5) and staler than mobility
-            log(pillars: [.mobility], daysAgo: 1),
-        ]
         XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.strength))
     }
 
-    /// Strongly-stale strength still yields when mobility is even staler.
-    func testStronglyStaleStrengthStillYieldsToStalerMobility() {
-        let logs = [
-            log(pillars: [.strength], daysAgo: 6),
-            log(pillars: [.mobility], daysAgo: 8),
-        ]
-        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.mobility))
-    }
-
-    func testNoHistoryDefaultsToMobilityWhenSitsLong() {
-        XCTAssertEqual(plan(.singleFocus, logs: [], sitsLong: true), .single(.mobility))
-    }
-
-    func testNoHistoryDefaultsToStrengthWhenNotSitsLong() {
-        XCTAssertEqual(plan(.singleFocus, logs: [], sitsLong: false), .single(.strength))
+    /// Single-focus is strength regardless of the desk-sitting signal: with strength and mobility
+    /// equally stale, both a desk worker and an active user lead strength (the old mobility
+    /// tie-break for `sitsLong` is gone).
+    func testSingleFocusIsStrengthForBothSignalsOnEqualStaleness() {
+        let logs = [log(pillars: [.strength, .mobility], daysAgo: 3)]
+        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: false), .single(.strength))
+        XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.strength))
     }
 
     // MARK: - Blend weighting

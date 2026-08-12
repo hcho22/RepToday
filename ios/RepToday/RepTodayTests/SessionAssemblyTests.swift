@@ -142,14 +142,44 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
-    func testMobilityLedSessionStillOpensWithAWarmUp() async throws {
+    /// US-001 validation case: a fresh (no-history) desk worker - the originally-reported
+    /// all-mobility failure profile - gets a **strength**-led single-focus session at 5 and 10
+    /// minutes. Each opens with a mobility warm-up and then trains strength; no mobility *training*
+    /// block appears (mobility survives only as the warm-up at these lengths).
+    func testShortSingleFocusLeadsStrengthForFreshDeskWorker() async throws {
         let library = try await library()
-        // A desk worker whose mobility is the stalest pillar gets a mobility-led short session that
-        // still opens with a warm-up (the opening flow doubles as warm-up + training).
-        let logs = [log([("push_standard", .strength, .push, 12)], daysAgo: 1)]
-        let workout = assemble(minutes: 10, user: user(sitsLong: true), library: library, logs: logs)
-        XCTAssertEqual(workout.blocks.first?.category, .warmup)
-        XCTAssertEqual(workout.focusPillar, .mobility, "stale mobility + desk worker leads to a mobility focus")
+        for minutes in [5, 10] {
+            let workout = assemble(minutes: minutes, user: user(sitsLong: true), library: library, logs: [])
+            XCTAssertEqual(
+                workout.focusPillar, .strength,
+                "\(minutes) min single-focus must lead strength (US-001)"
+            )
+            // Opens with a mobility warm-up.
+            let first = try XCTUnwrap(workout.blocks.first, "\(minutes) min produced no blocks")
+            XCTAssertEqual(first.category, .warmup, "\(minutes) min must open with a warm-up")
+            XCTAssertTrue(
+                first.exercises.allSatisfy { $0.exercise.pillar == .mobility },
+                "\(minutes) min warm-up is mobility movements"
+            )
+            // A strength training block is present.
+            XCTAssertTrue(
+                workout.blocks.contains { $0.category == .strength },
+                "\(minutes) min must contain a strength training block"
+            )
+            // No mobility *training* block: mobility appears only in the warm-up.
+            XCTAssertFalse(
+                workout.blocks.contains { $0.category == .mobility },
+                "\(minutes) min must not contain a mobility training block"
+            )
+            let nonWarmupExercises = workout.blocks
+                .filter { $0.category != .warmup && $0.category != .cooldown }
+                .flatMap(\.exercises)
+            XCTAssertFalse(nonWarmupExercises.isEmpty, "\(minutes) min must have training exercises")
+            XCTAssertFalse(
+                nonWarmupExercises.contains { $0.exercise.pillar == .mobility },
+                "\(minutes) min: no mobility movement outside the warm-up"
+            )
+        }
     }
 
     // MARK: - Warm-up is beefier and scales with session length
@@ -341,9 +371,11 @@ final class SessionAssemblyTests: XCTestCase {
     /// The core guard for the one-set rule: a stretch is prescribed at exactly one set no matter how long
     /// the session is or which shape it takes. This is the turned-into-a-test form of the reported bug -
     /// "Cat-Cow Flow 2x10", "Pigeon Pose 4x0:45 per side" - so a future timing-fit change that reaches for
-    /// the set lever on the Movement Practice block fails here. It runs the full supported range (single-
-    /// focus 5-10 and every blend) against a mobility-stale history, which both makes the mobility block
-    /// present and drives it to its cap - the exact configuration in which the old code padded stretches.
+    /// the set lever on the Movement Practice block fails here. It runs every blend length (15-60) against
+    /// a mobility-stale history, which both makes the mobility block present and drives it to its cap - the
+    /// exact configuration in which the old code padded stretches. Single-focus 5-10 no longer carries a
+    /// mobility training block at all (US-001: single-focus is always strength), so it has no Movement
+    /// Practice block to guard - `testShortSingleFocusLeadsStrengthForFreshDeskWorker` covers that shape.
     func testMovementPracticeIsAlwaysOneSetAtEveryLengthAndShape() async throws {
         let library = try await library()
         // Mobility six days stale, strength worked yesterday: the mobility block leads and is shaped
@@ -352,7 +384,7 @@ final class SessionAssemblyTests: XCTestCase {
             log([("push_standard", .strength, .push, 12)], daysAgo: 1),
             log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
         ]
-        for minutes in [5, 10, 15, 20, 30, 45, 60] {
+        for minutes in [15, 20, 30, 45, 60] {
             let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
             let practiceBlocks = workout.blocks.filter { $0.category == .mobility }
             XCTAssertFalse(practiceBlocks.isEmpty, "\(minutes) min: expected a Movement Practice block")

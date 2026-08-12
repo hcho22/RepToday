@@ -207,6 +207,6 @@ final class FirstWeekContrastTests: XCTestCase {
             let workout = assemble(minutes: 8, user: deskWorker(sessionsLogged: day), library: library, policy: .default)
             focus.append(try XCTUnwrap(workout.focusPillar))
         }
-        XCTAssertEqual(Set(focus), [.mobility], "without First-Week Contrast a desk worker's week collapses to all-mobility")
+        XCTAssertEqual(Set(focus), [.strength], "without First-Week Contrast a desk worker's single-focus week collapses to all-strength (US-001)")
     }
 }
