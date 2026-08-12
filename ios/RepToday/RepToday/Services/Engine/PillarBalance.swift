@@ -4,8 +4,9 @@ import Foundation
 /// staleness so the neglected pillar gets worked and the pillars stay in balance.
 ///
 /// Step 1 picks the session's *shape*; Step 2 decides *which pillar(s)* fill it:
-/// - A single-focus session trains exactly one pillar - the stalest - with a desk-worker
-///   lean toward mobility for same-day relief on short sessions.
+/// - A single-focus session (the short 5-10 min lengths) always trains **strength** (US-001):
+///   strength is the pillar of every single-focus session, and mobility survives only as the
+///   structural warm-up at these lengths, not as a training block.
 /// - A short/full blend trains strength and mobility (primal folded into strength), splitting
 ///   time toward whichever is staler.
 /// - An extended blend (US-E02) promotes `primal` to a first-class pillar, splitting time
@@ -87,9 +88,6 @@ enum PillarPlan: Equatable {
 
     // MARK: Tuning constants
 
-    /// Days of neglect past which strength is "strongly stale" and reclaims a short
-    /// single-focus session from the desk-worker mobility lean. Tunable.
-    static let strengthNeglectThresholdDays = 5
     /// Staleness is capped here when weighting a blend, so one long gap (or a never-worked
     /// pillar) can lean the split without starving the other pillar of all its time.
     static let maxStalenessDays = 14
@@ -106,11 +104,11 @@ enum PillarPlan: Equatable {
     /// (`profile.sitsLong == false`). It biases their blended sessions to spend proportionally more
     /// time (and therefore more movements) on strength.
     ///
-    /// This is the mirror image of the desk-worker mobility lean: a sedentary user gets same-day
-    /// mobility relief (the single-focus mobility lean in `singlePillar`) and an unbiased blend split,
-    /// while an active user - who is not accumulating the postural debt that relief addresses - is
-    /// nudged toward strength instead. The sedentary path is untouched (bias `1.0`), so this *adds* a
-    /// strength bias for the active case without removing any mobility relief for desk workers.
+    /// A sedentary user's blend split is left unbiased, while an active user - who is not
+    /// accumulating the postural debt a desk worker does - is nudged toward strength instead. The
+    /// sedentary path is untouched (bias `1.0`), so this *adds* a strength bias for the active case
+    /// without altering the sedentary split. (Single-focus sessions always train strength for every
+    /// user under US-001, so there is no longer a single-focus mobility lean this mirrors.)
     ///
     /// `1.0` would be no bias. At `1.5`, an otherwise-even blend (equal staleness, e.g. a no-history
     /// user) shifts from a 50/50 strength/mobility split to 60/40 in strength's favor - noticeably
@@ -125,7 +123,7 @@ enum PillarPlan: Equatable {
     ///   - template: the Step 1 shape; single-focus picks one pillar, a short/full blend splits
     ///     strength and mobility, and an extended blend splits all three pillars (US-E02).
     ///   - recentLogs: completed sessions, the source of per-pillar staleness.
-    ///   - profile: supplies `sitsLong`, the desk-worker mobility lean.
+    ///   - profile: supplies `sitsLong`, which biases a blend's split toward strength for active users.
     ///   - pillarWeighting: the Session Policy per-pillar staleness multiplier (US-E02/US-E03);
     ///     defaults to neutral (`1.0` each) so pre-policy behavior is reproduced exactly. The
     ///     engine threads the live policy's weighting through `SessionAssembly.assemble` (US-E03).
@@ -142,7 +140,7 @@ enum PillarPlan: Equatable {
         let staleness = PillarStaleness(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
         switch template {
         case .singleFocus:
-            return .single(singlePillar(staleness: staleness, sitsLong: profile.sitsLong))
+            return .single(singlePillar())
         case .blendLight, .blendFull:
             return .blend(blendWeights(
                 staleness: staleness,
@@ -162,25 +160,15 @@ enum PillarPlan: Equatable {
 
     // MARK: Single-focus selection
 
-    /// Picks the one pillar a single-focus session trains.
+    /// Picks the one pillar a single-focus session trains: always **strength** (US-001).
     ///
-    /// Without a desk-sitting signal it is simply the stalest pillar, with ties going to
-    /// strength (the documented no-signal default). For a desk worker it leans mobility for
-    /// same-day relief, unless strength has been neglected past the strong-staleness
-    /// threshold - then the neglected strength reclaims the session.
-    private static func singlePillar(staleness: PillarStaleness, sitsLong: Bool) -> Pillar {
-        let strengthDays = staleness.days(for: .strength)
-        let mobilityDays = staleness.days(for: .mobility)
-
-        guard sitsLong else {
-            return PillarStaleness.isStaler(mobilityDays, than: strengthDays) ? .mobility : .strength
-        }
-
-        let strengthStronglyStale = strengthDays.map { $0 >= strengthNeglectThresholdDays } ?? true
-        if strengthStronglyStale && PillarStaleness.isStaler(strengthDays, than: mobilityDays) {
-            return .strength
-        }
-        return .mobility
+    /// Strength is the pillar of every single-focus session, independent of staleness or the
+    /// desk-worker (`sitsLong`) signal. Mobility is not a training option here - it survives only
+    /// as the structural warm-up every session opens with. This makes strength-primary structural
+    /// at the short lengths rather than an emergent outcome of the staleness math, so a short
+    /// session can never resolve to an all-mobility block.
+    private static func singlePillar() -> Pillar {
+        .strength
     }
 
     // MARK: Blend weighting
@@ -197,7 +185,7 @@ enum PillarPlan: Equatable {
     ///
     /// For an **active** user (`sitsLong == false`) strength's weighted staleness is scaled up by
     /// `activeUserStrengthBias`, biasing the split toward strength; a desk worker's split is left
-    /// unbiased (the mobility relief for them lives in the single-focus lean, unchanged here).
+    /// unbiased.
     private static func blendWeights(
         staleness: PillarStaleness,
         weighting: [Pillar: Double],

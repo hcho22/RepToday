@@ -766,6 +766,15 @@ It is deliberately one isolated constant so the magnitude retunes without touchi
 `SessionAssemblyTests` and `PillarBalanceTests` were extended (warm-up sizing, pool-reservation headroom, cooldown-not-starved; active > sedentary strength share, active > the pre-change even baseline, and the share tied exactly to the constant).
 Two pre-existing blend tests that assumed an even split for a non-sedentary user were retargeted to assert the *sedentary* even split, and `testBlendIgnoresSitsLong` was replaced (`testActiveUserBlendIsMoreStrengthForwardThanSedentary`) since blends now intentionally differ by `sitsLong`.
 
+### Strength is the pillar of every single-focus session (US-001)
+
+The first story of the "Strength-Primary Sessions" PRD, scoped to the engine mix only.
+`PillarBalance.singlePillar(...)` now returns `.strength` unconditionally: the `sitsLong` desk-worker mobility lean and its `strengthNeglectThresholdDays` strong-staleness exception are removed from the single-focus path (that constant, now dead, was deleted), so a short (5-10 min) single-focus session can no longer resolve to an all-mobility block - the originally-reported failure case (a 5-min session that was all stretches).
+Mobility survives only as the structural warm-up at these lengths; the "every session opens with a warm-up" rule is unchanged, and primal keeps its existing treatment (folded into strength).
+The blend path, `blendWeights`, and everything US-002+ owns are untouched; the change is purely which pillar a single-focus session trains.
+`PillarBalanceTests` single-focus tests were rewritten from stalest-pillar/mobility-lean expectations to the strength-led invariant (including the fresh `sitsLong = true` profile leading strength), `SessionAssemblyTests` gained `testShortSingleFocusLeadsStrengthForFreshDeskWorker` as the end-to-end US-001 validation (5 and 10 min: mobility warm-up then a `.strength` block, no `.mobility` training block), and two shared-path assertions that encoded the old single-focus behaviour were retargeted (the Movement-Practice one-set guard now runs the blend lengths only, and the First-Week-Contrast no-contract control now collapses to all-strength).
+Determinism and `asOf`-purity are preserved.
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.
