@@ -104,11 +104,11 @@ enum PillarPlan: Equatable {
     /// (`profile.sitsLong == false`). It biases their blended sessions to spend proportionally more
     /// time (and therefore more movements) on strength.
     ///
-    /// This is the mirror image of the desk-worker mobility lean: a sedentary user gets same-day
-    /// mobility relief (the single-focus mobility lean in `singlePillar`) and an unbiased blend split,
-    /// while an active user - who is not accumulating the postural debt that relief addresses - is
-    /// nudged toward strength instead. The sedentary path is untouched (bias `1.0`), so this *adds* a
-    /// strength bias for the active case without removing any mobility relief for desk workers.
+    /// A sedentary user's blend split is left unbiased, while an active user - who is not
+    /// accumulating the postural debt a desk worker does - is nudged toward strength instead. The
+    /// sedentary path is untouched (bias `1.0`), so this *adds* a strength bias for the active case
+    /// without altering the sedentary split. (Single-focus sessions always train strength for every
+    /// user under US-001, so there is no longer a single-focus mobility lean this mirrors.)
     ///
     /// `1.0` would be no bias. At `1.5`, an otherwise-even blend (equal staleness, e.g. a no-history
     /// user) shifts from a 50/50 strength/mobility split to 60/40 in strength's favor - noticeably
@@ -123,7 +123,7 @@ enum PillarPlan: Equatable {
     ///   - template: the Step 1 shape; single-focus picks one pillar, a short/full blend splits
     ///     strength and mobility, and an extended blend splits all three pillars (US-E02).
     ///   - recentLogs: completed sessions, the source of per-pillar staleness.
-    ///   - profile: supplies `sitsLong`, the desk-worker mobility lean.
+    ///   - profile: supplies `sitsLong`, which biases a blend's split toward strength for active users.
     ///   - pillarWeighting: the Session Policy per-pillar staleness multiplier (US-E02/US-E03);
     ///     defaults to neutral (`1.0` each) so pre-policy behavior is reproduced exactly. The
     ///     engine threads the live policy's weighting through `SessionAssembly.assemble` (US-E03).
@@ -185,7 +185,7 @@ enum PillarPlan: Equatable {
     ///
     /// For an **active** user (`sitsLong == false`) strength's weighted staleness is scaled up by
     /// `activeUserStrengthBias`, biasing the split toward strength; a desk worker's split is left
-    /// unbiased (the mobility relief for them lives in the single-focus lean, unchanged here).
+    /// unbiased.
     private static func blendWeights(
         staleness: PillarStaleness,
         weighting: [Pillar: Double],
