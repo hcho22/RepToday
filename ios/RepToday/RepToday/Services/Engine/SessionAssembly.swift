@@ -82,9 +82,37 @@ enum SessionAssembly {
     /// Step 2 weights ask for can exceed what this cap of one-set stretches supplies; the overflow is
     /// carried by the strength/primal blocks' set lever (`maxTrainingSets`), not by set-padding the
     /// stretches, so the total still lands within tolerance while stretches stay at one set.
-    static let maxWarmupExercises = 3
+    ///
+    /// `maxWarmupExercises` is the *ceiling* the length-scaled warm-up (`warmupExerciseCount`) tops out
+    /// at, chosen so the three mobility-sourced blocks never over-drain the shared pool even in their
+    /// worst case (a long mobility-stale blend, where the warm-up hits this ceiling *and* Movement
+    /// Practice hits `maxMobilityTrainingExercises`): `5 + 4 + 14 = 23` of the 26 mobility movements,
+    /// leaving genuine day-to-day variety headroom. The warm-up draws first and the cooldown before any
+    /// Movement Practice block (see `buildBlocks`), so a fuller warm-up can never starve the cooldown.
+    static let maxWarmupExercises = 5
     static let maxMobilityTrainingExercises = 14
     static let maxCooldownExercises = 4
+
+    /// How many distinct movements the opening warm-up seeds (all active, one set each), scaled by
+    /// session length so a longer session opens with a fuller warm-up: **≤10 min: 2, 11-20: 3, 21-40:
+    /// 4, 41-60: 5**, clamped to `maxWarmupExercises`.
+    ///
+    /// The warm-up is seeded at this count directly (`warmupBlock`) rather than started at one movement
+    /// and left to the global timing fit to grow, so the "more fully loosened up before the Strength
+    /// block" behavior is a deterministic property of the session shape, not an accident of whether the
+    /// fit happened to promote a reserve. The warm-up's seconds count toward the budget like any other
+    /// block, and the timing fit trims the strength/mobility training to keep the whole session inside
+    /// `toleranceSeconds` (verified across 5/10/15/20/30/45/60 in `SessionAssemblyTests`).
+    static func warmupExerciseCount(forRequestedMinutes minutes: Int) -> Int {
+        let scaled: Int
+        switch minutes {
+        case ..<11: scaled = 2
+        case ..<21: scaled = 3
+        case ..<41: scaled = 4
+        default: scaled = 5
+        }
+        return min(scaled, maxWarmupExercises)
+    }
 
     /// Sessions longer than this many minutes close with a cooldown stretch (so 15/20/30 get one,
     /// 5/10 do not).
@@ -712,7 +740,7 @@ private struct Builder {
         template: SessionShapeTemplate,
         requestedMinutes: Int
     ) -> [PlannedBlock] {
-        let warmup = warmupBlock()
+        let warmup = warmupBlock(requestedMinutes: requestedMinutes)
         let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock() : nil
 
         var middle: [PlannedBlock] = []
@@ -797,18 +825,25 @@ private struct Builder {
     /// The opening warm-up: the freshest mobility movements, one set each. Always first; in a
     /// mobility-led session it flows straight into the Movement Practice block so the opening doubles
     /// as warm-up + training.
-    private mutating func warmupBlock() -> PlannedBlock {
+    ///
+    /// The number of movements scales with session length (`warmupExerciseCount`), and all of them are
+    /// seeded as **active** items (not reserves) with `minItems` pinned to that count, so a longer
+    /// session deterministically opens with a fuller warm-up rather than relying on the global timing
+    /// fit to promote reserves. Like the other mobility bookends it is one set each and never
+    /// set-adjustable; the timing fit still trims the strength/mobility training around it to keep the
+    /// session inside `toleranceSeconds`.
+    private mutating func warmupBlock(requestedMinutes: Int) -> PlannedBlock {
         let items = mobilityItems(
             from: orderedMobility(holdsOnly: false),
-            cap: SessionAssembly.maxWarmupExercises
+            cap: SessionAssembly.warmupExerciseCount(forRequestedMinutes: requestedMinutes)
         )
         return PlannedBlock(
             title: "Warm-Up",
             category: .warmup,
-            items: items.isEmpty ? [] : [items[0]],
-            reserve: Array(items.dropFirst()),
+            items: items,
+            reserve: [],
             allowSetAdjust: false,
-            minItems: 1
+            minItems: max(1, items.count)
         )
     }
 

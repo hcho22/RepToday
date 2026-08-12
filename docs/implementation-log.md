@@ -748,6 +748,24 @@ Every session length 5-60 now lands within the ±1 minute tolerance with stretch
 The one-set rule was extended to the in-session swap surface for coherence: `ExerciseSwap.blockIsSetAdjustable` now returns `false` for `.mobility` too, so a swapped stretch can never be restructured into two sets - closing the same "multi-set stretch" bug on the path a user tap reaches, not only the generator.
 The engine change is minimal (`SessionAssembly.swift` plus the one swap predicate); the rest is the catalog, the two tuning constants, doc-comment sweeps, and tests.
 
+### Fuller length-scaled warm-up, and a strength bias for active users
+
+Two captain-decided engine tuning changes, driven by product feedback that the opening warm-up read as too thin and that an active user's session read as movement-heavy by exercise count.
+Block ordering (staleness-led Strength vs Movement Practice) is unchanged; both changes are isolated tunables, and determinism is preserved (no wall-clock reads, `asOf` threading unchanged).
+
+First (warm-up thoroughness): the always-first `.warmup` block used to start at a single active movement and depend on the global timing fit to promote its reserves, so in practice it usually emitted only **one** stretch.
+It now seeds directly at a length-scaled count - `SessionAssembly.warmupExerciseCount(forRequestedMinutes:)` returns ≤10 min 2, 11-20 3, 21-40 4, 41-60 5 - all active items with `minItems` pinned to that count, so a fuller warm-up is a deterministic property of the session shape rather than an accident of the fit.
+`maxWarmupExercises` was raised `3 -> 5` as the pool-budget ceiling: the worst case (a long mobility-stale blend) draws warm-up 5 + cooldown 4 + Movement Practice 14 = 23 of the 26 mobility movements, leaving day-to-day variety headroom, and because the warm-up draws first and the cooldown before any Movement Practice block the cooldown is never starved.
+The timing fit still lands every length within `toleranceSeconds` (verified across 5/10/15/20/30/45/60).
+
+Second (active-user strength bias): a single tunable constant `PillarPlan.activeUserStrengthBias = 1.5` scales strength's weighted staleness in a *blend* only when `profile.sitsLong == false`; the sedentary path is untouched (bias `1.0`), so it *adds* a strength bias for active users without removing any of the mobility relief a desk worker gets (which lives in the single-focus lean).
+It is the mirror image of that lean: a sedentary user gets same-day mobility relief and an unbiased blend split, an active user - not accumulating the postural debt that relief addresses - is nudged toward strength.
+Concretely, for an active no-history user an otherwise-even blend shifts from 50/50 to 60/40 strength/mobility, giving strength more exercises/sets and Movement Practice one fewer; both pillars stay well inside the `minBlendShare`/`minExtendedBlendShare` rails.
+It is deliberately one isolated constant so the magnitude retunes without touching the sedentary path or the staleness math.
+
+`SessionAssemblyTests` and `PillarBalanceTests` were extended (warm-up sizing, pool-reservation headroom, cooldown-not-starved; active > sedentary strength share, active > the pre-change even baseline, and the share tied exactly to the constant).
+Two pre-existing blend tests that assumed an even split for a non-sedentary user were retargeted to assert the *sedentary* even split, and `testBlendIgnoresSitsLong` was replaced (`testActiveUserBlendIsMoreStrengthForwardThanSedentary`) since blends now intentionally differ by `sitsLong`.
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.
