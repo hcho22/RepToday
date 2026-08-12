@@ -101,6 +101,24 @@ enum PillarPlan: Equatable {
     /// weighted staleness. 0.2 -> each pillar keeps at least 20% and shares sum to 1.
     static let minExtendedBlendShare = 0.2
 
+    /// Extra multiplier applied to the **strength** pillar's weighted staleness in a *blend* for an
+    /// **active** user - one whose onboarding answer to "Do you sit 6+ hours most days?" is *no*
+    /// (`profile.sitsLong == false`). It biases their blended sessions to spend proportionally more
+    /// time (and therefore more movements) on strength.
+    ///
+    /// This is the mirror image of the desk-worker mobility lean: a sedentary user gets same-day
+    /// mobility relief (the single-focus mobility lean in `singlePillar`) and an unbiased blend split,
+    /// while an active user - who is not accumulating the postural debt that relief addresses - is
+    /// nudged toward strength instead. The sedentary path is untouched (bias `1.0`), so this *adds* a
+    /// strength bias for the active case without removing any mobility relief for desk workers.
+    ///
+    /// `1.0` would be no bias. At `1.5`, an otherwise-even blend (equal staleness, e.g. a no-history
+    /// user) shifts from a 50/50 strength/mobility split to 60/40 in strength's favor - noticeably
+    /// more strength-forward without making mobility disappear (both stay well inside the
+    /// `minBlendShare` rails). It is deliberately a single, isolated constant so the magnitude is easy
+    /// to retune later without touching the sedentary path or the staleness math.
+    static let activeUserStrengthBias = 1.5
+
     /// Selects the pillar makeup for a session (pipeline Step 2).
     ///
     /// - Parameters:
@@ -126,9 +144,19 @@ enum PillarPlan: Equatable {
         case .singleFocus:
             return .single(singlePillar(staleness: staleness, sitsLong: profile.sitsLong))
         case .blendLight, .blendFull:
-            return .blend(blendWeights(staleness: staleness, weighting: pillarWeighting, includePrimal: false))
+            return .blend(blendWeights(
+                staleness: staleness,
+                weighting: pillarWeighting,
+                sitsLong: profile.sitsLong,
+                includePrimal: false
+            ))
         case .blendExtended:
-            return .blend(blendWeights(staleness: staleness, weighting: pillarWeighting, includePrimal: true))
+            return .blend(blendWeights(
+                staleness: staleness,
+                weighting: pillarWeighting,
+                sitsLong: profile.sitsLong,
+                includePrimal: true
+            ))
         }
     }
 
@@ -166,12 +194,18 @@ enum PillarPlan: Equatable {
     /// every pillar keeps at least `minExtendedBlendShare` and the remainder is divided by
     /// weighted staleness, so the shares always sum to `1`. Equal staleness (including no
     /// history) splits evenly.
+    ///
+    /// For an **active** user (`sitsLong == false`) strength's weighted staleness is scaled up by
+    /// `activeUserStrengthBias`, biasing the split toward strength; a desk worker's split is left
+    /// unbiased (the mobility relief for them lives in the single-focus lean, unchanged here).
     private static func blendWeights(
         staleness: PillarStaleness,
         weighting: [Pillar: Double],
+        sitsLong: Bool,
         includePrimal: Bool
     ) -> PillarWeights {
-        let strength = weightedStaleness(.strength, staleness: staleness, weighting: weighting)
+        let strengthBias = sitsLong ? 1.0 : activeUserStrengthBias
+        let strength = weightedStaleness(.strength, staleness: staleness, weighting: weighting) * strengthBias
         let mobility = weightedStaleness(.mobility, staleness: staleness, weighting: weighting)
 
         guard includePrimal else {

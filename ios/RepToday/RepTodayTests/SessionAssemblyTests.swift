@@ -152,6 +152,87 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(workout.focusPillar, .mobility, "stale mobility + desk worker leads to a mobility focus")
     }
 
+    // MARK: - Warm-up is beefier and scales with session length
+
+    /// The opening warm-up is seeded at the length-scaled count (`warmupExerciseCount`), every one a
+    /// distinct one-set mobility movement. This pins the "more fully loosened up before the Strength
+    /// block" behavior: a real session opens with 2-5 warm-up movements, not the single stretch the
+    /// old fit-dependent seeding usually produced.
+    func testWarmUpIsSeededAtTheLengthScaledCount() async throws {
+        let library = try await library()
+        for minutes in [5, 10, 15, 20, 30, 45, 60] {
+            let expected = SessionAssembly.warmupExerciseCount(forRequestedMinutes: minutes)
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
+            let warmup = try XCTUnwrap(workout.blocks.first, "\(minutes) min produced no blocks")
+            XCTAssertEqual(warmup.category, .warmup)
+            XCTAssertEqual(
+                warmup.exercises.count, expected,
+                "\(minutes) min warm-up should carry \(expected) movements"
+            )
+            // Every warm-up movement is a distinct one-set stretch (bookend one-set rule).
+            XCTAssertTrue(warmup.exercises.allSatisfy { $0.sets == 1 }, "\(minutes) min: warm-up is one set each")
+            XCTAssertEqual(
+                Set(warmup.exercises.map { $0.exercise.id }).count, warmup.exercises.count,
+                "\(minutes) min: warm-up movements are distinct"
+            )
+            XCTAssertTrue(
+                warmup.exercises.allSatisfy { $0.exercise.pillar == .mobility },
+                "\(minutes) min: warm-up draws from the mobility pool"
+            )
+        }
+    }
+
+    /// A longer session opens with a warm-up at least as full as a shorter one, and strictly fuller
+    /// across the range - the length-scaled thoroughness the objective asks for.
+    func testWarmUpGrowsWithSessionLength() async throws {
+        let library = try await library()
+        func warmupCount(_ minutes: Int) throws -> Int {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: someHistory())
+            return try XCTUnwrap(workout.blocks.first { $0.category == .warmup }).exercises.count
+        }
+        let short = try warmupCount(10)
+        let mid = try warmupCount(20)
+        let long = try warmupCount(60)
+        XCTAssertLessThanOrEqual(short, mid, "a 20 min warm-up is at least as full as a 10 min one")
+        XCTAssertLessThan(short, long, "a 60 min session opens with a fuller warm-up than a 10 min one")
+        XCTAssertLessThanOrEqual(
+            long, SessionAssembly.maxWarmupExercises,
+            "the warm-up never exceeds its pool-budget ceiling"
+        )
+    }
+
+    /// The fuller warm-up must not over-drain the shared mobility pool: even in the worst case - a long,
+    /// mobility-stale blend where the warm-up hits its ceiling *and* Movement Practice hits its own cap -
+    /// the warm-up, cooldown, and Movement Practice together leave real day-to-day variety headroom, and
+    /// the cooldown is never starved of its holds.
+    func testFullerWarmUpDoesNotStarveThePoolOrCooldown() async throws {
+        let library = try await library()
+        let mobilityTotal = library.filter { $0.pillar == .mobility }.count
+        // Mobility six days stale, strength worked yesterday: the mobility blocks lead and fill to cap.
+        let mobilityStale = [
+            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
+        ]
+        let workout = assemble(minutes: 60, user: user(), library: library, logs: mobilityStale)
+
+        let cooldown = try XCTUnwrap(workout.blocks.first { $0.category == .cooldown }, "60 min must have a cooldown")
+        XCTAssertFalse(cooldown.exercises.isEmpty, "the cooldown keeps its holds")
+
+        let mobilityIds = workout.blocks
+            .flatMap { $0.exercises }
+            .filter { $0.exercise.pillar == .mobility }
+            .map { $0.exercise.id }
+        XCTAssertEqual(Set(mobilityIds).count, mobilityIds.count, "no mobility movement is reused across blocks")
+        XCTAssertLessThanOrEqual(
+            Set(mobilityIds).count, mobilityTotal,
+            "the mobility blocks cannot draw more movements than the pool holds"
+        )
+        XCTAssertGreaterThanOrEqual(
+            mobilityTotal - Set(mobilityIds).count, 2,
+            "the worst-case draw leaves day-to-day variety headroom in the mobility pool"
+        )
+    }
+
     // MARK: - Cooldown only past 10 minutes
 
     func testCooldownPresentOnlyWhenOverTenMinutes() async throws {

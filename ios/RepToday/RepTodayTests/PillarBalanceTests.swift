@@ -212,8 +212,10 @@ final class PillarBalanceTests: XCTestCase {
 
     // MARK: - Blend weighting
 
-    func testBlendWithNoHistorySplitsEvenly() {
-        let weights = weights(plan(.blendFull, logs: [], sitsLong: false))
+    /// A sedentary (desk-worker) user's blend is a pure staleness split with no strength bias, so no
+    /// history splits it evenly.
+    func testBlendWithNoHistorySplitsEvenlyForSedentaryUser() {
+        let weights = weights(plan(.blendFull, logs: [], sitsLong: true))
         XCTAssertEqual(weights.strength, 0.5, accuracy: 1e-9)
         XCTAssertEqual(weights.mobility, 0.5, accuracy: 1e-9)
     }
@@ -241,14 +243,57 @@ final class PillarBalanceTests: XCTestCase {
         XCTAssertEqual(weights.strength + weights.mobility, 1.0, accuracy: 1e-9)
     }
 
-    /// Blend weighting is purely staleness-driven; the desk-sitting signal does not move it
-    /// (the mobility lean is a single-focus rule only).
-    func testBlendIgnoresSitsLong() {
+    /// An active (non-desk-bound) user's blend is biased toward strength: with strength and mobility
+    /// equally stale, the active user gets a strictly larger strength share than an otherwise-identical
+    /// sedentary user, and strictly more than the pre-bias 50/50 baseline - while the sedentary user's
+    /// mobility relief (their even split) is preserved untouched.
+    func testActiveUserBlendIsMoreStrengthForwardThanSedentary() {
         let logs = [log(pillars: [.strength, .mobility], daysAgo: 4)]
-        XCTAssertEqual(
-            weights(plan(.blendFull, logs: logs, sitsLong: true)),
-            weights(plan(.blendFull, logs: logs, sitsLong: false))
-        )
+        let active = weights(plan(.blendFull, logs: logs, sitsLong: false))
+        let sedentary = weights(plan(.blendFull, logs: logs, sitsLong: true))
+
+        // Sedentary: unbiased even split (mobility relief preserved).
+        XCTAssertEqual(sedentary.strength, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(sedentary.mobility, 0.5, accuracy: 1e-9)
+
+        // Active: strictly more strength than the sedentary user and than the even baseline.
+        XCTAssertGreaterThan(active.strength, sedentary.strength)
+        XCTAssertGreaterThan(active.strength, 0.5)
+        XCTAssertLessThan(active.mobility, sedentary.mobility)
+        XCTAssertEqual(active.strength + active.mobility, 1.0, accuracy: 1e-9)
+
+        // The concrete magnitude the constant produces for an even blend: 60/40.
+        XCTAssertEqual(active.strength, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(active.mobility, 0.4, accuracy: 1e-9)
+    }
+
+    /// The strength bias also biases an *extended* (three-pillar) blend: an active user gets a strictly
+    /// larger strength share than an otherwise-identical sedentary user, while both still sum to 1 and
+    /// keep every pillar above its floor.
+    func testActiveUserExtendedBlendIsMoreStrengthForwardThanSedentary() {
+        let logs = [
+            log(pillars: [.strength], daysAgo: 3),
+            log(pillars: [.mobility], daysAgo: 3),
+            log(pillars: [.primal], daysAgo: 3),
+        ]
+        let active = weights(plan(.blendExtended, logs: logs, sitsLong: false))
+        let sedentary = weights(plan(.blendExtended, logs: logs, sitsLong: true))
+
+        XCTAssertGreaterThan(active.strength, sedentary.strength)
+        XCTAssertGreaterThanOrEqual(active.strength, PillarPlan.minExtendedBlendShare)
+        XCTAssertGreaterThanOrEqual(active.mobility, PillarPlan.minExtendedBlendShare)
+        XCTAssertGreaterThanOrEqual(active.primal, PillarPlan.minExtendedBlendShare)
+        XCTAssertEqual(active.strength + active.mobility + active.primal, 1.0, accuracy: 1e-9)
+    }
+
+    /// The bias is exactly the `activeUserStrengthBias` constant applied to strength's weighted
+    /// staleness - not a hidden second lever. With an even two-pillar blend, the strength share is the
+    /// biased weight over the total, so the constant fully determines the magnitude.
+    func testActiveUserStrengthShareMatchesTheBiasConstant() {
+        let logs = [log(pillars: [.strength, .mobility], daysAgo: 4)]
+        let active = weights(plan(.blendFull, logs: logs, sitsLong: false))
+        let expectedStrength = PillarPlan.activeUserStrengthBias / (PillarPlan.activeUserStrengthBias + 1.0)
+        XCTAssertEqual(active.strength, expectedStrength, accuracy: 1e-9)
     }
 
     /// Light and full blends weight pillars identically; only the assembled block sizes differ.
@@ -266,9 +311,10 @@ final class PillarBalanceTests: XCTestCase {
     // MARK: - Extended blend: primal as a first-class pillar (US-E02)
 
     /// An extended blend splits all three pillars. With no history every pillar is equally (maximally)
-    /// stale, so the split is even across strength/mobility/primal and sums to 1.
+    /// stale, so for a sedentary user (no strength bias) the split is even across
+    /// strength/mobility/primal and sums to 1.
     func testExtendedBlendSplitsAllThreePillarsEvenlyWithNoHistory() {
-        let weights = weights(plan(.blendExtended, logs: [], sitsLong: false))
+        let weights = weights(plan(.blendExtended, logs: [], sitsLong: true))
         XCTAssertEqual(weights.strength, 1.0 / 3.0, accuracy: 1e-9)
         XCTAssertEqual(weights.mobility, 1.0 / 3.0, accuracy: 1e-9)
         XCTAssertEqual(weights.primal, 1.0 / 3.0, accuracy: 1e-9)
