@@ -72,16 +72,22 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
-    /// A short history so Step 6 has demonstrated capacity to size targets against - including a
-    /// per-side hold and a per-side rep movement, so their prescriptions are capacity-grown rather than
-    /// sitting on the catalog default.
+    /// A short history so Step 6 has demonstrated capacity to size targets against - including the
+    /// per-side hold `core_side_plank` (the strength block's per-side carrier now that US-002 makes a
+    /// blend strength-led and the mobility accessory small) and a per-side rep movement, so their
+    /// prescriptions are capacity-grown rather than sitting on the catalog default.
+    ///
+    /// `core_side_plank` is placed so it is the established **core** frontier yet falls *outside* the
+    /// `varietyWindow` (the three most-recent sessions), so Step 5 selects it as the core slot rather than
+    /// avoiding it as recently-used - which is what puts a per-side hold in the generated strength-led
+    /// session for the per-side-hold render/swap evidence below.
     private func history() -> [WorkoutLog] {
         struct Spec { let id: String, pillar: Pillar, pattern: MovementPattern; let reps: Int?, seconds: Int? }
         let specs: [Spec] = [
             Spec(id: "push_standard", pillar: .strength, pattern: .push, reps: 12, seconds: nil),
-            Spec(id: "core_side_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 35),
             Spec(id: "squat_split", pillar: .strength, pattern: .squat, reps: 10, seconds: nil),
             Spec(id: "mobility_cat_cow", pillar: .mobility, pattern: .mobility, reps: 10, seconds: nil),
+            Spec(id: "core_side_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 35),
         ]
         return (0..<8).map { offset in
             let spec = specs[offset % specs.count]

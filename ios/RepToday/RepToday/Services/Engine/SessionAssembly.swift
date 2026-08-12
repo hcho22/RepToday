@@ -8,12 +8,14 @@ import Foundation
 /// active-session player renders:
 /// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend.
 /// - **Pillars** (Step 2, `PillarPlan`) decide which pillar a single-focus trains, or - for a blend -
-///   how the training time splits: the staleness `PillarWeights` size the blocks, so the staler pillar
-///   leads and is shaped toward the larger share. (The mobility block is one-set and capped at
-///   `maxMobilityTrainingExercises`, so on a long mobility-stale blend it can hit that cap short of its
-///   weighted share; the overflow is carried by the strength/primal set lever rather than by padding
-///   stretches with redundant sets.) A short/full blend sizes strength (primal folded in) and mobility;
-///   an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block.
+///   how the training time splits: the `PillarWeights` size the blocks, and since US-002 makes every
+///   blend strength-led those weights hand strength the leading share (~75-80%) with mobility a minority
+///   accessory, so strength always leads and is shaped toward the larger share. (The mobility block is
+///   one-set and capped at `maxMobilityTrainingExercises`, so it can hit that cap short of its weighted
+///   share; the overflow is carried by the strength/primal set lever rather than by padding stretches
+///   with redundant sets.) A short/full blend sizes strength (primal folded in) and the mobility
+///   accessory; an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block carved
+///   from the leading strength family.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
 ///   exercise in each, and that exercise's capacity-relative reps/sets/hold. During cold start Step
@@ -61,7 +63,7 @@ enum SessionAssembly {
     /// redundant for a stretch but legitimate training for strength, so Movement Practice is pinned at
     /// one set (`mobilityBlock`, `allowSetAdjust: false`) and the strength/primal blocks instead take
     /// the extra time up to this ceiling. It is set to the smallest value that lets a 45- and 60-minute
-    /// mobility-leaning blend still land within `toleranceSeconds` once mobility is capped at
+    /// strength-led blend (US-002) still land within `toleranceSeconds` once its minority mobility accessory is capped at
     /// `maxMobilityTrainingExercises` one-set movements: a 60-minute session opens the strength/primal
     /// movements to 5 sets rather than filling the hour with 20+ distinct stretches. It applies across
     /// the board, but only ever binds on a session long enough for the fit to need the time - a short
@@ -777,15 +779,16 @@ private struct Builder {
         return [warmup] + middle + (cooldown.map { [$0] } ?? [])
     }
 
-    /// The training blocks of a blend, ordered staler-pillar-first and each tagged with the
+    /// The training blocks of a blend, ordered heaviest-weight-first and each tagged with the
     /// planned-seconds share it should be shaped toward. The share is the remaining training budget
     /// (request minus the warm-up and cooldown the bookends already cost) split in proportion to the
-    /// Step 2 staleness weights, so the staler pillar ends up the *larger* block, not merely the lead.
+    /// Step 2 `PillarWeights`. Under US-002 those weights make a blend strength-led, so strength carries
+    /// the leading share and ends up the *larger* block while mobility is the minority accessory.
     ///
-    /// A short or full blend produces the two co-primary blocks (strength - which still folds primal
-    /// in - and mobility). An extended blend (US-E02) promotes primal to its own `locomotion`-driven
-    /// block: the strength block sheds primal, and a dedicated primal block joins the split, ordered
-    /// among the three by its weighted share.
+    /// A short or full blend produces a strength-led block (which still folds primal in) and the smaller
+    /// mobility accessory block. An extended blend (US-E02) promotes primal to its own `locomotion`-driven
+    /// block carved from the leading strength family: the strength block sheds primal, and a dedicated
+    /// primal block joins the split, ordered among the three by its weighted share.
     private mutating func blendBlocks(
         weights: PillarWeights,
         warmup: PlannedBlock,
@@ -808,8 +811,8 @@ private struct Builder {
         mobility?.targetSeconds = Int((Double(trainingBudget) * weights.mobility).rounded())
         primal?.targetSeconds = Int((Double(trainingBudget) * weights.primal).rounded())
 
-        // Order the blocks staler-pillar-first (heavier weight leads); a fixed pillar order breaks
-        // ties deterministically, matching the prior two-block strength-leads-on-tie behavior.
+        // Order the blocks heaviest-weight-first (so the strength-led share leads, US-002); a fixed
+        // pillar order breaks ties deterministically, matching the prior strength-leads-on-tie behavior.
         let entries: [(weight: Double, tieBreak: Int, block: PlannedBlock?)] = [
             (weights.strength, 0, strength),
             (weights.mobility, 1, mobility),

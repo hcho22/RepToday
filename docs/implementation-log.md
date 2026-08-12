@@ -775,6 +775,20 @@ The blend path, `blendWeights`, and everything US-002+ owns are untouched; the c
 `PillarBalanceTests` single-focus tests were rewritten from stalest-pillar/mobility-lean expectations to the strength-led invariant (including the fresh `sitsLong = true` profile leading strength), `SessionAssemblyTests` gained `testShortSingleFocusLeadsStrengthForFreshDeskWorker` as the end-to-end US-001 validation (5 and 10 min: mobility warm-up then a `.strength` block, no `.mobility` training block), and two shared-path assertions that encoded the old single-focus behaviour were retargeted (the Movement-Practice one-set guard now runs the blend lengths only, and the First-Week-Contrast no-contract control now collapses to all-strength).
 Determinism and `asOf`-purity are preserved.
 
+### Strength leads the blend too, mobility is a minority accessory (US-002)
+
+The second story of the "Strength-Primary Sessions" PRD, the blend counterpart to US-001, again scoped to the engine mix only (no catalog change).
+`PillarBalance.blendWeights(...)` no longer sizes the strength-vs-mobility split by staleness.
+A blend is now a fixed strength-dominant envelope: mobility is a small minority accessory (`baseMobilityAccessoryShare = 0.2` -> ~80% strength / 20% mobility for an active user), and the old `activeUserStrengthBias` is recast as `sitsLongMobilityAccessoryBoost = 0.05`, which only enlarges the *desk worker's* mobility accessory to ~25% (FR-5: `sitsLong` modulates the accessory's size, never the lead).
+`minBlendShare` drops from `0.3` to `0.2` so mobility is a genuine minority; both profiles keep strength in the ~0.75-0.80 target band.
+Staleness now steers only the movement-pattern focus *within* the strength family (Step 3), not the pillar lead.
+The extended blend (US-E02) keeps mobility the minority accessory and carves the dedicated primal block out of the leading strength family (strength + primal ≈ `1 - mobility`); only the within-family strength-vs-primal split still responds to weighted staleness / `pillarWeighting`, bounded by `[extendedPrimalFamilyFloor, extendedPrimalFamilyCap]` (0.2-0.45) so a stale or policy-favored primal earns a bigger block but never overtakes strength.
+The now-dead `activeUserStrengthBias` and `minExtendedBlendShare` constants were deleted; warm-up/cooldown stay mobility and the timing fit is unchanged (a strength-dominant split is easier to fill via the strength/primal set lever, verified within ±60s at 15/20/30/45/60 for both `sitsLong` values).
+`PillarBalanceTests` blend/extended sections were rewritten from the old co-primary/staler-leads/even-split expectations to the strength-dominant invariants (plus the US-002 validation).
+`SessionAssemblyTests` retargeted the two shared-path assertions that encoded the old split: `testBlendSizesTrainingBlocksByPillarStaleness` became `testBlendGivesStrengthTheDominantShareRegardlessOfStaleness`, and the mobility-weighting test became `testHeavyMobilityWeightingCannotUnseatTheStrengthLead`; it also gained the per-pillar-seconds validation test and an all-lengths timing guard.
+`PerSideSwapEvidenceTests` assumed the old mobility-led 30-min session (whose large Movement Practice block supplied the per-side holds); its `history()` was reordered so `core_side_plank` (a per-side strength hold) sits outside the `varietyWindow` and is selected as the core slot, giving the strength-led session its per-side hold.
+Determinism and `asOf`-purity are preserved.
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.

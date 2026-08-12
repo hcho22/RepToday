@@ -7,18 +7,24 @@ import Foundation
 /// - A single-focus session (the short 5-10 min lengths) always trains **strength** (US-001):
 ///   strength is the pillar of every single-focus session, and mobility survives only as the
 ///   structural warm-up at these lengths, not as a training block.
-/// - A short/full blend trains strength and mobility (primal folded into strength), splitting
-///   time toward whichever is staler.
-/// - An extended blend (US-E02) promotes `primal` to a first-class pillar, splitting time
-///   three ways so the longest sessions earn a dedicated primal block instead of folding
-///   primal into strength.
+/// - A short/full blend is **strength-led** too (US-002): strength takes the leading share of the
+///   training time (~75-80%) and mobility is a small minority accessory block on top of the
+///   structural warm-up/cooldown - never the lead. `sitsLong` only modulates the *size* of that
+///   mobility accessory (a desk worker earns a little more relief for their postural debt), never
+///   which pillar leads. Strength-vs-mobility staleness no longer picks the lead; staleness now
+///   steers movement-pattern focus *within* the strength family (Step 3) instead.
+/// - An extended blend (US-E02) promotes `primal` to a first-class pillar: mobility stays the
+///   minority accessory and the leading strength family (strength + primal) is split *within
+///   itself* by staleness, so the longest sessions earn a dedicated primal block while strength
+///   still leads (US-002).
 ///
 /// "Staleness" is days-since-last-worked, read back from `recentLogs`. The computation is a
 /// pure function of the logs and a caller-supplied reference date (`asOf`) - no hidden clock -
-/// so it stays deterministic and testable, mirroring Step 1. Staleness is further scaled by a
-/// per-pillar `pillarWeighting` (the Session Policy lever, US-E02/US-E03): a heavier weight on a
-/// pillar increases its share of the session. The neutral weighting (`1.0` for every pillar) is
-/// a no-op, so the default policy reproduces pre-policy behavior exactly.
+/// so it stays deterministic and testable, mirroring Step 1. Staleness (and the per-pillar
+/// `pillarWeighting` Session Policy lever, US-E02/US-E03) now only leans the split *within* the
+/// strength family - the strength-vs-primal share of an extended blend - never the strength-vs-mobility
+/// lead, which is a fixed strength-dominant envelope (US-002). The neutral weighting (`1.0` for every
+/// pillar) is a no-op there, so the default policy reproduces the pre-policy within-family split exactly.
 
 // MARK: - PillarStaleness
 
@@ -88,45 +94,53 @@ enum PillarPlan: Equatable {
 
     // MARK: Tuning constants
 
-    /// Staleness is capped here when weighting a blend, so one long gap (or a never-worked
-    /// pillar) can lean the split without starving the other pillar of all its time.
+    /// Staleness is capped here when leaning the within-family (strength-vs-primal) split of an
+    /// extended blend, so one long gap (or a never-worked pillar) can lean the split without starving
+    /// the other of all its time.
     static let maxStalenessDays = 14
-    /// The floor (and, by symmetry, ceiling) on either pillar's share of a two-pillar blend, so
-    /// both pillars are always genuinely trained. 0.3 -> each pillar gets 30-70% of the time.
-    static let minBlendShare = 0.3
-    /// The floor on each pillar's share of a three-pillar extended blend (US-E02), so strength,
-    /// mobility, and primal are all genuinely trained; the remaining share is apportioned by
-    /// weighted staleness. 0.2 -> each pillar keeps at least 20% and shares sum to 1.
-    static let minExtendedBlendShare = 0.2
+    /// The floor (and, by symmetry, ceiling) on the mobility accessory's share of a blend, so mobility
+    /// is always a genuine minority accessory yet can never grow into the lead. 0.2 -> mobility keeps
+    /// 20-80% of the time, and the strength-dominant envelope (US-002) sits it near the floor.
+    static let minBlendShare = 0.2
 
-    /// Extra multiplier applied to the **strength** pillar's weighted staleness in a *blend* for an
-    /// **active** user - one whose onboarding answer to "Do you sit 6+ hours most days?" is *no*
-    /// (`profile.sitsLong == false`). It biases their blended sessions to spend proportionally more
-    /// time (and therefore more movements) on strength.
-    ///
-    /// A sedentary user's blend split is left unbiased, while an active user - who is not
-    /// accumulating the postural debt a desk worker does - is nudged toward strength instead. The
-    /// sedentary path is untouched (bias `1.0`), so this *adds* a strength bias for the active case
-    /// without altering the sedentary split. (Single-focus sessions always train strength for every
-    /// user under US-001, so there is no longer a single-focus mobility lean this mirrors.)
-    ///
-    /// `1.0` would be no bias. At `1.5`, an otherwise-even blend (equal staleness, e.g. a no-history
-    /// user) shifts from a 50/50 strength/mobility split to 60/40 in strength's favor - noticeably
-    /// more strength-forward without making mobility disappear (both stay well inside the
-    /// `minBlendShare` rails). It is deliberately a single, isolated constant so the magnitude is easy
-    /// to retune later without touching the sedentary path or the staleness math.
-    static let activeUserStrengthBias = 1.5
+    /// Mobility's minority-accessory share of a blend's training time for an **active** user
+    /// (`profile.sitsLong == false`). Strength leads every blend (US-002); mobility is a small
+    /// accessory block on top of the structural warm-up/cooldown, so the base is deliberately near the
+    /// `minBlendShare` floor. At `0.2` an active user's blend runs ~80% strength / 20% mobility, inside
+    /// the ~0.75-0.80 strength target band.
+    static let baseMobilityAccessoryShare = 0.2
+
+    /// Extra mobility accessory a **sedentary** (desk-worker) user gets on top of
+    /// `baseMobilityAccessoryShare` - the recast of the old `activeUserStrengthBias` as a modulation of
+    /// the *mobility accessory's size*, not a lead selector (US-002, FR-5). A desk worker carries more
+    /// postural debt, so they earn a little more mobility relief; an active user gets the base. At
+    /// `0.05` a sedentary blend runs ~75% strength / 25% mobility - still a strength lead and inside the
+    /// ~0.75-0.80 target band. It can never flip the lead: even at the accessory's `minBlendShare`
+    /// ceiling mobility stays a minority.
+    static let sitsLongMobilityAccessoryBoost = 0.05
+
+    /// The floor and ceiling on **primal**'s share *of the strength family* (strength + primal) in an
+    /// extended blend (US-E02). The family keeps the leading share (`1 - mobility accessory`); primal's
+    /// slice of it scales with weighted staleness between these bounds, so a stale (or policy-favored)
+    /// primal earns a bigger dedicated block. The ceiling stays below `0.5` so strength keeps the
+    /// majority of the family and always leads; the floor keeps primal a genuinely-trained block.
+    static let extendedPrimalFamilyFloor = 0.2
+    static let extendedPrimalFamilyCap = 0.45
 
     /// Selects the pillar makeup for a session (pipeline Step 2).
     ///
     /// - Parameters:
-    ///   - template: the Step 1 shape; single-focus picks one pillar, a short/full blend splits
-    ///     strength and mobility, and an extended blend splits all three pillars (US-E02).
-    ///   - recentLogs: completed sessions, the source of per-pillar staleness.
-    ///   - profile: supplies `sitsLong`, which biases a blend's split toward strength for active users.
+    ///   - template: the Step 1 shape; single-focus picks one pillar, a short/full blend leads strength
+    ///     with a mobility minority accessory (US-002), and an extended blend adds a dedicated primal
+    ///     block carved from the leading strength family (US-E02).
+    ///   - recentLogs: completed sessions, the source of per-pillar staleness (which now leans only the
+    ///     within-family strength-vs-primal split of an extended blend, US-002).
+    ///   - profile: supplies `sitsLong`, which modulates the *size* of a blend's mobility accessory
+    ///     (never the lead pillar, US-002 FR-5).
     ///   - pillarWeighting: the Session Policy per-pillar staleness multiplier (US-E02/US-E03);
-    ///     defaults to neutral (`1.0` each) so pre-policy behavior is reproduced exactly. The
-    ///     engine threads the live policy's weighting through `SessionAssembly.assemble` (US-E03).
+    ///     defaults to neutral (`1.0` each). It leans only the extended blend's within-family
+    ///     strength-vs-primal split now, never the strength-vs-mobility lead (US-002). The engine
+    ///     threads the live policy's weighting through `SessionAssembly.assemble` (US-E03).
     ///   - asOf: the reference "today" staleness is measured against (injected for purity).
     ///   - calendar: calendar used for day-difference math; defaults to the current calendar.
     static func select(
@@ -173,48 +187,57 @@ enum PillarPlan: Equatable {
 
     // MARK: Blend weighting
 
-    /// Splits a blend's time across its pillars by relative (policy-weighted) staleness, clamped
-    /// so every pillar keeps a meaningful share.
+    /// Splits a blend's time so **strength always leads** and mobility is a minority accessory (US-002).
     ///
-    /// A two-pillar blend (`includePrimal == false`) splits strength and mobility 30-70% either
-    /// way with primal at `0` (primal is folded into the strength block downstream, as before).
-    /// A three-pillar extended blend (`includePrimal == true`, US-E02) also apportions primal:
-    /// every pillar keeps at least `minExtendedBlendShare` and the remainder is divided by
-    /// weighted staleness, so the shares always sum to `1`. Equal staleness (including no
-    /// history) splits evenly.
+    /// Mobility's share is a small, fixed accessory (`mobilityAccessoryShare`) - independent of
+    /// strength-vs-mobility staleness, so staleness can never make mobility lead. `sitsLong` only
+    /// modulates the accessory's *size* (a desk worker gets `sitsLongMobilityAccessoryBoost` more relief),
+    /// never the lead (FR-5). A two-pillar blend (`includePrimal == false`) hands the whole leading share
+    /// to strength (primal is folded into the strength block downstream, as before), landing strength in
+    /// the ~0.75-0.80 target band.
     ///
-    /// For an **active** user (`sitsLong == false`) strength's weighted staleness is scaled up by
-    /// `activeUserStrengthBias`, biasing the split toward strength; a desk worker's split is left
-    /// unbiased.
+    /// A three-pillar extended blend (`includePrimal == true`, US-E02) keeps the same minority mobility
+    /// accessory and carves a dedicated primal block out of the leading **strength family** (strength +
+    /// primal). Only the split *within* that family responds to weighted staleness: a stale (or
+    /// policy-favored) primal earns a bigger slice, bounded by `[extendedPrimalFamilyFloor,
+    /// extendedPrimalFamilyCap]` so strength keeps the majority of the family and still leads. The three
+    /// shares always sum to `1`.
     private static func blendWeights(
         staleness: PillarStaleness,
         weighting: [Pillar: Double],
         sitsLong: Bool,
         includePrimal: Bool
     ) -> PillarWeights {
-        let strengthBias = sitsLong ? 1.0 : activeUserStrengthBias
-        let strength = weightedStaleness(.strength, staleness: staleness, weighting: weighting) * strengthBias
-        let mobility = weightedStaleness(.mobility, staleness: staleness, weighting: weighting)
+        let mobilityShare = mobilityAccessoryShare(sitsLong: sitsLong)
 
         guard includePrimal else {
-            let total = strength + mobility
-            let rawMobilityShare = total == 0 ? 0.5 : mobility / total
-            let mobilityShare = min(1 - minBlendShare, max(minBlendShare, rawMobilityShare))
+            // Two-pillar blend: strength takes the entire leading share; primal folds into it downstream.
             return PillarWeights(strength: 1 - mobilityShare, mobility: mobilityShare, primal: 0)
         }
 
-        let primal = weightedStaleness(.primal, staleness: staleness, weighting: weighting)
-        let total = strength + mobility + primal
-        let floor = minExtendedBlendShare
-        let free = 1 - 3 * floor
-        func share(_ weight: Double) -> Double {
-            total == 0 ? (1.0 / 3.0) : floor + free * (weight / total)
-        }
+        // Extended blend: the strength family keeps the leading share; only the strength-vs-primal split
+        // *inside* it responds to staleness/policy weighting, never overtaking strength.
+        let familyBudget = 1 - mobilityShare
+        let strengthStale = weightedStaleness(.strength, staleness: staleness, weighting: weighting)
+        let primalStale = weightedStaleness(.primal, staleness: staleness, weighting: weighting)
+        let denom = strengthStale + primalStale
+        let primalFraction = denom == 0 ? 0.5 : primalStale / denom
+        let primalFamilyShare = extendedPrimalFamilyFloor
+            + (extendedPrimalFamilyCap - extendedPrimalFamilyFloor) * primalFraction
+        let primalShare = familyBudget * primalFamilyShare
         return PillarWeights(
-            strength: share(strength),
-            mobility: share(mobility),
-            primal: share(primal)
+            strength: familyBudget - primalShare,
+            mobility: mobilityShare,
+            primal: primalShare
         )
+    }
+
+    /// Mobility's minority-accessory share of a blend's training time: `baseMobilityAccessoryShare`
+    /// for an active user, plus `sitsLongMobilityAccessoryBoost` for a desk worker (`sitsLong`), clamped
+    /// into `[minBlendShare, 1 - minBlendShare]`. Always a minority, so strength keeps the lead (US-002).
+    private static func mobilityAccessoryShare(sitsLong: Bool) -> Double {
+        let raw = baseMobilityAccessoryShare + (sitsLong ? sitsLongMobilityAccessoryBoost : 0)
+        return min(1 - minBlendShare, max(minBlendShare, raw))
     }
 
     /// A pillar's staleness as a bounded Double, scaled by its policy weight: never-worked maps
