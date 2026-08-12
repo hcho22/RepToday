@@ -259,13 +259,18 @@ final class ExerciseSwapTests: XCTestCase {
         let pike = try XCTUnwrap(library.first { $0.id == "push_pike" })
 
         // Two movements with identical estimates and defaults (45s / 8 reps), so a flat comparison
-        // reports zero drift - but the slot is prescribed at 20 reps, well above the 8-rep default.
+        // reports zero drift - but the slot is prescribed at 24 reps, well above the 8-rep default. The
+        // grown slot costs 3 × 115s + 2 × 40s rest = 425s, and the newcomer opening at its 8-rep default
+        // (45s/set) tops out at 5 × 45s + 4 × 40s = 385s even at the raised `maxTrainingSets` rail - so it
+        // cannot reach the slot's budget at *any* permitted set count, and the guard holds regardless of
+        // the ceiling. (At 20 reps the slot was 374s, which the widened 5-set rail can now meet, so the
+        // scenario is grown past the newcomer's absolute reach to keep testing what it means to.)
         XCTAssertEqual(diamond.estimatedTimePerSetSeconds, pike.estimatedTimePerSetSeconds)
         XCTAssertEqual(diamond.defaultReps, pike.defaultReps)
-        let grown = prescription(for: diamond, sets: 3, perSet: 20)
+        let grown = prescription(for: diamond, sets: 3, perSet: 24)
 
         // The substitute has no history, so it would open at its own 8-rep default: far less work per
-        // set than the 20-rep slot it replaces.
+        // set than the 24-rep slot it replaces.
         let outcome = ExerciseSwap.swap(
             grown,
             in: workout([grown]),
@@ -347,7 +352,7 @@ final class ExerciseSwapTests: XCTestCase {
         let mobility = library.filter { $0.pillar == .mobility }
         XCTAssertFalse(mobility.isEmpty, "the sweep needs mobility movements to price")
 
-        for (growth, expected) in [(1.0, 12), (1.25, 12), (1.5, 11), (2.0, 11)] {
+        for (growth, expected) in [(1.0, 26), (1.25, 26), (1.5, 26), (2.0, 25)] {
             var swapped = 0
             for movement in mobility {
                 let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10
@@ -450,8 +455,8 @@ final class ExerciseSwapTests: XCTestCase {
             "push_diamond fits at 3 sets, so the swap must not restructure to 4 sets of push_wall"
         )
 
-        // Movement Practice: one set, mobility rest, and set-adjustable - so the lever *is* available
-        // here and the swap still has to leave it alone.
+        // Movement Practice: one set and mobility rest, and now non-adjustable like the bookends - so a
+        // stretch that fits at one set is kept at one set, never restructured into two of another stretch.
         let pigeon = try XCTUnwrap(library.first { $0.id == "mobility_pigeon" })
         let stretch = prescription(for: pigeon, sets: 1, rest: SessionAssembly.mobilityRestSeconds)
         let practice = Workout(
@@ -470,17 +475,21 @@ final class ExerciseSwapTests: XCTestCase {
         )
     }
 
-    /// The warm-up and the cooldown are one set of a stretch by construction (`allowSetAdjust: false`),
-    /// so the swap must not reach for the set lever there even when it would improve the fit - a
-    /// four-set warm-up stretch is not a session the assembler could have produced.
-    func testSwapNeverMovesTheSetCountOfAStructuralBookend() async throws {
+    /// Every one-set block - the warm-up, the cooldown, **and the mobility Movement Practice block** -
+    /// is a stretch at one set by construction (`allowSetAdjust: false`), so the swap must not reach for
+    /// the set lever on any of them even when it would improve the fit. A two-set stretch is not a
+    /// session the assembler could have produced at any length, and a swap must never reintroduce one -
+    /// this is the swap-surface half of the one-set Movement Practice rule. (The positive contrast that
+    /// the lever *does* work on a set-adjustable strength block lives in
+    /// `testSwapRepicksTheSetCountToKeepAGrownSlotInBudget`.)
+    func testSwapNeverMovesTheSetCountOfAOneSetBlock() async throws {
         // A single-set stretch slot grown to 100s (110s of work) beside a peer that opens at its own 30s
-        // default (40s of work). At one set the peer is 70s away, past even the widened bookend
-        // tolerance a non-adjustable slot gets (30 + 0.3 × 110 = 63s); at two sets it is 40 + 15 + 40 =
-        // 95s, a 15s drift and comfortably in budget. So the only route into budget is the set lever,
-        // and the same swap must succeed in a training block and be refused in a bookend. The slot is
-        // deliberately sized past the widened gate rather than just past the flat one, so this asserts
-        // the lever is withheld rather than merely re-asserting the tolerance.
+        // default (40s of work). At one set the peer is 70s away, past even the widened one-set tolerance
+        // a non-adjustable slot gets (30 + 0.3 × 110 = 63s); at two sets it is 40 + 15 + 40 = 95s, a 15s
+        // drift and comfortably in budget. So the only route into budget is the set lever, which every
+        // one-set block withholds - the swap is refused outright in each. The slot is deliberately sized
+        // past the widened gate rather than just past the flat one, so this asserts the lever is withheld
+        // rather than merely re-asserting the tolerance.
         let stretch = makeExercise(id: "stretch_long", pillar: .mobility, pattern: .mobility, isHold: true)
         let peer = makeExercise(id: "stretch_peer", pillar: .mobility, pattern: .mobility, isHold: true)
         let catalog = [stretch, peer]
@@ -498,24 +507,17 @@ final class ExerciseSwapTests: XCTestCase {
             )
         }
 
-        XCTAssertEqual(
-            ExerciseSwap.swap(
-                slot,
-                in: session(title: "Warm-Up", category: .warmup),
-                user: user(), library: catalog, recentLogs: []
-            ),
-            .noAlternative,
-            "a warm-up slot may not spend the set lever, so an out-of-budget peer is refused outright"
-        )
-
-        let adjusted = try substitute(
-            ExerciseSwap.swap(
-                slot,
-                in: session(title: "Movement Practice", category: .mobility),
-                user: user(), library: catalog, recentLogs: []
+        for (title, category) in [("Warm-Up", ExerciseCategory.warmup), ("Cooldown", .cooldown), ("Movement Practice", .mobility)] {
+            XCTAssertEqual(
+                ExerciseSwap.swap(
+                    slot,
+                    in: session(title: title, category: category),
+                    user: user(), library: catalog, recentLogs: []
+                ),
+                .noAlternative,
+                "a \(title) slot may not spend the set lever, so an out-of-budget peer is refused outright"
             )
-        )
-        XCTAssertEqual(adjusted.sets, 2, "a set-adjustable block spends the lever to stay in budget")
+        }
     }
 
     /// The Start Seed (US-O02) is scoped to strength and primal in the assembler, so a swapped *mobility*

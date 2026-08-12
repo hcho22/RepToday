@@ -36,7 +36,7 @@ final class ExerciseLibraryTests: XCTestCase {
     /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
     /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 57, "expected the authored 57-movement library")
+        XCTAssertEqual(exercises.count, 71, "expected the authored 71-movement library")
     }
 
     func testIdsAreUnique() {
@@ -53,7 +53,7 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(counts[.hinge], 6, "hinge group")
         XCTAssertEqual(counts[.core], 9, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
-        XCTAssertEqual(counts[.mobility], 12, "Movement Practice mobility group")
+        XCTAssertEqual(counts[.mobility], 26, "Movement Practice mobility group")
         XCTAssertEqual(counts[.locomotion], 7, "primal group")
     }
 
@@ -61,7 +61,7 @@ final class ExerciseLibraryTests: XCTestCase {
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
         XCTAssertEqual(counts[.strength], 38)
-        XCTAssertEqual(counts[.mobility], 12)
+        XCTAssertEqual(counts[.mobility], 26)
         XCTAssertEqual(counts[.primal], 7)
     }
 
