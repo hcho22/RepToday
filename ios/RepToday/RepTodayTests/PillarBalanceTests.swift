@@ -174,90 +174,65 @@ final class PillarBalanceTests: XCTestCase {
         XCTAssertEqual(plan(.singleFocus, logs: logs, sitsLong: true), .single(.strength))
     }
 
-    // MARK: - Blend weighting
+    // MARK: - Blend weighting (US-002: strength leads, mobility is a minority accessory)
 
-    /// A sedentary (desk-worker) user's blend is a pure staleness split with no strength bias, so no
-    /// history splits it evenly.
-    func testBlendWithNoHistorySplitsEvenlyForSedentaryUser() {
-        let weights = weights(plan(.blendFull, logs: [], sitsLong: true))
-        XCTAssertEqual(weights.strength, 0.5, accuracy: 1e-9)
-        XCTAssertEqual(weights.mobility, 0.5, accuracy: 1e-9)
+    /// The US-002 core: a two-pillar blend leads **strength** with mobility as a small minority
+    /// accessory. An active (non-desk-bound) user runs ~80% strength / 20% mobility, inside the
+    /// ~0.75-0.80 strength target band, and the split does not depend on history.
+    func testBlendLeadsStrengthWithMobilityMinorityForActiveUser() {
+        let weights = weights(plan(.blendFull, logs: [], sitsLong: false))
+        XCTAssertEqual(weights.strength, 0.8, accuracy: 1e-9)
+        XCTAssertEqual(weights.mobility, 0.2, accuracy: 1e-9)
+        XCTAssertGreaterThan(weights.strength, weights.mobility, "strength leads the blend")
+        XCTAssertEqual(weights.strength + weights.mobility, 1.0, accuracy: 1e-9)
     }
 
-    func testBlendLeansTowardTheStalerPillar() {
-        // Mobility 6 days stale, strength 1: mobility takes the larger (clamped) share.
+    /// A sedentary (desk-worker) user gets a slightly larger mobility accessory for their postural debt
+    /// - ~75% strength / 25% mobility - but strength still clearly leads (the boost only sizes the
+    /// accessory, it never flips the lead, FR-5).
+    func testSedentaryUserGetsLargerMobilityAccessoryButStrengthStillLeads() {
+        let sedentary = weights(plan(.blendFull, logs: [], sitsLong: true))
+        XCTAssertEqual(sedentary.strength, 0.75, accuracy: 1e-9)
+        XCTAssertEqual(sedentary.mobility, 0.25, accuracy: 1e-9)
+        XCTAssertGreaterThan(sedentary.strength, sedentary.mobility, "strength still leads a desk worker's blend")
+
+        // The desk worker's mobility accessory is strictly larger than the active user's, and strength
+        // strictly smaller - but both stay strength-led and inside the target band.
+        let active = weights(plan(.blendFull, logs: [], sitsLong: false))
+        XCTAssertGreaterThan(sedentary.mobility, active.mobility)
+        XCTAssertLessThan(sedentary.strength, active.strength)
+        XCTAssertGreaterThanOrEqual(sedentary.strength, 0.75)
+        XCTAssertLessThanOrEqual(active.strength, 0.8)
+    }
+
+    /// Staleness no longer picks the strength-vs-mobility lead (US-002): even when mobility is by far
+    /// the stalest pillar - the originally-reported failure configuration - strength still leads the
+    /// blend and mobility stays the minority accessory.
+    func testBlendLeadsStrengthEvenWhenMobilityIsStalest() {
         let logs = [
             log(pillars: [.strength], daysAgo: 1),
             log(pillars: [.mobility], daysAgo: 6),
         ]
-        let weights = weights(plan(.blendFull, logs: logs, sitsLong: false))
-        XCTAssertEqual(weights.mobility, 0.7, accuracy: 1e-9)
-        XCTAssertEqual(weights.strength, 0.3, accuracy: 1e-9)
-    }
-
-    func testBlendNeverStarvesAPillar() {
-        // Strength never worked, mobility worked today: strength leans heavy but mobility
-        // still keeps its floor share - both pillars are always trained.
-        let logs = [log(pillars: [.mobility], daysAgo: 0)]
-        let weights = weights(plan(.blendFull, logs: logs, sitsLong: false))
-        XCTAssertEqual(weights.strength, 0.7, accuracy: 1e-9)
-        XCTAssertEqual(weights.mobility, 0.3, accuracy: 1e-9)
-        XCTAssertGreaterThanOrEqual(weights.strength, PillarPlan.minBlendShare)
-        XCTAssertGreaterThanOrEqual(weights.mobility, PillarPlan.minBlendShare)
-        XCTAssertEqual(weights.strength + weights.mobility, 1.0, accuracy: 1e-9)
-    }
-
-    /// An active (non-desk-bound) user's blend is biased toward strength: with strength and mobility
-    /// equally stale, the active user gets a strictly larger strength share than an otherwise-identical
-    /// sedentary user, and strictly more than the pre-bias 50/50 baseline - while the sedentary user's
-    /// mobility relief (their even split) is preserved untouched.
-    func testActiveUserBlendIsMoreStrengthForwardThanSedentary() {
-        let logs = [log(pillars: [.strength, .mobility], daysAgo: 4)]
         let active = weights(plan(.blendFull, logs: logs, sitsLong: false))
+        XCTAssertEqual(active.strength, 0.8, accuracy: 1e-9, "a stale mobility no longer takes the lead")
+        XCTAssertEqual(active.mobility, 0.2, accuracy: 1e-9)
+
+        // A desk worker with the same stale-mobility history: still strength-led, just a bigger accessory.
         let sedentary = weights(plan(.blendFull, logs: logs, sitsLong: true))
-
-        // Sedentary: unbiased even split (mobility relief preserved).
-        XCTAssertEqual(sedentary.strength, 0.5, accuracy: 1e-9)
-        XCTAssertEqual(sedentary.mobility, 0.5, accuracy: 1e-9)
-
-        // Active: strictly more strength than the sedentary user and than the even baseline.
-        XCTAssertGreaterThan(active.strength, sedentary.strength)
-        XCTAssertGreaterThan(active.strength, 0.5)
-        XCTAssertLessThan(active.mobility, sedentary.mobility)
-        XCTAssertEqual(active.strength + active.mobility, 1.0, accuracy: 1e-9)
-
-        // The concrete magnitude the constant produces for an even blend: 60/40.
-        XCTAssertEqual(active.strength, 0.6, accuracy: 1e-9)
-        XCTAssertEqual(active.mobility, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(sedentary.strength, 0.75, accuracy: 1e-9)
+        XCTAssertGreaterThan(sedentary.strength, sedentary.mobility)
     }
 
-    /// The strength bias also biases an *extended* (three-pillar) blend: an active user gets a strictly
-    /// larger strength share than an otherwise-identical sedentary user, while both still sum to 1 and
-    /// keep every pillar above its floor.
-    func testActiveUserExtendedBlendIsMoreStrengthForwardThanSedentary() {
-        let logs = [
-            log(pillars: [.strength], daysAgo: 3),
-            log(pillars: [.mobility], daysAgo: 3),
-            log(pillars: [.primal], daysAgo: 3),
-        ]
-        let active = weights(plan(.blendExtended, logs: logs, sitsLong: false))
-        let sedentary = weights(plan(.blendExtended, logs: logs, sitsLong: true))
-
-        XCTAssertGreaterThan(active.strength, sedentary.strength)
-        XCTAssertGreaterThanOrEqual(active.strength, PillarPlan.minExtendedBlendShare)
-        XCTAssertGreaterThanOrEqual(active.mobility, PillarPlan.minExtendedBlendShare)
-        XCTAssertGreaterThanOrEqual(active.primal, PillarPlan.minExtendedBlendShare)
-        XCTAssertEqual(active.strength + active.mobility + active.primal, 1.0, accuracy: 1e-9)
-    }
-
-    /// The bias is exactly the `activeUserStrengthBias` constant applied to strength's weighted
-    /// staleness - not a hidden second lever. With an even two-pillar blend, the strength share is the
-    /// biased weight over the total, so the constant fully determines the magnitude.
-    func testActiveUserStrengthShareMatchesTheBiasConstant() {
-        let logs = [log(pillars: [.strength, .mobility], daysAgo: 4)]
-        let active = weights(plan(.blendFull, logs: logs, sitsLong: false))
-        let expectedStrength = PillarPlan.activeUserStrengthBias / (PillarPlan.activeUserStrengthBias + 1.0)
-        XCTAssertEqual(active.strength, expectedStrength, accuracy: 1e-9)
+    /// Mobility is always a genuine minority accessory (never starved to nothing, never the lead): it
+    /// keeps at least `minBlendShare` and strength always keeps the majority.
+    func testBlendMobilityIsAGenuineMinorityAccessory() {
+        for sitsLong in [true, false] {
+            let weights = weights(plan(.blendFull, logs: [], sitsLong: sitsLong))
+            XCTAssertGreaterThanOrEqual(weights.mobility, PillarPlan.minBlendShare, "mobility keeps its floor")
+            XCTAssertLessThan(weights.mobility, 0.5, "mobility is a minority")
+            XCTAssertGreaterThan(weights.strength, 0.5, "strength keeps the majority")
+            XCTAssertEqual(weights.strength + weights.mobility, 1.0, accuracy: 1e-9)
+        }
     }
 
     /// Light and full blends weight pillars identically; only the assembled block sizes differ.
@@ -272,47 +247,65 @@ final class PillarBalanceTests: XCTestCase {
         )
     }
 
-    // MARK: - Extended blend: primal as a first-class pillar (US-E02)
+    // MARK: - Extended blend: primal as a first-class pillar (US-E02), under the US-002 envelope
 
-    /// An extended blend splits all three pillars. With no history every pillar is equally (maximally)
-    /// stale, so for a sedentary user (no strength bias) the split is even across
-    /// strength/mobility/primal and sums to 1.
-    func testExtendedBlendSplitsAllThreePillarsEvenlyWithNoHistory() {
-        let weights = weights(plan(.blendExtended, logs: [], sitsLong: true))
-        XCTAssertEqual(weights.strength, 1.0 / 3.0, accuracy: 1e-9)
-        XCTAssertEqual(weights.mobility, 1.0 / 3.0, accuracy: 1e-9)
-        XCTAssertEqual(weights.primal, 1.0 / 3.0, accuracy: 1e-9)
+    /// An extended blend keeps mobility a minority accessory and leads with the **strength family**
+    /// (strength + primal): strength leads outright, primal earns its dedicated block, and the family
+    /// holds the ~0.75-0.80 leading share. With no history primal takes the middle of its family band.
+    func testExtendedBlendLeadsStrengthFamilyWithMobilityMinority() {
+        let weights = weights(plan(.blendExtended, logs: [], sitsLong: false))
+        XCTAssertEqual(weights.mobility, 0.2, accuracy: 1e-9, "mobility is the minority accessory")
+        XCTAssertGreaterThan(weights.strength, weights.primal, "strength leads primal")
+        XCTAssertGreaterThan(weights.strength, weights.mobility, "strength leads the session")
+        XCTAssertGreaterThan(weights.primal, 0, "primal earns a genuine dedicated block")
+        // The strength family (strength + primal) keeps the leading ~0.75-0.80 share.
+        XCTAssertEqual(weights.strength + weights.primal, 0.8, accuracy: 1e-9)
         XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 1e-9)
     }
 
-    /// The staler pillar earns the larger share, even when that pillar is primal.
-    func testExtendedBlendLeansTowardStalerPrimal() {
+    /// Staleness still leans the split *within* the strength family (US-002/AC-4): a stale primal earns
+    /// a bigger dedicated block than a fresh one - but never overtakes strength, which always leads.
+    func testExtendedBlendStalePrimalEarnsMorePrimalButStrengthStillLeads() {
         // Strength and mobility worked yesterday; primal never worked -> primal is the stalest.
-        let logs = [
+        let stalePrimal = weights(plan(.blendExtended, logs: [
             log(pillars: [.strength], daysAgo: 1),
             log(pillars: [.mobility], daysAgo: 1),
+        ], sitsLong: false))
+        // Primal worked today; strength never -> primal is the freshest.
+        let freshPrimal = weights(plan(.blendExtended, logs: [
+            log(pillars: [.primal], daysAgo: 0),
+        ], sitsLong: false))
+
+        XCTAssertGreaterThan(stalePrimal.primal, freshPrimal.primal, "a stale primal earns a bigger block")
+        XCTAssertGreaterThan(stalePrimal.strength, stalePrimal.primal, "strength still leads a stale-primal blend")
+        XCTAssertEqual(stalePrimal.mobility, 0.2, accuracy: 1e-9, "mobility stays the minority accessory")
+        XCTAssertEqual(stalePrimal.strength + stalePrimal.mobility + stalePrimal.primal, 1.0, accuracy: 1e-9)
+    }
+
+    /// The desk-worker mobility boost applies to an extended blend too: a sedentary user gets a strictly
+    /// larger mobility accessory than an active one, while both stay strength-led with all shares summing
+    /// to 1.
+    func testExtendedBlendSedentaryGetsLargerMobilityAccessory() {
+        let logs = [
+            log(pillars: [.strength], daysAgo: 3),
+            log(pillars: [.mobility], daysAgo: 3),
+            log(pillars: [.primal], daysAgo: 3),
         ]
-        let weights = weights(plan(.blendExtended, logs: logs, sitsLong: false))
-        XCTAssertGreaterThan(weights.primal, weights.strength)
-        XCTAssertGreaterThan(weights.primal, weights.mobility)
-        XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 1e-9)
+        let active = weights(plan(.blendExtended, logs: logs, sitsLong: false))
+        let sedentary = weights(plan(.blendExtended, logs: logs, sitsLong: true))
+
+        XCTAssertEqual(active.mobility, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(sedentary.mobility, 0.25, accuracy: 1e-9)
+        XCTAssertGreaterThan(sedentary.mobility, active.mobility)
+        XCTAssertGreaterThan(active.strength, active.primal, "strength leads for the active user")
+        XCTAssertGreaterThan(sedentary.strength, sedentary.primal, "strength leads for the desk worker")
+        XCTAssertEqual(active.strength + active.mobility + active.primal, 1.0, accuracy: 1e-9)
+        XCTAssertEqual(sedentary.strength + sedentary.mobility + sedentary.primal, 1.0, accuracy: 1e-9)
     }
 
-    /// No pillar is ever starved: even a pillar worked today keeps at least its floor share, and the
-    /// three shares still sum to 1.
-    func testExtendedBlendNeverStarvesAPillar() {
-        // Strength worked today; mobility and primal never worked -> strength leans light but keeps
-        // the extended floor.
-        let logs = [log(pillars: [.strength], daysAgo: 0)]
-        let weights = weights(plan(.blendExtended, logs: logs, sitsLong: false))
-        XCTAssertGreaterThanOrEqual(weights.strength, PillarPlan.minExtendedBlendShare)
-        XCTAssertGreaterThanOrEqual(weights.mobility, PillarPlan.minExtendedBlendShare)
-        XCTAssertGreaterThanOrEqual(weights.primal, PillarPlan.minExtendedBlendShare)
-        XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 1e-9)
-    }
-
-    /// The Session Policy `pillarWeighting` lever measurably increases a pillar's share (US-E02): with
-    /// all three equally stale, doubling primal's weight gives it a larger share than the neutral split.
+    /// The Session Policy `pillarWeighting` lever still leans the within-family split (US-E02): with all
+    /// three equally stale, doubling primal's weight gives it a larger dedicated block than the neutral
+    /// split - but strength keeps the majority of the family and still leads.
     func testExtendedBlendRespectsPrimalPillarWeighting() {
         let logs = [
             log(pillars: [.strength], daysAgo: 3),
@@ -340,7 +333,9 @@ final class PillarBalanceTests: XCTestCase {
                 calendar: calendar
             )
         )
-        XCTAssertGreaterThan(weighted.primal, neutral.primal)
+        XCTAssertGreaterThan(weighted.primal, neutral.primal, "heavier primal weighting grows the primal block")
+        XCTAssertGreaterThan(weighted.strength, weighted.primal, "strength still leads even under heavy primal weighting")
+        XCTAssertEqual(weighted.mobility, neutral.mobility, accuracy: 1e-9, "weighting does not touch the mobility accessory")
         XCTAssertEqual(weighted.strength + weighted.mobility + weighted.primal, 1.0, accuracy: 1e-9)
     }
 
