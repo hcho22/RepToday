@@ -28,8 +28,8 @@ struct User: Codable, Equatable, Identifiable {
     /// The learned Default Duration surfaced on the Ready Screen (US-D01). A neutral
     /// placeholder here; onboarding (US-I01) seeds it from the user's answer.
     var duration: Duration = .seeded(minutes: 15)
-    /// Cold-start state driving the First-Week Contrast rules (US-D01). Fresh users start
-    /// cold; the engine retires it after ~5 logged sessions (US-G04).
+    /// Cold-start state driving the cold-start strength lead and gentleness rails (US-D01). Fresh
+    /// users start cold; the engine retires it after ~5 logged sessions (US-G04).
     var coldStart: ColdStart = .fresh
 }
 
@@ -76,8 +76,9 @@ extension User {
         }
     }
 
-    /// Cold-start state (US-D01). While `active`, the engine applies the First-Week Contrast, the
-    /// capped Starting Difficulty and the Start Seed band/volume overrides
+    /// Cold-start state (US-D01). While `active`, the engine leads every day with strength
+    /// (US-004, reversing the retired First-Week Contrast spread) and applies the capped Starting
+    /// Difficulty and the Start Seed band/volume overrides
     /// (US-E04/US-G01/US-G02/US-O02); `sessionsLogged` increments per completed session and the
     /// engine flips `active` off after the handoff threshold (US-G04), after which staleness and
     /// Adaptive Overload drive sessions unassisted - with the single exception of

@@ -2,7 +2,7 @@ import Foundation
 
 /// Pipeline Step 0 of the deterministic engine (US-E04): the cold-start override that runs *before*
 /// Steps 1-6 while a brand-new user is still finding their footing, so their first sessions are kept
-/// gentle and vivid and a mis-reported fitness level never produces a badly over-hard day.
+/// gentle and strength-led and a mis-reported fitness level never produces a badly over-hard day.
 ///
 /// Step 0 is deliberately a thin override, not a second engine. It reshapes only inputs the rest of
 /// the pipeline already consumes, and leaves everything else to Steps 1-6:

@@ -280,8 +280,8 @@ extension PillarWeights {
     /// Re-points the shares so `lead` owns the largest share (its block leads and gets the most time),
     /// by swapping the lead's share with whichever pillar currently holds the max. This preserves the
     /// exact multiset of shares, so they still sum to 1 and every pillar keeps its floor - the emphasis
-    /// is reordered, never a pillar starved. Used by both the cold-start First-Week Contrast
-    /// (`ColdStartOverride`) and the Return override (`ReturnOverride`) to lead a blend with a chosen
+    /// is reordered, never a pillar starved. Used by both the cold-start strength lead (US-004,
+    /// `ColdStartOverride`) and the Return override (`ReturnOverride`) to lead a blend with a chosen
     /// pillar. A no-op when `lead` is not part of this blend (share 0, e.g. primal in a short blend) or
     /// already leads.
     func favoring(_ lead: Pillar) -> PillarWeights {

@@ -44,7 +44,7 @@ struct SessionPolicy: Codable, Equatable {
     var varietyWindow: Int
 
     /// The cold-start override contract, present only during the cold-start window (US-E04):
-    /// it forces First-Week Contrast, caps Starting Difficulty, and carries the Start Seed
+    /// it forces the cold-start strength lead (US-004), caps Starting Difficulty, and carries the Start Seed
     /// (US-O02) - the difficulty floor and opening volume the self-reported fitness level starts
     /// at. `nil` once the engine retires cold-start (US-G04), after which Step 0 is a no-op.
     var coldStartContract: ColdStartContract?
@@ -201,9 +201,9 @@ extension SessionPolicy.ColdStartContract {
         }
     }
 
-    /// The cold-start contract seeded at onboarding (US-G01/US-G02/US-O02): First-Week Contrast
-    /// forced on so the first week visibly spans strength/mobility/primal (US-G02), Starting
-    /// Difficulty capped from the self-reported fitness level (US-G01), and the whole Start Seed -
+    /// The cold-start contract seeded at onboarding (US-G01/US-G02/US-O02): `forceContrastSpread`
+    /// on so every cold-start day leads strength (US-004, reversing the retired First-Week Contrast
+    /// spread), Starting Difficulty capped from the self-reported fitness level (US-G01), and the whole Start Seed -
     /// `startingDifficultyFloor`, `startingRepMultiplier`, `startingSets` - seeded from that same
     /// level (US-O02). The engine reads this in Step 0 and retires it after the handoff (US-G04).
     static func seeded(for level: FitnessLevel) -> Self {
@@ -326,7 +326,7 @@ extension SessionPolicy {
 
     /// The starting policy for a freshly onboarded user (US-G01/US-I01): the neutral `default`
     /// levers with a cold-start contract layered on - capping Starting Difficulty from the
-    /// self-reported fitness level and forcing First-Week Contrast. Every other lever stays
+    /// self-reported fitness level and forcing the cold-start strength lead (US-004). Every other lever stays
     /// neutral, so once cold-start retires (US-G04 clears the contract) the engine behaves exactly
     /// as `default`. Onboarding calls this with `profile.fitnessLevel`.
     static func seeded(forFitnessLevel level: FitnessLevel) -> SessionPolicy {

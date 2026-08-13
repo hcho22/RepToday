@@ -5,8 +5,9 @@ import Foundation
 /// and Adaptive Overload to steer sessions unassisted.
 ///
 /// Cold start (US-E04/US-G01/US-G02/US-O02) governs roughly the first five sessions - it caps Starting
-/// Difficulty, bands the strength/primal pool and its opening volume to the Start Seed, and forces
-/// First-Week Contrast, so a brand-new user's first week is gentle, level-appropriate and vivid. But
+/// Difficulty, bands the strength/primal pool and its opening volume to the Start Seed, and leads
+/// every day with strength (US-004, reversing the retired First-Week Contrast spread), so a brand-new
+/// user's first week is gentle, level-appropriate and strength-building. But
 /// those overrides are training wheels, not the engine: once the user has logged enough real sessions
 /// the engine has the history it needs (worked pillars, cleared tiers, demonstrated capacity) to drive
 /// itself, and the overrides must retire so they never keep flattening variety or capping difficulty
