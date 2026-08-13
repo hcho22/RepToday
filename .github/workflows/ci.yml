@@ -54,11 +54,14 @@ jobs:
   #
   # Runner/Xcode are pinned to a natively-compatible pair that exists on the
   # macos-15 image: Xcode 16.4 (the image default, in the project's documented
-  # 16.x line per ios/RepToday/project.yml). The simulator destination pins the
-  # device (iPhone 16) but NOT the iOS runtime version: the exact bundled runtime
-  # moves as the hosted image is refreshed (a hard OS pin like OS=18.5 breaks the
-  # moment that runtime is dropped), so xcodebuild resolves against whichever iOS
-  # runtime the image currently ships for the iPhone 16.
+  # 16.x line per ios/RepToday/project.yml). We pin the device (iPhone 16) but NOT
+  # the iOS runtime version (a hard OS pin like OS=18.5 breaks the moment that
+  # runtime is dropped). The "Select iOS Simulator" step below resolves a concrete
+  # available iPhone 16 to a UDID at runtime - creating one against the newest
+  # available iOS runtime if the image shipped none - because the hosted image now
+  # co-installs several iOS runtimes and its device set is not guaranteed to hold an
+  # iPhone 16 for whichever runtime "OS:latest" picks, so a bare "name=iPhone 16"
+  # destination intermittently matches nothing (xcodebuild exits 70).
   #
   # Signing: the app carries CloudKit / HealthKit / Sign in with Apple
   # entitlements, so a fully unsigned build (CODE_SIGNING_ALLOWED=NO) cannot launch
@@ -102,6 +105,31 @@ jobs:
       - name: Generate Xcode project from project.yml
         working-directory: ios/RepToday
         run: xcodegen generate
+
+      # Resolve a CONCRETE simulator UDID rather than relying on "name=iPhone 16"
+      # + implicit OS:latest. The hosted macOS image co-installs several iOS
+      # runtimes and its simulator device set is not guaranteed to contain an
+      # iPhone 16 for whichever runtime "latest" resolves to (and on a cold image
+      # can be empty entirely), so the by-name destination intermittently matches
+      # nothing and xcodebuild exits 70 ("Unable to find a device matching ...").
+      # Pick any available iPhone 16 deterministically, creating one against the
+      # newest available iOS runtime if the image shipped none, and pin the
+      # destination to its id for the rest of the job.
+      - name: Select iOS Simulator
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available -j \
+            | jq -r '[ .devices | to_entries[] | select(.key | test("iOS")) | .value[]
+                       | select(.isAvailable and .name == "iPhone 16") | .udid ] | first // empty')
+          if [ -z "$udid" ]; then
+            runtime=$(xcrun simctl list runtimes available -j \
+              | jq -r '[ .runtimes[] | select(.name | test("iOS")) | .identifier ] | last')
+            echo "No available iPhone 16 simulator; creating one against ${runtime}"
+            udid=$(xcrun simctl create 'iPhone 16' 'iPhone 16' "$runtime")
+          fi
+          xcrun simctl boot "$udid" || true
+          echo "Using simulator ${udid}"
+          echo "DESTINATION=platform=iOS Simulator,id=${udid}" >> "$GITHUB_ENV"
 
       - name: Build & run unit tests (RepToday scheme)
         run: |

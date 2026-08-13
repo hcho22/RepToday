@@ -76,6 +76,7 @@
 		6481B92FCCB5138E80FCC26E /* ActiveSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304334DF735169FC725E4988 /* ActiveSessionViewModel.swift */; };
 		65D0C3C030F9950B7C9A3DF6 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */; };
 		684FC62609D0DA87760F3457 /* ActiveSessionTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9461E630105BB3F65E879C62 /* ActiveSessionTelemetryTests.swift */; };
+		693503964919D6280FF8D1D4 /* StrengthPrimaryRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */; };
 		6D50827F18E4520E1AA7498E /* PhaseEvaluatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E9DD9FD0B68FD919339B546 /* PhaseEvaluatorTests.swift */; };
 		6E3F9AF4B4992C3FC4704270 /* ColdStartHandoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1467FDF4832D95379E2C6F5E /* ColdStartHandoffTests.swift */; };
 		70723589450417E04663B00A /* OnboardingInjuryVocabularyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C6D6D21361F14F41979B0FB /* OnboardingInjuryVocabularyTests.swift */; };
@@ -197,6 +198,7 @@
 		05D5DD00B5FB84C3C67B4B67 /* PillarBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalanceTests.swift; sourceTree = "<group>"; };
 		0AA816A1AE4C17D0C91DE563 /* ProxyVarietyLanguageProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProviderTests.swift; sourceTree = "<group>"; };
 		0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
+		0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthPrimaryRegressionTests.swift; sourceTree = "<group>"; };
 		0F59B824B9A8FEDF7ED77EBC /* DefaultDurationLearning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultDurationLearning.swift; sourceTree = "<group>"; };
 		11B9FD6F285D21BFC4FBCFC1 /* RepToday.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RepToday.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1467FDF4832D95379E2C6F5E /* ColdStartHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartHandoffTests.swift; sourceTree = "<group>"; };
@@ -632,6 +634,7 @@
 				7FBF10D8838BE9E9E5645471 /* SessionSummaryTests.swift */,
 				A48E1D067DCDB47ABC5AB069 /* StartSeedTests.swift */,
 				D7D5CA389C95932C6F294265 /* StoreKitSubscriptionServiceTests.swift */,
+				0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */,
 				D99A442128F5EC6146532206 /* TelemetryConsentSurfaceTests.swift */,
 				FCFF836C14C8DC7ED9DCB51F /* UITestLaunchGuardTests.swift */,
 				75A099908FB3DCB707D41FB2 /* UnitConversionTests.swift */,
@@ -998,6 +1001,7 @@
 				17B9651FD61BC15EA7274FB9 /* SessionSummaryTests.swift in Sources */,
 				7E2D2AAE8AEFE2A054422540 /* StartSeedTests.swift in Sources */,
 				8C91A9BBBC747A47A5003503 /* StoreKitSubscriptionServiceTests.swift in Sources */,
+				693503964919D6280FF8D1D4 /* StrengthPrimaryRegressionTests.swift in Sources */,
 				FFC4CC4C07712A5410E5F3E9 /* TelemetryConsentSurfaceTests.swift in Sources */,
 				CA75B2BE94E4B848B4F643BC /* UITestLaunchGuardTests.swift in Sources */,
 				5A508E0BE93662DE9C751C57 /* USE01RangeEvidenceTests.swift in Sources */,
