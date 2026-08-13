@@ -29,8 +29,9 @@ Specifically, and with **no mobility safety valve** that can flip the lead:
 - A returning-user comeback leads strength too, kept gentle by the difficulty cap and volume floor rather than by switching to mobility (US-005).
 - `sitsLong` no longer picks the lead; it only modulates the *size* of the mobility accessory.
 - The vocabulary and this record close the change (US-006): the code's doc notes and the project docs describe strength-primary, and the co-primary -> strength-primary decision is recorded here so it cannot be re-introduced from stale prose.
+- A cross-cutting regression guard pins the invariant structurally (US-007): a single consolidated test (`StrengthPrimaryRegressionTests`) sweeps every length across steady-state, cold-start, and Return and fails loudly if any session becomes mobility-led, so a future tuning change cannot silently re-add a mobility-only session.
 
-The implementation is documentation-and-engine work already landed as US-001..US-006 (see `docs/implementation-log.md`); the engine mechanics live under `Services/Engine/` (`PillarBalance.swift`, `SessionAssembly.swift`, the Step 0 cold-start / Return overrides), and the vocabulary lives in `Models/Enums.swift` (`Pillar`) and `CONTEXT.md`.
+The implementation is documentation-and-engine work already landed as US-001..US-007 (see `docs/implementation-log.md`); the engine mechanics live under `Services/Engine/` (`PillarBalance.swift`, `SessionAssembly.swift`, the Step 0 cold-start / Return overrides), and the vocabulary lives in `Models/Enums.swift` (`Pillar`) and `CONTEXT.md`.
 
 ## Consequences / Trade-offs
 
