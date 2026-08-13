@@ -57,7 +57,8 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(counts[.locomotion], 7, "primal group")
     }
 
-    /// All three training pillars carry movements; mobility is co-primary (not a sliver).
+    /// All three training pillars carry movements; mobility is well-represented (not a sliver),
+    /// even though strength is the primary pillar of every session (US-006).
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
         XCTAssertEqual(counts[.strength], 38)
