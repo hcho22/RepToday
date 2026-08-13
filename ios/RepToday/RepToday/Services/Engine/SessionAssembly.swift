@@ -88,16 +88,17 @@ enum SessionAssembly {
     /// `maxWarmupExercises` is the *ceiling* the length-scaled warm-up (`warmupExerciseCount`) tops out
     /// at, chosen so the three mobility-sourced blocks never over-drain the shared pool even in their
     /// worst case (a long mobility-stale blend, where the warm-up hits this ceiling *and* Movement
-    /// Practice hits `maxMobilityTrainingExercises`): `5 + 4 + 14 = 23` of the 26 mobility movements,
+    /// Practice hits `maxMobilityTrainingExercises`): `4 + 4 + 14 = 22` of the 26 mobility movements,
     /// leaving genuine day-to-day variety headroom. The warm-up draws first and the cooldown before any
     /// Movement Practice block (see `buildBlocks`), so a fuller warm-up can never starve the cooldown.
-    static let maxWarmupExercises = 5
+    static let maxWarmupExercises = 4
     static let maxMobilityTrainingExercises = 14
     static let maxCooldownExercises = 4
 
     /// How many distinct movements the opening warm-up seeds (all active, one set each), scaled by
-    /// session length so a longer session opens with a fuller warm-up: **≤10 min: 2, 11-20: 3, 21-40:
-    /// 4, 41-60: 5**, clamped to `maxWarmupExercises`.
+    /// session length so a longer session opens with a fuller warm-up while a tiny session keeps the
+    /// warm-up lean so it does not crowd out strength: **≤10 min: 1, 11-20: 2, 21-40: 3, 41-60: 4**,
+    /// clamped to `maxWarmupExercises`.
     ///
     /// The warm-up is seeded at this count directly (`warmupBlock`) rather than started at one movement
     /// and left to the global timing fit to grow, so the "more fully loosened up before the Strength
@@ -108,10 +109,10 @@ enum SessionAssembly {
     static func warmupExerciseCount(forRequestedMinutes minutes: Int) -> Int {
         let scaled: Int
         switch minutes {
-        case ..<11: scaled = 2
-        case ..<21: scaled = 3
-        case ..<41: scaled = 4
-        default: scaled = 5
+        case ..<11: scaled = 1
+        case ..<21: scaled = 2
+        case ..<41: scaled = 3
+        default: scaled = 4
         }
         return min(scaled, maxWarmupExercises)
     }

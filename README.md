@@ -146,7 +146,7 @@ The on-device engine runs this pipeline (one step per Epic C story in the PRD).
 **Step 0 overrides** run ahead of it and are no-ops in the steady state: a cold start seeds the first sessions from the reported fitness level (a difficulty band and a volume seed, both eased by a `too_hard` rating and retired once there is enough history) and forces first-week pillar contrast, and a Return after a gap serves a deliberately easy session.
 
 1. **Session shape** - 5-10 min single-focus; 11-20 min blend (light); 21-40 min blend (full); 41-60 min blend (extended).
-2. **Pillar balance** - a single-focus (5-10 min) session always trains strength (mobility survives only as the warm-up); a blend is strength-led too (~75-80% strength) with mobility as a minority accessory, and whether the user sits long only sizes that accessory (a desk worker earns a little more), never which pillar leads.
+2. **Pillar balance** - a single-focus (5-10 min) session always trains strength (mobility survives only as the warm-up); a blend is strength-led too (strength owns the large majority of the training time, ~85%+ in a mid-length session) with mobility as a minority accessory, and whether the user sits long only sizes that accessory (a desk worker earns a little more), never which pillar leads.
 3. **Movement-pattern focus** - rank patterns by staleness; never repeat yesterday's primary pattern.
 4. **Filter pool** - drop by phase, injuries, difficulty cap, and recent skips; everything is bodyweight (Zero-Equipment Floor).
 5. **Progression-chain selection** - pick the current chain position; offer the next when advancement criteria are met; avoid the last few sessions (a policy-tunable `varietyWindow`, default 3).

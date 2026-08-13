@@ -789,6 +789,15 @@ The now-dead `activeUserStrengthBias` and `minExtendedBlendShare` constants were
 `PerSideSwapEvidenceTests` assumed the old mobility-led 30-min session (whose large Movement Practice block supplied the per-side holds); its `history()` was reordered so `core_side_plank` (a per-side strength hold) sits outside the `varietyWindow` and is selected as the core slot, giving the strength-led session its per-side hold.
 Determinism and `asOf`-purity are preserved.
 
+### Lean, length-scaled warm-up (US-003)
+
+The third story of the "Strength-Primary Sessions" PRD: a leaner warm-up so it does not crowd out strength in a tiny session, while longer sessions still get a fuller opening.
+`SessionAssembly.warmupExerciseCount(forRequestedMinutes:)` now returns **1 / 2 / 3 / 4** for the `≤10 / 11-20 / 21-40 / 41-60` bands (was `2 / 3 / 4 / 5`); the seeding mechanism (all active items, `minItems` pinned, one set each) is unchanged, so every session still deterministically opens with a warm-up block and there are no zero-warm-up sessions at any length.
+`maxWarmupExercises` was lowered `5 -> 4` to stay the true ceiling the length-scaled count tops out at; the worst-case pool draw is now warm-up 4 + cooldown 4 + Movement Practice 14 = 22 of the 26 mobility movements, so the day-to-day variety headroom the reservation guard protects only grows, and the cooldown-not-starved invariant (warm-up drawn first, cooldown before any Movement Practice) is untouched.
+The freed time from a leaner warm-up is reabsorbed by the fit loop through the strength/primal set lever and mobility-accessory types; every length lands within `toleranceSeconds` (verified across 5/10/15/20/30/45/60, and the PRD validation counts 1/2/3/4 warm-up movements at 5/15/30/60 with each session within ±60s of the request).
+`SessionAssemblyTests` warm-up-sizing, pool-reservation-headroom, and cooldown-not-starved assertions were retargeted to the new counts (most derive expectations from `warmupExerciseCount`/`maxWarmupExercises` directly, so they track the change); only the count band and the ceiling constant moved.
+Pillar balance, cold-start, and the Return override are out of scope and untouched; determinism and `asOf`-purity are preserved.
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.

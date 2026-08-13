@@ -186,7 +186,7 @@ final class SessionAssemblyTests: XCTestCase {
 
     /// The opening warm-up is seeded at the length-scaled count (`warmupExerciseCount`), every one a
     /// distinct one-set mobility movement. This pins the "more fully loosened up before the Strength
-    /// block" behavior: a real session opens with 2-5 warm-up movements, not the single stretch the
+    /// block" behavior: a real session opens with 1-4 warm-up movements, not the single stretch the
     /// old fit-dependent seeding usually produced.
     func testWarmUpIsSeededAtTheLengthScaledCount() async throws {
         let library = try await library()
@@ -229,6 +229,24 @@ final class SessionAssemblyTests: XCTestCase {
             long, SessionAssembly.maxWarmupExercises,
             "the warm-up never exceeds its pool-budget ceiling"
         )
+    }
+
+    /// US-003 pins the exact length-scaled band mapping - a lean **1** at ≤10 min so the warm-up does
+    /// not crowd out strength in a tiny session, rising to **2 / 3 / 4** across 11-20 / 21-40 / 41-60 -
+    /// and the ceiling that caps it. Derived-expectation tests above track whatever the function returns;
+    /// this one fails if the band boundaries themselves ever drift.
+    func testWarmUpCountBandMappingIsLeanAndLengthScaled() {
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 5), 1)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 10), 1)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 11), 2)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 15), 2)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 20), 2)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 21), 3)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 30), 3)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 40), 3)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 41), 4)
+        XCTAssertEqual(SessionAssembly.warmupExerciseCount(forRequestedMinutes: 60), 4)
+        XCTAssertEqual(SessionAssembly.maxWarmupExercises, 4, "the ceiling matches the top band")
     }
 
     /// The fuller warm-up must not over-drain the shared mobility pool: even in the worst case - a long
@@ -564,9 +582,15 @@ final class SessionAssemblyTests: XCTestCase {
     }
 
     /// The US-002 validation test: for a no-history profile at 20 and 30 minutes, sum the *training*
-    /// block seconds by pillar (excluding warm-up/cooldown) and confirm strength holds ~0.75-0.80 of the
-    /// training time, a genuine mobility accessory is present, and strength leads. These are blendLight /
-    /// blendFull, so there is no dedicated primal block - the strength block folds primal in.
+    /// block seconds by pillar (excluding warm-up/cooldown) and confirm strength holds the dominant share
+    /// of the training time, a genuine mobility accessory is present, and strength leads. These are
+    /// blendLight / blendFull, so there is no dedicated primal block - the strength block folds primal in.
+    ///
+    /// The upper bound was widened `0.85 -> 0.88` under US-003: the leaner 1/2/3/4 warm-up frees budget
+    /// the timing fit reabsorbs into strength sets (the mobility accessory is one-set-capped and cannot
+    /// grow proportionally), so a blend now runs more strength-heavy - ~0.87 / mobility ~13% at 30 min
+    /// (captain-approved). The lower bound and the "accessory still present / strength still leads"
+    /// assertions stay, so the test still proves a genuine minority mobility accessory rather than none.
     func testBlendTrainingTimeIsStrengthDominantAtValidationLengths() async throws {
         let library = try await library()
         for minutes in [20, 30] {
@@ -589,8 +613,10 @@ final class SessionAssemblyTests: XCTestCase {
                 strengthShare, 0.7,
                 "\(minutes) min strength training share \(strengthShare) fell below the strength-dominant floor"
             )
+            // Widened 0.85 -> 0.88 for US-003: the leaner warm-up routes freed budget to strength sets,
+            // so a blend runs more strength-heavy while a minority mobility accessory stays present.
             XCTAssertLessThanOrEqual(
-                strengthShare, 0.85,
+                strengthShare, 0.88,
                 "\(minutes) min strength training share \(strengthShare) left a too-thin mobility accessory"
             )
         }
