@@ -798,6 +798,17 @@ The freed time from a leaner warm-up is reabsorbed by the fit loop through the s
 `SessionAssemblyTests` warm-up-sizing, pool-reservation-headroom, and cooldown-not-starved assertions were retargeted to the new counts (most derive expectations from `warmupExerciseCount`/`maxWarmupExercises` directly, so they track the change); only the count band and the ceiling constant moved.
 Pillar balance, cold-start, and the Return override are out of scope and untouched; determinism and `asOf`-purity are preserved.
 
+### Cold-start first week leads strength (US-004)
+
+The fourth story of the "Strength-Primary Sessions" PRD: the cold-start counterpart to US-001/US-002, reversing the retired First-Week Contrast spread so the *first week* leads strength like the steady state does, kept gentle by the rails already in place.
+`ColdStartOverride.overridePlan(...)` no longer rotates the day's lead pillar across `[.strength, .mobility, .primal]`: a single-focus plan becomes `.single(.strength)` outright, and a blend becomes `.blend(weights.favoring(.strength))`, so strength owns the largest block on every cold-start day while `favoring(_:)` preserves the share multiset (the blend still sums to 1 and no pillar is starved).
+The now-dead rotation machinery was deleted - the `rotation` array, `contrastPillar(user:available:)`, and `startingPillar(for:)` - and `overridePlan`'s unused `template` argument was dropped (updating its one `SessionAssembly` call site); the `SessionAssembly` `.single(.primal)` branch stays as defensive degradation but is documented as unreachable now that no engine path produces a `.single(.primal)` plan.
+The `forceContrastSpread` contract flag was deliberately **kept** as the Step 0 gate rather than ripped out (to avoid rippling into `SessionPolicy`/onboarding); its documented meaning is now "lead strength on cold-start days" (doc comments on `ColdStartContract.forceContrastSpread` and `ColdStartOverride.overridePlan` updated to match).
+The gentleness rails are intentionally untouched and still apply exactly as before: the difficulty cap (`cappedMaxDifficulty` via `cappedPool`) and the Start Seed's reduced volume (`startSeed`/`startBandedPool`/`volumeSeed`).
+Consequence by design: `why.openingBias`/`sitsLong` no longer steer the cold-start lead pillar (they still influence the underlying plan's accessory shares, which `favoring(.strength)` preserves).
+`FirstWeekContrastTests` was rewritten in full to the strength-led invariant (renamed row "Cold-start strength lead" in `docs/test-coverage.md`), and the cold-start rotation/spread/primal-degradation cases in `SessionAssemblyTests` were rewritten to assert every cold-start single-focus day leads strength while proving the difficulty cap is preserved.
+Determinism and `asOf`-purity are preserved (the cold-start "day" comes from `sessionsLogged`, never the wall clock).
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.

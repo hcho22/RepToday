@@ -939,49 +939,41 @@ final class SessionAssemblyTests: XCTestCase {
         )
     }
 
-    /// Consecutive First-Week single-focus days rotate the pillar, so the week never collapses to a
-    /// single theme and no pillar repeats back-to-back - even for a desk worker whose bias is mobility.
-    func testConsecutiveColdStartDaysDifferInPillar() async throws {
+    /// Every cold-start single-focus day leads strength (US-004), so the first week builds strength
+    /// rather than spreading across pillars - even for a desk worker whose bias is mobility.
+    func testConsecutiveColdStartDaysAllLeadStrength() async throws {
         let library = try await library()
         let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
 
-        var pillars: [Pillar] = []
         for day in 0..<4 {
             let user = coldStartUser(level: .beginner, sessionsLogged: day, sitsLong: true)
             let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
-            pillars.append(try XCTUnwrap(workout.focusPillar, "a single-focus day must have a focus pillar"))
-        }
-        XCTAssertGreaterThan(Set(pillars).count, 1, "the first week must span more than one pillar")
-        for index in 1..<pillars.count {
-            XCTAssertNotEqual(pillars[index], pillars[index - 1], "no pillar repeats back-to-back in cold start")
+            let focus = try XCTUnwrap(workout.focusPillar, "a single-focus day must have a focus pillar")
+            XCTAssertEqual(focus, .strength, "cold-start day \(day) must lead strength")
         }
     }
 
-    /// The `why.openingBias` sets where the First-Week rotation opens; a mobility-biased user opens on
-    /// a mobility day, then rotates off it.
-    func testColdStartRotationOpensOnTheWhyOpeningBias() async throws {
+    /// The `why.openingBias` no longer steers the cold-start lead: a mobility-biased user still leads
+    /// strength on every cold-start day (US-004 overrides the lead regardless of the opening bias).
+    func testColdStartLeadsStrengthDespiteMobilityOpeningBias() async throws {
         let library = try await library()
         let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
 
-        let day0 = coldStartUser(level: .beginner, sessionsLogged: 0, openingBias: .mobility)
-        let day1 = coldStartUser(level: .beginner, sessionsLogged: 1, openingBias: .mobility)
-        XCTAssertEqual(
-            assemble(minutes: 8, user: day0, library: library, logs: [], policy: policy).focusPillar,
-            .mobility, "the first cold-start day opens on the stated why.openingBias"
-        )
-        XCTAssertNotEqual(
-            assemble(minutes: 8, user: day1, library: library, logs: [], policy: policy).focusPillar,
-            .mobility, "the rotation moves off the opening pillar the next day"
-        )
+        for day in 0..<2 {
+            let user = coldStartUser(level: .beginner, sessionsLogged: day, openingBias: .mobility)
+            XCTAssertEqual(
+                assemble(minutes: 8, user: user, library: library, logs: [], policy: policy).focusPillar,
+                .strength, "day \(day): a mobility opening bias does not unseat the cold-start strength lead"
+            )
+        }
     }
 
-    /// The PRD validation: a beginner's three First-Week sessions never exceed the difficulty cap and
-    /// span different pillars.
-    func testColdStartValidationCapsDifficultyAndSpreadsPillars() async throws {
+    /// The PRD validation (US-004): a beginner's three First-Week sessions all lead strength and never
+    /// exceed the difficulty cap - the lead reverses to strength while the gentleness rail holds.
+    func testColdStartValidationCapsDifficultyAndLeadsStrength() async throws {
         let library = try await library()
         let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
 
-        var focusPillars: [Pillar] = []
         for day in 0..<3 {
             let user = coldStartUser(level: .beginner, sessionsLogged: day)
             let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
@@ -991,9 +983,8 @@ final class SessionAssemblyTests: XCTestCase {
                     "cold-start day \(day) prescribed \(prescription.exercise.id) above the difficulty-2 cap"
                 )
             }
-            focusPillars.append(try XCTUnwrap(workout.focusPillar))
+            XCTAssertEqual(try XCTUnwrap(workout.focusPillar), .strength, "cold-start day \(day) must lead strength")
         }
-        XCTAssertGreaterThan(Set(focusPillars).count, 1, "three cold-start days must span different pillars")
     }
 
     /// A warmed-up user (cold-start retired) is unaffected by Step 0: even a lingering contract in the
@@ -1014,40 +1005,34 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
-    /// Cold-start assembly is deterministic run to run, including on a forced single-focus primal day.
+    /// Cold-start assembly is deterministic run to run, on the forced strength-led single-focus day.
     func testColdStartAssemblyIsDeterministic() async throws {
         let library = try await library()
         let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-        let user = coldStartUser(level: .beginner, sessionsLogged: 2) // rotates onto a primal day
+        let user = coldStartUser(level: .beginner, sessionsLogged: 2) // US-004: every cold-start day leads strength
         let signature = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
-        XCTAssertEqual(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy).focusPillar, .primal)
+        XCTAssertEqual(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy).focusPillar, .strength)
         for _ in 0..<10 {
             let next = structuralSignature(assemble(minutes: 8, user: user, library: library, logs: [], policy: policy))
             XCTAssertEqual(next, signature, "cold-start assembly is not deterministic")
         }
     }
 
-    /// When a First-Week Contrast day rotates onto primal but the primal block cannot be built (an
-    /// `ankle` injury contraindicates the whole `locomotion` pattern, so no eligible primal movement
-    /// survives), the `.single(.primal)` plan degrades to a strength/mobility block. `focusPillar` must
-    /// report the pillar the session actually delivers, not the aspirational `.primal` from the plan.
-    func testColdStartPrimalDegradationReportsTheActualPillar() async throws {
+    /// US-004: an injured beginner's cold-start day leads **strength**, not the primal day the retired
+    /// First-Week Contrast rotation used to force at `sessionsLogged 2`. The single training block is a
+    /// strength block, and the `ankle` injury (which contraindicates the whole `locomotion` pattern)
+    /// leaves the strength lead untouched - strength never draws from locomotion.
+    func testColdStartInjuredBeginnerLeadsStrength() async throws {
         let library = try await library()
         let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
-        // Beginner, no desk bias, no openingBias -> rotation starts at strength; sessionsLogged 2 lands
-        // on the primal slot. The ankle injury then strips every locomotion movement from the pool.
+        // Beginner, no desk bias, sessionsLogged 2 - the day the old rotation landed on primal. Under
+        // US-004 it leads strength instead; the ankle injury does not touch that.
         let user = coldStartUser(level: .beginner, sessionsLogged: 2, injuries: ["ankle"])
-
-        // Guard: the plan really does rotate onto primal here (so this exercises the degradation path).
-        XCTAssertEqual(
-            ColdStartOverride.contrastPillar(user: user, available: Pillar.allCases), .primal,
-            "sessionsLogged 2 must rotate onto the primal slot for this test to mean anything"
-        )
 
         let workout = assemble(minutes: 8, user: user, library: library, logs: [], policy: policy)
 
-        let focus = try XCTUnwrap(workout.focusPillar, "a single-focus day must still report a focus pillar")
-        XCTAssertNotEqual(focus, .primal, "a degraded primal day must not falsely advertise a primal focus")
+        let focus = try XCTUnwrap(workout.focusPillar, "a single-focus day must report a focus pillar")
+        XCTAssertEqual(focus, .strength, "a cold-start day leads strength (US-004)")
 
         // The reported focus is the single training block the session actually built.
         let trainingBlocks = workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
@@ -1058,7 +1043,7 @@ final class SessionAssemblyTests: XCTestCase {
         )
         XCTAssertFalse(
             trainingBlocks[0].exercises.contains { $0.exercise.movementPattern == .locomotion },
-            "the ankle injury leaves no locomotion movement in the degraded block"
+            "a strength lead never draws from the locomotion pattern"
         )
     }
 
@@ -1176,12 +1161,12 @@ final class SessionAssemblyTests: XCTestCase {
     }
 
     /// The Return override is suppressed while cold-start is active: cold-start already serves gentle,
-    /// capped, contrast sessions, so a "Return" during the First-Week window defers to the cold-start
-    /// rotation rather than forcing mobility.
+    /// capped, strength-led sessions, so a "Return" during the First-Week window defers to the
+    /// cold-start strength lead rather than forcing mobility.
     func testReturnSuppressedDuringColdStart() async throws {
         let library = try await library()
-        // A cold-start user (day 0: rotation starts at strength for a non-desk worker with no bias)
-        // whose lone prior session was 10 days ago - the raw gap would read as a Return.
+        // A cold-start user (day 0 leads strength under US-004) whose lone prior session was 10 days
+        // ago - the raw gap would read as a Return.
         let coldUser = coldStartUser(level: .beginner, sessionsLogged: 0, active: true)
         let policy = coldStartPolicy(forceContrastSpread: true, cappedMaxDifficulty: 2)
         let logs = [log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 10)]
@@ -1190,7 +1175,7 @@ final class SessionAssemblyTests: XCTestCase {
         let workout = assemble(minutes: 8, user: coldUser, library: library, logs: logs, policy: policy)
         XCTAssertEqual(
             workout.focusPillar, .strength,
-            "cold start owns the first sessions: its rotation (strength on day 0) wins over the Return's mobility lead"
+            "cold start owns the first sessions: its strength lead wins over the Return's mobility lead"
         )
         XCTAssertFalse(workout.wasReturn, "a cold-start session is not flagged as a Return (the two are mutually exclusive)")
     }

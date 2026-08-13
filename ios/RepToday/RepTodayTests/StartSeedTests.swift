@@ -37,7 +37,7 @@ final class StartSeedTests: XCTestCase {
     }
 
     /// A fresh, freshly-onboarded user at the given fitness level: cold-start active, no history, no
-    /// `why` bias and not desk-bound, so the First-Week Contrast rotation opens on strength.
+    /// `why` bias and not desk-bound. Every cold-start day leads strength (US-004).
     private func freshUser(level: FitnessLevel) -> User {
         User(
             id: "u1",

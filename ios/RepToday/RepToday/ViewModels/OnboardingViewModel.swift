@@ -14,7 +14,7 @@ import Observation
 ///    fresh (`active == true`, `sessionsLogged == 0`);
 /// 2. saves that user through `UserServiceProtocol`; and
 /// 3. seeds and persists the cold-start `SessionPolicy` through `SessionPolicyServiceProtocol`
-///    (Starting Difficulty capped from `fitnessLevel`, First-Week Contrast forced on - US-G01),
+///    (Starting Difficulty capped from `fitnessLevel` - US-G01, cold-start strength lead forced on - US-004),
 ///    so the engine's Step 0 overrides apply from session one.
 ///
 /// It is an `@Observable` (Observation framework) view model per the project conventions; the
