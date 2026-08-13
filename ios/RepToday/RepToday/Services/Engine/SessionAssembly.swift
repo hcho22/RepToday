@@ -280,7 +280,8 @@ enum SessionAssembly {
             user: user,
             sessionPolicy: sessionPolicy
         )
-        // On a Return, discipline overrides optimization: mobility leads regardless of staleness.
+        // On a Return, discipline overrides optimization: strength leads regardless of staleness
+        // (US-005), kept gentle by the difficulty cap and volume floor rather than the pillar.
         let pillarPlan = ReturnOverride.overridePlan(coldStartPlan, isReturn: isReturn)
 
         // The Start Seed (US-O02), resolved exactly once for the whole generation. Its two halves - the

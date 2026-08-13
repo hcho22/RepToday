@@ -809,6 +809,16 @@ Consequence by design: `why.openingBias`/`sitsLong` no longer steer the cold-sta
 `FirstWeekContrastTests` was rewritten in full to the strength-led invariant (renamed row "Cold-start strength lead" in `docs/test-coverage.md`), and the cold-start rotation/spread/primal-degradation cases in `SessionAssemblyTests` were rewritten to assert every cold-start single-focus day leads strength while proving the difficulty cap is preserved.
 Determinism and `asOf`-purity are preserved (the cold-start "day" comes from `sessionsLogged`, never the wall clock).
 
+### Returning-user comeback leads strength, kept gentle (US-005)
+
+The fifth story of the "Strength-Primary Sessions" PRD: the Return counterpart to US-004's cold-start reversal, applying the same change to the other Step 0 gentle window so a comeback after a gap is a *gentle strength* session rather than the all-mobility session that prompted the whole PRD.
+`ReturnOverride.overridePlan(_:isReturn:)` now leads strength: a single-focus Return returns `.single(.strength)` (was `.single(.mobility)`), and a blend Return re-points via `.blend(weights.favoring(.strength))` (was `favoring(.mobility)`), reusing the same `PillarWeights.favoring(_:)` share-swap US-004 used so the blend still sums to 1 and no pillar is starved.
+The gentleness rails are intentionally untouched and still carry the whole comeback ease: the difficulty cap (`returnMaxDifficulty` via `returnPool`) and the reduced-volume floor / ramp (`reentryFloorScale` via `reentryScale`/`rampScale`). Return *detection* (`isReturn`/`daysSinceLastSession`, `returnThresholdDays`) and the cold-start/Return mutual exclusion are unchanged.
+Doc comments describing the retired "led by mobility - the gentlest, same-day-relief pillar" behaviour (`ReturnOverride.swift` enum-level and `overridePlan`, plus the `SessionAssembly` call-site comment) were rewritten to the strength-led reality (strength leads; gentleness comes from the cap and floor).
+`ReturnOverrideTests` pillar-plan assertions were retargeted to the strength-led invariant (`testReturnLeadsSingleFocusWithStrength`/`testReturnLeadsBlendWithStrength`) while the difficulty-cap and volume-floor/ramp tests still assert the gentleness rails hold; the end-to-end `SessionAssemblyTests` case was rewritten to `testReturnLeadsWithStrength` (the retired mobility-vs-staleness contrast is no longer expressible now that single-focus already leads strength in the steady state - the override and the steady state agree, exactly as cold start does), and the cold-start-suppression comment/message were de-referenced from the old "Return's mobility lead" wording.
+Consequence by design (already accepted by the PRD for cold start and steady state): the returning desk worker no longer gets a dedicated same-day mobility-relief comeback; the comeback is strength-led, gentle via the rails.
+Determinism and `asOf`-purity are preserved (the gap is a calendar-day difference against the injected `asOf`, never a wall-clock read).
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.
