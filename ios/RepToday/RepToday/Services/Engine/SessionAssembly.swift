@@ -277,7 +277,6 @@ enum SessionAssembly {
                 asOf: asOf,
                 calendar: calendar
             ),
-            template: template,
             user: user,
             sessionPolicy: sessionPolicy
         )
@@ -755,9 +754,11 @@ private struct Builder {
                     middle.append(block)
                 }
             case .primal:
-                // A single-focus primal day (only reached under the Step 0 First-Week Contrast, US-E04)
-                // builds a dedicated locomotion block, degrading gracefully to strength then mobility if
-                // the capped pool leaves no eligible primal movement so the day is never empty.
+                // A single-focus primal day builds a dedicated locomotion block, degrading gracefully to
+                // strength then mobility if the capped pool leaves no eligible primal movement so the day
+                // is never empty. Retained as defensive degradation: no engine path produces a
+                // `.single(.primal)` plan today (US-001 leads single-focus with strength; US-004's Step 0
+                // cold-start override leads strength, retiring the First-Week Contrast primal rotation).
                 let block = primalBlock()
                     ?? strengthBlock()
                     ?? mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)

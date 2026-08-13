@@ -16,10 +16,13 @@ import Foundation
 /// - **Start Seed** (`startSeed` / `startBandedPool` / `volumeSeed`, US-O02) - the floor beneath that
 ///   cap and the volume a no-history prescription opens at, so an *active* user's first sessions are
 ///   not served the absolute beginner tier at beginner volume.
-/// - **First-Week Contrast** (`overridePlan`) - when the contract sets `forceContrastSpread`, the
-///   day's lead pillar is forced onto a deterministic rotation keyed by `coldStart.sessionsLogged`,
-///   overriding the single-theme bias `why`/`sitsLong` alone would produce (a desk worker's
-///   all-mobility week) so the first week visibly spans strength, mobility, and primal.
+/// - **Cold-Start Strength Lead** (`overridePlan`, US-004) - when the contract sets
+///   `forceContrastSpread`, every cold-start day is forced to lead **strength** (a single-focus day
+///   trains strength; a blend leads strength), overriding the mobility/primal bias `why`/`sitsLong`
+///   alone would produce (a desk worker's all-mobility week). Strength is what the first week builds;
+///   the gentleness rails above (the difficulty cap and the Start Seed) are what keep it winnable.
+///   This reverses the retired First-Week Contrast rotation, which deliberately *spread* the lead
+///   across all three pillars - the flag's meaning is now "lead strength on cold-start days".
 ///
 /// Step 0 is gated on two conditions and is otherwise a no-op: the user is still in the cold-start
 /// window (`user.coldStart.active`) *and* the live policy carries a `coldStartContract`. Once the
@@ -35,11 +38,6 @@ import Foundation
 /// Like every other step it is a pure function of its inputs (no hidden clock; the "day" is read from
 /// `sessionsLogged`), so it stays deterministic and unit-testable.
 enum ColdStartOverride {
-
-    /// The canonical First-Week Contrast rotation order. Cycling through all three first-class
-    /// pillars is what guarantees the vivid day-to-day spread (US-G02) instead of a single-theme
-    /// week; the rotation is restricted per shape to the pillars a session can actually train.
-    static let rotation: [Pillar] = [.strength, .mobility, .primal]
 
     // MARK: - Gate
 
@@ -391,21 +389,27 @@ enum ColdStartOverride {
         startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs).volume
     }
 
-    // MARK: - First-Week Contrast
+    // MARK: - Cold-Start Strength Lead
 
-    /// The pillar plan with First-Week Contrast applied: the lead pillar is forced onto the
-    /// `sessionsLogged` rotation so consecutive cold-start days never repeat a pillar, overriding the
-    /// single-theme bias `why`/`sitsLong` alone would produce. A no-op when Step 0 is inactive or the
-    /// contract does not force the spread.
+    /// The pillar plan with the cold-start strength lead applied (US-004): every cold-start day is
+    /// forced to lead **strength**, overriding the mobility/primal single-theme bias `why`/`sitsLong`
+    /// alone would produce (a desk worker's all-mobility week). A no-op when Step 0 is inactive or the
+    /// contract does not set the flag.
     ///
-    /// - A single-focus session's one pillar is set directly to the rotated pillar (the rotation
-    ///   spans all three pillars, so a desk worker's mobility lean no longer collapses the week).
-    /// - A blend's shares are re-pointed so the rotated pillar owns the largest block (its block leads
-    ///   and gets the most time), rotating only over the pillars the shape actually trains
-    ///   (strength/mobility for a short or full blend; all three for an extended blend).
+    /// - A single-focus session's one pillar becomes strength outright, so mobility survives only as
+    ///   the structural warm-up rather than the day's theme.
+    /// - A blend's shares are re-pointed so strength owns the largest block (its block leads and gets
+    ///   the most time) via `PillarWeights.favoring(_:)`, which preserves the multiset of shares - the
+    ///   emphasis is reordered, never a pillar starved. On an extended blend that already leads
+    ///   strength this is a no-op; on a mobility- or primal-led blend it swaps strength to the front.
+    ///
+    /// This reverses the retired First-Week Contrast rotation (US-G02/US-E04), which forced the lead
+    /// onto a `[.strength, .mobility, .primal]` cycle to *spread* the first week across all three
+    /// pillars. The `forceContrastSpread` flag survives as the gate; its meaning is now "lead strength
+    /// on cold-start days". The gentleness this leaves untouched (the difficulty cap and the Start
+    /// Seed's reduced volume) is what keeps a strength-led first week winnable.
     static func overridePlan(
         _ plan: PillarPlan,
-        template: SessionShapeTemplate,
         user: User,
         sessionPolicy: SessionPolicy
     ) -> PillarPlan {
@@ -417,37 +421,10 @@ enum ColdStartOverride {
 
         switch plan {
         case .single:
-            return .single(contrastPillar(user: user, available: Pillar.allCases))
+            return .single(.strength)
         case .blend(let weights):
-            let available: [Pillar] = template == .blendExtended
-                ? [.strength, .mobility, .primal]
-                : [.strength, .mobility]
-            let lead = contrastPillar(user: user, available: available)
-            return .blend(weights.favoring(lead))
+            return .blend(weights.favoring(.strength))
         }
-    }
-
-    // MARK: - Rotation
-
-    /// The forced lead pillar for the current cold-start day: the onboarding-derived starting pillar
-    /// rotated forward by `coldStart.sessionsLogged`, restricted to the pillars a session's shape can
-    /// train. Rotating over at least two pillars guarantees consecutive days never repeat.
-    static func contrastPillar(user: User, available: [Pillar]) -> Pillar {
-        let ordered = rotation.filter { available.contains($0) }
-        guard !ordered.isEmpty else { return available.first ?? .strength }
-        let start = ordered.firstIndex(of: startingPillar(for: user)) ?? 0
-        let day = max(0, user.coldStart.sessionsLogged)
-        return ordered[(start + day) % ordered.count]
-    }
-
-    /// The day-zero starting pillar derived from onboarding inputs: the user's stated
-    /// `why.openingBias` when present (the single allowed programming lever of `why`), otherwise
-    /// mobility for a desk worker (`sitsLong`, for same-day relief), otherwise strength. The rotation
-    /// then walks forward from here, so onboarding sets where the first week *opens* but never lets it
-    /// stall on one theme.
-    static func startingPillar(for user: User) -> Pillar {
-        if let bias = user.why.openingBias { return bias }
-        return user.profile.sitsLong ? .mobility : .strength
     }
 
 }

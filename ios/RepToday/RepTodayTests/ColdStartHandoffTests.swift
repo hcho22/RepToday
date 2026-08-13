@@ -246,11 +246,10 @@ final class ColdStartHandoffTests: XCTestCase {
 
         let plan = ColdStartOverride.overridePlan(
             .single(.strength),
-            template: .singleFocus,
             user: outcome.user,
             sessionPolicy: outcome.sessionPolicy
         )
-        XCTAssertEqual(plan, .single(.strength), "First-Week Contrast no longer forces the lead pillar.")
+        XCTAssertEqual(plan, .single(.strength), "With cold-start retired, the lead-pillar override no longer applies.")
     }
 
     // MARK: - Determinism

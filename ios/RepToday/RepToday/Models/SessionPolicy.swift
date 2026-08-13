@@ -83,8 +83,10 @@ extension SessionPolicy {
     /// values (floor 1 / x1.0 / 3 sets), so a policy persisted before US-O02 still loads and behaves
     /// exactly as it did.
     struct ColdStartContract: Codable, Equatable {
-        /// Force a vivid day-to-day pillar spread (First-Week Contrast), overriding the
-        /// single-theme bias that `why`/`sitsLong` alone would produce.
+        /// Force every cold-start day to lead **strength** (US-004), overriding the mobility/primal
+        /// single-theme bias that `why`/`sitsLong` alone would produce. (Named for the retired
+        /// First-Week Contrast spread this replaced; the flag is kept as the Step 0 gate and its
+        /// meaning is now "lead strength on cold-start days".)
         var forceContrastSpread: Bool
         /// Hard difficulty cap for cold-start sessions, in `1...5`. It is the *ceiling* of the Start
         /// Seed band: the engine serves at the gentle end of `[startingDifficultyFloor, this]` (below
