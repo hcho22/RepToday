@@ -213,5 +213,3 @@ The exercise catalog already supports this: 38 strength + 7 primal movements acr
 - **Accepted consequence to confirm at ship:** with "strength every session + no safety valve," mobility is never the *lead* anywhere - a user who only ever does 5-10 min sessions gets mobility solely as warm-up stretches, and desk workers lose their dedicated same-day mobility-relief day. This follows directly from the captain's decisions and is intended, but is the sharpest trade-off.
 - Does the "discipline-first" copy warrant a later, separate pass for coherence with strength-led content? (Out of scope here.)
 - Exact numeric target for the blend strength share within the 0.75-0.80 band, and the precise `minBlendShare` value (0.2 vs slightly lower) - to be pinned during implementation so timing fit still converges at 45/60 min.
-</content>
-</invoke>
