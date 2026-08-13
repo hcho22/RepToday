@@ -12,10 +12,11 @@ import Foundation
 ///
 /// - **The Return** (a fresh gap detected at generation time, `isReturn`) discipline-overrides Step 2:
 ///   the day is served easy and winnable *regardless of staleness or the policy's optimization
-///   levers*. `overridePlan` leads the session with mobility (the gentlest, same-day-relief pillar)
-///   instead of chasing the stalest pillar, `returnPool` caps the eligible difficulty so a strong
-///   pre-gap history can't serve a punishing tier, and `reentryScale` eases Step 6's volume to the
-///   gentle floor. The Return itself carries no readjustment - it is uniformly gentle.
+///   levers*. `overridePlan` leads the session with **strength** (as every session does now, US-005)
+///   instead of chasing the stalest pillar; the comeback's gentleness comes not from the pillar but
+///   from the two rails that flank it - `returnPool` caps the eligible difficulty so a strong pre-gap
+///   history can't serve a punishing tier, and `reentryScale` eases Step 6's volume to the gentle
+///   floor. The Return itself carries no readjustment - it is uniformly gentle.
 /// - **The Re-entry Ramp** (`sessionPolicy.reentry`, set to `rampSessions` by the Programmer after a
 ///   Return, US-F03) walks difficulty back up over the sessions that follow: `reentryScale` starts at
 ///   the same gentle floor and climbs toward neutral as `rampSessionsRemaining` decrements, so the
@@ -96,22 +97,24 @@ enum ReturnOverride {
         return capped.isEmpty ? pool : capped
     }
 
-    /// The pillar plan with the Return override applied: the day is led by mobility - the gentlest,
-    /// same-day-relief pillar - *regardless of staleness or the policy's optimization levers*, so a
-    /// returning user gets a winnable session instead of the stalest, hardest pillar the optimizer
-    /// would otherwise chase. A no-op when this is not a Return.
+    /// The pillar plan with the Return override applied: the day is led by **strength** - as every
+    /// session is now (US-005) - *regardless of staleness or the policy's optimization levers*, so a
+    /// returning user gets a strength-led comeback instead of the stalest, hardest pillar the optimizer
+    /// would otherwise chase. A no-op when this is not a Return. Gentleness is preserved by the rails
+    /// that flank this choice, not by the pillar: `returnPool`'s difficulty cap and `reentryScale`'s
+    /// volume floor keep the strength-led comeback winnable.
     ///
-    /// - A single-focus Return trains mobility directly.
-    /// - A blend Return re-points its shares so mobility owns the largest block (it leads and gets the
+    /// - A single-focus Return trains strength directly.
+    /// - A blend Return re-points its shares so strength owns the largest block (it leads and gets the
     ///   most time), preserving the shares' sum-to-1 and every pillar's floor - the other pillars still
-    ///   appear, mobility simply leads.
+    ///   appear, strength simply leads.
     static func overridePlan(_ plan: PillarPlan, isReturn: Bool) -> PillarPlan {
         guard isReturn else { return plan }
         switch plan {
         case .single:
-            return .single(.mobility)
+            return .single(.strength)
         case .blend(let weights):
-            return .blend(weights.favoring(.mobility))
+            return .blend(weights.favoring(.strength))
         }
     }
 

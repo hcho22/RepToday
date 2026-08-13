@@ -5,10 +5,11 @@ import XCTest
 /// makes discipline override optimization after a gap.
 ///
 /// Coverage mirrors the PRD acceptance criteria at the unit level: a Return is detected once the gap
-/// since the last completed session crosses the threshold; a Return leads with mobility and caps the
-/// eligible difficulty regardless of staleness; and the Re-entry Ramp's volume scale starts at the
-/// gentle floor and climbs back to neutral as the counter decrements. The end-to-end behavior over the
-/// real pipeline lives in `SessionAssemblyTests`, and the Step 6 volume hold in `AdaptiveOverloadTests`.
+/// since the last completed session crosses the threshold; a Return leads with strength (US-005) while
+/// keeping the comeback gentle via the capped eligible difficulty and eased volume floor regardless of
+/// staleness; and the Re-entry Ramp's volume scale starts at the gentle floor and climbs back to
+/// neutral as the counter decrements. The end-to-end behavior over the real pipeline lives in
+/// `SessionAssemblyTests`, and the Step 6 volume hold in `AdaptiveOverloadTests`.
 final class ReturnOverrideTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -123,25 +124,25 @@ final class ReturnOverrideTests: XCTestCase {
 
     // MARK: - Pillar-plan override (discipline over optimization)
 
-    func testReturnLeadsSingleFocusWithMobility() {
-        // Optimization would train strength (the stalest single pillar); the Return overrides to mobility.
-        XCTAssertEqual(ReturnOverride.overridePlan(.single(.strength), isReturn: true), .single(.mobility))
-        XCTAssertEqual(ReturnOverride.overridePlan(.single(.primal), isReturn: true), .single(.mobility))
+    func testReturnLeadsSingleFocusWithStrength() {
+        // A Return leads strength (US-005), gentle via the difficulty cap and volume floor, not the pillar.
+        XCTAssertEqual(ReturnOverride.overridePlan(.single(.mobility), isReturn: true), .single(.strength))
+        XCTAssertEqual(ReturnOverride.overridePlan(.single(.primal), isReturn: true), .single(.strength))
         // Not a Return: the plan is untouched.
-        XCTAssertEqual(ReturnOverride.overridePlan(.single(.strength), isReturn: false), .single(.strength))
+        XCTAssertEqual(ReturnOverride.overridePlan(.single(.mobility), isReturn: false), .single(.mobility))
     }
 
-    func testReturnLeadsBlendWithMobility() {
-        // A strength-heavy blend: mobility should end up owning the largest share after the override.
-        let strengthHeavy = PillarWeights(strength: 0.6, mobility: 0.3, primal: 0.1)
-        guard case let .blend(weights) = ReturnOverride.overridePlan(.blend(strengthHeavy), isReturn: true) else {
+    func testReturnLeadsBlendWithStrength() {
+        // A mobility-heavy blend: strength should end up owning the largest share after the override.
+        let mobilityHeavy = PillarWeights(strength: 0.3, mobility: 0.6, primal: 0.1)
+        guard case let .blend(weights) = ReturnOverride.overridePlan(.blend(mobilityHeavy), isReturn: true) else {
             return XCTFail("a blend Return must stay a blend")
         }
-        XCTAssertGreaterThan(weights.mobility, weights.strength, "mobility leads a Return blend")
-        XCTAssertGreaterThan(weights.mobility, weights.primal, "mobility leads a Return blend")
+        XCTAssertGreaterThan(weights.strength, weights.mobility, "strength leads a Return blend")
+        XCTAssertGreaterThan(weights.strength, weights.primal, "strength leads a Return blend")
         // The multiset of shares is preserved (nothing is starved), still summing to 1.
         XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 0.0001)
-        XCTAssertEqual(weights.mobility, 0.6, accuracy: 0.0001, "mobility takes the former max share")
+        XCTAssertEqual(weights.strength, 0.6, accuracy: 0.0001, "strength takes the former max share")
     }
 
     // MARK: - Re-entry Ramp scale

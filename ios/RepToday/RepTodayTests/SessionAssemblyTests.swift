@@ -1098,22 +1098,24 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertLessThan(returnedMax, baselineMax, "the Return is easier than the pre-gap norm")
     }
 
-    /// Step 2 discipline-overrides-optimization: a Return leads with mobility (same-day relief)
-    /// regardless of staleness, even when the optimizer would train the stalest pillar instead.
-    func testReturnLeadsWithMobilityOverStaleness() async throws {
+    /// Step 2: a Return leads with strength (US-005), kept gentle by the difficulty cap and volume
+    /// floor rather than the pillar. The Return no longer diverges from the steady-state lead the way
+    /// the retired mobility-led comeback did - single-focus already leads strength (US-001), so the
+    /// override and the steady state now agree, exactly as cold start does (US-004).
+    func testReturnLeadsWithStrength() async throws {
         let library = try await library()
-        // Strength worked longest ago, mobility more recently but still past the Return threshold.
+        // Mobility worked longest ago, strength more recently but still past the Return threshold.
         let logs = [
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 8),
-            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 15),
+            log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 8),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 15),
         ]
-        // Guard: staleness optimization alone would train strength (the stalest pillar).
+        // The steady-state single-focus lead is already strength (US-001), and the Return keeps it.
         let optimized = PillarPlan.select(template: .singleFocus, recentLogs: logs, profile: user().profile, asOf: asOf, calendar: calendar)
-        XCTAssertEqual(optimized, .single(.strength), "optimization alone trains the stalest pillar")
+        XCTAssertEqual(optimized, .single(.strength), "single-focus already leads strength in the steady state")
         XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "an 8-day gap is a Return")
 
         let workout = assemble(minutes: 8, user: user(), library: library, logs: logs)
-        XCTAssertEqual(workout.focusPillar, .mobility, "a Return serves mobility regardless of staleness")
+        XCTAssertEqual(workout.focusPillar, .strength, "a Return serves strength, gentle via the cap and floor")
     }
 
     /// The Re-entry Ramp walks Step 6's volume back up over the sessions after a Return: the lead
@@ -1162,7 +1164,8 @@ final class SessionAssemblyTests: XCTestCase {
 
     /// The Return override is suppressed while cold-start is active: cold-start already serves gentle,
     /// capped, strength-led sessions, so a "Return" during the First-Week window defers to the
-    /// cold-start strength lead rather than forcing mobility.
+    /// cold-start strength lead. Both now lead strength (US-004/US-005), so the guard is that the
+    /// session is a cold-start session, not a Return.
     func testReturnSuppressedDuringColdStart() async throws {
         let library = try await library()
         // A cold-start user (day 0 leads strength under US-004) whose lone prior session was 10 days
@@ -1175,7 +1178,7 @@ final class SessionAssemblyTests: XCTestCase {
         let workout = assemble(minutes: 8, user: coldUser, library: library, logs: logs, policy: policy)
         XCTAssertEqual(
             workout.focusPillar, .strength,
-            "cold start owns the first sessions: its strength lead wins over the Return's mobility lead"
+            "cold start owns the first sessions: its strength lead applies, not the Return path"
         )
         XCTAssertFalse(workout.wasReturn, "a cold-start session is not flagged as a Return (the two are mutually exclusive)")
     }
