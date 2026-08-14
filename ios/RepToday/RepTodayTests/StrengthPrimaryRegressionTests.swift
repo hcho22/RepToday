@@ -18,6 +18,21 @@ import XCTest
 ///      than the archived ~0.75-0.80 accessory model; and
 ///   3. stays deterministic and a pure function of the injected `asOf` (no wall-clock read).
 ///
+/// **US-M05** extends the same sweep with the Movement-Practice-removal regression guard: across every
+/// (regime, length) it also pins that
+///
+///   4. **no** session emits a mobility *middle* block - no `.mobility`-category block exists at all, and
+///      the training middle is built only from strength (+ a dedicated primal block at 41-60 min), so a
+///      later tuning change cannot silently bring Movement Practice back;
+///   5. the warm-up and cooldown still **lead** with a stretch complementing the day's lead strength
+///      pattern (US-M02 prefer-then-fill), at the regression altitude; and
+///   6. `sitsLong` remains a bookend *bias* only - toggling it across the full length matrix never
+///      changes the block-category structure and never introduces a mobility middle block.
+///
+/// `BookendComplementSelectionTests` / `SitsLongBookendBiasTests` prove the bookend mechanisms per-story
+/// (including the general-pool fallback and that `sitsLong` sizes nothing); the sweeps here complement -
+/// never duplicate - those by re-checking the structural invariants across the whole matrix.
+///
 /// The originally-reported bug this guards against is a 5-minute desk-worker session generated as all
 /// stretches. `SessionAssemblyTests` proves the per-story behavior; this suite is the one place a
 /// maintainer can see, at a glance, that the invariant holds across the whole matrix - so a change that
@@ -389,6 +404,144 @@ final class StrengthPrimaryRegressionTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - 4. US-M05: no mobility *middle* block, ever (the Movement-Practice regression guard)
+
+    /// The Movement Practice mobility accessory block was the last place a session carried a mobility
+    /// *middle*. US-M01 removed it; this pins that it stays gone across the whole matrix. For every
+    /// swept (regime, length) the assembled session must:
+    ///
+    ///   - contain **no** block of category `.mobility` at all (mobility survives only as the `.warmup`
+    ///     and `.cooldown` bookends, which are distinct categories - the exact structural distinction a
+    ///     resurrected Movement Practice block would violate);
+    ///   - resolve **no** training block to pillar `.mobility` (the pillar view of the same invariant);
+    ///   - build its training middle (everything between the bookends) out of only `.strength` and, at
+    ///     41-60 min, a dedicated `.primal` block - never a mobility middle - with strength always
+    ///     present and primal appearing only on the extended shape.
+    ///
+    /// This is asserted structurally (block categories / pillars), not on copy, so it survives future
+    /// wording changes while still catching a silently reintroduced mobility middle block.
+    func testNoSessionEmitsAMobilityMiddleBlockAcrossAllLengthsAndRegimes() async throws {
+        let library = try await library()
+        for regime in regimes(library: library) {
+            for minutes in lengths {
+                let workout = regime.generate(minutes)
+
+                // No `.mobility`-category block anywhere: mobility is bookend-only (warm-up/cooldown).
+                XCTAssertFalse(
+                    workout.blocks.contains { $0.category == .mobility },
+                    "[\(regime.name)] \(minutes) min emitted a mobility middle block (US-M05: none, ever)"
+                )
+
+                // The pillar view of the same invariant: no training block resolves to mobility.
+                let trainingPillars = workout.blocks
+                    .filter { $0.category != .warmup && $0.category != .cooldown }
+                    .compactMap { SessionAssembly.pillar(of: $0.category) }
+                XCTAssertFalse(
+                    trainingPillars.contains(.mobility),
+                    "[\(regime.name)] \(minutes) min has a training block resolving to the mobility pillar"
+                )
+
+                // The training middle is built only from strength (+ a dedicated primal block at 41-60).
+                let trainingCategories = Set(
+                    workout.blocks
+                        .filter { $0.category != .warmup && $0.category != .cooldown }
+                        .map(\.category)
+                )
+                XCTAssertTrue(
+                    trainingCategories.isSubset(of: [.strength, .primal]),
+                    "[\(regime.name)] \(minutes) min training middle \(trainingCategories) is not strength (+primal at 41-60)"
+                )
+                XCTAssertTrue(
+                    trainingCategories.contains(.strength),
+                    "[\(regime.name)] \(minutes) min must carry a strength training block"
+                )
+                if trainingCategories.contains(.primal) {
+                    XCTAssertGreaterThanOrEqual(
+                        minutes, 41,
+                        "[\(regime.name)] \(minutes) min carries a dedicated primal block below the 41-60 extended band"
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - 5. US-M05: bookend pattern-match preference stays covered (prefer-then-fill)
+
+    /// The warm-up and cooldown *lead* with a stretch complementing the day's lead strength pattern
+    /// (US-M02), a prefer-then-fill preference. `BookendComplementSelectionTests` proves the mechanism
+    /// per-story (including the general-pool fallback when nothing complements); this pins it at the
+    /// regression-sweep altitude so a change that quietly dropped the bias for some regime fails here too.
+    ///
+    /// Each regime leaves the whole mobility pool fresh (steady-state and cold-start log no mobility; the
+    /// Return regime's one mobility log cannot starve a pattern with >= 6 complementary stretches), so the
+    /// leading bookend stretch always resolves to a complementary one rather than the fallback - which is
+    /// what lets this assert the match firmly rather than only "non-empty".
+    func testBookendsLeadWithAStretchComplementingTheStrengthLeadAcrossRegimes() async throws {
+        let library = try await library()
+        for regime in regimes(library: library) {
+            // Representative blend lengths that always carry both bookends (a cooldown appears over 10 min).
+            for minutes in [15, 20, 30, 45, 60] {
+                let workout = regime.generate(minutes)
+
+                let strength = try XCTUnwrap(
+                    workout.blocks.first { $0.category == .strength },
+                    "[\(regime.name)] \(minutes) min must carry a strength block"
+                )
+                let lead = try XCTUnwrap(
+                    strength.exercises.first?.exercise.movementPattern,
+                    "[\(regime.name)] \(minutes) min strength block is empty"
+                )
+
+                for category in [ExerciseCategory.warmup, .cooldown] {
+                    let block = try XCTUnwrap(
+                        workout.blocks.first { $0.category == category },
+                        "[\(regime.name)] \(minutes) min is missing its \(category) bookend"
+                    )
+                    let firstStretch = try XCTUnwrap(
+                        block.exercises.first?.exercise,
+                        "[\(regime.name)] \(minutes) min \(category) bookend is empty (never starved)"
+                    )
+                    XCTAssertEqual(
+                        firstStretch.pillar, .mobility,
+                        "[\(regime.name)] \(minutes) min \(category) must lead with a mobility stretch"
+                    )
+                    XCTAssertTrue(
+                        firstStretch.complements?.contains(lead) == true,
+                        "[\(regime.name)] \(minutes) min \(category) leads with '\(firstStretch.id)', which does not complement the strength lead \(lead)"
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - 6. US-M05: sitsLong is a bookend bias only, never a mobility middle block
+
+    /// `sitsLong` biases bookend *ordering* toward posture/hip openers and sizes nothing
+    /// (`SitsLongBookendBiasTests` proves that at 5/20/45/60). This complements - not duplicates - that
+    /// suite by sweeping the *full* length matrix `5...60` and pinning the two structural halves of the
+    /// invariant end-to-end: toggling `sitsLong` on an otherwise-identical no-history profile never
+    /// changes the block-category structure and never introduces a mobility middle block, at any length.
+    func testSitsLongNeverChangesStructureOrAddsAMobilityMiddleBlockAcrossAllLengths() async throws {
+        let library = try await library()
+        for minutes in lengths {
+            let desk = assemble(minutes: minutes, user: user(sitsLong: true), library: library, logs: [])
+            let general = assemble(minutes: minutes, user: user(sitsLong: false), library: library, logs: [])
+
+            XCTAssertEqual(
+                desk.blocks.map(\.category), general.blocks.map(\.category),
+                "\(minutes) min: sitsLong changed the block-category structure (it must only reorder bookends)"
+            )
+            for (label, workout) in [("desk", desk), ("general", general)] {
+                XCTAssertFalse(
+                    workout.blocks.contains { $0.category == .mobility },
+                    "\(minutes) min (\(label)): sitsLong path emitted a mobility middle block"
+                )
+            }
+        }
+    }
+
+    // MARK: - 8. asOf-purity stays green (this guard does not weaken it)
 
     /// Generation is a pure function of the injected `asOf`: re-anchoring "now" and the whole history to
     /// a different absolute date (same relative gaps) produces the identical session, so nothing in the

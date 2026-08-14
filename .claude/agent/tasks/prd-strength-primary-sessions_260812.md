@@ -218,7 +218,7 @@ The exercise catalog already supports this: 38 strength + 7 primal movements acr
 
 # Follow-on: Movement Practice removal + pattern-matched bookends
 
-**Opened:** 2026-08-13 · **Status:** Captain-approved follow-on. **US-M01 has landed** (2026-08-13): the Movement Practice mobility training block and its split machinery (`PillarBalance`/`PillarWeights`) are removed, the freed minutes reallocated to strength, and the engine now builds every session as Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown with the strength lead structural. **US-M02 has also landed** (2026-08-13): each mobility movement in `Exercises.json` now carries a `complements: [MovementPattern]` tag, and the warm-up and cooldown lead prefer-then-fill with a stretch complementing the day's lead strength pattern (a bias, never a filter). **US-M03 has also landed** (2026-08-14): the desk-worker `sitsLong` signal (inert since US-M01 removed the block it sized) now *biases* warm-up/cooldown selection toward posture/hip openers - a reorder-only preference (`SessionAssembly.postureHipLean`/`isPostureHipOpener`) layered under the US-M02 lead-complement promotion, never a sizing lever and unable to reintroduce a mobility middle block. **US-M04..US-M05 remain spec-only** (uniform-vocabulary copy, the extended regression guard) - separately-authorized later tasks. This section supersedes the parts of the original PRD (and of `docs/adr/0001-strength-primary-sessions.md`) that keep mobility as a minority *accessory training block* - the "Movement Practice" block. It leaves everything else in the archived PRD above byte-for-byte intact; the seven original stories stayed shipped, this only retires their accessory-mobility clause.
+**Opened:** 2026-08-13 · **Status:** Captain-approved follow-on. **US-M01 has landed** (2026-08-13): the Movement Practice mobility training block and its split machinery (`PillarBalance`/`PillarWeights`) are removed, the freed minutes reallocated to strength, and the engine now builds every session as Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown with the strength lead structural. **US-M02 has also landed** (2026-08-13): each mobility movement in `Exercises.json` now carries a `complements: [MovementPattern]` tag, and the warm-up and cooldown lead prefer-then-fill with a stretch complementing the day's lead strength pattern (a bias, never a filter). **US-M03 has also landed** (2026-08-14): the desk-worker `sitsLong` signal (inert since US-M01 removed the block it sized) now *biases* warm-up/cooldown selection toward posture/hip openers - a reorder-only preference (`SessionAssembly.postureHipLean`/`isPostureHipOpener`) layered under the US-M02 lead-complement promotion, never a sizing lever and unable to reintroduce a mobility middle block. **US-M04 has also landed** (2026-08-14): validation-only, it sweeps the length matrix through the real assembly and pins that the surviving shape reads as the uniform Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown vocabulary with no mobility middle block (`UniformSessionShapeTests`). **US-M05 has also landed** (2026-08-14): test-only, it extends `StrengthPrimaryRegressionTests` with the Movement-Practice-removal regression guard (no mobility middle block across all lengths x regimes, bookend prefer-then-fill re-checked at the regression altitude, and `sitsLong` pinned as a bookend bias that never changes structure) - so **the whole US-M01..US-M05 follow-on has now landed**; the ADR-0002 / `CONTEXT.md` / `AGENTS.md` documentation trail below stays a separately-authorized later task. This section supersedes the parts of the original PRD (and of `docs/adr/0001-strength-primary-sessions.md`) that keep mobility as a minority *accessory training block* - the "Movement Practice" block. It leaves everything else in the archived PRD above byte-for-byte intact; the seven original stories stayed shipped, this only retires their accessory-mobility clause.
 **Story prefix:** `US-M##` - **M** for the Movement-Practice-removal follow-on; the prefix restarts (rather than continuing `US-008`) to mark this as a distinct, later-dated design pass on top of the completed `US-0##` set.
 **Source:** captain design session, 2026-08-13.
 
@@ -360,11 +360,11 @@ Each mobility movement is tagged with the strength pattern(s) it complements. A 
 
 **Acceptance Criteria:**
 
-- [ ] `StrengthPrimaryRegressionTests` is extended to assert **no** session (steady-state, cold-start, or Return) at 5/10/15/20/30/45/60 min emits a mobility *training* block between warm-up and cooldown.
-- [ ] The existing "strength in every session" invariants from US-007 stay green.
-- [ ] Bookend pattern-match preference and `sitsLong`-as-bias behavior are covered by tests.
-- [ ] Determinism and `asOf`-purity guards remain green.
-- [ ] Full unit suite green.
+- [x] `StrengthPrimaryRegressionTests` is extended to assert **no** session (steady-state, cold-start, or Return) at 5/10/15/20/30/45/60 min emits a mobility *training* block between warm-up and cooldown.
+- [x] The existing "strength in every session" invariants from US-007 stay green.
+- [x] Bookend pattern-match preference and `sitsLong`-as-bias behavior are covered by tests.
+- [x] Determinism and `asOf`-purity guards remain green.
+- [x] Full unit suite green.
 
 **Validation Test:**
 
@@ -401,7 +401,7 @@ The eventual *implementation* task (separate, not yet authorized) will:
 - Write **ADR-0002** superseding the Movement-Practice parts of ADR-0001. ADR-0001's "strength leads every session" invariant **stays**; its "mobility survives as a minority accessory block (Movement Practice)" clause is **retired**. This PRD follow-on supersedes that specific clause of ADR-0001 while leaving the rest intact.
 - Update **CONTEXT.md**: retire the "Movement Practice" glossary term; rewrite the "Pillar" entry so mobility is bookend-only.
 - Update **AGENTS.md** sections 2 ("Pillar balance") and 7, plus the `Pillar` / `Enums.swift` doc comments.
-- Extend `StrengthPrimaryRegressionTests` to assert no session ever emits a mobility middle block (US-M05 above).
+- ~~Extend `StrengthPrimaryRegressionTests` to assert no session ever emits a mobility middle block (US-M05 above).~~ **Done** (US-M05 landed 2026-08-14); only the ADR/`CONTEXT.md`/`AGENTS.md` items above remain.
 
 ## Open Questions
 
