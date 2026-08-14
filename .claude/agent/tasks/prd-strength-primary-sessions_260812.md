@@ -339,11 +339,11 @@ Each mobility movement is tagged with the strength pattern(s) it complements. A 
 
 **Acceptance Criteria:**
 
-- [ ] Every generated session is describable as Warm-Up -> Strength -> Cooldown (Primal an extra block at 41-60 min).
-- [ ] Cooldown is not forced onto the shortest sessions; bookends remain lean and length-scaled.
-- [ ] Strength keeps the majority of the clock at every length.
-- [ ] No surviving prose (in the touched surfaces) describes a "blend" as a strength-vs-mobility split or names Movement Practice as a live block.
-- [ ] Unit tests pass.
+- [x] Every generated session is describable as Warm-Up -> Strength -> Cooldown (Primal an extra block at 41-60 min).
+- [x] Cooldown is not forced onto the shortest sessions; bookends remain lean and length-scaled.
+- [x] Strength keeps the majority of the clock at every length.
+- [x] No surviving prose (in the touched surfaces) describes a "blend" as a strength-vs-mobility split or names Movement Practice as a live block.
+- [x] Unit tests pass.
 
 **Validation Test:**
 
