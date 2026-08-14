@@ -15,8 +15,11 @@ import Lottie
 /// bar, not on the rest overlay. A total ticking up in the corner turns the session into something to
 /// get through and pulls attention off the movement; the total is revealed once, on the completion
 /// summary. What replaces it is a clock that actually helps: a per-exercise Hold Timer on timed
-/// movements, which counts one side of the hold down and records the set at zero. Rep-based exercises
-/// keep the manual set tracker and "Complete set" exactly as they were.
+/// movements, which counts one side of the hold down and records the set at zero, and - since US-CC01 -
+/// an auto-advancing work window on rep-based training sets, which counts the set's planned per-set
+/// seconds down and records it at zero with no tap, offering a quiet **Done** to advance early. Warm-up
+/// and cooldown bookends keep their manual path (US-CC05 makes them hands-free); a rep-based set outside
+/// a training block, were one generated, keeps the manual "Complete set".
 struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -157,9 +160,11 @@ struct ActiveSessionView: View {
             case .active:
                 viewModel.resumeRest(asOf: Date())
                 viewModel.resumeHold(asOf: Date())
+                viewModel.resumeWorkWindow(asOf: Date())
             case .inactive, .background:
                 viewModel.pauseRest(asOf: Date())
                 viewModel.pauseHold(asOf: Date())
+                viewModel.pauseWorkWindow(asOf: Date())
             @unknown default:
                 break
             }
@@ -181,9 +186,13 @@ struct ActiveSessionView: View {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         blockContext(step)
                         // While a hold runs, the countdown takes the demo's place: the user is already
-                        // in position, so what they need on screen is the time left, not the shape.
+                        // in position, so what they need on screen is the time left, not the shape. A
+                        // rep-based training set is the same - it auto-advances on its own work window
+                        // (US-CC01), so its countdown ring stands in the demo slot the whole time.
                         if viewModel.isHolding {
                             HoldCountdownView(viewModel: viewModel)
+                        } else if viewModel.currentStepAutoAdvances {
+                            WorkWindowCountdownView(viewModel: viewModel)
                         } else {
                             ExerciseDemoView(prescription: step.prescription)
                         }
@@ -391,6 +400,25 @@ struct ActiveSessionView: View {
             .disabled(!viewModel.canStartHold)
             .accessibilityLabel(startHoldAccessibilityTitle)
             .accessibilityHint("Counts the hold down and records the set when it reaches zero")
+        } else if viewModel.currentStepAutoAdvances {
+            // A rep-based training set auto-advances on its work window (US-CC01): the timer, not a tap,
+            // ordinarily advances it, so the primary control is **Done** - the quiet way to end the
+            // current window early and move on. Being caught mid-rep at zero carries no penalty, so Done
+            // is an escape hatch, not an obligation. It stays labelled "Done" even on the last set (the
+            // completion celebration says what finished), so the hands-free flow never asks "did you
+            // finish?".
+            Button {
+                viewModel.finishWorkWindowEarly()
+            } label: {
+                Text("Done")
+                    .font(Theme.Typography.button)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Theme.Spacing.workoutTouchTarget)
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .accessibilityLabel("Done")
+            .accessibilityHint("Ends this set early and moves on")
         } else {
             Button {
                 viewModel.completeSet()
@@ -770,6 +798,55 @@ private struct HoldCountdownView: View {
         .onReceive(ticker) { date in
             currentDate = date
             viewModel.completeHoldIfElapsed(asOf: date)
+        }
+    }
+}
+
+// MARK: - Work window (US-CC01)
+
+/// The auto-advancing work window for a rep-based training set (US-CC01).
+///
+/// It takes the demo's place while the set is on screen and counts the set's planned per-set seconds
+/// down - the same number the engine budgeted (`SessionAssembly.workSecondsPerSet`, US-CC08), so the
+/// screen window can never drift from the plan. Unlike the Hold Timer it *auto-starts*: appearing is
+/// enough to begin the countdown, so a rep-based set is hands-free with no Start tap. At zero the view
+/// model records the set completed (identical to a tapped completion) and flows into the rest, firing
+/// the same accessible cue exactly once. The ticker lives here so it exists only while the window is on
+/// screen, and it drives a *pure* check (`completeWorkWindowIfElapsed`) that is a no-op until the
+/// deadline passes, so the cue can never fire early or per tick. A swap finishing (`isSwapping` back to
+/// false) re-arms the window for whatever slot now occupies the position.
+private struct WorkWindowCountdownView: View {
+    let viewModel: ActiveSessionViewModel
+
+    /// Drives the countdown display and the auto-advance/cue check. Kept off the view body so the
+    /// mutation happens in an action closure, never during a render pass.
+    @State private var currentDate = Date()
+    private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        // The full window is the planned per-set seconds; before the window has started (the brief
+        // moment between appearing and `startWorkWindow()`) the ring shows that full value rather than
+        // an empty zero, so it never flashes drained.
+        let total = max(viewModel.workWindowSecondsPerSet ?? viewModel.workWindowTotalSeconds, 1)
+        let remaining = viewModel.isRunningWorkWindow ? viewModel.workWindowRemaining(asOf: currentDate) : total
+
+        CountdownRing(
+            remaining: remaining,
+            fraction: min(1, max(0, Double(remaining) / Double(total))),
+            accessibilityLabel: "Work window, \(remaining) seconds remaining"
+        )
+        // The countdown stands in the demo's own card, so it changes what is in the slot and nothing
+        // else - not the card under it, not the exercise name and target below it.
+        .exerciseSlotCard()
+        // Auto-start on appear (hands-free) - and after a swap settles, where the view stays mounted so
+        // no fresh `onAppear` fires. Both are idempotent via `canStartWorkWindow`.
+        .onAppear { viewModel.startWorkWindow() }
+        .onChange(of: viewModel.isSwapping) { _, swapping in
+            if !swapping { viewModel.startWorkWindow() }
+        }
+        .onReceive(ticker) { date in
+            currentDate = date
+            viewModel.completeWorkWindowIfElapsed(asOf: date)
         }
     }
 }

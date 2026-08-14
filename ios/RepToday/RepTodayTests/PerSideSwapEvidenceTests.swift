@@ -945,6 +945,130 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
+    /// The auto-advancing work window driven live through the production player (US-CC01).
+    ///
+    /// A rep-based strength set opens on a countdown ring with **no tap** - the window auto-starts,
+    /// unlike the tap-started hold - runs down on the real `Timer` publisher in wall-clock time, and
+    /// hands off to the rest at zero having recorded the set. Exercising the publisher, the deadline
+    /// arithmetic and the hands-free auto-advance as one system rather than as view-model pieces; the
+    /// runloop is pumped until the hand-off has *settled* rather than for a fixed budget, so a loaded
+    /// machine still tests the behaviour instead of failing on the clock.
+    func testWorkWindowAutoAdvancesHandsFreeInTheLivePlayer() throws {
+        // Longer than `HostedSurface`'s settle interval, so the window is still running when the freshly
+        // hosted surface is first read - then the loop below drives it the rest of the way to zero.
+        let workout = shortRepWorkout(seconds: 5, sets: 1)
+        let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
+
+        // No tap: the set opens already counting down on its work window.
+        let opening = AccessibilityTree.labels(in: host.view)
+        XCTAssertTrue(
+            opening.contains { $0.hasPrefix("Work window, ") && $0.hasSuffix(" seconds remaining") },
+            "the rep-based set should open hands-free on an auto-advancing work window; "
+            + "the player reads \(opening)"
+        )
+
+        func handedOffToRest(_ labels: [String]) -> Bool {
+            labels.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") }
+                && !labels.contains { $0.hasPrefix("Work window, ") }
+        }
+        let ceiling = Date().addingTimeInterval(20)
+        var after: [String] = []
+        repeat {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            after = AccessibilityTree.labels(in: host.view)
+        } while Date() < ceiling && !handedOffToRest(after)
+
+        print("=== Rep Today - after a live 2 second work window, the player reads: \(after) ===")
+        XCTAssertTrue(
+            after.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
+            "the window should have auto-advanced into the rest with no tap; the player reads \(after)"
+        )
+        XCTAssertFalse(
+            after.contains { $0.hasPrefix("Work window, ") },
+            "the countdown should be gone once it reached zero; the player reads \(after)"
+        )
+    }
+
+    /// The **Done** control driven live through the production player (US-CC01).
+    ///
+    /// Activated the way VoiceOver's double-tap does - driving the shipped control rather than a
+    /// view-model call - it ends a still-running work window early and advances immediately into the
+    /// rest, with no penalty prompt. The window is authored long, so it is unambiguously still running
+    /// when Done is pressed and nothing but Done could have advanced it.
+    func testDoneControlAdvancesEarlyInTheLivePlayer() throws {
+        let workout = shortRepWorkout(seconds: 120, sets: 1)
+        let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
+
+        let running = AccessibilityTree.labels(in: host.view)
+        XCTAssertTrue(
+            running.contains { $0.hasPrefix("Work window, ") },
+            "the work window should be running before Done is pressed; the player reads \(running)"
+        )
+
+        let done = try XCTUnwrap(
+            AccessibilityTree.element(labeled: "Done", in: host.view),
+            "the live player offers no Done control; it reads \(running)"
+        )
+        XCTAssertTrue(done.accessibilityActivate(), "the Done control did not activate")
+
+        // The window's node must be gone *and* the rest up before we read the settled state - the freed
+        // demo-slot countdown lingers in the tree for a beat after the swap to `RestView`.
+        func advancedToRest(_ labels: [String]) -> Bool {
+            labels.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") }
+                && !labels.contains { $0.hasPrefix("Work window, ") }
+        }
+        let ceiling = Date().addingTimeInterval(20)
+        var after: [String] = []
+        repeat {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            after = AccessibilityTree.labels(in: host.view)
+        } while Date() < ceiling && !advancedToRest(after)
+
+        print("=== Rep Today - after pressing Done on a live work window, the player reads: \(after) ===")
+        XCTAssertTrue(
+            after.contains { $0.hasPrefix("Rest, ") && $0.hasSuffix(" seconds remaining") },
+            "Done should advance early into the rest; the player reads \(after)"
+        )
+        XCTAssertFalse(
+            after.contains { $0.hasPrefix("Work window, ") },
+            "the window should be gone after Done; the player reads \(after)"
+        )
+    }
+
+    /// A session of short rep-based strength sets, so a live test can drive the auto-advancing work
+    /// window to zero without waiting out a real 40-second set. `estimatedTimePerSetSeconds == seconds`
+    /// against a 1-rep default prices the window at exactly `seconds` (`SessionAssembly.workSecondsPerSet`),
+    /// so the timing is deterministic. Two slots, so finishing the first hands off to a rest rather than
+    /// ending the session.
+    private func shortRepWorkout(seconds: Int, sets: Int) -> Workout {
+        let rep = Exercise(
+            id: "evidence_short_rep", displayName: "Short Rep", pillar: .strength,
+            movementPattern: .push, category: .strength, difficulty: 1, phase: .discipline,
+            equipment: [], isHold: false, defaultReps: 1, defaultDurationSeconds: nil,
+            estimatedTimePerSetSeconds: seconds, metValue: 3, progressionChainId: "evidence_rep_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "do it", apartmentFriendly: true
+        )
+        func slot() -> PrescribedExercise {
+            PrescribedExercise(
+                id: UUID(), exercise: rep, sets: sets, reps: 1, durationSeconds: nil, restSeconds: 30
+            )
+        }
+        return Workout(
+            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil,
+            requestedMinutes: 5, wasReturn: false,
+            blocks: [
+                WorkoutBlock(
+                    id: UUID(), title: "Strength", category: .strength, exercises: [slot(), slot()]
+                )
+            ]
+        )
+    }
+
     /// Banking the set by hand *while* a leg runs, driven through the real controls on the hosted
     /// production player (US-O03).
     ///

@@ -1798,4 +1798,268 @@ final class ActiveSessionViewModelTests: XCTestCase {
             "1 set of a 30 second hold per side"
         )
     }
+
+    // MARK: - Auto-advancing work window (US-CC01)
+
+    /// A strength-only session (no bookends), so the player opens directly on a rep-based training set -
+    /// which is where the auto-advancing work window lives. Two exercises, two sets each, so the flow
+    /// exercises set-to-set and exercise-to-exercise advances through the rest.
+    private func strengthWorkout(sets: Int = 2, reps: Int = 12, rest: Int = 30) -> Workout {
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "push_up"), sets: sets, reps: reps, durationSeconds: nil, restSeconds: rest),
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "squat", pattern: .squat), sets: sets, reps: reps, durationSeconds: nil, restSeconds: rest)
+            ]
+        )
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [strength]
+        )
+    }
+
+    /// The screen window is the engine's own planned per-set seconds, not a second number - the single
+    /// source of truth US-CC08 rests on, so the window can never be roomier or tighter than what the fit
+    /// budgeted. Asserted against `SessionAssembly.workSecondsPerSet(of:)` for the very slot on screen.
+    func testWorkWindowSecondsEqualTheEnginePlannedPerSetSeconds() throws {
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { self.start })
+        let step = try XCTUnwrap(vm.currentStep)
+        let planned = SessionAssembly.workSecondsPerSet(of: step.prescription)
+        XCTAssertGreaterThan(planned, 0)
+        XCTAssertEqual(vm.workWindowSecondsPerSet, planned,
+                       "the player's window is the very value the engine budgeted the set at (US-CC08)")
+    }
+
+    /// A per-side rep movement prices its window exactly as planning does - the player reads planning's
+    /// own function, so whatever per-side handling the plan applies carries through by construction
+    /// rather than by a second copy that could drift.
+    func testWorkWindowMatchesPlannedSecondsForAPerSideRepMovement() {
+        let perSideRep = PrescribedExercise(
+            id: UUID(), exercise: perSide(repExercise(id: "archer_push")),
+            sets: 2, reps: 8, durationSeconds: nil, restSeconds: 30
+        )
+        let block = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [perSideRep, repPrescription("squat", sets: 1, reps: 10)]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [block]
+        )
+        let vm = makeViewModel(workout, clock: { self.start })
+        XCTAssertEqual(vm.workWindowSecondsPerSet, SessionAssembly.workSecondsPerSet(of: perSideRep),
+                       "the player reads planning's per-set seconds, so per-side handling matches by construction")
+    }
+
+    /// A rep-based training set counts down hands-free: the window auto-starts on `start()`, no
+    /// Start-hold-style tap required, unlike the US-O03 hold.
+    func testWorkWindowAutoStartsForARepTrainingSet() {
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { self.start })
+        XCTAssertTrue(vm.currentStepAutoAdvances)
+        XCTAssertFalse(vm.isRunningWorkWindow, "no window until the session starts")
+
+        vm.start()
+
+        XCTAssertTrue(vm.isRunningWorkWindow, "the work window auto-starts hands-free on start()")
+        XCTAssertEqual(vm.workWindowRemaining(asOf: start), vm.workWindowSecondsPerSet)
+    }
+
+    /// At zero the window records the set completed - prescribed reps as performed, identical to a
+    /// tapped completion (US-CC09) - flows into the existing rest, and fires the cue exactly once: never
+    /// before zero, never again on a later tick.
+    func testWorkWindowAutoAdvancesAtZeroRecordingTheSetCompleted() throws {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock }, feedback: spy)
+        let stepID = try XCTUnwrap(vm.currentStep?.id)
+        vm.start()
+        let window = try XCTUnwrap(vm.workWindowSecondsPerSet)
+
+        // Before zero, nothing fires.
+        clock = start.addingTimeInterval(TimeInterval(window - 1))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isRunningWorkWindow, "still counting down a second before zero")
+        XCTAssertEqual(vm.completedSetCount, 0)
+        XCTAssertEqual(spy.completions, 0)
+
+        // At zero it records and advances into the rest, firing the cue once.
+        clock = start.addingTimeInterval(TimeInterval(window))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isRunningWorkWindow)
+        XCTAssertEqual(vm.completedSets[stepID], [CompletedSet(reps: 12, durationSeconds: nil)],
+                       "the prescribed reps record as performed, exactly like a tapped completion")
+        XCTAssertEqual(vm.currentSet, 2, "advanced to the next set")
+        XCTAssertTrue(vm.isResting, "flowed into the existing rest with no tap")
+        XCTAssertEqual(spy.completions, 1, "the completion cue fired exactly once")
+        XCTAssertFalse(vm.skippedStepIDs.contains(stepID), "an auto-advanced set is never a skip")
+
+        // Idempotent: the view's ticker keeps calling the check.
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertEqual(spy.completions, 1, "the cue never fires a second time for the same window")
+    }
+
+    /// **Done** ends the window early and advances immediately, recording the set completed (prescribed
+    /// = performed) with no cue and no skip - being caught mid-rep at zero carries no penalty.
+    func testDoneAdvancesEarlyRecordingCompletedWithoutACue() throws {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock }, feedback: spy)
+        let stepID = try XCTUnwrap(vm.currentStep?.id)
+        vm.start()
+        XCTAssertTrue(vm.isRunningWorkWindow)
+
+        // Well before the countdown reaches zero.
+        clock = start.addingTimeInterval(3)
+        vm.finishWorkWindowEarly()
+
+        XCTAssertFalse(vm.isRunningWorkWindow, "Done ends the window")
+        XCTAssertEqual(vm.completedSets[stepID], [CompletedSet(reps: 12, durationSeconds: nil)],
+                       "the set records completed, prescribed = performed")
+        XCTAssertEqual(vm.currentSet, 2, "and advances immediately")
+        XCTAssertTrue(vm.isResting)
+        XCTAssertEqual(spy.completions, 0, "coming out early is the user's choice - no cue, no penalty")
+        XCTAssertFalse(vm.skippedStepIDs.contains(stepID), "Done is never a skip")
+    }
+
+    /// Backgrounding freezes the window rather than letting it blow past, and a frozen window never
+    /// auto-completes however long the app is away - the same `Countdown` pause semantics as the rest
+    /// and hold timers.
+    func testBackgroundingFreezesTheWorkWindow() {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock })
+        vm.start()
+
+        clock = start.addingTimeInterval(5)
+        vm.pauseWorkWindow(asOf: clock)
+        XCTAssertTrue(vm.isWorkWindowPaused)
+        let frozen = vm.workWindowRemaining(asOf: clock)
+
+        // Two minutes in the background: the countdown does not draw down and never auto-advances.
+        clock = start.addingTimeInterval(120)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "frozen while backgrounded")
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isRunningWorkWindow, "a paused window never auto-advances while the app is away")
+
+        vm.resumeWorkWindow(asOf: clock)
+        XCTAssertFalse(vm.isWorkWindowPaused)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "resumes from the captured remainder")
+    }
+
+    /// The work window is withheld on a timed movement (the US-O03 Hold Timer owns it) so retiring the
+    /// manual "Complete set" for strength never touches the hold path.
+    func testWorkWindowIsNotOfferedForAHold() {
+        let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start })
+        XCTAssertFalse(vm.currentStepAutoAdvances, "a timed movement uses the Hold Timer, not the work window")
+        XCTAssertNil(vm.workWindowSecondsPerSet)
+        vm.start()
+        XCTAssertFalse(vm.isRunningWorkWindow, "no work window auto-starts on a hold")
+        XCTAssertTrue(vm.canStartHold, "the manual Hold Timer path is untouched")
+    }
+
+    /// The gate is the block category, not just the movement kind: a rep-based movement placed in a
+    /// warm-up block keeps the manual path, so retiring "Complete set" for strength leaves the bookend
+    /// flow (US-CC05) alone. Completing the warm-up by hand then reaches the strength set, whose window
+    /// auto-starts as the flow arrives.
+    func testWorkWindowIsGatedToTrainingBlocksNotBookends() {
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [repPrescription("reach", sets: 1, reps: 8)]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [repPrescription("push_up", sets: 1, reps: 10)]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 10, wasReturn: false, blocks: [warmup, strength]
+        )
+        let vm = makeViewModel(workout, clock: { self.start })
+
+        XCTAssertFalse(vm.currentStepAutoAdvances, "a rep-based warm-up keeps the manual Complete set")
+        XCTAssertNil(vm.workWindowSecondsPerSet)
+        vm.start()
+        XCTAssertFalse(vm.isRunningWorkWindow)
+
+        // Bank the warm-up by hand, clear its rest, and arrive at the strength set.
+        vm.completeSet()
+        vm.skipRest()
+        XCTAssertTrue(vm.currentStepAutoAdvances, "the strength set auto-advances")
+        XCTAssertTrue(vm.isRunningWorkWindow, "and its work window auto-starts as the flow reaches it")
+    }
+
+    /// The whole flow: a window at zero opens the rest, and as the rest ends the next set's window
+    /// auto-starts - hands-free from one set to the next, no window ever running behind the rest overlay.
+    func testWorkWindowFlowsThroughTheRestIntoTheNextSetsWindow() throws {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12, rest: 30), clock: { clock })
+        vm.start()
+        let window = try XCTUnwrap(vm.workWindowSecondsPerSet)
+
+        clock = start.addingTimeInterval(TimeInterval(window))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isResting)
+        XCTAssertFalse(vm.isRunningWorkWindow, "no window runs behind the rest overlay")
+        XCTAssertEqual(vm.currentSet, 2)
+
+        clock = clock.addingTimeInterval(30)
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isResting)
+        XCTAssertTrue(vm.isRunningWorkWindow, "the next set's work window auto-starts as the rest ends")
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), window)
+    }
+
+    /// The end-to-end promise (US-CC01/US-CC09): a whole strength block completes hands-free - every
+    /// window and rest driven to zero, not a single manual completion - and every exercise logs its full
+    /// set count as completed, none skipped.
+    func testAWholeStrengthBlockCompletesHandsFreeLoggingEverySetCompleted() {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12, rest: 30), clock: { clock })
+        vm.start()
+
+        var guardCount = 0
+        while !vm.isComplete && guardCount < 40 {
+            guardCount += 1
+            if vm.isResting {
+                clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+                vm.completeRestIfElapsed(asOf: clock)
+            } else if vm.isRunningWorkWindow {
+                clock = clock.addingTimeInterval(TimeInterval(vm.workWindowTotalSeconds))
+                vm.completeWorkWindowIfElapsed(asOf: clock)
+            } else {
+                XCTFail("a rep training set should always be resting or running its window")
+                break
+            }
+        }
+
+        XCTAssertTrue(vm.isComplete, "the block finished hands-free, no tap")
+        for logged in vm.loggedExercises() {
+            XCTAssertFalse(logged.skipped, "\(logged.exerciseId) auto-advanced, so it is never skipped")
+            XCTAssertEqual(logged.completedSets.count, 2, "each exercise logged its full set count as completed")
+        }
+    }
+
+    /// A swap reshapes the slot the window was timing, so it drops the running window without a cue; the
+    /// substitute - itself a rep training set - re-arms a fresh window sized to its own prescription.
+    func testSwapClearsARunningWorkWindowAndReArmsForTheSubstitute() async {
+        let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
+        let spy = SpyRestFeedback()
+        let engine = StubSwapEngine(outcome: .substituted(substitute))
+        let vm = ActiveSessionViewModel(
+            workout: strengthWorkout(sets: 2, reps: 12), swapEngine: engine, user: makeUser(),
+            recentLogs: [], sessionPolicy: .default, now: { self.start }, feedback: spy
+        )
+        vm.start()
+        XCTAssertTrue(vm.isRunningWorkWindow)
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "dips")
+        XCTAssertFalse(vm.isRunningWorkWindow, "the running window does not survive onto the substitute")
+        XCTAssertEqual(spy.completions, 0, "dropping the window for a swap fires no completion cue")
+
+        // The view re-arms the window once the swap settles; the model does it directly here.
+        vm.startWorkWindow()
+        XCTAssertTrue(vm.isRunningWorkWindow, "a fresh window starts for the substitute")
+        XCTAssertEqual(vm.workWindowSecondsPerSet, SessionAssembly.workSecondsPerSet(of: substitute))
+    }
 }
