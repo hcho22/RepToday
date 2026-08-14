@@ -23,6 +23,15 @@ The mobility **training** block that once sat between the warm-up and cooldown -
 **Retired by US-M01** (2026-08-13): it is no longer emitted at any length, its split machinery (`PillarBalance`/`PillarWeights`) is removed, and the training minutes it held were reallocated to strength.
 Mobility now survives only as the warm-up and cooldown bookends. The term is kept here only so a future contributor recognizes it as a removed concept, not a live block (see [ADR-0001](docs/adr/0001-strength-primary-sessions.md) and the "Movement Practice removal" follow-on in `.claude/agent/tasks/prd-strength-primary-sessions_260812.md`).
 
+## Continuous Circuit (planned)
+
+The **planned/target** active-session model: a hands-free, follow-along session that auto-advances on a per-interval countdown - the strength block runs as circuit rounds ("Round N of M"), each work window counts down and auto-flows into rest with no tap, and warm-up/cooldown holds auto-start and flow linearly.
+It is **not yet built**: it will **supersede** the current manual tap-to-advance player (the US-K01/US-K02/US-O03 model where every set needs a **Complete set** tap and every stretch a **Start hold** tap) on landing, and is not user-selectable alongside it.
+The authoritative spec is the Continuous-Circuit Sessions PRD (`.claude/agent/tasks/prd-continuous-circuit-sessions_260814.md`, `US-CC##`); the two load-bearing decisions behind it are recorded as [ADR-0002](docs/adr/0002-per-interval-pacer-clock.md) (the per-interval **pacer clock**, which partially reverses US-O03's hidden-clock stance) and [ADR-0003](docs/adr/0003-even-round-circuit-timing.md) (**even-round** timing: a uniform set count per training block, with the between-round rest as the fit lever that replaces per-exercise set adjustment).
+Reps stay the currency (no timed-interval conversion); the deterministic engine's progression and Adaptive Overload are unchanged - this is a player change plus the one even-round timing-model change in `SessionAssembly`.
+Self-pacing is preserved by in-flow escape hatches (chiefly **+ More time**), never a parallel manual mode.
+Until it ships, the shipped behavior is the manual player; do not read this entry as current.
+
 ## discipline-first
 
 The product's positioning: the promise is **daily consistency** - showing up - independent of whether a given day's work is strength or mobility.
