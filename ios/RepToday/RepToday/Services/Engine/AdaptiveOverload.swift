@@ -25,8 +25,7 @@ import Foundation
 /// Like the earlier steps this is a pure function of its inputs - the selected `exercise` and
 /// `recentLogs` - with no hidden clock and no UUIDs (the playable `PrescribedExercise`, with its
 /// identity and rest, is assembled in Step 7), so it stays deterministic and unit-testable,
-/// mirroring `PillarBalance`, `MovementPatternFocus`, `ExercisePoolFilter`, and
-/// `ProgressionChainSelection`.
+/// mirroring `MovementPatternFocus`, `ExercisePoolFilter`, and `ProgressionChainSelection`.
 
 // MARK: - OverloadTarget
 

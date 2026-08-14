@@ -249,15 +249,14 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(SessionAssembly.maxWarmupExercises, 4, "the ceiling matches the top band")
     }
 
-    /// The fuller warm-up must not over-drain the shared mobility pool: even in the worst case - a long
-    /// blend where the warm-up hits its ceiling *and* Movement Practice fills toward its own cap - the
-    /// warm-up, cooldown, and Movement Practice together leave real day-to-day variety headroom, and the
-    /// cooldown is never starved of its holds.
+    /// The fuller warm-up must not over-drain the shared mobility pool. Since US-M01 the only
+    /// mobility-sourced blocks are the warm-up and cooldown bookends (no Movement Practice middle block),
+    /// so even the worst case - a long session where the warm-up hits its ceiling and the cooldown fills -
+    /// leaves real day-to-day variety headroom, and the cooldown is never starved of its holds.
     func testFullerWarmUpDoesNotStarveThePoolOrCooldown() async throws {
         let library = try await library()
         let mobilityTotal = library.filter { $0.pillar == .mobility }.count
-        // Mobility six days stale, strength worked yesterday. Strength leads the blend (US-002); this is
-        // still the worst case for pool draw, since the mobility blocks draw the most distinct movements.
+        // Mobility six days stale, strength worked yesterday - the worst case for bookend pool draw.
         let mobilityStale = [
             log([("push_standard", .strength, .push, 12)], daysAgo: 1),
             log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
@@ -267,18 +266,24 @@ final class SessionAssemblyTests: XCTestCase {
         let cooldown = try XCTUnwrap(workout.blocks.first { $0.category == .cooldown }, "60 min must have a cooldown")
         XCTAssertFalse(cooldown.exercises.isEmpty, "the cooldown keeps its holds")
 
+        // Mobility appears only in the warm-up and cooldown bookends - never a mobility training block.
+        XCTAssertFalse(
+            workout.blocks.contains { $0.category == .mobility },
+            "no mobility training block is emitted (US-M01)"
+        )
+
         let mobilityIds = workout.blocks
             .flatMap { $0.exercises }
             .filter { $0.exercise.pillar == .mobility }
             .map { $0.exercise.id }
-        XCTAssertEqual(Set(mobilityIds).count, mobilityIds.count, "no mobility movement is reused across blocks")
+        XCTAssertEqual(Set(mobilityIds).count, mobilityIds.count, "no mobility movement is reused across bookends")
         XCTAssertLessThanOrEqual(
             Set(mobilityIds).count, mobilityTotal,
-            "the mobility blocks cannot draw more movements than the pool holds"
+            "the bookends cannot draw more movements than the pool holds"
         )
         XCTAssertGreaterThanOrEqual(
             mobilityTotal - Set(mobilityIds).count, 2,
-            "the worst-case draw leaves day-to-day variety headroom in the mobility pool"
+            "the worst-case bookend draw leaves day-to-day variety headroom in the mobility pool"
         )
     }
 
@@ -402,87 +407,67 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
-    // MARK: - Movement Practice is one set per stretch, at every length and shape
+    // MARK: - No mobility middle block; freed minutes go to strength (US-M01)
 
-    /// The core guard for the one-set rule: a stretch is prescribed at exactly one set no matter how long
-    /// the session is or which shape it takes. This is the turned-into-a-test form of the reported bug -
-    /// "Cat-Cow Flow 2x10", "Pigeon Pose 4x0:45 per side" - so a future timing-fit change that reaches for
-    /// the set lever on the Movement Practice block fails here. It runs every blend length (15-60) against
-    /// a mobility-stale history, which both makes the mobility block present and drives it to its cap - the
-    /// exact configuration in which the old code padded stretches. Single-focus 5-10 no longer carries a
-    /// mobility training block at all (US-001: single-focus is always strength), so it has no Movement
-    /// Practice block to guard - `testShortSingleFocusLeadsStrengthForFreshDeskWorker` covers that shape.
-    func testMovementPracticeIsAlwaysOneSetAtEveryLengthAndShape() async throws {
+    /// US-M01 core: the Movement Practice mobility *training* block is no longer emitted at any length or
+    /// shape. This runs every blend length (15-60) against a strongly mobility-stale history - the exact
+    /// configuration in which the old engine produced (and padded) a Movement Practice block - and pins
+    /// that no `.mobility` block appears between the warm-up and cooldown. Mobility survives only as the
+    /// bookends. (Single-focus 5-10 is covered by `testShortSingleFocusLeadsStrengthForFreshDeskWorker`.)
+    func testNoMobilityMiddleBlockAtAnyBlendLength() async throws {
         let library = try await library()
-        // Mobility six days stale, strength worked yesterday: strength leads (US-002) but the mobility
-        // accessory is present and drawn toward its cap at the long lengths, so this is the worst case
-        // for the one-set rule.
+        // Mobility six days stale, strength worked yesterday: the configuration that used to force the
+        // largest Movement Practice block.
         let mobilityStale = [
             log([("push_standard", .strength, .push, 12)], daysAgo: 1),
             log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
         ]
         for minutes in [15, 20, 30, 45, 60] {
             let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
-            let practiceBlocks = workout.blocks.filter { $0.category == .mobility }
-            XCTAssertFalse(practiceBlocks.isEmpty, "\(minutes) min: expected a Movement Practice block")
-            for block in practiceBlocks {
-                for prescription in block.exercises {
-                    XCTAssertEqual(
-                        prescription.sets, 1,
-                        "\(minutes) min: Movement Practice '\(prescription.exercise.id)' has "
-                            + "\(prescription.sets) sets - a stretch must always be one set"
-                    )
-                }
-            }
+            XCTAssertFalse(
+                workout.blocks.contains { $0.category == .mobility },
+                "\(minutes) min must not emit a mobility training block (US-M01)"
+            )
+            // The middle (everything but the bookends) trains only strength/primal - no mobility movement.
+            let middle = workout.blocks
+                .filter { $0.category != .warmup && $0.category != .cooldown }
+                .flatMap(\.exercises)
+            XCTAssertFalse(
+                middle.contains { $0.exercise.pillar == .mobility },
+                "\(minutes) min: no mobility movement appears outside the bookends"
+            )
         }
     }
 
-    /// The other half of the rule: the block fills a longer session by adding distinct movement *types*,
-    /// not sets. A longer request must give the Movement Practice block strictly more exercises than a
-    /// short one (up to its cap), while every exercise stays at one set - so growth is by count, never by
-    /// set. Guards against a regression that filled time by re-padding sets while keeping the count flat.
-    func testMovementPracticeGrowsByExerciseCountNotSetCount() async throws {
+    /// US-M01 decision 3: the minutes the Movement Practice block used to hold are reallocated to
+    /// **strength**, not to bookend stretching. On the same mobility-stale history, the strength training
+    /// time is strictly larger than the (now bookend-only) mobility time at every blend length - and the
+    /// session still lands within ±60s, so the freed budget genuinely went into strength sets rather than
+    /// being dropped.
+    func testFreedMinutesGoToStrengthNotStretching() async throws {
         let library = try await library()
         let mobilityStale = [
             log([("push_standard", .strength, .push, 12)], daysAgo: 1),
             log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
         ]
-        func practiceCount(_ minutes: Int) throws -> Int {
+        for minutes in [15, 20, 30, 45, 60] {
             let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
-            let block = try XCTUnwrap(workout.blocks.first { $0.category == .mobility })
-            XCTAssertTrue(block.exercises.allSatisfy { $0.sets == 1 }, "\(minutes) min: every stretch is one set")
-            return block.exercises.count
-        }
-        let short = try practiceCount(15)
-        let long = try practiceCount(60)
-        XCTAssertGreaterThan(
-            long, short,
-            "a longer session must grow Movement Practice by exercise count (\(short) -> \(long)), not sets"
-        )
-        XCTAssertLessThanOrEqual(
-            long, SessionAssembly.maxMobilityTrainingExercises,
-            "the block never exceeds its distinct-movement cap"
-        )
-    }
 
-    /// The whole session still lands within the ±1 minute promise at the two long durations the one-set
-    /// change stressed most - 45 and 60 minutes - where the mobility accessory can no longer pad stretches
-    /// and the strength/primal set lever (`maxTrainingSets`) carries the remaining time instead. This is
-    /// the length range US-002's lower mobility share stresses hardest, so it also guards that the fit
-    /// still converges once strength carries an even larger share.
-    func testLongSessionsLandWithinToleranceWithOneSetMobility() async throws {
-        let library = try await library()
-        let mobilityStale = [
-            log([("push_standard", .strength, .push, 12)], daysAgo: 1),
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 6),
-        ]
-        for minutes in [45, 60] {
-            let workout = assemble(minutes: minutes, user: user(), library: library, logs: mobilityStale)
+            let strengthSeconds = workout.blocks
+                .filter { $0.category == .strength }
+                .reduce(0) { $0 + plannedSeconds($1) }
+            let mobilitySeconds = workout.blocks
+                .filter { $0.category == .warmup || $0.category == .cooldown }
+                .reduce(0) { $0 + plannedSeconds($1) }
+            XCTAssertGreaterThan(
+                strengthSeconds, mobilitySeconds,
+                "\(minutes) min: strength time must dominate the bookend mobility time (freed minutes -> strength)"
+            )
+
             let planned = SessionAssembly.plannedSeconds(of: workout)
             XCTAssertLessThanOrEqual(
-                abs(planned - minutes * 60),
-                SessionAssembly.toleranceSeconds,
-                "\(minutes) min mobility-leaning planned \(planned)s is outside ±60s of \(minutes * 60)s"
+                abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
+                "\(minutes) min planned \(planned)s outside ±60s of \(minutes * 60)s"
             )
         }
     }
@@ -538,21 +523,21 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, ids.count, "an exercise appeared in more than one block")
     }
 
-    // MARK: - Blend is strength-dominant (US-002)
+    // MARK: - Blend is a strength session wrapped in bookends (US-002/US-M01)
 
     /// Planned wall-clock of a single materialized block (`Σ sets × workPerSet + (sets - 1) × rest`),
-    /// measured with the engine's own work model, used to compare how much session time each pillar
-    /// block actually owns.
+    /// measured with the engine's own work model, used to compare how much session time each block owns.
     private func plannedSeconds(_ block: WorkoutBlock) -> Int {
         block.exercises.reduce(0) { sum, p in
             sum + p.sets * SessionAssembly.workSecondsPerSet(of: p) + max(0, p.sets - 1) * p.restSeconds
         }
     }
 
-    /// US-002: strength leads a blend's training time regardless of staleness. The strength block owns
-    /// strictly more planned time than the mobility accessory whether mobility is the stalest pillar or
-    /// the freshest - the old "size the blocks by whichever pillar is staler" behavior is gone.
-    func testBlendGivesStrengthTheDominantShareRegardlessOfStaleness() async throws {
+    /// US-002/US-M01: a blend's training middle is a single strength block regardless of staleness -
+    /// there is no mobility training block to compare against, whether mobility is the stalest pillar or
+    /// the freshest. The old "size the blocks by whichever pillar is staler" behavior, and the mobility
+    /// accessory it sized, are both gone.
+    func testBlendTrainingMiddleIsStrengthOnlyRegardlessOfStaleness() async throws {
         let library = try await library()
 
         // Mobility never worked, strength worked yesterday: under the old engine this made mobility lead.
@@ -563,61 +548,55 @@ final class SessionAssemblyTests: XCTestCase {
             ], daysAgo: 1)
         ]
         let mobilityStale = assemble(minutes: 20, user: user(), library: library, logs: mobilityStaleLogs)
-        let mobBlock = try XCTUnwrap(mobilityStale.blocks.first { $0.category == .mobility })
-        let strBlock = try XCTUnwrap(mobilityStale.blocks.first { $0.category == .strength })
-        XCTAssertGreaterThan(
-            plannedSeconds(strBlock), plannedSeconds(mobBlock),
-            "strength leads even a strongly mobility-stale blend (US-002)"
-        )
+        XCTAssertNil(mobilityStale.blocks.first { $0.category == .mobility }, "no mobility training block, even when mobility is stalest")
+        XCTAssertNotNil(mobilityStale.blocks.first { $0.category == .strength }, "the training middle is a strength block")
 
-        // Strength never worked, mobility worked yesterday: strength still leads.
+        // Strength never worked, mobility worked yesterday: still a strength-only middle.
         let strengthStaleLogs = [log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 1)]
         let strengthStale = assemble(minutes: 20, user: user(), library: library, logs: strengthStaleLogs)
-        let mob2 = try XCTUnwrap(strengthStale.blocks.first { $0.category == .mobility })
-        let str2 = try XCTUnwrap(strengthStale.blocks.first { $0.category == .strength })
-        XCTAssertGreaterThan(
-            plannedSeconds(str2), plannedSeconds(mob2),
-            "strength still leads a strength-stale blend"
-        )
+        XCTAssertNil(strengthStale.blocks.first { $0.category == .mobility }, "no mobility training block on a strength-stale blend either")
+        XCTAssertNotNil(strengthStale.blocks.first { $0.category == .strength }, "the training middle is a strength block")
     }
 
-    /// The US-002 validation test: for a no-history profile at 20 and 30 minutes, sum the *training*
-    /// block seconds by pillar (excluding warm-up/cooldown) and confirm strength holds the dominant share
-    /// of the training time, a genuine mobility accessory is present, and strength leads. These are
-    /// blendLight / blendFull, so there is no dedicated primal block - the strength block folds primal in.
-    ///
-    /// The upper bound was widened `0.85 -> 0.88` under US-003: the leaner 1/2/3/4 warm-up frees budget
-    /// the timing fit reabsorbs into strength sets (the mobility accessory is one-set-capped and cannot
-    /// grow proportionally), so a blend now runs more strength-heavy - ~0.87 / mobility ~13% at 30 min
-    /// (captain-approved). The lower bound and the "accessory still present / strength still leads"
-    /// assertions stay, so the test still proves a genuine minority mobility accessory rather than none.
-    func testBlendTrainingTimeIsStrengthDominantAtValidationLengths() async throws {
+    /// The US-M01 validation test: for a no-history profile at 20, 30, and 45 minutes, list the blocks
+    /// and confirm no mobility *training* block appears between the warm-up and cooldown, then sum the
+    /// training-block seconds by pillar and confirm the strength share is higher than the archived
+    /// accessory model's ~0.75-0.80 (the freed mobility minutes went to strength, not to stretching).
+    /// 20/30 are blendLight/blendFull (strength folds primal in, so strength is ~100% of training); 45 is
+    /// an extended blend (a dedicated primal minority block), so strength alone still clears the old
+    /// headline share while strength keeps the lead over primal.
+    func testTrainingTimeIsStrengthHeavierThanAccessoryModelAtValidationLengths() async throws {
         let library = try await library()
-        for minutes in [20, 30] {
+        for minutes in [20, 30, 45] {
             let workout = assemble(minutes: minutes, user: user(sitsLong: false), library: library, logs: [])
             let training = workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
+
+            // No mobility training block at any of these lengths (US-M01).
+            XCTAssertFalse(
+                training.contains { $0.category == .mobility },
+                "\(minutes) min must not carry a mobility training block"
+            )
 
             let strengthSeconds = training
                 .filter { $0.category == .strength }
                 .reduce(0) { $0 + plannedSeconds($1) }
-            let mobilitySeconds = training
-                .filter { $0.category == .mobility }
+            let primalSeconds = training
+                .filter { $0.category == .primal }
                 .reduce(0) { $0 + plannedSeconds($1) }
-            let totalTraining = strengthSeconds + mobilitySeconds
+            let totalTraining = training.reduce(0) { $0 + plannedSeconds($1) }
             XCTAssertGreaterThan(totalTraining, 0, "\(minutes) min produced no training time")
 
             let strengthShare = Double(strengthSeconds) / Double(totalTraining)
-            XCTAssertGreaterThan(mobilitySeconds, 0, "\(minutes) min must keep a genuine mobility accessory block")
-            XCTAssertGreaterThan(strengthSeconds, mobilitySeconds, "\(minutes) min: strength must lead the training time")
-            XCTAssertGreaterThanOrEqual(
-                strengthShare, 0.7,
-                "\(minutes) min strength training share \(strengthShare) fell below the strength-dominant floor"
+            // Higher than the archived accessory model's ~0.75-0.80 headline strength share: with the
+            // mobility middle block gone, strength alone clears 0.80 at every validation length.
+            XCTAssertGreaterThan(
+                strengthShare, 0.80,
+                "\(minutes) min strength training share \(strengthShare) is not above the archived ~0.75-0.80 accessory model"
             )
-            // Widened 0.85 -> 0.88 for US-003: the leaner warm-up routes freed budget to strength sets,
-            // so a blend runs more strength-heavy while a minority mobility accessory stays present.
-            XCTAssertLessThanOrEqual(
-                strengthShare, 0.88,
-                "\(minutes) min strength training share \(strengthShare) left a too-thin mobility accessory"
+            // Strength always leads any dedicated primal block.
+            XCTAssertGreaterThan(
+                strengthSeconds, primalSeconds,
+                "\(minutes) min: strength must lead any dedicated primal block"
             )
         }
     }
@@ -655,9 +634,10 @@ final class SessionAssemblyTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(prescription.sets, 1, "every prescription needs >=1 set")
         }
 
-        // The primal block joins strength and mobility rather than replacing them.
+        // The primal block joins strength rather than replacing it - and there is no mobility training
+        // block at all (US-M01): the extended session is Warm-Up -> Strength -> Primal -> Cooldown.
         XCTAssertTrue(workout.blocks.contains { $0.category == .strength }, "strength block still present")
-        XCTAssertTrue(workout.blocks.contains { $0.category == .mobility }, "mobility block still present")
+        XCTAssertFalse(workout.blocks.contains { $0.category == .mobility }, "no mobility training block (US-M01)")
 
         // With primal carved out, the strength block must not also fold a primal movement in (no
         // double-booking the same locomotion exercise across two blocks).
@@ -748,45 +728,6 @@ final class SessionAssemblyTests: XCTestCase {
                 "\(minutes) min: passing SessionPolicy.default must match the unpoliced call"
             )
         }
-    }
-
-    /// US-002 invariant against the dormant policy lever: the `pillarWeighting` lever no longer sizes the
-    /// strength-vs-mobility split, so even doubling `pillarWeighting[.mobility]` cannot unseat the
-    /// strength lead of a two-pillar blend - the mobility accessory stays a fixed minority and strength
-    /// keeps the dominant block. (The lever still leans the extended blend's within-family strength/primal
-    /// split - `PillarBalanceTests.testExtendedBlendRespectsPrimalPillarWeighting` covers that.)
-    func testHeavyMobilityWeightingCannotUnseatTheStrengthLead() async throws {
-        let library = try await library()
-        // Mobility never worked, strength worked yesterday: the configuration that once led mobility.
-        let logs = [log([
-            ("push_standard", .strength, .push, 12),
-            ("squat_bodyweight", .strength, .squat, 15),
-        ], daysAgo: 1)]
-
-        func blockSeconds(_ policy: SessionPolicy, category: ExerciseCategory) throws -> Int {
-            let workout = SessionAssembly.assemble(
-                requestedMinutes: 30, user: user(), library: library,
-                recentLogs: logs, sessionPolicy: policy, asOf: asOf, calendar: calendar
-            )
-            return plannedSeconds(try XCTUnwrap(workout.blocks.first { $0.category == category }))
-        }
-
-        var heavyMobility = SessionPolicy.default
-        heavyMobility.pillarWeighting[.mobility] = 2.0
-
-        let strengthUnderHeavyMobility = try blockSeconds(heavyMobility, category: .strength)
-        let mobilityUnderHeavyMobility = try blockSeconds(heavyMobility, category: .mobility)
-        XCTAssertGreaterThan(
-            strengthUnderHeavyMobility, mobilityUnderHeavyMobility,
-            "even a doubled mobility weighting cannot make mobility lead a blend (US-002)"
-        )
-
-        // The two-pillar mobility accessory is fixed: heavy mobility weighting does not grow it.
-        let neutralMobility = try blockSeconds(.default, category: .mobility)
-        XCTAssertEqual(
-            mobilityUnderHeavyMobility, neutralMobility,
-            "the fixed mobility accessory does not respond to the pillar-weighting lever"
-        )
     }
 
     /// A higher `progressionRate` paces Step 6's overload bump end-to-end: the squat lead of this
@@ -1098,10 +1039,9 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertLessThan(returnedMax, baselineMax, "the Return is easier than the pre-gap norm")
     }
 
-    /// Step 2: a Return leads with strength (US-005), kept gentle by the difficulty cap and volume
-    /// floor rather than the pillar. The Return no longer diverges from the steady-state lead the way
-    /// the retired mobility-led comeback did - single-focus already leads strength (US-001), so the
-    /// override and the steady state now agree, exactly as cold start does (US-004).
+    /// A Return leads with strength (US-005), kept gentle by the difficulty cap and volume floor rather
+    /// than the pillar. The lead is structural (US-M01: every session builds a leading strength block),
+    /// so the Return and the steady state agree - a Return is just a strength session served gentle.
     func testReturnLeadsWithStrength() async throws {
         let library = try await library()
         // Mobility worked longest ago, strength more recently but still past the Return threshold.
@@ -1109,13 +1049,12 @@ final class SessionAssemblyTests: XCTestCase {
             log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 8),
             log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 15),
         ]
-        // The steady-state single-focus lead is already strength (US-001), and the Return keeps it.
-        let optimized = PillarPlan.select(template: .singleFocus, recentLogs: logs, profile: user().profile, asOf: asOf, calendar: calendar)
-        XCTAssertEqual(optimized, .single(.strength), "single-focus already leads strength in the steady state")
         XCTAssertTrue(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "an 8-day gap is a Return")
 
         let workout = assemble(minutes: 8, user: user(), library: library, logs: logs)
         XCTAssertEqual(workout.focusPillar, .strength, "a Return serves strength, gentle via the cap and floor")
+        // Mobility survives only as the warm-up - no mobility training block on a Return.
+        XCTAssertFalse(workout.blocks.contains { $0.category == .mobility }, "a Return carries no mobility training block")
     }
 
     /// The Re-entry Ramp walks Step 6's volume back up over the sessions after a Return: the lead

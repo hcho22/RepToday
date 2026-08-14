@@ -19,7 +19,7 @@ import Foundation
 ///
 /// Like the earlier steps this is a pure function of its inputs - the library, the `User`, and
 /// `recentLogs` - with no hidden clock or library lookup, so it stays deterministic and
-/// unit-testable, mirroring `PillarBalance` and `MovementPatternFocus`.
+/// unit-testable, mirroring `MovementPatternFocus`.
 ///
 /// `pool(forPattern:)` answers the per-pattern question the assembly step asks ("give me the
 /// eligible exercises for this needed pattern"), and handles the case where filtering empties a

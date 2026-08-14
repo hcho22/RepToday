@@ -53,7 +53,7 @@ final class ExerciseLibraryTests: XCTestCase {
         XCTAssertEqual(counts[.hinge], 6, "hinge group")
         XCTAssertEqual(counts[.core], 9, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
-        XCTAssertEqual(counts[.mobility], 26, "Movement Practice mobility group")
+        XCTAssertEqual(counts[.mobility], 26, "mobility group (warm-up + cooldown bookends)")
         XCTAssertEqual(counts[.locomotion], 7, "primal group")
     }
 

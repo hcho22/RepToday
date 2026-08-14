@@ -88,7 +88,7 @@ enum VarietyLanguage {
 
     /// The user-facing name for a pillar in Variety Language copy. Centralized so the wording is a
     /// single-line change; `primal` uses the product's own first-class vocabulary rather than a term
-    /// that would blur into `mobility` ("Movement Practice").
+    /// that would blur into `mobility`.
     static func label(for pillar: Pillar) -> String {
         switch pillar {
         case .strength: return "strength"

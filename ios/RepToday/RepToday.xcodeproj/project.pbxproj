@@ -16,7 +16,6 @@
 		08B967C35C7CBC2AFDE27D91 /* ProgressViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CC9FD348FAA33C7F657BF1 /* ProgressViewModel.swift */; };
 		0A418723E2FF7D1CC7297736 /* AppleCredentialState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B575D4C7B1C1390142C58297 /* AppleCredentialState.swift */; };
 		0ECC3B349D0E42948312BAFE /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA59450267BE04E5A2E7C68 /* Exercise.swift */; };
-		109585F84AF6D026BAABB21C /* PillarBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D5DD00B5FB84C3C67B4B67 /* PillarBalanceTests.swift */; };
 		123ED2B1EA4BA34B2F71E45C /* ColdStartHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653FDB4A7212A136518C2E28 /* ColdStartHandoff.swift */; };
 		13C67281C031DA2AA04F0EF6 /* RepToday.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 3168C613FAF650BA33681EC5 /* RepToday.xcdatamodeld */; };
 		13EE8434D2EBDDA077DC4F2A /* ExerciseLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200FE49680DC28CFC5348C8E /* ExerciseLibraryTests.swift */; };
@@ -106,7 +105,6 @@
 		98F14C6A83C9D2EBABC3B637 /* AccountDeletionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE36BF502DAB7F6EA85794DE /* AccountDeletionServiceTests.swift */; };
 		9A427B6EBC3C7B2D34FA24BA /* SessionGenerationBenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDB997A6C53FF9CD60F49F48 /* SessionGenerationBenchmarkTests.swift */; };
 		9B0C9B42CA853A4DA4F9B896 /* TelemetryUITestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028AFC709F6BE529E6A2B11B /* TelemetryUITestHarness.swift */; };
-		9B3AF2C352107370D4BCE300 /* PillarBalance.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF42A9D64A3F43ED663B6EB /* PillarBalance.swift */; };
 		9D85C9C6D34EEA6F4EC94ABB /* AppEntryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4139B1525030F42B3E1AA79 /* AppEntryTelemetry.swift */; };
 		9ECFFDC8D5D03ADC73D8264D /* StoreKitSubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CFCD97FB7D12139DB1D477 /* StoreKitSubscriptionService.swift */; };
 		9F47836A6C6A308A386A24C8 /* ExerciseSwap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */; };
@@ -195,7 +193,6 @@
 		0297CA46CCCC98D71C7E0B79 /* PolicyNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyNote.swift; sourceTree = "<group>"; };
 		0535D9A19CD2F1050908D03D /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		05A59FC880465B5C874C0072 /* SessionPolicyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyServiceTests.swift; sourceTree = "<group>"; };
-		05D5DD00B5FB84C3C67B4B67 /* PillarBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalanceTests.swift; sourceTree = "<group>"; };
 		0AA816A1AE4C17D0C91DE563 /* ProxyVarietyLanguageProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProviderTests.swift; sourceTree = "<group>"; };
 		0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
 		0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthPrimaryRegressionTests.swift; sourceTree = "<group>"; };
@@ -334,7 +331,6 @@
 		D9E91D2606BAA6DBCC888A77 /* AccountDeletionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionUITests.swift; sourceTree = "<group>"; };
 		D9EF193CBAA44AE479CCC72B /* ProgressionChainSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelectionTests.swift; sourceTree = "<group>"; };
 		DA06D7A2B5A09ECB6DAC8AFE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		DAF42A9D64A3F43ED663B6EB /* PillarBalance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillarBalance.swift; sourceTree = "<group>"; };
 		DB4470E4714068CB26B224F8 /* SessionCompletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCompletionService.swift; sourceTree = "<group>"; };
 		DBD09F019DF4749257F188B1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DC3520D9D5DA23D464F191E4 /* ProgressTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressTabView.swift; sourceTree = "<group>"; };
@@ -611,7 +607,6 @@
 				DE50821F77201334D91D4905 /* PerSideSwapEvidenceTests.swift */,
 				B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */,
 				4E9DD9FD0B68FD919339B546 /* PhaseEvaluatorTests.swift */,
-				05D5DD00B5FB84C3C67B4B67 /* PillarBalanceTests.swift */,
 				21A5C0003127159EB9D04D94 /* PlateauDiagnosisTests.swift */,
 				BD39ED951E57054F8B19FD10 /* PolicyNoteTests.swift */,
 				1660541620A5A968FC616F61 /* PressRepeaterTests.swift */,
@@ -785,7 +780,6 @@
 				AC62A4AB51606C78E9399516 /* ExercisePoolFilter.swift */,
 				0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */,
 				1B792D7A9F21B8993AB777DC /* MovementPatternFocus.swift */,
-				DAF42A9D64A3F43ED663B6EB /* PillarBalance.swift */,
 				6489E7C96E05197D40685001 /* ProgressionChainSelection.swift */,
 				3AFE83ACCA1B4E495B37E86D /* ReturnOverride.swift */,
 				DD63A0252E76FC38027149B8 /* SessionAssembly.swift */,
@@ -978,7 +972,6 @@
 				F7F31AD4E6E788D1249DCB78 /* PerSideSwapEvidenceTests.swift in Sources */,
 				65D0C3C030F9950B7C9A3DF6 /* PersistenceTests.swift in Sources */,
 				6D50827F18E4520E1AA7498E /* PhaseEvaluatorTests.swift in Sources */,
-				109585F84AF6D026BAABB21C /* PillarBalanceTests.swift in Sources */,
 				2830C9C7F89F38944E0A385E /* PlateauDiagnosisTests.swift in Sources */,
 				FBB2B989BE432F38D27F6550 /* PolicyNoteTests.swift in Sources */,
 				4836F64EE5A9A5A891DC9D4A /* PressRepeaterTests.swift in Sources */,
@@ -1078,7 +1071,6 @@
 				CDE0F84E639522E07FE87E20 /* PersistenceCoding.swift in Sources */,
 				4472B35FB835C7DAAFED51E6 /* PersistenceController.swift in Sources */,
 				D052BDA2AB5F9B0B109CB8C9 /* PhaseEvaluator.swift in Sources */,
-				9B3AF2C352107370D4BCE300 /* PillarBalance.swift in Sources */,
 				4800ECFFBFEBCB7DB51B9611 /* PlateauDiagnosis.swift in Sources */,
 				3C81263978A5A68876E353F0 /* PolicyNote.swift in Sources */,
 				BB2A2F7166C3DE55C71E1FEE /* PressRepeater.swift in Sources */,

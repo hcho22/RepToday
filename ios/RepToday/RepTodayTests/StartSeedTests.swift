@@ -403,8 +403,8 @@ final class StartSeedTests: XCTestCase {
         )
     }
 
-    /// The floor is a training-load lever, so mobility - the warm-up, Movement Practice, and cooldown
-    /// pool - is never banded: gating there is identical at every fitness level.
+    /// The floor is a training-load lever, so mobility - the warm-up and cooldown bookend pool - is
+    /// never banded: gating there is identical at every fitness level.
     func testBandedPoolNeverFloorsMobility() async throws {
         let library = try await library()
 

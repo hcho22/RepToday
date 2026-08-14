@@ -309,11 +309,12 @@ enum ExerciseSwap {
     }
 
     /// Whether the block holding `prescription` is one the assembler's timing fit may move set counts
-    /// on. The warm-up, the cooldown, **and the mobility Movement Practice block** are all built with
-    /// `allowSetAdjust: false` - a stretch is one set by construction, at every length (see
-    /// `SessionAssembly.mobilityBlock`) - so a swap must not use the set lever on any of them either; a
-    /// substituted stretch stays the one set it was built as, and only the strength/primal training
-    /// blocks are adjustable. A slot the workout does not contain is treated as fixed, the conservative
+    /// on. The warm-up and the cooldown bookends are both built with `allowSetAdjust: false` - a stretch
+    /// is one set by construction, at every length (see `SessionAssembly.mobilityBlock`) - so a swap must
+    /// not use the set lever on either; a substituted stretch stays the one set it was built as, and only
+    /// the strength/primal training blocks are adjustable. The `.mobility` case is kept as defensive
+    /// handling only - US-M01 retired the Movement Practice mobility training block, so no `.mobility`
+    /// block is emitted today. A slot the workout does not contain is treated as fixed, the conservative
     /// default.
     private static func blockIsSetAdjustable(containing prescription: PrescribedExercise, in workout: Workout) -> Bool {
         guard let block = workout.blocks.first(where: { block in
@@ -329,7 +330,7 @@ enum ExerciseSwap {
     /// sized with, *at the same scope the assembler applies each one*: the policy's `progressionRate`
     /// (US-E03) and the Return / Re-entry Ramp ease (US-E06) reach every pillar, while the cold-start
     /// Start Seed's volume (US-O02) reaches only strength and primal - `Builder.mobilityItems` sizes a
-    /// stretch with the first two levers alone, so warm-up, Movement Practice and cooldown are identical
+    /// stretch with the first two levers alone, so the warm-up and cooldown bookends are identical
     /// for a beginner and an advanced user, and a swapped stretch must be too. It is the single place the
     /// swap seam talks to `AdaptiveOverload`, so the budget check and the materialized prescription are
     /// sized identically and a lever cannot go missing - or be scoped differently - in one but not the

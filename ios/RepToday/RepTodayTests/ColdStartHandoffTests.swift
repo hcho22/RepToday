@@ -243,13 +243,8 @@ final class ColdStartHandoffTests: XCTestCase {
         ]
         let capped = ColdStartOverride.cappedPool(pool, user: outcome.user, sessionPolicy: outcome.sessionPolicy)
         XCTAssertEqual(capped, pool, "With cold-start retired, the difficulty cap no longer applies.")
-
-        let plan = ColdStartOverride.overridePlan(
-            .single(.strength),
-            user: outcome.user,
-            sessionPolicy: outcome.sessionPolicy
-        )
-        XCTAssertEqual(plan, .single(.strength), "With cold-start retired, the lead-pillar override no longer applies.")
+        // (The lead-pillar override this used to also assert was removed in US-M01: the strength lead is
+        // now structural in SessionAssembly, so `ColdStartOverride` no longer carries `overridePlan`.)
     }
 
     // MARK: - Determinism

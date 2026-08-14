@@ -10,13 +10,13 @@ import Foundation
 /// override rather than a second engine - it touches the same three pipeline inputs the rest of the
 /// pipeline already consumes and leaves everything else to Steps 1-6:
 ///
-/// - **The Return** (a fresh gap detected at generation time, `isReturn`) discipline-overrides Step 2:
-///   the day is served easy and winnable *regardless of staleness or the policy's optimization
-///   levers*. `overridePlan` leads the session with **strength** (as every session does now, US-005)
-///   instead of chasing the stalest pillar; the comeback's gentleness comes not from the pillar but
-///   from the two rails that flank it - `returnPool` caps the eligible difficulty so a strong pre-gap
-///   history can't serve a punishing tier, and `reentryScale` eases Step 6's volume to the gentle
-///   floor. The Return itself carries no readjustment - it is uniformly gentle.
+/// - **The Return** (a fresh gap detected at generation time, `isReturn`) serves the day easy and
+///   winnable *regardless of staleness or the policy's optimization levers*. The session already leads
+///   **strength** structurally (US-005/US-M01: every session builds a leading strength block in
+///   `SessionAssembly`), so the Return no longer carries a pillar-lead override; its whole contribution
+///   is the two gentleness rails that flank that lead - `returnPool` caps the eligible difficulty so a
+///   strong pre-gap history can't serve a punishing tier, and `reentryScale` eases Step 6's volume to
+///   the gentle floor. The Return itself carries no readjustment - it is uniformly gentle.
 /// - **The Re-entry Ramp** (`sessionPolicy.reentry`, set to `rampSessions` by the Programmer after a
 ///   Return, US-F03) walks difficulty back up over the sessions that follow: `reentryScale` starts at
 ///   the same gentle floor and climbs toward neutral as `rampSessionsRemaining` decrements, so the
@@ -95,27 +95,6 @@ enum ReturnOverride {
         guard isReturn else { return pool }
         let capped = pool.filter { $0.difficulty <= returnMaxDifficulty }
         return capped.isEmpty ? pool : capped
-    }
-
-    /// The pillar plan with the Return override applied: the day is led by **strength** - as every
-    /// session is now (US-005) - *regardless of staleness or the policy's optimization levers*, so a
-    /// returning user gets a strength-led comeback instead of the stalest, hardest pillar the optimizer
-    /// would otherwise chase. A no-op when this is not a Return. Gentleness is preserved by the rails
-    /// that flank this choice, not by the pillar: `returnPool`'s difficulty cap and `reentryScale`'s
-    /// volume floor keep the strength-led comeback winnable.
-    ///
-    /// - A single-focus Return trains strength directly.
-    /// - A blend Return re-points its shares so strength owns the largest block (it leads and gets the
-    ///   most time), preserving the shares' sum-to-1 and every pillar's floor - the other pillars still
-    ///   appear, strength simply leads.
-    static func overridePlan(_ plan: PillarPlan, isReturn: Bool) -> PillarPlan {
-        guard isReturn else { return plan }
-        switch plan {
-        case .single:
-            return .single(.strength)
-        case .blend(let weights):
-            return .blend(weights.favoring(.strength))
-        }
     }
 
     // MARK: - Re-entry Ramp (Step 6 volume ease)
