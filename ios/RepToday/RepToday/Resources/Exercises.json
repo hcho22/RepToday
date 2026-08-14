@@ -698,6 +698,10 @@
     "displayName": "Deep Squat Hold",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -716,6 +720,10 @@
     "displayName": "90/90 Hip Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -735,6 +743,10 @@
     "displayName": "Cat-Cow Flow",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "hinge",
+      "core"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -753,6 +765,11 @@
     "displayName": "Thoracic Rotations",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "push",
+      "pull",
+      "core"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -772,6 +789,11 @@
     "displayName": "World's Greatest Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge",
+      "push"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -791,6 +813,10 @@
     "displayName": "Pigeon Pose",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -810,6 +836,9 @@
     "displayName": "Frog Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -828,6 +857,10 @@
     "displayName": "Downward Dog",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "hinge",
+      "push"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -846,6 +879,10 @@
     "displayName": "Kneeling Hip-Flexor Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -865,6 +902,9 @@
     "displayName": "Wall Chest Opener",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "push"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -883,6 +923,9 @@
     "displayName": "Standing Forward Fold",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -901,6 +944,9 @@
     "displayName": "Child's Pose",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "pull"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1115,6 +1161,9 @@
     "displayName": "Lizard Lunge",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1134,6 +1183,10 @@
     "displayName": "Supine Spinal Twist",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "pull",
+      "core"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1153,6 +1206,11 @@
     "displayName": "Thread the Needle",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "push",
+      "pull",
+      "core"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1172,6 +1230,9 @@
     "displayName": "Standing Quad Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1191,6 +1252,10 @@
     "displayName": "Figure-Four Glute Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1210,6 +1275,10 @@
     "displayName": "Wall Calf Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1229,6 +1298,9 @@
     "displayName": "Butterfly Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1247,6 +1319,10 @@
     "displayName": "Cobra Stretch",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "push",
+      "core"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1265,6 +1341,10 @@
     "displayName": "Puppy Pose",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "push",
+      "pull"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1283,6 +1363,9 @@
     "displayName": "Cossack Squat",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1302,6 +1385,10 @@
     "displayName": "Hip Circles",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat",
+      "hinge"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1321,6 +1408,9 @@
     "displayName": "Standing Side Bend",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "core"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1340,6 +1430,9 @@
     "displayName": "Ankle Rocks",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "squat"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",
@@ -1359,6 +1452,10 @@
     "displayName": "Arm Circles",
     "pillar": "mobility",
     "movementPattern": "mobility",
+    "complements": [
+      "push",
+      "pull"
+    ],
     "category": "mobility",
     "difficulty": 1,
     "phase": "discipline",

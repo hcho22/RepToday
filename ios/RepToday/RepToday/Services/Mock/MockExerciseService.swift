@@ -19,6 +19,10 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     case unresolvedChainLink(exerciseId: String, missingId: String, link: String)
     /// A chain's `progressionOrder` values are not a contiguous `0..<count` sequence.
     case chainNotContiguous(chainId: String, orders: [Int])
+    /// A `pillar == .mobility` movement is missing the `complements` field the prefer-then-fill
+    /// bookend selection reads (US-M02). Every mobility stretch must carry it (an empty `[]` is
+    /// valid - "complements no pattern"); a *missing* key is a tagging omission, not "no matches".
+    case mobilityMissingComplements(exerciseId: String)
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +38,8 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
             return "Exercise '\(id)' has \(link) '\(missingId)', which resolves to no exercise in the library."
         case .chainNotContiguous(let chainId, let orders):
             return "Progression chain '\(chainId)' is not contiguous: progressionOrder values \(orders) must be 0..<\(orders.count)."
+        case .mobilityMissingComplements(let id):
+            return "Mobility movement '\(id)' is missing the 'complements' field (US-M02): every stretch must be tagged (use [] for none)."
         }
     }
 }
@@ -136,6 +142,13 @@ final class MockExerciseService: ExerciseServiceProtocol {
         // Zero-Equipment Floor: every movement is pure bodyweight.
         for exercise in library where !exercise.equipment.isEmpty {
             throw ExerciseLibraryError.equipmentNotEmpty(exerciseId: exercise.id)
+        }
+
+        // Every mobility stretch carries a `complements` tag (US-M02) - `[]` is valid, a missing
+        // key is not - so the prefer-then-fill bookend selection has an honest, uniform schema and
+        // a newly added stretch cannot silently ship untagged.
+        for exercise in library where exercise.pillar == .mobility && exercise.complements == nil {
+            throw ExerciseLibraryError.mobilityMissingComplements(exerciseId: exercise.id)
         }
 
         // Chain links resolve: no dangling regression/progression references.
