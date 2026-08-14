@@ -32,7 +32,7 @@ struct Workout: Codable, Equatable, Identifiable {
 // MARK: - WorkoutBlock
 
 /// A titled, ordered group of prescribed exercises within a session (e.g. "Warm-up",
-/// "Strength", "Movement Practice", "Cooldown").
+/// "Strength", "Primal", "Cooldown").
 struct WorkoutBlock: Codable, Equatable, Identifiable {
     var id: UUID
     var title: String

@@ -20,12 +20,11 @@ import Foundation
 // MARK: - SessionShapeTemplate
 
 enum SessionShapeTemplate: CaseIterable, Equatable {
-    /// 5-10 min: one pillar, done well. In a short mobility-led session the opening flow
-    /// doubles as warm-up + training.
+    /// 5-10 min: a single strength training block (primal folded in), opened by the mobility warm-up.
     case singleFocus
-    /// 11-20 min: warm-up + one real block + a small second block.
+    /// 11-20 min: warm-up + strength block + cooldown (US-M01 retired the mobility middle block).
     case blendLight
-    /// 21-40 min: warm-up + strength block + mobility block + cooldown.
+    /// 21-40 min: warm-up + strength block + cooldown (US-M01 retired the mobility middle block).
     case blendFull
     /// 41-60 min: a full blend with room for a dedicated third (primal) block; the extended
     /// end of the range unlocked in US-E01. Resolves to the same canonical `.blend` shape;

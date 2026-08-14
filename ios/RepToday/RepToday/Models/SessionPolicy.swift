@@ -47,9 +47,10 @@ struct SessionPolicy: Codable, Equatable {
     var varietyWindow: Int
 
     /// The cold-start override contract, present only during the cold-start window (US-E04):
-    /// it forces the cold-start strength lead (US-004), caps Starting Difficulty, and carries the Start Seed
-    /// (US-O02) - the difficulty floor and opening volume the self-reported fitness level starts
-    /// at. `nil` once the engine retires cold-start (US-G04), after which Step 0 is a no-op.
+    /// it caps Starting Difficulty and carries the Start Seed (US-O02) - the difficulty floor and
+    /// opening volume the self-reported fitness level starts at. (Its pillar-lead override was retired
+    /// by US-M01; the strength lead is now structural.) `nil` once the engine retires cold-start
+    /// (US-G04), after which Step 0 is a no-op.
     var coldStartContract: ColdStartContract?
 
     /// The Re-entry Ramp state, present only while walking a user back up after a Return

@@ -54,7 +54,7 @@ At launch no user has earned the Strength Phase, so the MVP ships the Discipline
 ### Core Workout Loop
 
 - **Deterministic session generation** - select a duration (5-60 min) and the engine assembles a structured session (warm-up, main work, cooldown over 10 min) on-device, with no network and no LLM.
-- **Smart movement selection** - balances the stalest pillar and movement pattern, filters by phase, injuries, difficulty cap, and recent skips, and never repeats yesterday's primary pattern.
+- **Smart movement selection** - leads every session with strength, rotates the stalest movement pattern, filters by phase, injuries, difficulty cap, and recent skips, and never repeats yesterday's primary pattern.
 - **Adaptive Overload** - prescribes capacity-relative reps/sets/holds (never a fixed heroic number); an asymmetric ramp adjusts within one cycle - a `too_hard` or a skip backs off fast, `too_easy` climbs slow.
 - **A start matched to your level** - the first sessions open at the difficulty band and volume seeded from the fitness level you reported at onboarding, rather than at the library's absolute beginner tier; a `too_hard` rating walks both the tier and the volume back down within one session, and the seeding retires on its own once there is real history to steer by.
 - **In-session swap** - substitutes deterministically within the same pillar, pattern, difficulty band, and time budget.
@@ -143,18 +143,18 @@ AI/LLM features are deferred to Phase 2 and, when they arrive, do language only 
 ## The Deterministic Engine
 
 The on-device engine runs this pipeline (one step per Epic C story in the PRD).
-**Step 0 overrides** run ahead of it and are no-ops in the steady state: a cold start seeds the first sessions from the reported fitness level (a difficulty band and a volume seed, both eased by a `too_hard` rating and retired once there is enough history) and forces first-week pillar contrast, and a Return after a gap serves a deliberately easy session.
+**Step 0 overrides** run ahead of it and are no-ops in the steady state: a cold start seeds the first sessions from the reported fitness level (a difficulty band and a volume seed, both eased by a `too_hard` rating and retired once there is enough history), and a Return after a gap serves a deliberately easy session. Both keep only these gentleness rails - since the strength lead is structural, neither steers which pillar leads.
 
 1. **Session shape** - 5-10 min single-focus; 11-20 min blend (light); 21-40 min blend (full); 41-60 min blend (extended).
-2. **Pillar balance** - a single-focus (5-10 min) session always trains strength (mobility survives only as the warm-up); a blend is strength-led too (strength owns the large majority of the training time, ~85%+ in a mid-length session) with mobility as a minority accessory, and whether the user sits long only sizes that accessory (a desk worker earns a little more), never which pillar leads.
+2. **Pillar balance** - every session is strength-led, structurally: the engine builds a single strength training block (primal folded in) for single-focus and the shorter blends, or a strength block plus a dedicated primal block for an extended (41-60 min) blend - never a mobility training block at any length. Mobility survives only as the warm-up and cooldown bookends; the minutes the retired Movement Practice mobility block used to hold were reallocated to strength.
 3. **Movement-pattern focus** - rank patterns by staleness; never repeat yesterday's primary pattern.
 4. **Filter pool** - drop by phase, injuries, difficulty cap, and recent skips; everything is bodyweight (Zero-Equipment Floor).
 5. **Progression-chain selection** - pick the current chain position; offer the next when advancement criteria are met; avoid the last few sessions (a policy-tunable `varietyWindow`, default 3).
 6. **Adaptive Overload** - prescribe capacity-relative reps/sets/holds; feedback (or a skip) adjusts within one cycle via an asymmetric ramp (back off fast, climb slow), the advancing bump paced by the policy's `progressionRate`.
-7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, and land within ±1 min of the requested time. A set is priced as a fixed setup cost plus the per-unit work of the target actually prescribed (a per-side hold costing both sides), so a grown or seeded target is planned as the longer session it really is. The warm-up, cooldown, and Movement Practice (mobility) blocks are one set per exercise - a stretch is never multi-set at any length - so a longer session grows the mobility block only by adding distinct movements, and the strength/primal set lever carries the extra time instead.
+7. **Assemble + fit timing** - always open with a warm-up, add a cooldown over 10 min, and land within ±1 min of the requested time. A set is priced as a fixed setup cost plus the per-unit work of the target actually prescribed (a per-side hold costing both sides), so a grown or seeded target is planned as the longer session it really is. The warm-up and cooldown bookends are one set per exercise - a stretch is never multi-set - so a longer session grows them only by adding distinct movements, and the strength/primal set lever carries the extra time instead.
 
 In-session **swap** substitutes deterministically within the same pillar, pattern, difficulty band, and time budget, or returns a clear "no alternative" when no safe peer fits.
-The substitute is sized by the same levers the session was generated with (the policy's `progressionRate`, the cold-start seed, and any Return / re-entry ease), and it keeps the slot's set count whenever a peer fits at it - re-picking a count within the assembler's rails only when leaving the slot alone would push the session out of its stated minutes, and never on the single-set warm-up, cooldown, or Movement Practice blocks (a swapped stretch stays one set).
+The substitute is sized by the same levers the session was generated with (the policy's `progressionRate`, the cold-start seed, and any Return / re-entry ease), and it keeps the slot's set count whenever a peer fits at it - re-picking a count within the assembler's rails only when leaving the slot alone would push the session out of its stated minutes, and never on the single-set warm-up or cooldown bookends (a swapped stretch stays one set).
 
 ---
 
