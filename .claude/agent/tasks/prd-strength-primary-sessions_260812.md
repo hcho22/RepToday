@@ -318,11 +318,11 @@ Each mobility movement is tagged with the strength pattern(s) it complements. A 
 
 **Acceptance Criteria:**
 
-- [ ] `sitsLong` no longer sizes any training block (the accessory sizing it drove is gone with US-M01).
-- [ ] `sitsLong` biases bookend selection toward posture / hip openers and/or adds at most one extra bookend stretch.
-- [ ] No code path lets `sitsLong` reintroduce a mobility middle block.
-- [ ] Bookends stay lean and length-scaled; the shortest sessions are not re-inflated with stretching.
-- [ ] Unit tests pass.
+- [x] `sitsLong` no longer sizes any training block (the accessory sizing it drove is gone with US-M01).
+- [x] `sitsLong` biases bookend selection toward posture / hip openers and/or adds at most one extra bookend stretch.
+- [x] No code path lets `sitsLong` reintroduce a mobility middle block.
+- [x] Bookends stay lean and length-scaled; the shortest sessions are not re-inflated with stretching.
+- [x] Unit tests pass.
 
 **Validation Test:**
 
