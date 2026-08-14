@@ -16,13 +16,13 @@ import Foundation
 /// - **Start Seed** (`startSeed` / `startBandedPool` / `volumeSeed`, US-O02) - the floor beneath that
 ///   cap and the volume a no-history prescription opens at, so an *active* user's first sessions are
 ///   not served the absolute beginner tier at beginner volume.
-/// - **Cold-Start Strength Lead** (`overridePlan`, US-004) - when the contract sets
-///   `forceContrastSpread`, every cold-start day is forced to lead **strength** (a single-focus day
-///   trains strength; a blend leads strength), overriding the mobility/primal bias `why`/`sitsLong`
-///   alone would produce (a desk worker's all-mobility week). Strength is what the first week builds;
-///   the gentleness rails above (the difficulty cap and the Start Seed) are what keep it winnable.
-///   This reverses the retired First-Week Contrast rotation, which deliberately *spread* the lead
-///   across all three pillars - the flag's meaning is now "lead strength on cold-start days".
+///
+/// Cold start no longer overrides pillar *selection*. It once forced every cold-start day to lead
+/// strength (`overridePlan`, US-004), but since US-M01 the strength lead is **structural** in
+/// `SessionAssembly` - every session builds a leading strength block regardless of regime - so there is
+/// nothing left to override and that function is gone. The `coldStartContract.forceContrastSpread` flag
+/// it gated is now inert (see `SessionPolicy`). What Step 0 still contributes is only the gentleness
+/// rails above.
 ///
 /// Step 0 is gated on two conditions and is otherwise a no-op: the user is still in the cold-start
 /// window (`user.coldStart.active`) *and* the live policy carries a `coldStartContract`. Once the
@@ -43,7 +43,7 @@ enum ColdStartOverride {
 
     /// Whether Step 0 applies at all: the user is still in the cold-start window and the live policy
     /// carries a cold-start contract. When this is false every override below (`cappedPool`,
-    /// `startBandedPool`, `volumeSeed`, `overridePlan`) is a no-op. `withheldByStartSeed` is the sole
+    /// `startBandedPool`, `volumeSeed`) is a no-op. `withheldByStartSeed` is the sole
     /// exception - it falls through to the floor recorded at the handoff, which is the whole point of
     /// recording it.
     static func isActive(user: User, sessionPolicy: SessionPolicy) -> Bool {
@@ -234,9 +234,9 @@ enum ColdStartOverride {
     /// is untouched. A no-op when Step 0 is inactive or the resolved seed is neutral.
     ///
     /// Two things are deliberately never floored:
-    /// - **Mobility** - the warm-up, the Movement Practice block, and the cooldown all draw from the
-    ///   mobility pool, and a mobility movement's difficulty is not a measure of training load. Gating
-    ///   there is identical for every fitness level.
+    /// - **Mobility** - the warm-up and the cooldown both draw from the mobility pool, and a mobility
+    ///   movement's difficulty is not a measure of training load. Gating there is identical for every
+    ///   fitness level.
     /// - **A movement pattern the floor would empty** - the floor is clamped down per pattern to the
     ///   hardest movement that pattern actually offers inside the cap, so banding can never starve a
     ///   pattern (and never break generation) just because the library has no movement that hard yet.
@@ -387,44 +387,6 @@ enum ColdStartOverride {
         recentLogs: [WorkoutLog]
     ) -> VolumeSeed {
         startSeed(user: user, sessionPolicy: sessionPolicy, recentLogs: recentLogs).volume
-    }
-
-    // MARK: - Cold-Start Strength Lead
-
-    /// The pillar plan with the cold-start strength lead applied (US-004): every cold-start day is
-    /// forced to lead **strength**, overriding the mobility/primal single-theme bias `why`/`sitsLong`
-    /// alone would produce (a desk worker's all-mobility week). A no-op when Step 0 is inactive or the
-    /// contract does not set the flag.
-    ///
-    /// - A single-focus session's one pillar becomes strength outright, so mobility survives only as
-    ///   the structural warm-up rather than the day's theme.
-    /// - A blend's shares are re-pointed so strength owns the largest block (its block leads and gets
-    ///   the most time) via `PillarWeights.favoring(_:)`, which preserves the multiset of shares - the
-    ///   emphasis is reordered, never a pillar starved. On an extended blend that already leads
-    ///   strength this is a no-op; on a mobility- or primal-led blend it swaps strength to the front.
-    ///
-    /// This reverses the retired First-Week Contrast rotation (US-G02/US-E04), which forced the lead
-    /// onto a `[.strength, .mobility, .primal]` cycle to *spread* the first week across all three
-    /// pillars. The `forceContrastSpread` flag survives as the gate; its meaning is now "lead strength
-    /// on cold-start days". The gentleness this leaves untouched (the difficulty cap and the Start
-    /// Seed's reduced volume) is what keeps a strength-led first week winnable.
-    static func overridePlan(
-        _ plan: PillarPlan,
-        user: User,
-        sessionPolicy: SessionPolicy
-    ) -> PillarPlan {
-        guard
-            user.coldStart.active,
-            let contract = sessionPolicy.coldStartContract,
-            contract.forceContrastSpread
-        else { return plan }
-
-        switch plan {
-        case .single:
-            return .single(.strength)
-        case .blend(let weights):
-            return .blend(weights.favoring(.strength))
-        }
     }
 
 }

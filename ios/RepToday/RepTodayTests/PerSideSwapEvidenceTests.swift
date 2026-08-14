@@ -114,16 +114,48 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     }
 
     /// The real Steps 1-7 pipeline at a fixed clock, so the transcripts below are reproducible.
-    private func generate() throws -> Workout {
+    private func generate(recentLogs: [WorkoutLog]? = nil) throws -> Workout {
         SessionAssembly.assemble(
             requestedMinutes: requestedMinutes,
             user: steadyUser(),
             library: try library(),
-            recentLogs: history(),
+            recentLogs: recentLogs ?? history(),
             sessionPolicy: .default,
             asOf: asOf,
             calendar: calendar
         )
+    }
+
+    /// A history that establishes a per-side **rep** strength movement (Bird Dog, a per-side core
+    /// movement) as the core frontier *outside* the variety window - exactly the technique `history()`
+    /// uses to pin the per-side hold (`core_side_plank`). Since US-M01 removed the Movement Practice
+    /// mobility block - the block that used to surface a per-side rep movement (per-side mobility
+    /// rotations) in a normal session - the per-side rep suffix now belongs to a strength movement, so a
+    /// render of the player at a per-side rep needs a session whose strength block carries one.
+    private func perSideRepHistory() -> [WorkoutLog] {
+        struct Spec { let id: String, pillar: Pillar, pattern: MovementPattern; let reps: Int?, seconds: Int? }
+        let specs: [Spec] = [
+            Spec(id: "push_standard", pillar: .strength, pattern: .push, reps: 12, seconds: nil),
+            Spec(id: "squat_split", pillar: .strength, pattern: .squat, reps: 10, seconds: nil),
+            Spec(id: "mobility_cat_cow", pillar: .mobility, pattern: .mobility, reps: 10, seconds: nil),
+            Spec(id: "core_bird_dog", pillar: .strength, pattern: .core, reps: 10, seconds: nil),
+        ]
+        return (0..<8).map { offset in
+            let spec = specs[offset % specs.count]
+            let set = CompletedSet(reps: spec.reps, durationSeconds: spec.seconds)
+            return WorkoutLog(
+                id: UUID(), workoutId: UUID(), completedAt: date(daysAgo: offset * 2 + 1),
+                requestedMinutes: requestedMinutes, durationMinutes: requestedMinutes - 1,
+                wasReturn: false, shape: .blend, focusPillar: spec.pillar,
+                perceivedDifficulty: .justRight,
+                exercises: [
+                    LoggedExercise(
+                        id: UUID(), exerciseId: spec.id, pillar: spec.pillar,
+                        movementPattern: spec.pattern, completedSets: [set, set, set], skipped: false
+                    )
+                ]
+            )
+        }
     }
 
     private func player(_ workout: Workout, engine: any WorkoutEngineProtocol) -> ActiveSessionViewModel {
@@ -429,8 +461,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     }
 
     /// The player on a per-side *rep* movement, where the suffix lands on a count rather than a clock.
+    /// Since US-M01 removed the Movement Practice mobility block (the old source of a per-side rep slot),
+    /// this drives a history that establishes a per-side rep **strength** frontier (`perSideRepHistory`),
+    /// so the generated session carries one.
     func testRenderPlayerAtAPerSideRepMovement() throws {
-        let workout = try generate()
+        let workout = try generate(recentLogs: perSideRepHistory())
         let slots = workout.blocks.flatMap(\.exercises)
         let index = try XCTUnwrap(
             slots.firstIndex { $0.exercise.sidesPerSet > 1 && !$0.exercise.isHold },

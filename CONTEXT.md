@@ -9,18 +9,18 @@ This is a glossary of settled terms, not a spec - each entry points to the autho
 The training families a session draws from - `strength`, `mobility`, `primal` (`Models/Enums.swift`, `Pillar`).
 
 **Strength is the primary pillar of every session.**
-Single-focus, blend, cold-start, and Return sessions all lead with strength; mobility is **supporting** - the structural warm-up, the cooldown, and a minority accessory block (Movement Practice), never the lead.
+Single-focus, blend, cold-start, and Return sessions all lead with strength; mobility is **supporting** - the structural warm-up and the cooldown bookends only, never a training block and never the lead.
 This is the strength-primary decision that superseded the earlier co-primary framing (see [ADR-0001](docs/adr/0001-strength-primary-sessions.md)); it is captain-accepted, and the term "co-primary" is retired for describing current behavior.
-`sitsLong` (desk-worker signal) now only modulates the *size* of the mobility accessory, never which pillar leads.
+Since **US-M01** the strength lead is *structural*: the engine builds every session as Warm-Up -> Strength (-> Primal at 41-60 min) -> Cooldown, with no strength-vs-mobility split machinery. `sitsLong` (desk-worker signal) is currently inert (US-M03 will repurpose it to bias bookend selection).
 
 `primal` (bear crawl, crab walk, ground-to-standing) is a first-class pillar: it earns its own dedicated block in extended (41-60 min) sessions and folds into the strength family in shorter blends (US-E02).
-The engine mechanics live in `Services/Engine/PillarBalance.swift`; `AGENTS.md` section 2 ("Pillar balance") is the working description.
+The engine mechanics live in `Services/Engine/SessionAssembly.swift` (the block builder); `AGENTS.md` section 2 ("Pillar balance") is the working description.
 
-## Movement Practice
+## Movement Practice (retired)
 
-The mobility **training** block - a real block of mobility work (deep squat holds, hip work, thoracic rotations), distinct from the structural warm-up that opens every session.
-Under the strength-primary model it is a one-set-per-exercise minority accessory that grows a longer session by adding distinct movement *types* (capped at `maxMobilityTrainingExercises`), not by adding sets (`Services/Engine/SessionAssembly.swift`; `AGENTS.md` section 7).
-"Movement Practice is not the warm-up" remains true; "Movement Practice is co-primary with strength" does not.
+The mobility **training** block that once sat between the warm-up and cooldown - a real block of mobility work (deep squat holds, hip work, thoracic rotations), distinct from the structural warm-up.
+**Retired by US-M01** (2026-08-13): it is no longer emitted at any length, its split machinery (`PillarBalance`/`PillarWeights`) is removed, and the training minutes it held were reallocated to strength.
+Mobility now survives only as the warm-up and cooldown bookends. The term is kept here only so a future contributor recognizes it as a removed concept, not a live block (see [ADR-0001](docs/adr/0001-strength-primary-sessions.md) and the "Movement Practice removal" follow-on in `.claude/agent/tasks/prd-strength-primary-sessions_260812.md`).
 
 ## discipline-first
 

@@ -122,28 +122,13 @@ final class ReturnOverrideTests: XCTestCase {
         )
     }
 
-    // MARK: - Pillar-plan override (discipline over optimization)
+    // MARK: - Strength lead is structural (US-M01)
 
-    func testReturnLeadsSingleFocusWithStrength() {
-        // A Return leads strength (US-005), gentle via the difficulty cap and volume floor, not the pillar.
-        XCTAssertEqual(ReturnOverride.overridePlan(.single(.mobility), isReturn: true), .single(.strength))
-        XCTAssertEqual(ReturnOverride.overridePlan(.single(.primal), isReturn: true), .single(.strength))
-        // Not a Return: the plan is untouched.
-        XCTAssertEqual(ReturnOverride.overridePlan(.single(.mobility), isReturn: false), .single(.mobility))
-    }
-
-    func testReturnLeadsBlendWithStrength() {
-        // A mobility-heavy blend: strength should end up owning the largest share after the override.
-        let mobilityHeavy = PillarWeights(strength: 0.3, mobility: 0.6, primal: 0.1)
-        guard case let .blend(weights) = ReturnOverride.overridePlan(.blend(mobilityHeavy), isReturn: true) else {
-            return XCTFail("a blend Return must stay a blend")
-        }
-        XCTAssertGreaterThan(weights.strength, weights.mobility, "strength leads a Return blend")
-        XCTAssertGreaterThan(weights.strength, weights.primal, "strength leads a Return blend")
-        // The multiset of shares is preserved (nothing is starved), still summing to 1.
-        XCTAssertEqual(weights.strength + weights.mobility + weights.primal, 1.0, accuracy: 0.0001)
-        XCTAssertEqual(weights.strength, 0.6, accuracy: 0.0001, "strength takes the former max share")
-    }
+    // The Return no longer carries a pillar-lead override: since US-M01 the strength lead is structural
+    // in `SessionAssembly` (every session builds a leading strength block), so `ReturnOverride.overridePlan`
+    // was removed. The Return's contribution is the two gentleness rails - the difficulty cap (`returnPool`,
+    // above) and the volume floor (`reentryScale`, below). The end-to-end proof that a Return leads
+    // strength lives in `SessionAssemblyTests.testReturnLeadsWithStrength`.
 
     // MARK: - Re-entry Ramp scale
 

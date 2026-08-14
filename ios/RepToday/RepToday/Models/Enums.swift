@@ -21,9 +21,10 @@ import Foundation
 /// The training pillars a session can draw from.
 ///
 /// `strength` is the **primary** pillar of every session (single-focus, blend, cold-start,
-/// and Return); `mobility` is **supporting** - the structural warm-up, the cooldown, and a
-/// minority accessory (Movement Practice) block, never the lead (US-001..US-006). Movement
-/// Practice is still a real mobility *training* block, distinct from the warm-up.
+/// and Return); `mobility` is **supporting** - the structural warm-up and the cooldown bookends only,
+/// never a training block and never the lead (US-001..US-006). Since US-M01 the mobility *training*
+/// block (Movement Practice) is retired: mobility is bookend-only, and its freed minutes went to
+/// strength.
 /// `primal` (bear crawl, crab walk, ground-to-standing) is a first-class pillar that earns
 /// its own block in extended (41-60 min) sessions and folds into strength in shorter blends (US-E02).
 enum Pillar: String, Codable, CaseIterable, Identifiable, Hashable {

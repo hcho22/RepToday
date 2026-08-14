@@ -12,15 +12,16 @@ import XCTest
 ///
 ///   1. contains a real `.strength` **training** block (not merely a mobility warm-up), and is never
 ///      **mobility-led** (the training block owning the most planned time is strength, never mobility);
-///   2. holds the strength-primary share bands - a single-focus session's training time is essentially
-///      all strength (mobility survives only as the warm-up), and a blend runs strength-dominant inside
-///      the US-002/US-003-validated band; and
+///   2. holds the strength-primary share bands - since US-M01 there is **no mobility training block at
+///      any length**, so a session's training time is all strength (single-focus and the shorter blends)
+///      or a strength block leading a dedicated primal minority block (extended), always strength-heavier
+///      than the archived ~0.75-0.80 accessory model; and
 ///   3. stays deterministic and a pure function of the injected `asOf` (no wall-clock read).
 ///
 /// The originally-reported bug this guards against is a 5-minute desk-worker session generated as all
-/// stretches. `SessionAssemblyTests`/`PillarBalanceTests` prove the per-story behavior; this suite is
-/// the one place a maintainer can see, at a glance, that the invariant holds across the whole matrix -
-/// so a change that quietly reintroduces a mobility-only session for some length/mode fails here even
+/// stretches. `SessionAssemblyTests` proves the per-story behavior; this suite is the one place a
+/// maintainer can see, at a glance, that the invariant holds across the whole matrix - so a change that
+/// quietly reintroduces a mobility-only (or mobility-middle) session for some length/mode fails here even
 /// if it slipped past a narrower per-story test.
 final class StrengthPrimaryRegressionTests: XCTestCase {
 
@@ -320,58 +321,51 @@ final class StrengthPrimaryRegressionTests: XCTestCase {
                 let totalTraining = totals.values.reduce(0, +)
                 XCTAssertGreaterThan(totalTraining, 0, "[\(regime.name)] \(minutes) min produced no training time")
 
+                // Since US-M01 there is no mobility training block at any length: the training time is
+                // all strength/primal, so mobility contributes zero training seconds.
+                XCTAssertEqual(
+                    totals[.mobility] ?? 0, 0,
+                    "[\(regime.name)] \(minutes) min must emit no mobility training block (US-M01)"
+                )
+                let strengthShare = Double(strengthSeconds) / Double(totalTraining)
+
                 if minutes <= 10 {
-                    // Single-focus: no mobility training block, so training time is ~100% strength -
-                    // comfortably above the 0.8 strength-primary floor the US-002 blend band centres on.
-                    let strengthShare = Double(strengthSeconds) / Double(totalTraining)
+                    // Single-focus: one strength block, so training time is ~100% strength.
                     XCTAssertGreaterThanOrEqual(
                         strengthShare, 0.8,
                         "[\(regime.name)] \(minutes) min single-focus strength share \(strengthShare) fell below the strength-primary floor"
                     )
                 } else {
-                    // Blend: the **leading strength family** (strength + any dedicated primal block) is
-                    // strength-dominant inside the validated band. An extended blend (41-60 min) carves
-                    // primal into its own block (US-E02), so strength *alone* is smaller there while the
-                    // family still holds the ~0.75-0.80 lead - this measures the family, matching how
-                    // `PillarBalanceTests` pins `strength + primal == 0.8` with mobility the 0.2 minority.
-                    // A light/full blend (11-40 min) folds primal into strength, so the family share is
-                    // just the strength block. Lower bound 0.7 (a genuine mobility accessory is present);
-                    // upper bound 0.88 (US-003 widened it from 0.85 as the leaner warm-up routed freed
-                    // budget into strength sets).
-                    let familyShare = Double(strengthSeconds + primalSeconds) / Double(totalTraining)
-                    XCTAssertGreaterThan(
-                        totals[.mobility] ?? 0, 0,
-                        "[\(regime.name)] \(minutes) min blend must keep a genuine mobility accessory"
-                    )
+                    // Blend: strength leads. A light/full blend (11-40 min) folds primal into strength, so
+                    // strength is ~100% of training; an extended blend (41-60 min) carves a dedicated
+                    // primal minority block (US-E02), so strength *alone* is smaller but still leads primal
+                    // and stays heavier than the archived ~0.75-0.80 accessory model. Either way, with the
+                    // mobility middle block gone the freed minutes accrued to strength (US-M01 decision 3).
                     XCTAssertGreaterThan(
                         strengthSeconds, primalSeconds,
-                        "[\(regime.name)] \(minutes) min blend: strength must lead the strength family (never primal)"
+                        "[\(regime.name)] \(minutes) min blend: strength must lead any dedicated primal block"
                     )
-                    XCTAssertGreaterThanOrEqual(
-                        familyShare, 0.7,
-                        "[\(regime.name)] \(minutes) min blend strength-family share \(familyShare) fell below the strength-dominant floor"
-                    )
-                    XCTAssertLessThanOrEqual(
-                        familyShare, 0.88,
-                        "[\(regime.name)] \(minutes) min blend strength-family share \(familyShare) left a too-thin mobility accessory"
+                    XCTAssertGreaterThan(
+                        strengthShare, 0.80,
+                        "[\(regime.name)] \(minutes) min blend strength share \(strengthShare) is not above the archived ~0.75-0.80 accessory model"
                     )
                 }
             }
         }
     }
 
-    /// The story's explicit share check, isolated: the representative blend lengths (20 and 30 min) run
-    /// strength-dominant near the ~0.75-0.80 target (inside the validated 0.7-0.88 band), for a
-    /// no-history steady-state user - the exact configuration US-002's validation pins.
-    func testRepresentativeBlendLengthsSitInTheStrengthTargetBand() async throws {
+    /// The story's explicit share check, isolated: the representative blend lengths (20 and 30 min) are a
+    /// strength session wrapped in bookends for a no-history steady-state user - no mobility training
+    /// block, and the training time is entirely strength (primal folded in) - the exact configuration
+    /// US-M01's validation pins.
+    func testRepresentativeBlendLengthsAreStrengthOnlyTraining() async throws {
         let library = try await library()
         for minutes in [20, 30] {
             let workout = assemble(minutes: minutes, user: user(sitsLong: false), library: library, logs: [])
             let totals = trainingSecondsByPillar(workout)
             let strengthShare = Double(totals[.strength] ?? 0) / Double(totals.values.reduce(0, +))
-            XCTAssertGreaterThan(totals[.mobility] ?? 0, 0, "\(minutes) min must keep a mobility accessory")
-            XCTAssertGreaterThanOrEqual(strengthShare, 0.7, "\(minutes) min strength share \(strengthShare) below band")
-            XCTAssertLessThanOrEqual(strengthShare, 0.88, "\(minutes) min strength share \(strengthShare) above band")
+            XCTAssertEqual(totals[.mobility] ?? 0, 0, "\(minutes) min must emit no mobility training block")
+            XCTAssertGreaterThanOrEqual(strengthShare, 0.99, "\(minutes) min training time \(strengthShare) is not essentially all strength")
         }
     }
 

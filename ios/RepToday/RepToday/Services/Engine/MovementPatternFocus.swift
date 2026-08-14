@@ -9,13 +9,13 @@ import Foundation
 /// pattern surfaces first, and the lead pattern of the user's most recent session is held back
 /// so it is never repeated back-to-back. Like the earlier steps this is a pure function of the
 /// logs and a caller-supplied reference date (`asOf`) - no hidden clock - so it stays
-/// deterministic and unit-testable, mirroring `PillarBalance`.
+/// deterministic and unit-testable, like the earlier pipeline steps.
 ///
 /// The caller supplies `candidatePatterns`: the patterns actually present in the chosen
-/// pillar's pool (push/squat/hinge/core/pull for strength; just mobility for Movement Practice;
-/// just locomotion for primal). Keeping that list an input rather than re-deriving the
-/// pillar -> pattern map here keeps the step decoupled from the exercise library, exactly as
-/// Step 2 takes the shape and logs as inputs.
+/// pillar's pool (push/squat/hinge/core/pull for strength; just locomotion for primal). Since
+/// US-M01 this step runs only over the strength/primal family - the mobility bookends have their
+/// own variety ordering. Keeping that list an input rather than re-deriving the pillar -> pattern
+/// map here keeps the step decoupled from the exercise library.
 
 // MARK: - PatternStaleness
 
@@ -23,9 +23,8 @@ import Foundation
 /// exercises in `recentLogs`. A pattern absent from `daysSinceWorked` was never worked in the
 /// supplied logs; callers treat that as maximally stale.
 ///
-/// This mirrors `PillarStaleness` (Step 2) keyed by `MovementPattern` instead of `Pillar`:
-/// only completed work counts, the most recent session wins, and day counts are calendar-day
-/// differences (worked yesterday -> 1), not raw elapsed time.
+/// Keyed by `MovementPattern`: only completed work counts, the most recent session wins, and day
+/// counts are calendar-day differences (worked yesterday -> 1), not raw elapsed time.
 struct PatternStaleness: Equatable {
     /// Per-pattern days since last worked. An absent key means "never worked in `recentLogs`".
     let daysSinceWorked: [MovementPattern: Int]
@@ -63,7 +62,7 @@ struct PatternStaleness: Equatable {
     }
 
     /// Whether `a` is strictly staler than `b`, treating "never worked" (`nil`) as the most
-    /// stale value of all. Mirrors `PillarStaleness.isStaler`.
+    /// stale value of all.
     static func isStaler(_ a: Int?, than b: Int?) -> Bool {
         switch (a, b) {
         case (nil, nil): return false

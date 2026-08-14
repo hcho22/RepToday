@@ -6,16 +6,13 @@ import Foundation
 ///
 /// This is the step that turns the pipeline's per-decision outputs into the structured session the
 /// active-session player renders:
-/// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend.
-/// - **Pillars** (Step 2, `PillarPlan`) decide which pillar a single-focus trains, or - for a blend -
-///   how the training time splits: the `PillarWeights` size the blocks, and since US-002 makes every
-///   blend strength-led those weights hand strength the leading share (~75-80%) with mobility a minority
-///   accessory, so strength always leads and is shaped toward the larger share. (The mobility block is
-///   one-set and capped at `maxMobilityTrainingExercises`, so it can hit that cap short of its weighted
-///   share; the overflow is carried by the strength/primal set lever rather than by padding stretches
-///   with redundant sets.) A short/full blend sizes strength (primal folded in) and the mobility
-///   accessory; an extended blend (US-E02) promotes primal to a third, `locomotion`-driven block carved
-///   from the leading strength family.
+/// - **Shape** (Step 1, `SessionShapeTemplate`) decides single-focus vs. blend, which here is only a
+///   distinction of length band and whether primal earns its own block - **every** session is
+///   strength-led (US-001/US-002/US-M01), so there is no pillar-lead decision and no strength-vs-mobility
+///   split to size. Mobility appears only as the warm-up and cooldown bookends, never as a training
+///   block. A single-focus or shorter blend builds one strength block (primal folded in) that fills the
+///   whole training budget; an extended blend (US-E02) carves primal into its own `locomotion`-driven
+///   block, a bounded minority of the budget (`extendedTrainingBlocks`), with strength keeping the lead.
 /// - **Pattern, exercise, and target** (Steps 3-6, `PatternFocus` / `ProgressionChainSelection` /
 ///   `AdaptiveOverload`) fill each training block: the stalest patterns first, the ability-matched
 ///   exercise in each, and that exercise's capacity-relative reps/sets/hold. During cold start Step
@@ -24,10 +21,9 @@ import Foundation
 ///   target - so a self-reported level reaches every part of the block that depends on it.
 ///
 /// On top of those it owns two things the earlier steps deliberately left to assembly:
-/// - **Structure** - every session opens with a `.warmup` block (mobility); a `.cooldown` block of
-///   static stretches closes any session longer than `cooldownThresholdMinutes`. In a short
-///   mobility-led session the opening warm-up and the Movement Practice block are both mobility, so
-///   the opening flow doubles as warm-up + training, exactly as the PRD describes.
+/// - **Structure** - every session opens with a `.warmup` block (mobility) and, past
+///   `cooldownThresholdMinutes`, closes with a `.cooldown` block of static stretches. These bookends
+///   are the only mobility in the session (US-M01): there is no mobility middle block at any length.
 /// - **Timing fit** - the planned wall-clock is `Σ(sets × workPerSet) + rests + transitions`, where
 ///   `workPerSet` re-prices the movement's estimate as a fixed per-set setup cost plus the per-unit
 ///   work of the target Step 6 actually prescribed (see `workSecondsPerSet`); a
@@ -60,39 +56,39 @@ enum SessionAssembly {
     /// timing lever, and only within these rails so a fit never produces an absurd set count.
     ///
     /// The upper rail is deliberately the lever that carries a **long** session. Multiple sets are
-    /// redundant for a stretch but legitimate training for strength, so Movement Practice is pinned at
-    /// one set (`mobilityBlock`, `allowSetAdjust: false`) and the strength/primal blocks instead take
-    /// the extra time up to this ceiling. It is set to the smallest value that lets a 45- and 60-minute
-    /// strength-led blend (US-002) still land within `toleranceSeconds` once its minority mobility accessory is capped at
-    /// `maxMobilityTrainingExercises` one-set movements: a 60-minute session opens the strength/primal
-    /// movements to 5 sets rather than filling the hour with 20+ distinct stretches. It applies across
-    /// the board, but only ever binds on a session long enough for the fit to need the time - a short
-    /// session never reaches it, because adding a set there would overshoot the request.
+    /// redundant for a stretch but legitimate training for strength, so the mobility bookends are pinned
+    /// at one set (`allowSetAdjust: false`) and the strength/primal blocks instead take all the extra time
+    /// up to this ceiling. Since US-M01 removed the Movement Practice mobility block, the strength/primal
+    /// blocks are now the *only* training lever, so this ceiling was raised (from the previous `5`, which
+    /// was calibrated when a many-stretch mobility block still carried part of a long session's minutes) to
+    /// the smallest value that lets a 45- and 60-minute strength session still land within
+    /// `toleranceSeconds`: a 60-minute session opens its handful of strength/primal movements to more sets
+    /// rather than a mobility block. It applies across the board, but only ever binds on a session long
+    /// enough for the fit to need the time - a short session never reaches it, because adding a set there
+    /// would overshoot the request.
     static let minTrainingSets = 1
-    static let maxTrainingSets = 5
+    static let maxTrainingSets = 8
 
-    /// Per-block ceilings on how many distinct movements each mobility-sourced block may draw from the
-    /// shared mobility pool. The warm-up and the cooldown reserve their movements first (the cooldown
-    /// before any Movement Practice block - see `buildBlocks`), so no block ever starves the cooldown of
-    /// its static holds. The Movement Practice block then takes whatever remains, up to this ceiling, at
-    /// **one set each**: it fills a longer session by promoting more distinct movement *types* from its
-    /// reserve, never by adding sets to a stretch (see `mobilityBlock`).
-    ///
-    /// `maxMobilityTrainingExercises` is deliberately bounded well below the mobility pool: a session is
-    /// never a 20+ stretch flow, and the unused remainder gives day-to-day variety real headroom (a
-    /// mobility-heavy day cannot consume the whole catalog). On a long session the mobility share the
-    /// Step 2 weights ask for can exceed what this cap of one-set stretches supplies; the overflow is
-    /// carried by the strength/primal blocks' set lever (`maxTrainingSets`), not by set-padding the
-    /// stretches, so the total still lands within tolerance while stretches stay at one set.
+    /// Primal's fixed share of the training budget in an extended (41-60 min) session, where it earns its
+    /// own dedicated block (`extendedTrainingBlocks`). Since US-M01 removed the Movement Practice block
+    /// and its `PillarWeights` split, the strength-vs-primal division is no longer staleness-weighted:
+    /// primal is shaped toward this fixed minority share and strength takes the rest, so strength always
+    /// leads and the minutes freed by removing mobility accrue to strength (decision 3). Kept a genuine
+    /// minority block (~4-6 sets of one locomotion movement at 45-60 min) while strength keeps a clear
+    /// majority - above the archived ~0.75-0.80 accessory-model strength share (US-M01 validation).
+    static let extendedPrimalTrainingShare = 0.15
+
+    /// Per-block ceilings on how many distinct movements each mobility-sourced bookend may draw from the
+    /// shared mobility pool. Since US-M01 the only mobility-sourced blocks are the warm-up and the
+    /// cooldown; the warm-up draws first and the cooldown before any training block is built (see
+    /// `buildBlocks`), and the strength/primal blocks draw a disjoint pool, so the cooldown is never
+    /// starved of its static holds.
     ///
     /// `maxWarmupExercises` is the *ceiling* the length-scaled warm-up (`warmupExerciseCount`) tops out
-    /// at, chosen so the three mobility-sourced blocks never over-drain the shared pool even in their
-    /// worst case (a long mobility-stale blend, where the warm-up hits this ceiling *and* Movement
-    /// Practice hits `maxMobilityTrainingExercises`): `4 + 4 + 14 = 22` of the 26 mobility movements,
-    /// leaving genuine day-to-day variety headroom. The warm-up draws first and the cooldown before any
-    /// Movement Practice block (see `buildBlocks`), so a fuller warm-up can never starve the cooldown.
+    /// at, chosen so the two mobility bookends never over-drain the shared pool even in their worst case
+    /// (a long session where the warm-up hits this ceiling *and* the cooldown hits `maxCooldownExercises`):
+    /// `4 + 4 = 8` of the 26 mobility movements, leaving generous day-to-day variety headroom.
     static let maxWarmupExercises = 4
-    static let maxMobilityTrainingExercises = 14
     static let maxCooldownExercises = 4
 
     /// How many distinct movements the opening warm-up seeds (all active, one set each), scaled by
@@ -172,9 +168,10 @@ enum SessionAssembly {
     /// `toleranceSeconds` of the request. `asOf` is the reference "now" (used for `createdAt` and all
     /// staleness math) so the function stays a pure function of its inputs.
     ///
-    /// `sessionPolicy` is the per-user program the engine runs on (US-E03): its `pillarWeighting`
-    /// scales Step 2's staleness split, its `varietyWindow` sets Step 5's no-repeat window, and its
-    /// `progressionRate` paces Step 6's overload bump. It also carries the situational overrides the
+    /// `sessionPolicy` is the per-user program the engine runs on (US-E03): its `varietyWindow` sets
+    /// Step 5's no-repeat window and its `progressionRate` paces Step 6's overload bump (its
+    /// `pillarWeighting` is inert since US-M01 - see `SessionPolicy`). It also carries the situational
+    /// overrides the
     /// engine reads: the `coldStartContract` for a brand-new user (US-E04) and the `reentry` ramp for a
     /// returning one (US-E06). It defaults to `SessionPolicy.default` (every lever neutral, no
     /// overrides), which reproduces pre-policy behavior exactly, so an unpolicied caller is unchanged.
@@ -237,12 +234,13 @@ enum SessionAssembly {
             && ReturnOverride.isReturn(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
     }
 
-    /// Builds the seeded block skeleton (warm-up, the pillar plan's training block(s) with their
-    /// weight targets, and an optional cooldown) before the timing fit - the structural output of
-    /// Steps 1-6. Exposed internally so tests can inspect block reserves and per-block weight targets
-    /// prior to the global fit consuming them. `sessionPolicy` threads the US-E03 levers into
-    /// Steps 2/5/6 (see `assemble`) and the situational Step 0 cold-start (US-E04) and Step 0.5 Return
-    /// (US-E06) overrides; it defaults to `SessionPolicy.default` (neutral, no regression).
+    /// Builds the seeded block skeleton (warm-up, the leading strength training block, an optional
+    /// dedicated primal block at the extended lengths, and an optional cooldown) before the timing fit -
+    /// the structural output of Steps 1-6. Exposed internally so tests can inspect block reserves and the
+    /// extended session's per-block time targets prior to the global fit consuming them. `sessionPolicy`
+    /// threads the US-E03 levers into Steps 5/6 (see `assemble`) and the situational Step 0 cold-start
+    /// (US-E04) and Step 0.5 Return (US-E06) gentleness rails; it defaults to `SessionPolicy.default`
+    /// (neutral, no regression).
     static func planBlocks(
         requestedMinutes: Int,
         user: User,
@@ -257,9 +255,15 @@ enum SessionAssembly {
         // Step 0 (US-E04): the cold-start override runs before Steps 1-6 while a brand-new user is
         // still finding their footing. Step 0.5 (US-E06): the Return override serves a returning user
         // an easy, winnable session. The two are mutually exclusive - a Return is suppressed while
-        // cold-start is active, since cold-start already serves gentle, capped, contrast sessions - so
-        // the pillar-plan and pool overrides never fight over the same inputs. Both are no-ops in the
-        // steady state, so a warmed-up, present user runs exactly the US-E03 pipeline.
+        // cold-start is active, since cold-start already serves gentle, capped sessions - so the pool
+        // and volume overrides never fight over the same inputs. Both are no-ops in the steady state, so
+        // a warmed-up, present user runs exactly the US-E03 pipeline.
+        //
+        // Neither override touches pillar *selection* anymore: since US-M01 the session lead is
+        // structural - `buildBlocks` always builds a leading strength block from `template` (US-001/
+        // US-002), with the shape alone deciding whether primal is folded in or gets its own block. So
+        // cold-start and Return contribute only their gentleness rails below (the capped pool and the
+        // eased volume), never a lead override, and there is no strength-vs-mobility split to compute.
         let isReturn = isReturnSession(
             user: user,
             recentLogs: recentLogs,
@@ -267,22 +271,6 @@ enum SessionAssembly {
             asOf: asOf,
             calendar: calendar
         )
-
-        let coldStartPlan = ColdStartOverride.overridePlan(
-            PillarPlan.select(
-                template: template,
-                recentLogs: recentLogs,
-                profile: user.profile,
-                pillarWeighting: sessionPolicy.pillarWeighting,
-                asOf: asOf,
-                calendar: calendar
-            ),
-            user: user,
-            sessionPolicy: sessionPolicy
-        )
-        // On a Return, discipline overrides optimization: strength leads regardless of staleness
-        // (US-005), kept gentle by the difficulty cap and volume floor rather than the pillar.
-        let pillarPlan = ReturnOverride.overridePlan(coldStartPlan, isReturn: isReturn)
 
         // The Start Seed (US-O02), resolved exactly once for the whole generation. Its two halves - the
         // difficulty floor the training pool is banded to and the volume a no-history prescription
@@ -344,7 +332,6 @@ enum SessionAssembly {
             calendar: calendar
         )
         return builder.buildBlocks(
-            pillarPlan: pillarPlan,
             template: template,
             requestedMinutes: requestedMinutes
         )
@@ -363,11 +350,12 @@ enum SessionAssembly {
     }
 
     /// The session's reported `focusPillar`, read from the training blocks the assembly *actually*
-    /// produced rather than the pre-assembly pillar plan. A single-focus session leaves exactly one
-    /// non-empty training block, and its pillar is the focus; a blend leaves two or three (no single
-    /// focus, so `nil`), and a degenerate warmup-only session leaves none. Reading it from the built
-    /// blocks keeps the label truthful when a cold-start primal day degrades to a strength/mobility
-    /// block because the capped pool left no eligible locomotion movement (US-E04).
+    /// produced. A session with a single training block (single-focus, or a shorter blend whose one
+    /// strength block folds primal in) reports that block's pillar - always `.strength` since US-M01; an
+    /// extended blend leaves two training blocks (strength + a dedicated primal, no single focus, so
+    /// `nil`), and a degenerate warmup-only session leaves none. Reading it from the built blocks keeps
+    /// the label truthful when an extended session degrades to a lone strength block because the capped
+    /// pool left no eligible locomotion movement (US-E04).
     static func focusPillar(of blocks: [PlannedBlock]) -> Pillar? {
         let training = blocks.filter { !$0.items.isEmpty && pillar(of: $0.category) != nil }
         guard training.count == 1 else { return nil }
@@ -510,12 +498,14 @@ enum SessionAssembly {
         return work + max(0, block.items.count - 1) * transitionSeconds
     }
 
-    // MARK: - Weighted shaping
+    // MARK: - Target shaping
 
     /// Grows each block that carries a `targetSeconds` toward that share (a best-fit greedy scoped to
-    /// the single block), so a blend's training time is split by the Step 2 pillar weights *before*
-    /// `fit` lands the overall total. It uses the same levers as the global fit - set counts within the
-    /// rails and reserve promotion - and never touches the capacity-relative per-set target from Step 6.
+    /// the single block), so an extended session's strength/primal blocks are split toward the fixed
+    /// strength-leads-primal division (`extendedTrainingBlocks`) *before* `fit` lands the overall total.
+    /// A single-block training middle carries no target and is left entirely to the global fit. It uses
+    /// the same levers as the global fit - set counts within the rails and reserve promotion - and never
+    /// touches the capacity-relative per-set target from Step 6.
     static func shapeTowardTargets(_ blocks: inout [PlannedBlock]) {
         for index in blocks.indices {
             guard let target = blocks[index].targetSeconds else { continue }
@@ -561,8 +551,8 @@ enum SessionAssembly {
                 // `maxTrainingSets` (a capacity-grown or cold-start-seeded strength block can) has no
                 // fine-grained lever left at all: its only move is a whole extra exercise at full volume,
                 // which a short session cannot absorb, and the greedy fit parks minutes away from the
-                // request. A non-set-adjustable block (warm-up, cooldown, Movement Practice) promotes its
-                // reserve only at the item's own one set - so Movement Practice grows purely by count.
+                // request. A non-set-adjustable block (the warm-up and cooldown bookends) promotes its
+                // reserve only at the item's own one set - so a bookend grows purely by movement count.
                 let counts = block.allowSetAdjust
                     ? Array(minTrainingSets...max(minTrainingSets, next.sets))
                     : [next.sets]
@@ -673,14 +663,15 @@ struct PlannedBlock {
     var items: [PlannedItem]
     var reserve: [PlannedItem]
     /// Whether timing fit may add/drop sets on this block's exercises. The strength and primal training
-    /// blocks set it; the warm-up, cooldown, and the mobility Movement Practice block do not, staying at
-    /// one set each and growing only by promoting more distinct movements from their reserve.
+    /// blocks set it; the warm-up and cooldown bookends do not, staying at one set each and growing only
+    /// by promoting more distinct movements from their reserve.
     let allowSetAdjust: Bool
     /// The minimum exercises this block must retain (timing fit never trims below it).
     let minItems: Int
-    /// The planned-seconds share this block should be shaped toward before the global timing fit, set
-    /// for a blend's two training blocks from the Step 2 pillar weights. `nil` leaves the block to the
-    /// global fit alone (warm-up, cooldown, and single-focus training).
+    /// The planned-seconds share this block should be shaped toward before the global timing fit, set for
+    /// an extended session's strength/primal blocks from the fixed strength-leads-primal split
+    /// (`extendedTrainingBlocks`). `nil` leaves the block to the global fit alone (the warm-up, the
+    /// cooldown, and a single-block strength training middle).
     var targetSeconds: Int? = nil
 
     /// The playable block, or `nil` when assembly left it empty (so empties never reach the player).
@@ -715,9 +706,8 @@ private struct Builder {
     let reentryScale: Double
     /// Cold-start Start Seed volume (US-O02): the reps/sets a *no-history* prescription opens at,
     /// matched to the self-reported fitness level. Applied only to the strength and primal training
-    /// blocks - the mobility bookends and Movement Practice are one set of a stretch at every level, so
-    /// warm-up/mobility/cooldown are identical for a beginner and an advanced user. Neutral outside
-    /// the cold-start window.
+    /// blocks - the mobility bookends are one set of a stretch at every level, so the warm-up and
+    /// cooldown are identical for a beginner and an advanced user. Neutral outside the cold-start window.
     let startVolume: ColdStartOverride.VolumeSeed
     /// The movements Step 0's Start Seed band held out of reach (US-O02): Step 5 treats them as
     /// never-on-offer rather than fresh, which is what keeps the session after the cold-start handoff
@@ -728,116 +718,98 @@ private struct Builder {
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
     var usedIds: Set<String> = []
 
-    /// Builds the ordered block skeleton for the session: warm-up first, the training block(s) the
-    /// pillar plan calls for, and a cooldown when the session runs past `cooldownThresholdMinutes`.
+    /// Builds the ordered block skeleton for the session: a warm-up first, the leading **strength**
+    /// training block, a dedicated **primal** block on the extended lengths, and a cooldown when the
+    /// session runs past `cooldownThresholdMinutes`.
     ///
-    /// The cooldown's static holds are *reserved before* the Movement Practice block draws from the
-    /// shared mobility pool (it is constructed here, up front, and appended last only at output time),
-    /// so a blend's cooldown keeps real holds plus reserves instead of the single leftover stretch it
-    /// would get if the training block claimed the pool first.
+    /// Every session is strength-led by construction (US-001/US-002/US-M01): the training middle is
+    /// always a strength block, never a mobility one. Mobility survives only as the warm-up and cooldown
+    /// bookends - there is no Movement Practice middle block at any length (US-M01). Primal keeps its own
+    /// treatment (US-M01 decision 1): folded into the strength block on the shorter shapes, and its own
+    /// block at 41-60 min.
+    ///
+    /// The cooldown's static holds are *reserved* here, before the training middle is built (it is
+    /// constructed up front and appended last only at output time), so a blend's cooldown keeps real
+    /// holds plus reserves rather than the single leftover stretch it would get if a block claimed the
+    /// mobility pool first. The strength/primal blocks draw a disjoint pool, so the bookends' mobility
+    /// reservation is never contended by the training middle.
     ///
     /// `template` distinguishes an extended blend (US-E02), which promotes primal to its own block,
-    /// from the shorter blends that keep folding primal into strength.
+    /// from the shorter shapes that keep folding primal into strength.
     mutating func buildBlocks(
-        pillarPlan: PillarPlan,
         template: SessionShapeTemplate,
         requestedMinutes: Int
     ) -> [PlannedBlock] {
         let warmup = warmupBlock(requestedMinutes: requestedMinutes)
         let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock() : nil
 
-        var middle: [PlannedBlock] = []
-        switch pillarPlan {
-        case .single(let pillar):
-            switch pillar {
-            case .mobility:
-                if let block = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises) {
-                    middle.append(block)
-                }
-            case .primal:
-                // A single-focus primal day builds a dedicated locomotion block, degrading gracefully to
-                // strength then mobility if the capped pool leaves no eligible primal movement so the day
-                // is never empty. Retained as defensive degradation: no engine path produces a
-                // `.single(.primal)` plan today (US-001 leads single-focus with strength; US-004's Step 0
-                // cold-start override leads strength, retiring the First-Week Contrast primal rotation).
-                let block = primalBlock()
-                    ?? strengthBlock()
-                    ?? mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
-                if let block { middle.append(block) }
-            case .strength:
-                if let block = strengthBlock() {
-                    middle.append(block)
-                }
-            }
-        case .blend(let weights):
-            middle = blendBlocks(
-                weights: weights,
+        let middle: [PlannedBlock]
+        if template == .blendExtended {
+            middle = extendedTrainingBlocks(
                 warmup: warmup,
                 cooldown: cooldown,
-                template: template,
                 requestedMinutes: requestedMinutes
             )
+        } else {
+            // Single-focus and the shorter blends: one strength block (primal folded in) is the whole
+            // training middle. It carries no `targetSeconds`, so the global timing fit grows it to fill
+            // the entire training budget - which is how the minutes the retired Movement Practice block
+            // used to hold are reallocated to strength (US-M01 decision 3).
+            middle = strengthBlock(includePrimal: true).map { [$0] } ?? []
         }
 
         return [warmup] + middle + (cooldown.map { [$0] } ?? [])
     }
 
-    /// The training blocks of a blend, ordered heaviest-weight-first and each tagged with the
-    /// planned-seconds share it should be shaped toward. The share is the remaining training budget
-    /// (request minus the warm-up and cooldown the bookends already cost) split in proportion to the
-    /// Step 2 `PillarWeights`. Under US-002 those weights make a blend strength-led, so strength carries
-    /// the leading share and ends up the *larger* block while mobility is the minority accessory.
+    /// The training blocks of an extended (41-60 min) session: a leading **strength** block and a
+    /// dedicated **primal** block (US-E02). The Movement Practice mobility block is gone (US-M01), so the
+    /// only split here is strength-vs-primal, and it is a **fixed** minority split rather than the
+    /// staleness-weighted one the retired `PillarWeights` drove: primal is shaped toward
+    /// `extendedPrimalTrainingShare` of the training budget and strength takes the rest. Strength always
+    /// leads and, because the freed mobility minutes now go to it, runs heavier than under the archived
+    /// accessory model (US-M01 decision 3); primal keeps the same one-movement block it had before.
     ///
-    /// A short or full blend produces a strength-led block (which still folds primal in) and the smaller
-    /// mobility accessory block. An extended blend (US-E02) promotes primal to its own `locomotion`-driven
-    /// block carved from the leading strength family: the strength block sheds primal, and a dedicated
-    /// primal block joins the split, ordered among the three by its weighted share.
-    private mutating func blendBlocks(
-        weights: PillarWeights,
+    /// Both blocks are shaped toward their `targetSeconds` before the global timing fit lands the total.
+    /// If the capped pool leaves no eligible locomotion movement, `primalBlock()` is `nil` and the
+    /// session degrades to a single strength block (which then absorbs the whole budget) rather than
+    /// emitting an empty primal block.
+    private mutating func extendedTrainingBlocks(
         warmup: PlannedBlock,
         cooldown: PlannedBlock?,
-        template: SessionShapeTemplate,
         requestedMinutes: Int
     ) -> [PlannedBlock] {
-        let extended = template == .blendExtended
-
         // In an extended blend primal earns its own block, so the strength block must not also fold
         // primal in (that would double-book the same locomotion movement).
-        var strength = strengthBlock(includePrimal: !extended)
-        var mobility = mobilityBlock(title: "Movement Practice", cap: SessionAssembly.maxMobilityTrainingExercises)
-        var primal = extended ? primalBlock() : nil
+        var strength = strengthBlock(includePrimal: false)
+        var primal = primalBlock()
 
         let bookendSeconds = SessionAssembly.blockSeconds(warmup)
             + (cooldown.map(SessionAssembly.blockSeconds) ?? 0)
         let trainingBudget = max(0, requestedMinutes * 60 - bookendSeconds)
-        strength?.targetSeconds = Int((Double(trainingBudget) * weights.strength).rounded())
-        mobility?.targetSeconds = Int((Double(trainingBudget) * weights.mobility).rounded())
-        primal?.targetSeconds = Int((Double(trainingBudget) * weights.primal).rounded())
+        if primal != nil {
+            let primalTarget = Int((Double(trainingBudget) * SessionAssembly.extendedPrimalTrainingShare).rounded())
+            primal?.targetSeconds = primalTarget
+            strength?.targetSeconds = max(0, trainingBudget - primalTarget)
+        } else {
+            strength?.targetSeconds = trainingBudget
+        }
 
-        // Order the blocks heaviest-weight-first (so the strength-led share leads, US-002); a fixed
-        // pillar order breaks ties deterministically, matching the prior strength-leads-on-tie behavior.
-        let entries: [(weight: Double, tieBreak: Int, block: PlannedBlock?)] = [
-            (weights.strength, 0, strength),
-            (weights.mobility, 1, mobility),
-            (weights.primal, 2, primal),
-        ]
-        return entries
-            .sorted { $0.weight != $1.weight ? $0.weight > $1.weight : $0.tieBreak < $1.tieBreak }
-            .compactMap { $0.block }
+        // Strength leads (US-002), so it comes first; the bounded-minority primal block follows.
+        return [strength, primal].compactMap { $0 }
     }
 
     // MARK: Blocks
 
-    /// The opening warm-up: the freshest mobility movements, one set each. Always first; in a
-    /// mobility-led session it flows straight into the Movement Practice block so the opening doubles
-    /// as warm-up + training.
+    /// The opening warm-up: the freshest mobility movements, one set each. Always first, and - since
+    /// US-M01 - one of only two mobility blocks in the session (the other being the cooldown), never a
+    /// lead-in to a mobility training block.
     ///
     /// The number of movements scales with session length (`warmupExerciseCount`), and all of them are
     /// seeded as **active** items (not reserves) with `minItems` pinned to that count, so a longer
     /// session deterministically opens with a fuller warm-up rather than relying on the global timing
-    /// fit to promote reserves. Like the other mobility bookends it is one set each and never
-    /// set-adjustable; the timing fit still trims the strength/mobility training around it to keep the
-    /// session inside `toleranceSeconds`.
+    /// fit to promote reserves. Like the cooldown bookend it is one set each and never set-adjustable;
+    /// the timing fit still trims the strength/primal training around it to keep the session inside
+    /// `toleranceSeconds`.
     private mutating func warmupBlock(requestedMinutes: Int) -> PlannedBlock {
         let items = mobilityItems(
             from: orderedMobility(holdsOnly: false),
@@ -850,26 +822,6 @@ private struct Builder {
             reserve: [],
             allowSetAdjust: false,
             minItems: max(1, items.count)
-        )
-    }
-
-    /// A mobility training block (Movement Practice): mobility movements ordered by staleness/variety,
-    /// **one set each at every session length**. Movement Practice is mobility/stretch practice, where a
-    /// second set of a stretch is redundant, so - like the warm-up and cooldown bookends - it is not
-    /// set-adjustable (`allowSetAdjust: false`). Its only lever to fill a longer session is promoting
-    /// more distinct movement *types* from its reserve (up to `cap`, and always at one set, since reserve
-    /// promotion for a non-set-adjustable block occurs at the item's own set count). `nil` when no
-    /// mobility movement is left to fill it.
-    private mutating func mobilityBlock(title: String, cap: Int) -> PlannedBlock? {
-        let items = mobilityItems(from: orderedMobility(holdsOnly: false), cap: cap)
-        guard !items.isEmpty else { return nil }
-        return PlannedBlock(
-            title: title,
-            category: .mobility,
-            items: [items[0]],
-            reserve: Array(items.dropFirst()),
-            allowSetAdjust: false,
-            minItems: 1
         )
     }
 

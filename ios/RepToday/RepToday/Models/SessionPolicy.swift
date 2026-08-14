@@ -34,9 +34,12 @@ struct SessionPolicy: Codable, Equatable {
     /// a higher rate advances reps/holds faster, still clamped to the engine's safety rails.
     var progressionRate: Double
 
-    /// Per-pillar multiplier on staleness in Step 2 (US-E03). Neutral is `1.0` for every
-    /// pillar (equal weighting); a heavier weight measurably increases that pillar's share of
-    /// session time. Always carries every pillar (`strength`/`mobility`/`primal`).
+    /// Per-pillar multiplier on staleness that Step 2 once used to size a blend's pillar split
+    /// (US-E03). It is **inert since US-M01**: removing the Movement Practice block retired the
+    /// strength-vs-mobility split machinery (`PillarBalance`), and no engine path reads this lever
+    /// today. The field is kept (decoded, neutral `1.0` for every pillar) so persisted policies and the
+    /// Programmer continue to round-trip unchanged; a future story that reintroduces a within-family
+    /// split would wire it back in. Always carries every pillar (`strength`/`mobility`/`primal`).
     var pillarWeighting: [Pillar: Double]
 
     /// The no-repeat variety window Step 5 honors (US-E03), replacing the engine's previously
@@ -83,10 +86,12 @@ extension SessionPolicy {
     /// values (floor 1 / x1.0 / 3 sets), so a policy persisted before US-O02 still loads and behaves
     /// exactly as it did.
     struct ColdStartContract: Codable, Equatable {
-        /// Force every cold-start day to lead **strength** (US-004), overriding the mobility/primal
-        /// single-theme bias that `why`/`sitsLong` alone would produce. (Named for the retired
-        /// First-Week Contrast spread this replaced; the flag is kept as the Step 0 gate and its
-        /// meaning is now "lead strength on cold-start days".)
+        /// Once the Step 0 gate that forced every cold-start day to lead **strength** (US-004). It is
+        /// **inert since US-M01**: the strength lead is now structural in `SessionAssembly` (every
+        /// session builds a leading strength block), so `ColdStartOverride` no longer carries a
+        /// pillar-lead override and nothing reads this flag. The field is kept (still seeded `true`,
+        /// still decoded) so persisted contracts round-trip unchanged. (Named for the long-retired
+        /// First-Week Contrast spread it originally replaced.)
         var forceContrastSpread: Bool
         /// Hard difficulty cap for cold-start sessions, in `1...5`. It is the *ceiling* of the Start
         /// Seed band: the engine serves at the gentle end of `[startingDifficultyFloor, this]` (below

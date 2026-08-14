@@ -60,7 +60,7 @@ import Foundation
 /// Like the earlier steps this is a pure function of its inputs - the full `library` (so chains
 /// can be reasoned about end-to-end), the eligible `pool` from Step 4, and `recentLogs` - with no
 /// hidden clock or library lookup, so it stays deterministic and unit-testable, mirroring
-/// `PillarBalance`, `MovementPatternFocus`, and `ExercisePoolFilter`.
+/// `MovementPatternFocus` and `ExercisePoolFilter`.
 
 // MARK: - AdvancementCriteria
 
