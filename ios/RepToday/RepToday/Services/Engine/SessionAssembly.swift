@@ -329,9 +329,9 @@ enum SessionAssembly {
             startVolume: startVolume,
             withheldByStartSeed: withheldByStartSeed,
             // US-M03: the desk-worker `sitsLong` signal is a pure *bias* input to bookend selection -
-            // never a sizing lever. It reorders the mobility bookend pool toward posture/hip openers and
-            // does not change any block's count, so it cannot re-inflate a short session or reintroduce a
-            // mobility middle block (see `orderedMobility`/`postureHipLean`).
+            // never a direct sizing lever. It reorders the mobility bookend pool toward posture/hip
+            // openers and changes no block's count and no bookend stretch count, so it cannot re-inflate a
+            // short session or reintroduce a mobility middle block (see `orderedMobility`/`postureHipLean`).
             sitsLong: user.profile.sitsLong,
             asOf: asOf,
             calendar: calendar
@@ -737,12 +737,18 @@ private struct Builder {
     /// never-on-offer rather than fresh, which is what keeps the session after the cold-start handoff
     /// from regressing to an untouched entry tier (see `ProgressionChainSelection`).
     let withheldByStartSeed: Set<String>
-    /// The desk-worker `sitsLong` signal (US-M03), threaded in as a **bias**, never a sizing lever.
+    /// The desk-worker `sitsLong` signal (US-M03), threaded in as a **bias**, never a direct sizing lever.
     /// When set, the warm-up and cooldown pools are reordered to lead with posture/hip openers (see
-    /// `orderedMobility`/`postureHipLean`); it changes no block's count and touches nothing but the
-    /// mobility bookend ordering, so it can never re-inflate a short session or bring back a mobility
-    /// middle block. Since US-M01 removed the Movement Practice accessory (the block `sitsLong` used to
-    /// *size*), this is the only thing `sitsLong` does in the engine.
+    /// `orderedMobility`/`postureHipLean`); it changes no block's count and no bookend stretch count, so
+    /// it can never re-inflate a short session or bring back a mobility middle block. It does change which
+    /// stretches *fill* the fixed-count bookends, though, and stretches differ in `workSecondsPerSet`, so
+    /// a desk worker's bookend duration can differ from the general profile's - and since that duration
+    /// feeds `trainingBudget` (extended path) and the global timing fit (short/full), a strength set count
+    /// can be *incidentally* coupled to bookend composition. The training middle staying byte-identical
+    /// across profiles is therefore test-guarded at the shipped catalog and lengths
+    /// (`testSitsLongDoesNotSizeAnyTrainingBlock`), not an absolute invariant. Since US-M01 removed the
+    /// Movement Practice accessory (the block `sitsLong` used to *size*), this is the only thing `sitsLong`
+    /// does in the engine.
     let sitsLong: Bool
     let asOf: Date
     let calendar: Calendar
@@ -1049,7 +1055,9 @@ private struct Builder {
     /// US-M02's slot-0 authority intact (the pattern-matched lead stretch still wins the first slot)
     /// while every *following* bookend slot fills with hip relief first. Both steps are pure, stable
     /// reorders of a deterministically-sorted array, so the assembled session stays an `asOf`-pure
-    /// function of its inputs, and neither changes the bookend's count.
+    /// function of its inputs, and neither changes the bookend's count - though the posture/hip reorder
+    /// does change which stretches fill it, so bookend duration (and, through the timing fit, a strength
+    /// set count) can differ between profiles (see `sitsLong`/`postureHipLean`).
     private func orderedMobility(holdsOnly: Bool, complementing lead: MovementPattern? = nil) -> [Exercise] {
         let lastWorked = mobilityLastWorked()
         let recent = recentlyUsedIds()
@@ -1106,11 +1114,15 @@ private struct Builder {
     /// order. A no-op when `apply` is false, so a non-desk-bound user's bookends are byte-identical to
     /// today's.
     ///
-    /// This is a *preference layered on the existing ordering*, never a filter and never a sizing lever:
-    /// it drops no stretch and adds none, so the fallback pool is undiminished (a bookend is never
-    /// starved), the count is untouched (a short session cannot be re-inflated with stretching), and no
-    /// path here can create a mobility middle block - the reorder only ever feeds the warm-up and
-    /// cooldown pools. It runs *before* `leadingComplement`, which retains final authority over the lead
+    /// This is a *preference layered on the existing ordering*, never a filter and never a direct sizing
+    /// lever: it drops no stretch and adds none, so the fallback pool is undiminished (a bookend is never
+    /// starved), every block's count and the bookend stretch count are untouched (a short session cannot
+    /// be re-inflated with stretching), and no path here can create a mobility middle block - the reorder
+    /// only ever feeds the warm-up and cooldown pools. It does change bookend *composition*, so a desk
+    /// worker's bookend duration - and, through the timing fit, a strength set count - can differ from the
+    /// general profile's; the training middle holding byte-identical is test-guarded at the shipped
+    /// catalog and lengths (`testSitsLongDoesNotSizeAnyTrainingBlock`), not structural. It runs *before*
+    /// `leadingComplement`, which retains final authority over the lead
     /// slot (US-M02). Pure and deterministic: a stable partition of an already deterministically-sorted
     /// array (`filter` preserves order), with no set-iteration dependence and no clock, so the assembled
     /// session stays an `asOf`-pure function of its inputs.
