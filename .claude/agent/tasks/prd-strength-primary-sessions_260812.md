@@ -218,7 +218,7 @@ The exercise catalog already supports this: 38 strength + 7 primal movements acr
 
 # Follow-on: Movement Practice removal + pattern-matched bookends
 
-**Opened:** 2026-08-13 · **Status:** Captain-approved follow-on. **US-M01 has landed** (2026-08-13): the Movement Practice mobility training block and its split machinery (`PillarBalance`/`PillarWeights`) are removed, the freed minutes reallocated to strength, and the engine now builds every session as Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown with the strength lead structural. **US-M02..US-M05 remain spec-only** (bookend `complements` metadata, `sitsLong`-as-bias, uniform-vocabulary copy, the extended regression guard) - separately-authorized later tasks. This section supersedes the parts of the original PRD (and of `docs/adr/0001-strength-primary-sessions.md`) that keep mobility as a minority *accessory training block* - the "Movement Practice" block. It leaves everything else in the archived PRD above byte-for-byte intact; the seven original stories stayed shipped, this only retires their accessory-mobility clause.
+**Opened:** 2026-08-13 · **Status:** Captain-approved follow-on. **US-M01 has landed** (2026-08-13): the Movement Practice mobility training block and its split machinery (`PillarBalance`/`PillarWeights`) are removed, the freed minutes reallocated to strength, and the engine now builds every session as Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown with the strength lead structural. **US-M02 has also landed** (2026-08-13): each mobility movement in `Exercises.json` now carries a `complements: [MovementPattern]` tag, and the warm-up and cooldown lead prefer-then-fill with a stretch complementing the day's lead strength pattern (a bias, never a filter). **US-M03..US-M05 remain spec-only** (`sitsLong`-as-bias, uniform-vocabulary copy, the extended regression guard) - separately-authorized later tasks. This section supersedes the parts of the original PRD (and of `docs/adr/0001-strength-primary-sessions.md`) that keep mobility as a minority *accessory training block* - the "Movement Practice" block. It leaves everything else in the archived PRD above byte-for-byte intact; the seven original stories stayed shipped, this only retires their accessory-mobility clause.
 **Story prefix:** `US-M##` - **M** for the Movement-Practice-removal follow-on; the prefix restarts (rather than continuing `US-008`) to mark this as a distinct, later-dated design pass on top of the completed `US-0##` set.
 **Source:** captain design session, 2026-08-13.
 
@@ -296,12 +296,12 @@ Each mobility movement is tagged with the strength pattern(s) it complements. A 
 
 **Acceptance Criteria:**
 
-- [ ] `Exercises.json` gains a per-stretch `complements: [MovementPattern]` field encoding the mapping above verbatim; all 26 mobility movements are tagged.
-- [ ] Warm-Up and Cooldown each **lead** with a stretch complementing the day's lead strength pattern, then fill remaining slots with the existing staleness / no-repeat variety ordering.
-- [ ] The match is a preference/bias, never an exclusive filter: the general mobility pool is the fallback and a bookend is never starved.
-- [ ] Coverage holds: every strength pattern resolves to >= 6 complementary stretches.
-- [ ] Determinism and `asOf`-purity preserved.
-- [ ] Unit tests pass.
+- [x] `Exercises.json` gains a per-stretch `complements: [MovementPattern]` field encoding the mapping above verbatim; all 26 mobility movements are tagged.
+- [x] Warm-Up and Cooldown each **lead** with a stretch complementing the day's lead strength pattern, then fill remaining slots with the existing staleness / no-repeat variety ordering.
+- [x] The match is a preference/bias, never an exclusive filter: the general mobility pool is the fallback and a bookend is never starved.
+- [x] Coverage holds: every strength pattern resolves to >= 6 complementary stretches.
+- [x] Determinism and `asOf`-purity preserved.
+- [x] Unit tests pass.
 
 **Validation Test:**
 

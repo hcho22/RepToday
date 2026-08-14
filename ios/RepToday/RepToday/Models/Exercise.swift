@@ -13,6 +13,17 @@ struct Exercise: Codable, Equatable, Identifiable {
     var displayName: String
     var pillar: Pillar
     var movementPattern: MovementPattern
+    /// The strength `MovementPattern`(s) this movement's stretch complements, used by the
+    /// prefer-then-fill bookend selection (US-M02) to *lead* the warm-up and cooldown with a
+    /// stretch matching the day's lead strength pattern before filling the rest with the general
+    /// variety ordering. Only the 26 mobility movements carry it in `Exercises.json` (a mobility
+    /// stretch that matches no pattern would carry `[]`); strength/primal movements omit the key,
+    /// so it is optional with a `nil` default and an already-persisted `Exercise` (an active
+    /// session written before it existed) decodes unchanged. Read it as "which strength pattern
+    /// does this stretch relieve"; the mapping is captain-approved in the follow-on PRD. The match
+    /// is a preference, never a filter - an absent/empty value simply means this stretch is only
+    /// ever chosen by the general mobility pool ordering.
+    var complements: [MovementPattern]? = nil
     var category: ExerciseCategory
     /// Difficulty band 1...5; the engine caps by fitness level (beginner 1-2,
     /// intermediate 1-3, advanced 1-5).

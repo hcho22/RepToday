@@ -740,8 +740,14 @@ private struct Builder {
         template: SessionShapeTemplate,
         requestedMinutes: Int
     ) -> [PlannedBlock] {
-        let warmup = warmupBlock(requestedMinutes: requestedMinutes)
-        let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock() : nil
+        // The day's lead strength pattern (Step 3), resolved once so both bookends bias toward the
+        // same complementary stretch (US-M02). Strength-only - never primal - so the complement
+        // target is always a mapped strength pattern even on the shorter shapes that fold primal
+        // into the strength block; `nil` (a degenerate primal-only pool) simply leaves the bookends
+        // on their general variety ordering.
+        let lead = leadStrengthPattern()
+        let warmup = warmupBlock(requestedMinutes: requestedMinutes, complementing: lead)
+        let cooldown = requestedMinutes > SessionAssembly.cooldownThresholdMinutes ? cooldownBlock(complementing: lead) : nil
 
         let middle: [PlannedBlock]
         if template == .blendExtended {
@@ -810,9 +816,12 @@ private struct Builder {
     /// fit to promote reserves. Like the cooldown bookend it is one set each and never set-adjustable;
     /// the timing fit still trims the strength/primal training around it to keep the session inside
     /// `toleranceSeconds`.
-    private mutating func warmupBlock(requestedMinutes: Int) -> PlannedBlock {
+    private mutating func warmupBlock(
+        requestedMinutes: Int,
+        complementing lead: MovementPattern? = nil
+    ) -> PlannedBlock {
         let items = mobilityItems(
-            from: orderedMobility(holdsOnly: false),
+            from: orderedMobility(holdsOnly: false, complementing: lead),
             cap: SessionAssembly.warmupExerciseCount(forRequestedMinutes: requestedMinutes)
         )
         return PlannedBlock(
@@ -827,9 +836,9 @@ private struct Builder {
 
     /// The closing cooldown: static mobility holds (falling back to any mobility if no holds remain),
     /// one set each. `nil` when no mobility movement is left.
-    private mutating func cooldownBlock() -> PlannedBlock? {
-        var candidates = orderedMobility(holdsOnly: true)
-        if candidates.isEmpty { candidates = orderedMobility(holdsOnly: false) }
+    private mutating func cooldownBlock(complementing lead: MovementPattern? = nil) -> PlannedBlock? {
+        var candidates = orderedMobility(holdsOnly: true, complementing: lead)
+        if candidates.isEmpty { candidates = orderedMobility(holdsOnly: false, complementing: lead) }
         let items = mobilityItems(from: candidates, cap: SessionAssembly.maxCooldownExercises)
         guard !items.isEmpty else { return nil }
         return PlannedBlock(
@@ -995,10 +1004,17 @@ private struct Builder {
     /// Eligible, not-yet-claimed mobility movements ordered for variety: never-worked and longest-ago
     /// first, movements used in the last few sessions pushed back, then shortest (finest timing
     /// granularity) and id as deterministic tie-breaks.
-    private func orderedMobility(holdsOnly: Bool) -> [Exercise] {
+    ///
+    /// `complementing` biases the result prefer-then-fill (US-M02): when the day's lead strength
+    /// pattern is supplied, the single best-variety stretch that complements it is promoted to the
+    /// front so the bookend *leads* with a matched stretch, with every remaining slot left in this
+    /// same staleness / no-repeat order. The bias is a pure, stable reorder that never drops a
+    /// stretch, so a bookend is never starved: when no ordered stretch complements the lead (or the
+    /// lead is `nil`) the general variety ordering stands unchanged as the fallback.
+    private func orderedMobility(holdsOnly: Bool, complementing lead: MovementPattern? = nil) -> [Exercise] {
         let lastWorked = mobilityLastWorked()
         let recent = recentlyUsedIds()
-        return pool
+        let ordered = pool
             .filter {
                 $0.pillar == .mobility
                     && !usedIds.contains($0.id)
@@ -1019,6 +1035,40 @@ private struct Builder {
                 }
                 return lhs.id < rhs.id
             }
+        return Self.leadingComplement(ordered, complementing: lead)
+    }
+
+    /// Prefer-then-fill (US-M02): promote the first (best-variety) stretch in `ordered` whose
+    /// `complements` contains `lead` to the front, leaving every other stretch in its existing
+    /// relative order. A no-op when `lead` is `nil` or no stretch complements it, so the general
+    /// mobility ordering is the fallback and the bookend is never starved or emptied. Pure and
+    /// deterministic: it reorders a deterministically-sorted array by an array `contains`, with no
+    /// set-iteration order dependence and no clock, so the assembled session stays an `asOf`-pure
+    /// function of its inputs. When several complementary stretches tie on freshness the tie is
+    /// already resolved by `ordered`'s existing staleness / no-repeat ordering, so no new
+    /// nondeterminism enters here.
+    private static func leadingComplement(
+        _ ordered: [Exercise],
+        complementing lead: MovementPattern?
+    ) -> [Exercise] {
+        guard
+            let lead,
+            let leadIndex = ordered.firstIndex(where: { $0.complements?.contains(lead) == true })
+        else { return ordered }
+        var reordered = ordered
+        let complement = reordered.remove(at: leadIndex)
+        reordered.insert(complement, at: 0)
+        return reordered
+    }
+
+    /// The day's lead strength pattern (Step 3) the bookends bias toward (US-M02): the stalest
+    /// strength pattern with the no-repeat rule applied, taken over strength patterns only so the
+    /// complement target is always a mapped strength pattern - never primal `locomotion`, which the
+    /// `complements` mapping does not cover - even on the shorter shapes that fold primal into the
+    /// strength block. `nil` when the pool holds no strength movement, leaving the bookends on the
+    /// general variety ordering.
+    private func leadStrengthPattern() -> MovementPattern? {
+        orderedStrengthPatterns(includePrimal: false).first
     }
 
     /// Most recent completed (non-skipped) date per mobility exercise id, for variety ordering.
