@@ -218,7 +218,7 @@ The exercise catalog already supports this: 38 strength + 7 primal movements acr
 
 # Follow-on: Movement Practice removal + pattern-matched bookends
 
-**Opened:** 2026-08-13 · **Status:** Captain-approved follow-on. **US-M01 has landed** (2026-08-13): the Movement Practice mobility training block and its split machinery (`PillarBalance`/`PillarWeights`) are removed, the freed minutes reallocated to strength, and the engine now builds every session as Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown with the strength lead structural. **US-M02 has also landed** (2026-08-13): each mobility movement in `Exercises.json` now carries a `complements: [MovementPattern]` tag, and the warm-up and cooldown lead prefer-then-fill with a stretch complementing the day's lead strength pattern (a bias, never a filter). **US-M03..US-M05 remain spec-only** (`sitsLong`-as-bias, uniform-vocabulary copy, the extended regression guard) - separately-authorized later tasks. This section supersedes the parts of the original PRD (and of `docs/adr/0001-strength-primary-sessions.md`) that keep mobility as a minority *accessory training block* - the "Movement Practice" block. It leaves everything else in the archived PRD above byte-for-byte intact; the seven original stories stayed shipped, this only retires their accessory-mobility clause.
+**Opened:** 2026-08-13 · **Status:** Captain-approved follow-on. **US-M01 has landed** (2026-08-13): the Movement Practice mobility training block and its split machinery (`PillarBalance`/`PillarWeights`) are removed, the freed minutes reallocated to strength, and the engine now builds every session as Warm-Up -> Strength (-> Primal at 41-60) -> Cooldown with the strength lead structural. **US-M02 has also landed** (2026-08-13): each mobility movement in `Exercises.json` now carries a `complements: [MovementPattern]` tag, and the warm-up and cooldown lead prefer-then-fill with a stretch complementing the day's lead strength pattern (a bias, never a filter). **US-M03 has also landed** (2026-08-14): the desk-worker `sitsLong` signal (inert since US-M01 removed the block it sized) now *biases* warm-up/cooldown selection toward posture/hip openers - a reorder-only preference (`SessionAssembly.postureHipLean`/`isPostureHipOpener`) layered under the US-M02 lead-complement promotion, never a sizing lever and unable to reintroduce a mobility middle block. **US-M04..US-M05 remain spec-only** (uniform-vocabulary copy, the extended regression guard) - separately-authorized later tasks. This section supersedes the parts of the original PRD (and of `docs/adr/0001-strength-primary-sessions.md`) that keep mobility as a minority *accessory training block* - the "Movement Practice" block. It leaves everything else in the archived PRD above byte-for-byte intact; the seven original stories stayed shipped, this only retires their accessory-mobility clause.
 **Story prefix:** `US-M##` - **M** for the Movement-Practice-removal follow-on; the prefix restarts (rather than continuing `US-008`) to mark this as a distinct, later-dated design pass on top of the completed `US-0##` set.
 **Source:** captain design session, 2026-08-13.
 
@@ -318,11 +318,11 @@ Each mobility movement is tagged with the strength pattern(s) it complements. A 
 
 **Acceptance Criteria:**
 
-- [ ] `sitsLong` no longer sizes any training block (the accessory sizing it drove is gone with US-M01).
-- [ ] `sitsLong` biases bookend selection toward posture / hip openers and/or adds at most one extra bookend stretch.
-- [ ] No code path lets `sitsLong` reintroduce a mobility middle block.
-- [ ] Bookends stay lean and length-scaled; the shortest sessions are not re-inflated with stretching.
-- [ ] Unit tests pass.
+- [x] `sitsLong` no longer sizes any training block (the accessory sizing it drove is gone with US-M01).
+- [x] `sitsLong` biases bookend selection toward posture / hip openers and/or adds at most one extra bookend stretch.
+- [x] No code path lets `sitsLong` reintroduce a mobility middle block.
+- [x] Bookends stay lean and length-scaled; the shortest sessions are not re-inflated with stretching.
+- [x] Unit tests pass.
 
 **Validation Test:**
 

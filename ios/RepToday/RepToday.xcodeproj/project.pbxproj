@@ -126,6 +126,7 @@
 		BB868BF7A9C08AAD58CAAC24 /* DeterministicSessionPolicyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09F0C0644F2443185F7A37A /* DeterministicSessionPolicyService.swift */; };
 		BC846079DA23B61BA46197D9 /* EnumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896FA5008B749566E28BAC10 /* EnumsTests.swift */; };
 		BC926597554ED46DBEBB56EB /* AccountDeletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967ADBB93402792267D353F2 /* AccountDeletionService.swift */; };
+		BE7FD965AC71FB0E4542DBD3 /* SitsLongBookendBiasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FDE13F73ED982C61B45519 /* SitsLongBookendBiasTests.swift */; };
 		C130C08495D12FC5F98C5B7D /* HealthAccessPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ED5CBC6B6FCC45A3C35542 /* HealthAccessPrompt.swift */; };
 		C3039CC96FBFBEAB9EA8ED31 /* VarietyLanguageResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CF49ED5905DDFE244635E7 /* VarietyLanguageResolver.swift */; };
 		C519FA42C7AEE33C9EE464C1 /* RepTodayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1C83C83DD5D2B72C9F4234 /* RepTodayApp.swift */; };
@@ -272,6 +273,7 @@
 		81273C5695FD4015EFF69BB9 /* MockServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockServices.swift; sourceTree = "<group>"; };
 		826A435F6E4A6028770FC52A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		83D0DC040668B3F10A37D858 /* SessionShapeSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionShapeSelectionTests.swift; sourceTree = "<group>"; };
+		83FDE13F73ED982C61B45519 /* SitsLongBookendBiasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SitsLongBookendBiasTests.swift; sourceTree = "<group>"; };
 		84F5CA8D82E90F882906CAB7 /* MockExerciseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockExerciseService.swift; sourceTree = "<group>"; };
 		85274C4D6459D630BE1E4978 /* ReturnOverrideTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnOverrideTests.swift; sourceTree = "<group>"; };
 		896FA5008B749566E28BAC10 /* EnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnumsTests.swift; sourceTree = "<group>"; };
@@ -630,6 +632,7 @@
 				00F43E0682457E77E4283394 /* SessionPolicyTests.swift */,
 				83D0DC040668B3F10A37D858 /* SessionShapeSelectionTests.swift */,
 				7FBF10D8838BE9E9E5645471 /* SessionSummaryTests.swift */,
+				83FDE13F73ED982C61B45519 /* SitsLongBookendBiasTests.swift */,
 				A48E1D067DCDB47ABC5AB069 /* StartSeedTests.swift */,
 				D7D5CA389C95932C6F294265 /* StoreKitSubscriptionServiceTests.swift */,
 				0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */,
@@ -996,6 +999,7 @@
 				CC9B030C00FDAF309A18C8F4 /* SessionPolicyTests.swift in Sources */,
 				7E43D00C773E0BE436FEFA42 /* SessionShapeSelectionTests.swift in Sources */,
 				17B9651FD61BC15EA7274FB9 /* SessionSummaryTests.swift in Sources */,
+				BE7FD965AC71FB0E4542DBD3 /* SitsLongBookendBiasTests.swift in Sources */,
 				7E2D2AAE8AEFE2A054422540 /* StartSeedTests.swift in Sources */,
 				8C91A9BBBC747A47A5003503 /* StoreKitSubscriptionServiceTests.swift in Sources */,
 				693503964919D6280FF8D1D4 /* StrengthPrimaryRegressionTests.swift in Sources */,

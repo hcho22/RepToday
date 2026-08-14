@@ -123,9 +123,10 @@ struct UserProfile: Codable, Equatable {
     var weightKg: Double
     var fitnessLevel: FitnessLevel
     var primaryGoal: PrimaryGoal
-    /// "Do you sit 6+ hours most days?" - the desk-worker signal. Currently inert in the engine since
-    /// US-M01 retired the Movement Practice mobility block it used to size; US-M03 will repurpose it to
-    /// bias bookend selection.
+    /// "Do you sit 6+ hours most days?" - the desk-worker signal. Since US-M03 it *biases* bookend
+    /// selection toward posture/hip openers (`SessionAssembly.postureHipLean`), never sizing any block:
+    /// US-M01 retired the Movement Practice mobility block it used to size, so it is a pure ordering
+    /// preference on the warm-up/cooldown pools and can never reintroduce a mobility middle block.
     var sitsLong: Bool
     /// Injury tags (e.g. `"lower_back"`, `"knees"`) used to filter the exercise pool.
     var injuries: [String]

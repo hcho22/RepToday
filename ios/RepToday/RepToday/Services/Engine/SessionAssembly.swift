@@ -328,6 +328,11 @@ enum SessionAssembly {
             reentryScale: reentryScale,
             startVolume: startVolume,
             withheldByStartSeed: withheldByStartSeed,
+            // US-M03: the desk-worker `sitsLong` signal is a pure *bias* input to bookend selection -
+            // never a direct sizing lever. It reorders the mobility bookend pool toward posture/hip
+            // openers and changes no block's count and no bookend stretch count, so it cannot re-inflate a
+            // short session or reintroduce a mobility middle block (see `orderedMobility`/`postureHipLean`).
+            sitsLong: user.profile.sitsLong,
             asOf: asOf,
             calendar: calendar
         )
@@ -335,6 +340,25 @@ enum SessionAssembly {
             template: template,
             requestedMinutes: requestedMinutes
         )
+    }
+
+    // MARK: - Posture / hip bias (US-M03)
+
+    /// The hip-dominant strength patterns that define a "posture / hip opener" for the US-M03 `sitsLong`
+    /// bias. A desk worker sits in sustained hip flexion with a slumped posterior chain, so the stretches
+    /// that counter that are exactly the ones already tagged (US-M02) as complementing the squat and hinge
+    /// patterns - the hip- and posterior-chain-dominant movements. Deriving the set from the existing
+    /// `complements` metadata rather than a new per-exercise tag keeps one taxonomy: a stretch is a hip
+    /// opener iff it already earns its place beside a squat/hinge day.
+    static let postureHipPatterns: Set<MovementPattern> = [.squat, .hinge]
+
+    /// Whether `exercise` is a posture/hip opener under the US-M03 bias: a mobility movement whose US-M02
+    /// `complements` tag names at least one hip-dominant pattern (`postureHipPatterns`). An untagged
+    /// movement (never true for the load-validated mobility catalog) is not an opener. Pure - the whole
+    /// `sitsLong` bias reduces to this predicate over existing metadata.
+    static func isPostureHipOpener(_ exercise: Exercise) -> Bool {
+        guard let complements = exercise.complements else { return false }
+        return complements.contains { postureHipPatterns.contains($0) }
     }
 
     // MARK: - Focus pillar
@@ -713,6 +737,19 @@ private struct Builder {
     /// never-on-offer rather than fresh, which is what keeps the session after the cold-start handoff
     /// from regressing to an untouched entry tier (see `ProgressionChainSelection`).
     let withheldByStartSeed: Set<String>
+    /// The desk-worker `sitsLong` signal (US-M03), threaded in as a **bias**, never a direct sizing lever.
+    /// When set, the warm-up and cooldown pools are reordered to lead with posture/hip openers (see
+    /// `orderedMobility`/`postureHipLean`); it changes no block's count and no bookend stretch count, so
+    /// it can never re-inflate a short session or bring back a mobility middle block. It does change which
+    /// stretches *fill* the fixed-count bookends, though, and stretches differ in `workSecondsPerSet`, so
+    /// a desk worker's bookend duration can differ from the general profile's - and since that duration
+    /// feeds `trainingBudget` (extended path) and the global timing fit (short/full), a strength set count
+    /// can be *incidentally* coupled to bookend composition. The training middle staying byte-identical
+    /// across profiles is therefore test-guarded at the shipped catalog and lengths
+    /// (`testSitsLongDoesNotSizeAnyTrainingBlock`), not an absolute invariant. Since US-M01 removed the
+    /// Movement Practice accessory (the block `sitsLong` used to *size*), this is the only thing `sitsLong`
+    /// does in the engine.
+    let sitsLong: Bool
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -1011,6 +1048,16 @@ private struct Builder {
     /// same staleness / no-repeat order. The bias is a pure, stable reorder that never drops a
     /// stretch, so a bookend is never starved: when no ordered stretch complements the lead (or the
     /// lead is `nil`) the general variety ordering stands unchanged as the fallback.
+    ///
+    /// `sitsLong` layers the US-M03 posture/hip bias underneath that: a desk worker's bookend pool is
+    /// first reordered to lead with posture/hip openers (`postureHipLean`), then the US-M02
+    /// lead-complement promotion runs on top of the reordered pool. Composing the two this way keeps
+    /// US-M02's slot-0 authority intact (the pattern-matched lead stretch still wins the first slot)
+    /// while every *following* bookend slot fills with hip relief first. Both steps are pure, stable
+    /// reorders of a deterministically-sorted array, so the assembled session stays an `asOf`-pure
+    /// function of its inputs, and neither changes the bookend's count - though the posture/hip reorder
+    /// does change which stretches fill it, so bookend duration (and, through the timing fit, a strength
+    /// set count) can differ between profiles (see `sitsLong`/`postureHipLean`).
     private func orderedMobility(holdsOnly: Bool, complementing lead: MovementPattern? = nil) -> [Exercise] {
         let lastWorked = mobilityLastWorked()
         let recent = recentlyUsedIds()
@@ -1035,7 +1082,8 @@ private struct Builder {
                 }
                 return lhs.id < rhs.id
             }
-        return Self.leadingComplement(ordered, complementing: lead)
+        let leaned = Self.postureHipLean(ordered, apply: sitsLong)
+        return Self.leadingComplement(leaned, complementing: lead)
     }
 
     /// Prefer-then-fill (US-M02): promote the first (best-variety) stretch in `ordered` whose
@@ -1059,6 +1107,29 @@ private struct Builder {
         let complement = reordered.remove(at: leadIndex)
         reordered.insert(complement, at: 0)
         return reordered
+    }
+
+    /// The US-M03 desk-worker bias: when `apply` (the user's `sitsLong`), stable-partition `ordered` so
+    /// posture/hip openers lead, every other stretch trailing, each group keeping its incoming relative
+    /// order. A no-op when `apply` is false, so a non-desk-bound user's bookends are byte-identical to
+    /// today's.
+    ///
+    /// This is a *preference layered on the existing ordering*, never a filter and never a direct sizing
+    /// lever: it drops no stretch and adds none, so the fallback pool is undiminished (a bookend is never
+    /// starved), every block's count and the bookend stretch count are untouched (a short session cannot
+    /// be re-inflated with stretching), and no path here can create a mobility middle block - the reorder
+    /// only ever feeds the warm-up and cooldown pools. It does change bookend *composition*, so a desk
+    /// worker's bookend duration - and, through the timing fit, a strength set count - can differ from the
+    /// general profile's; the training middle holding byte-identical is test-guarded at the shipped
+    /// catalog and lengths (`testSitsLongDoesNotSizeAnyTrainingBlock`), not structural. It runs *before*
+    /// `leadingComplement`, which retains final authority over the lead
+    /// slot (US-M02). Pure and deterministic: a stable partition of an already deterministically-sorted
+    /// array (`filter` preserves order), with no set-iteration dependence and no clock, so the assembled
+    /// session stays an `asOf`-pure function of its inputs.
+    private static func postureHipLean(_ ordered: [Exercise], apply: Bool) -> [Exercise] {
+        guard apply else { return ordered }
+        return ordered.filter(SessionAssembly.isPostureHipOpener)
+            + ordered.filter { !SessionAssembly.isPostureHipOpener($0) }
     }
 
     /// The day's lead strength pattern (Step 3) the bookends bias toward (US-M02): the stalest
