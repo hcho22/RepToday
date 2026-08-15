@@ -679,7 +679,13 @@ final class ActiveSessionViewModel {
                 position: previous.position,
                 total: previous.total
             )
-            currentSet = 1
+            // A circuit swap keeps the CURRENT round rather than restarting at round 1: the engine holds
+            // the block's uniform round count, so the substitute has >= currentSet sets and the round is
+            // preserved, which stops the rotation from re-offering (and double-counting) already-completed
+            // peer stations from round 1. The min still clamps a genuinely-fewer-set substitute so the
+            // user is never stranded past its end - the substitute may then finish one round short of its
+            // peers; full swap-across-rounds reconciliation is intentionally US-CC07.
+            currentSet = max(1, min(currentSet, substitute.sets))
             // A different movement means a different set of legs: the side the user was owed on the
             // movement they just replaced does not carry over to the one that replaced it - and
             // neither does any leg started while the swap was in flight, which would otherwise run

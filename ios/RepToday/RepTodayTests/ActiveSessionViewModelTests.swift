@@ -1275,8 +1275,42 @@ final class ActiveSessionViewModelTests: XCTestCase {
         await vm.swapCurrentExercise()
 
         XCTAssertEqual(vm.currentStep?.prescription.sets, 2, "the substitute carries its own set count")
-        XCTAssertEqual(vm.currentSet, 1, "the user restarts the slot rather than sitting past its end")
+        XCTAssertEqual(vm.currentSet, 2, "clamps to the substitute's last round rather than stranding the user")
         XCTAssertLessThanOrEqual(vm.currentSet, vm.currentStep!.prescription.sets)
+    }
+
+    /// A mid-circuit swap keeps the current round rather than restarting it: it must not send the
+    /// rotation back to round 1, which would re-offer - and, through `recordSet`, double-count - the peer
+    /// stations already completed in earlier rounds (US-CC02 OPT1). Full swap-across-rounds
+    /// reconciliation stays US-CC07; here the guarantee is only that no peer station over-logs.
+    func testSwapMidCircuitDoesNotReplayCompletedPeerStations() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips", sets: 3)))
+        let vm = ActiveSessionViewModel(
+            workout: circuitWorkout(rounds: 3), swapEngine: engine, user: makeUser(),
+            recentLogs: [], sessionPolicy: .default, now: { self.start }
+        )
+        vm.completeSet() // warm-up cat_cow -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        vm.completeSet() // squat round 1 -> hinge round 1
+        vm.completeSet() // hinge round 1 -> push_up round 2
+        vm.completeSet() // push_up round 2 -> squat round 2
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "on squat")
+        XCTAssertEqual(vm.currentSet, 2, "round 2 of the circuit")
+
+        await vm.swapCurrentExercise() // swap squat mid-circuit for a 3-set substitute
+
+        XCTAssertEqual(vm.currentSet, 2, "the swap keeps the current round rather than restarting at 1")
+        while !vm.isComplete { vm.completeSet() } // finish the block hands-free
+
+        let logged = vm.loggedExercises()
+        let pushUp = logged.first { $0.exerciseId == "push_up" }
+        let hinge = logged.first { $0.exerciseId == "hinge" }
+        XCTAssertEqual(pushUp?.completedSets.count, 3, "push_up logs exactly its three rounds, never four")
+        XCTAssertEqual(hinge?.completedSets.count, 3, "hinge logs exactly its three rounds, never four")
+        XCTAssertTrue(
+            logged.allSatisfy { $0.completedSets.count <= 3 },
+            "no station over-logs past the block's uniform round count"
+        )
     }
 
     /// The snapshot the swap step reads keeps the session's block structure, because the block decides
