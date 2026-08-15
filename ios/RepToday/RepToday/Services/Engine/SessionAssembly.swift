@@ -766,7 +766,7 @@ struct PlannedItem: Equatable {
     let reps: Int?
     let durationSeconds: Int?
     /// The set count. On a circuit training block this is the block's uniform round count; the timing
-    /// fit moves it only via block-level `addRound`/`removeRound`, so it stays equal across the block.
+    /// fit moves it only via the block-level `setRoundsAndRest` move, so it stays equal across the block.
     var sets: Int
     /// On a circuit training block this is the between-round rest (a tunable lever within
     /// `[minRoundRestSeconds, maxRoundRestSeconds]`, kept equal across the block); on a bookend it is

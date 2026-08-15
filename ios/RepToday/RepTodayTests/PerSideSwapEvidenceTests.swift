@@ -364,8 +364,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             XCTAssertEqual(after.prescription.exercise.movementPattern, before.prescription.exercise.movementPattern)
             XCTAssertTrue(after.prescription.exercise.equipment.isEmpty, "Zero-Equipment Floor")
             let slotTolerance = ExerciseSwap.slotTolerance(
-                workSeconds: before.prescription.sets * SessionAssembly.workSecondsPerSet(of: before.prescription),
-                setsAreAdjustable: true
+                workSeconds: before.prescription.sets * SessionAssembly.workSecondsPerSet(of: before.prescription)
             )
             XCTAssertLessThanOrEqual(
                 abs(planned - plannedBefore), slotTolerance,

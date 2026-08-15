@@ -312,8 +312,7 @@ final class ExerciseSwapTests: XCTestCase {
                 XCTAssertLessThanOrEqual(
                     abs(slotSeconds(of: result) - slotSeconds(of: slot)),
                     ExerciseSwap.slotTolerance(
-                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot),
-                        setsAreAdjustable: true
+                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot)
                     ),
                     "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the slot out of budget"
                 )
@@ -380,8 +379,7 @@ final class ExerciseSwapTests: XCTestCase {
                 XCTAssertLessThanOrEqual(
                     abs(slotSeconds(of: result) - slotSeconds(of: slot)),
                     ExerciseSwap.slotTolerance(
-                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot),
-                        setsAreAdjustable: false
+                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot)
                     ),
                     "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the bookend out of budget"
                 )
@@ -417,7 +415,7 @@ final class ExerciseSwapTests: XCTestCase {
         let workSeconds = grown.sets * SessionAssembly.workSecondsPerSet(of: grown)
         XCTAssertLessThanOrEqual(
             abs(slotSeconds(of: result) - slotSeconds(of: grown)),
-            ExerciseSwap.slotTolerance(workSeconds: workSeconds, setsAreAdjustable: true),
+            ExerciseSwap.slotTolerance(workSeconds: workSeconds),
             "at the kept round count the substitute must still land inside the slot's (widened) budget"
         )
     }
