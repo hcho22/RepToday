@@ -83,12 +83,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] `SessionAssembly` produces training blocks in which every exercise's `sets` equals one block-level round count (the strength block and the extended primal block are each internally uniform; they need not equal each other).
-- [ ] The per-exercise set-adjust lever is no longer used to hit the time target: the timing fit does not add a set to one exercise and not another within a block (the current `.addSet`/`.removeSet` per-item moves that produce uneven counts are retired for training blocks; see US-CC04 for the replacement lever).
-- [ ] The reps/hold-seconds per-set target from Step 6 (Adaptive Overload) is still never touched by the timing fit.
-- [ ] Determinism and `asOf`-purity are preserved: the assembled session's content remains a pure function of inputs (only ids vary run to run), verified by existing `SessionAssemblyTests`-style structural assertions.
-- [ ] The warm-up and cooldown bookends remain one set each (`allowSetAdjust: false`), unchanged.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass (including a new test asserting uniform set count per training block across 5/10/15/20/30/45/60).
+- [x] `SessionAssembly` produces training blocks in which every exercise's `sets` equals one block-level round count (the strength block and the extended primal block are each internally uniform; they need not equal each other). (`testTrainingBlocksCarryOneUniformRoundCountEachEvenRound`, `testExtendedSessionPrimalAndStrengthBlocksAreEachInternallyUniform`)
+- [x] The per-exercise set-adjust lever is no longer used to hit the time target: the timing fit does not add a set to one exercise and not another within a block (the `.addSet`/`.removeSet` per-item moves are retired; the fit's only round-count lever is the block-level `setRoundsAndRest`, which writes the same count to every station; see US-CC04 for the replacement rest lever).
+- [x] The reps/hold-seconds per-set target from Step 6 (Adaptive Overload) is still never touched by the timing fit (the fit moves only round count, round-rest, and whole exercises).
+- [x] Determinism and `asOf`-purity are preserved: the assembled session's content remains a pure function of inputs (only ids vary run to run), verified by existing `SessionAssemblyTests`-style structural assertions (`testAssemblyIsDeterministic`, `testExtendedAssemblyIsDeterministic`, etc. still green).
+- [x] The warm-up and cooldown bookends remain one set each (`allowSetAdjust: false`), unchanged.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass (new test asserting uniform set count per training block across 5/10/15/20/30/45/60).
 
 **Validation Test:**
 

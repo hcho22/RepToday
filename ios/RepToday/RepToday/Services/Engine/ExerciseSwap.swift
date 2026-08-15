@@ -94,11 +94,19 @@ enum ExerciseSwap {
     /// handed a tighter one.
     static let softSlotToleranceShare = 0.3
 
-    /// How far this slot's planned seconds may move, given the estimated work it carries and whether
-    /// the assembler would re-fit it. `workSeconds` is the slot's own `sets × workPerSet`.
+    /// How far this slot's planned seconds may move. `workSeconds` is the slot's own
+    /// `sets × workPerSet`.
+    ///
+    /// Even-round note (US-CC03/US-CC04): the per-slot set lever is gone. The assembler now sizes a
+    /// training block as a circuit of *uniform* rounds (one block-level round count, not a per-exercise
+    /// set count), and a swap keeps that round count rather than re-picking a slot's own count - a
+    /// re-pick would leave the circuit uneven. So *no* slot has a set lever to move a substitute back
+    /// into a flat gate anymore, which is exactly the condition that earned the bookends their widened,
+    /// soft-estimate-scaled gate: every slot now gets it. `setsAreAdjustable` is retained for call-site
+    /// compatibility but no longer narrows the gate - both training slots and bookends receive the same
+    /// widened allowance, since neither can re-fit its own set count.
     static func slotTolerance(workSeconds: Int, setsAreAdjustable: Bool) -> Int {
-        guard !setsAreAdjustable else { return slotToleranceSeconds }
-        return slotToleranceSeconds + Int((softSlotToleranceShare * Double(max(0, workSeconds))).rounded())
+        slotToleranceSeconds + Int((softSlotToleranceShare * Double(max(0, workSeconds))).rounded())
     }
 
     // MARK: Entry point
@@ -262,25 +270,20 @@ enum ExerciseSwap {
         let drift: Int
     }
 
-    /// The set count a substitute runs at, and the wall-clock drift that leaves - or `nil` when no
-    /// permitted count brings the slot inside `tolerance`, which is the one honest reason to reject a
-    /// candidate on time.
+    /// The set count a substitute runs at, and the wall-clock drift that leaves - or `nil` when the
+    /// substitute does not fit the slot inside `tolerance`, the one honest reason to reject a candidate on
+    /// time.
     ///
-    /// Set count is the lever here because the substitute's per-set *target* is not transferable: Step 6
-    /// sizes it from the user's demonstrated capacity in that movement, so a peer they have never logged
-    /// opens at its own default however grown the slot it replaces is. Sets absorb that difference, and
-    /// they are also the best-founded lever available - each set added or removed moves a real,
-    /// deterministic rest period alongside its share of the estimated work.
-    ///
-    /// The original count wins whenever it is already in budget, so a swap leaves the slot's shape alone
-    /// unless doing so would push the session out of its stated minutes. Otherwise the closest-fitting
-    /// count inside `minTrainingSets...maxTrainingSets` is taken, ties going to the smaller move, so the
-    /// re-pick can neither leave the assembler's own rails nor drift far from the slot the user chose to
-    /// replace. On a block the assembler would not adjust either, only the original count is considered.
-    ///
-    /// This settles each candidate's *own* best count; preferring a candidate that needed no re-pick
-    /// over one that did is the selection's job (criterion 1), because whether restructuring was
-    /// avoidable is only knowable once every candidate has been priced.
+    /// Even-round model (US-CC03/US-CC04): the substitute **always keeps the slot's set count** - which
+    /// on a training block is the block's uniform round count. The old per-slot set-count lever (re-pick a
+    /// grown slot's substitute to a different number of sets) is retired: it produced blocks where one
+    /// station ran a different number of rounds than its peers, which the circuit model forbids (a
+    /// substitute is one station in the circuit and runs the block's round count like every other). So a
+    /// candidate whose own capacity-relative target lands its slot outside `tolerance` at that fixed round
+    /// count is simply declined, rather than reshaped - the widened, soft-estimate-scaled tolerance
+    /// (`slotTolerance`) is what keeps that from rejecting every honestly-comparable peer now that the set
+    /// lever is gone. `setsAreAdjustable` is retained for call-site compatibility but no longer changes
+    /// the outcome; every slot keeps its count.
     private static func bestFitSets(
         workPerSet: Int,
         rest: Int,
@@ -289,23 +292,9 @@ enum ExerciseSwap {
         setsAreAdjustable: Bool,
         tolerance: Int
     ) -> (sets: Int, drift: Int)? {
-        func drift(at sets: Int) -> Int {
-            abs(slotSeconds(workPerSet: workPerSet, sets: sets, rest: rest) - originalSlotSeconds)
-        }
-
-        let atOriginal = drift(at: originalSets)
-        if atOriginal <= tolerance { return (originalSets, atOriginal) }
-        guard setsAreAdjustable else { return nil }
-
-        let best = (SessionAssembly.minTrainingSets...SessionAssembly.maxTrainingSets)
-            .map { (sets: $0, drift: drift(at: $0)) }
-            .min { lhs, rhs in
-                lhs.drift != rhs.drift
-                    ? lhs.drift < rhs.drift
-                    : abs(lhs.sets - originalSets) < abs(rhs.sets - originalSets)
-            }
-        guard let best, best.drift <= tolerance else { return nil }
-        return best
+        let drift = abs(slotSeconds(workPerSet: workPerSet, sets: originalSets, rest: rest) - originalSlotSeconds)
+        guard drift <= tolerance else { return nil }
+        return (originalSets, drift)
     }
 
     /// Whether the block holding `prescription` is one the assembler's timing fit may move set counts

@@ -1,6 +1,6 @@
 # ADR-0003: Even-round circuit timing (round-rest as the fit lever)
 
-- Status: Accepted (decision made 2026-08-14); **not yet implemented** - to be built per `.claude/agent/tasks/prd-continuous-circuit-sessions_260814.md` (US-CC03/US-CC04). Until those stories land, `SessionAssembly` still sizes sessions by per-exercise set adjustment (uneven counts allowed).
+- Status: Accepted (2026-08-14) and **implemented** 2026-08-14 in `SessionAssembly` (US-CC03/US-CC04, engine-only). The per-exercise set-adjust lever is retired for training blocks: a training block now carries one uniform round count, and the timing fit lands the ±60s target by tuning a bounded between-round rest (`minRoundRestSeconds`...`maxRoundRestSeconds`), falling back to whole rounds / whole exercises - always uniformly. The player-side rendering of rounds (US-CC02) and the swap-across-rounds reconciliation (US-CC07) remain to be built.
 - Date: 2026-08-14
 - Deciders: captain, via the "Continuous-Circuit Sessions" decision session (2026-08-14)
 - Relates to: [ADR-0002](0002-per-interval-pacer-clock.md) (the pacer clock that counts down these intervals); the domain term `CONTEXT.md` -> "Continuous Circuit (planned)".
@@ -31,6 +31,6 @@ Removing the lever without replacing it would break the +/-60s tolerance the who
 
 ## Consequences / Trade-offs
 
-- The planned wall-clock formula changes to `Σ(rounds × Σ exercise work-window) + between-station transitions + (rounds - 1) × round-rest` per block; `plannedSeconds(of:)`, the `additions`/`removals` candidate generation, and `PlannedItem.seconds` are reworked accordingly. Determinism and `asOf`-purity are preserved.
+- The planned wall-clock formula changed to `Σ(rounds × Σ exercise work-window) + between-station transitions + (rounds - 1) × round-rest` per training block (plus the linear bookends and one between-station transition between adjacent blocks). As built: `SessionAssembly.blockSeconds` owns the round-aware per-block formula (over both `PlannedBlock` mid-assembly and a materialized `WorkoutBlock`), `plannedSeconds`/`totalSeconds` sum it plus between-block transitions, and the fit's candidate generator replaced the per-item `.addSet`/`.removeSet` moves with a single `setRoundsAndRest` move (round count and in-band rest tuned together so the greedy can trade a round for rest in one step) alongside whole-exercise promote/drop. `PlannedItem` gained a mutable `restSeconds` (the between-round rest) and dropped its old linear `seconds`. Determinism and `asOf`-purity are preserved (verified across 5/10/15/20/30/45/60 for every fitness level: uniform per-block round count, in-band rest, and landing within ±60s).
 - Coupled with the generous runtime pace (US-CC08, where the on-screen window must equal the planned work-seconds), generous windows fit slightly fewer rounds per session - an accepted trade-off.
 - This is hard to reverse once the player renders rounds and users expect even circuits, and it is surprising to a reader who finds the old per-item set-adjust lever gone from the fit - which is why it is recorded here. The +/-60s tolerance remains the hard constraint the new lever is verified against.

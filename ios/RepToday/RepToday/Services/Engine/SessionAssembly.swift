@@ -24,12 +24,19 @@ import Foundation
 /// - **Structure** - every session opens with a `.warmup` block (mobility) and, past
 ///   `cooldownThresholdMinutes`, closes with a `.cooldown` block of static stretches. These bookends
 ///   are the only mobility in the session (US-M01): there is no mobility middle block at any length.
-/// - **Timing fit** - the planned wall-clock is `Σ(sets × workPerSet) + rests + transitions`, where
-///   `workPerSet` re-prices the movement's estimate as a fixed per-set setup cost plus the per-unit
-///   work of the target Step 6 actually prescribed (see `workSecondsPerSet`); a
-///   deterministic best-fit pass trims or extends the session (adding/removing whole exercises or
-///   individual sets, never touching the capacity-relative *per-set* target from Step 6) until it
-///   lands within `toleranceSeconds` of the request.
+/// - **Timing fit (even-round circuit model, US-CC03/US-CC04)** - a training block is played as
+///   circuit *rounds* (one set of each exercise per round, "Round N of M"), so every exercise in a
+///   training block carries the **same** set count = the block's round count; the block is internally
+///   uniform (see ADR-0003). Its planned wall-clock is
+///   `rounds × Σ(exercise workPerSet) + rounds × between-station transitions + (rounds - 1) × round-rest`
+///   (`blockSeconds`), where `workPerSet` re-prices the movement's estimate as a fixed per-set setup
+///   cost plus the per-unit work of the target Step 6 actually prescribed (see `workSecondsPerSet`).
+///   The old per-exercise set-adjust lever (which produced *uneven* blocks) is retired for training
+///   blocks; the timing fit instead tunes the bounded **between-round rest** within its band as the
+///   primary lever, falling back to adding/dropping a whole round (uniformly) or a whole exercise -
+///   never an uneven per-exercise count, and never touching the capacity-relative *per-set* target
+///   from Step 6. The warm-up/cooldown bookends stay one set each and flow linearly. A deterministic
+///   best-fit pass trims or extends the session until it lands within `toleranceSeconds` of the request.
 ///
 /// Identity and the reference clock enter here (the earlier steps are clock-free and id-free): the
 /// `Workout`/`WorkoutBlock`/`PrescribedExercise` ids are fresh `UUID`s and `createdAt`/staleness are
@@ -41,31 +48,51 @@ enum SessionAssembly {
 
     // MARK: - Tuning constants
 
-    /// Seconds of transition between two consecutive exercises (move to the next spot, reset). Counted
-    /// once per gap across the whole session, matching `Σ ... + transitions`.
+    /// Seconds of the fixed **between-station transition** inside a circuit round (US-CC04): the short
+    /// "Next: <exercise>, get ready" reposition beat between two consecutive exercises (e.g. Pike ->
+    /// Split Squat). It is not zero and not recovery - the recovery gap is the between-round rest below.
+    /// Counted once per gap *between* the stations of a round, and once between two adjacent blocks (the
+    /// move from the warm-up into the first station, etc.) - see `blockSeconds`/`totalSeconds`.
     static let transitionSeconds = 15
-    /// Rest between sets of a strength/primal movement.
+
+    /// The default **between-round rest** a training block is seeded at, before the timing fit tunes it
+    /// within `[minRoundRestSeconds, maxRoundRestSeconds]` (US-CC04). In-band by construction (40 sits
+    /// between 30 and 75), so a session that never needs tuning still ships a sensible recovery rest.
     static let strengthRestSeconds = 40
-    /// Rest between sets of a mobility movement (a stretch needs little reset).
+    /// Rest between the (single) sets of a mobility bookend movement. A bookend is one set, so this is
+    /// never actually charged (there is no between-set gap on a one-set item); kept only as the value a
+    /// materialized bookend prescription carries.
     static let mobilityRestSeconds = 15
     /// The ±window the assembled session must land within around the requested time (1 minute).
     static let toleranceSeconds = 60
 
-    /// Set-count rails the timing-fit pass may move a *training* block's exercises between. The
-    /// per-set target (reps/seconds) from Step 6 is never touched; only how many sets are done is a
-    /// timing lever, and only within these rails so a fit never produces an absurd set count.
+    /// The bounded band the **between-round rest** may take (US-CC04, ADR-0003). This is the primary
+    /// timing-fit lever that replaces the retired per-exercise set-adjust move: within a training block
+    /// each second of round-rest moves `(rounds - 1)` seconds of planned wall-clock, giving fine-grained
+    /// control without touching set counts or the capacity-relative per-set target from Step 6. The fit
+    /// never leaves this band - a value outside it would be either no recovery at all or a rest so long it
+    /// stalls the circuit - so when the band alone cannot close the gap the coarser whole-round /
+    /// whole-exercise levers take over (still uniformly, never an uneven block). The chosen value is a
+    /// deterministic function of the inputs (the fit's greedy best-fit jump toward closing the gap,
+    /// clamped to the band).
+    static let minRoundRestSeconds = 30
+    static let maxRoundRestSeconds = 75
+
+    /// Round-count rails a *training* block's uniform set count (= its round count) may move between
+    /// (US-CC03). Every exercise in the block shares this count, so a round is well-defined and
+    /// "Round N of M" is structurally even. The per-set target (reps/seconds) from Step 6 is never
+    /// touched; only how many rounds are run is a timing lever, and only within these rails so a fit never
+    /// produces an absurd round count.
     ///
-    /// The upper rail is deliberately the lever that carries a **long** session. Multiple sets are
+    /// The upper rail is deliberately the lever that carries a **long** session. Multiple rounds are
     /// redundant for a stretch but legitimate training for strength, so the mobility bookends are pinned
     /// at one set (`allowSetAdjust: false`) and the strength/primal blocks instead take all the extra time
-    /// up to this ceiling. Since US-M01 removed the Movement Practice mobility block, the strength/primal
-    /// blocks are now the *only* training lever, so this ceiling was raised (from the previous `5`, which
-    /// was calibrated when a many-stretch mobility block still carried part of a long session's minutes) to
-    /// the smallest value that lets a 45- and 60-minute strength session still land within
-    /// `toleranceSeconds`: a 60-minute session opens its handful of strength/primal movements to more sets
-    /// rather than a mobility block. It applies across the board, but only ever binds on a session long
-    /// enough for the fit to need the time - a short session never reaches it, because adding a set there
-    /// would overshoot the request.
+    /// up to this ceiling (aided by the between-round rest as the finer lever). Since US-M01 removed the
+    /// Movement Practice mobility block, the strength/primal blocks are the *only* training lever, so this
+    /// ceiling was raised (from the previous `5`) to the smallest value that lets a 45- and 60-minute
+    /// strength session still land within `toleranceSeconds`. It applies across the board, but only ever
+    /// binds on a session long enough for the fit to need the time - a short session never reaches it,
+    /// because adding a round there would overshoot the request.
     static let minTrainingSets = 1
     static let maxTrainingSets = 8
 
@@ -463,16 +490,52 @@ enum SessionAssembly {
         )
     }
 
-    /// The planned wall-clock of an assembled `Workout`: `Σ(sets × workPerSet) + rests +
-    /// transitions`. The same formula the timing-fit pass minimizes against, exposed so callers and
-    /// tests measure the session exactly as the engine sized it.
-    static func plannedSeconds(of workout: Workout) -> Int {
-        let items = workout.blocks.flatMap(\.exercises)
-        let work = items.reduce(0) { sum, item in
-            sum + item.sets * workSecondsPerSet(of: item)
-                + max(0, item.sets - 1) * item.restSeconds
+    /// Whether a block of `category` is played as a circuit of even rounds (US-CC03): the strength and
+    /// dedicated-primal training blocks are; the warm-up/cooldown bookends flow linearly. Kept as the one
+    /// place the circuit/linear distinction is drawn so `blockSeconds` (over `PlannedBlock`) and
+    /// `plannedSeconds` (over a materialized `Workout`) can never disagree about how a block is priced.
+    /// The `.mobility` case is defensive only - US-M01 retired the mobility training block, so none is
+    /// emitted - and is treated as linear.
+    static func isCircuit(_ category: ExerciseCategory) -> Bool {
+        switch category {
+        case .strength, .primal: return true
+        case .warmup, .cooldown, .mobility: return false
         }
-        return work + max(0, items.count - 1) * transitionSeconds
+    }
+
+    /// The planned wall-clock of an assembled `Workout` under the even-round model (US-CC03/US-CC04):
+    /// the sum of each block's `blockSeconds` plus one between-station transition between adjacent
+    /// blocks. A training block is priced as a circuit
+    /// (`rounds × Σ workPerSet + rounds × between-station transitions + (rounds - 1) × round-rest`), a
+    /// bookend as a linear one-set-each block. The same quantity the timing-fit pass minimizes against
+    /// (`totalSeconds`), exposed so callers and tests measure the session exactly as the engine sized it.
+    static func plannedSeconds(of workout: Workout) -> Int {
+        let nonEmpty = workout.blocks.filter { !$0.exercises.isEmpty }
+        let blockWork = nonEmpty.reduce(0) { $0 + blockSeconds(of: $1) }
+        return blockWork + max(0, nonEmpty.count - 1) * transitionSeconds
+    }
+
+    /// Planned wall-clock of one materialized `WorkoutBlock` in isolation, the mirror of
+    /// `blockSeconds(_ block: PlannedBlock)` over a finished session. A circuit training block reads its
+    /// uniform round count and round-rest off any exercise (they are all equal by construction, US-CC03);
+    /// a linear bookend is `Σ workPerSet` (one set each) plus the transitions between its stations.
+    static func blockSeconds(of block: WorkoutBlock) -> Int {
+        let exercises = block.exercises
+        guard !exercises.isEmpty else { return 0 }
+        let perRoundWork = exercises.reduce(0) { $0 + workSecondsPerSet(of: $1) }
+        let stationGaps = max(0, exercises.count - 1)
+        if isCircuit(block.category) {
+            let rounds = exercises[0].sets
+            let roundRest = exercises[0].restSeconds
+            return rounds * perRoundWork
+                + rounds * stationGaps * transitionSeconds
+                + max(0, rounds - 1) * roundRest
+        }
+        // Linear bookend: one set each (any multi-set is priced honestly, but bookends are single-set).
+        let work = exercises.reduce(0) { sum, item in
+            sum + item.sets * workSecondsPerSet(of: item) + max(0, item.sets - 1) * item.restSeconds
+        }
+        return work + stationGaps * transitionSeconds
     }
 
     // MARK: - Timing fit
@@ -481,45 +544,71 @@ enum SessionAssembly {
     /// available adjustments allow (comfortably inside `toleranceSeconds` in practice, not merely at
     /// its edge).
     ///
-    /// A deterministic best-fit loop: each pass measures the signed error, then - adding when short,
-    /// removing when long - picks the single adjustment (extra/fewer set, extra/dropped exercise) that
-    /// brings the planned time closest to target, applying it only if it strictly reduces the absolute
-    /// error. The loop runs to the local minimum (it stops only when no adjustment can shrink the gap
-    /// further), so it does not park on the first value that happens to fall just inside tolerance.
-    /// Because every accepted step strictly shrinks a non-negative integer error, the loop converges.
+    /// A deterministic best-fit loop: each pass measures the signed error, then picks the single
+    /// adjustment - tune the between-round rest, add/drop a whole round, or promote/drop a whole exercise
+    /// (US-CC04's levers) - that brings the planned time closest to target, applying it only if it
+    /// strictly reduces the absolute error. No move ever makes a training block uneven: the round-rest
+    /// and whole-round levers touch every station equally, and a promoted station joins at the block's
+    /// current round count. The loop runs to the local minimum (it stops only when no adjustment can
+    /// shrink the gap further). Because every accepted step strictly shrinks a non-negative integer
+    /// error, the loop converges.
     static func fit(_ blocks: inout [PlannedBlock], targetSeconds: Int) {
         for _ in 0..<maxFitIterations {
             let error = totalSeconds(blocks) - targetSeconds
             if error == 0 { return }
-
-            let candidates = error < 0 ? additions(in: blocks) : removals(in: blocks)
-            var best: (adjustment: Adjustment, resultError: Int)?
-            for (adjustment, delta) in candidates {
-                let resultError = abs(error + delta)
-                guard resultError < abs(error) else { continue }
-                if best == nil || resultError < best!.resultError {
-                    best = (adjustment, resultError)
-                }
-            }
-            guard let chosen = best?.adjustment else { return }
+            guard let chosen = bestAdjustment(in: blocks, towardError: error) else { return }
             apply(chosen, to: &blocks)
         }
     }
 
-    /// Planned wall-clock of a set of blocks mid-assembly (same formula as `plannedSeconds(of:)`).
-    static func totalSeconds(_ blocks: [PlannedBlock]) -> Int {
-        let items = blocks.flatMap(\.items)
-        let work = items.reduce(0) { $0 + $1.seconds }
-        return work + max(0, items.count - 1) * transitionSeconds
+    /// The single best strictly-improving adjustment for the given signed `error` (planned - target), or
+    /// `nil` at the local minimum. Shared by the global `fit` and the per-block `shapeTowardTargets` so
+    /// the two passes use identical levers and tie-breaks. `restrictedTo` limits enumeration to one block.
+    private static func bestAdjustment(
+        in blocks: [PlannedBlock],
+        towardError error: Int,
+        restrictedTo only: Int? = nil
+    ) -> Adjustment? {
+        var best: (adjustment: Adjustment, resultError: Int)?
+        for (adjustment, delta) in candidates(in: blocks, towardError: error, restrictedTo: only) {
+            let resultError = abs(error + delta)
+            guard resultError < abs(error) else { continue }
+            if best == nil || resultError < best!.resultError {
+                best = (adjustment, resultError)
+            }
+        }
+        return best?.adjustment
     }
 
-    /// Planned wall-clock of a single block in isolation: its items' work + rests + the transitions
-    /// *between* those items. Because every timing-fit adjustment touches exactly one block, the same
-    /// add/drop deltas the global fit uses also describe this per-block measure exactly, so the
-    /// weight-shaping pass and the global fit stay consistent.
+    /// Planned wall-clock of a set of blocks mid-assembly under the even-round model (same formula as
+    /// `plannedSeconds(of:)`): each block's `blockSeconds` plus one between-station transition between
+    /// adjacent non-empty blocks.
+    static func totalSeconds(_ blocks: [PlannedBlock]) -> Int {
+        let nonEmpty = blocks.filter { !$0.items.isEmpty }
+        let blockWork = nonEmpty.reduce(0) { $0 + blockSeconds($1) }
+        return blockWork + max(0, nonEmpty.count - 1) * transitionSeconds
+    }
+
+    /// Planned wall-clock of a single block in isolation. A **circuit** training block
+    /// (`allowSetAdjust`) is `rounds × Σ workPerSet + rounds × between-station transitions +
+    /// (rounds - 1) × round-rest`, reading its uniform round count and round-rest off its (equal) items.
+    /// A **linear** bookend is `Σ workPerSet` (one set each) plus the transitions between its stations.
+    /// Because every timing-fit adjustment touches exactly one block and never changes whether a block is
+    /// non-empty, the between-block transition count is invariant during the fit, so this per-block
+    /// measure and the global `totalSeconds` stay consistent and the weight-shaping pass is exact.
     static func blockSeconds(_ block: PlannedBlock) -> Int {
-        let work = block.items.reduce(0) { $0 + $1.seconds }
-        return work + max(0, block.items.count - 1) * transitionSeconds
+        guard !block.items.isEmpty else { return 0 }
+        let perRoundWork = block.items.reduce(0) { $0 + $1.workSecondsPerSet }
+        let stationGaps = max(0, block.items.count - 1)
+        if block.allowSetAdjust {
+            let rounds = block.items[0].sets
+            let roundRest = block.items[0].restSeconds
+            return rounds * perRoundWork
+                + rounds * stationGaps * transitionSeconds
+                + max(0, rounds - 1) * roundRest
+        }
+        let work = block.items.reduce(0) { $0 + $1.sets * $1.workSecondsPerSet + max(0, $1.sets - 1) * $1.restSeconds }
+        return work + stationGaps * transitionSeconds
     }
 
     // MARK: - Target shaping
@@ -528,87 +617,99 @@ enum SessionAssembly {
     /// the single block), so an extended session's strength/primal blocks are split toward the fixed
     /// strength-leads-primal division (`extendedTrainingBlocks`) *before* `fit` lands the overall total.
     /// A single-block training middle carries no target and is left entirely to the global fit. It uses
-    /// the same levers as the global fit - set counts within the rails and reserve promotion - and never
-    /// touches the capacity-relative per-set target from Step 6.
+    /// the same levers as the global fit - the round-rest, whole rounds within the rails, and reserve
+    /// promotion - and never touches the capacity-relative per-set target from Step 6, nor makes the
+    /// block uneven.
     static func shapeTowardTargets(_ blocks: inout [PlannedBlock]) {
         for index in blocks.indices {
             guard let target = blocks[index].targetSeconds else { continue }
             for _ in 0..<maxFitIterations {
                 let error = blockSeconds(blocks[index]) - target
                 if error == 0 { break }
-
-                let candidates = error < 0
-                    ? additions(in: blocks, restrictedTo: index)
-                    : removals(in: blocks, restrictedTo: index)
-                var best: (adjustment: Adjustment, resultError: Int)?
-                for (adjustment, delta) in candidates {
-                    let resultError = abs(error + delta)
-                    guard resultError < abs(error) else { continue }
-                    if best == nil || resultError < best!.resultError {
-                        best = (adjustment, resultError)
-                    }
-                }
-                guard let chosen = best?.adjustment else { break }
+                guard let chosen = bestAdjustment(in: blocks, towardError: error, restrictedTo: index) else { break }
                 apply(chosen, to: &blocks)
             }
         }
     }
 
-    /// Every time-increasing adjustment available, with the seconds it would add: one per
-    /// set-adjustable item below the set cap (add a set), and one per block holding a reserve exercise
-    /// (promote the next reserve exercise). Enumerated in a fixed block/item order so ties resolve
-    /// deterministically. `restrictedTo`, when set, limits the enumeration to a single block (used by
-    /// the weight-shaping pass to grow one training block toward its own share).
-    private static func additions(in blocks: [PlannedBlock], restrictedTo only: Int? = nil) -> [(Adjustment, Int)] {
+    /// Every available timing-fit move with the signed seconds it would add or remove, under the
+    /// even-round model (US-CC04). For a **circuit** training block the round count and the between-round
+    /// rest are tuned *together* as one atomic move: for each round count within one step of the current
+    /// one (`{-1, 0, +1}`, clamped to the rails), the in-band round-rest that best cancels `error` is
+    /// solved directly and offered as a single `setRoundsAndRest`. Coupling them is what lets the fit
+    /// trade a whole round for more (or less) rest in one step - e.g. drop a round *and* stretch the rest
+    /// to the top of its band - rather than getting trapped at a round count whose only reachable rest is
+    /// pinned to a band edge. The round-rest alone is the fine lever (the `0`-step case); a whole round is
+    /// the coarse one; and beneath both, a whole exercise may be promoted/dropped at the block's current
+    /// round count (keeping the block even). A **linear** bookend grows/shrinks purely by one-set movement
+    /// count. Enumerated in a fixed block order (and, per block, in `{-1, 0, +1}` round order) so ties
+    /// resolve deterministically. `restrictedTo`, when set, limits enumeration to a single block. `error`
+    /// is the current signed gap (planned - target).
+    private static func candidates(
+        in blocks: [PlannedBlock],
+        towardError error: Int,
+        restrictedTo only: Int? = nil
+    ) -> [(Adjustment, Int)] {
         var result: [(Adjustment, Int)] = []
         for (blockIndex, block) in blocks.enumerated() {
             if let only, only != blockIndex { continue }
-            if block.allowSetAdjust {
-                for (itemIndex, item) in block.items.enumerated() where item.sets < maxTrainingSets {
-                    let delta = item.workSecondsPerSet + item.restSeconds
-                    result.append((.addSet(block: blockIndex, item: itemIndex), delta))
-                }
-            }
-            if let next = block.reserve.first {
-                // A reserve may be promoted at any set count within the rails, not only at the count
-                // Step 6 prescribed. Without that, a set-adjustable block whose items already sit at
-                // `maxTrainingSets` (a capacity-grown or cold-start-seeded strength block can) has no
-                // fine-grained lever left at all: its only move is a whole extra exercise at full volume,
-                // which a short session cannot absorb, and the greedy fit parks minutes away from the
-                // request. A non-set-adjustable block (the warm-up and cooldown bookends) promotes its
-                // reserve only at the item's own one set - so a bookend grows purely by movement count.
-                let counts = block.allowSetAdjust
-                    ? Array(minTrainingSets...max(minTrainingSets, next.sets))
-                    : [next.sets]
-                for sets in counts {
-                    var probe = next
-                    probe.sets = sets
-                    result.append((
-                        .addReserve(block: blockIndex, sets: sets),
-                        probe.seconds + transitionSeconds
-                    ))
-                }
-            }
-        }
-        return result
-    }
+            guard let lead = block.items.first else { continue }
+            let perRoundWork = block.items.reduce(0) { $0 + $1.workSecondsPerSet }
+            let stationGaps = max(0, block.items.count - 1)
 
-    /// Every time-decreasing adjustment available, with the (negative) seconds it would remove: one
-    /// per set-adjustable item above the set floor (drop a set), and one per block holding more than
-    /// its required minimum exercises (drop the last exercise). `restrictedTo`, when set, limits the
-    /// enumeration to a single block (used by the weight-shaping pass).
-    private static func removals(in blocks: [PlannedBlock], restrictedTo only: Int? = nil) -> [(Adjustment, Int)] {
-        var result: [(Adjustment, Int)] = []
-        for (blockIndex, block) in blocks.enumerated() {
-            if let only, only != blockIndex { continue }
             if block.allowSetAdjust {
-                for (itemIndex, item) in block.items.enumerated() where item.sets > minTrainingSets {
-                    let delta = -(item.workSecondsPerSet + item.restSeconds)
-                    result.append((.removeSet(block: blockIndex, item: itemIndex), delta))
+                let rounds = lead.sets
+                let roundRest = lead.restSeconds
+                // Per-round fixed cost (work + within-round transitions), independent of the round count
+                // and the rest, so a block's seconds are `rounds × perRoundCost + (rounds - 1) × rest`.
+                let perRoundCost = perRoundWork + stationGaps * transitionSeconds
+                let currentBlockSeconds = rounds * perRoundCost + max(0, rounds - 1) * roundRest
+
+                // Combined round-count + round-rest lever. For each candidate round count one step from
+                // the current one, solve the in-band rest that best drives the total to target, and offer
+                // the pair as a single move. The `0`-step case is the pure fine round-rest jump.
+                for delta in [-1, 0, 1] {
+                    let newRounds = rounds + delta
+                    guard newRounds >= minTrainingSets, newRounds <= maxTrainingSets else { continue }
+                    // The block seconds that would cancel `error`: current minus the gap (since a change
+                    // in this block's seconds moves the total one-for-one).
+                    let desiredBlockSeconds = currentBlockSeconds - error
+                    let newRest: Int
+                    if newRounds >= 2 {
+                        let ideal = Double(desiredBlockSeconds - newRounds * perRoundCost) / Double(newRounds - 1)
+                        newRest = min(maxRoundRestSeconds, max(minRoundRestSeconds, Int(ideal.rounded())))
+                    } else {
+                        // A single round has no between-round gap, so the rest is uncharged; keep it in
+                        // band for when a later step grows the block back past one round.
+                        newRest = min(maxRoundRestSeconds, max(minRoundRestSeconds, roundRest))
+                    }
+                    let newBlockSeconds = newRounds * perRoundCost + max(0, newRounds - 1) * newRest
+                    let moveDelta = newBlockSeconds - currentBlockSeconds
+                    guard moveDelta != 0 else { continue }
+                    result.append((.setRoundsAndRest(block: blockIndex, rounds: newRounds, rest: newRest), moveDelta))
                 }
-            }
-            if block.items.count > block.minItems, let last = block.items.last {
-                result.append((.dropItem(block: blockIndex), -(last.seconds + transitionSeconds)))
+
+                // Whole-exercise lever: promote the next reserve station at the block's current round
+                // count (so the block stays uniform). A new station adds `rounds` sets of its work plus
+                // one more between-station gap per round.
+                if let next = block.reserve.first {
+                    let wps = workSecondsPerSet(for: next.exercise, reps: next.reps, durationSeconds: next.durationSeconds)
+                    result.append((.addReserve(block: blockIndex), rounds * (wps + transitionSeconds)))
+                }
+                // Drop the last station (returns it to the reserve), removing `rounds` sets of its work
+                // plus one between-station gap per round.
+                if block.items.count > block.minItems, let last = block.items.last {
+                    result.append((.dropItem(block: blockIndex), -(rounds * (last.workSecondsPerSet + transitionSeconds))))
+                }
+            } else {
+                // Linear bookend: it grows/shrinks purely by one-set movement count.
+                if let next = block.reserve.first {
+                    let wps = workSecondsPerSet(for: next.exercise, reps: next.reps, durationSeconds: next.durationSeconds)
+                    result.append((.addReserve(block: blockIndex), wps + transitionSeconds))
+                }
+                if block.items.count > block.minItems, let last = block.items.last {
+                    result.append((.dropItem(block: blockIndex), -(last.workSecondsPerSet + transitionSeconds)))
+                }
             }
         }
         return result
@@ -616,13 +717,21 @@ enum SessionAssembly {
 
     private static func apply(_ adjustment: Adjustment, to blocks: inout [PlannedBlock]) {
         switch adjustment {
-        case let .addSet(block, item):
-            blocks[block].items[item].sets += 1
-        case let .removeSet(block, item):
-            blocks[block].items[item].sets -= 1
-        case let .addReserve(block, sets):
+        case let .setRoundsAndRest(block, rounds, rest):
+            for index in blocks[block].items.indices {
+                blocks[block].items[index].sets = rounds
+                blocks[block].items[index].restSeconds = rest
+            }
+        case let .addReserve(block):
             var promoted = blocks[block].reserve.removeFirst()
-            promoted.sets = sets
+            if blocks[block].allowSetAdjust {
+                // Join the circuit at the block's uniform round count and round-rest (US-CC03), rather
+                // than the reserve's own Step-6 set count - which would make the block uneven.
+                promoted.sets = blocks[block].items.first?.sets ?? promoted.sets
+                promoted.restSeconds = blocks[block].items.first?.restSeconds ?? promoted.restSeconds
+            } else {
+                promoted.sets = 1
+            }
             blocks[block].items.append(promoted)
         case let .dropItem(block):
             let removed = blocks[block].items.removeLast()
@@ -630,11 +739,15 @@ enum SessionAssembly {
         }
     }
 
-    /// One timing-fit move, addressed by block/item index into the in-progress `[PlannedBlock]`.
+    /// One timing-fit move, addressed by block index into the in-progress `[PlannedBlock]`. Every move
+    /// preserves a training block's uniform round count (US-CC03): `setRoundsAndRest` writes the same
+    /// round count and rest to every station, and `addReserve` joins at the block's current round count.
     private enum Adjustment {
-        case addSet(block: Int, item: Int)
-        case removeSet(block: Int, item: Int)
-        case addReserve(block: Int, sets: Int)
+        /// Set every station of a circuit block to the same round count and (in-band) between-round rest.
+        case setRoundsAndRest(block: Int, rounds: Int, rest: Int)
+        /// Promote the next reserve movement into the block (at its uniform round count / one set).
+        case addReserve(block: Int)
+        /// Drop the last movement from the block back to the reserve.
         case dropItem(block: Int)
     }
 }
@@ -642,25 +755,29 @@ enum SessionAssembly {
 // MARK: - PlannedItem
 
 /// One exercise as it is being sized during assembly: the movement, its capacity-relative per-set
-/// target (reps or hold seconds from Step 6), the current set count (a timing lever), and the rest
-/// between sets. Materializes into a playable `PrescribedExercise` once assembly is done.
+/// target (reps or hold seconds from Step 6), the current set count (= the block's round count on a
+/// circuit training block, a timing lever), and the rest that follows (the between-round rest on a
+/// circuit block, likewise a lever). Materializes into a playable `PrescribedExercise` once assembly is
+/// done. On a circuit training block every item shares one `sets` and one `restSeconds` (US-CC03);
+/// per-item seconds are therefore not meaningful in isolation - `SessionAssembly.blockSeconds` owns the
+/// round-aware wall-clock formula.
 struct PlannedItem: Equatable {
     let exercise: Exercise
     let reps: Int?
     let durationSeconds: Int?
+    /// The set count. On a circuit training block this is the block's uniform round count; the timing
+    /// fit moves it only via block-level `addRound`/`removeRound`, so it stays equal across the block.
     var sets: Int
-    let restSeconds: Int
+    /// On a circuit training block this is the between-round rest (a tunable lever within
+    /// `[minRoundRestSeconds, maxRoundRestSeconds]`, kept equal across the block); on a bookend it is
+    /// the (uncharged) one-set rest.
+    var restSeconds: Int
 
     /// Planned seconds for one set at this item's actual per-set target (see
     /// `SessionAssembly.workSecondsPerSet(for:reps:durationSeconds:)`), so a seeded or
     /// capacity-grown prescription is sized as the work it really is.
     var workSecondsPerSet: Int {
         SessionAssembly.workSecondsPerSet(for: exercise, reps: reps, durationSeconds: durationSeconds)
-    }
-
-    /// Planned seconds for this item alone: `sets × workPerSet + (sets - 1) × rest`.
-    var seconds: Int {
-        sets * workSecondsPerSet + max(0, sets - 1) * restSeconds
     }
 
     func materialize() -> PrescribedExercise {
