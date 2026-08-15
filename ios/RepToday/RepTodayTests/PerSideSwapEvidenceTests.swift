@@ -882,7 +882,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "the button should name the side it starts; it reads \(firstLabels)"
         )
         XCTAssertTrue(
-            firstLabels.contains { $0.contains("side 1 of 2") && $0.hasPrefix("Set ") },
+            // Inside the strength circuit block the tracker leads with "Round N of M" (US-CC02); a
+            // linear bookend would lead with "Set N of M". Either way it names the side the set is on.
+            firstLabels.contains { $0.contains("side 1 of 2") && ($0.hasPrefix("Set ") || $0.hasPrefix("Round ")) },
             "the set tracker should name the side the set is on; it reads \(firstLabels)"
         )
         XCTAssertTrue(
@@ -1109,8 +1111,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// the accessibility tree the way VoiceOver's double-tap does, so what is gated is the control a
     /// user can actually reach mid-plank rather than a view-model call.
     func testBankingASetByHandMidLegEndsTheLegAndOpensTheRestInTheLivePlayer() throws {
-        // Long enough that the leg is unambiguously still running when the set is banked by hand.
-        let workout = shortHoldWorkout(seconds: 120, sets: 2)
+        // Long enough that the leg is unambiguously still running when the set is banked by hand. A
+        // single-station block, so banking round 1 advances to round 2 of the *same* hold - a
+        // single-station circuit plays its rounds as that one exercise's successive sets (US-CC02) -
+        // rather than rotating to another station.
+        let workout = singleStationShortHoldWorkout(seconds: 120, sets: 2)
 
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
         let start = try XCTUnwrap(
@@ -1158,8 +1163,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "and the set should have been banked, opening the rest; the player reads \(after)"
         )
         XCTAssertTrue(
-            after.contains { $0.contains("set 2 of 2") },
-            "with the set counter advanced exactly one set, as it is when the timer runs out; "
+            after.contains { $0.contains("Round 2 of 2") },
+            "with the round advanced exactly one, as it is when the timer runs out; "
             + "the player reads \(after)"
         )
     }
@@ -1188,6 +1193,33 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             blocks: [
                 WorkoutBlock(
                     id: UUID(), title: "Strength", category: .strength, exercises: [slot(), slot()]
+                )
+            ]
+        )
+    }
+
+    /// A single-station short-hold block, so a multi-set hold's *own* round-to-round progression is what
+    /// a live test drives (US-CC02: a single-station circuit plays its rounds as that one exercise's
+    /// successive sets) rather than the rotation moving to a second station.
+    private func singleStationShortHoldWorkout(seconds: Int, sets: Int) -> Workout {
+        let hold = Exercise(
+            id: "evidence_short_hold", displayName: "Short Hold", pillar: .strength,
+            movementPattern: .core, category: .strength, difficulty: 1, phase: .discipline,
+            equipment: [], isHold: true, defaultReps: nil, defaultDurationSeconds: seconds,
+            estimatedTimePerSetSeconds: 10, metValue: 3, progressionChainId: "evidence_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "hold it", apartmentFriendly: true
+        )
+        return Workout(
+            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil,
+            requestedMinutes: 5, wasReturn: false,
+            blocks: [
+                WorkoutBlock(
+                    id: UUID(), title: "Strength", category: .strength,
+                    exercises: [PrescribedExercise(
+                        id: UUID(), exercise: hold, sets: sets, reps: nil,
+                        durationSeconds: seconds, restSeconds: 30
+                    )]
                 )
             ]
         )

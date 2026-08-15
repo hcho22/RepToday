@@ -14,6 +14,10 @@ import XCTest
 /// Warm-up stretches are timed holds on the manual path here (US-CC05 makes the bookends hands-free
 /// later), so the test skips past them to reach the first strength set, where the auto-advancing work
 /// window and its **Done** control live.
+///
+/// A second case (US-CC02) drives the strength block as a circuit through the shipped controls and
+/// reads the "Round N of M" label off the running player, confirming the rotation and the round label a
+/// real finger sees - the one thing the in-process rotation tests cannot exercise.
 final class ContinuousCircuitUITests: XCTestCase {
 
     private var app: TestApp!
@@ -88,6 +92,81 @@ final class ContinuousCircuitUITests: XCTestCase {
             "Done did not advance the session into the rest or the completion screen"
         )
         attachScreenshot(named: "02-after-done")
+    }
+
+    /// US-CC02: the strength block plays as a circuit through the shipped controls - the player surfaces
+    /// "Round N of M" and rotates one set of each exercise per round rather than grinding all sets of one
+    /// exercise first. Driven hands-free with **Done** so what is exercised is the production rotation a
+    /// finger reaches, not a view-model call.
+    func testStrengthBlockRotatesThroughRoundsHandsFree() {
+        app.launch(.optedOutWithNoProbe)
+
+        let start = app.buttons["Start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
+        start.tap()
+
+        // Reach the first rep-based strength work window, skipping past the warm-up holds and any rests.
+        let workWindow = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
+            .firstMatch
+        var reachedWorkWindow = false
+        for _ in 0..<30 {
+            if workWindow.waitForExistence(timeout: 2) { reachedWorkWindow = true; break }
+            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
+            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
+        }
+        XCTAssertTrue(reachedWorkWindow, "never reached a rep-based strength set")
+
+        // The training block is a circuit, so it surfaces "Round N of M" (US-CC02).
+        XCTAssertNotNil(firstLabel(beginningWith: "Round "), "the strength circuit surfaced no \"Round N of M\" label")
+        attachScreenshot(named: "01-round-label")
+
+        // Rotate hands-free, recording the (round, exercise) pairs a finger sees. A circuit plays one set
+        // of each exercise per round, so within a round the exercise changes station to station, or the
+        // round advances - either proves the rotation; grinding all sets of one exercise first would show
+        // the same exercise repeat with an unchanged round.
+        var seen: [(round: String, exercise: String)] = []
+        for _ in 0..<12 {
+            guard let round = firstLabel(beginningWith: "Round "), let exercise = currentExerciseName() else { break }
+            seen.append((round: round, exercise: exercise))
+            guard app.buttons["Done"].waitForExistence(timeout: 4) else { break }
+            app.buttons["Done"].tap()
+            // Clear the between-station transition / between-round rest, then reach the next work window.
+            if app.buttons["Skip rest"].waitForExistence(timeout: 4) { app.buttons["Skip rest"].tap() }
+            if !workWindow.waitForExistence(timeout: 4) { break } // left the block (cooldown) or finished
+        }
+        attachScreenshot(named: "02-after-rotation")
+
+        let round1 = seen.filter { $0.round.hasPrefix("Round 1 of") }
+        let distinctExercisesInRound1 = Set(round1.map(\.exercise))
+        let distinctRounds = Set(seen.map(\.round))
+        XCTAssertTrue(
+            distinctExercisesInRound1.count > 1 || distinctRounds.count > 1,
+            "the strength block should play as a circuit - more than one exercise per round, or more than "
+            + "one round - not grind one exercise's sets before the next; saw \(seen)"
+        )
+    }
+
+    /// The label of the first element whose accessibility label begins with `prefix`, or `nil` if none
+    /// appears in time.
+    private func firstLabel(beginningWith prefix: String) -> String? {
+        let element = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", prefix))
+            .firstMatch
+        return element.waitForExistence(timeout: 3) ? element.label : nil
+    }
+
+    /// The exercise on screen, read off the headline the player combines as "<name>, <spoken target>"
+    /// (the spoken target names its sets), so the prefix before the comma is the movement's name.
+    private func currentExerciseName() -> String? {
+        let element = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "sets of", "set of"))
+            .firstMatch
+        guard element.waitForExistence(timeout: 3) else { return nil }
+        return element.label.components(separatedBy: ",").first
     }
 
     /// Files the running app's screen as a `.keepAlways` `.xcresult` attachment, so a reviewer opens a

@@ -8,8 +8,21 @@ import Observation
 /// training -> cooldown, in the engine's order) and tracks exactly where the user is: the current
 /// step, the set they are on, and the elapsed wall-clock time. Completing a set advances the
 /// session and records what was done toward the `WorkoutLog`. After each set a rest timer (US-K02)
-/// counts down the prescription's `restSeconds` and, when it elapses, fires an accessible
-/// haptic/audio cue.
+/// counts down and, when it elapses, fires an accessible haptic/audio cue.
+///
+/// A **training block is played as a circuit of rounds** (US-CC02): the strength block and, at
+/// 41-60 min, the dedicated primal block - both circuits by `SessionAssembly.isCircuit(_:)` - run one
+/// set of each exercise in order, then repeat, so a three-exercise block rotates A, B, C, A, B, C, A,
+/// B, C rather than grinding all sets of A before B. Because the engine now sizes every station in a
+/// training block to the same set count (the block's round count "M", US-CC03), that rotation is even
+/// and the player surfaces "Round N of M". A station's r-th set *is* round r, so `currentSet` doubles
+/// as the round while the player is inside a circuit. The two rest gaps the engine plans (US-CC04)
+/// pace the rotation: a short fixed between-station transition inside a round and the bounded
+/// between-round rest at a round boundary; both flow through the US-K02 rest overlay. Warm-up and
+/// cooldown **bookends are not circuits** - they flow linearly, one station's sets then the next.
+/// Aggregate logging is unaffected by the rotation: `completedSets` is keyed by prescription id, so a
+/// station's M sets accumulate across rounds exactly as they did set-by-set, and the `WorkoutLog` and
+/// summary are the same whatever order the sets were played in.
 ///
 /// When the session completes (US-L01) the view model writes the `WorkoutLog` through the injected
 /// `SessionCompletionServiceProtocol` - fire-and-forget at the `finish()` transition, so the record is
@@ -368,6 +381,26 @@ final class ActiveSessionViewModel {
         totalSets == 0 ? 1 : Double(completedSetCount) / Double(totalSets)
     }
 
+    /// The circuit round the current station sits in - "N" in "Round N of M" (US-CC02) - or `nil` when
+    /// the current step is in a linear warm-up / cooldown bookend or the session is complete. Inside a
+    /// circuit the set counter and the round are the same number, because a station's r-th set *is*
+    /// round r, so this reads straight off `currentSet`.
+    var currentRound: Int? {
+        guard currentStep != nil else { return nil }
+        let span = blockSpan(containing: currentStepIndex)
+        return span.isCircuit ? currentSet : nil
+    }
+
+    /// The circuit round count "M" for the current station's block - "M" in "Round N of M" (US-CC02) -
+    /// or `nil` for a linear bookend / once complete. Read off the block, not recomputed: the engine
+    /// guarantees every station in a training block carries the same set count (US-CC03), so "M" is
+    /// well-defined.
+    var circuitRoundCount: Int? {
+        guard currentStep != nil else { return nil }
+        let span = blockSpan(containing: currentStepIndex)
+        return span.isCircuit ? span.roundCount : nil
+    }
+
     // MARK: - Timing
 
     /// Begin the session clock. Idempotent: a second call (e.g. the view re-appearing) keeps the
@@ -401,10 +434,14 @@ final class ActiveSessionViewModel {
 
     // MARK: - Advancing the session
 
-    /// Record the current set as done and advance: to the next set of the same exercise, or to the
-    /// next exercise once the last set is finished, or to the completion state at the end. A no-op
-    /// once the session is complete. Unless the session just finished, this opens a rest period
-    /// (US-K02) using the just-completed prescription's `restSeconds`, so the next effort is paced.
+    /// Record the current set as done and advance along the session (US-CC02): inside a training-block
+    /// circuit, to the next station in the current round, or - at a round boundary - to the head of the
+    /// next round, rotating one set of each exercise per round rather than grinding all of one exercise
+    /// first; inside a linear bookend, to the exercise's next set then the next station; and to the
+    /// completion state at the very end. A no-op once the session is complete. Unless the session just
+    /// finished, this opens a rest period (US-K02) sized to the gap the advance crossed - a short
+    /// between-station transition inside a round, or the bounded between-round rest at a round boundary
+    /// (US-CC04) - so the next effort is paced.
     func completeSet() {
         guard !isComplete, let step = currentStep else { return }
         // Any prior rest is over the moment the next set is logged (a no-op in the overlay-gated UI,
@@ -421,28 +458,28 @@ final class ActiveSessionViewModel {
         // what takes the running window down, firing no cue because coming out early is the user's choice.
         endWorkWindow(fireFeedback: false)
         recordSet(for: step.prescription)
-        let restSeconds = step.prescription.restSeconds
-        if currentSet < step.prescription.sets {
-            currentSet += 1
-        } else {
-            advanceExercise()
-        }
-        // No rest after the final set of the session - the session is over, not paced.
-        if !isComplete {
-            startRest(seconds: restSeconds)
-            // When the just-completed set opened no rest (a prescription with `restSeconds == 0`), the
-            // next set is already on screen, so its work window starts now; when a rest did open, the
-            // window instead starts as the rest ends (`completeRestIfElapsed`/`skipRest`). Idempotent.
+        if let next = nextPosition(fromIndex: currentStepIndex, set: currentSet) {
+            moveTo(index: next.index, set: next.set)
+            startRest(seconds: next.gap)
+            // When the just-completed set opened no rest (a `restSeconds == 0` round rest), the next set
+            // is already on screen, so its work window starts now; when a rest did open, the window
+            // instead starts as the rest ends (`completeRestIfElapsed`/`skipRest`). Idempotent.
             if !isResting { startWorkWindow() }
+        } else {
+            // No rest after the final set of the session - the session is over, not paced.
+            finish()
         }
         persist()
     }
 
     /// Skip the current exercise, marking it skipped for the eventual log, and advance to the next
-    /// exercise. A skip means the user is abandoning the exercise entirely, so any sets already
-    /// recorded for it are discarded - a skipped exercise never carries completed sets in
-    /// `loggedExercises()`. A no-op once complete. (Swapping to a peer instead is US-K03; this is
-    /// the plain "move past it" path.)
+    /// playable position. A skip means the user is abandoning the exercise entirely, so any sets
+    /// already recorded for it are discarded - a skipped exercise never carries completed sets in
+    /// `loggedExercises()`. Inside a training-block circuit the skip removes the exercise from **every
+    /// remaining round** (the rotation passes over a skipped station, US-CC02), so it stays not-done in
+    /// aggregate and the rest of the block still completes its rounds. A no-op once complete. (Swapping
+    /// to a peer instead is US-K03; this is the plain "move past it" path. Reconciling a swap across the
+    /// remaining rounds, and the block staying uniform after a swap, is US-CC07.)
     func skipExercise() {
         guard !isComplete, let step = currentStep else { return }
         // Skipping moves on immediately, so any rest, hold, or work window in force is dropped without
@@ -452,10 +489,17 @@ final class ActiveSessionViewModel {
         endWorkWindow(fireFeedback: false)
         completedSets.removeValue(forKey: step.id)
         skippedStepIDs.insert(step.id)
-        advanceExercise()
-        // The next exercise shows immediately (a skip opens no rest), so start its work window when it
-        // is a rep-based training set (US-CC01). A no-op at completion or on a hold/bookend.
-        if !isComplete { startWorkWindow() }
+        // Marked skipped *before* computing the advance, so the rotation passes over this station in
+        // this and every later round rather than returning to it. The gap is ignored: a skip opens no
+        // rest, so the next set shows immediately.
+        if let next = nextPosition(fromIndex: currentStepIndex, set: currentSet) {
+            moveTo(index: next.index, set: next.set)
+            // The next exercise shows immediately, so start its work window when it is a rep-based
+            // training set (US-CC01). A no-op on a hold/bookend.
+            startWorkWindow()
+        } else {
+            finish()
+        }
         persist()
     }
 
@@ -985,16 +1029,117 @@ final class ActiveSessionViewModel {
         completedSets[prescription.id, default: []].append(performed)
     }
 
-    private func advanceExercise() {
-        currentSet = 1
-        // A fresh exercise starts with no "no alternative" notice - that verdict was about the slot
-        // the user just left.
-        noSwapAlternative = false
-        if currentStepIndex + 1 < steps.count {
-            currentStepIndex += 1
-        } else {
-            finish()
+    /// Move the play head to (`index`, `set`). Moving to a *different* station clears the "no
+    /// alternative" notice, which was a verdict about the slot just left; staying on the same station
+    /// for its next set (a linear bookend, or a single-station circuit block advancing rounds) leaves it.
+    private func moveTo(index: Int, set: Int) {
+        if index != currentStepIndex { noSwapAlternative = false }
+        currentStepIndex = index
+        currentSet = set
+    }
+
+    // MARK: - Circuit rotation (US-CC02)
+
+    /// The contiguous block the step at `index` belongs to, whether it is played as a circuit of even
+    /// rounds (US-CC02/US-CC03), and - for a circuit - the block-level round count "M". Blocks are
+    /// grouped by consecutive steps sharing a title and category, the same grouping `snapshotForSwap()`
+    /// uses, so the two never disagree about where a block begins and ends.
+    private struct BlockSpan {
+        let range: ClosedRange<Int>
+        let isCircuit: Bool
+        /// The circuit round count "M" (the block's uniform set count, US-CC03); 1 for a linear bookend.
+        let roundCount: Int
+    }
+
+    private func blockSpan(containing index: Int) -> BlockSpan {
+        guard steps.indices.contains(index) else {
+            return BlockSpan(range: index...index, isCircuit: false, roundCount: 1)
         }
+        let title = steps[index].blockTitle
+        let category = steps[index].blockCategory
+        var lower = index
+        while lower - 1 >= 0, steps[lower - 1].blockTitle == title, steps[lower - 1].blockCategory == category {
+            lower -= 1
+        }
+        var upper = index
+        while upper + 1 < steps.count, steps[upper + 1].blockTitle == title, steps[upper + 1].blockCategory == category {
+            upper += 1
+        }
+        let circuit = SessionAssembly.isCircuit(category)
+        // M is the block's uniform set count (US-CC03 guarantees uniformity across a real training
+        // block); taking the max keeps "Round N of M" well-defined and the rotation total-preserving
+        // even on a hand-built non-uniform block, where a station simply drops out of the rounds beyond
+        // its own set count.
+        let rounds = circuit ? ((lower...upper).map { steps[$0].prescription.sets }.max() ?? 1) : 1
+        return BlockSpan(range: lower...upper, isCircuit: circuit, roundCount: rounds)
+    }
+
+    /// The next play position after the set at (`index`, `set`), and the rest gap that precedes it, or
+    /// `nil` when the session ends. In a circuit block the walk rotates one set of each station per
+    /// round (US-CC02): the next not-yet-played, non-skipped station in the current round (crossing a
+    /// short between-station transition), or - at the end of a round - the head of the next round
+    /// (crossing the bounded between-round rest, US-CC04); a skipped station is passed over in every
+    /// remaining round. A linear bookend keeps its per-exercise walk: the exercise's next set, then the
+    /// next station. Crossing into a following block lands on its first non-skipped station at set 1.
+    private func nextPosition(fromIndex index: Int, set: Int) -> (index: Int, set: Int, gap: Int)? {
+        let span = blockSpan(containing: index)
+        if span.isCircuit {
+            let round = set
+            if let station = nextStation(in: span.range, after: index, round: round) {
+                return (station, round, SessionAssembly.transitionSeconds)
+            }
+            let nextRound = round + 1
+            if nextRound <= span.roundCount, let station = firstStation(in: span.range, round: nextRound) {
+                return (station, nextRound, roundRestSeconds(for: span.range))
+            }
+            return positionAfterBlock(span.range.upperBound, gap: SessionAssembly.transitionSeconds)
+        }
+        // Linear bookend: play the station's own sets in sequence (a skipped station has none left),
+        // then move on to the next station.
+        let sets = steps[index].prescription.sets
+        let rest = steps[index].prescription.restSeconds
+        if !skippedStepIDs.contains(steps[index].id), set < sets {
+            return (index, set + 1, rest)
+        }
+        return positionAfterBlock(index, gap: rest)
+    }
+
+    /// The next non-skipped station strictly after `index` within `range` that still plays in `round`
+    /// (its set count reaches `round`) - the next stop in the current circuit round, or `nil` if the
+    /// round has no more stations here.
+    private func nextStation(in range: ClosedRange<Int>, after index: Int, round: Int) -> Int? {
+        guard index + 1 <= range.upperBound else { return nil }
+        return ((index + 1)...range.upperBound).first { hasSet($0, inRound: round) }
+    }
+
+    /// The first non-skipped station in `range` that plays in `round` - the head of a fresh round.
+    private func firstStation(in range: ClosedRange<Int>, round: Int) -> Int? {
+        range.first { hasSet($0, inRound: round) }
+    }
+
+    /// Whether the station at `index` has a set to play in `round`: it is not skipped and its set count
+    /// reaches `round`.
+    private func hasSet(_ index: Int, inRound round: Int) -> Bool {
+        !skippedStepIDs.contains(steps[index].id) && steps[index].prescription.sets >= round
+    }
+
+    /// The next non-skipped station after `lastIndex` - the head of the following block - at its first
+    /// set, or `nil` when nothing remains (the session ends).
+    private func positionAfterBlock(_ lastIndex: Int, gap: Int) -> (index: Int, set: Int, gap: Int)? {
+        var j = lastIndex + 1
+        while j < steps.count {
+            if !skippedStepIDs.contains(steps[j].id) { return (j, 1, gap) }
+            j += 1
+        }
+        return nil
+    }
+
+    /// The between-round rest for the circuit block spanning `range`, read off its stations. Every
+    /// station carries the same round rest by construction (US-CC03/US-CC04), so any non-skipped
+    /// station's `restSeconds` is it; the first station is the fallback when all are skipped.
+    private func roundRestSeconds(for range: ClosedRange<Int>) -> Int {
+        let station = range.first { !skippedStepIDs.contains(steps[$0].id) } ?? range.lowerBound
+        return steps[station].prescription.restSeconds
     }
 
     private func finish() {
