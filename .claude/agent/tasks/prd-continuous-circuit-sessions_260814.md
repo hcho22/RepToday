@@ -1,6 +1,6 @@
 # PRD: Continuous-Circuit Sessions (hands-free follow-along player)
 
-- Status: In progress. US-CC01 (auto-advancing work window for strength sets) and US-CC03/US-CC04 (the even-round engine timing model: uniform set count per training block plus the two-gap transition/round-rest fit, engine-only) have landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
+- Status: In progress. US-CC01 (auto-advancing work window for strength sets), US-CC03/US-CC04 (the even-round engine timing model: uniform set count per training block plus the two-gap transition/round-rest fit, engine-only), and US-CC02 (circuit rotation of the training block, "Round N of M", player-only) have landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
 - Story prefix: `US-CC##`.
 - Supersedes, on landing: the manual tap-to-advance active-session player (US-K01/US-K02/US-O03 interaction model).
 - Related decisions: [ADR-0002](../../../docs/adr/0002-per-interval-pacer-clock.md) (per-interval pacer clock), [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md) (even-round circuit timing). Domain term: `CONTEXT.md` -> "Continuous Circuit (planned)".
@@ -61,12 +61,18 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] The strength (and, at 41-60 min, the dedicated primal) block is played as rounds: one set of each exercise in the block, in order, then repeat, rather than all sets of exercise A then all of B.
-- [ ] The player surfaces round progress as "Round N of M" where M is the block's uniform set count (US-CC03).
-- [ ] Warm-up and cooldown bookends are **not** circuits - they flow linearly (US-CC05); rounds apply only to training blocks.
-- [ ] Completed-set logging is unchanged in aggregate: each exercise still logs its uniform set count of completed sets by the end (US-CC09), so `WorkoutLog` and the summary are unaffected by rotation order.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in the running app (Simulator, `RepTodayUITests`).
+- [x] The strength (and, at 41-60 min, the dedicated primal) block is played as rounds: one set of each exercise in the block, in order, then repeat, rather than all sets of exercise A then all of B. (`ActiveSessionViewModel.nextPosition(fromIndex:set:)`, gated to `SessionAssembly.isCircuit`; `testStrengthBlockRotatesABCAcrossRoundsWithRoundLabels`, `testCompleteSetRotatesToTheNextStationInTheRound`, `testCompletingARoundWrapsToTheNextRound`)
+- [x] The player surfaces round progress as "Round N of M" where M is the block's uniform set count (US-CC03). (`ActiveSessionViewModel.currentRound`/`circuitRoundCount` read off the block; `ActiveSessionView.setTracker`/`nextUp`; `testBookendsAreNotCircuitsOnlyTrainingBlocks`)
+- [x] Warm-up and cooldown bookends are **not** circuits - they flow linearly (US-CC05); rounds apply only to training blocks. (`testBookendsAreNotCircuitsOnlyTrainingBlocks`)
+- [x] Completed-set logging is unchanged in aggregate: each exercise still logs its uniform set count of completed sets by the end (US-CC09), so `WorkoutLog` and the summary are unaffected by rotation order. (`completedSets` keyed by prescription id; `testStrengthBlockRotatesABCAcrossRoundsWithRoundLabels` asserts three sets logged per exercise)
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in the running app (Simulator, `RepTodayUITests`). (`ContinuousCircuitUITests.testStrengthBlockRotatesThroughRoundsHandsFree`)
+
+**Notes (as landed):**
+
+- The two rest gaps the engine already sizes (US-CC04) pace the rotation in the player: a short between-station transition (`SessionAssembly.transitionSeconds`) inside a round, and the bounded between-round rest (each station's `restSeconds`, uniform per block) at a round boundary. Both flow through the existing US-K02 rest overlay, so the US-CC01 auto-advance work-window flow stays hands-free across the rotated order. The transition beat's dedicated "Next: <exercise>, get ready" styling remains US-CC11; here it reuses the rest overlay.
+- **Skip inside a circuit** removes the exercise from every remaining round (the rotation passes over a skipped station), which is the only aggregate-logging-correct reading of the existing "skip this exercise" contract once the walk rotates - so it lands here rather than waiting for US-CC07. **Swap** keeps the slot's set count and works mid-circuit without breaking the rotation or the label, and keeps the user's **current round** rather than restarting at round 1 (which would re-offer and double-count already-completed peer stations - US-CC02 OPT1; a genuinely fewer-set substitute is clamped down to its last round); reconciling a swap *across all remaining rounds* (and reshaping the block's round-rest to re-absorb a swap's drift) remains US-CC07.
+- No snapshot-schema change: resume restores round + station from the existing `currentStepIndex`/`currentSet` (a station's r-th set *is* round r), so US-CC12 forward-safety holds.
 
 **Validation Test:**
 

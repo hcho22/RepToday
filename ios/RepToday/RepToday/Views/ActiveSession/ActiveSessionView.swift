@@ -234,17 +234,25 @@ struct ActiveSessionView: View {
         .accessibilityLabel("\(step.prescription.exercise.displayName), \(Self.targetAccessibilityText(step.prescription))")
     }
 
-    /// Set tracking: which set of how many, with a dot per set filled as they are completed. A per-side
-    /// hold names the side too, because its set is two legs and the Hold Timer only counts one of them
-    /// at a time - without it the user has no way to tell a finished set from a half-finished one.
+    /// Set tracking, with a dot per set filled as they are completed. Inside a training-block circuit
+    /// the headline reads "Round N of M" (US-CC02) - the block rotates one set of each exercise per
+    /// round, and a station's r-th set is round r, so the dots below still track this exercise's own
+    /// progress; a linear warm-up / cooldown bookend keeps "Set N of M". A per-side hold names the side
+    /// too, because its set is two legs and the Hold Timer only counts one of them at a time - without
+    /// it the user has no way to tell a finished set from a half-finished one.
     private func setTracker(_ step: ActiveSessionViewModel.Step) -> some View {
         let sides = viewModel.holdSidesPerSet
         let showsSide = viewModel.holdSecondsPerSide != nil && sides > 1
-        let setText = "Set \(viewModel.currentSet) of \(step.prescription.sets)"
+        let progressText: String = {
+            if let round = viewModel.currentRound, let rounds = viewModel.circuitRoundCount {
+                return "Round \(round) of \(rounds)"
+            }
+            return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
+        }()
         let sideText = "Side \(viewModel.holdSide) of \(sides)"
 
         return VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Text(setText)
+            Text(progressText)
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)
 
@@ -264,7 +272,7 @@ struct ActiveSessionView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement()
-        .accessibilityLabel(showsSide ? "\(setText), side \(viewModel.holdSide) of \(sides)" : setText)
+        .accessibilityLabel(showsSide ? "\(progressText), side \(viewModel.holdSide) of \(sides)" : progressText)
     }
 
     /// The primary action plus the quieter secondary row - all meeting the 60pt active-screen touch
@@ -905,10 +913,18 @@ private struct RestView: View {
         }
     }
 
-    /// A preview of the effort the rest is pacing toward, so the user knows what is next.
+    /// A preview of the effort the rest is pacing toward, so the user knows what is next. Inside a
+    /// training-block circuit the rest paces toward a round ("Round N of M", US-CC02); a linear bookend
+    /// paces toward the exercise's next set.
     @ViewBuilder
     private var nextUp: some View {
         if let step = viewModel.currentStep {
+            let progressText: String = {
+                if let round = viewModel.currentRound, let rounds = viewModel.circuitRoundCount {
+                    return "Round \(round) of \(rounds)"
+                }
+                return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
+            }()
             VStack(spacing: Theme.Spacing.xs) {
                 Text("Next up")
                     .font(Theme.Typography.caption)
@@ -916,12 +932,12 @@ private struct RestView: View {
                 Text(step.prescription.exercise.displayName)
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Set \(viewModel.currentSet) of \(step.prescription.sets)")
+                Text(progressText)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Next up, \(step.prescription.exercise.displayName), set \(viewModel.currentSet) of \(step.prescription.sets)")
+            .accessibilityLabel("Next up, \(step.prescription.exercise.displayName), \(progressText)")
         }
     }
 

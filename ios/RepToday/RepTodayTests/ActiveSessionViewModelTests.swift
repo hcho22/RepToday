@@ -105,6 +105,32 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
+    /// A session whose strength block is a genuine even circuit - exactly three rep-based exercises at a
+    /// uniform round count - bracketed by single-set warm-up and cooldown bookends, so US-CC02's rotation
+    /// and "Round N of M" label can be driven end to end (the PRD's validation shape at `rounds: 3`).
+    private func circuitWorkout(rounds: Int) -> Workout {
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [holdPrescription("cat_cow", sets: 1, seconds: 30)]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                repPrescription("push_up", sets: rounds, reps: 12),
+                repPrescription("squat", sets: rounds, reps: 15),
+                repPrescription("hinge", sets: rounds, reps: 10)
+            ]
+        )
+        let cooldown = WorkoutBlock(
+            id: UUID(), title: "Cooldown", category: .cooldown,
+            exercises: [holdPrescription("forward_fold", sets: 1, seconds: 30)]
+        )
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false, blocks: [warmup, strength, cooldown]
+        )
+    }
+
     private func makeViewModel(
         _ workout: Workout? = nil,
         clock: @escaping () -> Date,
@@ -148,29 +174,33 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
     // MARK: - Set tracking & advancing
 
-    /// Completing a set within an exercise advances the set counter but stays on the same exercise.
-    func testCompleteSetAdvancesWithinExercise() {
+    /// Inside a training-block circuit, completing a set rotates to the *next station* in the round
+    /// rather than staying on the same exercise for its next set (US-CC02): the strength block plays one
+    /// set of each exercise per round, not all sets of one exercise before the next.
+    func testCompleteSetRotatesToTheNextStationInTheRound() {
         let vm = makeViewModel(clock: { self.start })
-        // Move past the single-set warm-up onto the 3-set push-up.
+        // Move past the single-set warm-up onto the strength circuit's first station.
         vm.completeSet()
         XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
         XCTAssertEqual(vm.currentSet, 1)
 
         vm.completeSet()
-        XCTAssertEqual(vm.currentSet, 2, "still on the push-up, now the second set")
-        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "the rotation moves to the next station")
+        XCTAssertEqual(vm.currentSet, 1, "still round 1 - the round has not advanced")
     }
 
-    /// Completing the last set of an exercise advances to the next exercise and resets the set count.
-    func testCompletingLastSetAdvancesExercise() {
+    /// Finishing the last station of a round wraps back to the first station of the next round (US-CC02),
+    /// stepping the round rather than the exercise. The sample block is non-uniform (push_up 3, squat 2),
+    /// so its round count is 3 and squat simply drops out of round 3.
+    func testCompletingARoundWrapsToTheNextRound() {
         let vm = makeViewModel(clock: { self.start })
-        vm.completeSet() // finishes cat_cow (1 set) -> push_up
-        vm.completeSet() // push_up set 1
-        vm.completeSet() // push_up set 2
-        vm.completeSet() // push_up set 3 -> squat
+        vm.completeSet() // finishes cat_cow (1 set) -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        vm.completeSet() // squat round 1 (round 1 done) -> back to push_up, round 2
 
-        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
-        XCTAssertEqual(vm.currentSet, 1)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
+        XCTAssertEqual(vm.currentSet, 2, "the second round starts on the first station")
+        XCTAssertEqual(vm.currentRound, 2)
         XCTAssertFalse(vm.isComplete)
     }
 
@@ -224,19 +254,23 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(vm.completedSets[pushUpID], "a skipped exercise records no sets")
     }
 
-    /// Skipping after completing part of an exercise discards the partial sets, so a skipped
-    /// exercise never carries completed sets into the eventual log.
+    /// Skipping an exercise after it has banked sets across earlier rounds discards those sets, so a
+    /// skipped exercise never carries completed sets into the eventual log (US-CC02: the skip also
+    /// removes it from the remaining rounds).
     func testSkipAfterPartialSetsDiscardsRecordedSets() {
-        let vm = makeViewModel(clock: { self.start })
-        vm.completeSet() // cat_cow done -> push_up
+        let vm = makeViewModel(circuitWorkout(rounds: 3), clock: { self.start })
+        vm.completeSet() // warm-up -> push_up round 1
         let pushUpID = vm.currentStep!.id
-        vm.completeSet() // push_up set 1 of 3 recorded
+        vm.completeSet() // push_up round 1 recorded -> squat round 1
+        vm.completeSet() // squat round 1 -> hinge round 1
+        vm.completeSet() // hinge round 1 -> back to push_up, round 2 (push_up carries its round-1 set)
+        XCTAssertEqual(vm.currentStep?.id, pushUpID)
         XCTAssertEqual(vm.completedSets[pushUpID]?.count, 1)
 
-        vm.skipExercise() // abandon push_up mid-exercise
+        vm.skipExercise() // abandon push_up mid-circuit
 
         XCTAssertTrue(vm.skippedStepIDs.contains(pushUpID))
-        XCTAssertNil(vm.completedSets[pushUpID], "partial sets are discarded on skip")
+        XCTAssertNil(vm.completedSets[pushUpID], "the already-recorded sets are discarded on skip")
 
         let pushUp = vm.loggedExercises().first { $0.exerciseId == "push_up" }
         XCTAssertTrue(pushUp?.skipped ?? false)
@@ -255,20 +289,21 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
     // MARK: - Logged handoff
 
-    /// The eventual-log rows carry each exercise's completed sets, pillar/pattern, and skip flag.
+    /// The eventual-log rows carry each exercise's completed sets, pillar/pattern, and skip flag - and
+    /// the rotation order never changes the aggregate: push_up still logs its full set count and the
+    /// skipped squat logs none.
     func testLoggedExercisesReflectTracking() {
         let vm = makeViewModel(clock: { self.start })
-        vm.completeSet() // cat_cow
-        vm.completeSet() // push_up 1
-        vm.completeSet() // push_up 2
-        vm.completeSet() // push_up 3 -> squat
-        vm.skipExercise() // squat skipped -> complete
+        vm.completeSet()  // cat_cow -> push_up round 1
+        vm.completeSet()  // push_up round 1 -> squat round 1
+        vm.skipExercise() // skip squat: it drops from every round, push_up finishes its rounds
+        while !vm.isComplete { vm.completeSet() } // push_up rounds 2 and 3 -> complete
 
         let logged = vm.loggedExercises()
         XCTAssertEqual(logged.count, 3)
 
         let pushUp = logged.first { $0.exerciseId == "push_up" }
-        XCTAssertEqual(pushUp?.completedSets.count, 3)
+        XCTAssertEqual(pushUp?.completedSets.count, 3, "push_up logs all three rounds despite the rotation")
         XCTAssertEqual(pushUp?.pillar, .strength)
         XCTAssertEqual(pushUp?.movementPattern, .push)
         XCTAssertFalse(pushUp?.skipped ?? true)
@@ -331,6 +366,117 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeSet() // 2/6
         vm.completeSet() // 3/6
         XCTAssertEqual(vm.progress, 0.5, accuracy: 0.0001)
+    }
+
+    // MARK: - Circuit rotation (US-CC02)
+
+    /// The US-CC02 validation test: a strength block of exactly three exercises at a uniform three sets
+    /// plays A, B, C, A, B, C, A, B, C across three rounds, each labelled "Round N of 3", and by the end
+    /// every exercise has logged exactly three completed sets - the rotation order never changes the
+    /// aggregate. This is the failure indicator the PRD names, inverted: not A, A, A, B, B, B, C, C, C.
+    func testStrengthBlockRotatesABCAcrossRoundsWithRoundLabels() {
+        let vm = makeViewModel(circuitWorkout(rounds: 3), clock: { self.start })
+        vm.completeSet() // past the single-set warm-up onto the strength circuit
+
+        var visited: [(id: String, round: Int, rounds: Int)] = []
+        var guardCount = 0
+        while let round = vm.currentRound, let rounds = vm.circuitRoundCount, guardCount < 20 {
+            guardCount += 1
+            visited.append((vm.currentStep!.prescription.exercise.id, round, rounds))
+            vm.completeSet()
+        }
+
+        XCTAssertEqual(
+            visited.map(\.id),
+            ["push_up", "squat", "hinge", "push_up", "squat", "hinge", "push_up", "squat", "hinge"],
+            "the block rotates one set of each exercise per round, not all sets of one before the next"
+        )
+        XCTAssertEqual(visited.map(\.round), [1, 1, 1, 2, 2, 2, 3, 3, 3])
+        XCTAssertTrue(visited.allSatisfy { $0.rounds == 3 }, "M is the block's uniform round count")
+
+        while !vm.isComplete { vm.completeSet() } // flow through the cooldown to completion
+        let logged = vm.loggedExercises()
+        for id in ["push_up", "squat", "hinge"] {
+            XCTAssertEqual(
+                logged.first { $0.exerciseId == id }?.completedSets.count, 3,
+                "\(id) logged its three sets by the end, whatever the rotation order"
+            )
+        }
+    }
+
+    /// Warm-up and cooldown bookends are not circuits (US-CC02): they carry no round and flow linearly;
+    /// only the training block in between rotates as rounds.
+    func testBookendsAreNotCircuitsOnlyTrainingBlocks() {
+        let vm = makeViewModel(circuitWorkout(rounds: 3), clock: { self.start })
+
+        XCTAssertNil(vm.currentRound, "the warm-up bookend has no round")
+        XCTAssertNil(vm.circuitRoundCount)
+
+        vm.completeSet() // -> strength
+        XCTAssertEqual(vm.currentRound, 1, "the training block is a circuit")
+        XCTAssertEqual(vm.circuitRoundCount, 3)
+
+        while vm.currentRound != nil, !vm.isComplete { vm.completeSet() } // rotate the whole block
+        XCTAssertEqual(vm.currentStep?.blockCategory, .cooldown)
+        XCTAssertNil(vm.currentRound, "the cooldown bookend has no round")
+        XCTAssertNil(vm.circuitRoundCount)
+    }
+
+    /// The rotation crosses two distinct rest gaps (US-CC04): a short between-station transition inside a
+    /// round, and the longer between-round rest at a round boundary. Both flow through the US-K02 rest
+    /// overlay so the session stays hands-free.
+    func testCircuitCrossesTransitionBetweenStationsAndRoundRestBetweenRounds() {
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "push_up"), sets: 2, reps: 12, durationSeconds: nil, restSeconds: 45),
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "squat", pattern: .squat), sets: 2, reps: 12, durationSeconds: nil, restSeconds: 45)
+            ]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [strength]
+        )
+        let vm = makeViewModel(workout, clock: { self.start })
+
+        // push_up round 1 -> squat round 1: a between-station transition.
+        vm.completeSet()
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+        XCTAssertEqual(vm.currentRound, 1)
+        XCTAssertEqual(vm.restTotalSeconds, SessionAssembly.transitionSeconds, "between stations is the short fixed transition")
+        vm.skipRest()
+
+        // squat round 1 -> push_up round 2: the bounded between-round rest the engine sized.
+        vm.completeSet()
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
+        XCTAssertEqual(vm.currentRound, 2)
+        XCTAssertEqual(vm.restTotalSeconds, 45, "between rounds is the round rest")
+    }
+
+    /// A skip inside the circuit removes the exercise from every remaining round (US-CC02): the rotation
+    /// never returns to it, it logs not-done with no completed sets, and the other stations still finish
+    /// their full round count.
+    func testSkipInsideCircuitRemovesExerciseFromRemainingRounds() {
+        let vm = makeViewModel(circuitWorkout(rounds: 3), clock: { self.start })
+        vm.completeSet() // warm-up -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        vm.skipExercise() // skip squat mid-circuit
+
+        var seen: Set<String> = []
+        var guardCount = 0
+        while vm.currentRound != nil, !vm.isComplete, guardCount < 20 {
+            guardCount += 1
+            seen.insert(vm.currentStep!.prescription.exercise.id)
+            vm.completeSet()
+        }
+        XCTAssertFalse(seen.contains("squat"), "the skipped station never reappears in a later round")
+
+        while !vm.isComplete { vm.completeSet() }
+        let logged = vm.loggedExercises()
+        XCTAssertTrue(logged.first { $0.exerciseId == "squat" }?.skipped ?? false)
+        XCTAssertEqual(logged.first { $0.exerciseId == "squat" }?.completedSets.count, 0)
+        XCTAssertEqual(logged.first { $0.exerciseId == "push_up" }?.completedSets.count, 3, "the other stations still finish their rounds")
+        XCTAssertEqual(logged.first { $0.exerciseId == "hinge" }?.completedSets.count, 3)
     }
 
     // MARK: - Rest timer (US-K02)
@@ -504,6 +650,20 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
+    /// A single-station per-side hold block, so a multi-set hold's *own* set-to-set progression can be
+    /// exercised without the circuit rotation interleaving another station (a single-station circuit
+    /// block plays its rounds as that one exercise's successive sets - US-CC02).
+    private func singleHoldWorkout(sets: Int, seconds: Int = 20) -> Workout {
+        let block = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [perSideHoldPrescription("side_plank", sets: sets, seconds: seconds)]
+        )
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [block]
+        )
+    }
+
     /// The Hold Timer is offered on a timed movement and withheld on a rep-based one, which keeps the
     /// unchanged manual set tracker + "Complete set" flow.
     func testHoldTimerIsOfferedOnlyForTimedExercises() {
@@ -644,10 +804,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
     }
 
     /// A hold cannot start on top of a rest - the rest overlay owns the screen, and a countdown behind
-    /// it would run unseen.
+    /// it would run unseen. A single-station hold block, so round 2 of the same hold is what the rest
+    /// paces toward (US-CC02).
     func testHoldCannotStartDuringRest() {
-        let vm = makeViewModel(perSideHoldWorkout(sets: 2, seconds: 20), clock: { self.start })
-        vm.completeSet() // set 1 of 2 recorded manually -> 30s rest opens
+        let vm = makeViewModel(singleHoldWorkout(sets: 2), clock: { self.start })
+        vm.completeSet() // round 1 recorded manually -> the between-round rest opens
 
         XCTAssertTrue(vm.isResting)
         XCTAssertFalse(vm.canStartHold)
@@ -655,7 +816,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isHolding, "start is a no-op during rest")
 
         vm.skipRest()
-        XCTAssertTrue(vm.canStartHold)
+        XCTAssertTrue(vm.canStartHold, "round 2 of the same hold is reachable once the rest ends")
     }
 
     /// Skipping the exercise drops a running hold without firing its cue and clears the side, so the
@@ -746,7 +907,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// only path that banks their work - a skip discards the exercise's sets entirely.
     func testAHoldsSetCanBeRecordedWithoutEverStartingTheTimer() throws {
         let spy = SpyRestFeedback()
-        let vm = makeViewModel(perSideHoldWorkout(sets: 2, seconds: 20), clock: { self.start }, feedback: spy)
+        let vm = makeViewModel(singleHoldWorkout(sets: 2), clock: { self.start }, feedback: spy)
         let holdStepID = try XCTUnwrap(vm.currentStep?.id)
 
         vm.completeSet()
@@ -754,7 +915,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isHolding)
         XCTAssertEqual(vm.completedSets[holdStepID], [CompletedSet(reps: nil, durationSeconds: 20)],
                        "the set is banked at its prescribed target, as a rep-based one would be")
-        XCTAssertEqual(vm.currentSet, 2, "and the exercise advances to its next set")
+        XCTAssertEqual(vm.currentSet, 2, "and the hold advances to its next round")
         XCTAssertEqual(vm.holdSide, 1, "which opens back on side 1")
         XCTAssertEqual(spy.completions, 0, "a manual completion is not a countdown reaching zero")
         XCTAssertTrue(vm.isResting, "and it paces the next effort like any other completed set")
@@ -786,7 +947,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     func testCompletingASetByHandMidLegBanksItOnceAndEndsTheCountdown() throws {
         var clock = start
         let spy = SpyRestFeedback()
-        let vm = makeViewModel(perSideHoldWorkout(sets: 3, seconds: 20), clock: { clock }, feedback: spy)
+        let vm = makeViewModel(singleHoldWorkout(sets: 3), clock: { clock }, feedback: spy)
         let holdStepID = try XCTUnwrap(vm.currentStep?.id)
 
         vm.startHold()
@@ -1093,17 +1254,63 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// user on set 3 of 3 handed a 2-set substitute would be stranded past the end of their own slot.
     func testSwapToAFewerSetSubstituteResetsThePositionInsteadOfStrandingTheUser() async {
         let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips", sets: 2)))
-        let vm = makeSwapViewModel(engine: engine)
-        vm.completeSet() // cat_cow -> push_up (3 sets)
-        vm.completeSet() // push_up set 1
-        vm.completeSet() // push_up set 2
-        XCTAssertEqual(vm.currentSet, 3, "the user is on the last set of the 3-set slot")
+        // A single-station strength circuit, so its rounds are the one exercise's successive sets and
+        // the user can be driven onto the last round cleanly (US-CC02).
+        let block = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [repPrescription("push_up", sets: 3, reps: 10)]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .singleFocus, focusPillar: .strength,
+            requestedMinutes: 15, wasReturn: false, blocks: [block]
+        )
+        let vm = ActiveSessionViewModel(
+            workout: workout, swapEngine: engine, user: makeUser(), recentLogs: [],
+            sessionPolicy: .default, now: { self.start }
+        )
+        vm.completeSet() // push_up round 1 -> round 2
+        vm.completeSet() // push_up round 2 -> round 3
+        XCTAssertEqual(vm.currentSet, 3, "the user is on the last round of the 3-round slot")
 
         await vm.swapCurrentExercise()
 
         XCTAssertEqual(vm.currentStep?.prescription.sets, 2, "the substitute carries its own set count")
-        XCTAssertEqual(vm.currentSet, 1, "the user restarts the slot rather than sitting past its end")
+        XCTAssertEqual(vm.currentSet, 2, "clamps to the substitute's last round rather than stranding the user")
         XCTAssertLessThanOrEqual(vm.currentSet, vm.currentStep!.prescription.sets)
+    }
+
+    /// A mid-circuit swap keeps the current round rather than restarting it: it must not send the
+    /// rotation back to round 1, which would re-offer - and, through `recordSet`, double-count - the peer
+    /// stations already completed in earlier rounds (US-CC02 OPT1). Full swap-across-rounds
+    /// reconciliation stays US-CC07; here the guarantee is only that no peer station over-logs.
+    func testSwapMidCircuitDoesNotReplayCompletedPeerStations() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips", sets: 3)))
+        let vm = ActiveSessionViewModel(
+            workout: circuitWorkout(rounds: 3), swapEngine: engine, user: makeUser(),
+            recentLogs: [], sessionPolicy: .default, now: { self.start }
+        )
+        vm.completeSet() // warm-up cat_cow -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        vm.completeSet() // squat round 1 -> hinge round 1
+        vm.completeSet() // hinge round 1 -> push_up round 2
+        vm.completeSet() // push_up round 2 -> squat round 2
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "on squat")
+        XCTAssertEqual(vm.currentSet, 2, "round 2 of the circuit")
+
+        await vm.swapCurrentExercise() // swap squat mid-circuit for a 3-set substitute
+
+        XCTAssertEqual(vm.currentSet, 2, "the swap keeps the current round rather than restarting at 1")
+        while !vm.isComplete { vm.completeSet() } // finish the block hands-free
+
+        let logged = vm.loggedExercises()
+        let pushUp = logged.first { $0.exerciseId == "push_up" }
+        let hinge = logged.first { $0.exerciseId == "hinge" }
+        XCTAssertEqual(pushUp?.completedSets.count, 3, "push_up logs exactly its three rounds, never four")
+        XCTAssertEqual(hinge?.completedSets.count, 3, "hinge logs exactly its three rounds, never four")
+        XCTAssertTrue(
+            logged.allSatisfy { $0.completedSets.count <= 3 },
+            "no station over-logs past the block's uniform round count"
+        )
     }
 
     /// The snapshot the swap step reads keeps the session's block structure, because the block decides
@@ -1141,19 +1348,21 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(engine.lastSnapshotExerciseIDs.contains("push_up"), "the replaced movement is gone from the snapshot")
     }
 
-    /// Swapping after completing part of an exercise discards the recorded sets - the movement is
-    /// being replaced entirely, so it never carries completed sets into the eventual log.
+    /// Swapping an exercise that has banked sets across earlier rounds discards those recorded sets -
+    /// the movement is being replaced entirely, so it never carries completed sets into the eventual log.
     func testSwapDiscardsPartialSets() async {
         let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips")))
         let vm = makeSwapViewModel(engine: engine)
-        vm.completeSet() // cat_cow -> push_up
+        vm.completeSet() // cat_cow -> push_up round 1
         let pushUpID = vm.currentStep!.id
-        vm.completeSet() // push_up set 1 recorded; a rest opens
+        vm.completeSet() // push_up round 1 recorded -> squat round 1
+        vm.completeSet() // squat round 1 -> back to push_up, round 2 (push_up carries its round-1 set)
+        XCTAssertEqual(vm.currentStep?.id, pushUpID)
         XCTAssertEqual(vm.completedSets[pushUpID]?.count, 1)
 
         await vm.swapCurrentExercise()
 
-        XCTAssertNil(vm.completedSets[pushUpID], "the replaced movement's partial sets are discarded")
+        XCTAssertNil(vm.completedSets[pushUpID], "the replaced movement's recorded sets are discarded")
         XCTAssertFalse(vm.isResting, "the swap ends any lingering rest")
         let dips = vm.loggedExercises().first { $0.exerciseId == "dips" }
         XCTAssertEqual(dips?.completedSets.count, 0)
@@ -1323,8 +1532,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let store = InMemoryActiveSessionStore()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
-        original.completeSet() // warm-up done -> push_up set 1 (rest opens)
-        original.completeSet() // push_up set 1 done -> set 2
+        original.completeSet() // warm-up done -> push_up round 1 (rest opens)
+        original.completeSet() // push_up round 1 -> squat round 1 (rotation)
         await original.persistenceTask?.value
         let loaded = try await store.load(for: "u1")
         let saved = try XCTUnwrap(loaded)
@@ -1332,10 +1541,10 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let resumed = ActiveSessionViewModel(state: saved, now: { self.start })
 
         XCTAssertFalse(resumed.isComplete)
-        XCTAssertEqual(resumed.currentStepIndex, 1)
-        XCTAssertEqual(resumed.currentSet, 2)
-        XCTAssertEqual(resumed.currentStep?.prescription.exercise.id, "push_up")
-        XCTAssertEqual(resumed.completedSetCount, 2, "cat_cow set + push_up set 1 carry over")
+        XCTAssertEqual(resumed.currentStepIndex, 2)
+        XCTAssertEqual(resumed.currentSet, 1)
+        XCTAssertEqual(resumed.currentStep?.prescription.exercise.id, "squat")
+        XCTAssertEqual(resumed.completedSetCount, 2, "cat_cow set + push_up round-1 set carry over")
         XCTAssertEqual(resumed.steps.map(\.prescription.exercise.id), ["cat_cow", "push_up", "squat"])
     }
 
@@ -1882,13 +2091,14 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.completedSetCount, 0)
         XCTAssertEqual(spy.completions, 0)
 
-        // At zero it records and advances into the rest, firing the cue once.
+        // At zero it records and rotates to the next station, firing the cue once.
         clock = start.addingTimeInterval(TimeInterval(window))
         vm.completeWorkWindowIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isRunningWorkWindow)
         XCTAssertEqual(vm.completedSets[stepID], [CompletedSet(reps: 12, durationSeconds: nil)],
                        "the prescribed reps record as performed, exactly like a tapped completion")
-        XCTAssertEqual(vm.currentSet, 2, "advanced to the next set")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "the rotation moved to the next station")
+        XCTAssertEqual(vm.currentSet, 1, "still round 1")
         XCTAssertTrue(vm.isResting, "flowed into the existing rest with no tap")
         XCTAssertEqual(spy.completions, 1, "the completion cue fired exactly once")
         XCTAssertFalse(vm.skippedStepIDs.contains(stepID), "an auto-advanced set is never a skip")
@@ -1915,7 +2125,8 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isRunningWorkWindow, "Done ends the window")
         XCTAssertEqual(vm.completedSets[stepID], [CompletedSet(reps: 12, durationSeconds: nil)],
                        "the set records completed, prescribed = performed")
-        XCTAssertEqual(vm.currentSet, 2, "and advances immediately")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "and rotates to the next station immediately")
+        XCTAssertEqual(vm.currentSet, 1)
         XCTAssertTrue(vm.isResting)
         XCTAssertEqual(spy.completions, 0, "coming out early is the user's choice - no cue, no penalty")
         XCTAssertFalse(vm.skippedStepIDs.contains(stepID), "Done is never a skip")
@@ -1999,12 +2210,12 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.completeWorkWindowIfElapsed(asOf: clock)
         XCTAssertTrue(vm.isResting)
         XCTAssertFalse(vm.isRunningWorkWindow, "no window runs behind the rest overlay")
-        XCTAssertEqual(vm.currentSet, 2)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "rotated to the next station")
 
-        clock = clock.addingTimeInterval(30)
+        clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isResting)
-        XCTAssertTrue(vm.isRunningWorkWindow, "the next set's work window auto-starts as the rest ends")
+        XCTAssertTrue(vm.isRunningWorkWindow, "the next station's work window auto-starts as the rest ends")
         XCTAssertEqual(vm.workWindowRemaining(asOf: clock), window)
     }
 

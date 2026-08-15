@@ -511,6 +511,111 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
+    /// US-CC02, as the user reads it on the running player: a real strength training block is a circuit,
+    /// so its headline reads **"Round N of M"** and the same first station is on screen again in a later
+    /// round (the rotation returns to it), while a warm-up bookend keeps the linear **"Set N of M"**. Both
+    /// the circuit rounds and the bookend are rendered from the same real generated session, so the
+    /// strings on the PNGs are the ones the shipped player shows. A companion transcript records the block
+    /// shape (uniform round count) the "Round N of M" label is read off.
+    func testRenderStrengthCircuitRoundLabels() throws {
+        let workout = try generate()
+
+        // The flat index where the strength (circuit) training block begins, and its uniform round count.
+        var flatIndex = 0
+        var circuitStart: Int?
+        var roundCount = 0
+        for block in workout.blocks {
+            if SessionAssembly.isCircuit(block.category) {
+                circuitStart = flatIndex
+                roundCount = block.exercises.map(\.sets).max() ?? 0
+                break
+            }
+            flatIndex += block.exercises.count
+        }
+        let start = try XCTUnwrap(circuitStart, "the generated session has no circuit training block")
+        XCTAssertGreaterThanOrEqual(roundCount, 2, "need at least two rounds to show Round 1 and Round 2")
+
+        let slots = workout.blocks.flatMap(\.exercises)
+        let leadStation = slots[start].exercise.id
+        print("=== Rep Today - US-CC02 circuit \"Round N of M\" ===")
+        print("strength circuit begins at slot \(start + 1) (\(leadStation)); uniform round count M = \(roundCount)")
+        print("rendering Round 1 and Round 2 on the same lead station, and the warm-up bookend's Set label")
+
+        // Round 1 of M, then Round 2 of M on the SAME lead station - the rotation returns to it each round.
+        try render(
+            try playerView(resumed(workout, at: start, currentSet: 1)),
+            size: playerSize, fileName: "player-circuit-round-1.png", story: "us-cc02"
+        )
+        try render(
+            try playerView(resumed(workout, at: start, currentSet: 2)),
+            size: playerSize, fileName: "player-circuit-round-2.png", story: "us-cc02"
+        )
+        // The warm-up bookend is not a circuit (US-CC02): it shows "Set N of M", no round.
+        try render(
+            try playerView(resumed(workout, at: 0, currentSet: 1)),
+            size: playerSize, fileName: "player-warmup-bookend-set-label.png", story: "us-cc02"
+        )
+
+        // A transcript of what each rendered surface says, so the round labels are reviewable as text too.
+        let vmRound1 = ActiveSessionViewModel(state: resumed(workout, at: start, currentSet: 1), now: { self.asOf })
+        let vmRound2 = ActiveSessionViewModel(state: resumed(workout, at: start, currentSet: 2), now: { self.asOf })
+        let vmWarmup = ActiveSessionViewModel(state: resumed(workout, at: 0, currentSet: 1), now: { self.asOf })
+        XCTAssertEqual(vmRound1.currentRound, 1)
+        XCTAssertEqual(vmRound1.circuitRoundCount, roundCount)
+        XCTAssertEqual(vmRound2.currentRound, 2)
+        XCTAssertNil(vmWarmup.currentRound, "the warm-up bookend carries no round")
+        let transcript = [
+            "# US-CC02 - what the player shows",
+            "",
+            "| rendered surface | headline shown | block |",
+            "| --- | --- | --- |",
+            "| player-circuit-round-1.png | Round 1 of \(roundCount) | strength (circuit) |",
+            "| player-circuit-round-2.png | Round 2 of \(roundCount) | strength (circuit) |",
+            "| player-warmup-bookend-set-label.png | Set 1 of \(slots[0].sets) | warm-up (linear bookend) |",
+            "",
+            "Lead circuit station: \(leadStation). Every station in the strength block carries the same "
+            + "set count (M = \(roundCount)), which is why \"Round N of M\" is well-defined (US-CC03).",
+        ].joined(separator: "\n") + "\n"
+        try EvidenceOutput.write(transcript, named: "round-label-transcript.md", for: "us-cc02")
+    }
+
+    /// The OPT1 fix, as the user sees it: a swap taken mid-circuit keeps the current round rather than
+    /// resetting to Round 1. The player is driven through the real rotation into Round 2, a swap is taken,
+    /// and the rendered "after" frame still reads Round 2 - the visual counterpart to the
+    /// no-double-count regression test, so a reviewer can see the round was not thrown back to 1.
+    func testRenderMidCircuitSwapKeepsTheRound() async throws {
+        let workout = try generate()
+        let viewModel = player(workout, engine: MockWorkoutEngine(exerciseService: try MockExerciseService()))
+        viewModel.start()
+
+        // Rotate the real player until a circuit station is on screen in Round 2 (rotation, not grinding).
+        var guardRail = 0
+        while guardRail < 400 {
+            guardRail += 1
+            if viewModel.currentRound == 2 { break }
+            guard !viewModel.isComplete else { break }
+            if viewModel.isResting { viewModel.skipRest() }
+            viewModel.completeSet()
+        }
+        let before = try XCTUnwrap(viewModel.currentStep, "never reached Round 2 of a circuit")
+        XCTAssertEqual(viewModel.currentRound, 2, "parked on Round 2 before the swap")
+        try render(
+            try playerView(renderable(viewModel.snapshot())),
+            size: playerSize, fileName: "player-swap-round-2-before.png", story: "us-cc02"
+        )
+
+        await viewModel.swapCurrentExercise()
+
+        XCTAssertEqual(viewModel.currentRound, 2, "the mid-circuit swap kept Round 2 rather than resetting to 1")
+        let after = try XCTUnwrap(viewModel.currentStep)
+        print("mid-circuit swap on Round 2: \(before.prescription.exercise.id) -> \(after.prescription.exercise.id), "
+              + "round stayed \(viewModel.currentRound ?? -1)")
+        try render(
+            try playerView(renderable(viewModel.snapshot())),
+            size: playerSize, fileName: "player-swap-round-2-after.png", story: "us-cc02"
+        )
+    }
+
     /// The swap as the user sees it: the player before the tap and after it, both rendered from the real
     /// view model's own snapshot - so the "after" frame is the state the swap actually produced (peer in
     /// place, its own per-side label, the slot's set count, set counter back to 1), not a hand-built one.
@@ -882,7 +987,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "the button should name the side it starts; it reads \(firstLabels)"
         )
         XCTAssertTrue(
-            firstLabels.contains { $0.contains("side 1 of 2") && $0.hasPrefix("Set ") },
+            // Inside the strength circuit block the tracker leads with "Round N of M" (US-CC02); a
+            // linear bookend would lead with "Set N of M". Either way it names the side the set is on.
+            firstLabels.contains { $0.contains("side 1 of 2") && ($0.hasPrefix("Set ") || $0.hasPrefix("Round ")) },
             "the set tracker should name the side the set is on; it reads \(firstLabels)"
         )
         XCTAssertTrue(
@@ -1109,8 +1216,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// the accessibility tree the way VoiceOver's double-tap does, so what is gated is the control a
     /// user can actually reach mid-plank rather than a view-model call.
     func testBankingASetByHandMidLegEndsTheLegAndOpensTheRestInTheLivePlayer() throws {
-        // Long enough that the leg is unambiguously still running when the set is banked by hand.
-        let workout = shortHoldWorkout(seconds: 120, sets: 2)
+        // Long enough that the leg is unambiguously still running when the set is banked by hand. A
+        // single-station block, so banking round 1 advances to round 2 of the *same* hold - a
+        // single-station circuit plays its rounds as that one exercise's successive sets (US-CC02) -
+        // rather than rotating to another station.
+        let workout = singleStationShortHoldWorkout(seconds: 120, sets: 2)
 
         let host = hosted(ActiveSessionView(resuming: ActiveSessionState(fresh: workout)), size: playerSize)
         let start = try XCTUnwrap(
@@ -1158,8 +1268,8 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             "and the set should have been banked, opening the rest; the player reads \(after)"
         )
         XCTAssertTrue(
-            after.contains { $0.contains("set 2 of 2") },
-            "with the set counter advanced exactly one set, as it is when the timer runs out; "
+            after.contains { $0.contains("Round 2 of 2") },
+            "with the round advanced exactly one, as it is when the timer runs out; "
             + "the player reads \(after)"
         )
     }
@@ -1188,6 +1298,33 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             blocks: [
                 WorkoutBlock(
                     id: UUID(), title: "Strength", category: .strength, exercises: [slot(), slot()]
+                )
+            ]
+        )
+    }
+
+    /// A single-station short-hold block, so a multi-set hold's *own* round-to-round progression is what
+    /// a live test drives (US-CC02: a single-station circuit plays its rounds as that one exercise's
+    /// successive sets) rather than the rotation moving to a second station.
+    private func singleStationShortHoldWorkout(seconds: Int, sets: Int) -> Workout {
+        let hold = Exercise(
+            id: "evidence_short_hold", displayName: "Short Hold", pillar: .strength,
+            movementPattern: .core, category: .strength, difficulty: 1, phase: .discipline,
+            equipment: [], isHold: true, defaultReps: nil, defaultDurationSeconds: seconds,
+            estimatedTimePerSetSeconds: 10, metValue: 3, progressionChainId: "evidence_chain",
+            progressionOrder: 0, regressionId: nil, progressionId: nil,
+            advancementCriteria: "hold it", apartmentFriendly: true
+        )
+        return Workout(
+            id: UUID(), createdAt: asOf, shape: .blend, focusPillar: nil,
+            requestedMinutes: 5, wasReturn: false,
+            blocks: [
+                WorkoutBlock(
+                    id: UUID(), title: "Strength", category: .strength,
+                    exercises: [PrescribedExercise(
+                        id: UUID(), exercise: hold, sets: sets, reps: nil,
+                        durationSeconds: seconds, restSeconds: 30
+                    )]
                 )
             ]
         )
