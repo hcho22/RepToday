@@ -1,6 +1,6 @@
 # PRD: Continuous-Circuit Sessions (hands-free follow-along player)
 
-- Status: Draft (decisions locked with the captain 2026-08-14). Specification only - no engine or view code is written by this PRD.
+- Status: In progress. US-CC01 (auto-advancing work window for strength sets) has landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
 - Story prefix: `US-CC##`.
 - Supersedes, on landing: the manual tap-to-advance active-session player (US-K01/US-K02/US-O03 interaction model).
 - Related decisions: [ADR-0002](../../../docs/adr/0002-per-interval-pacer-clock.md) (per-interval pacer clock), [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md) (even-round circuit timing). Domain term: `CONTEXT.md` -> "Continuous Circuit (planned)".
@@ -38,12 +38,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] A rep-based strength set on screen shows a countdown ring sized to the set's runtime work-window seconds (US-CC08), the movement name, and the rep target (via `ActiveSessionView.targetText`, never re-formatted).
-- [ ] When the countdown reaches zero the session auto-flows into the between-station transition or between-round rest (US-CC04) with no tap, and the set is recorded as completed (US-CC09).
-- [ ] A prominent **Done** control lets the user end the current work window early and advance immediately; being caught mid-rep at zero carries no penalty and no "did you finish" prompt.
-- [ ] The countdown is pure over the injected clock (built on the existing `Countdown` type used by US-K02/US-O03), so tests drive it with no real time passing and backgrounding freezes it.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in the running app (Simulator, `RepTodayUITests`).
+- [x] A rep-based strength set on screen shows a countdown ring sized to the set's runtime work-window seconds (US-CC08), the movement name, and the rep target (via `ActiveSessionView.targetText`, never re-formatted).
+- [x] When the countdown reaches zero the session auto-flows into the between-station transition or between-round rest (US-CC04) with no tap, and the set is recorded as completed (US-CC09). (Advances into the *existing* US-K02 rest here; the two-gap transition/round-rest model is US-CC04.)
+- [x] A prominent **Done** control lets the user end the current work window early and advance immediately; being caught mid-rep at zero carries no penalty and no "did you finish" prompt.
+- [x] The countdown is pure over the injected clock (built on the existing `Countdown` type used by US-K02/US-O03), so tests drive it with no real time passing and backgrounding freezes it.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in the running app (Simulator, `RepTodayUITests`).
 
 **Validation Test:**
 

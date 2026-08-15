@@ -58,8 +58,18 @@ import Observation
 /// comes back idle. (`init(state:)` records why a hold is not a rest.) The timer is the offer, not the
 /// only way through: a timed exercise keeps a manual completion in the secondary row - offered while a
 /// leg runs too - so a user who held it off-timer or was interrupted part-way through banks the work
-/// rather than losing it to a skip. Rep-based exercises are untouched: set tracker plus a manual
-/// "Complete set".
+/// rather than losing it to a skip.
+///
+/// A rep-based **training** set (a strength or, at 41-60 min, dedicated-primal block set) instead
+/// counts down on an auto-advancing **work window** (US-CC01): a `Countdown` sized to the set's planned
+/// per-set seconds (`SessionAssembly.workSecondsPerSet`, the single source of truth US-CC08 calibrates)
+/// that auto-starts hands-free, records the set completed at zero exactly like a tapped completion, and
+/// flows into the existing rest with no tap - replacing the manual "Complete set" for those sets. A
+/// prominent **Done** ends the window early and advances immediately; being caught mid-rep at zero
+/// carries no penalty and no skip. Warm-up / cooldown bookends keep their manual path here (US-CC05
+/// makes them hands-free), and a rep-based set outside a training block - were one ever generated -
+/// keeps the manual "Complete set". Like the hold leg, the window is in-memory only: a resumed session
+/// re-opens the set and auto-starts a fresh window.
 @Observable
 final class ActiveSessionViewModel {
 
@@ -364,14 +374,20 @@ final class ActiveSessionViewModel {
     /// original start, so elapsed time never resets. `startedAt` is persisted (US-K04) so elapsed
     /// time survives a relaunch - a resumed session keeps its already-set origin rather than restarting.
     func start() {
-        guard startedAt == nil else { return }
-        startedAt = now()
-        // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
-        // idempotency that gates the clock start, carrying the requested minutes. Fire-and-forget
-        // through the sink, so telemetry never delays the first render.
-        emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
-        // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
-        persist()
+        if startedAt == nil {
+            startedAt = now()
+            // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
+            // idempotency that gates the clock start, carrying the requested minutes. Fire-and-forget
+            // through the sink, so telemetry never delays the first render.
+            emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
+            // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
+            persist()
+        }
+        // US-CC01: a rep-based training set counts down hands-free, so its work window auto-starts here
+        // - on the first launch and on every idempotent re-entry alike (the view re-appearing, a resume
+        // after relaunch). Idempotent via `canStartWorkWindow`, so it is a no-op when a window is
+        // already running or the current step is not an auto-advancing set (a hold, a bookend, a rest).
+        startWorkWindow()
     }
 
     /// Elapsed whole seconds from the start to `date`, frozen at `finishedAt` once complete. A pure
@@ -399,6 +415,11 @@ final class ActiveSessionViewModel {
         // user banked it by hand mid-leg instead, this is what takes the running countdown down, and it
         // fires no cue because coming out early is the user's choice rather than the timer's verdict.
         resetHold()
+        // US-CC01: an auto-advancing work window is done the moment the set is logged. A no-op when the
+        // set was advanced by the countdown reaching zero (which already tore it down with its cue) or
+        // by hand on a movement that carries no window; when **Done** advanced the set early, this is
+        // what takes the running window down, firing no cue because coming out early is the user's choice.
+        endWorkWindow(fireFeedback: false)
         recordSet(for: step.prescription)
         let restSeconds = step.prescription.restSeconds
         if currentSet < step.prescription.sets {
@@ -409,6 +430,10 @@ final class ActiveSessionViewModel {
         // No rest after the final set of the session - the session is over, not paced.
         if !isComplete {
             startRest(seconds: restSeconds)
+            // When the just-completed set opened no rest (a prescription with `restSeconds == 0`), the
+            // next set is already on screen, so its work window starts now; when a rest did open, the
+            // window instead starts as the rest ends (`completeRestIfElapsed`/`skipRest`). Idempotent.
+            if !isResting { startWorkWindow() }
         }
         persist()
     }
@@ -420,12 +445,17 @@ final class ActiveSessionViewModel {
     /// the plain "move past it" path.)
     func skipExercise() {
         guard !isComplete, let step = currentStep else { return }
-        // Skipping moves on immediately, so any rest or hold in force is dropped without firing a cue.
+        // Skipping moves on immediately, so any rest, hold, or work window in force is dropped without
+        // firing a cue.
         endRest(fireFeedback: false)
         resetHold()
+        endWorkWindow(fireFeedback: false)
         completedSets.removeValue(forKey: step.id)
         skippedStepIDs.insert(step.id)
         advanceExercise()
+        // The next exercise shows immediately (a skip opens no rest), so start its work window when it
+        // is a rep-based training set (US-CC01). A no-op at completion or on a hold/bookend.
+        if !isComplete { startWorkWindow() }
         persist()
     }
 
@@ -562,13 +592,14 @@ final class ActiveSessionViewModel {
         noSwapAlternative = false
         defer { isSwapping = false }
 
-        // A swap reshapes the slot, so any lingering rest or running hold ends without firing a
-        // completion cue. The *side* is deliberately not cleared here: a swap that comes back
-        // `.noAlternative` leaves the original movement in place, and sending a user who has already
-        // held one side back to side 1 of the movement they kept would cost them that side for nothing.
-        // It is cleared below, on the substitution that actually makes it meaningless.
+        // A swap reshapes the slot, so any lingering rest, running hold, or running work window ends
+        // without firing a completion cue. The *side* is deliberately not cleared here: a swap that
+        // comes back `.noAlternative` leaves the original movement in place, and sending a user who has
+        // already held one side back to side 1 of the movement they kept would cost them that side for
+        // nothing. It is cleared below, on the substitution that actually makes it meaningless.
         endRest(fireFeedback: false)
         endHold(fireFeedback: false)
+        endWorkWindow(fireFeedback: false)
 
         let outcome: SwapOutcome
         do {
@@ -682,6 +713,9 @@ final class ActiveSessionViewModel {
     func completeRestIfElapsed(asOf date: Date) {
         guard rest?.hasElapsed(asOf: date) == true else { return }
         endRest(fireFeedback: true)
+        // The rest is over and the next set is revealed - auto-start its work window when it is a
+        // rep-based training set (US-CC01), so the session keeps flowing hands-free. Idempotent.
+        startWorkWindow()
         persist()
     }
 
@@ -690,6 +724,9 @@ final class ActiveSessionViewModel {
     func skipRest() {
         guard isResting else { return }
         endRest(fireFeedback: false)
+        // Skipping the rest reveals the next set immediately, so start its work window when it
+        // auto-advances (US-CC01). Idempotent.
+        startWorkWindow()
         persist()
     }
 
@@ -826,6 +863,119 @@ final class ActiveSessionViewModel {
     private func resetHold() {
         endHold(fireFeedback: false)
         holdSide = 1
+    }
+
+    // MARK: - Work window (US-CC01)
+
+    /// The auto-advancing work window counting down for the current rep-based training set, or `nil`
+    /// when none is running. It runs on the same `Countdown` as the rest and hold timers, so pause and
+    /// resume mean the same thing on all three and backgrounding freezes it identically. Deliberately
+    /// *not* persisted (like the US-O03 hold leg): a rep-based set has nothing to carry across a
+    /// teardown, so a resumed session simply re-opens the set and `start()` auto-starts a fresh window.
+    private var workWindow: Countdown?
+
+    /// The training-block categories whose rep-based sets auto-advance on a countdown window (US-CC01):
+    /// the strength block and, at 41-60 min, the dedicated primal block. Warm-up and cooldown bookends
+    /// stay on their manual Start-hold / Complete-set path (US-CC05 makes them hands-free later), so a
+    /// rep-based bookend - were one ever generated - keeps the manual completion untouched.
+    private static let autoAdvancingCategories: Set<ExerciseCategory> = [.strength, .primal]
+
+    /// Whether the current step is a rep-based training set that auto-advances on a countdown window
+    /// (US-CC01). A timed movement keeps the US-O03 Hold Timer instead (`holdSecondsPerSide != nil`),
+    /// and a warm-up / cooldown bookend keeps its manual path. `false` once the session is complete.
+    var currentStepAutoAdvances: Bool {
+        guard let step = currentStep, Self.autoAdvancingCategories.contains(step.blockCategory) else { return false }
+        return holdSecondsPerSide == nil
+    }
+
+    /// The runtime work-window seconds for the current rep-based training set - **exactly** the per-set
+    /// value the engine budgeted the set at (`SessionAssembly.workSecondsPerSet(of:)`), so the on-screen
+    /// countdown is the same single source of truth as the plan (US-CC08) and can never be roomier or
+    /// tighter than the minutes the fit landed. Per-side and hold pricing carry through unchanged, since
+    /// this reads the very function planning uses. `nil` when the current step is not an auto-advancing
+    /// set. The runtime *calibration* of that number is US-CC08's job; US-CC01 only reads it.
+    var workWindowSecondsPerSet: Int? {
+        guard currentStepAutoAdvances, let step = currentStep else { return nil }
+        let seconds = SessionAssembly.workSecondsPerSet(of: step.prescription)
+        return seconds > 0 ? seconds : nil
+    }
+
+    /// True while an auto-advancing work window is counting down - running or paused. The player shows
+    /// the countdown ring in place of the demo while this holds.
+    var isRunningWorkWindow: Bool { workWindow != nil }
+
+    /// The full length of the running work window in seconds - the denominator for its countdown ring.
+    /// Zero between windows.
+    var workWindowTotalSeconds: Int { workWindow?.total ?? 0 }
+
+    /// Whether a work window can start right now: an auto-advancing set is on screen and no rest, hold,
+    /// running window, swap, or completion is in the way. This makes `startWorkWindow()` idempotent and
+    /// safe to call after any transition that could reveal a new set.
+    var canStartWorkWindow: Bool {
+        !isComplete && !isResting && !isHolding && !isSwapping && !isRunningWorkWindow && workWindowSecondsPerSet != nil
+    }
+
+    /// Whether the running work window is paused (the app is backgrounded). Distinct from
+    /// `isRunningWorkWindow`, which stays true across a pause so the countdown stays on screen.
+    var isWorkWindowPaused: Bool { workWindow?.isPaused ?? false }
+
+    /// Seconds left on the running work window as of `date`, counted down from `workWindowTotalSeconds`
+    /// to zero. Zero when none is running; while paused it holds the captured remainder. Pure over the
+    /// injected clock, so the view's ticker reads it cheaply and tests drive it without real time.
+    func workWindowRemaining(asOf date: Date) -> Int { workWindow?.remaining(asOf: date) ?? 0 }
+
+    /// Start the current rep-based training set's auto-advancing work window, scheduled against the
+    /// injected clock (US-CC01). Unlike the US-O03 hold - which waits for a deliberate Start-hold tap so
+    /// the user gets into position - a rep-based set counts down hands-free, so this is driven
+    /// automatically from every transition that reveals such a set (`start()`, the rest ending, a
+    /// set/exercise advance with no rest). Idempotent via `canStartWorkWindow`, so repeated calls (the
+    /// view re-appearing, a resume) are safe no-ops.
+    func startWorkWindow() {
+        guard canStartWorkWindow, let seconds = workWindowSecondsPerSet else { return }
+        workWindow = Countdown(seconds: seconds, from: now())
+    }
+
+    /// At zero the work window records the set completed - identical to a tapped completion, prescribed
+    /// reps as performed (US-CC09) - and auto-advances into the rest / next set with no tap (US-CC01),
+    /// firing the completion cue exactly once. Idempotent and safe to call every tick from the view's
+    /// ticker (a paused or unfinished window is left untouched), so the cue fires once at the right
+    /// instant and never per tick, and never for a set nobody performed.
+    func completeWorkWindowIfElapsed(asOf date: Date) {
+        guard workWindow?.hasElapsed(asOf: date) == true else { return }
+        // End with the cue (the timer's verdict), then record + advance through the shared path.
+        endWorkWindow(fireFeedback: true)
+        completeSet()
+    }
+
+    /// End the current work window early and advance immediately - the **Done** control (US-CC01).
+    /// Being caught mid-rep at zero carries no penalty and no "did you finish?" prompt: Done records the
+    /// set completed exactly as the countdown would (US-CC09), it just fires no completion cue, because
+    /// coming out early is the user's own choice rather than the timer's verdict. A no-op unless an
+    /// auto-advancing set is on screen. (`completeSet()` tears the running window down without a cue.)
+    func finishWorkWindowEarly() {
+        guard !isComplete, currentStepAutoAdvances else { return }
+        completeSet()
+    }
+
+    /// Pause the running work window while the app is away, so the countdown freezes rather than blowing
+    /// past and its cue cannot fire at a screen the user is not looking at. A no-op if not running. An
+    /// in-session pause only: a window is never written to disk, so a resumed session auto-starts fresh.
+    func pauseWorkWindow(asOf date: Date) {
+        guard isRunningWorkWindow, !isWorkWindowPaused else { return }
+        workWindow?.pause(asOf: date)
+    }
+
+    /// Resume a paused work window (the app is foregrounding again), rescheduling from the captured
+    /// remainder. A no-op if not currently paused.
+    func resumeWorkWindow(asOf date: Date) {
+        guard isWorkWindowPaused else { return }
+        workWindow?.resume(asOf: date)
+    }
+
+    private func endWorkWindow(fireFeedback: Bool) {
+        guard isRunningWorkWindow else { return }
+        workWindow = nil
+        if fireFeedback { feedback.restDidComplete() }
     }
 
     // MARK: - Private
