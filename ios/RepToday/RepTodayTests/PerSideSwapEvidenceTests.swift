@@ -1413,7 +1413,6 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     func testClosingThePlayerMidHoldLeavesNoLegOnDisk() async throws {
         let store = InMemoryActiveSessionStore()
         let workout = try generate()
-        let slots = workout.blocks.flatMap(\.exercises)
         // A *training* hold: the manual Start-hold path this drives is a strength/primal one now that
         // US-CC05 auto-starts the bookend holds.
         let index = try XCTUnwrap(
