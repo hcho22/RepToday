@@ -1,6 +1,6 @@
 # PRD: Continuous-Circuit Sessions (hands-free follow-along player)
 
-- Status: In progress. US-CC01 (auto-advancing work window for strength sets), US-CC03/US-CC04 (the even-round engine timing model: uniform set count per training block plus the two-gap transition/round-rest fit, engine-only), and US-CC02 (circuit rotation of the training block, "Round N of M", player-only) have landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
+- Status: In progress. US-CC01 (auto-advancing work window for strength sets), US-CC03/US-CC04 (the even-round engine timing model: uniform set count per training block plus the two-gap transition/round-rest fit, engine-only), US-CC02 (circuit rotation of the training block, "Round N of M", player-only), and US-CC05 (hands-free warm-up/cooldown bookend holds - auto-start plus the per-side "Switch sides" beat, player-only) have landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
 - Story prefix: `US-CC##`.
 - Supersedes, on landing: the manual tap-to-advance active-session player (US-K01/US-K02/US-O03 interaction model).
 - Related decisions: [ADR-0002](../../../docs/adr/0002-per-interval-pacer-clock.md) (per-interval pacer clock), [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md) (even-round circuit timing). Domain term: `CONTEXT.md` -> "Continuous Circuit (planned)".
@@ -133,12 +133,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] Each bookend stretch shows a "Next: <stretch>" transition beat, then the hold **auto-starts** (no Start-hold tap) and counts down, then flows to the next stretch - reusing the US-O03 Hold Timer mechanics (`Countdown`, `holdSecondsPerSide`, per-side `holdSide`/`holdSidesPerSet`) but auto-started rather than tap-started.
-- [ ] A per-side bookend runs side 1, a brief "Switch sides" beat, then side 2, with no tap between sides (the per-side charging via `Exercise.isPerSide`/`sidesPerSet` is unchanged).
-- [ ] Bookends flow **linearly**, not as circuit rounds - they are single-set timed holds, one per exercise (`allowSetAdjust: false` unchanged).
-- [ ] The completion cue fires exactly once per hold leg (the existing `RestTimerFeedback` seam, extended to the tone set in US-CC10), never per tick and never on a restored/expired leg (US-O03 resume rule: a leg is never persisted, so a resumed bookend re-opens idle and auto-starts fresh).
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in the running app (Simulator, `RepTodayUITests`).
+- [x] Each bookend stretch shows a "Next: <stretch>" transition beat, then the hold **auto-starts** (no Start-hold tap) and counts down, then flows to the next stretch - reusing the US-O03 Hold Timer mechanics (`Countdown`, `holdSecondsPerSide`, per-side `holdSide`/`holdSidesPerSet`) but auto-started rather than tap-started. (`autoStartHoldIfNeeded`/`currentStepIsBookendHold`; the transition beat reuses the US-K02 rest overlay, its dedicated styling still US-CC11; `testBookendHoldAutoStartsHandsFreeOnStart`, `testBookendHoldsFlowStationToStationHandsFree`)
+- [x] A per-side bookend runs side 1, a brief "Switch sides" beat, then side 2, with no tap between sides (the per-side charging via `Exercise.isPerSide`/`sidesPerSet` is unchanged). (the beat is a shared-`Countdown` rest carrying `RestContext == .switchSides`; `testPerSideBookendRunsSide1ThenSwitchSidesThenSide2HandsFree`)
+- [x] Bookends flow **linearly**, not as circuit rounds - they are single-set timed holds, one per exercise (`allowSetAdjust: false` unchanged). (`currentStepIsBookendHold` is the not-a-training-block gate; a training hold keeps the manual path, `testTrainingHoldStaysManualNotAutoStarted`)
+- [x] The completion cue fires exactly once per hold leg (the existing `RestTimerFeedback` seam, extended to the tone set in US-CC10), never per tick and never on a restored/expired leg (US-O03 resume rule: a leg is never persisted, so a resumed bookend re-opens idle and auto-starts fresh). (the Switch-sides beat fires **no** cue - the cue is the leg's, once each; `testPerSideBookendRunsSide1ThenSwitchSidesThenSide2HandsFree`, `testResumedBookendHoldReopensIdleAndAutoStartsFresh`)
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in the running app (Simulator, `RepTodayUITests`). (`ContinuousCircuitUITests.testWarmupBookendHoldsRunHandsFreeIncludingSwitchSides`)
 
 **Validation Test:**
 

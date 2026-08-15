@@ -835,6 +835,26 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     private var playerSize: CGSize { CGSize(width: 393, height: 852) }
 
+    /// The flat index (into `workout.blocks.flatMap(\.exercises)`) of the first hold that still uses the
+    /// US-O03 **manual Start-hold** path: a timed hold in a **training** block (`.strength`/`.primal`,
+    /// via `SessionAssembly.isCircuit`). Warm-up and cooldown *bookend* holds auto-start hands-free since
+    /// US-CC05, so they no longer present a Start-hold control - these US-O03 surfaces must read a
+    /// training hold, the one the manual path still owns. `perSide` narrows it to a two-leg hold when the
+    /// side copy is what is under test. `nil` when the generated session carries no such hold.
+    private func firstTrainingHoldIndex(in workout: Workout, perSide: Bool = false) -> Int? {
+        var flat = 0
+        for block in workout.blocks {
+            let training = SessionAssembly.isCircuit(block.category)
+            for slot in block.exercises {
+                let timed = slot.exercise.isHold && (slot.durationSeconds ?? 0) > 0
+                let sideOK = !perSide || slot.exercise.sidesPerSet > 1
+                if training && timed && sideOK { return flat }
+                flat += 1
+            }
+        }
+        return nil
+    }
+
     /// A hosted player with its hold actually running, for rendering and reading mid-countdown.
     ///
     /// The leg is started by activating the real "Start hold" control, the way VoiceOver's double-tap
@@ -907,9 +927,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     func testHoldTimerReplacesTheAlwaysOnSessionClock() throws {
         let workout = try generate()
         let slots = workout.blocks.flatMap(\.exercises)
+        // A *training* hold, not a bookend: US-CC05 makes warm-up/cooldown holds auto-start hands-free,
+        // so the manual Start-hold path this test gates lives only on strength/primal timed holds now.
         let holdIndex = try XCTUnwrap(
-            slots.firstIndex { $0.exercise.isHold && ($0.durationSeconds ?? 0) > 0 },
-            "the generated session carries no timed movement to hold"
+            firstTrainingHoldIndex(in: workout),
+            "the generated session carries no training-block timed hold (bookend holds auto-start, US-CC05)"
         )
         let hold = slots[holdIndex]
         let sides = hold.exercise.sidesPerSet
@@ -1391,10 +1413,11 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     func testClosingThePlayerMidHoldLeavesNoLegOnDisk() async throws {
         let store = InMemoryActiveSessionStore()
         let workout = try generate()
-        let slots = workout.blocks.flatMap(\.exercises)
+        // A *training* hold: the manual Start-hold path this drives is a strength/primal one now that
+        // US-CC05 auto-starts the bookend holds.
         let index = try XCTUnwrap(
-            slots.indices.first { slots[$0].exercise.isHold && (slots[$0].durationSeconds ?? 0) > 0 },
-            "the generated session carries no timed movement to hold"
+            firstTrainingHoldIndex(in: workout),
+            "the generated session carries no training-block timed hold (bookend holds auto-start, US-CC05)"
         )
         // The session is already on disk, as a resumable one is in the app - the player is reopened on
         // it. Seeding matters here: starting and freezing a leg now writes nothing by design, so without

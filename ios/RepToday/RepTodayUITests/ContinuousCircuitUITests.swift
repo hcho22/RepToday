@@ -11,9 +11,11 @@ import XCTest
 /// but every launch here must still carry a posture - `UITestLaunchGuardTests` fails the build
 /// otherwise).
 ///
-/// Warm-up stretches are timed holds on the manual path here (US-CC05 makes the bookends hands-free
-/// later), so the test skips past them to reach the first strength set, where the auto-advancing work
-/// window and its **Done** control live.
+/// Warm-up stretches are timed holds; since US-CC05 they auto-start hands-free (no Start-hold tap), and
+/// a third case drives a whole warm-up untouched - including a per-side stretch's side 1 -> "Switch
+/// sides" -> side 2 - through the running player, the one thing the in-process bookend tests cannot
+/// exercise. The work-window case still skips past the warm-up to reach the first strength set, where
+/// the auto-advancing work window and its **Done** control live.
 ///
 /// A second case (US-CC02) drives the strength block as a circuit through the shipped controls and
 /// reads the "Round N of M" label off the running player, confirming the rotation and the round label a
@@ -146,6 +148,104 @@ final class ContinuousCircuitUITests: XCTestCase {
             "the strength block should play as a circuit - more than one exercise per round, or more than "
             + "one round - not grind one exercise's sets before the next; saw \(seen)"
         )
+    }
+
+    /// US-CC05: a warm-up stretch's timed hold auto-starts hands-free through the shipped player - no
+    /// Start-hold tap - and a per-side stretch flows side 1 -> "Switch sides" -> side 2 without a touch.
+    /// The in-process view-model test proves the timing deterministically under an injected clock; this
+    /// is the one place a real finger confirms it never has to press Start hold.
+    ///
+    /// A warm-up may open on a *dynamic* (non-hold) mobility movement, which US-CC05 does not cover, so
+    /// the test navigates forward - only ever via **Skip**, never a Start-hold tap - until a stretch's
+    /// **Hold** countdown appears on its own. That it appears with no Start-hold tap, and that no
+    /// Start-hold control is present, are the hard assertions (the exact failure indicators). The
+    /// per-side "Switch sides" legs are then exercised when the reached stretch is per-side, and skipped
+    /// (with a screenshot recording why) when it is not, so the test stays robust to the deterministic
+    /// session content without weakening the hands-free proof. Real-time countdowns make the switch-sides
+    /// wait long, so this case is run on demand.
+    func testWarmupBookendHoldsRunHandsFreeIncludingSwitchSides() {
+        app.launch(.optedOutWithNoProbe)
+
+        let start = app.buttons["Start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
+        start.tap()
+
+        let holdCountdown = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Hold,"))
+            .firstMatch
+
+        // Reach a warm-up stretch's auto-started hold. A hold auto-starts the moment its stretch is
+        // revealed, so we only ever Skip past a dynamic (non-hold) warm-up movement - never tap
+        // Start hold. The scan is bounded to the warm-up: a strength/primal *training* hold reached past
+        // it legitimately shows Start hold (US-CC02's manual circuit surface), so leaving the warm-up
+        // stops the scan rather than failing it. While inside the warm-up, a Start-hold control is an
+        // outright failure - a bookend hold must never wait on a tap.
+        var reachedAutoStartedHold = false
+        for _ in 0..<10 {
+            // A rest overlay between stretches hides the block context; clear it first, then re-check.
+            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
+            guard isInWarmup() else { break } // left the warm-up into a training block
+            XCTAssertFalse(
+                app.buttons["Start hold"].exists,
+                "a warm-up stretch presented a Start-hold tap - it is not hands-free (US-CC05)"
+            )
+            if holdCountdown.waitForExistence(timeout: 3) { reachedAutoStartedHold = true; break }
+            // A dynamic (non-hold) warm-up movement is on screen; advance past it to the next stretch.
+            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
+            break
+        }
+        XCTAssertTrue(
+            reachedAutoStartedHold,
+            "no warm-up stretch auto-started a hold hands-free - it may be waiting for a Start-hold tap"
+        )
+        XCTAssertFalse(app.buttons["Start hold"].exists, "the auto-started hold must offer no Start-hold tap")
+        attachScreenshot(named: "01-warmup-hold-autostarted")
+
+        // If the reached stretch is per-side (its tracker reads "side 1 of 2"), it must - hands-free, no
+        // tap - reach the brief "Switch sides" beat once side 1's real-time countdown elapses, then
+        // auto-start side 2. If it is bilateral, the auto-start above already proved the hands-free path.
+        let perSideSideOne = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", "side 1 of 2"))
+            .firstMatch
+        guard perSideSideOne.waitForExistence(timeout: 3) else {
+            attachScreenshot(named: "02-bilateral-stretch-no-switch-sides")
+            return
+        }
+
+        let switchSides = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Switch sides"))
+            .firstMatch
+        XCTAssertTrue(
+            switchSides.waitForExistence(timeout: 90),
+            "a per-side stretch never reached the hands-free Switch sides beat"
+        )
+        attachScreenshot(named: "02-switch-sides")
+
+        // Side 2 then auto-starts - a fresh hold countdown, "side 2 of 2" - still with no tap and no
+        // Start-hold control anywhere.
+        let perSideSideTwo = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", "side 2 of 2"))
+            .firstMatch
+        XCTAssertTrue(
+            perSideSideTwo.waitForExistence(timeout: 15),
+            "side 2 never auto-started after the Switch sides beat"
+        )
+        XCTAssertFalse(app.buttons["Start hold"].exists, "side 2 must not wait for a Start-hold tap either")
+        attachScreenshot(named: "03-side-2-autostarted")
+    }
+
+    /// Whether the player is currently on a warm-up step, read off the block-context label the player
+    /// renders as "<block>, exercise N of M" (US-CC05 scoping: only the warm-up is hands-free bookends;
+    /// a training block's holds keep the manual path). Not visible while a rest overlay is up, so callers
+    /// clear a rest first.
+    private func isInWarmup() -> Bool {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH[c] %@", "warm"))
+            .firstMatch.exists
     }
 
     /// The label of the first element whose accessibility label begins with `prefix`, or `nil` if none
