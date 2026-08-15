@@ -20,14 +20,15 @@ import Foundation
 ///   `SessionAssembly.workSecondsPerSet` at the target each movement actually carries - the same
 ///   arithmetic the session was sized with. The per-set target itself (reps or hold seconds) is
 ///   recomputed capacity-relative for the substitute via `AdaptiveOverload`, exactly as assembly would
-///   have. Because that target is *not* transferable - a movement the user has never logged opens at
-///   its own default while the slot it replaces may carry a long-grown one - the substitute's **set
-///   count** is the lever that absorbs the difference, within the same
-///   `minTrainingSets...maxTrainingSets` rails and on the same set-adjustable blocks the assembler's
-///   own timing fit uses. That lever is a strict *fallback*: a substitute that fits the slot as built
-///   outranks every substitute that needs a re-pick, so a swap restructures a slot only when no in-band
-///   peer fits it as built, and only when no permitted set count fits at all is a candidate
-///   out-of-budget.
+///   have. Under the even-round model (US-CC03/US-CC04) the substitute **keeps the slot's set count** -
+///   which on a training block is the block's uniform round count - rather than re-picking one: a
+///   re-pick would leave one station running a different number of rounds than its peers, which the
+///   circuit forbids. So the old set-count lever is retired; a candidate whose capacity-relative target
+///   lands its slot outside `tolerance` at that fixed round count is simply declined. Because no slot
+///   has a set lever anymore, the widened, soft-estimate-scaled `slotTolerance` (once reserved for the
+///   single-set bookends) now applies to every slot, which is what keeps honestly-comparable peers
+///   swappable. Reshaping the block's shared round-rest on swap and applying a swap across all remaining
+///   rounds is deferred to US-CC07.
 ///
 /// Like every other engine step this is a pure function of its inputs - the slot, the `Workout`, the
 /// `User`, the full `library`, `recentLogs`, and the `sessionPolicy` the session was generated against
@@ -94,11 +95,18 @@ enum ExerciseSwap {
     /// handed a tighter one.
     static let softSlotToleranceShare = 0.3
 
-    /// How far this slot's planned seconds may move, given the estimated work it carries and whether
-    /// the assembler would re-fit it. `workSeconds` is the slot's own `sets × workPerSet`.
-    static func slotTolerance(workSeconds: Int, setsAreAdjustable: Bool) -> Int {
-        guard !setsAreAdjustable else { return slotToleranceSeconds }
-        return slotToleranceSeconds + Int((softSlotToleranceShare * Double(max(0, workSeconds))).rounded())
+    /// How far this slot's planned seconds may move. `workSeconds` is the slot's own
+    /// `sets × workPerSet`.
+    ///
+    /// Even-round note (US-CC03/US-CC04): the per-slot set lever is gone. The assembler now sizes a
+    /// training block as a circuit of *uniform* rounds (one block-level round count, not a per-exercise
+    /// set count), and a swap keeps that round count rather than re-picking a slot's own count - a
+    /// re-pick would leave the circuit uneven. So *no* slot has a set lever to move a substitute back
+    /// into a flat gate anymore, which is exactly the condition that earned the bookends their widened,
+    /// soft-estimate-scaled gate: every slot now gets the same widened allowance, since neither training
+    /// slots nor bookends can re-fit their own set count.
+    static func slotTolerance(workSeconds: Int) -> Int {
+        slotToleranceSeconds + Int((softSlotToleranceShare * Double(max(0, workSeconds))).rounded())
     }
 
     // MARK: Entry point
@@ -165,18 +173,10 @@ enum ExerciseSwap {
             rest: prescription.restSeconds
         )
 
-        // Whether the slot the user is replacing is one the assembler's own timing fit may move set
-        // counts on. The one-set blocks are not (`allowSetAdjust: false` on the warm-up, the cooldown,
-        // and the mobility Movement Practice block), so a swapped stretch stays the one set it was built
-        // as - a stretch is one set at every length, and a swap never reintroduces a multi-set stretch.
-        let setsAreAdjustable = blockIsSetAdjustable(containing: prescription, in: workout)
-
-        // How far this slot may move, measured against the slot the user actually has: the flat gate on
-        // a slot the set lever can re-fit, widened by the soft-estimate share on a bookend that cannot.
-        let tolerance = slotTolerance(
-            workSeconds: prescription.sets * originalWorkPerSet,
-            setsAreAdjustable: setsAreAdjustable
-        )
+        // How far this slot may move, measured against the slot the user actually has: the flat gate
+        // widened by the soft-estimate share. No slot can re-fit its own set count under the even-round
+        // model, so every slot gets that widened allowance.
+        let tolerance = slotTolerance(workSeconds: prescription.sets * originalWorkPerSet)
 
         // Same pillar + pattern, within the difficulty band, not the original, not already in the
         // session, and reachable inside the slot's budget at some permitted set count. Both sides of
@@ -210,7 +210,6 @@ enum ExerciseSwap {
                 rest: prescription.restSeconds,
                 originalSets: prescription.sets,
                 originalSlotSeconds: originalSlotSeconds,
-                setsAreAdjustable: setsAreAdjustable,
                 tolerance: tolerance
             ) else { return nil }
             return Candidate(exercise: candidate, overload: overload, sets: fit.sets, drift: fit.drift)
@@ -219,10 +218,10 @@ enum ExerciseSwap {
 
         let recentlyUsed = recentlyUsedIds(recentLogs: recentLogs, window: sessionPolicy.varietyWindow)
         let chosen = candidates.min { lhs, rhs in
-            // 1. Leave the slot's shape alone. The set lever is a *fallback* for when no in-band peer
-            //    fits the slot as built, not a way to shave seconds off an otherwise fine swap, so a
-            //    candidate that fits at the original count outranks every candidate that needs a
-            //    re-pick. Only when none does are the re-picked ones considered at all.
+            // 1. Leave the slot's shape alone. Under the even-round model every candidate already keeps
+            //    the original count (`bestFitSets` never re-picks), so this step is inert-but-retained:
+            //    a candidate that somehow ran a different count would be outranked by one at the
+            //    original count, preserving the invariant that a swap never makes a circuit uneven.
             let lhsKeeps = lhs.sets == prescription.sets
             let rhsKeeps = rhs.sets == prescription.sets
             if lhsKeeps != rhsKeeps { return lhsKeeps }
@@ -232,7 +231,8 @@ enum ExerciseSwap {
             if lhsGap != rhsGap { return lhsGap < rhsGap }
             // 3. Smallest change to the session's wall-clock.
             if lhs.drift != rhs.drift { return lhs.drift < rhs.drift }
-            // 4. Among re-picked candidates, the smallest move off the original count.
+            // 4. Smallest move off the original count (inert under even rounds, since every candidate
+            //    keeps it; retained as a defensive tie-break).
             let lhsSetMove = abs(lhs.sets - prescription.sets)
             let rhsSetMove = abs(rhs.sets - prescription.sets)
             if lhsSetMove != rhsSetMove { return lhsSetMove < rhsSetMove }
@@ -253,8 +253,9 @@ enum ExerciseSwap {
 
     /// One in-band, in-budget substitute under consideration: the movement, the Step 6 target already
     /// resolved for it (so the budget check and the materialized slot can never disagree about how big
-    /// the substitute is), the set count that brings its slot closest to the original's planned
-    /// seconds, and how far the slot still moves the session's wall-clock at that count.
+    /// the substitute is), the set count it runs at (always the slot's original count / block round
+    /// count under the even-round model), and how far the slot still moves the session's wall-clock at
+    /// that count.
     private struct Candidate {
         let exercise: Exercise
         let overload: OverloadTarget
@@ -262,68 +263,29 @@ enum ExerciseSwap {
         let drift: Int
     }
 
-    /// The set count a substitute runs at, and the wall-clock drift that leaves - or `nil` when no
-    /// permitted count brings the slot inside `tolerance`, which is the one honest reason to reject a
-    /// candidate on time.
+    /// The set count a substitute runs at, and the wall-clock drift that leaves - or `nil` when the
+    /// substitute does not fit the slot inside `tolerance`, the one honest reason to reject a candidate on
+    /// time.
     ///
-    /// Set count is the lever here because the substitute's per-set *target* is not transferable: Step 6
-    /// sizes it from the user's demonstrated capacity in that movement, so a peer they have never logged
-    /// opens at its own default however grown the slot it replaces is. Sets absorb that difference, and
-    /// they are also the best-founded lever available - each set added or removed moves a real,
-    /// deterministic rest period alongside its share of the estimated work.
-    ///
-    /// The original count wins whenever it is already in budget, so a swap leaves the slot's shape alone
-    /// unless doing so would push the session out of its stated minutes. Otherwise the closest-fitting
-    /// count inside `minTrainingSets...maxTrainingSets` is taken, ties going to the smaller move, so the
-    /// re-pick can neither leave the assembler's own rails nor drift far from the slot the user chose to
-    /// replace. On a block the assembler would not adjust either, only the original count is considered.
-    ///
-    /// This settles each candidate's *own* best count; preferring a candidate that needed no re-pick
-    /// over one that did is the selection's job (criterion 1), because whether restructuring was
-    /// avoidable is only knowable once every candidate has been priced.
+    /// Even-round model (US-CC03/US-CC04): the substitute **always keeps the slot's set count** - which
+    /// on a training block is the block's uniform round count. The old per-slot set-count lever (re-pick a
+    /// grown slot's substitute to a different number of sets) is retired: it produced blocks where one
+    /// station ran a different number of rounds than its peers, which the circuit model forbids (a
+    /// substitute is one station in the circuit and runs the block's round count like every other). So a
+    /// candidate whose own capacity-relative target lands its slot outside `tolerance` at that fixed round
+    /// count is simply declined, rather than reshaped - the widened, soft-estimate-scaled tolerance
+    /// (`slotTolerance`) is what keeps that from rejecting every honestly-comparable peer now that the set
+    /// lever is gone. Every slot keeps its count.
     private static func bestFitSets(
         workPerSet: Int,
         rest: Int,
         originalSets: Int,
         originalSlotSeconds: Int,
-        setsAreAdjustable: Bool,
         tolerance: Int
     ) -> (sets: Int, drift: Int)? {
-        func drift(at sets: Int) -> Int {
-            abs(slotSeconds(workPerSet: workPerSet, sets: sets, rest: rest) - originalSlotSeconds)
-        }
-
-        let atOriginal = drift(at: originalSets)
-        if atOriginal <= tolerance { return (originalSets, atOriginal) }
-        guard setsAreAdjustable else { return nil }
-
-        let best = (SessionAssembly.minTrainingSets...SessionAssembly.maxTrainingSets)
-            .map { (sets: $0, drift: drift(at: $0)) }
-            .min { lhs, rhs in
-                lhs.drift != rhs.drift
-                    ? lhs.drift < rhs.drift
-                    : abs(lhs.sets - originalSets) < abs(rhs.sets - originalSets)
-            }
-        guard let best, best.drift <= tolerance else { return nil }
-        return best
-    }
-
-    /// Whether the block holding `prescription` is one the assembler's timing fit may move set counts
-    /// on. The warm-up and the cooldown bookends are both built with `allowSetAdjust: false` - a stretch
-    /// is one set by construction, at every length (see `SessionAssembly.mobilityBlock`) - so a swap must
-    /// not use the set lever on either; a substituted stretch stays the one set it was built as, and only
-    /// the strength/primal training blocks are adjustable. The `.mobility` case is kept as defensive
-    /// handling only - US-M01 retired the Movement Practice mobility training block, so no `.mobility`
-    /// block is emitted today. A slot the workout does not contain is treated as fixed, the conservative
-    /// default.
-    private static func blockIsSetAdjustable(containing prescription: PrescribedExercise, in workout: Workout) -> Bool {
-        guard let block = workout.blocks.first(where: { block in
-            block.exercises.contains { $0.id == prescription.id }
-        }) else { return false }
-        switch block.category {
-        case .warmup, .cooldown, .mobility: return false
-        case .strength, .primal: return true
-        }
+        let drift = abs(slotSeconds(workPerSet: workPerSet, sets: originalSets, rest: rest) - originalSlotSeconds)
+        guard drift <= tolerance else { return nil }
+        return (originalSets, drift)
     }
 
     /// The Step 6 target for a substitute, resolved under **every** lever the slot it replaces was

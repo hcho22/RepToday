@@ -312,8 +312,7 @@ final class ExerciseSwapTests: XCTestCase {
                 XCTAssertLessThanOrEqual(
                     abs(slotSeconds(of: result) - slotSeconds(of: slot)),
                     ExerciseSwap.slotTolerance(
-                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot),
-                        setsAreAdjustable: true
+                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot)
                     ),
                     "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the slot out of budget"
                 )
@@ -380,8 +379,7 @@ final class ExerciseSwapTests: XCTestCase {
                 XCTAssertLessThanOrEqual(
                     abs(slotSeconds(of: result) - slotSeconds(of: slot)),
                     ExerciseSwap.slotTolerance(
-                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot),
-                        setsAreAdjustable: false
+                        workSeconds: slot.sets * SessionAssembly.workSecondsPerSet(of: slot)
                     ),
                     "swapping \(movement.id) for \(result.exercise.id) at x\(growth) moved the bookend out of budget"
                 )
@@ -393,29 +391,32 @@ final class ExerciseSwapTests: XCTestCase {
         }
     }
 
-    /// The set count is the lever that keeps a capacity-grown slot swappable: a substitute the user has
-    /// never logged opens at its own default, and the assembler's own `minTrainingSets...maxTrainingSets`
-    /// rails absorb the difference instead of the swap refusing outright.
-    func testSwapRepicksTheSetCountToKeepAGrownSlotInBudget() async throws {
+    /// Even-round model (US-CC03/US-CC04): a swap **keeps the block's uniform round count** rather than
+    /// re-picking a slot's own set count. A grown slot's substitute (which the user has never logged, so
+    /// it opens at its own default) therefore joins the circuit at the *same* round count as its peers -
+    /// never a different one, which would leave the block uneven - and is admitted as long as it lands
+    /// inside the widened, soft-estimate-scaled `slotTolerance` the retired set lever left behind.
+    func testSwapKeepsTheUniformRoundCountRatherThanRepicking() async throws {
         let library = try await library()
         let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        // A user well into the tier: `push_standard` advances at "3x12" off an 8-rep default, so this is
-        // an ordinary place to be, not an exotic one - and at a fixed 3 sets every push peer was refused.
+        // A user well into the tier: `push_standard` advances at "3x12" off an 8-rep default, an ordinary
+        // place to be. Under the old model this forced a set-count re-pick; under even rounds it must not.
         let grown = prescription(for: standard, sets: 3, perSet: 12)
 
         let result = try substitute(
             ExerciseSwap.swap(grown, in: workout([grown]), user: user(), library: library, recentLogs: [])
         )
 
-        XCTAssertNotEqual(result.exercise.id, standard.id)
-        XCTAssertTrue(
-            (SessionAssembly.minTrainingSets...SessionAssembly.maxTrainingSets).contains(result.sets),
-            "the re-pick must stay inside the assembler's own set-count rails"
+        XCTAssertNotEqual(result.exercise.id, standard.id, "the slot actually changed")
+        XCTAssertEqual(
+            result.sets, grown.sets,
+            "the substitute must run the block's round count, never a re-picked per-slot count (US-CC03)"
         )
+        let workSeconds = grown.sets * SessionAssembly.workSecondsPerSet(of: grown)
         XCTAssertLessThanOrEqual(
             abs(slotSeconds(of: result) - slotSeconds(of: grown)),
-            ExerciseSwap.slotToleranceSeconds,
-            "the re-picked set count must bring the slot inside its budget"
+            ExerciseSwap.slotTolerance(workSeconds: workSeconds),
+            "at the kept round count the substitute must still land inside the slot's (widened) budget"
         )
     }
 
@@ -476,12 +477,12 @@ final class ExerciseSwapTests: XCTestCase {
     }
 
     /// Every one-set block - the warm-up, the cooldown, **and the mobility Movement Practice block** -
-    /// is a stretch at one set by construction (`allowSetAdjust: false`), so the swap must not reach for
-    /// the set lever on any of them even when it would improve the fit. A two-set stretch is not a
-    /// session the assembler could have produced at any length, and a swap must never reintroduce one -
-    /// this is the swap-surface half of the one-set Movement Practice rule. (The positive contrast that
-    /// the lever *does* work on a set-adjustable strength block lives in
-    /// `testSwapRepicksTheSetCountToKeepAGrownSlotInBudget`.)
+    /// is a stretch at one set by construction (`allowSetAdjust: false`), so a swap must never reach for a
+    /// two-set stretch. A two-set stretch is not a session the assembler could have produced at any
+    /// length, and a swap must never reintroduce one. Under the even-round model (US-CC03) the set lever
+    /// is retired everywhere - a training-block swap keeps the block's uniform round count too
+    /// (`testSwapKeepsTheUniformRoundCountRatherThanRepicking`) - so here the out-of-budget peer with no
+    /// way back into budget is simply declined.
     func testSwapNeverMovesTheSetCountOfAOneSetBlock() async throws {
         // A single-set stretch slot grown to 100s (110s of work) beside a peer that opens at its own 30s
         // default (40s of work). At one set the peer is 70s away, past even the widened one-set tolerance

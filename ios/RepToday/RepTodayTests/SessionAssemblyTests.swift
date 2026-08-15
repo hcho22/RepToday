@@ -407,6 +407,139 @@ final class SessionAssemblyTests: XCTestCase {
         }
     }
 
+    // MARK: - Even-round circuit timing (US-CC03/US-CC04, ADR-0003)
+
+    /// The seven acceptance lengths, including the extended 45/60 the base `durations` omit.
+    private let circuitDurations = [5, 10, 15, 20, 30, 45, 60]
+
+    /// A history that leaves primal stale so the 45/60 extended sessions carve out a dedicated primal
+    /// block (whose uniform round count US-CC03 also has to hold), while strength/mobility stay current.
+    private func stalePrimalSteadyHistory() -> [WorkoutLog] {
+        [
+            log([
+                ("push_standard", .strength, .push, 12),
+                ("squat_bodyweight", .strength, .squat, 15),
+            ], daysAgo: 2, difficulty: .justRight),
+            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 3),
+            log([("primal_bear_crawl", .primal, .locomotion, 10)], daysAgo: 14),
+        ]
+    }
+
+    /// US-CC03 validation: within every training block (the strength block, and at 45/60 the dedicated
+    /// primal block), every exercise carries an identical `sets` value - the block's round count - so
+    /// circuit rounds are structurally even and "Round N of M" is well-defined. The two blocks need not
+    /// equal each other; each is internally uniform.
+    func testTrainingBlocksCarryOneUniformRoundCountEachEvenRound() async throws {
+        let library = try await library()
+        for minutes in circuitDurations {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: stalePrimalSteadyHistory())
+            let trainingBlocks = workout.blocks.filter {
+                $0.category == .strength || $0.category == .primal
+            }
+            XCTAssertFalse(trainingBlocks.isEmpty, "\(minutes) min produced no training block")
+            for block in trainingBlocks {
+                let sets = Set(block.exercises.map(\.sets))
+                XCTAssertEqual(
+                    sets.count, 1,
+                    "\(minutes) min \(block.category) block is uneven: set counts \(sets.sorted()) must all equal the round count"
+                )
+                XCTAssertGreaterThanOrEqual(block.exercises.first?.sets ?? 0, SessionAssembly.minTrainingSets)
+                XCTAssertLessThanOrEqual(block.exercises.first?.sets ?? 0, SessionAssembly.maxTrainingSets)
+            }
+        }
+    }
+
+    /// US-CC03: the 45- and 60-minute extended sessions genuinely produce a dedicated primal block whose
+    /// own round count is uniform, read alongside the strength block's (they may differ from each other).
+    func testExtendedSessionPrimalAndStrengthBlocksAreEachInternallyUniform() async throws {
+        let library = try await library()
+        for minutes in [45, 60] {
+            let workout = assemble(minutes: minutes, user: user(level: .intermediate), library: library, logs: stalePrimalSteadyHistory())
+            let strength = try XCTUnwrap(workout.blocks.first { $0.category == .strength }, "\(minutes) min needs a strength block")
+            let primal = try XCTUnwrap(workout.blocks.first { $0.category == .primal }, "\(minutes) min extended needs a dedicated primal block")
+
+            XCTAssertEqual(Set(strength.exercises.map(\.sets)).count, 1, "\(minutes) min strength block round count is not uniform")
+            XCTAssertEqual(Set(primal.exercises.map(\.sets)).count, 1, "\(minutes) min primal block round count is not uniform")
+        }
+    }
+
+    /// US-CC04: within each training block the between-round rest (the primary timing-fit lever) sits
+    /// inside its defined band `[minRoundRestSeconds, maxRoundRestSeconds]` (~30-75s) for every length,
+    /// and is uniform across the block's stations. The chosen value is a deterministic function of the
+    /// inputs (asserted separately by the determinism tests).
+    func testBetweenRoundRestStaysWithinItsBandForEveryLength() async throws {
+        let library = try await library()
+        for minutes in circuitDurations {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: stalePrimalSteadyHistory())
+            let trainingBlocks = workout.blocks.filter {
+                $0.category == .strength || $0.category == .primal
+            }
+            for block in trainingBlocks {
+                let rests = Set(block.exercises.map(\.restSeconds))
+                XCTAssertEqual(
+                    rests.count, 1,
+                    "\(minutes) min \(block.category): the between-round rest must be uniform, got \(rests.sorted())"
+                )
+                let rest = block.exercises.first?.restSeconds ?? 0
+                XCTAssertGreaterThanOrEqual(
+                    rest, SessionAssembly.minRoundRestSeconds,
+                    "\(minutes) min \(block.category) round-rest \(rest)s is below the band floor"
+                )
+                XCTAssertLessThanOrEqual(
+                    rest, SessionAssembly.maxRoundRestSeconds,
+                    "\(minutes) min \(block.category) round-rest \(rest)s is above the band ceiling"
+                )
+            }
+        }
+    }
+
+    /// US-CC04 validation: with the per-exercise set-adjust lever retired and the bounded between-round
+    /// rest carrying the fit, every one of the seven acceptance lengths still lands the planned
+    /// wall-clock within `toleranceSeconds` (±60s) of the request - measured with the updated even-round
+    /// formula `plannedSeconds` reports. Run for both a steady user and a fresh (no-history) one.
+    func testEveryLengthLandsWithinToleranceUnderEvenRoundModel() async throws {
+        let library = try await library()
+        for logs in [stalePrimalSteadyHistory(), []] {
+            for minutes in circuitDurations {
+                let workout = assemble(minutes: minutes, user: user(), library: library, logs: logs)
+                let planned = SessionAssembly.plannedSeconds(of: workout)
+                XCTAssertLessThanOrEqual(
+                    abs(planned - minutes * 60), SessionAssembly.toleranceSeconds,
+                    "\(minutes) min (history=\(logs.count)) planned \(planned)s is outside ±60s under the even-round model"
+                )
+            }
+        }
+    }
+
+    /// US-CC04: the two rest gaps are distinct. The between-station transition is a fixed ~10-15s beat
+    /// (`transitionSeconds`), clearly shorter than the bounded recovery band the between-round rest draws
+    /// from - so a reposition beat can never be mistaken for a recovery rest, and the round-rest band
+    /// never collapses onto the transition.
+    func testTwoRestGapsAreDistinctTransitionShorterThanRoundRestBand() {
+        XCTAssertLessThanOrEqual(SessionAssembly.transitionSeconds, 15, "the between-station transition must stay a short beat")
+        XCTAssertLessThan(
+            SessionAssembly.transitionSeconds, SessionAssembly.minRoundRestSeconds,
+            "the fixed between-station transition must be shorter than the whole between-round rest band"
+        )
+        XCTAssertLessThan(SessionAssembly.minRoundRestSeconds, SessionAssembly.maxRoundRestSeconds, "the round-rest band must be non-empty")
+    }
+
+    /// US-CC03/US-CC04: a long session actually rotates - the strength block runs more than one round at
+    /// 45/60 (proving the round count is a live lever, not pinned at 1), while a tiny 5-minute session
+    /// stays lean. This guards against a regression that lands the time by some other means and leaves
+    /// every block a single round.
+    func testLongSessionsRunMultipleRounds() async throws {
+        let library = try await library()
+        for minutes in [45, 60] {
+            let workout = assemble(minutes: minutes, user: user(), library: library, logs: stalePrimalSteadyHistory())
+            let strength = try XCTUnwrap(workout.blocks.first { $0.category == .strength })
+            XCTAssertGreaterThanOrEqual(
+                strength.exercises.first?.sets ?? 0, 2,
+                "\(minutes) min strength block should run at least two rounds"
+            )
+        }
+    }
+
     // MARK: - No mobility middle block; freed minutes go to strength (US-M01)
 
     /// US-M01 core: the Movement Practice mobility *training* block is no longer emitted at any length or
@@ -525,12 +658,12 @@ final class SessionAssemblyTests: XCTestCase {
 
     // MARK: - Blend is a strength session wrapped in bookends (US-002/US-M01)
 
-    /// Planned wall-clock of a single materialized block (`Σ sets × workPerSet + (sets - 1) × rest`),
-    /// measured with the engine's own work model, used to compare how much session time each block owns.
+    /// Planned wall-clock of a single materialized block, measured with the engine's own even-round work
+    /// model (`SessionAssembly.blockSeconds(of:)` - a circuit training block is priced over its rounds,
+    /// between-station transitions and between-round rest; a bookend linearly), used to compare how much
+    /// session time each block owns.
     private func plannedSeconds(_ block: WorkoutBlock) -> Int {
-        block.exercises.reduce(0) { sum, p in
-            sum + p.sets * SessionAssembly.workSecondsPerSet(of: p) + max(0, p.sets - 1) * p.restSeconds
-        }
+        SessionAssembly.blockSeconds(of: block)
     }
 
     /// US-002/US-M01: a blend's training middle is a single strength block regardless of staleness -
@@ -1175,5 +1308,63 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(planned, 19 * 60, "20-min session should total at least 19 min")
         XCTAssertLessThanOrEqual(planned, 21 * 60, "20-min session should total at most 21 min")
         XCTAssertLessThan(elapsedMs, 100, "assembly took \(elapsedMs)ms, over the 100ms budget")
+    }
+
+    // MARK: - Evidence transcript (US-CC03/US-CC04)
+
+    /// Renders a human-readable transcript of the even-round circuit sessions the engine generates for
+    /// every acceptance length crossed with every fitness level, printed between EVIDENCE markers so a
+    /// reviewer can read the actual "Round N of M" structure, the two distinct rest gaps, and how close
+    /// the planned wall-clock lands to the request. Also asserts the intent's tightened claim: the
+    /// planned time lands within 3s of target, every training block is internally uniform, and the
+    /// between-round rest sits inside its band - across all levels, not just the default one.
+    func testEvidenceEvenRoundCircuitTranscriptAcrossLevelsAndLengths() async throws {
+        let library = try await library()
+        var lines: [String] = []
+        lines.append("EVEN-ROUND CIRCUIT SESSIONS (US-CC03/US-CC04) - engine generation transcript")
+        lines.append("transitionSeconds=\(SessionAssembly.transitionSeconds)s  round-rest band=[\(SessionAssembly.minRoundRestSeconds)..\(SessionAssembly.maxRoundRestSeconds)]s  maxRounds=\(SessionAssembly.maxTrainingSets)  tolerance=\(SessionAssembly.toleranceSeconds)s")
+        lines.append("")
+
+        var worstDeviation = 0
+        for level in [FitnessLevel.beginner, .intermediate, .advanced] {
+            lines.append("================ FITNESS LEVEL: \(level) ================")
+            for minutes in circuitDurations {
+                let workout = assemble(minutes: minutes, user: user(level: level), library: library, logs: stalePrimalSteadyHistory())
+                let planned = SessionAssembly.plannedSeconds(of: workout)
+                let deviation = planned - minutes * 60
+                worstDeviation = max(worstDeviation, abs(deviation))
+                let plannedStr = String(format: "%d:%02d", planned / 60, planned % 60)
+                lines.append(String(format: "  [%2d min] planned %@ (%+ds vs target)", minutes, plannedStr, deviation))
+                for block in workout.blocks where !block.exercises.isEmpty {
+                    let circuit = SessionAssembly.isCircuit(block.category)
+                    let rounds = block.exercises.first?.sets ?? 0
+                    let rest = block.exercises.first?.restSeconds ?? 0
+                    if circuit {
+                        lines.append("      \(block.title) [CIRCUIT] - \(rounds) rounds, between-round rest \(rest)s, between-station transition \(SessionAssembly.transitionSeconds)s")
+                        for ex in block.exercises {
+                            let tgt = ex.reps.map { "\($0) reps" } ?? ex.durationSeconds.map { "\($0)s hold" } ?? "?"
+                            lines.append("          • \(ex.exercise.displayName): \(ex.sets)×\(tgt)")
+                        }
+                        // Every station in a circuit block shares the round count and round-rest.
+                        XCTAssertEqual(Set(block.exercises.map(\.sets)).count, 1, "\(minutes)min/\(level) \(block.category) uneven rounds")
+                        XCTAssertEqual(Set(block.exercises.map(\.restSeconds)).count, 1, "\(minutes)min/\(level) \(block.category) non-uniform rest")
+                        XCTAssertGreaterThanOrEqual(rest, SessionAssembly.minRoundRestSeconds, "\(minutes)min/\(level) rest below band")
+                        XCTAssertLessThanOrEqual(rest, SessionAssembly.maxRoundRestSeconds, "\(minutes)min/\(level) rest above band")
+                    } else {
+                        lines.append("      \(block.title) [linear bookend] - \(block.exercises.count) movement(s), one set each")
+                        for ex in block.exercises {
+                            let tgt = ex.reps.map { "\($0) reps" } ?? ex.durationSeconds.map { "\($0)s hold" } ?? "?"
+                            lines.append("          • \(ex.exercise.displayName): \(ex.sets)×\(tgt)")
+                        }
+                    }
+                }
+                XCTAssertLessThanOrEqual(abs(deviation), 3, "\(minutes)min/\(level) planned \(planned)s is more than 3s off target")
+            }
+            lines.append("")
+        }
+        lines.append("WORST ABSOLUTE DEVIATION ACROSS ALL LEVELS × ALL LENGTHS: \(worstDeviation)s")
+
+        let transcript = lines.joined(separator: "\n")
+        print("\n===EVIDENCE-BEGIN===\n\(transcript)\n===EVIDENCE-END===\n")
     }
 }

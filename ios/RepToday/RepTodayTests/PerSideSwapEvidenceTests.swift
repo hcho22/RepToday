@@ -81,13 +81,20 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// `varietyWindow` (the three most-recent sessions), so Step 5 selects it as the core slot rather than
     /// avoiding it as recently-used - which is what puts a per-side hold in the generated strength-led
     /// session for the per-side-hold render/swap evidence below.
+    ///
+    /// The logged hold is a moderate capacity above the catalog default (grown, not at the default) but
+    /// not the extreme top of the rail: under the even-round model (US-CC03/US-CC04) a swap keeps the
+    /// block's uniform round count, and drift scales with rounds × the per-set work gap, so a per-side
+    /// hold grown to the very top of its rail has no in-band core peer within the (soft-widened) budget at
+    /// the block's round count and would decline. A moderately-grown hold stays genuinely capacity-derived
+    /// while keeping an honest same-pattern peer reachable, so the per-side-hold swap evidence is real.
     private func history() -> [WorkoutLog] {
         struct Spec { let id: String, pillar: Pillar, pattern: MovementPattern; let reps: Int?, seconds: Int? }
         let specs: [Spec] = [
             Spec(id: "push_standard", pillar: .strength, pattern: .push, reps: 12, seconds: nil),
             Spec(id: "squat_split", pillar: .strength, pattern: .squat, reps: 10, seconds: nil),
             Spec(id: "mobility_cat_cow", pillar: .mobility, pattern: .mobility, reps: 10, seconds: nil),
-            Spec(id: "core_side_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 35),
+            Spec(id: "core_side_plank", pillar: .strength, pattern: .core, reps: nil, seconds: 25),
         ]
         return (0..<8).map { offset in
             let spec = specs[offset % specs.count]
@@ -169,15 +176,23 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         func restDidComplete() {}
     }
 
-    /// The planned wall-clock of an arbitrary lineup, measured with the engine's own model.
-    /// `plannedSeconds` flattens the blocks, so one carrier block is enough to measure a swapped lineup.
+    /// The planned wall-clock of a (possibly swapped) lineup, measured with the engine's own even-round
+    /// model. A swap replaces a slot in place, so the flat step list re-partitions cleanly back into the
+    /// original block structure - which the measurement must preserve, because the even-round
+    /// `plannedSeconds` prices a training block as a circuit (over its rounds/round-rest) and a bookend
+    /// linearly; flattening a mixed lineup into one block would misread the warm-up's single set as the
+    /// whole session's round count.
     private func plannedSeconds(of prescriptions: [PrescribedExercise], like workout: Workout) -> Int {
-        SessionAssembly.plannedSeconds(
+        var iterator = prescriptions.makeIterator()
+        let blocks: [WorkoutBlock] = workout.blocks.map { block in
+            let slots = block.exercises.compactMap { _ in iterator.next() }
+            return WorkoutBlock(id: block.id, title: block.title, category: block.category, exercises: slots)
+        }
+        return SessionAssembly.plannedSeconds(
             of: Workout(
                 id: workout.id, createdAt: workout.createdAt, shape: workout.shape,
                 focusPillar: workout.focusPillar, requestedMinutes: workout.requestedMinutes,
-                wasReturn: workout.wasReturn,
-                blocks: [WorkoutBlock(id: UUID(), title: "Session", category: .strength, exercises: prescriptions)]
+                wasReturn: workout.wasReturn, blocks: blocks
             )
         )
     }
@@ -294,14 +309,22 @@ final class PerSideSwapEvidenceTests: XCTestCase {
         )
     }
 
-    /// Swapping every slot of a real session in turn - not just the one the walk happens to land on - so
-    /// the "keep the slot's set count, re-pick only to hold the budget" rule is exercised in the
-    /// non-adjustable warm-up/cooldown shapes as well as the adjustable training blocks. One printed line
-    /// per slot is the reviewable sweep.
+    /// Swapping every slot of a real session in turn - not just the one the walk happens to land on. Under
+    /// the even-round model (US-CC03/US-CC04) a swap **keeps the slot's set count** everywhere: a training
+    /// block runs a uniform round count, so a substitute joins the circuit at that same count rather than
+    /// re-picking its own, and the warm-up/cooldown bookends stay one set. A substitute that will not fit
+    /// at the kept count is declined outright. One printed line per slot is the reviewable sweep.
     func testSwappingEverySlotKeepsBudgetAndRespectsTheSetLever() async throws {
         let workout = try generate()
         let engine = MockWorkoutEngine(exerciseService: try MockExerciseService())
         let slotCount = workout.blocks.reduce(0) { $0 + $1.exercises.count }
+        // The assembled session's planned wall-clock, before any swap. Under the even-round model a swap
+        // keeps the slot's round count, so the only budget lever it has is the substitute's own per-set
+        // work - it moves the session by at most the swapped slot's `slotTolerance`, not the assembler's
+        // ±60s (the per-slot set lever that used to re-absorb that drift is retired). That per-slot bound
+        // is the swap's real contract and is what this sweep verifies (a tighter post-swap ±1 minute is
+        // US-CC07's job: reshaping the block's shared round-rest on swap to re-absorb the drift).
+        let plannedBefore = SessionAssembly.plannedSeconds(of: workout)
 
         print("=== Rep Today - swap sweep over all \(slotCount) slots of a 30 minute session ===")
         var substituted = 0, rePicked = 0, noAlternative = 0
@@ -335,25 +358,33 @@ final class PerSideSwapEvidenceTests: XCTestCase {
                   + pad("\(before.prescription.exercise.id) (\(ActiveSessionView.targetText(before.prescription)))", 40)
                   + "-> " + pad("\(after.prescription.exercise.id) (\(ActiveSessionView.targetText(after.prescription)))", 40)
                   + "sets \(before.prescription.sets)->\(after.prescription.sets) "
-                  + (moved ? "re-picked" : "kept") + " · planned \(planned)s")
+                  + (moved ? "MOVED" : "kept") + " · planned \(planned)s")
 
             XCTAssertEqual(after.prescription.exercise.pillar, before.prescription.exercise.pillar)
             XCTAssertEqual(after.prescription.exercise.movementPattern, before.prescription.exercise.movementPattern)
             XCTAssertTrue(after.prescription.exercise.equipment.isEmpty, "Zero-Equipment Floor")
-            XCTAssertLessThanOrEqual(
-                abs(planned - requestedMinutes * 60), 60,
-                "swapping slot \(index + 1) (\(before.prescription.exercise.id) -> "
-                + "\(after.prescription.exercise.id)) left the session at \(planned)s, outside ±1 minute"
+            let slotTolerance = ExerciseSwap.slotTolerance(
+                workSeconds: before.prescription.sets * SessionAssembly.workSecondsPerSet(of: before.prescription)
             )
-            // Warm-up and cooldown slots are 1 set with set adjustment disabled, so their set count can
-            // never move; only the adjustable training blocks may re-pick.
-            if before.prescription.sets == 1 {
-                XCTAssertEqual(after.prescription.sets, 1, "a 1-set slot has no set lever to pull")
-            }
+            XCTAssertLessThanOrEqual(
+                abs(planned - plannedBefore), slotTolerance,
+                "swapping slot \(index + 1) (\(before.prescription.exercise.id) -> "
+                + "\(after.prescription.exercise.id)) moved the session \(abs(planned - plannedBefore))s, "
+                + "past the swapped slot's \(slotTolerance)s budget"
+            )
+            // Even-round model (US-CC03): no slot has a set lever - a training block runs a uniform round
+            // count and a substitute joins at it, the bookends stay one set - so every substitute keeps
+            // the slot's count exactly, and a block can never be left uneven by a swap.
+            XCTAssertEqual(
+                after.prescription.sets, before.prescription.sets,
+                "slot \(index + 1) swap changed the set count \(before.prescription.sets)->\(after.prescription.sets); "
+                + "a swap must keep the block's uniform round count"
+            )
         }
-        print("swept \(slotCount) slots: \(substituted) substituted (\(rePicked) with a re-picked set count), "
+        print("swept \(slotCount) slots: \(substituted) substituted (\(rePicked) that moved a set count), "
               + "\(noAlternative) with no alternative")
         XCTAssertGreaterThan(substituted, 0)
+        XCTAssertEqual(rePicked, 0, "no swap may move a slot's set count under the even-round model")
     }
 
     // MARK: - Rendered-UI evidence

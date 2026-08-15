@@ -1,6 +1,6 @@
 # PRD: Continuous-Circuit Sessions (hands-free follow-along player)
 
-- Status: In progress. US-CC01 (auto-advancing work window for strength sets) has landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
+- Status: In progress. US-CC01 (auto-advancing work window for strength sets) and US-CC03/US-CC04 (the even-round engine timing model: uniform set count per training block plus the two-gap transition/round-rest fit, engine-only) have landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
 - Story prefix: `US-CC##`.
 - Supersedes, on landing: the manual tap-to-advance active-session player (US-K01/US-K02/US-O03 interaction model).
 - Related decisions: [ADR-0002](../../../docs/adr/0002-per-interval-pacer-clock.md) (per-interval pacer clock), [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md) (even-round circuit timing). Domain term: `CONTEXT.md` -> "Continuous Circuit (planned)".
@@ -83,12 +83,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] `SessionAssembly` produces training blocks in which every exercise's `sets` equals one block-level round count (the strength block and the extended primal block are each internally uniform; they need not equal each other).
-- [ ] The per-exercise set-adjust lever is no longer used to hit the time target: the timing fit does not add a set to one exercise and not another within a block (the current `.addSet`/`.removeSet` per-item moves that produce uneven counts are retired for training blocks; see US-CC04 for the replacement lever).
-- [ ] The reps/hold-seconds per-set target from Step 6 (Adaptive Overload) is still never touched by the timing fit.
-- [ ] Determinism and `asOf`-purity are preserved: the assembled session's content remains a pure function of inputs (only ids vary run to run), verified by existing `SessionAssemblyTests`-style structural assertions.
-- [ ] The warm-up and cooldown bookends remain one set each (`allowSetAdjust: false`), unchanged.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass (including a new test asserting uniform set count per training block across 5/10/15/20/30/45/60).
+- [x] `SessionAssembly` produces training blocks in which every exercise's `sets` equals one block-level round count (the strength block and the extended primal block are each internally uniform; they need not equal each other). (`testTrainingBlocksCarryOneUniformRoundCountEachEvenRound`, `testExtendedSessionPrimalAndStrengthBlocksAreEachInternallyUniform`)
+- [x] The per-exercise set-adjust lever is no longer used to hit the time target: the timing fit does not add a set to one exercise and not another within a block (the `.addSet`/`.removeSet` per-item moves are retired; the fit's only round-count lever is the block-level `setRoundsAndRest`, which writes the same count to every station; see US-CC04 for the replacement rest lever).
+- [x] The reps/hold-seconds per-set target from Step 6 (Adaptive Overload) is still never touched by the timing fit (the fit moves only round count, round-rest, and whole exercises).
+- [x] Determinism and `asOf`-purity are preserved: the assembled session's content remains a pure function of inputs (only ids vary run to run), verified by existing `SessionAssemblyTests`-style structural assertions (`testAssemblyIsDeterministic`, `testExtendedAssemblyIsDeterministic`, etc. still green).
+- [x] The warm-up and cooldown bookends remain one set each (`allowSetAdjust: false`), unchanged.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass (new test asserting uniform set count per training block across 5/10/15/20/30/45/60).
 
 **Validation Test:**
 
@@ -105,12 +105,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] **Between stations** (inside a round, e.g. Pike -> Split Squat): a short fixed **transition** (target ~10-15s, reusing the spirit of `SessionAssembly.transitionSeconds`) that doubles as the "Next: <exercise>, get ready" beat (US-CC11). It is not zero and not recovery.
-- [ ] **Between rounds**: a **bounded recovery rest** in a defined band (roughly 30-75s) that the engine tunes within the band to land the planned wall-clock within `SessionAssembly.toleranceSeconds` (+/-60s) of the request (this is the timing-fit lever that replaces per-exercise set adjustment; see [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md)).
-- [ ] The round-rest band may flex by session intensity/length within its defined bounds, but never outside them; the chosen value is a deterministic function of the inputs.
-- [ ] The planned wall-clock formula is updated to `Σ(rounds × Σ exercise work-window) + between-station transitions + (rounds - 1) × round-rest` per block, plus bookends; it remains the same quantity the fit minimizes and `plannedSeconds(of:)` reports.
-- [ ] When the round-rest band alone cannot close the gap (very short or very long requests), the fit may still add/drop a whole round (uniformly, preserving US-CC03) or add/drop a whole exercise, but never produce an uneven block.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass (new tests: round-rest stays within band; every length lands within tolerance).
+- [x] **Between stations** (inside a round, e.g. Pike -> Split Squat): a short fixed **transition** (`SessionAssembly.transitionSeconds` = 15s) that doubles as the "Next: <exercise>, get ready" beat (US-CC11). It is not zero and not recovery (`testTwoRestGapsAreDistinctTransitionShorterThanRoundRestBand`).
+- [x] **Between rounds**: a **bounded recovery rest** in a defined band (`minRoundRestSeconds`...`maxRoundRestSeconds` = 30-75s) that the engine tunes within the band to land the planned wall-clock within `SessionAssembly.toleranceSeconds` (+/-60s) of the request (this is the timing-fit lever that replaces per-exercise set adjustment; see [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md)). (`testEveryLengthLandsWithinToleranceUnderEvenRoundModel`)
+- [x] The round-rest band may flex by session intensity/length within its defined bounds, but never outside them; the chosen value is a deterministic function of the inputs (uniform per block and in band at every length: `testBetweenRoundRestStaysWithinItsBandForEveryLength`).
+- [x] The planned wall-clock formula is updated to `Σ(rounds × Σ exercise work-window) + between-station transitions + (rounds - 1) × round-rest` per block, plus bookends; it remains the same quantity the fit minimizes and `plannedSeconds(of:)` reports (`SessionAssembly.blockSeconds`, summed by `plannedSeconds`/`totalSeconds`).
+- [x] When the round-rest band alone cannot close the gap (very short or very long requests), the fit may still add/drop a whole round (uniformly, preserving US-CC03) or add/drop a whole exercise, but never produce an uneven block (the `setRoundsAndRest` and whole-exercise promote/drop moves; `testLongSessionsRunMultipleRounds`).
+- [x] Typecheck, lint, and the `RepToday` unit suite pass (new tests: round-rest stays within band; every length lands within tolerance).
 
 **Validation Test:**
 
