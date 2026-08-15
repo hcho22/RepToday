@@ -2273,4 +2273,197 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isRunningWorkWindow, "a fresh window starts for the substitute")
         XCTAssertEqual(vm.workWindowSecondsPerSet, SessionAssembly.workSecondsPerSet(of: substitute))
     }
+
+    // MARK: - Hands-free bookend holds (US-CC05)
+
+    /// A warm-up with a single per-side stretch hold, then a strength set so the stretch has somewhere to
+    /// advance to. The stretch sits in a `.warmup` block, so it is a *bookend* hold (auto-start), not a
+    /// timed *training* hold (manual Start-hold) - the distinction the whole story turns on.
+    private func perSideBookendWorkout(seconds: Int = 20) -> Workout {
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [
+                PrescribedExercise(
+                    id: UUID(), exercise: perSide(holdExercise(id: "hip_opener")),
+                    sets: 1, reps: nil, durationSeconds: seconds, restSeconds: 15
+                )
+            ]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [repPrescription("push_up", sets: 1, reps: 10)]
+        )
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false, blocks: [warmup, strength]
+        )
+    }
+
+    /// A warm-up of two single-side stretch holds, so the station-to-station hands-free flow between two
+    /// bookend holds can be driven.
+    private func twoStretchWarmupWorkout() -> Workout {
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [
+                holdPrescription("cat_cow", sets: 1, seconds: 20),
+                holdPrescription("forward_fold", sets: 1, seconds: 20)
+            ]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [repPrescription("push_up", sets: 1, reps: 10)]
+        )
+        return Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false, blocks: [warmup, strength]
+        )
+    }
+
+    /// The gate is the block category, matching the work-window gate's complement: a warm-up / cooldown
+    /// stretch hold is a *bookend* hold that auto-starts hands-free; a strength / primal timed hold is a
+    /// *training* hold that keeps the manual Start-hold path (US-CC02's circuit player, untouched here).
+    func testBookendHoldGateDistinguishesBookendFromTrainingHold() {
+        let bookend = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { self.start })
+        XCTAssertTrue(bookend.currentStepIsBookendHold, "a warm-up stretch hold is a bookend hold")
+        XCTAssertTrue(bookend.canAutoStartHold, "so it is eligible to auto-start hands-free")
+
+        let training = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start })
+        XCTAssertFalse(training.currentStepIsBookendHold, "a strength hold is a training hold, not a bookend")
+        XCTAssertFalse(training.canAutoStartHold, "so it keeps the manual Start-hold path")
+    }
+
+    /// A warm-up stretch hold auto-starts hands-free on `start()` - no Start-hold tap, unlike a timed
+    /// *training* hold, which stays parked until the user taps.
+    func testBookendHoldAutoStartsHandsFreeOnStart() throws {
+        let vm = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { self.start })
+        XCTAssertTrue(vm.currentStepIsBookendHold)
+        XCTAssertFalse(vm.isHolding, "no leg until the session starts")
+
+        vm.start()
+
+        XCTAssertTrue(vm.isHolding, "the bookend hold auto-starts hands-free on start()")
+        XCTAssertEqual(vm.holdSide, 1)
+        XCTAssertEqual(vm.holdRemaining(asOf: start), try XCTUnwrap(vm.holdSecondsPerSide))
+    }
+
+    /// The heart of US-CC05: a per-side bookend runs side 1 -> a brief "Switch sides" beat -> side 2 with
+    /// no tap anywhere, records exactly one set, and fires the completion cue exactly once per hold *leg*
+    /// (two legs, two cues) - the beat itself is a quiet get-ready pause that fires none.
+    func testPerSideBookendRunsSide1ThenSwitchSidesThenSide2HandsFree() throws {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { clock }, feedback: spy)
+        let stretchID = try XCTUnwrap(vm.currentStep?.id)
+        XCTAssertEqual(vm.holdSidesPerSet, 2)
+
+        // Side 1 auto-starts on start().
+        vm.start()
+        XCTAssertTrue(vm.isHolding)
+        XCTAssertEqual(vm.holdSide, 1)
+
+        // Side 1 elapses: cue once, no set yet, and a brief hands-free "Switch sides" beat opens - no tap.
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertEqual(spy.completions, 1, "side 1 leg cues once")
+        XCTAssertFalse(vm.isHolding, "the leg is down while the beat runs")
+        XCTAssertTrue(vm.isSwitchingSides, "a Switch sides beat bridges the two legs")
+        XCTAssertEqual(vm.restTotalSeconds, ActiveSessionViewModel.switchSidesSeconds, "and it is brief")
+        XCTAssertEqual(vm.holdSide, 2, "owing side 2")
+        XCTAssertEqual(vm.completedSetCount, 0, "half a set is not a set")
+
+        // The beat ends: side 2 auto-starts hands-free, and the beat itself fired no cue.
+        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isSwitchingSides)
+        XCTAssertTrue(vm.isHolding, "side 2 auto-starts with no tap")
+        XCTAssertEqual(vm.holdSide, 2)
+        XCTAssertEqual(spy.completions, 1, "the Switch sides beat fires no cue - the cue is the leg's, once each")
+
+        // Side 2 elapses: the set records, the second leg cues, and the stretch is done.
+        clock = clock.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertEqual(vm.completedSets[stretchID], [CompletedSet(reps: nil, durationSeconds: 20)],
+                       "both legs make exactly one set")
+        XCTAssertEqual(spy.completions, 2, "exactly one cue per hold leg - two legs, two cues, none for the beat")
+    }
+
+    /// Two bookend stretches in a row flow hands-free: the first records and opens the ordinary
+    /// between-stretch transition (a plain rest, not a switch-sides beat), and as it ends the next
+    /// stretch's hold auto-starts with no tap.
+    func testBookendHoldsFlowStationToStationHandsFree() {
+        var clock = start
+        let vm = makeViewModel(twoStretchWarmupWorkout(), clock: { clock })
+        vm.start()
+        XCTAssertTrue(vm.isHolding, "the first stretch auto-starts")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "cat_cow")
+
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock) // single-side stretch -> records, advances, transition opens
+        XCTAssertTrue(vm.isResting, "a between-stretch transition opens")
+        XCTAssertFalse(vm.isSwitchingSides, "it is an ordinary transition, not a switch-sides beat")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "forward_fold")
+
+        clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isResting)
+        XCTAssertTrue(vm.isHolding, "the next stretch's hold auto-starts as the transition ends")
+    }
+
+    /// Scope guard: a timed *training* hold (strength / primal) is deliberately left on its manual path -
+    /// it does not auto-start on `start()`, and a per-side one parks on side 2 for a tap with no
+    /// switch-sides beat. US-CC05 owns only the bookends.
+    func testTrainingHoldStaysManualNotAutoStarted() {
+        let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start }) // strength block
+        vm.start()
+        XCTAssertFalse(vm.isHolding, "a training hold keeps the manual Start-hold path - no auto-start")
+
+        vm.startHold()
+        vm.completeHoldIfElapsed(asOf: start.addingTimeInterval(20)) // side 1 done
+        XCTAssertEqual(vm.holdSide, 2)
+        XCTAssertFalse(vm.isHolding, "parks on side 2 for a tap")
+        XCTAssertFalse(vm.isSwitchingSides, "and opens no switch-sides beat on a training hold")
+        XCTAssertFalse(vm.isResting)
+    }
+
+    /// A resumed bookend re-opens idle (a hold leg never survives a relaunch, US-O03) and then auto-starts
+    /// the owed side fresh on `start()` - no phantom set, no cue on the restored/expired leg (US-CC05
+    /// resume rule).
+    func testResumedBookendHoldReopensIdleAndAutoStartsFresh() async throws {
+        let store = InMemoryActiveSessionStore()
+        let spy = SpyRestFeedback()
+        let original = ActiveSessionViewModel(
+            workout: perSideBookendWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
+        )
+        original.start()                                                    // auto-starts side 1
+        original.completeHoldIfElapsed(asOf: start.addingTimeInterval(20))  // side 1 done -> owes side 2
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+        XCTAssertEqual(saved.hold?.side, 2, "the side owed is carried; the running leg is not")
+
+        // Relaunch long after: the beat (a rest) has expired and is dropped, and the leg was never restored.
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(600) }, feedback: spy)
+        XCTAssertFalse(resumed.isHolding, "a hold leg never survives the relaunch")
+        XCTAssertFalse(resumed.isResting, "the expired switch-sides beat is dropped, not waiting to fire")
+        XCTAssertEqual(resumed.holdSide, 2)
+
+        resumed.start()
+        XCTAssertTrue(resumed.isHolding, "the bookend re-opens idle and auto-starts the owed side fresh")
+        XCTAssertEqual(resumed.completedSetCount, 0, "no phantom set for work nobody did")
+        XCTAssertEqual(spy.completions, 0, "and no cue fires until the fresh leg actually elapses")
+    }
+
+    /// A bookend hold still honours **Stop hold**: tapping it comes out of the leg without re-arming
+    /// itself, so stopping is a real escape and the manual Start-hold is the way back (never a surprise
+    /// auto-restart under the user's thumb).
+    func testStopHoldOnABookendDoesNotImmediatelyReArm() {
+        let vm = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { self.start })
+        vm.start()
+        XCTAssertTrue(vm.isHolding)
+
+        vm.cancelHold()
+        XCTAssertFalse(vm.isHolding, "Stop hold comes out of the leg")
+        XCTAssertTrue(vm.canStartHold, "and the manual Start-hold is offered as the way back")
+        XCTAssertEqual(vm.holdSide, 1, "the same side is still owed")
+    }
 }

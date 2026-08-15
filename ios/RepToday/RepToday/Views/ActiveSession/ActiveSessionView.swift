@@ -17,9 +17,11 @@ import Lottie
 /// summary. What replaces it is a clock that actually helps: a per-exercise Hold Timer on timed
 /// movements, which counts one side of the hold down and records the set at zero, and - since US-CC01 -
 /// an auto-advancing work window on rep-based training sets, which counts the set's planned per-set
-/// seconds down and records it at zero with no tap, offering a quiet **Done** to advance early. Warm-up
-/// and cooldown bookends keep their manual path (US-CC05 makes them hands-free); a rep-based set outside
-/// a training block, were one generated, keeps the manual "Complete set".
+/// seconds down and records it at zero with no tap, offering a quiet **Done** to advance early. Since
+/// US-CC05 the **warm-up and cooldown bookend holds auto-start hands-free** too - no Start-hold tap, a
+/// per-side stretch flowing side 1 -> a brief "Switch sides" beat -> side 2 with no tap - while a timed
+/// *strength / primal* hold keeps the deliberate Start-hold tap; a rep-based set outside a training
+/// block, were one generated, keeps the manual "Complete set".
 struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -205,6 +207,13 @@ struct ActiveSessionView: View {
             }
 
             controls
+        }
+        // A swap on a bookend hold ends the leg and lands on the substitute idle; re-arm the hands-free
+        // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
+        // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. A no-op off
+        // the bookend-hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
+        .onChange(of: viewModel.isSwapping) { _, swapping in
+            if !swapping { viewModel.autoStartHoldIfNeeded() }
         }
     }
 
@@ -889,14 +898,18 @@ private struct RestView: View {
             Spacer()
 
             VStack(spacing: Theme.Spacing.lg) {
-                Text("Rest")
+                // A per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 hands-free
+                // (US-CC05); the beat reuses this rest overlay but names itself so the user knows to
+                // change position rather than read it as a plain between-set rest.
+                Text(viewModel.isSwitchingSides ? "Switch sides" : "Rest")
                     .font(Theme.Typography.title)
                     .foregroundStyle(Theme.Colors.textSecondary)
 
                 CountdownRing(
                     remaining: remaining,
                     fraction: fraction,
-                    accessibilityLabel: "Rest, \(remaining) seconds remaining"
+                    accessibilityLabel: (viewModel.isSwitchingSides ? "Switch sides" : "Rest")
+                        + ", \(remaining) seconds remaining"
                 )
                 .padding(.horizontal, Theme.Spacing.lg)
 
@@ -919,14 +932,22 @@ private struct RestView: View {
     @ViewBuilder
     private var nextUp: some View {
         if let step = viewModel.currentStep {
+            // A switch-sides beat (US-CC05) paces toward the *same* stretch's next side, so it names the
+            // side owed ("Side 2 of 2") rather than a set/round; every other rest paces toward the next
+            // set, round, or stretch.
+            let switching = viewModel.isSwitchingSides
+            let heading = switching ? "Same stretch" : "Next up"
             let progressText: String = {
+                if switching {
+                    return "Side \(viewModel.holdSide) of \(viewModel.holdSidesPerSet)"
+                }
                 if let round = viewModel.currentRound, let rounds = viewModel.circuitRoundCount {
                     return "Round \(round) of \(rounds)"
                 }
                 return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
             }()
             VStack(spacing: Theme.Spacing.xs) {
-                Text("Next up")
+                Text(heading)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
                 Text(step.prescription.exercise.displayName)
@@ -937,7 +958,7 @@ private struct RestView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Next up, \(step.prescription.exercise.displayName), \(progressText)")
+            .accessibilityLabel("\(heading), \(step.prescription.exercise.displayName), \(progressText)")
         }
     }
 
