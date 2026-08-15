@@ -1,6 +1,6 @@
 # PRD: Continuous-Circuit Sessions (hands-free follow-along player)
 
-- Status: In progress. US-CC01 (auto-advancing work window for strength sets) has landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
+- Status: In progress. US-CC01 (auto-advancing work window for strength sets) and US-CC03/US-CC04 (the even-round engine timing model: uniform set count per training block plus the two-gap transition/round-rest fit, engine-only) have landed; all other stories remain unbuilt (specification only). Decisions locked with the captain 2026-08-14.
 - Story prefix: `US-CC##`.
 - Supersedes, on landing: the manual tap-to-advance active-session player (US-K01/US-K02/US-O03 interaction model).
 - Related decisions: [ADR-0002](../../../docs/adr/0002-per-interval-pacer-clock.md) (per-interval pacer clock), [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md) (even-round circuit timing). Domain term: `CONTEXT.md` -> "Continuous Circuit (planned)".
@@ -105,12 +105,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] **Between stations** (inside a round, e.g. Pike -> Split Squat): a short fixed **transition** (target ~10-15s, reusing the spirit of `SessionAssembly.transitionSeconds`) that doubles as the "Next: <exercise>, get ready" beat (US-CC11). It is not zero and not recovery.
-- [ ] **Between rounds**: a **bounded recovery rest** in a defined band (roughly 30-75s) that the engine tunes within the band to land the planned wall-clock within `SessionAssembly.toleranceSeconds` (+/-60s) of the request (this is the timing-fit lever that replaces per-exercise set adjustment; see [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md)).
-- [ ] The round-rest band may flex by session intensity/length within its defined bounds, but never outside them; the chosen value is a deterministic function of the inputs.
-- [ ] The planned wall-clock formula is updated to `Σ(rounds × Σ exercise work-window) + between-station transitions + (rounds - 1) × round-rest` per block, plus bookends; it remains the same quantity the fit minimizes and `plannedSeconds(of:)` reports.
-- [ ] When the round-rest band alone cannot close the gap (very short or very long requests), the fit may still add/drop a whole round (uniformly, preserving US-CC03) or add/drop a whole exercise, but never produce an uneven block.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass (new tests: round-rest stays within band; every length lands within tolerance).
+- [x] **Between stations** (inside a round, e.g. Pike -> Split Squat): a short fixed **transition** (`SessionAssembly.transitionSeconds` = 15s) that doubles as the "Next: <exercise>, get ready" beat (US-CC11). It is not zero and not recovery (`testTwoRestGapsAreDistinctTransitionShorterThanRoundRestBand`).
+- [x] **Between rounds**: a **bounded recovery rest** in a defined band (`minRoundRestSeconds`...`maxRoundRestSeconds` = 30-75s) that the engine tunes within the band to land the planned wall-clock within `SessionAssembly.toleranceSeconds` (+/-60s) of the request (this is the timing-fit lever that replaces per-exercise set adjustment; see [ADR-0003](../../../docs/adr/0003-even-round-circuit-timing.md)). (`testEveryLengthLandsWithinToleranceUnderEvenRoundModel`)
+- [x] The round-rest band may flex by session intensity/length within its defined bounds, but never outside them; the chosen value is a deterministic function of the inputs (uniform per block and in band at every length: `testBetweenRoundRestStaysWithinItsBandForEveryLength`).
+- [x] The planned wall-clock formula is updated to `Σ(rounds × Σ exercise work-window) + between-station transitions + (rounds - 1) × round-rest` per block, plus bookends; it remains the same quantity the fit minimizes and `plannedSeconds(of:)` reports (`SessionAssembly.blockSeconds`, summed by `plannedSeconds`/`totalSeconds`).
+- [x] When the round-rest band alone cannot close the gap (very short or very long requests), the fit may still add/drop a whole round (uniformly, preserving US-CC03) or add/drop a whole exercise, but never produce an uneven block (the `setRoundsAndRest` and whole-exercise promote/drop moves; `testLongSessionsRunMultipleRounds`).
+- [x] Typecheck, lint, and the `RepToday` unit suite pass (new tests: round-rest stays within band; every length lands within tolerance).
 
 **Validation Test:**
 

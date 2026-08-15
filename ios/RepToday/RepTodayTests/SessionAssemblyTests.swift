@@ -1309,4 +1309,62 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertLessThanOrEqual(planned, 21 * 60, "20-min session should total at most 21 min")
         XCTAssertLessThan(elapsedMs, 100, "assembly took \(elapsedMs)ms, over the 100ms budget")
     }
+
+    // MARK: - Evidence transcript (US-CC03/US-CC04)
+
+    /// Renders a human-readable transcript of the even-round circuit sessions the engine generates for
+    /// every acceptance length crossed with every fitness level, printed between EVIDENCE markers so a
+    /// reviewer can read the actual "Round N of M" structure, the two distinct rest gaps, and how close
+    /// the planned wall-clock lands to the request. Also asserts the intent's tightened claim: the
+    /// planned time lands within 3s of target, every training block is internally uniform, and the
+    /// between-round rest sits inside its band - across all levels, not just the default one.
+    func testEvidenceEvenRoundCircuitTranscriptAcrossLevelsAndLengths() async throws {
+        let library = try await library()
+        var lines: [String] = []
+        lines.append("EVEN-ROUND CIRCUIT SESSIONS (US-CC03/US-CC04) - engine generation transcript")
+        lines.append("transitionSeconds=\(SessionAssembly.transitionSeconds)s  round-rest band=[\(SessionAssembly.minRoundRestSeconds)..\(SessionAssembly.maxRoundRestSeconds)]s  maxRounds=\(SessionAssembly.maxTrainingSets)  tolerance=\(SessionAssembly.toleranceSeconds)s")
+        lines.append("")
+
+        var worstDeviation = 0
+        for level in [FitnessLevel.beginner, .intermediate, .advanced] {
+            lines.append("================ FITNESS LEVEL: \(level) ================")
+            for minutes in circuitDurations {
+                let workout = assemble(minutes: minutes, user: user(level: level), library: library, logs: stalePrimalSteadyHistory())
+                let planned = SessionAssembly.plannedSeconds(of: workout)
+                let deviation = planned - minutes * 60
+                worstDeviation = max(worstDeviation, abs(deviation))
+                let plannedStr = String(format: "%d:%02d", planned / 60, planned % 60)
+                lines.append(String(format: "  [%2d min] planned %@ (%+ds vs target)", minutes, plannedStr, deviation))
+                for block in workout.blocks where !block.exercises.isEmpty {
+                    let circuit = SessionAssembly.isCircuit(block.category)
+                    let rounds = block.exercises.first?.sets ?? 0
+                    let rest = block.exercises.first?.restSeconds ?? 0
+                    if circuit {
+                        lines.append("      \(block.title) [CIRCUIT] - \(rounds) rounds, between-round rest \(rest)s, between-station transition \(SessionAssembly.transitionSeconds)s")
+                        for ex in block.exercises {
+                            let tgt = ex.reps.map { "\($0) reps" } ?? ex.durationSeconds.map { "\($0)s hold" } ?? "?"
+                            lines.append("          • \(ex.exercise.displayName): \(ex.sets)×\(tgt)")
+                        }
+                        // Every station in a circuit block shares the round count and round-rest.
+                        XCTAssertEqual(Set(block.exercises.map(\.sets)).count, 1, "\(minutes)min/\(level) \(block.category) uneven rounds")
+                        XCTAssertEqual(Set(block.exercises.map(\.restSeconds)).count, 1, "\(minutes)min/\(level) \(block.category) non-uniform rest")
+                        XCTAssertGreaterThanOrEqual(rest, SessionAssembly.minRoundRestSeconds, "\(minutes)min/\(level) rest below band")
+                        XCTAssertLessThanOrEqual(rest, SessionAssembly.maxRoundRestSeconds, "\(minutes)min/\(level) rest above band")
+                    } else {
+                        lines.append("      \(block.title) [linear bookend] - \(block.exercises.count) movement(s), one set each")
+                        for ex in block.exercises {
+                            let tgt = ex.reps.map { "\($0) reps" } ?? ex.durationSeconds.map { "\($0)s hold" } ?? "?"
+                            lines.append("          • \(ex.exercise.displayName): \(ex.sets)×\(tgt)")
+                        }
+                    }
+                }
+                XCTAssertLessThanOrEqual(abs(deviation), 3, "\(minutes)min/\(level) planned \(planned)s is more than 3s off target")
+            }
+            lines.append("")
+        }
+        lines.append("WORST ABSOLUTE DEVIATION ACROSS ALL LEVELS × ALL LENGTHS: \(worstDeviation)s")
+
+        let transcript = lines.joined(separator: "\n")
+        print("\n===EVIDENCE-BEGIN===\n\(transcript)\n===EVIDENCE-END===\n")
+    }
 }

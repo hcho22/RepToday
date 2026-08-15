@@ -20,14 +20,15 @@ import Foundation
 ///   `SessionAssembly.workSecondsPerSet` at the target each movement actually carries - the same
 ///   arithmetic the session was sized with. The per-set target itself (reps or hold seconds) is
 ///   recomputed capacity-relative for the substitute via `AdaptiveOverload`, exactly as assembly would
-///   have. Because that target is *not* transferable - a movement the user has never logged opens at
-///   its own default while the slot it replaces may carry a long-grown one - the substitute's **set
-///   count** is the lever that absorbs the difference, within the same
-///   `minTrainingSets...maxTrainingSets` rails and on the same set-adjustable blocks the assembler's
-///   own timing fit uses. That lever is a strict *fallback*: a substitute that fits the slot as built
-///   outranks every substitute that needs a re-pick, so a swap restructures a slot only when no in-band
-///   peer fits it as built, and only when no permitted set count fits at all is a candidate
-///   out-of-budget.
+///   have. Under the even-round model (US-CC03/US-CC04) the substitute **keeps the slot's set count** -
+///   which on a training block is the block's uniform round count - rather than re-picking one: a
+///   re-pick would leave one station running a different number of rounds than its peers, which the
+///   circuit forbids. So the old set-count lever is retired; a candidate whose capacity-relative target
+///   lands its slot outside `tolerance` at that fixed round count is simply declined. Because no slot
+///   has a set lever anymore, the widened, soft-estimate-scaled `slotTolerance` (once reserved for the
+///   single-set bookends) now applies to every slot, which is what keeps honestly-comparable peers
+///   swappable. Reshaping the block's shared round-rest on swap and applying a swap across all remaining
+///   rounds is deferred to US-CC07.
 ///
 /// Like every other engine step this is a pure function of its inputs - the slot, the `Workout`, the
 /// `User`, the full `library`, `recentLogs`, and the `sessionPolicy` the session was generated against
@@ -217,10 +218,10 @@ enum ExerciseSwap {
 
         let recentlyUsed = recentlyUsedIds(recentLogs: recentLogs, window: sessionPolicy.varietyWindow)
         let chosen = candidates.min { lhs, rhs in
-            // 1. Leave the slot's shape alone. The set lever is a *fallback* for when no in-band peer
-            //    fits the slot as built, not a way to shave seconds off an otherwise fine swap, so a
-            //    candidate that fits at the original count outranks every candidate that needs a
-            //    re-pick. Only when none does are the re-picked ones considered at all.
+            // 1. Leave the slot's shape alone. Under the even-round model every candidate already keeps
+            //    the original count (`bestFitSets` never re-picks), so this step is inert-but-retained:
+            //    a candidate that somehow ran a different count would be outranked by one at the
+            //    original count, preserving the invariant that a swap never makes a circuit uneven.
             let lhsKeeps = lhs.sets == prescription.sets
             let rhsKeeps = rhs.sets == prescription.sets
             if lhsKeeps != rhsKeeps { return lhsKeeps }
@@ -230,7 +231,8 @@ enum ExerciseSwap {
             if lhsGap != rhsGap { return lhsGap < rhsGap }
             // 3. Smallest change to the session's wall-clock.
             if lhs.drift != rhs.drift { return lhs.drift < rhs.drift }
-            // 4. Among re-picked candidates, the smallest move off the original count.
+            // 4. Smallest move off the original count (inert under even rounds, since every candidate
+            //    keeps it; retained as a defensive tie-break).
             let lhsSetMove = abs(lhs.sets - prescription.sets)
             let rhsSetMove = abs(rhs.sets - prescription.sets)
             if lhsSetMove != rhsSetMove { return lhsSetMove < rhsSetMove }
@@ -251,8 +253,9 @@ enum ExerciseSwap {
 
     /// One in-band, in-budget substitute under consideration: the movement, the Step 6 target already
     /// resolved for it (so the budget check and the materialized slot can never disagree about how big
-    /// the substitute is), the set count that brings its slot closest to the original's planned
-    /// seconds, and how far the slot still moves the session's wall-clock at that count.
+    /// the substitute is), the set count it runs at (always the slot's original count / block round
+    /// count under the even-round model), and how far the slot still moves the session's wall-clock at
+    /// that count.
     private struct Candidate {
         let exercise: Exercise
         let overload: OverloadTarget
