@@ -1,6 +1,6 @@
 # ADR-0002: Per-interval pacer clock (partial reversal of US-O03's hidden clock)
 
-- Status: Accepted (decision made 2026-08-14); **not yet implemented** - to be built per `.claude/agent/tasks/prd-continuous-circuit-sessions_260814.md` (US-CC01/US-CC04/US-CC14). Until those stories land, the shipped player still has no visible timer of any kind (US-O03).
+- Status: Accepted (decision made 2026-08-14); **partially implemented**. US-CC01 has landed the first visible auto-advancing per-interval countdown - the rep-based strength/primal **work window** (`ActiveSessionViewModel.workWindow`), counting the set's planned work-seconds down and flowing on with no tap - alongside US-O03's tap-started Hold Timer. The remaining pacer intervals (the between-round rest, US-CC04) and the accessibility hardening (US-CC14) are still to be built per `.claude/agent/tasks/prd-continuous-circuit-sessions_260814.md`; until they land, the shipped player shows no session-wide clock and no pacer beyond the work window and the Hold Timer.
 - Date: 2026-08-14
 - Deciders: captain, via the "Continuous-Circuit Sessions" decision session (2026-08-14)
 - Relates to: [ADR-0003](0003-even-round-circuit-timing.md) (the timing model the pacer clock counts against); the domain term `CONTEXT.md` -> "Continuous Circuit (planned)".
