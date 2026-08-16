@@ -2,7 +2,7 @@ import XCTest
 @testable import RepToday
 
 /// US-M03: the desk-worker `sitsLong` signal *biases* bookend selection toward posture/hip openers -
-/// never sizes any block, and never reintroduces a mobility middle block.
+/// never picks a different training movement or target, and never reintroduces a mobility middle block.
 ///
 /// Since US-M01 removed the Movement Practice accessory (the block `sitsLong` used to size), the flag's
 /// only remaining job in the engine is a pure ordering **preference** on the warm-up/cooldown mobility
@@ -20,9 +20,13 @@ import XCTest
 ///       false) at 5 and 20 min - the `sitsLong` bookends lean toward posture/hip openers while block
 ///       count/structure stays identical, no mobility middle block appears, and the 5-min session is not
 ///       re-inflated;
-///   (c) `sitsLong` sizes nothing: the whole training middle (strength, and the extended primal block)
-///       is byte-identical between the two profiles across 5/20/45/60 min, and the bookend *counts* are
-///       identical too (the reorder-only choice adds no stretch);
+///   (c) `sitsLong` is not a sizing lever: across 5/20/45/60 min the training middle (strength, and the
+///       extended primal block) holds the same movements at the same per-set targets for both profiles,
+///       each block stays internally even, and the bookend *counts* are identical too (the reorder-only
+///       choice adds no stretch). A block's uniform **round count** may differ, but only where the
+///       bookends genuinely cost different seconds - since US-CC08 a rep-based stretch carries the
+///       generous runtime pace and a hold stretch does not, so a desk worker's warm-up can be materially
+///       longer and the fit pays for it out of a round (accepted, see that test);
 ///   (d) determinism and `asOf`-purity: the bias is a pure, stable reorder, so identical inputs (and
 ///       staleness-preserving `asOf` shifts) yield byte-identical `sitsLong` bookends.
 final class SitsLongBookendBiasTests: XCTestCase {
@@ -100,17 +104,39 @@ final class SitsLongBookendBiasTests: XCTestCase {
         bookendExercises(workout).filter(SessionAssembly.isPostureHipOpener).count
     }
 
-    /// A stable signature of the *training middle* (everything but the warm-up/cooldown bookends):
-    /// block category + each exercise id / sets / reps / hold. `sitsLong` must not perturb any of it.
-    private func trainingSignature(_ workout: Workout) -> [String] {
+    private func trainingBlocks(_ workout: Workout) -> [WorkoutBlock] {
+        workout.blocks.filter { $0.category != .warmup && $0.category != .cooldown }
+    }
+
+    /// A stable signature of the *shape* of the training middle: block category + each exercise id and
+    /// its per-set target (reps / hold seconds), in order. This is what `sitsLong` must never perturb -
+    /// the movements chosen and the capacity-relative target Step 6 prescribed for each.
+    ///
+    /// It deliberately omits the block's **round count**, which since US-CC08 can legitimately differ
+    /// between the two profiles: the bias changes *which* stretches fill the fixed-count bookends, and
+    /// rep-based stretches carry the generous runtime pace while hold stretches do not, so a desk
+    /// worker's warm-up can cost real extra seconds - which the timing fit pays for out of rounds. The
+    /// causal link is asserted rather than assumed in `testSitsLongChangesNoTrainingMovementOrTarget`.
+    private func trainingShapeSignature(_ workout: Workout) -> [String] {
+        trainingBlocks(workout).map { block in
+            let items = block.exercises
+                .map { "\($0.exercise.id):\($0.reps.map(String.init) ?? "-")/\($0.durationSeconds.map(String.init) ?? "-")" }
+                .joined(separator: ",")
+            return "\(block.category.rawValue)[\(items)]"
+        }
+    }
+
+    /// The uniform round count of each training block, in block order.
+    private func roundCounts(_ workout: Workout) -> [Int] {
+        trainingBlocks(workout).map { $0.exercises.first?.sets ?? 0 }
+    }
+
+    /// The planned seconds the mobility bookends consume - the one channel through which `sitsLong` can
+    /// reach the training middle at all.
+    private func bookendSeconds(_ workout: Workout) -> Int {
         workout.blocks
-            .filter { $0.category != .warmup && $0.category != .cooldown }
-            .map { block in
-                let items = block.exercises
-                    .map { "\($0.exercise.id):\($0.sets)x\($0.reps.map(String.init) ?? "-")/\($0.durationSeconds.map(String.init) ?? "-")" }
-                    .joined(separator: ",")
-                return "\(block.category.rawValue)[\(items)]"
-            }
+            .filter { $0.category == .warmup || $0.category == .cooldown }
+            .reduce(0) { $0 + SessionAssembly.blockSeconds(of: $1) }
     }
 
     // MARK: - (a) The posture/hip-opener predicate over the real catalog
@@ -200,26 +226,58 @@ final class SitsLongBookendBiasTests: XCTestCase {
         }
     }
 
-    // MARK: - (c) sitsLong sizes nothing
+    // MARK: - (c) sitsLong is not a sizing lever
 
-    /// The whole training middle - the strength block, and (at 41-60 min) the dedicated primal block -
-    /// is byte-identical between the two profiles at every length, including the extended shape. The
-    /// bias touches only the mobility bookend *ordering*, so no training block gains or loses an
-    /// exercise, a set, or a rep. This is the criterion that pins "`sitsLong` no longer sizes any block".
-    func testSitsLongDoesNotSizeAnyTrainingBlock() async throws {
+    /// `sitsLong` is not a lever on the training middle: at every length, the strength block - and, at
+    /// 41-60 min, the dedicated primal block - contains the **same movements at the same per-set
+    /// targets** for both profiles. The bias reaches only the mobility bookend *ordering*, so no training
+    /// block gains or loses an exercise, and Step 6's capacity-relative reps/holds are untouched. This is
+    /// the criterion that pins "`sitsLong` no longer sizes any block".
+    ///
+    /// **What may differ, and why (US-CC08, accepted).** The block's uniform **round count** can. The
+    /// bias changes which stretches fill the fixed-count bookends, and since US-CC08 a rep-based stretch
+    /// carries the generous runtime pace while a hold stretch does not, so a desk worker's warm-up can
+    /// genuinely cost more seconds (at 45 min the shipped catalog picks two rep-based openers and the
+    /// warm-up runs ~32s longer). The fit pays that out of the training middle, which under the even-round
+    /// model means a whole round - so a desk worker can run one fewer strength round at 45 min, for the
+    /// same total minutes and a longer warm-up. That was always incidental rather than structural (the
+    /// bias adds no stretch and changes no count, so it cannot re-inflate a short session or create a
+    /// mobility middle block); before US-CC08 the gap was ~10s and simply happened not to cross a round
+    /// boundary. So this test asserts the invariant plus its *mechanism* - a round count may differ only
+    /// where the bookends really do cost different seconds - rather than a byte-identity that was a
+    /// coincidence of the shipped catalog's pricing.
+    func testSitsLongChangesNoTrainingMovementOrTarget() async throws {
         let library = try await library()
         for minutes in [5, 20, 45, 60] {
             let desk = assemble(minutes: minutes, sitsLong: true, library: library)
             let general = assemble(minutes: minutes, sitsLong: false, library: library)
+
             XCTAssertEqual(
-                trainingSignature(desk), trainingSignature(general),
-                "\(minutes) min: sitsLong perturbed the training middle (it must only bias bookends)"
+                trainingShapeSignature(desk), trainingShapeSignature(general),
+                "\(minutes) min: sitsLong changed a training movement or its per-set target (it must only bias bookends)"
             )
-            // And, again, no mobility middle block at any length under either flag.
+            // Every training block stays internally even for both profiles: the bias can move a round
+            // count, never make a circuit uneven (US-CC03).
             for workout in [desk, general] {
+                for block in trainingBlocks(workout) where SessionAssembly.isCircuit(block.category) {
+                    XCTAssertEqual(
+                        Set(block.exercises.map(\.sets)).count, 1,
+                        "\(minutes) min: \(block.title) is not internally uniform"
+                    )
+                }
+                // And, again, no mobility middle block at any length under either flag.
                 XCTAssertFalse(
                     workout.blocks.contains { $0.category == .mobility },
                     "\(minutes) min: a mobility middle block appeared"
+                )
+            }
+            // The one permitted difference has exactly one cause: the bookends really cost different
+            // seconds. Equal bookend seconds must still produce identical round counts, so the bias can
+            // never reach the training middle through any other channel.
+            if bookendSeconds(desk) == bookendSeconds(general) {
+                XCTAssertEqual(
+                    roundCounts(desk), roundCounts(general),
+                    "\(minutes) min: sitsLong moved a round count without the bookends costing anything different"
                 )
             }
         }

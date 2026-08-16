@@ -1201,9 +1201,12 @@ final class PerSideSwapEvidenceTests: XCTestCase {
 
     /// A session of short rep-based strength sets, so a live test can drive the auto-advancing work
     /// window to zero without waiting out a real 40-second set. `estimatedTimePerSetSeconds == seconds`
-    /// against a 1-rep default prices the window at exactly `seconds` (`SessionAssembly.workSecondsPerSet`),
-    /// so the timing is deterministic. Two slots, so finishing the first hands off to a rest rather than
-    /// ending the session.
+    /// against a 1-rep default prices the window at `round(seconds x SessionAssembly.workPaceGenerosityFactor)`
+    /// - the rep branch is paced (US-CC08) - so the timing is deterministic but *longer than* `seconds`:
+    /// `seconds: 5` runs a 6s window and `seconds: 120` a 150s one. Both callers still hold at those
+    /// paced numbers (6s stays under the 20s runloop ceiling; 150s stays comfortably running for the Done
+    /// test), so budget against the paced value, not the raw one. Two slots, so finishing the first hands
+    /// off to a rest rather than ending the session.
     private func shortRepWorkout(seconds: Int, sets: Int) -> Workout {
         let rep = Exercise(
             id: "evidence_short_rep", displayName: "Short Rep", pillar: .strength,

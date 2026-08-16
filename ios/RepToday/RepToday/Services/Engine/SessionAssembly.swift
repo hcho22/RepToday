@@ -186,6 +186,55 @@ enum SessionAssembly {
     /// to get into than to hold, not an authoring error.
     static let maxSetupShareOfEstimate = 0.5
 
+    /// The one constant that turns `workSecondsPerSet` from a planning-only proxy into a **generous
+    /// runtime pace** (US-CC08): the multiplier applied to the *estimated* half of a set's cost so the
+    /// number the fit budgets - and therefore the auto-advancing on-screen work window that reads the
+    /// very same function - is a slower-end pace a typical user comfortably finishes within, rather than
+    /// the typical-case time the catalog authored.
+    ///
+    /// **Why a factor rather than new authored data.** The honest sourcing for a runtime window is
+    /// observed per-movement completion times (the PRD's open question), which do not exist. What does
+    /// exist is `Exercise.estimatedTimePerSetSeconds`, a *typical*-case number: across the catalog's
+    /// fundamentals the derived cadence is 2.0-2.5 seconds per rep (`hinge_glute_bridge` 2.00,
+    /// `push_wall` 2.08, `squat_bodyweight`/`squat_sumo` 2.33, `push_incline`/`hinge_good_morning` 2.50),
+    /// which is a brisk metronome tempo with no pause - below the ~2.5-3.0 s/rep a controlled bodyweight
+    /// rep actually takes. Scaling that typical case by a single deterministic factor keeps the model's
+    /// per-movement shape (cadence still read off each movement's own authored fields) while moving the
+    /// whole thing to the slower end, and keeps the value a pure function of the exercise and target.
+    ///
+    /// **Why 1.25.** It lands the fundamentals at 2.5-2.9 s/rep of work and lifts the assumed per-set
+    /// setup from 10s to 12.5s - the slower end of the controlled-tempo band, with room for the reaction
+    /// lag at the window's start cue. Read as a distribution: if the authored estimate is a median
+    /// completion time and self-paced cadence varies with a ~20% coefficient of variation, ×1.25 sits
+    /// near the 85th percentile, so the large majority of users finish inside the window unhurried and
+    /// the rest are within a rep of it (the set still logs as prescribed, US-CC09). The round-count cost
+    /// is flat across 1.20-1.30, so the choice inside that band is a pure pacing decision that buys no
+    /// extra session-shape change.
+    ///
+    /// **What it does not touch.** The split is *estimated* versus *definitional*, not windowed versus
+    /// un-windowed. A hold's per-unit cost is not an estimate at all - a 40-second hold is 40 seconds by
+    /// definition (`secondsPerHoldSecond`, doubled per side), so prescribed equals elapsed and there is
+    /// nothing to be generous about; holds pass through at 1.0. The factor multiplies only the
+    /// assumed/derived rep half, where the authored number really is a guess at how long a user takes -
+    /// the same assumed-vs-observed split `maxSetupShareOfEstimate` already draws. That is why a
+    /// *rep-based* movement is paced wherever it sits, warm-up and cooldown stretches included: those
+    /// bookend reps are estimated too, and the plan must budget the slower user's real time whether or
+    /// not that set happens to run under an on-screen countdown, or the session overruns for exactly the
+    /// users the generosity exists to protect. It is a *pacing* multiplier on the work-seconds model
+    /// only: Step 6's capacity-relative per-set target (reps/hold seconds) is untouched.
+    ///
+    /// **Accepted trade-off (US-CC08).** The same inflated number drives the planning fit, so a session
+    /// fits fewer rounds in the middle of the range (15/20 min 6 -> 5, 30 min 7 -> 6) and is unchanged at
+    /// the ends (5 min stays at 3 rounds; 60 min stays at 8 x 5). At **45 minutes** the cost is not a
+    /// round but a **station**: the strength block goes from 7 rounds x 5 stations to 8 x 4, so the
+    /// longest strength block now trains 4 distinct movements instead of 5, which narrows its
+    /// movement-pattern coverage - and with the block pinned at the `maxTrainingSets` (8) rail, dropping
+    /// a station is the fit's only remaining lever there. Both consequences are accepted rather than
+    /// engineered around (a station floor or a higher rail is a separate follow-on, out of US-CC08).
+    /// The coupling itself is the point: it is what forbids a screen window roomier than the plan. A fast
+    /// user simply finishes early and taps **Done**.
+    static let workPaceGenerosityFactor = 1.25
+
     // MARK: - Entry point
 
     /// Assembles the complete session for `requestedMinutes` (pipeline Step 7).
@@ -447,22 +496,41 @@ enum SessionAssembly {
     /// promise the timing fit is measured against - honest about the session the user is actually going
     /// to do. A movement with no default to scale against falls back to the flat estimate.
     ///
-    /// - Note: This is per-set *work* only; the between-set rest and the inter-exercise transition are
-    ///   counted separately by `plannedSeconds`.
-    /// - Note: The work half of a session is never *timed*. Nothing counts a rep or a hold down; the
-    ///   only countdown in the player is the rest timer, and a completed set logs the target it was
-    ///   prescribed rather than anything measured. So this is a planning-only quantity that never
-    ///   reaches the UI and is never compared against reality - its single job is fitting a session to
-    ///   the minutes the user asked for. Chasing per-second accuracy on a self-paced activity would be
-    ///   false precision; what matters, and what the split above buys, is that the model carries no
-    ///   *systematic* bias, because a consistent per-slot error accumulates across a session where
-    ///   random error averages out. Set count is the better-founded lever for the same reason: each set
-    ///   added or removed moves a real, deterministic rest period.
+    /// On top of that split, the rep half is scaled by `workPaceGenerosityFactor` (US-CC08), which is
+    /// what makes this a **runtime** pace rather than a planning proxy: the authored estimate is a
+    /// typical-case time, and the factor moves it to the slower-end pace a user comfortably finishes
+    /// within - so a default-sized *rep* set is priced above what the catalog authored, while a
+    /// default-sized *hold* still costs exactly it. The hold is left alone because its per-unit cost is
+    /// definitional rather than estimated (prescribed seconds are elapsed seconds), not because of where
+    /// the set is played: every rep-based set is paced, warm-up and cooldown stretches included, since
+    /// their reps are estimated the same way and the plan owes them the same slower-user budget. See that
+    /// constant for the calibration and the accepted trade-off.
+    ///
+    /// - Note: This is per-set *work* only; the between-round rest and the between-station transition are
+    ///   counted separately by `blockSeconds`/`plannedSeconds`.
+    /// - Note: This is now a **single source of truth** shared by planning and runtime (US-CC08). Since
+    ///   US-CC01 the player's auto-advancing work window for a rep-based training set counts down exactly
+    ///   this number (`ActiveSessionViewModel.workWindowSecondsPerSet`), so the seconds the fit budgeted
+    ///   for a set are the seconds the user is given to perform it - the screen window can never be
+    ///   roomier than the plan (which would make every set overrun the requested minutes) nor tighter
+    ///   (which would rush the user). It is still not *measured*: a completed set logs the target it was
+    ///   prescribed, never anything timed (US-CC09), and there is no per-rep input. So per-second accuracy
+    ///   remains false precision on a self-paced activity; what matters is that the model carries no
+    ///   *systematic* bias about which sets are longer than which, because a consistent per-slot error
+    ///   accumulates across a session where random error averages out - and, since US-CC08, that its
+    ///   overall level is deliberately set at the generous end rather than the typical one.
     static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
         let estimate = exercise.estimatedTimePerSetSeconds
+        // A hold's per-unit cost is definitional rather than estimated - prescribed seconds are elapsed
+        // seconds - so there is nothing for the generosity factor to be generous about and it does not
+        // apply (see `workPaceGenerosityFactor`). Every rep-based set is paced, whatever block it lands
+        // in, including the no-baseline fallback below, which is the same estimate by another route.
+        let generosity = exercise.isHold ? 1.0 : workPaceGenerosityFactor
         let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
         let prescribed = exercise.isHold ? durationSeconds : reps
-        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else { return estimate }
+        guard let baseline, baseline > 0, let prescribed, prescribed > 0 else {
+            return max(1, Int((Double(estimate) * generosity).rounded()))
+        }
 
         let authoredPerUnit = Double(estimate) / Double(baseline)
         let perUnit: Double
@@ -478,7 +546,8 @@ enum SessionAssembly {
             )
         }
         let setup = max(0, Double(estimate) - perUnit * Double(baseline))
-        return max(1, Int((setup + perUnit * Double(prescribed)).rounded()))
+        let paced = setup + perUnit * Double(prescribed)
+        return max(1, Int((paced * generosity).rounded()))
     }
 
     /// The planned seconds one set of a prescribed slot takes, at the target it actually carries.
@@ -861,9 +930,12 @@ private struct Builder {
     /// stretches *fill* the fixed-count bookends, though, and stretches differ in `workSecondsPerSet`, so
     /// a desk worker's bookend duration can differ from the general profile's - and since that duration
     /// feeds `trainingBudget` (extended path) and the global timing fit (short/full), a strength set count
-    /// can be *incidentally* coupled to bookend composition. The training middle staying byte-identical
-    /// across profiles is therefore test-guarded at the shipped catalog and lengths
-    /// (`testSitsLongDoesNotSizeAnyTrainingBlock`), not an absolute invariant. Since US-M01 removed the
+    /// can be *incidentally* coupled to bookend composition. Since US-CC08 that coupling actually **binds**
+    /// on the shipped catalog: a rep-based stretch carries the generous runtime pace while a hold stretch
+    /// does not, so a desk worker's 45-minute warm-up costs ~32s more and the fit pays it out of a whole
+    /// strength round. What is guarded is therefore the real invariant - same training movements at the
+    /// same per-set targets, with a round count differing only where the bookends really cost different
+    /// seconds (`testSitsLongChangesNoTrainingMovementOrTarget`). Since US-M01 removed the
     /// Movement Practice accessory (the block `sitsLong` used to *size*), this is the only thing `sitsLong`
     /// does in the engine.
     let sitsLong: Bool
@@ -1236,9 +1308,10 @@ private struct Builder {
     /// starved), every block's count and the bookend stretch count are untouched (a short session cannot
     /// be re-inflated with stretching), and no path here can create a mobility middle block - the reorder
     /// only ever feeds the warm-up and cooldown pools. It does change bookend *composition*, so a desk
-    /// worker's bookend duration - and, through the timing fit, a strength set count - can differ from the
-    /// general profile's; the training middle holding byte-identical is test-guarded at the shipped
-    /// catalog and lengths (`testSitsLongDoesNotSizeAnyTrainingBlock`), not structural. It runs *before*
+    /// worker's bookend duration - and, through the timing fit, a training block's round count - can differ
+    /// from the general profile's, which since US-CC08's generous pace it actually does at 45/60 min. What
+    /// is guarded is the movements and their per-set targets, not the round count
+    /// (`testSitsLongChangesNoTrainingMovementOrTarget`). It runs *before*
     /// `leadingComplement`, which retains final authority over the lead
     /// slot (US-M02). Pure and deterministic: a stable partition of an already deterministically-sorted
     /// array (`filter` preserves order), with no set-iteration dependence and no clock, so the assembled
