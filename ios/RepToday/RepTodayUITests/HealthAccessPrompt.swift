@@ -8,7 +8,11 @@ extension XCTestCase {
     /// process - its elements are children of `app` - so an ordinary query finds it and no
     /// interruption monitor is involved. `Don't Allow` is the control that is always enabled (`Allow`
     /// stays disabled until a category is switched on), and either answer would do for the suites
-    /// that call this: the Health write is additive and gates nothing they assert.
+    /// that call this: the Health write is additive and gates nothing they assert. It is matched by
+    /// its own identifier/label rather than through the sheet's navigation bar, because on some OS
+    /// versions (seen on iOS 18.6) that bar carries "Health Access" only as a title label, not an
+    /// identifier, so a `navigationBars["Health Access"]` query never resolves and the sheet is left
+    /// standing over the screen.
     ///
     /// Optional and bounded on purpose. The prompt only appears while the app's Health authorization
     /// is still unanswered, so a run against a container that already answered it has no sheet to
@@ -19,11 +23,27 @@ extension XCTestCase {
     /// reasons: one to photograph the ready screen it was sitting over, the other to reach the Profile
     /// tab behind it.
     func answerHealthAccessSheetIfPresented(in app: XCUIApplication) {
-        let sheet = app.navigationBars["Health Access"]
-        guard sheet.waitForExistence(timeout: 5) else { return }
-
-        let dontAllow = sheet.buttons["UIA.Health.AuthSheet.CancelButton"]
-        XCTAssertTrue(dontAllow.waitForExistence(timeout: 5), "the Health prompt has no dismissing control")
+        // The sheet only surfaces once the main tabs finish rendering, which trails the Ready Screen's
+        // session generation, so on a cold or loaded machine it can appear several seconds after launch
+        // returns. Poll for the dismiss control - by its stable identifier first, then by its visible
+        // label as a fallback - but stop as soon as the tab bar is reachable with nothing over it, so a
+        // container that already answered (no sheet ever comes) returns at once rather than waiting the
+        // whole window out.
+        let byIdentifier = app.buttons["UIA.Health.AuthSheet.CancelButton"]
+        let byLabel = app.buttons["Don't Allow"]
+        let anyTab = app.tabBars.buttons.firstMatch
+        let deadline = Date().addingTimeInterval(20)
+        var dontAllow: XCUIElement?
+        while Date() < deadline {
+            if byIdentifier.exists { dontAllow = byIdentifier; break }
+            if byLabel.exists { dontAllow = byLabel; break }
+            // No sheet, and the tabs underneath are already hittable: nothing is presented, so there is
+            // nothing to answer. (A sheet standing over the tabs makes them non-hittable, so this only
+            // fires once the coast is genuinely clear.)
+            if anyTab.isHittable { return }
+            usleep(300_000)
+        }
+        guard let dontAllow else { return }
         dontAllow.tap()
 
         // Declining raises its own confirmation ("you can turn these on later in the Health app"),
