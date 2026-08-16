@@ -1167,41 +1167,64 @@ final class StartSeedTests: XCTestCase {
     /// The extra time is the *work* the extra reps cost, not a proportional scaling of the whole
     /// estimate: a set's fixed setup (get into position, brace, get out again) is paid once whether the
     /// set is 10 reps or 13.
+    ///
+    /// Every number here is the paced one (US-CC08): the rep branch's authored estimate is scaled by
+    /// `workPaceGenerosityFactor` so the seconds the fit budgets are the generous seconds the player's
+    /// work window actually gives the user. The *shape* of the model - setup once, cadence per rep - is
+    /// what this test pins, so each expectation is written as `paced(...)` of the underlying split rather
+    /// than as a bare literal that would say nothing about which half moved.
     func testPlannedTimeAccountsForTheSeededPerSetTarget() {
         let movement = exercise(id: "ex", defaultReps: 10) // 40s per set at its own default
+        func paced(_ seconds: Double) -> Int {
+            Int((seconds * SessionAssembly.workPaceGenerosityFactor).rounded())
+        }
 
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: movement, reps: 10, durationSeconds: nil),
-            movement.estimatedTimePerSetSeconds,
-            "a default-sized set is the movement's own estimate, unchanged"
+            paced(Double(movement.estimatedTimePerSetSeconds)),
+            "a default-sized set is the movement's own estimate at the generous runtime pace"
         )
         // The rep branch assumes `setupSecondsPerSet` (10s) of fixed setup and derives the cadence from
         // what this movement itself authors: (40 - 10) / 10 reps = 3.0s a rep. So 3 extra reps costs 9
-        // extra seconds on top of the same one-off setup.
+        // extra authored seconds on top of the same one-off setup, all of it then paced.
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: movement, reps: 13, durationSeconds: nil),
-            49,
+            paced(10 + 3 * 13),
             "13 reps costs the setup once plus 13 reps of work"
         )
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: movement, reps: 5, durationSeconds: nil),
-            25,
+            paced(10 + 3 * 5),
             "a shrunk set still pays the same fixed setup"
         )
-        // A movement with no default to scale against falls back to the flat estimate.
+        // A movement with no default to scale against falls back to the flat estimate - paced the same
+        // way, since it is the same rep-based estimate reached by another route.
         let unscalable = exercise(id: "unscalable", defaultReps: nil)
         XCTAssertEqual(
             SessionAssembly.workSecondsPerSet(for: unscalable, reps: 20, durationSeconds: nil),
-            unscalable.estimatedTimePerSetSeconds
+            paced(Double(unscalable.estimatedTimePerSetSeconds))
         )
     }
 
     /// The setup/per-unit split reproduces the authored estimate exactly at the movement's own default -
-    /// so a default-sized session is priced precisely as the catalog wrote it and only a moved target is
-    /// re-priced - and the sweep at the end bounds the model from *both* sides across the whole catalog,
-    /// because an under-charge accumulates across a session exactly as an over-charge does.
+    /// so a default-sized session is priced precisely as the catalog wrote it, at the generous runtime
+    /// pace, and only a moved target is re-priced - and the sweep at the end bounds the model from *both*
+    /// sides across the whole catalog, because an under-charge accumulates across a session exactly as an
+    /// over-charge does.
+    ///
+    /// Since US-CC08 a **rep-based** movement's authored estimate is scaled by
+    /// `workPaceGenerosityFactor` (this is a runtime window, not just a planning proxy), so the sweep
+    /// measures each movement against its own *paced* estimate. A **hold** is unscaled: its per-second
+    /// cost is definitional, not estimated, so every hold number below is exactly what it was.
     func testWorkPerSetSplitsTheEstimateIntoSetupPlusPerUnitWork() async throws {
         let library = try await library()
+        /// The authored estimate as the model now prices it: paced for a rep-based movement, untouched
+        /// for a hold.
+        func pacedEstimate(_ movement: Exercise) -> Int {
+            movement.isHold
+                ? movement.estimatedTimePerSetSeconds
+                : Int((Double(movement.estimatedTimePerSetSeconds) * SessionAssembly.workPaceGenerosityFactor).rounded())
+        }
 
         // A hold's per-unit cost is one second of work per prescribed second *per side*: a "30 second"
         // 90/90 is 30s each way, so its 70s estimate leaves 10s of setup, not 40s.
@@ -1228,17 +1251,22 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: tuckLSit, reps: nil, durationSeconds: 20), 43)
 
         // A rep-based movement takes the fixed setup and derives its cadence from its own estimate:
-        // 40s over 15 reps leaves 30s of work, so 2s a rep, and 30 reps costs 10 + 60.
+        // 40s over 15 reps leaves 30s of work, so 2s a rep, and 30 reps costs 10 + 60 - each then paced
+        // to the generous runtime window (US-CC08).
+        func paced(_ seconds: Double) -> Int {
+            Int((seconds * SessionAssembly.workPaceGenerosityFactor).rounded())
+        }
         let glutes = try XCTUnwrap(library.first { $0.id == "hinge_glute_bridge" })
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 15, durationSeconds: nil), 40)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 30, durationSeconds: nil), 70)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 15, durationSeconds: nil), paced(40))
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: glutes, reps: 30, durationSeconds: nil), paced(10 + 2 * 30))
 
         // A slow per-side rep movement keeps its authored cadence rather than being flattened to a
         // generic one: "3x8 clean reps per side" on a 5-rep / 50s authoring costs 8s a prescribed rep,
-        // so 8 reps is 74s - not the 59s a fixed 3s-per-rep cadence charged.
+        // so 8 reps is 74 authored seconds - not the 59s a fixed 3s-per-rep cadence charged - and the
+        // pacing factor scales that shape rather than replacing it.
         let archer = try XCTUnwrap(library.first { $0.id == "push_archer" })
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 5, durationSeconds: nil), 50)
-        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 8, durationSeconds: nil), 74)
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 5, durationSeconds: nil), paced(50))
+        XCTAssertEqual(SessionAssembly.workSecondsPerSet(for: archer, reps: 8, durationSeconds: nil), paced(10 + 8 * 8))
 
         // Every movement in the catalog reproduces its own authored estimate at its own default, and its
         // implied setup is bounded on both sides: never negative (which would over-charge a grown set as
@@ -1258,23 +1286,35 @@ final class StartSeedTests: XCTestCase {
                 )
             }
 
+            let priced = pacedEstimate(movement)
             XCTAssertEqual(
-                work(at: baseline), estimate,
-                "\(movement.id) must price its own default set at its authored estimate"
+                work(at: baseline), priced,
+                "\(movement.id) must price its own default set at its authored estimate, paced"
             )
             // work(2×baseline) = setup + 2 × perUnit × baseline = 2 × estimate - setup, so the model's
-            // own implied setup is readable straight off the doubled set.
+            // own implied setup is readable straight off the doubled set. Reading it against the *paced*
+            // default keeps the bound about the setup/cadence split rather than about the factor, which
+            // scales both halves alike; the ±2 absorbs the two roundings it is now read through.
             let doubled = work(at: baseline * 2)
-            let impliedSetup = 2 * estimate - doubled
+            let impliedSetup = 2 * priced - doubled
             XCTAssertGreaterThanOrEqual(
-                impliedSetup, 0,
+                impliedSetup, -2,
                 "\(movement.id) must not charge a grown set more than strict proportionality"
             )
             if !movement.isHold {
                 XCTAssertLessThanOrEqual(
                     Double(impliedSetup),
-                    Double(estimate) * SessionAssembly.maxSetupShareOfEstimate + 1,
+                    Double(priced) * SessionAssembly.maxSetupShareOfEstimate + 2,
                     "\(movement.id) treats too much of its estimate as fixed, so a grown set is under-charged"
+                )
+                XCTAssertGreaterThan(
+                    work(at: baseline), estimate,
+                    "\(movement.id) must price a rep-based set generously above its typical-case authored estimate (US-CC08)"
+                )
+            } else {
+                XCTAssertEqual(
+                    work(at: baseline), estimate,
+                    "\(movement.id) is a hold: its per-second cost is definitional, so the pacing factor leaves it alone"
                 )
             }
             XCTAssertGreaterThan(
