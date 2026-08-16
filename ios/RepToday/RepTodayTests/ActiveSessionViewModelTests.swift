@@ -134,16 +134,28 @@ final class ActiveSessionViewModelTests: XCTestCase {
     private func makeViewModel(
         _ workout: Workout? = nil,
         clock: @escaping () -> Date,
-        feedback: RestTimerFeedback = SpyRestFeedback()
+        feedback: SpyCuePlayer = SpyCuePlayer(),
+        voiceOverActive: @escaping () -> Bool = { false }
     ) -> ActiveSessionViewModel {
-        ActiveSessionViewModel(workout: workout ?? sampleWorkout(), now: clock, feedback: feedback)
+        ActiveSessionViewModel(
+            workout: workout ?? sampleWorkout(), now: clock,
+            cuePlayer: feedback, voiceOverActive: voiceOverActive
+        )
     }
 
-    /// Counts rest-completion cues so the tests can assert the haptic/audio fires exactly when a rest
-    /// runs out - and never on a skip.
-    private final class SpyRestFeedback: RestTimerFeedback {
-        private(set) var completions = 0
-        func restDidComplete() { completions += 1 }
+    /// Records every per-state cue (US-CC10) so tests can assert which tone fires for which transition,
+    /// that the switch-sides beat stays silent, and that VoiceOver withholds the tone. `completions`
+    /// keeps counting only `.done` cues, so the pre-US-CC10 assertions that a set/hold completion fires
+    /// "the cue" exactly once - and never on a skip or an early Done - read unchanged.
+    private final class SpyCuePlayer: SessionCuePlayer {
+        private(set) var cues: [SessionCue] = []
+        private(set) var suppressedAudio: [Bool] = []
+        func play(_ cue: SessionCue, suppressAudio: Bool) {
+            cues.append(cue)
+            suppressedAudio.append(suppressAudio)
+        }
+        var completions: Int { cues.filter { $0 == .done }.count }
+        func count(of cue: SessionCue) -> Int { cues.filter { $0 == cue }.count }
     }
 
     // MARK: - Flattening
@@ -496,33 +508,39 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "counts down with the clock")
     }
 
-    /// When the rest reaches zero the session auto-advances (the rest ends) and the completion cue
-    /// fires exactly once - not before it elapses, and not again on repeated ticks.
-    func testRestCompletionFiresCueOnce() {
+    /// The rest announces its kind at its *start* (a `.transition` here), and the boundary-crossing cue
+    /// as the rest ends is the `.go` the next work window fires when it auto-starts (US-CC10) - which
+    /// fires exactly once, not before the rest elapses and not again on repeated ticks. The rest itself
+    /// fires no `.done`, so the go tone never doubles up with a rest-completion tone.
+    func testRestEndFiresGoOnceAsTheNextWindowStarts() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
-        vm.completeSet() // 30s rest
+        vm.completeSet() // opens the 30s rest into push_up (a strength work window)
+        XCTAssertEqual(spy.count(of: .transition), 1, "the rest names itself at its start")
+        XCTAssertEqual(spy.count(of: .go), 0, "the next window has not started yet")
 
         clock = start.addingTimeInterval(10)
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertTrue(vm.isResting, "still resting - 20s to go")
-        XCTAssertEqual(spy.completions, 0)
+        XCTAssertEqual(spy.count(of: .go), 0)
 
         clock = start.addingTimeInterval(30)
         vm.completeRestIfElapsed(asOf: clock)
         XCTAssertFalse(vm.isResting, "rest ended at zero")
-        XCTAssertEqual(spy.completions, 1)
+        XCTAssertTrue(vm.isRunningWorkWindow, "the next work window auto-started")
+        XCTAssertEqual(spy.count(of: .go), 1, "the go cue fires as the window starts")
+        XCTAssertEqual(spy.completions, 0, "the rest itself is not a completion - no done cue")
 
         vm.completeRestIfElapsed(asOf: clock) // idempotent - the overlay ticks repeatedly
-        XCTAssertEqual(spy.completions, 1, "the cue fires once, not per tick")
+        XCTAssertEqual(spy.count(of: .go), 1, "the cue fires once, not per tick")
     }
 
     /// Skipping the rest ends it immediately and does not fire the completion cue (the user chose to
     /// move on), revealing the already-advanced next set.
     func testSkipRestEndsWithoutCue() {
         let clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.completeSet()
         XCTAssertTrue(vm.isResting)
@@ -571,7 +589,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// wall-clock terms - the app is away, so the countdown is frozen.
     func testPausedRestDoesNotAutoComplete() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.completeSet() // 30s rest
 
@@ -613,7 +631,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// Skipping the exercise drops any active rest without firing its cue.
     func testSkipExerciseEndsActiveRest() {
         let clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.completeSet() // cat_cow -> push_up, rest active
         XCTAssertTrue(vm.isResting)
@@ -699,7 +717,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// the user touching the screen.
     func testHoldCompletionFiresCueOnceAndRecordsTheSet() throws {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         let holdStepID = try XCTUnwrap(vm.currentStep?.id)
 
@@ -728,7 +746,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// single countdown that recorded the set after one side would quietly halve the prescribed work.
     func testPerSideHoldRunsOneLegPerSideAndRecordsOneSet() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { clock }, feedback: spy)
 
         XCTAssertEqual(vm.holdSidesPerSet, 2)
@@ -759,7 +777,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// leaves the same side ready to re-start.
     func testCancelHoldRecordsNothingAndFiresNoCue() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { clock }, feedback: spy)
 
         vm.startHold()
@@ -782,7 +800,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// reschedules from the captured remainder.
     func testPausedHoldFreezesAndNeverAutoCompletes() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.startHold() // 30s
 
@@ -822,7 +840,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// Skipping the exercise drops a running hold without firing its cue and clears the side, so the
     /// next timed movement opens on side 1.
     func testSkipExerciseClearsARunningHold() {
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(perSideHoldWorkout(seconds: 20), clock: { self.start }, feedback: spy)
 
         vm.startHold()
@@ -876,13 +894,13 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// awaiting and cleared outright by the substitution that lands.
     func testHoldStartedDuringAnInFlightSwapNeverRecordsAgainstTheSubstitute() async {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
         let engine = StubSwapEngine(outcome: .substituted(substitute))
         let vm = ActiveSessionViewModel(
             workout: perSideHoldWorkout(seconds: 20),
             swapEngine: engine, user: makeUser(), recentLogs: [], sessionPolicy: .default,
-            now: { clock }, feedback: spy
+            now: { clock }, cuePlayer: spy
         )
         // The user taps "Start hold" in the window between requesting the swap and the engine answering.
         engine.onSwap = { vm.startHold() }
@@ -906,7 +924,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// or who is stopping part-way through a multi-set plank, can record the set by hand. This is the
     /// only path that banks their work - a skip discards the exercise's sets entirely.
     func testAHoldsSetCanBeRecordedWithoutEverStartingTheTimer() throws {
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(singleHoldWorkout(sets: 2), clock: { self.start }, feedback: spy)
         let holdStepID = try XCTUnwrap(vm.currentStep?.id)
 
@@ -946,7 +964,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// completed set.
     func testCompletingASetByHandMidLegBanksItOnceAndEndsTheCountdown() throws {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(singleHoldWorkout(sets: 3), clock: { clock }, feedback: spy)
         let holdStepID = try XCTUnwrap(vm.currentStep?.id)
 
@@ -991,7 +1009,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// continues while you are away from the screen, planking does not.
     func testAHoldLegNeverSurvivesARelaunch() async throws {
         let store = InMemoryActiveSessionStore()
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
         original.startHold() // 30s, deadline start+30
@@ -1002,7 +1020,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertNil(saved.hold, "a bilateral leg on side 1 leaves nothing to carry at all")
 
         // Relaunched 8 seconds later - well inside the leg the user was mid-way through.
-        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) }, feedback: spy)
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(8) }, cuePlayer: spy)
 
         XCTAssertFalse(resumed.isHolding, "the leg does not come back counting")
         XCTAssertFalse(resumed.isHoldPaused, "nor frozen, waiting to be un-frozen")
@@ -1024,7 +1042,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// test against.
     func testAFrozenHoldLegDoesNotComeBackEither() async throws {
         let store = InMemoryActiveSessionStore()
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let original = ActiveSessionViewModel(
             workout: perSideHoldWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
         )
@@ -1038,7 +1056,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         let saved = try XCTUnwrap(loaded)
 
         let resumed = ActiveSessionViewModel(
-            state: saved, now: { self.start.addingTimeInterval(86_400) }, feedback: spy
+            state: saved, now: { self.start.addingTimeInterval(86_400) }, cuePlayer: spy
         )
         resumed.start()
         resumed.resumeHold(asOf: start.addingTimeInterval(86_400)) // what onAppear used to do
@@ -1073,7 +1091,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// phantom set, and the reason both timers now share one `Countdown` - the fix lands on both.
     func testRestoreDropsARestThatAlreadyRanOut() async throws {
         let store = InMemoryActiveSessionStore()
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let original = persistingViewModel(store, clock: { self.start })
         original.start()
         original.completeSet() // opens a 30s rest, deadline start+30
@@ -1083,7 +1101,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
 
         // Relaunched long after that rest would have ended.
         let resumed = ActiveSessionViewModel(
-            state: saved, now: { self.start.addingTimeInterval(600) }, feedback: spy
+            state: saved, now: { self.start.addingTimeInterval(600) }, cuePlayer: spy
         )
         resumed.completeRestIfElapsed(asOf: start.addingTimeInterval(600))
 
@@ -2192,7 +2210,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// before zero, never again on a later tick.
     func testWorkWindowAutoAdvancesAtZeroRecordingTheSetCompleted() throws {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock }, feedback: spy)
         let stepID = try XCTUnwrap(vm.currentStep?.id)
         vm.start()
@@ -2226,7 +2244,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// = performed) with no cue and no skip - being caught mid-rep at zero carries no penalty.
     func testDoneAdvancesEarlyRecordingCompletedWithoutACue() throws {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock }, feedback: spy)
         let stepID = try XCTUnwrap(vm.currentStep?.id)
         vm.start()
@@ -2446,11 +2464,11 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// substitute - itself a rep training set - re-arms a fresh window sized to its own prescription.
     func testSwapClearsARunningWorkWindowAndReArmsForTheSubstitute() async {
         let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let engine = StubSwapEngine(outcome: .substituted(substitute))
         let vm = ActiveSessionViewModel(
             workout: strengthWorkout(sets: 2, reps: 12), swapEngine: engine, user: makeUser(),
-            recentLogs: [], sessionPolicy: .default, now: { self.start }, feedback: spy
+            recentLogs: [], sessionPolicy: .default, now: { self.start }, cuePlayer: spy
         )
         vm.start()
         XCTAssertTrue(vm.isRunningWorkWindow)
@@ -2465,6 +2483,146 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.startWorkWindow()
         XCTAssertTrue(vm.isRunningWorkWindow, "a fresh window starts for the substitute")
         XCTAssertEqual(vm.workWindowSecondsPerSet, SessionAssembly.workSecondsPerSet(of: substitute))
+    }
+
+    // MARK: - Non-verbal state cues (US-CC10)
+
+    /// A work window starting is the `.go` state: it fires once when the window auto-starts on `start()`,
+    /// and never a second time on an idempotent re-entry (the view re-appearing).
+    func testWorkWindowStartFiresGoOnce() {
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { self.start }, feedback: spy)
+        XCTAssertEqual(spy.count(of: .go), 0, "nothing fires before the session starts")
+
+        vm.start()
+        XCTAssertEqual(spy.count(of: .go), 1, "the work window's go cue fires as it auto-starts")
+
+        vm.start() // idempotent re-entry - the window is already running
+        XCTAssertEqual(spy.count(of: .go), 1, "go fires once per window, not on every re-entry")
+    }
+
+    /// The optional midpoint tone fires exactly once, at (or just past) the middle of a work window -
+    /// never before the midpoint, never twice, and never coinciding with the `.done` cue at zero.
+    func testWorkWindowHalfwayFiresOnceAtMidpoint() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy)
+        vm.start()
+        let window = try XCTUnwrap(vm.workWindowSecondsPerSet)
+        XCTAssertGreaterThanOrEqual(window, 4, "the fixture window is long enough to have a distinct midpoint")
+
+        // Just before the midpoint: nothing yet.
+        clock = start.addingTimeInterval(TimeInterval(window / 2 - 1))
+        vm.fireWorkWindowHalfwayIfReached(asOf: clock)
+        XCTAssertEqual(spy.count(of: .halfway), 0, "no halfway cue before the midpoint")
+
+        // At the midpoint: it fires once.
+        clock = start.addingTimeInterval(TimeInterval((window + 1) / 2))
+        vm.fireWorkWindowHalfwayIfReached(asOf: clock)
+        XCTAssertEqual(spy.count(of: .halfway), 1, "the halfway cue fires at the midpoint")
+
+        // Later ticks before zero do not re-fire it.
+        clock = start.addingTimeInterval(TimeInterval(window - 1))
+        vm.fireWorkWindowHalfwayIfReached(asOf: clock)
+        XCTAssertEqual(spy.count(of: .halfway), 1, "the halfway cue fires once, not per tick")
+    }
+
+    /// A paused work window freezes its halfway cue with the countdown: the tone cannot fire at a screen
+    /// the user has paused, and fires from the real remainder once resumed.
+    func testHalfwayCueIsFrozenWhileTheWorkWindowIsPaused() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy)
+        vm.start()
+        let window = try XCTUnwrap(vm.workWindowSecondsPerSet)
+
+        // Pause 1s in (remaining = window - 1), then let wall-clock sail past where the midpoint would
+        // have been had the countdown kept running.
+        clock = start.addingTimeInterval(1)
+        vm.pause(asOf: clock)
+        clock = start.addingTimeInterval(TimeInterval(window))
+        vm.fireWorkWindowHalfwayIfReached(asOf: clock)
+        XCTAssertEqual(spy.count(of: .halfway), 0, "a paused window never fires its halfway cue")
+
+        // Resume: the deadline reschedules from the captured remainder (window - 1). Advancing to 1s
+        // remaining is past the total's midpoint, so it fires - measured from the real remainder.
+        vm.resume(asOf: clock)
+        clock = clock.addingTimeInterval(TimeInterval(window - 2))
+        vm.fireWorkWindowHalfwayIfReached(asOf: clock)
+        XCTAssertEqual(spy.count(of: .halfway), 1, "it fires from the real remainder once resumed")
+    }
+
+    /// The two rest gaps are tellable apart by ear: a between-station advance inside a round fires
+    /// `.transition`, and a round-boundary advance fires the distinct `.roundRest`.
+    func testTransitionAndRoundRestAreDistinctCues() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        // Two stations x two rounds, no bookends: push_up -> squat (transition) -> round 2 (round-rest).
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock }, feedback: spy)
+        vm.start()
+
+        // Finish push_up round 1 -> squat round 1: a between-station transition.
+        clock = start.addingTimeInterval(TimeInterval(try XCTUnwrap(vm.workWindowSecondsPerSet)))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+        XCTAssertEqual(vm.currentSet, 1, "still round 1")
+        XCTAssertEqual(spy.count(of: .transition), 1, "a station change fires a transition cue")
+        XCTAssertEqual(spy.count(of: .roundRest), 0, "and not a round-rest cue")
+
+        // End that transition, then finish squat round 1 -> push_up round 2: a between-round rest.
+        clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+        vm.completeRestIfElapsed(asOf: clock)
+        clock = clock.addingTimeInterval(TimeInterval(try XCTUnwrap(vm.workWindowSecondsPerSet)))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "push_up")
+        XCTAssertEqual(vm.currentSet, 2, "advanced to round 2")
+        XCTAssertEqual(spy.count(of: .roundRest), 1, "a round boundary fires the distinct round-rest cue")
+        XCTAssertEqual(spy.count(of: .transition), 1, "the transition count did not change at a round boundary")
+    }
+
+    /// A completed set/hold leg fires `.done`; the switch-sides beat between the two legs of a per-side
+    /// bookend hold fires **no** cue at all (US-CC05), so exactly one `.done` lands per leg and the beat
+    /// adds neither a done nor a transition/round-rest tone.
+    func testSwitchSidesBeatFiresNoCueOfAnyKind() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { clock }, feedback: spy)
+        vm.start()
+
+        clock = start.addingTimeInterval(20)
+        vm.completeHoldIfElapsed(asOf: clock) // side 1 done, switch-sides beat opens
+        XCTAssertTrue(vm.isSwitchingSides)
+        let afterLeg1 = spy.cues
+        XCTAssertEqual(afterLeg1.filter { $0 == .done }.count, 1, "leg 1 fires exactly one done")
+
+        clock = clock.addingTimeInterval(TimeInterval(ActiveSessionViewModel.switchSidesSeconds))
+        vm.completeRestIfElapsed(asOf: clock) // beat ends, side 2 auto-starts
+        XCTAssertEqual(spy.cues, afterLeg1, "the switch-sides beat added no cue - not a done, not a transition")
+        XCTAssertEqual(spy.count(of: .go), 0, "and no go cue, since a hold leg is not a work window")
+    }
+
+    /// VoiceOver coordination (US-CC10): when VoiceOver is running the audio tone is withheld so it
+    /// cannot talk over speech, while the cue still fires (the haptic still lands). The decision is read
+    /// at fire time through the injected flag, and observed here on the injected spy.
+    func testCueWithholdsAudioWhileVoiceOverIsRunning() throws {
+        var voiceOverOn = false
+        var clock = start
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(
+            strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy,
+            voiceOverActive: { voiceOverOn }
+        )
+        vm.start() // go cue, VoiceOver off
+        XCTAssertEqual(spy.cues, [.go])
+        XCTAssertEqual(spy.suppressedAudio, [false], "with VoiceOver off, the tone plays")
+
+        // Turn VoiceOver on, then complete the window: the done cue still fires, but its audio is withheld.
+        voiceOverOn = true
+        clock = start.addingTimeInterval(TimeInterval(try XCTUnwrap(vm.workWindowSecondsPerSet)))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(spy.cues.contains(.done), "the cue still fires under VoiceOver (the haptic still lands)")
+        let doneIndex = try XCTUnwrap(spy.cues.firstIndex(of: .done))
+        XCTAssertTrue(spy.suppressedAudio[doneIndex], "but its audio tone is withheld so it cannot talk over VoiceOver")
     }
 
     // MARK: - Hands-free bookend holds (US-CC05)
@@ -2544,7 +2702,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// (two legs, two cues) - the beat itself is a quiet get-ready pause that fires none.
     func testPerSideBookendRunsSide1ThenSwitchSidesThenSide2HandsFree() throws {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(perSideBookendWorkout(seconds: 20), clock: { clock }, feedback: spy)
         let stretchID = try XCTUnwrap(vm.currentStep?.id)
         XCTAssertEqual(vm.holdSidesPerSet, 2)
@@ -2623,7 +2781,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// resume rule).
     func testResumedBookendHoldReopensIdleAndAutoStartsFresh() async throws {
         let store = InMemoryActiveSessionStore()
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let original = ActiveSessionViewModel(
             workout: perSideBookendWorkout(seconds: 20), store: store, userId: "u1", now: { self.start }
         )
@@ -2635,7 +2793,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(saved.hold?.side, 2, "the side owed is carried; the running leg is not")
 
         // Relaunch long after: the beat (a rest) has expired and is dropped, and the leg was never restored.
-        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(600) }, feedback: spy)
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start.addingTimeInterval(600) }, cuePlayer: spy)
         XCTAssertFalse(resumed.isHolding, "a hold leg never survives the relaunch")
         XCTAssertFalse(resumed.isResting, "the expired switch-sides beat is dropped, not waiting to fire")
         XCTAssertEqual(resumed.holdSide, 2)
@@ -2698,7 +2856,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// *audio-cue timing*, not just the visible ring.
     func testUserPausedWorkWindowNeverAutoAdvancesOrFiresTheCue() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy)
         vm.start()
 
@@ -2725,7 +2883,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// one of the three countdowns the single Pause control covers).
     func testUserPauseFreezesARestAndItsCue() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(clock: { clock }, feedback: spy)
         vm.completeSet() // 30s rest opens
         XCTAssertTrue(vm.isResting)
@@ -2748,7 +2906,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
     /// Pause also freezes a running hold leg and its cue.
     func testUserPauseFreezesAHoldLeg() {
         var clock = start
-        let spy = SpyRestFeedback()
+        let spy = SpyCuePlayer()
         let vm = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { clock }, feedback: spy)
         vm.start()
         vm.startHold()

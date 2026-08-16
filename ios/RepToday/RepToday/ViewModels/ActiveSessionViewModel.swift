@@ -61,7 +61,7 @@ import Observation
 /// Default Duration learning, and Consistency Score behind it - are unchanged.
 ///
 /// A timed (`isHold`) exercise gets a Hold Timer instead (US-O03): a countdown runs, and at zero it
-/// fires the same `RestTimerFeedback` cue exactly once and records the set automatically. It is
+/// fires the `SessionCuePlayer` `.done` cue exactly once and records the set automatically. It is
 /// counted one *side* at a time, because the engine charges a per-side movement for both sides - a set
 /// of side plank is two legs, and a single countdown that recorded the set at the end of one would
 /// quietly halve the work the session was built around. **How the leg starts depends on where it
@@ -201,7 +201,23 @@ final class ActiveSessionViewModel {
     private(set) var holdSide = 1
 
     private let now: () -> Date
-    private let feedback: RestTimerFeedback
+
+    /// The per-state sensory-cue seam (US-CC10). Each distinct state transition fires its own tone +
+    /// haptic through this so the hands-free flow is tellable apart by ear; tests inject a spy that
+    /// records the firings.
+    private let cuePlayer: SessionCuePlayer
+
+    /// Whether VoiceOver is speaking right now (US-CC10). Read *at fire time* (a closure, not a captured
+    /// bool) so the tone is withheld only while VoiceOver is actually running - defaults to the live
+    /// `UIAccessibility` flag in the app and is injected as a plain bool in tests.
+    private let voiceOverActive: () -> Bool
+
+    /// Fire the cue for `cue` through the player, withholding the audio tone (but never the haptic) when
+    /// VoiceOver is running so it cannot talk over speech (US-CC10). The single choke point every cue
+    /// goes through, so the VoiceOver decision lives in exactly one place.
+    private func fireCue(_ cue: SessionCue) {
+        cuePlayer.play(cue, suppressAudio: voiceOverActive())
+    }
 
     /// The engine seam the swap runs through (US-C08). `nil` when the player is built without an
     /// engine (previews), which simply leaves swap unavailable.
@@ -296,7 +312,8 @@ final class ActiveSessionViewModel {
         completionService: (any SessionCompletionServiceProtocol)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
-        feedback: RestTimerFeedback = SystemRestTimerFeedback()
+        cuePlayer: SessionCuePlayer = SystemSessionCuePlayer(),
+        voiceOverActive: @escaping () -> Bool = { isVoiceOverRunningNow() }
     ) {
         self.workout = state.workout
         self.swapEngine = swapEngine
@@ -308,7 +325,8 @@ final class ActiveSessionViewModel {
         self.completionService = completionService
         self.analytics = analytics
         self.now = now
-        self.feedback = feedback
+        self.cuePlayer = cuePlayer
+        self.voiceOverActive = voiceOverActive
 
         let steps = Self.steps(from: state.slots)
         self.steps = steps
@@ -358,7 +376,8 @@ final class ActiveSessionViewModel {
         completionService: (any SessionCompletionServiceProtocol)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
-        feedback: RestTimerFeedback = SystemRestTimerFeedback()
+        cuePlayer: SessionCuePlayer = SystemSessionCuePlayer(),
+        voiceOverActive: @escaping () -> Bool = { isVoiceOverRunningNow() }
     ) {
         self.init(
             state: ActiveSessionState(fresh: workout),
@@ -371,7 +390,8 @@ final class ActiveSessionViewModel {
             completionService: completionService,
             analytics: analytics,
             now: now,
-            feedback: feedback
+            cuePlayer: cuePlayer,
+            voiceOverActive: voiceOverActive
         )
     }
 
@@ -470,7 +490,7 @@ final class ActiveSessionViewModel {
         clearUserPause()
         // Any prior rest is over the moment the next set is logged (a no-op in the overlay-gated UI,
         // where the complete-set control is hidden during rest).
-        endRest(fireFeedback: false)
+        endRest()
         // The set is done, so the hold that timed it is too - and the next set starts back on side 1.
         // Already ended (without a second cue) when the hold itself is what completed the set; when the
         // user banked it by hand mid-leg instead, this is what takes the running countdown down, and it
@@ -484,7 +504,9 @@ final class ActiveSessionViewModel {
         recordSet(for: step.prescription)
         if let next = nextPosition(fromIndex: currentStepIndex, set: currentSet) {
             moveTo(index: next.index, set: next.set)
-            startRest(seconds: next.gap)
+            // US-CC10: the rest announces its kind at its start - `.transition` or `.roundRest` - so the
+            // user can tell a short station change from a longer round break by ear.
+            startRest(seconds: next.gap, cue: next.cue)
             // When the just-completed set opened no rest (a `restSeconds == 0` round rest), the next
             // effort is already on screen, so its work window (US-CC01) or bookend hold leg (US-CC05)
             // starts now; when a rest did open, it instead starts as the rest ends
@@ -511,7 +533,7 @@ final class ActiveSessionViewModel {
         clearUserPause()
         // Skipping moves on immediately, so any rest, hold, or work window in force is dropped without
         // firing a cue.
-        endRest(fireFeedback: false)
+        endRest()
         resetHold()
         endWorkWindow(fireFeedback: false)
         completedSets.removeValue(forKey: step.id)
@@ -673,7 +695,7 @@ final class ActiveSessionViewModel {
         // comes back `.noAlternative` leaves the original movement in place, and sending a user who has
         // already held one side back to side 1 of the movement they kept would cost them that side for
         // nothing. It is cleared below, on the substitution that actually makes it meaningless.
-        endRest(fireFeedback: false)
+        endRest()
         endHold(fireFeedback: false)
         endWorkWindow(fireFeedback: false)
 
@@ -792,10 +814,15 @@ final class ActiveSessionViewModel {
     /// (a prescription with no configured rest) opens no overlay, so the next set shows immediately.
     /// `context` marks a `.switchSides` beat (US-CC05) so the overlay names it and it fires no cue at
     /// its end; it defaults to a plain `.rest` so every existing caller is unchanged.
-    func startRest(seconds: Int, context: RestContext = .rest) {
+    ///
+    /// `cue` (US-CC10) fires at the rest's **start** so the user can tell by ear which gap they are in -
+    /// `.transition` for the short between-station beat, `.roundRest` for the longer between-round break -
+    /// without watching the clock. `nil` (the default, and always for a `.switchSides` beat) fires none.
+    func startRest(seconds: Int, context: RestContext = .rest, cue: SessionCue? = nil) {
         guard seconds > 0 else { return }
         rest = Countdown(seconds: seconds, from: now())
         restContext = context
+        if let cue { fireCue(cue) }
     }
 
     /// End the rest and fire the completion cue exactly once, but only if the running rest has reached
@@ -803,11 +830,11 @@ final class ActiveSessionViewModel {
     /// rest is left untouched), so the auto-advance and haptic fire once at the right instant.
     func completeRestIfElapsed(asOf date: Date) {
         guard rest?.hasElapsed(asOf: date) == true else { return }
-        // A switch-sides beat (US-CC05) is a get-ready pause between the two legs of a per-side bookend,
-        // not a completed rest, so it fires no cue - the completion cue belongs to the hold leg, once
-        // each. Read before `endRest`, which resets the context back to `.rest`.
-        let fireCue = restContext != .switchSides
-        endRest(fireFeedback: fireCue)
+        // The rest itself fires no cue at its end (US-CC10): the boundary-crossing cue belongs to what
+        // comes next - the `.go` a revealed work window fires as it auto-starts below - so a rest ending
+        // never doubles up with the go tone. (The rest already announced itself at its *start*, as a
+        // `.transition` or `.roundRest` tone.)
+        endRest()
         // The rest is over and the next effort is revealed - auto-start its work window when it is a
         // rep-based training set (US-CC01), or its hold leg when it is a warm-up / cooldown bookend
         // stretch, including side 2 as a switch-sides beat ends (US-CC05). Both are idempotent no-ops
@@ -823,7 +850,7 @@ final class ActiveSessionViewModel {
         guard isResting else { return }
         // Skipping the rest reveals the next effort, so any user pause is stale (US-CC06).
         clearUserPause()
-        endRest(fireFeedback: false)
+        endRest()
         // Skipping the rest reveals the next effort immediately, so start its work window when it
         // auto-advances (US-CC01), or its hold leg when it is a bookend stretch - including side 2 when
         // the skipped rest was a switch-sides beat (US-CC05). Both idempotent.
@@ -858,11 +885,10 @@ final class ActiveSessionViewModel {
         persist()
     }
 
-    private func endRest(fireFeedback: Bool) {
+    private func endRest() {
         guard isResting else { return }
         rest = nil
         restContext = .rest
-        if fireFeedback { feedback.restDidComplete() }
     }
 
     // MARK: - Hold timer (US-O03)
@@ -1007,7 +1033,10 @@ final class ActiveSessionViewModel {
     private func endHold(fireFeedback: Bool) {
         guard isHolding else { return }
         hold = nil
-        if fireFeedback { feedback.restDidComplete() }
+        // The `.done` cue is the timer's verdict that a hold leg finished (US-CC10); it is withheld
+        // (`fireFeedback: false`) when the leg is torn down by the user's own choice - a Stop-hold, a
+        // skip, a swap, or a set banked by hand - which is never a completion.
+        if fireFeedback { fireCue(.done) }
     }
 
     /// Clear the hold entirely - the running leg *and* the side the user is part-way through. This is
@@ -1089,6 +1118,31 @@ final class ActiveSessionViewModel {
     func startWorkWindow() {
         guard canStartWorkWindow, let seconds = workWindowSecondsPerSet else { return }
         workWindow = Countdown(seconds: seconds, from: now())
+        // US-CC10: a work window starting is the `.go` state - "begin the reps now" - the one cue that
+        // fires however the window was reached (session start, a rest ending, a no-rest advance). The
+        // guard makes this fire exactly once per window, never on an idempotent re-entry.
+        didFireHalfway = false
+        fireCue(.go)
+    }
+
+    /// True once the current work window has fired its `.halfway` cue, so the midpoint tone fires exactly
+    /// once per window. Reset whenever a window opens or closes.
+    private var didFireHalfway = false
+
+    /// Fire the optional `.halfway` cue once, when the running work window crosses its midpoint (US-CC10).
+    /// Idempotent and safe to call every tick from the view's ticker: it is a no-op before the midpoint,
+    /// after it has already fired, on a paused window (whose remaining is frozen), and on any window too
+    /// short to have a meaningful midpoint. Windows one second long have no distinct midpoint tone.
+    func fireWorkWindowHalfwayIfReached(asOf date: Date) {
+        guard isRunningWorkWindow, !isWorkWindowPaused, !didFireHalfway else { return }
+        let total = workWindowTotalSeconds
+        let remaining = workWindowRemaining(asOf: date)
+        // Fire at or past the exact midpoint while work remains: `2 * remaining <= total` is the midpoint
+        // for an even total and the first tick past it for an odd one; `remaining > 0` keeps it from
+        // colliding with the `.done` cue at zero.
+        guard total >= 2, remaining > 0, 2 * remaining <= total else { return }
+        didFireHalfway = true
+        fireCue(.halfway)
     }
 
     /// At zero the work window records the set completed - identical to a tapped completion, prescribed
@@ -1131,7 +1185,11 @@ final class ActiveSessionViewModel {
     private func endWorkWindow(fireFeedback: Bool) {
         guard isRunningWorkWindow else { return }
         workWindow = nil
-        if fireFeedback { feedback.restDidComplete() }
+        didFireHalfway = false
+        // The `.done` cue is the timer's verdict that the set finished (US-CC10); it is withheld
+        // (`fireFeedback: false`) when the window is torn down by the user's own choice - **Done**, a
+        // skip, or a swap - which records the set but is not the countdown reaching zero.
+        if fireFeedback { fireCue(.done) }
     }
 
     // MARK: - User pause (US-CC06)
@@ -1268,27 +1326,31 @@ final class ActiveSessionViewModel {
     /// (crossing the bounded between-round rest, US-CC04); a skipped station is passed over in every
     /// remaining round. A linear bookend keeps its per-exercise walk: the exercise's next set, then the
     /// next station. Crossing into a following block lands on its first non-skipped station at set 1.
-    private func nextPosition(fromIndex index: Int, set: Int) -> (index: Int, set: Int, gap: Int)? {
+    private func nextPosition(fromIndex index: Int, set: Int) -> (index: Int, set: Int, gap: Int, cue: SessionCue?)? {
         let span = blockSpan(containing: index)
         if span.isCircuit {
             let round = set
             if let station = nextStation(in: span.range, after: index, round: round) {
-                return (station, round, SessionAssembly.transitionSeconds)
+                // Same round, next station: the short between-station transition (US-CC04/US-CC10).
+                return (station, round, SessionAssembly.transitionSeconds, .transition)
             }
             let nextRound = round + 1
             if nextRound <= span.roundCount, let station = firstStation(in: span.range, round: nextRound) {
-                return (station, nextRound, roundRestSeconds(for: span.range))
+                // Round boundary: the longer between-round rest, cued distinctly so it is tellable from a
+                // transition by ear (US-CC10).
+                return (station, nextRound, roundRestSeconds(for: span.range), .roundRest)
             }
-            return positionAfterBlock(span.range.upperBound, gap: SessionAssembly.transitionSeconds)
+            return positionAfterBlock(span.range.upperBound, gap: SessionAssembly.transitionSeconds, cue: .transition)
         }
         // Linear bookend: play the station's own sets in sequence (a skipped station has none left),
-        // then move on to the next station.
+        // then move on to the next station. A bookend gap is a between-station beat, so it cues as a
+        // `.transition` when it opens a rest at all.
         let sets = steps[index].prescription.sets
         let rest = steps[index].prescription.restSeconds
         if !skippedStepIDs.contains(steps[index].id), set < sets {
-            return (index, set + 1, rest)
+            return (index, set + 1, rest, .transition)
         }
-        return positionAfterBlock(index, gap: rest)
+        return positionAfterBlock(index, gap: rest, cue: .transition)
     }
 
     /// The next non-skipped station strictly after `index` within `range` that still plays in `round`
@@ -1312,10 +1374,10 @@ final class ActiveSessionViewModel {
 
     /// The next non-skipped station after `lastIndex` - the head of the following block - at its first
     /// set, or `nil` when nothing remains (the session ends).
-    private func positionAfterBlock(_ lastIndex: Int, gap: Int) -> (index: Int, set: Int, gap: Int)? {
+    private func positionAfterBlock(_ lastIndex: Int, gap: Int, cue: SessionCue?) -> (index: Int, set: Int, gap: Int, cue: SessionCue?)? {
         var j = lastIndex + 1
         while j < steps.count {
-            if !skippedStepIDs.contains(steps[j].id) { return (j, 1, gap) }
+            if !skippedStepIDs.contains(steps[j].id) { return (j, 1, gap, cue) }
             j += 1
         }
         return nil

@@ -906,6 +906,9 @@ private struct WorkWindowCountdownView: View {
         }
         .onReceive(ticker) { date in
             currentDate = date
+            // US-CC10: the optional midpoint tone, then the completion check. Both are pure no-ops until
+            // their instant, so ordering them here fires the halfway cue before the window can elapse.
+            viewModel.fireWorkWindowHalfwayIfReached(asOf: date)
             viewModel.completeWorkWindowIfElapsed(asOf: date)
         }
     }
