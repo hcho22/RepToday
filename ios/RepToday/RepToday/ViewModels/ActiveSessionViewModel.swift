@@ -466,6 +466,8 @@ final class ActiveSessionViewModel {
     /// (US-CC04) - so the next effort is paced.
     func completeSet() {
         guard !isComplete, let step = currentStep else { return }
+        // The play head is advancing to a fresh effort, so any user pause is stale (US-CC06).
+        clearUserPause()
         // Any prior rest is over the moment the next set is logged (a no-op in the overlay-gated UI,
         // where the complete-set control is hidden during rest).
         endRest(fireFeedback: false)
@@ -505,6 +507,8 @@ final class ActiveSessionViewModel {
     /// remaining rounds, and the block staying uniform after a swap, is US-CC07.)
     func skipExercise() {
         guard !isComplete, let step = currentStep else { return }
+        // Skipping moves on immediately, so any user pause is stale (US-CC06).
+        clearUserPause()
         // Skipping moves on immediately, so any rest, hold, or work window in force is dropped without
         // firing a cue.
         endRest(fireFeedback: false)
@@ -659,6 +663,9 @@ final class ActiveSessionViewModel {
         guard canSwap, !isSwapping, let engine = swapEngine, let user, let step = currentStep else { return }
         isSwapping = true
         noSwapAlternative = false
+        // A swap reshapes the slot and ends the running countdown, so any user pause is stale (US-CC06):
+        // whether the swap substitutes or comes back `.noAlternative`, a fresh countdown re-arms un-paused.
+        clearUserPause()
         defer { isSwapping = false }
 
         // A swap reshapes the slot, so any lingering rest, running hold, or running work window ends
@@ -808,6 +815,8 @@ final class ActiveSessionViewModel {
     /// (the user chose to move on). A no-op when no rest is active.
     func skipRest() {
         guard isResting else { return }
+        // Skipping the rest reveals the next effort, so any user pause is stale (US-CC06).
+        clearUserPause()
         endRest(fireFeedback: false)
         // Skipping the rest reveals the next effort immediately, so start its work window when it
         // auto-advances (US-CC01), or its hold leg when it is a bookend stretch - including side 2 when
@@ -964,6 +973,9 @@ final class ActiveSessionViewModel {
     /// stopped early. The side is kept, so they can re-start the same leg. A no-op when none is running.
     func cancelHold() {
         guard isHolding else { return }
+        // Stopping the hold ends the only countdown a user pause could be freezing, so the pause is
+        // stale (US-CC06) - the step returns to its idle Start-hold state with nothing left to resume.
+        clearUserPause()
         endHold(fireFeedback: false)
     }
 
@@ -1115,6 +1127,81 @@ final class ActiveSessionViewModel {
         workWindow = nil
         if fireFeedback { feedback.restDidComplete() }
     }
+
+    // MARK: - User pause (US-CC06)
+
+    /// True while the user has explicitly paused the session from the player (US-CC06) - one of the quiet
+    /// in-flow escape hatches, distinct from the background pause the scene phase drives. A user pause
+    /// freezes whichever countdown is live *in the foreground* and outlives a background/foreground cycle:
+    /// only the user's own `resume(asOf:)` clears it, so a return to the foreground never un-freezes it
+    /// (`resumeFromForeground`). In-memory only, like the running countdowns it freezes - a user pause is
+    /// a foreground state and is not carried across a teardown (a resumed session comes back running).
+    private(set) var isUserPaused = false
+
+    /// Whether a countdown is live to pause right now (US-CC06): a work window, a hold leg, or a rest is
+    /// running (or already user-paused). The Pause control is offered only when there is something to
+    /// freeze - an idle "Start hold" training step, or the completion screen, has nothing to pause.
+    var isCountingDown: Bool { isRunningWorkWindow || isHolding || isResting }
+
+    /// Whether the user can pause right now (US-CC06): a countdown is live, the session is not complete,
+    /// and the user has not already paused. The player shows the Pause control while this holds and flips
+    /// it to Resume while `isUserPaused`.
+    var canUserPause: Bool { !isComplete && !isUserPaused && isCountingDown }
+
+    /// Explicitly pause the session (US-CC06): freeze whichever countdown is live - the work window, the
+    /// hold leg, or the rest - and, with it, the audio/haptic completion-cue timing, because a paused
+    /// `Countdown` never reports `hasElapsed`, so `completeWorkWindowIfElapsed` / `completeRestIfElapsed`
+    /// / `completeHoldIfElapsed` are all no-ops while paused (the same mechanism that keeps a cue from
+    /// firing at a backgrounded screen). Each underlying pause is a no-op when its own timer is not
+    /// running, so exactly the live one freezes. A no-op unless `canUserPause`.
+    ///
+    /// Distinct from the background pause the scene phase drives: this **never backgrounds the app**, and
+    /// a user pause is a *foreground* state that only the user's own `resume(asOf:)` clears - so a
+    /// background/foreground cycle while paused leaves it frozen (`resumeFromForeground`).
+    func pause(asOf date: Date) {
+        guard canUserPause else { return }
+        isUserPaused = true
+        pauseRest(asOf: date)
+        pauseHold(asOf: date)
+        pauseWorkWindow(asOf: date)
+    }
+
+    /// Resume a user pause (US-CC06), rescheduling the frozen countdown from its exact remainder so the
+    /// session continues from where it stopped rather than resetting the timer. A no-op unless the user
+    /// is paused.
+    func resume(asOf date: Date) {
+        guard isUserPaused else { return }
+        isUserPaused = false
+        resumeRest(asOf: date)
+        resumeHold(asOf: date)
+        resumeWorkWindow(asOf: date)
+    }
+
+    /// Pause every live countdown because the app is backgrounding (US-K02/O03/CC01). Unlike `pause`, it
+    /// does **not** set `isUserPaused`, so a return to the foreground resumes it - unless the user had
+    /// *also* paused, in which case the user pause outlives the background one.
+    func pauseForBackground(asOf date: Date) {
+        pauseRest(asOf: date)
+        pauseHold(asOf: date)
+        pauseWorkWindow(asOf: date)
+    }
+
+    /// Resume every countdown paused by backgrounding when the app returns to the foreground - but never
+    /// one the user is deliberately holding paused (US-CC06). A user pause is a foreground state that only
+    /// the user's own Resume clears, so foregrounding leaves it frozen and the on-screen countdown stays
+    /// put until the user taps Resume.
+    func resumeFromForeground(asOf date: Date) {
+        guard !isUserPaused else { return }
+        resumeRest(asOf: date)
+        resumeHold(asOf: date)
+        resumeWorkWindow(asOf: date)
+    }
+
+    /// Clear a user pause because the play head is advancing or the slot is being reshaped (US-CC06): the
+    /// current countdown is ending and any fresh one starts un-paused, so the pause state is stale.
+    /// Called from every user-initiated advance / skip / swap / stop-hold; a *natural* countdown
+    /// completion can never run while paused, so those paths always find it already clear.
+    private func clearUserPause() { isUserPaused = false }
 
     // MARK: - Private
 

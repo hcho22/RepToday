@@ -2466,4 +2466,211 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertTrue(vm.canStartHold, "and the manual Start-hold is offered as the way back")
         XCTAssertEqual(vm.holdSide, 1, "the same side is still owed")
     }
+
+    // MARK: - User pause (US-CC06)
+
+    /// An explicit user Pause freezes the running work window and resumes from the *exact* remainder,
+    /// like the background pause - the difference is only what triggers it (a user tap, in the
+    /// foreground), never the timer mechanism.
+    func testUserPauseFreezesTheWorkWindowAndResumesFromTheExactRemainder() {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock })
+        vm.start()
+        XCTAssertTrue(vm.canUserPause, "a live work window can be paused")
+        XCTAssertTrue(vm.isCountingDown)
+
+        clock = start.addingTimeInterval(5)
+        vm.pause(asOf: clock)
+        XCTAssertTrue(vm.isUserPaused)
+        XCTAssertTrue(vm.isWorkWindowPaused)
+        XCTAssertFalse(vm.canUserPause, "already paused - the control now offers Resume, not Pause")
+        let frozen = vm.workWindowRemaining(asOf: clock)
+
+        // Two minutes elapse on the wall clock; the frozen remainder does not draw down.
+        clock = start.addingTimeInterval(125)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "frozen while the user holds pause")
+
+        vm.resume(asOf: clock)
+        XCTAssertFalse(vm.isUserPaused)
+        XCTAssertFalse(vm.isWorkWindowPaused)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "resumes from the exact remainder")
+
+        clock = clock.addingTimeInterval(3)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen - 3, "and counts down again from there")
+    }
+
+    /// The cue is frozen with the countdown: a user-paused work window never auto-advances and never
+    /// fires the completion cue, however long the wall clock runs past its remainder, because a paused
+    /// `Countdown` never reports `hasElapsed`. This is the acceptance criterion that Pause freezes the
+    /// *audio-cue timing*, not just the visible ring.
+    func testUserPausedWorkWindowNeverAutoAdvancesOrFiresTheCue() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy)
+        vm.start()
+
+        clock = start.addingTimeInterval(3)
+        vm.pause(asOf: clock)
+
+        // Long past where the window would have hit zero unpaused - the ticker keeps calling the check.
+        clock = start.addingTimeInterval(600)
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+
+        XCTAssertTrue(vm.isRunningWorkWindow, "a paused window never auto-advances")
+        XCTAssertEqual(vm.completedSetCount, 0, "no set is banked for work frozen mid-window")
+        XCTAssertEqual(spy.completions, 0, "and the audio/haptic cue is frozen with the countdown")
+
+        // Resuming re-arms the deadline from the remainder, so the cue fires once when it truly elapses.
+        vm.resume(asOf: clock)
+        clock = clock.addingTimeInterval(TimeInterval(vm.workWindowRemaining(asOf: clock)))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertEqual(spy.completions, 1, "the cue fires exactly once, at the real remainder after resume")
+        XCTAssertEqual(vm.completedSetCount, 1)
+    }
+
+    /// Pause also freezes a between-set rest and its cue, resuming from the exact remainder (the rest is
+    /// one of the three countdowns the single Pause control covers).
+    func testUserPauseFreezesARestAndItsCue() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(clock: { clock }, feedback: spy)
+        vm.completeSet() // 30s rest opens
+        XCTAssertTrue(vm.isResting)
+        XCTAssertTrue(vm.canUserPause)
+
+        clock = start.addingTimeInterval(10) // 20s left
+        vm.pause(asOf: clock)
+        XCTAssertTrue(vm.isUserPaused)
+        XCTAssertTrue(vm.isRestPaused)
+
+        clock = start.addingTimeInterval(600)
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isResting, "a user-paused rest never auto-completes")
+        XCTAssertEqual(spy.completions, 0, "and its cue is frozen too")
+
+        vm.resume(asOf: clock)
+        XCTAssertEqual(vm.restRemaining(asOf: clock), 20, "resumes from the exact remainder")
+    }
+
+    /// Pause also freezes a running hold leg and its cue.
+    func testUserPauseFreezesAHoldLeg() {
+        var clock = start
+        let spy = SpyRestFeedback()
+        let vm = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { clock }, feedback: spy)
+        vm.start()
+        vm.startHold()
+        XCTAssertTrue(vm.isHolding)
+        XCTAssertTrue(vm.canUserPause)
+
+        clock = start.addingTimeInterval(5) // 15s left
+        vm.pause(asOf: clock)
+        XCTAssertTrue(vm.isHoldPaused)
+
+        clock = start.addingTimeInterval(600)
+        vm.completeHoldIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isHolding, "a user-paused hold never auto-completes")
+        XCTAssertEqual(vm.completedSetCount, 0)
+        XCTAssertEqual(spy.completions, 0, "the hold cue is frozen with the countdown")
+
+        vm.resume(asOf: clock)
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 15, "resumes from the exact remainder")
+    }
+
+    /// The core interaction rule (US-CC06): a *user* pause is a foreground state, so backgrounding and
+    /// returning to the foreground must **not** un-freeze it. Only the user's own Resume clears it -
+    /// otherwise a notification banner would silently un-pause a session the user deliberately held.
+    func testForegroundingDoesNotUnfreezeAUserPause() {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock })
+        vm.start()
+
+        clock = start.addingTimeInterval(5)
+        vm.pause(asOf: clock) // user pause, in the foreground
+        let frozen = vm.workWindowRemaining(asOf: clock)
+
+        // App goes to the background and comes back - the scene-phase path, not the user.
+        vm.pauseForBackground(asOf: clock)
+        clock = start.addingTimeInterval(90)
+        vm.resumeFromForeground(asOf: clock)
+
+        XCTAssertTrue(vm.isUserPaused, "the user pause outlives a background/foreground cycle")
+        XCTAssertTrue(vm.isWorkWindowPaused, "so the countdown stays frozen")
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "at the exact remainder the user left")
+
+        // Only the user's own Resume lets it run again.
+        vm.resume(asOf: clock)
+        XCTAssertFalse(vm.isUserPaused)
+        XCTAssertFalse(vm.isWorkWindowPaused)
+    }
+
+    /// The complement: with no user pause, foregrounding resumes a plain background pause as before, so
+    /// US-CC06 does not regress the US-K02/O03/CC01 background behaviour.
+    func testForegroundingStillResumesAPlainBackgroundPause() {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock })
+        vm.start()
+
+        clock = start.addingTimeInterval(5)
+        vm.pauseForBackground(asOf: clock)
+        XCTAssertTrue(vm.isWorkWindowPaused)
+        XCTAssertFalse(vm.isUserPaused, "backgrounding is not a user pause")
+
+        vm.resumeFromForeground(asOf: clock)
+        XCTAssertFalse(vm.isWorkWindowPaused, "a plain background pause resumes on return")
+    }
+
+    /// Pause is offered only when there is a live countdown to freeze (US-CC06): not on an idle
+    /// Start-hold training step, and not once the session is complete.
+    func testPauseIsUnavailableWithNoLiveCountdown() {
+        // An idle training hold - the user is getting into position, no countdown is running.
+        let holdVM = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { self.start })
+        holdVM.start()
+        XCTAssertFalse(holdVM.isCountingDown, "a training hold waits for a Start-hold tap - nothing counts down")
+        XCTAssertFalse(holdVM.canUserPause, "so Pause is not offered")
+
+        // A completed session has no countdown either.
+        let vm = makeViewModel(clock: { self.start })
+        for _ in 0..<6 { vm.completeSet() }
+        XCTAssertTrue(vm.isComplete)
+        XCTAssertFalse(vm.canUserPause, "the completion screen offers no Pause")
+    }
+
+    /// Taking an advancing escape hatch while paused (Done, Skip, Swap, Skip rest, Stop hold) clears the
+    /// user pause, because the frozen countdown is being torn down and a fresh one re-arms un-paused -
+    /// so the flow never lands running-but-showing-Resume.
+    func testAdvancingWhilePausedClearsTheUserPause() {
+        // Done on a work window.
+        var clock = start
+        let doneVM = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock })
+        doneVM.start()
+        clock = start.addingTimeInterval(3)
+        doneVM.pause(asOf: clock)
+        XCTAssertTrue(doneVM.isUserPaused)
+        doneVM.finishWorkWindowEarly()
+        XCTAssertFalse(doneVM.isUserPaused, "Done cleared the stale pause and advanced")
+
+        // Skip on a work window.
+        let skipVM = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { self.start })
+        skipVM.start()
+        skipVM.pause(asOf: self.start)
+        skipVM.skipExercise()
+        XCTAssertFalse(skipVM.isUserPaused, "Skip cleared the stale pause")
+
+        // Skip rest during a paused rest.
+        let restVM = makeViewModel(clock: { self.start })
+        restVM.completeSet()
+        restVM.pause(asOf: self.start)
+        XCTAssertTrue(restVM.isUserPaused)
+        restVM.skipRest()
+        XCTAssertFalse(restVM.isUserPaused, "Skip rest cleared the stale pause")
+
+        // Stop hold during a paused hold returns to idle with nothing left to resume.
+        let holdVM = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { self.start })
+        holdVM.start()
+        holdVM.startHold()
+        holdVM.pause(asOf: self.start)
+        XCTAssertTrue(holdVM.isUserPaused)
+        holdVM.cancelHold()
+        XCTAssertFalse(holdVM.isUserPaused, "Stop hold cleared the pause - the leg is gone")
+    }
 }

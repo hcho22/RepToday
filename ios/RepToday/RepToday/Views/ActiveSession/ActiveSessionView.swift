@@ -117,6 +117,17 @@ struct ActiveSessionView: View {
         dismiss()
     }
 
+    /// Toggle the explicit user pause (US-CC06): freeze the live countdown, or resume it from its exact
+    /// remainder. Reads the wall clock the same way the scene-phase background pause does; the view model
+    /// keeps all countdown arithmetic pure over the injected clock behind it.
+    private func togglePause() {
+        if viewModel.isUserPaused {
+            viewModel.resume(asOf: Date())
+        } else {
+            viewModel.pause(asOf: Date())
+        }
+    }
+
     var body: some View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
@@ -156,17 +167,16 @@ struct ActiveSessionView: View {
         }
         // Pause both countdowns while the app is away so neither blows past - and so a hold's cue can
         // never fire at a screen the user is not looking at; resume on return. The elapsed session
-        // clock is wall-clock derived (US-K01) and intentionally keeps running, unseen (US-O03).
+        // clock is wall-clock derived (US-K01) and intentionally keeps running, unseen (US-O03). A
+        // return to the foreground never un-freezes a *user* pause (US-CC06): `resumeFromForeground`
+        // leaves an explicit Pause held until the user taps Resume, so backgrounding a paused session
+        // and coming back keeps it paused.
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
-                viewModel.resumeRest(asOf: Date())
-                viewModel.resumeHold(asOf: Date())
-                viewModel.resumeWorkWindow(asOf: Date())
+                viewModel.resumeFromForeground(asOf: Date())
             case .inactive, .background:
-                viewModel.pauseRest(asOf: Date())
-                viewModel.pauseHold(asOf: Date())
-                viewModel.pauseWorkWindow(asOf: Date())
+                viewModel.pauseForBackground(asOf: Date())
             @unknown default:
                 break
             }
@@ -177,7 +187,12 @@ struct ActiveSessionView: View {
 
     private var player: some View {
         VStack(spacing: 0) {
-            SessionTopBar(onClose: close)
+            SessionTopBar(
+                onClose: close,
+                canPause: viewModel.canUserPause,
+                isPaused: viewModel.isUserPaused,
+                onTogglePause: togglePause
+            )
 
             ProgressView(value: viewModel.progress)
                 .tint(Theme.Colors.accent)
@@ -724,11 +739,22 @@ private extension View {
 
 /// The player's top bar, shared by the exercise screen and the rest overlay.
 ///
-/// It carries the close control and nothing else. It used to carry an always-on elapsed clock, which
-/// US-O03 removed: no running session clock is visible anywhere during the session, so the total lands
-/// once, on the completion summary, instead of counting at the user the whole way through.
+/// It carries the close control and, since US-CC06, a quiet **Pause/Resume** toggle - one of the
+/// in-flow escape hatches. Placing Pause here (rather than in the crowded secondary action row) means a
+/// single control covers whichever countdown is running - the work window, a hold, or a rest - since
+/// both the player and the rest overlay host this same bar, and it stays visually secondary to the
+/// movement and countdown below it. It used to carry an always-on elapsed clock, which US-O03 removed:
+/// no running session clock is visible anywhere during the session, so the total lands once, on the
+/// completion summary, instead of counting at the user the whole way through.
 private struct SessionTopBar: View {
     let onClose: () -> Void
+    /// The Pause/Resume state. `canPause` is true while a countdown is live to freeze; `isPaused` is
+    /// true while the user is holding an explicit pause. The toggle shows only when one of them holds -
+    /// an idle Start-hold step or the moment before a countdown starts has nothing to pause. `nil`
+    /// `onTogglePause` (the default) omits the control entirely for any host that has no timer to pause.
+    var canPause: Bool = false
+    var isPaused: Bool = false
+    var onTogglePause: (() -> Void)? = nil
 
     var body: some View {
         HStack {
@@ -743,6 +769,23 @@ private struct SessionTopBar: View {
             .accessibilityLabel("End session")
 
             Spacer()
+
+            if let onTogglePause, canPause || isPaused {
+                Button {
+                    onTogglePause()
+                } label: {
+                    Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                        .font(Theme.Typography.button)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: Theme.Spacing.workoutTouchTarget, height: Theme.Spacing.workoutTouchTarget)
+                }
+                .accessibilityLabel(isPaused ? "Resume session" : "Pause session")
+                .accessibilityHint(
+                    isPaused
+                        ? "Continues the countdown from where it stopped"
+                        : "Freezes the countdown without ending the session"
+                )
+            }
         }
         .padding(.horizontal, Theme.Spacing.md)
         .padding(.top, Theme.Spacing.sm)
@@ -893,7 +936,18 @@ private struct RestView: View {
         let fraction = min(1, max(0, Double(remaining) / Double(total)))
 
         VStack(spacing: 0) {
-            SessionTopBar(onClose: onClose)
+            SessionTopBar(
+                onClose: onClose,
+                canPause: viewModel.canUserPause,
+                isPaused: viewModel.isUserPaused,
+                onTogglePause: {
+                    if viewModel.isUserPaused {
+                        viewModel.resume(asOf: Date())
+                    } else {
+                        viewModel.pause(asOf: Date())
+                    }
+                }
+            )
 
             Spacer()
 
