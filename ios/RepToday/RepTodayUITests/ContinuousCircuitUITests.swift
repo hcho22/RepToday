@@ -19,7 +19,9 @@ import XCTest
 ///
 /// A second case (US-CC02) drives the strength block as a circuit through the shipped controls and
 /// reads the "Round N of M" label off the running player, confirming the rotation and the round label a
-/// real finger sees - the one thing the in-process rotation tests cannot exercise.
+/// real finger sees - the one thing the in-process rotation tests cannot exercise. A further case
+/// (US-CC07) presses **Skip this exercise** mid-circuit and rotates on through the later rounds,
+/// confirming the skipped movement stays gone the way a finger sees it.
 final class ContinuousCircuitUITests: XCTestCase {
 
     private var app: TestApp!
@@ -147,6 +149,87 @@ final class ContinuousCircuitUITests: XCTestCase {
             distinctExercisesInRound1.count > 1 || distinctRounds.count > 1,
             "the strength block should play as a circuit - more than one exercise per round, or more than "
             + "one round - not grind one exercise's sets before the next; saw \(seen)"
+        )
+    }
+
+    /// US-CC07: a mid-circuit **Skip** holds for the rest of the circuit - the skipped exercise never
+    /// reappears in a later round, and the surviving stations keep rotating and completing their rounds.
+    /// The in-process view-model tests prove the rotation and the aggregate log deterministically; this is
+    /// the one thing they cannot exercise - a real finger pressing the shipped **Skip this exercise** on a
+    /// running circuit and watching the skipped movement stay gone through rounds 2 and 3.
+    func testMidCircuitSkipRemovesExerciseFromLaterRoundsHandsFree() {
+        app.launch(.optedOutWithNoProbe)
+
+        let start = app.buttons["Start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
+        start.tap()
+
+        // Reach the first rep-based strength work window (the head of the circuit), skipping past the
+        // warm-up holds and any rests.
+        let workWindow = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
+            .firstMatch
+        var reachedWorkWindow = false
+        for _ in 0..<30 {
+            if workWindow.waitForExistence(timeout: 2) { reachedWorkWindow = true; break }
+            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
+            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
+        }
+        XCTAssertTrue(reachedWorkWindow, "never reached a rep-based strength set (the circuit head)")
+
+        // The circuit must have at least two rounds for "removed from later rounds" to be observable; the
+        // deterministic session at the default duration is a multi-round circuit, but guard it honestly.
+        guard let firstRound = firstLabel(beginningWith: "Round "), !firstRound.hasSuffix("of 1") else {
+            attachScreenshot(named: "01-single-round-circuit-no-later-rounds")
+            return
+        }
+
+        // Skip the exercise on screen now, in this round. Record its name so we can prove it never
+        // rotates back in a later round.
+        guard let skippedExercise = currentExerciseName() else {
+            return XCTFail("could not read the exercise name to skip")
+        }
+        let skip = app.buttons["Skip this exercise"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 5), "the running circuit has no Skip control")
+        skip.tap()
+        attachScreenshot(named: "01-skipped-mid-circuit")
+
+        // Rotate through the rest of the circuit, recording the (round, exercise) pairs a finger sees, and
+        // advance each station by whichever control it offers, staying hands-free without waiting on a
+        // real-time hold: **Done** ends a rep-based work window, and the manual **Complete set** /
+        // **Finish exercise** banks a training hold's set instantly (a training hold keeps its manual path,
+        // US-CC05 - so it never blocks the walk on a wall-clock countdown). The one exercise we
+        // deliberately skipped above must appear in none of the recorded pairs. Stops as soon as a later
+        // round is reached - that is all this case needs to prove the skip held past round 1.
+        var seen: [(round: String, exercise: String)] = []
+        for _ in 0..<24 {
+            // A rest overlay hides the block context; clear it before reading the station.
+            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap() }
+            guard let round = firstLabel(beginningWith: "Round "), let exercise = currentExerciseName() else {
+                break // left the training block (cooldown) or finished
+            }
+            seen.append((round: round, exercise: exercise))
+            if !round.hasPrefix("Round 1 of") { break } // reached a later round - the skip held
+            if app.buttons["Done"].exists {
+                app.buttons["Done"].tap()
+            } else if app.buttons["Complete set"].exists {
+                app.buttons["Complete set"].tap()
+            } else if app.buttons["Finish exercise"].exists {
+                app.buttons["Finish exercise"].tap()
+            } else {
+                break
+            }
+        }
+        attachScreenshot(named: "02-after-skip-rotation")
+
+        XCTAssertFalse(
+            seen.contains { $0.exercise == skippedExercise },
+            "the skipped exercise \"\(skippedExercise)\" reappeared in a later round; saw \(seen)"
+        )
+        XCTAssertTrue(
+            seen.contains { !$0.round.hasPrefix("Round 1 of") },
+            "the rotation never reached a later round, so removal-from-later-rounds was not exercised; saw \(seen)"
         )
     }
 

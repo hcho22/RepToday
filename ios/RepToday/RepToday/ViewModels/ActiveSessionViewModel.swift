@@ -501,10 +501,10 @@ final class ActiveSessionViewModel {
     /// playable position. A skip means the user is abandoning the exercise entirely, so any sets
     /// already recorded for it are discarded - a skipped exercise never carries completed sets in
     /// `loggedExercises()`. Inside a training-block circuit the skip removes the exercise from **every
-    /// remaining round** (the rotation passes over a skipped station, US-CC02), so it stays not-done in
-    /// aggregate and the rest of the block still completes its rounds. A no-op once complete. (Swapping
-    /// to a peer instead is US-K03; this is the plain "move past it" path. Reconciling a swap across the
-    /// remaining rounds, and the block staying uniform after a swap, is US-CC07.)
+    /// remaining round** (the rotation passes over a skipped station, US-CC02/US-CC07), so it stays
+    /// not-done in aggregate and the rest of the block still completes its rounds. A no-op once complete.
+    /// (Swapping to a peer instead is US-K03; this is the plain "move past it" path. A swap likewise holds
+    /// across every remaining round and keeps the block uniform - see `swapCurrentExercise()`, US-CC07.)
     func skipExercise() {
         guard !isComplete, let step = currentStep else { return }
         // Skipping moves on immediately, so any user pause is stale (US-CC06).
@@ -711,12 +711,18 @@ final class ActiveSessionViewModel {
                 position: previous.position,
                 total: previous.total
             )
-            // A circuit swap keeps the CURRENT round rather than restarting at round 1: the engine holds
-            // the block's uniform round count, so the substitute has >= currentSet sets and the round is
-            // preserved, which stops the rotation from re-offering (and double-counting) already-completed
-            // peer stations from round 1. The min still clamps a genuinely-fewer-set substitute so the
-            // user is never stranded past its end - the substitute may then finish one round short of its
-            // peers; full swap-across-rounds reconciliation is intentionally US-CC07.
+            // A circuit swap keeps the CURRENT round rather than restarting at round 1 (US-CC07): the
+            // engine holds the block's uniform round count, so the substitute has >= currentSet sets and
+            // the round is preserved, which stops the rotation from re-offering (and double-counting)
+            // already-completed peer stations from round 1. Because the player keeps one Step per station
+            // (rounds are the re-visited set counter), replacing this slot already carries the substitute
+            // through every remaining round, and it keeps the block's uniform prescribed round count, so
+            // the circuit stays even (US-CC03). The substitute is an honest late entrant (US-CC07 Option
+            // A): it plays - and logs - only the rounds it is actually in the session for (currentSet...M),
+            // never a fabricated earlier round, so it may finish one or more rounds short of its peers.
+            // Those pre-swap rounds were performed as the movement being replaced and are discarded with
+            // it below, mirroring a skip, keeping the log faithful to what the user actually did. The min
+            // still clamps a genuinely-fewer-set substitute so the user is never stranded past its end.
             currentSet = max(1, min(currentSet, substitute.sets))
             // A different movement means a different set of legs: the side the user was owed on the
             // movement they just replaced does not carry over to the one that replaced it - and

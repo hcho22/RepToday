@@ -27,8 +27,13 @@ import Foundation
 ///   lands its slot outside `tolerance` at that fixed round count is simply declined. Because no slot
 ///   has a set lever anymore, the widened, soft-estimate-scaled `slotTolerance` (once reserved for the
 ///   single-set bookends) now applies to every slot, which is what keeps honestly-comparable peers
-///   swappable. Reshaping the block's shared round-rest on swap and applying a swap across all remaining
-///   rounds is deferred to US-CC07.
+///   swappable. Applying a swap across all remaining rounds landed in US-CC07 - and it is entirely
+///   player-side: because the player keeps one step per station and the substitute already keeps the
+///   slot's uniform round count, replacing that one slot carries the substitute through every remaining
+///   round with the circuit staying even, so this step needed no change. (Reshaping the block's shared
+///   round-rest to re-absorb a swap's small in-tolerance timing drift was considered and left out of
+///   US-CC07: the drift is already bounded by `slotTolerance`, and the AC governs rounds/uniformity, not
+///   the round-rest.)
 ///
 /// Like every other engine step this is a pure function of its inputs - the slot, the `Workout`, the
 /// `User`, the full `library`, `recentLogs`, and the `sessionPolicy` the session was generated against
