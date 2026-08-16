@@ -1313,6 +1313,120 @@ final class ActiveSessionViewModelTests: XCTestCase {
         )
     }
 
+    // MARK: - Skip & swap across remaining rounds (US-CC07)
+
+    /// The US-CC07 skip validation shape: a skip inside a circuit removes the exercise from **every**
+    /// remaining round, not just the current one, and logs it not-done (US-CC09). Skipping B (squat) in
+    /// round 1 leaves the rotation cycling A, C across rounds 2 and 3, with A and C each completing all
+    /// three rounds and B logged skipped with zero completed sets.
+    func testSkipInsideCircuitRemovesExerciseFromAllRemainingRounds() {
+        let vm = makeViewModel(circuitWorkout(rounds: 3), clock: { self.start })
+        vm.completeSet() // warm-up cat_cow -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+        XCTAssertEqual(vm.currentRound, 1)
+
+        vm.skipExercise() // skip B (squat) mid-circuit, in round 1
+
+        // From here the rotation only ever visits A and C, across every remaining round.
+        var visited: [(id: String, round: Int)] = []
+        var guardCount = 0
+        while let round = vm.currentRound, guardCount < 20 {
+            guardCount += 1
+            visited.append((vm.currentStep!.prescription.exercise.id, round))
+            vm.completeSet()
+        }
+        XCTAssertFalse(visited.contains { $0.id == "squat" }, "squat does not reappear in any later round")
+        XCTAssertEqual(
+            visited.map { "\($0.id):\($0.round)" },
+            ["hinge:1", "push_up:2", "hinge:2", "push_up:3", "hinge:3"],
+            "rounds 2 and 3 rotate only the surviving A, C"
+        )
+
+        while !vm.isComplete { vm.completeSet() } // flow through the cooldown
+        let logged = vm.loggedExercises()
+        XCTAssertEqual(logged.first { $0.exerciseId == "push_up" }?.completedSets.count, 3)
+        XCTAssertEqual(logged.first { $0.exerciseId == "hinge" }?.completedSets.count, 3)
+        let squat = logged.first { $0.exerciseId == "squat" }
+        XCTAssertEqual(squat?.completedSets.count, 0, "B logs zero completed sets")
+        XCTAssertTrue(squat?.skipped ?? false, "B logs not-done (US-CC09)")
+    }
+
+    /// A mid-circuit swap holds for **all remaining rounds** and keeps the block structurally uniform
+    /// (US-CC03/US-CC07): the substitute replaces the original in the one slot every round rotates
+    /// through, so every later round presents the substitute, and every station in the training block is
+    /// still prescribed the block's uniform round count M. Peers are untouched - they each still complete
+    /// M rounds and never over-log.
+    func testSwapAppliesToAllRemainingRoundsAndKeepsBlockStructurallyUniform() async {
+        let engine = StubSwapEngine(outcome: .substituted(substitutePrescription("dips", sets: 3)))
+        let vm = ActiveSessionViewModel(
+            workout: circuitWorkout(rounds: 3), swapEngine: engine, user: makeUser(),
+            recentLogs: [], sessionPolicy: .default, now: { self.start }
+        )
+        vm.completeSet() // warm-up -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        vm.completeSet() // squat round 1 -> hinge round 1
+        vm.completeSet() // hinge round 1 -> push_up round 2
+        vm.completeSet() // push_up round 2 -> squat round 2
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+        XCTAssertEqual(vm.currentRound, 2)
+
+        await vm.swapCurrentExercise() // swap squat (B) mid-circuit, in round 2
+
+        // The substitute took over B's slot and the training block is still uniform in its prescribed
+        // round count: every strength station carries M = 3 sets, so "Round N of M" stays well-defined.
+        let trainingSets = vm.steps.filter { $0.blockCategory == .strength }.map(\.prescription.sets)
+        XCTAssertEqual(trainingSets, [3, 3, 3], "the swap keeps the block's uniform prescribed round count")
+        XCTAssertFalse(vm.steps.contains { $0.prescription.exercise.id == "squat" }, "B is gone from the lineup")
+
+        // The substitute is present in every remaining round (round 3 as well as the current round 2).
+        var substituteRounds: Set<Int> = []
+        var guardCount = 0
+        while let round = vm.currentRound, guardCount < 20 {
+            guardCount += 1
+            if vm.currentStep?.prescription.exercise.id == "dips" { substituteRounds.insert(round) }
+            vm.completeSet()
+        }
+        XCTAssertEqual(substituteRounds, [2, 3], "the swapped-in peer plays every remaining round, not just the current one")
+
+        while !vm.isComplete { vm.completeSet() }
+        let logged = vm.loggedExercises()
+        XCTAssertEqual(logged.first { $0.exerciseId == "push_up" }?.completedSets.count, 3, "peer A completes all 3 rounds")
+        XCTAssertEqual(logged.first { $0.exerciseId == "hinge" }?.completedSets.count, 3, "peer C completes all 3 rounds")
+        XCTAssertTrue(logged.allSatisfy { $0.completedSets.count <= 3 }, "no station over-logs past M")
+        // Option A (US-CC07): the substitute is an honest late entrant - it logs only the rounds it
+        // actually played (it joined in round 2), never a fabricated round-1 set. Its pre-swap rounds
+        // were done as B and are discarded with B, keeping the log faithful to what the user performed.
+        XCTAssertEqual(logged.first { $0.exerciseId == "dips" }?.completedSets.count, 2,
+                       "the substitute logs only rounds 2 and 3 - the rounds it was actually in the session for")
+    }
+
+    /// A `.noAlternative` swap mid-circuit changes nothing: the original exercise stays in its slot and
+    /// therefore still plays every remaining round, and the honest no-alternative flag flips (unchanged
+    /// US-K03 semantics carried across the rotation, US-CC07).
+    func testSwapNoAlternativeMidCircuitKeepsExerciseInAllRemainingRounds() async {
+        let engine = StubSwapEngine(outcome: .noAlternative)
+        let vm = ActiveSessionViewModel(
+            workout: circuitWorkout(rounds: 3), swapEngine: engine, user: makeUser(),
+            recentLogs: [], sessionPolicy: .default, now: { self.start }
+        )
+        vm.completeSet() // warm-up -> push_up round 1
+        vm.completeSet() // push_up round 1 -> squat round 1
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat")
+
+        await vm.swapCurrentExercise()
+
+        XCTAssertTrue(vm.noSwapAlternative, "the honest no-alternative state shows")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "squat", "the exercise stays in place")
+
+        while !vm.isComplete { vm.completeSet() }
+        let logged = vm.loggedExercises()
+        for id in ["push_up", "squat", "hinge"] {
+            XCTAssertEqual(logged.first { $0.exerciseId == id }?.completedSets.count, 3,
+                           "\(id) still completes all 3 rounds - the block stays even")
+        }
+    }
+
     /// The snapshot the swap step reads keeps the session's block structure, because the block decides
     /// whether the set-count lever is available at all - the assembler never adjusts the warm-up or the
     /// cooldown, so neither may a swap. Collapsing every step into one strength block would have quietly
