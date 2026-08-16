@@ -15,6 +15,7 @@
 		0890D6815C2B90FC21E07C38 /* CoreDataSessionPolicyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9429B7C6F4A702695CA50A8 /* CoreDataSessionPolicyStore.swift */; };
 		08B967C35C7CBC2AFDE27D91 /* ProgressViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CC9FD348FAA33C7F657BF1 /* ProgressViewModel.swift */; };
 		0A418723E2FF7D1CC7297736 /* AppleCredentialState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B575D4C7B1C1390142C58297 /* AppleCredentialState.swift */; };
+		0C2644C61BB76735762E0F3D /* NoPerSetCompletionTrackingGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58995CF734FD6588A97B994 /* NoPerSetCompletionTrackingGuardTests.swift */; };
 		0ECC3B349D0E42948312BAFE /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA59450267BE04E5A2E7C68 /* Exercise.swift */; };
 		123ED2B1EA4BA34B2F71E45C /* ColdStartHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653FDB4A7212A136518C2E28 /* ColdStartHandoff.swift */; };
 		13C67281C031DA2AA04F0EF6 /* RepToday.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 3168C613FAF650BA33681EC5 /* RepToday.xcdatamodeld */; };
@@ -316,6 +317,7 @@
 		B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
 		B4139B1525030F42B3E1AA79 /* AppEntryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEntryTelemetry.swift; sourceTree = "<group>"; };
 		B575D4C7B1C1390142C58297 /* AppleCredentialState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleCredentialState.swift; sourceTree = "<group>"; };
+		B58995CF734FD6588A97B994 /* NoPerSetCompletionTrackingGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoPerSetCompletionTrackingGuardTests.swift; sourceTree = "<group>"; };
 		B9429B7C6F4A702695CA50A8 /* CoreDataSessionPolicyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataSessionPolicyStore.swift; sourceTree = "<group>"; };
 		B9735836015D9160108F67C5 /* NoManualModeGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoManualModeGuardTests.swift; sourceTree = "<group>"; };
 		BCC8E70A83D9356FBF1653BD /* HealthKitWorkoutSampleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWorkoutSampleTests.swift; sourceTree = "<group>"; };
@@ -620,6 +622,7 @@
 				3B022E6DD36A92F51FAAF800 /* ModelsTests.swift */,
 				EF888D00CB3C7612EB72A396 /* MovementPatternFocusTests.swift */,
 				B9735836015D9160108F67C5 /* NoManualModeGuardTests.swift */,
+				B58995CF734FD6588A97B994 /* NoPerSetCompletionTrackingGuardTests.swift */,
 				A6AC0C64472DDC2D59CB58DC /* OnboardingBasicsEvidenceTests.swift */,
 				9C6D6D21361F14F41979B0FB /* OnboardingInjuryVocabularyTests.swift */,
 				1F8C85A830A94E6EA0D69A93 /* OnboardingViewModelTests.swift */,
@@ -993,6 +996,7 @@
 				18BB492FFC5825F12658B62B /* ModelsTests.swift in Sources */,
 				1C7B2F8D44A1741AD4AA538C /* MovementPatternFocusTests.swift in Sources */,
 				DCADC058FA822BDDD99C93BC /* NoManualModeGuardTests.swift in Sources */,
+				0C2644C61BB76735762E0F3D /* NoPerSetCompletionTrackingGuardTests.swift in Sources */,
 				26F27A30141CACB509B89600 /* OnboardingBasicsEvidenceTests.swift in Sources */,
 				70723589450417E04663B00A /* OnboardingInjuryVocabularyTests.swift in Sources */,
 				2E3CF958B27401B506CA0515 /* OnboardingViewModelTests.swift in Sources */,
