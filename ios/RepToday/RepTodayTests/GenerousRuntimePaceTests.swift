@@ -224,7 +224,7 @@ final class GenerousRuntimePaceTests: XCTestCase {
         let reps = try XCTUnwrap(movement.defaultReps)
 
         let first = SessionAssembly.workSecondsPerSet(for: movement, reps: reps, durationSeconds: nil)
-        Thread.sleep(forTimeInterval: 0.01)
+        try await Task.sleep(nanoseconds: 10_000_000)
         let second = SessionAssembly.workSecondsPerSet(for: movement, reps: reps, durationSeconds: nil)
         XCTAssertEqual(first, second, "the same exercise at the same target prices identically whenever it is asked")
 
