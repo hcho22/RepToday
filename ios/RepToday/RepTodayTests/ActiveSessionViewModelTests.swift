@@ -2501,6 +2501,43 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(spy.count(of: .go), 1, "go fires once per window, not on every re-entry")
     }
 
+    /// Reopening the app is not a state change, so it must not sound like one (US-CC10): a resume/relaunch
+    /// re-entry re-opens the work window fresh (it is never persisted) but withholds the `.go` tone, while
+    /// a genuine first start still fires it and every in-session transition on the resumed session still
+    /// fires it.
+    func testResumeReEntryAutoStartsTheWindowButFiresNoGoCue() async throws {
+        let store = InMemoryActiveSessionStore()
+        let original = persistingViewModel(store, workout: strengthWorkout(sets: 2, reps: 12), clock: { self.start })
+        original.start() // fresh start: the first work window auto-starts and fires .go on `original`'s spy
+        await original.persistenceTask?.value
+        let loaded = try await store.load(for: "u1")
+        let saved = try XCTUnwrap(loaded)
+        XCTAssertNotNil(saved.startedAt, "a started session carries its origin, so this is a resume entry")
+
+        // Fresh session: start() fires exactly one .go.
+        let freshSpy = SpyCuePlayer()
+        let fresh = ActiveSessionViewModel(workout: strengthWorkout(sets: 2, reps: 12), now: { self.start }, cuePlayer: freshSpy)
+        fresh.start()
+        XCTAssertEqual(freshSpy.count(of: .go), 1, "a genuine first start fires the go cue")
+
+        // Resumed session: start() auto-starts the window but withholds the go cue.
+        let resumeSpy = SpyCuePlayer()
+        var clock = start.addingTimeInterval(8)
+        let resumed = ActiveSessionViewModel(state: saved, now: { clock }, cuePlayer: resumeSpy)
+        resumed.start()
+        XCTAssertTrue(resumed.isRunningWorkWindow, "the work window still auto-starts on resume")
+        XCTAssertEqual(resumeSpy.count(of: .go), 0, "but reopening the app fires no go tone")
+
+        // An in-session transition on the resumed session still fires .go: complete the set to open a rest,
+        // then let the rest elapse into the next window.
+        resumed.completeSet()
+        XCTAssertTrue(resumed.isResting, "completing the set opens a rest before the next window")
+        clock = clock.addingTimeInterval(TimeInterval(resumed.restTotalSeconds))
+        resumed.completeRestIfElapsed(asOf: clock)
+        XCTAssertTrue(resumed.isRunningWorkWindow, "the next window is running")
+        XCTAssertEqual(resumeSpy.count(of: .go), 1, "an in-session transition still fires the go cue")
+    }
+
     /// The optional midpoint tone fires exactly once, at (or just past) the middle of a work window -
     /// never before the midpoint, never twice, and never coinciding with the `.done` cue at zero.
     func testWorkWindowHalfwayFiresOnceAtMidpoint() throws {

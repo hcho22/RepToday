@@ -445,6 +445,9 @@ final class ActiveSessionViewModel {
     /// original start, so elapsed time never resets. `startedAt` is persisted (US-K04) so elapsed
     /// time survives a relaunch - a resumed session keeps its already-set origin rather than restarting.
     func start() {
+        // Captured before the `startedAt == nil` branch below sets it: a genuine first start enters with
+        // no origin, a cold relaunch/resume into an already-started session enters with one.
+        let isResumeEntry = startedAt != nil
         if startedAt == nil {
             startedAt = now()
             // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
@@ -458,7 +461,9 @@ final class ActiveSessionViewModel {
         // - on the first launch and on every idempotent re-entry alike (the view re-appearing, a resume
         // after relaunch). Idempotent via `canStartWorkWindow`, so it is a no-op when a window is
         // already running or the current step is not an auto-advancing set (a hold, a bookend, a rest).
-        startWorkWindow()
+        // On a resume/relaunch re-entry the window still auto-starts, but its `.go` cue is withheld: the
+        // user reopening the app must not be dropped straight into a "go" tone (US-CC10).
+        startWorkWindow(suppressGoCue: isResumeEntry)
         // US-CC05: a warm-up / cooldown bookend hold likewise auto-starts hands-free (never a Start-hold
         // tap), including on a resume, where the leg re-opens idle and begins fresh (US-O03). Idempotent
         // via `canAutoStartHold`, and a no-op on a training hold, which keeps its manual path.
@@ -1115,14 +1120,20 @@ final class ActiveSessionViewModel {
     /// automatically from every transition that reveals such a set (`start()`, the rest ending, a
     /// set/exercise advance with no rest). Idempotent via `canStartWorkWindow`, so repeated calls (the
     /// view re-appearing, a resume) are safe no-ops.
-    func startWorkWindow() {
+    ///
+    /// `suppressGoCue` withholds only the `.go` tone on this one call while the window still auto-starts:
+    /// a resume/relaunch re-entry re-opens the window fresh (it is never persisted), but reopening the app
+    /// is not a state change and must not sound like one (US-CC10), so `start()` passes `true` on a resume.
+    /// Every in-session-transition caller leaves it defaulted, so `.go` still fires on a genuine first
+    /// start and on every rest-ending / no-rest advance.
+    func startWorkWindow(suppressGoCue: Bool = false) {
         guard canStartWorkWindow, let seconds = workWindowSecondsPerSet else { return }
         workWindow = Countdown(seconds: seconds, from: now())
         // US-CC10: a work window starting is the `.go` state - "begin the reps now" - the one cue that
         // fires however the window was reached (session start, a rest ending, a no-rest advance). The
         // guard makes this fire exactly once per window, never on an idempotent re-entry.
         didFireHalfway = false
-        fireCue(.go)
+        if !suppressGoCue { fireCue(.go) }
     }
 
     /// True once the current work window has fired its `.halfway` cue, so the midpoint tone fires exactly
