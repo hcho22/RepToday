@@ -211,18 +211,28 @@ enum SessionAssembly {
     /// is flat across 1.20-1.30, so the choice inside that band is a pure pacing decision that buys no
     /// extra session-shape change.
     ///
-    /// **What it does not touch.** A hold's per-unit cost is not an estimate at all - a 40-second hold is
-    /// 40 seconds by definition (`secondsPerHoldSecond`, doubled per side), and the player runs a hold's
-    /// timer at exactly its prescribed seconds per side - so holds pass through at 1.0. The factor
-    /// multiplies only the assumed/derived rep half, which is the same assumed-vs-observed split
-    /// `maxSetupShareOfEstimate` already draws. It is a *pacing* multiplier on the work-seconds model
+    /// **What it does not touch.** The split is *estimated* versus *definitional*, not windowed versus
+    /// un-windowed. A hold's per-unit cost is not an estimate at all - a 40-second hold is 40 seconds by
+    /// definition (`secondsPerHoldSecond`, doubled per side), so prescribed equals elapsed and there is
+    /// nothing to be generous about; holds pass through at 1.0. The factor multiplies only the
+    /// assumed/derived rep half, where the authored number really is a guess at how long a user takes -
+    /// the same assumed-vs-observed split `maxSetupShareOfEstimate` already draws. That is why a
+    /// *rep-based* movement is paced wherever it sits, warm-up and cooldown stretches included: those
+    /// bookend reps are estimated too, and the plan must budget the slower user's real time whether or
+    /// not that set happens to run under an on-screen countdown, or the session overruns for exactly the
+    /// users the generosity exists to protect. It is a *pacing* multiplier on the work-seconds model
     /// only: Step 6's capacity-relative per-set target (reps/hold seconds) is untouched.
     ///
     /// **Accepted trade-off (US-CC08).** The same inflated number drives the planning fit, so a session
-    /// fits slightly fewer rounds - about one fewer round in the middle of the range (15/20 min 6 -> 5,
-    /// 30 min 7 -> 6) and none at the ends (5 min stays at 3 rounds; 60 min stays at 8). That coupling is
-    /// the point: it is what forbids a screen window roomier than the plan. A fast user simply finishes
-    /// early and taps **Done**.
+    /// fits fewer rounds in the middle of the range (15/20 min 6 -> 5, 30 min 7 -> 6) and is unchanged at
+    /// the ends (5 min stays at 3 rounds; 60 min stays at 8 x 5). At **45 minutes** the cost is not a
+    /// round but a **station**: the strength block goes from 7 rounds x 5 stations to 8 x 4, so the
+    /// longest strength block now trains 4 distinct movements instead of 5, which narrows its
+    /// movement-pattern coverage - and with the block pinned at the `maxTrainingSets` (8) rail, dropping
+    /// a station is the fit's only remaining lever there. Both consequences are accepted rather than
+    /// engineered around (a station floor or a higher rail is a separate follow-on, out of US-CC08).
+    /// The coupling itself is the point: it is what forbids a screen window roomier than the plan. A fast
+    /// user simply finishes early and taps **Done**.
     static let workPaceGenerosityFactor = 1.25
 
     // MARK: - Entry point
@@ -489,7 +499,12 @@ enum SessionAssembly {
     /// On top of that split, the rep half is scaled by `workPaceGenerosityFactor` (US-CC08), which is
     /// what makes this a **runtime** pace rather than a planning proxy: the authored estimate is a
     /// typical-case time, and the factor moves it to the slower-end pace a user comfortably finishes
-    /// within. See that constant for the calibration and the accepted trade-off.
+    /// within - so a default-sized *rep* set is priced above what the catalog authored, while a
+    /// default-sized *hold* still costs exactly it. The hold is left alone because its per-unit cost is
+    /// definitional rather than estimated (prescribed seconds are elapsed seconds), not because of where
+    /// the set is played: every rep-based set is paced, warm-up and cooldown stretches included, since
+    /// their reps are estimated the same way and the plan owes them the same slower-user budget. See that
+    /// constant for the calibration and the accepted trade-off.
     ///
     /// - Note: This is per-set *work* only; the between-round rest and the between-station transition are
     ///   counted separately by `blockSeconds`/`plannedSeconds`.
@@ -506,9 +521,10 @@ enum SessionAssembly {
     ///   overall level is deliberately set at the generous end rather than the typical one.
     static func workSecondsPerSet(for exercise: Exercise, reps: Int?, durationSeconds: Int?) -> Int {
         let estimate = exercise.estimatedTimePerSetSeconds
-        // A hold's per-unit cost is definitional rather than estimated, so the generosity factor does not
-        // apply to it (see `workPaceGenerosityFactor`); a rep-based set is paced end to end, including the
-        // no-baseline fallback below, which is the same estimate by another route.
+        // A hold's per-unit cost is definitional rather than estimated - prescribed seconds are elapsed
+        // seconds - so there is nothing for the generosity factor to be generous about and it does not
+        // apply (see `workPaceGenerosityFactor`). Every rep-based set is paced, whatever block it lands
+        // in, including the no-baseline fallback below, which is the same estimate by another route.
         let generosity = exercise.isHold ? 1.0 : workPaceGenerosityFactor
         let baseline = exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps
         let prescribed = exercise.isHold ? durationSeconds : reps

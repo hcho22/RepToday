@@ -176,8 +176,9 @@ final class GenerousRuntimePaceTests: XCTestCase {
     /// The number is a *generous runtime* pace, not the catalog's typical-case estimate, and exactly one
     /// documented constant governs how generous. Asserted across the whole catalog so it cannot hold for
     /// a lucky movement and fail elsewhere: every rep-based movement is priced at its authored estimate
-    /// scaled by the factor, and every hold is left alone (its per-second cost is definitional, and the
-    /// player runs a hold's timer at exactly its prescribed seconds).
+    /// scaled by the factor - the sweep spans the whole catalog, so mobility stretches are included and a
+    /// rep-based one is paced like any other - and every hold is left alone, because a hold's per-second
+    /// cost is definitional rather than estimated (prescribed seconds are elapsed seconds).
     func testGenerousPaceScalesEveryRepBasedMovementAndLeavesHoldsAlone() async throws {
         let library = try await library()
         let factor = SessionAssembly.workPaceGenerosityFactor

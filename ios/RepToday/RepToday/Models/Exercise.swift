@@ -51,7 +51,12 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// timing-fit step calibrates against. It is not read directly: `SessionAssembly.workSecondsPerSet`
     /// splits it into a fixed per-set setup cost plus a per-unit rate and re-prices the set against the
     /// target Step 6 actually prescribed, so a grown or cold-start-seeded target is sized as the longer
-    /// set it really is while a default-sized one still costs exactly what is authored here.
+    /// set it really is while a default-sized one reproduces this number exactly. That reproduction is
+    /// then paced: since US-CC08 the same function scales the *rep* half by
+    /// `SessionAssembly.workPaceGenerosityFactor`, so what a rep-based set actually costs the plan - and
+    /// what the player's work window counts down - is the slower-end `round(estimate x 1.25)`, and this
+    /// authored value is the typical-case time underneath it. A **hold** is unscaled (its per-second cost
+    /// is definitional, not estimated), so a default-sized hold still costs exactly what is authored here.
     var estimatedTimePerSetSeconds: Int
     /// Metabolic equivalent, used to estimate active energy for HealthKit.
     var metValue: Double
