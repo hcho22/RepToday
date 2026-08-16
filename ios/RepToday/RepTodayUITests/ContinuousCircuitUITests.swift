@@ -150,6 +150,66 @@ final class ContinuousCircuitUITests: XCTestCase {
         )
     }
 
+    /// US-CC06: the **Pause** escape hatch is reachable by a finger inside the one flow and freezes the
+    /// on-screen countdown *without* backgrounding the app - the distinctive new control this story adds.
+    /// The in-process view-model tests prove the exact-remainder freeze and the cue freeze deterministically;
+    /// this is the one thing they cannot exercise - a real finger pressing the shipped Pause control on the
+    /// running work window and seeing the countdown hold, then Resume bringing it back, with no separate
+    /// mode entered.
+    func testPauseFreezesTheWorkWindowWithoutBackgroundingAndResumeContinues() {
+        app.launch(.optedOutWithNoProbe)
+
+        let start = app.buttons["Start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20), "the Ready Screen never offered Start")
+        start.tap()
+
+        // Reach the first rep-based strength work window, skipping past the warm-up holds and any rests.
+        let workWindow = app
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Work window"))
+            .firstMatch
+        var reachedWorkWindow = false
+        for _ in 0..<30 {
+            if workWindow.waitForExistence(timeout: 2) { reachedWorkWindow = true; break }
+            if app.buttons["Skip rest"].exists { app.buttons["Skip rest"].tap(); continue }
+            if app.buttons["Skip this exercise"].exists { app.buttons["Skip this exercise"].tap(); continue }
+        }
+        XCTAssertTrue(reachedWorkWindow, "never reached a rep-based strength set with a work window")
+
+        // The Pause control is present in the one flow and reachable by a finger - no separate mode.
+        let pause = app.buttons["Pause session"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 5), "the running work window has no Pause control")
+        XCTAssertTrue(pause.isHittable, "the Pause control is not reachable by a finger")
+
+        // Read the frozen countdown: pause, wait real wall-clock time, and the "N seconds remaining" the
+        // ring announces must not have drawn down (the app is foregrounded the whole time - never
+        // backgrounded). The label is the accessible remaining seconds on the work-window ring.
+        let beforeLabel = workWindow.label
+        pause.tap()
+        attachScreenshot(named: "03-paused-work-window")
+
+        // The control flips to Resume in place - the same one flow, no mode change - and the work window
+        // stays on screen.
+        let resume = app.buttons["Resume session"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 3), "Pause did not flip to a Resume control")
+        XCTAssertTrue(workWindow.exists, "the work window countdown left the screen - Pause must not navigate away")
+
+        // Give it a few seconds of real time; a frozen countdown holds its remaining seconds.
+        sleep(3)
+        XCTAssertEqual(
+            workWindow.label, beforeLabel,
+            "the paused work window drew down - Pause did not freeze the on-screen countdown"
+        )
+
+        // Resume continues from where it stopped, back in the same flow, and the Pause control returns.
+        resume.tap()
+        XCTAssertTrue(
+            pause.waitForExistence(timeout: 3),
+            "Resume did not return the flow to a running, pausable work window"
+        )
+        attachScreenshot(named: "04-resumed-work-window")
+    }
+
     /// US-CC05: a warm-up stretch's timed hold auto-starts hands-free through the shipped player - no
     /// Start-hold tap - and a per-side stretch flows side 1 -> "Switch sides" -> side 2 without a touch.
     /// The in-process view-model test proves the timing deterministically under an injected clock; this

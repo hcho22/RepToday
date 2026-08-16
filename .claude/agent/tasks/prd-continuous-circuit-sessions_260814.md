@@ -155,12 +155,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] The flow exposes these quiet, non-attention-demanding controls: **+ More time** (extends the current work window / hold; US-CC14), **Done** (jump to the transition/rest early; US-CC01), **Pause** (freeze on-screen without backgrounding), **Skip** (US-CC07), **Swap** (the existing US-K03 engine swap, `swapCurrentExercise`), and **round-rest + / skip** during a between-round rest (reusing US-K02 `extendRest`/`skipRest`).
-- [ ] **Pause** freezes both the visible countdown and any audio cue timing (the `Countdown` pause semantics already used for backgrounding), and resumes from the exact remainder.
-- [ ] There is no user-facing "manual mode" toggle; the follow-along flow is the only player (US-CC (retirement), Non-Goals).
-- [ ] These controls are visually secondary to the movement/countdown, per Design Considerations.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in the running app (Simulator, `RepTodayUITests`).
+- [x] The flow exposes these quiet, non-attention-demanding controls: **+ More time** (extends the current work window / hold; US-CC14 - not built here; **+ More time during a rest** is surfaced as the existing US-K02 `extendRest` "+15s" control), **Done** (jump to the transition/rest early; US-CC01), **Pause** (freeze on-screen without backgrounding), **Skip** (US-CC07), **Swap** (the existing US-K03 engine swap, `swapCurrentExercise`), and **round-rest + / skip** during a between-round rest (reusing US-K02 `extendRest`/`skipRest`).
+- [x] **Pause** freezes both the visible countdown and any audio cue timing (the `Countdown` pause semantics already used for backgrounding), and resumes from the exact remainder.
+- [x] There is no user-facing "manual mode" toggle; the follow-along flow is the only player (US-CC (retirement), Non-Goals) - locked in by `NoManualModeGuardTests`.
+- [x] These controls are visually secondary to the movement/countdown, per Design Considerations.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in the running app (Simulator, `RepTodayUITests`).
 
 **Validation Test:**
 
