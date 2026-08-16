@@ -120,27 +120,53 @@ struct SystemSessionCuePlayer: SessionCuePlayer {
     /// cannot race the shared `AVAudioSession`.
     private static let duckQueue = DispatchQueue(label: "com.reptoday.session-cue.duck")
     private static var inFlightTones = 0
+    private static var liveToneTokens: Set<Int> = []
+    private static var nextToneToken = 0
     private static var didConfigureCategory = false
+
+    /// A ceiling on how long a single tone may keep the session ducked. The built-in cues are short
+    /// (well under a second), so this only ever fires as a safety net when a completion callback is
+    /// missed - long enough never to cut a real tone short, short enough that a dropped callback cannot
+    /// leave the user's audio ducked for more than a beat.
+    private static let toneSafetyTimeout: DispatchTimeInterval = .seconds(5)
 
     /// Duck the user's audio, play the tone, then restore the audio once the tone finishes. Ducking
     /// begins on the first overlapping tone and ends only when the last one completes, so a rapid
     /// `.done` -> `.transition` pair ducks once across both rather than restoring between them.
+    ///
+    /// Each tone is retired exactly once - whichever of its completion callback or its safety deadline
+    /// arrives first - so a missed `AudioServicesPlaySystemSoundWithCompletion` callback can never
+    /// strand `inFlightTones` above zero and leave the user's audio permanently ducked.
     private static func playDuckedTone(_ id: SystemSoundID) {
         duckQueue.async {
             configureCategoryIfNeeded()
             if inFlightTones == 0 {
                 try? AVAudioSession.sharedInstance().setActive(true)
             }
+            let token = nextToneToken
+            nextToneToken += 1
+            liveToneTokens.insert(token)
             inFlightTones += 1
             AudioServicesPlaySystemSoundWithCompletion(id) {
-                duckQueue.async {
-                    inFlightTones = max(0, inFlightTones - 1)
-                    if inFlightTones == 0 {
-                        // Restore the user's audio to full volume.
-                        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-                    }
-                }
+                duckQueue.async { retireTone(token) }
             }
+            // Safety net: if the completion callback is ever dropped, retire the tone anyway so the
+            // duck is always released. A no-op if the callback already retired this token.
+            duckQueue.asyncAfter(deadline: .now() + toneSafetyTimeout) {
+                retireTone(token)
+            }
+        }
+    }
+
+    /// Retire a single in-flight tone, restoring the user's audio to full volume once the last one is
+    /// gone. Idempotent per token (guarded by `liveToneTokens`), so the completion callback and the
+    /// safety deadline racing for the same tone decrement `inFlightTones` at most once between them.
+    private static func retireTone(_ token: Int) {
+        guard liveToneTokens.remove(token) != nil else { return }
+        inFlightTones = max(0, inFlightTones - 1)
+        if inFlightTones == 0 {
+            // Restore the user's audio to full volume.
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }
 
