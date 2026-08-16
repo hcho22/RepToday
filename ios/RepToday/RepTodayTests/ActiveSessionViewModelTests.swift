@@ -2363,6 +2363,85 @@ final class ActiveSessionViewModelTests: XCTestCase {
         }
     }
 
+    /// The US-CC09 whole-session validation test: drive a *complete* session - warm-up bookend hold,
+    /// a three-station strength circuit of rep windows across three rounds, and a cooldown bookend hold -
+    /// entirely hands-free (every hold, window, and rest driven to zero, not one manual completion), with
+    /// **exactly one training station explicitly skipped**, and then read the durable `WorkoutLog`'s
+    /// per-exercise rows. The invariant: an auto-advanced set records prescribed = performed identical to
+    /// a tapped completion, only the explicit Skip logs not-done, and the perceived-difficulty rating
+    /// (set afterward) is the sole difficulty signal - there is no per-set difficulty on a `CompletedSet`.
+    func testWholeSessionHandsFreeWithOneSkipLogsCompletedExceptTheSkip() throws {
+        var clock = start
+        let vm = makeViewModel(circuitWorkout(rounds: 3), clock: { clock })
+        vm.start()
+
+        // Nothing is rated yet: the difficulty signal is set only at the end, via `rate` (US-L02).
+        XCTAssertNil(vm.completionLog()?.perceivedDifficulty)
+
+        var didSkipSquat = false
+        var guardCount = 0
+        while !vm.isComplete && guardCount < 60 {
+            guardCount += 1
+            // Explicitly skip the squat station once, at its first appearance - the one not-done exercise.
+            if !didSkipSquat, vm.currentStep?.prescription.exercise.id == "squat" {
+                vm.skipExercise()
+                didSkipSquat = true
+                continue
+            }
+            if vm.isHolding {
+                // A bookend hold leg (auto-started hands-free, US-CC05) - run it out.
+                clock = clock.addingTimeInterval(TimeInterval(vm.holdSecondsPerSide ?? 0))
+                vm.completeHoldIfElapsed(asOf: clock)
+            } else if vm.isResting {
+                // A between-station transition, a between-round rest, or a switch-sides beat.
+                clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+                vm.completeRestIfElapsed(asOf: clock)
+            } else if vm.isRunningWorkWindow {
+                // A rep training set counting down its work window (US-CC01) - run it to zero, no tap.
+                clock = clock.addingTimeInterval(TimeInterval(vm.workWindowTotalSeconds))
+                vm.completeWorkWindowIfElapsed(asOf: clock)
+            } else {
+                XCTFail("hands-free flow stalled with nothing to advance at \(vm.currentStep?.prescription.exercise.id ?? "nil")")
+                break
+            }
+        }
+
+        XCTAssertTrue(didSkipSquat, "the squat station was reached and skipped")
+        XCTAssertTrue(vm.isComplete, "the whole session finished hands-free")
+
+        let log = try XCTUnwrap(vm.completionLog(), "a completed session builds its durable WorkoutLog")
+
+        // Every auto-advanced training exercise logs its full uniform round count as completed.
+        let pushUp = try XCTUnwrap(log.exercises.first { $0.exerciseId == "push_up" })
+        XCTAssertFalse(pushUp.skipped)
+        XCTAssertEqual(pushUp.completedSets, Array(repeating: CompletedSet(reps: 12, durationSeconds: nil), count: 3),
+                       "push_up logs all three rounds as completed, prescribed = performed")
+
+        let hinge = try XCTUnwrap(log.exercises.first { $0.exerciseId == "hinge" })
+        XCTAssertFalse(hinge.skipped)
+        XCTAssertEqual(hinge.completedSets, Array(repeating: CompletedSet(reps: 10, durationSeconds: nil), count: 3),
+                       "hinge logs all three rounds as completed, prescribed = performed")
+
+        // Each bookend hold auto-advanced too, logging its single set as completed.
+        let catCow = try XCTUnwrap(log.exercises.first { $0.exerciseId == "cat_cow" })
+        XCTAssertFalse(catCow.skipped)
+        XCTAssertEqual(catCow.completedSets, [CompletedSet(reps: nil, durationSeconds: 30)])
+        let forwardFold = try XCTUnwrap(log.exercises.first { $0.exerciseId == "forward_fold" })
+        XCTAssertFalse(forwardFold.skipped)
+        XCTAssertEqual(forwardFold.completedSets, [CompletedSet(reps: nil, durationSeconds: 30)])
+
+        // Only the explicitly skipped station is not-done: zero completed sets, `skipped == true`.
+        let squat = try XCTUnwrap(log.exercises.first { $0.exerciseId == "squat" })
+        XCTAssertTrue(squat.skipped, "the explicitly skipped station logs not-done")
+        XCTAssertEqual(squat.completedSets.count, 0, "and carries no completed sets, across all rounds")
+
+        // The rating is the sole difficulty signal, applied only at the end - and no per-set field exists.
+        XCTAssertNil(log.perceivedDifficulty, "no difficulty is recorded until the user rates")
+        vm.rate(.justRight)
+        XCTAssertEqual(vm.completionLog()?.perceivedDifficulty, .justRight,
+                       "the end-of-session rating is the only adaptation signal into the Ramp")
+    }
+
     /// A swap reshapes the slot the window was timing, so it drops the running window without a cue; the
     /// substitute - itself a rep training set - re-arms a fresh window sized to its own prescription.
     func testSwapClearsARunningWorkWindowAndReArmsForTheSubstitute() async {

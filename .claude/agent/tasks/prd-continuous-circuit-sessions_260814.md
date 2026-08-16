@@ -224,12 +224,16 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] An auto-advanced set records the prescribed reps/hold as performed, identical to today's tapped completion (prescribed = performed; there is no per-rep input, unchanged from US-K01/US-L01).
-- [ ] Only an explicit **Skip** (US-CC07) records an exercise as not-done; **Done** (early advance) records completed.
-- [ ] No per-set "did they really do it" tracking is added; the end-of-session perceived-difficulty rating (US-L02, `rate`) remains the sole adaptation signal into the Asymmetric Ramp.
-- [ ] The `>=80%` session-completion telemetry (US-T10 `session_completed`) reads a bit more generously than the old tap-gated model; this is documented as an accepted consequence in the PRD and `docs/test-coverage.md`.
-- [ ] The session-lifecycle telemetry contract is otherwise unchanged: `session_started`/`session_completed`/`session_abandoned` fire from the same choke points (`start()`, `recordSessionEnd()`, and `ReadyViewModel`'s give-up path), and `AbandonPoint` (warmup/mainWork/cooldown) still derives from the current step's block.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] An auto-advanced set records the prescribed reps/hold as performed, identical to today's tapped completion (prescribed = performed; there is no per-rep input, unchanged from US-K01/US-L01).
+- [x] Only an explicit **Skip** (US-CC07) records an exercise as not-done; **Done** (early advance) records completed.
+- [x] No per-set "did they really do it" tracking is added; the end-of-session perceived-difficulty rating (US-L02, `rate`) remains the sole adaptation signal into the Asymmetric Ramp.
+- [x] The `>=80%` session-completion telemetry (US-T10 `session_completed`) reads a bit more generously than the old tap-gated model; this is documented as an accepted consequence in the PRD and `docs/test-coverage.md`.
+- [x] The session-lifecycle telemetry contract is otherwise unchanged: `session_started`/`session_completed`/`session_abandoned` fire from the same choke points (`start()`, `recordSessionEnd()`, and `ReadyViewModel`'s give-up path), and `AbandonPoint` (warmup/mainWork/cooldown) still derives from the current step's block.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+
+**Implementation note (2026-08-16, hardening/lock-in - no production change):** Tracing the logging path confirmed the invariant was **already structural** once US-CC01/US-CC02/US-CC07 landed, so this story shipped as a lock-in story with no engine or player change. An auto-advanced set (`completeWorkWindowIfElapsed`) and a **Done** early-advance (`finishWorkWindowEarly`) both route through `completeSet()` -> `recordSet(for:)`, which appends a `CompletedSet(reps: prescription.reps, durationSeconds: prescription.durationSeconds)` - prescribed = performed, byte-identical to the pre-US-CC01 tapped path. A **Skip** (`skipExercise`) removes the station's `completedSets` and inserts it into `skippedStepIDs`, so `loggedExercises()` renders it `completedSets: []`, `skipped: true` across every round (US-CC02/US-CC07). `CompletedSet` carries only `reps`/`durationSeconds` - no per-set difficulty or verification field - and the sole adaptation signal remains the end-of-session `rate` (US-L02). Deliverables: the whole-session validation test `ActiveSessionViewModelTests.testWholeSessionHandsFreeWithOneSkipLogsCompletedExceptTheSkip` (drives warm-up hold + a 3x3 circuit + cooldown hold fully hands-free with one station skipped, reads the durable `WorkoutLog`), the compile-coupled `NoPerSetCompletionTrackingGuardTests` (reflection pins `CompletedSet` to exactly its two fields), and this note plus the `docs/test-coverage.md` row.
+
+**Accepted telemetry consequence (captain-noted):** because a work window auto-records its set at countdown zero even if the user did not actually perform the reps, the US-T10 `>=80%` `session_completed` metric reads **a bit more generously** than the retired tap-gated model, where completion required an affirmative per-set tap. This is accepted, not a defect: the follow-along design deliberately trades per-set proof for a hands-free flow, the perceived-difficulty rating (US-L02) remains the real adaptation signal, and the number should be interpreted as "reached the end of the session" rather than "verifiably performed every rep." No emission site moved and no new event was added.
 
 **Validation Test:**
 
