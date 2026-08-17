@@ -431,6 +431,26 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded, legacy)
     }
 
+    /// A session paused before this update carries neither the US-O03 `hold` key nor the US-T10
+    /// `exercisedMinutes` key - both were added later and are optional-and-defaulted precisely so an
+    /// old snapshot decodes unchanged (US-CC12 forward safety). Dropping both together models the
+    /// oldest resumable shape the new player must still read back rather than lose a workout to.
+    func testActiveSessionStateDecodesWithoutTheHoldOrExercisedMinutesFields() throws {
+        let legacy = makeActiveSessionState()
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: PersistenceCoder.encoder.encode(legacy)) as? [String: Any]
+        )
+        json.removeValue(forKey: "hold")
+        json.removeValue(forKey: "exercisedMinutes")
+        let data = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try PersistenceCoder.decoder.decode(ActiveSessionState.self, from: data)
+
+        XCTAssertNil(decoded.hold)
+        XCTAssertNil(decoded.exercisedMinutes)
+        XCTAssertEqual(decoded, legacy, "the old snapshot round-trips to the same value, no field lost")
+    }
+
     /// Persisting again overwrites the user's single in-progress session in place, never accumulating.
     func testUpdatingActiveSessionOverwritesInPlace() throws {
         try insert(makeActiveSessionState(), userId: "u")

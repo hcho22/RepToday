@@ -1854,6 +1854,148 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(resumed.isComplete)
     }
 
+    // MARK: - Migration: resume an old paused session in the new player (US-CC12)
+
+    /// A session paused before this update - written by the old manual player (US-K04) and so possibly
+    /// carrying **uneven** per-exercise set counts (pre-US-CC03) - resumes in the new continuous-circuit
+    /// player from its exact saved position, without losing completed work, double-counting a set, or
+    /// restoring a running hold leg. This is the PRD's US-CC12 validation shape: a mid-block position
+    /// with some completed sets, one skipped exercise, and a per-side `hold.side == 2`.
+    ///
+    /// The migration is structural rather than a conversion: no snapshot-schema change was needed
+    /// (US-CC02 kept `currentStepIndex`/`currentSet`, since a station's r-th set *is* round r), so the
+    /// saved position maps straight into round/station terms. `blockSpan` reads the block's round count
+    /// as the **max** station set count and `hasSet` gates each station by its own count, so an uneven
+    /// block resolves deterministically - a shorter station simply drops out of the rounds beyond its
+    /// own set count. The one piece of per-side state that survives is the *side*: the leg itself is
+    /// never persisted (US-O03), so the resumed training hold comes back **idle on side 2** awaiting a
+    /// deliberate Start-hold tap rather than a phantom running countdown.
+    func testResumesAnOldUnevenPausedSnapshotPreservingWorkSkipsAndHoldSide() {
+        // An old-shape strength block with genuinely uneven set counts (pre-US-CC03): push_up 3, the
+        // per-side side_plank hold 3, squat 2 - bracketed by single-set bookends.
+        let warmup = WorkoutBlock(
+            id: UUID(), title: "Warm-up", category: .warmup,
+            exercises: [holdPrescription("cat_cow", sets: 1, seconds: 30)]
+        )
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                repPrescription("push_up", sets: 3, reps: 12),
+                perSideHoldPrescription("side_plank", sets: 3, seconds: 20),
+                repPrescription("squat", sets: 2, reps: 15)
+            ]
+        )
+        let cooldown = WorkoutBlock(
+            id: UUID(), title: "Cooldown", category: .cooldown,
+            exercises: [holdPrescription("forward_fold", sets: 1, seconds: 30)]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false, blocks: [warmup, strength, cooldown]
+        )
+        // Slots: [cat_cow, push_up, side_plank, squat, forward_fold]. The saved position sits mid-block
+        // on side_plank (index 2), between its two legs, having already banked push_up's first two sets
+        // and side_plank's first set; squat is skipped.
+        let base = ActiveSessionState(fresh: workout)
+        let pushUpID = base.slots[1].prescription.id
+        let sidePlankID = base.slots[2].prescription.id
+        let squatID = base.slots[3].prescription.id
+        let saved = ActiveSessionState(
+            workout: workout,
+            slots: base.slots,
+            currentStepIndex: 2,
+            currentSet: 2,
+            completedSets: [
+                pushUpID: [CompletedSet(reps: 12, durationSeconds: nil), CompletedSet(reps: 12, durationSeconds: nil)],
+                sidePlankID: [CompletedSet(reps: nil, durationSeconds: 20)]
+            ],
+            skippedStepIDs: [squatID],
+            startedAt: start,
+            rest: nil,
+            hold: ActiveSessionState.Hold(side: 2)
+        )
+
+        let resumed = ActiveSessionViewModel(state: saved, now: { self.start })
+
+        // Saved position restored exactly.
+        XCTAssertFalse(resumed.isComplete)
+        XCTAssertEqual(resumed.currentStepIndex, 2)
+        XCTAssertEqual(resumed.currentSet, 2)
+        XCTAssertEqual(resumed.currentStep?.prescription.exercise.id, "side_plank")
+
+        // The uneven block maps deterministically into round/station terms: the r-th set is round r, and
+        // "M" is the block's max set count, so a shorter station just drops out of the later rounds.
+        XCTAssertEqual(resumed.currentRound, 2, "the saved set doubles as the circuit round")
+        XCTAssertEqual(resumed.circuitRoundCount, 3, "M is the block's max station set count (3), uneven notwithstanding")
+
+        // Completed work preserved with nothing lost and nothing double-counted.
+        XCTAssertEqual(resumed.completedSets[pushUpID]?.count, 2)
+        XCTAssertEqual(resumed.completedSets[sidePlankID]?.count, 1)
+        XCTAssertEqual(resumed.completedSetCount, 3, "exactly the three banked sets - none lost, none fabricated")
+
+        // The skip survives, and the skipped station carries no completed sets.
+        XCTAssertEqual(resumed.skippedStepIDs, [squatID])
+        XCTAssertNil(resumed.completedSets[squatID], "a skipped exercise records no sets")
+
+        // The per-side hold restores idle on the owed side (side 2), not as a running leg (US-O03): the
+        // training hold parks for a deliberate Start-hold tap rather than un-pausing a phantom countdown.
+        XCTAssertEqual(resumed.holdSide, 2)
+        XCTAssertFalse(resumed.isHolding, "no running leg is ever restored")
+        XCTAssertTrue(resumed.canStartHold, "the resumed leg is ready to begin fresh on side 2")
+    }
+
+    /// Playing a resumed uneven pre-CC03 circuit through to the end never crashes and never drops the
+    /// work banked before the pause. The position-driven rotation is total-preserving from the saved
+    /// spot - a shorter station drops out of the later rounds via `hasSet` - so an old snapshot's uneven
+    /// block finishes cleanly rather than trapping or losing a completed set.
+    func testResumedUnevenPreCircuitPlaysToCompletionWithoutLosingWork() {
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                repPrescription("push_up", sets: 3, reps: 12),
+                repPrescription("squat", sets: 2, reps: 15),
+                repPrescription("hinge", sets: 2, reps: 10)
+            ]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 20, wasReturn: false, blocks: [strength]
+        )
+        let base = ActiveSessionState(fresh: workout)
+        let pushUpID = base.slots[0].prescription.id
+        let squatID = base.slots[1].prescription.id
+        let hingeID = base.slots[2].prescription.id
+        // Mid-way, with push_up's first two sets banked and hinge skipped.
+        let saved = ActiveSessionState(
+            workout: workout,
+            slots: base.slots,
+            currentStepIndex: 1,
+            currentSet: 2,
+            completedSets: [pushUpID: [CompletedSet(reps: 12, durationSeconds: nil), CompletedSet(reps: 12, durationSeconds: nil)]],
+            skippedStepIDs: [hingeID],
+            startedAt: start,
+            rest: nil
+        )
+
+        let vm = ActiveSessionViewModel(state: saved, now: { self.start })
+        vm.start() // idempotent - keeps the restored origin
+
+        var guardCount = 0
+        while !vm.isComplete, guardCount < 50 {
+            vm.completeSet() // records the current set and rotates on (collapsing any open rest)
+            guardCount += 1
+        }
+
+        XCTAssertTrue(vm.isComplete, "the resumed uneven circuit reaches completion")
+        XCTAssertGreaterThanOrEqual(
+            vm.completedSets[pushUpID]?.count ?? 0, 2,
+            "the two sets banked before the pause are never dropped"
+        )
+        XCTAssertTrue(vm.skippedStepIDs.contains(hingeID), "the skip holds for the rest of the session")
+        XCTAssertNil(vm.completedSets[hingeID], "the skipped station never logs a set")
+        XCTAssertNotNil(vm.completedSets[squatID], "the station the user resumed on still finishes its rounds")
+    }
+
     // MARK: - Completion recording & summary (US-L01)
 
     /// Captures the completion recordings so a test can assert the written log and its context. Also
