@@ -327,11 +327,11 @@ Deliverables: the PRD validation test `ActiveSessionViewModelTests.testResumesAn
 
 **Acceptance Criteria:**
 
-- [ ] The first time a user reaches the continuous-circuit player (once), a short, dismissible explainer states: the session auto-advances, **+ More time** never rushes you, **Done** jumps ahead, and tones mark state changes.
-- [ ] The explainer is shown at most once (a persisted one-shot flag), does not block the session from starting, and is fully accessible (VoiceOver-readable, Dynamic Type).
-- [ ] Copy is identity-framed and non-loss-framed, consistent with the product voice.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in the running app (Simulator, `RepTodayUITests`).
+- [x] The first time a user reaches the continuous-circuit player (once), a short, dismissible explainer states: the session auto-advances, **+ More time** never rushes you, **Done** jumps ahead, and tones mark state changes.
+- [x] The explainer is shown at most once (a persisted one-shot flag), does not block the session from starting, and is fully accessible (VoiceOver-readable, Dynamic Type).
+- [x] Copy is identity-framed and non-loss-framed, consistent with the product voice.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in the running app (Simulator, `RepTodayUITests`).
 
 **Validation Test:**
 
