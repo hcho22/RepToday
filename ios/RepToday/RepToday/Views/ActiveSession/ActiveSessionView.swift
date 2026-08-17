@@ -132,6 +132,13 @@ struct ActiveSessionView: View {
     /// it back on the next session; "Got it" then only has to dismiss the overlay. A missing `AppState`
     /// (hosted evidence surfaces) simply never shows it. The entrance is animated unless Reduce Motion
     /// is on, in which case it appears in place with no transition.
+    ///
+    /// While the explainer is up the session is held on an explicit **user pause** (US-CC06), so the
+    /// freshly-started work window / hold / rest - and its audio-cue timing - freezes rather than
+    /// elapsing behind the modal: a first-time user reading the four points cannot miss exercise one,
+    /// hear a burst of `.halfway`/`.done` tones, or be auto-advanced into rest. `dismissExplainer`
+    /// resumes it from the exact remainder. The session has still *started* (its `onAppear` ran
+    /// `start()`), so this never gates the start; it only holds the clock until "Got it".
     private func presentExplainerIfNeeded() {
         guard let appState, appState.shouldShowContinuousCircuitExplainer else { return }
         appState.markContinuousCircuitExplainerSeen()
@@ -140,10 +147,17 @@ struct ActiveSessionView: View {
         } else {
             withAnimation(.easeOut(duration: 0.25)) { showExplainer = true }
         }
+        // A no-op if the first step is an idle "Start hold" training step (nothing counting down yet);
+        // otherwise it freezes the live countdown until "Got it".
+        viewModel.pause(asOf: Date())
     }
 
-    /// Dismiss the explainer, honoring Reduce Motion the same way the entrance does.
+    /// Dismiss the explainer, honoring Reduce Motion the same way the entrance does, and resume the
+    /// session the presentation paused (US-CC06) from its exact remainder. `resume` is a no-op if
+    /// nothing was frozen, so the hosted-surface path with no `AppState` (which never paused) is
+    /// unaffected.
     private func dismissExplainer() {
+        viewModel.resume(asOf: Date())
         if reduceMotion {
             showExplainer = false
         } else {
@@ -186,7 +200,6 @@ struct ActiveSessionView: View {
         }
         .onAppear {
             viewModel.start()
-            presentExplainerIfNeeded()
             // A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a
             // scene-phase change when the resumed player is presented on an already-active app, so
             // resume it here too. A no-op unless a rest is currently paused, leaving a fresh session
@@ -199,6 +212,9 @@ struct ActiveSessionView: View {
             // pauses and resumes the leg through `scenePhase` below, which is the interruption the user
             // is actually present for.
             viewModel.resumeRest(asOf: Date())
+            // Present the first-run explainer last, after the session is fully live, so the pause it
+            // takes freezes a running countdown rather than racing `start()`/`resumeRest` to set one up.
+            presentExplainerIfNeeded()
             // The user puts the phone down mid-plank; the screen must not lock out from under a
             // running countdown, or its cue never lands. Scoped to the session being played, and
             // released the moment it finishes or the player is dismissed.
