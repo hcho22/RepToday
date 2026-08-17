@@ -3258,6 +3258,39 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.canUserPause, "the completion screen offers no Pause")
     }
 
+    /// US-CC13: the first-run explainer holds the session on a user pause while it is up, so the
+    /// freshly-started first work window does not elapse, fire `.halfway`/`.done` cues, or auto-advance
+    /// behind the modal - then resumes from the exact remainder on "Got it". This mirrors what
+    /// `ActiveSessionView.presentExplainerIfNeeded` (pause) and `dismissExplainer` (resume) drive on the
+    /// production surface; the pause never gates the start (the session has already started).
+    func testExplainerPauseFreezesTheFirstWindowUntilDismiss() {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(strengthWorkout(sets: 1, reps: 12), clock: { clock }, feedback: spy)
+
+        // What the player's onAppear does: start the session (first window auto-starts), then present
+        // the explainer, which pauses.
+        vm.start()
+        vm.pause(asOf: clock)
+        XCTAssertTrue(vm.isUserPaused, "presenting the explainer holds the session on a user pause")
+        XCTAssertTrue(vm.isWorkWindowPaused)
+        let frozen = vm.workWindowRemaining(asOf: clock)
+
+        // The user reads the four points; well past where the window would have hit zero unpaused.
+        clock = start.addingTimeInterval(600)
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isRunningWorkWindow, "the first window never auto-advances behind the modal")
+        XCTAssertEqual(vm.completedSetCount, 0, "no set banked while the explainer is up")
+        XCTAssertEqual(spy.completions, 0, "no `.done` cue fires behind the modal")
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "the countdown stays frozen")
+
+        // "Got it" dismisses and resumes from the exact remainder.
+        vm.resume(asOf: clock)
+        XCTAssertFalse(vm.isUserPaused)
+        XCTAssertFalse(vm.isWorkWindowPaused)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), frozen, "resumes from where it was held")
+    }
+
     /// Taking an advancing escape hatch while paused (Done, Skip, Swap, Skip rest, Stop hold) clears the
     /// user pause, because the frozen countdown is being torn down and a fresh one re-arms un-paused -
     /// so the flow never lands running-but-showing-Resume.

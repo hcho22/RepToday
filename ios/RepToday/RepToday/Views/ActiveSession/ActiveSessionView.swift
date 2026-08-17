@@ -25,7 +25,17 @@ import Lottie
 struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    /// The persisted one-shot flag for the first-run explainer (US-CC13). Declared optional so the
+    /// player still renders when hosted without an `AppState` in the environment (the evidence-test
+    /// surfaces do exactly that); production always provides one, so the explainer only ever runs
+    /// where the flag can be read and written.
+    @Environment(AppState.self) private var appState: AppState?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: ActiveSessionViewModel
+
+    /// Drives the first-run explainer overlay (US-CC13). Set once, on first arrival at the player, and
+    /// only when the persisted one-shot flag says it has never been shown.
+    @State private var showExplainer = false
 
     /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
     /// this to refresh the resumable session *without* racing the store's completion clear: a completed
@@ -117,6 +127,44 @@ struct ActiveSessionView: View {
         dismiss()
     }
 
+    /// Present the first-run explainer (US-CC13) at most once, ever. The one-shot flag is flipped the
+    /// moment we decide to show it - not on dismissal - so a force-quit while it is up can never bring
+    /// it back on the next session; "Got it" then only has to dismiss the overlay. A missing `AppState`
+    /// (hosted evidence surfaces) simply never shows it. The entrance is animated unless Reduce Motion
+    /// is on, in which case it appears in place with no transition.
+    ///
+    /// While the explainer is up the session is held on an explicit **user pause** (US-CC06), so the
+    /// freshly-started work window / hold / rest - and its audio-cue timing - freezes rather than
+    /// elapsing behind the modal: a first-time user reading the four points cannot miss exercise one,
+    /// hear a burst of `.halfway`/`.done` tones, or be auto-advanced into rest. `dismissExplainer`
+    /// resumes it from the exact remainder. The session has still *started* (its `onAppear` ran
+    /// `start()`), so this never gates the start; it only holds the clock until "Got it".
+    private func presentExplainerIfNeeded() {
+        guard let appState, appState.shouldShowContinuousCircuitExplainer else { return }
+        appState.markContinuousCircuitExplainerSeen()
+        if reduceMotion {
+            showExplainer = true
+        } else {
+            withAnimation(.easeOut(duration: 0.25)) { showExplainer = true }
+        }
+        // A no-op if the first step is an idle "Start hold" training step (nothing counting down yet);
+        // otherwise it freezes the live countdown until "Got it".
+        viewModel.pause(asOf: Date())
+    }
+
+    /// Dismiss the explainer, honoring Reduce Motion the same way the entrance does, and resume the
+    /// session the presentation paused (US-CC06) from its exact remainder. `resume` is a no-op if
+    /// nothing was frozen, so the hosted-surface path with no `AppState` (which never paused) is
+    /// unaffected.
+    private func dismissExplainer() {
+        viewModel.resume(asOf: Date())
+        if reduceMotion {
+            showExplainer = false
+        } else {
+            withAnimation(.easeIn(duration: 0.2)) { showExplainer = false }
+        }
+    }
+
     /// Toggle the explicit user pause (US-CC06): freeze the live countdown, or resume it from its exact
     /// remainder. Reads the wall clock the same way the scene-phase background pause does; the view model
     /// keeps all countdown arithmetic pure over the injected clock behind it.
@@ -139,6 +187,16 @@ struct ActiveSessionView: View {
             } else {
                 player
             }
+
+            // The first-run explainer (US-CC13) rides above the player as its own layer rather than a
+            // sheet, so the entrance animation can be stilled under Reduce Motion and the session
+            // underneath keeps initializing (its `onAppear` has already fired) - the explainer never
+            // gates the start.
+            if showExplainer {
+                ContinuousCircuitExplainerView(onDismiss: dismissExplainer)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
         }
         .onAppear {
             viewModel.start()
@@ -154,6 +212,9 @@ struct ActiveSessionView: View {
             // pauses and resumes the leg through `scenePhase` below, which is the interruption the user
             // is actually present for.
             viewModel.resumeRest(asOf: Date())
+            // Present the first-run explainer last, after the session is fully live, so the pause it
+            // takes freezes a running countdown rather than racing `start()`/`resumeRest` to set one up.
+            presentExplainerIfNeeded()
             // The user puts the phone down mid-plank; the screen must not lock out from under a
             // running countdown, or its cue never lands. Scoped to the session being played, and
             // released the moment it finishes or the player is dismissed.
@@ -1231,6 +1292,7 @@ private struct LottieDemoView: UIViewRepresentable {
 
 #Preview {
     ActiveSessionView(workout: .previewSample)
+        .environment(AppState.preview())
 }
 
 private extension Workout {

@@ -47,6 +47,35 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(appState.selectedTab, .home)
     }
 
+    // MARK: - Continuous-circuit first-run explainer one-shot (US-CC13)
+
+    func testExplainerShowsOnAFreshInstall() {
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasSeenContinuousCircuitExplainer)
+        XCTAssertTrue(appState.shouldShowContinuousCircuitExplainer, "an install that has never seen it should be shown it")
+    }
+
+    func testMarkingTheExplainerSeenGatesItOff() {
+        let appState = AppState(userDefaults: defaults)
+
+        appState.markContinuousCircuitExplainerSeen()
+
+        XCTAssertTrue(appState.hasSeenContinuousCircuitExplainer)
+        XCTAssertFalse(appState.shouldShowContinuousCircuitExplainer, "once seen it must not be shown again")
+        XCTAssertTrue(defaults.bool(forKey: "AppState.hasSeenContinuousCircuitExplainer"), "the flag persists")
+    }
+
+    func testExplainerSeenFlagSurvivesRelaunch() {
+        let original = AppState(userDefaults: defaults)
+        original.markContinuousCircuitExplainerSeen()
+
+        let reloaded = AppState(userDefaults: defaults)
+
+        XCTAssertTrue(reloaded.hasSeenContinuousCircuitExplainer)
+        XCTAssertFalse(reloaded.shouldShowContinuousCircuitExplainer, "the explainer never reappears on a later session")
+    }
+
     // MARK: - Anonymous install identity (US-T05)
 
     func testFirstLaunchMintsInstallIdentityAndStamps() {

@@ -51,6 +51,7 @@
 		40C5DF51C4AC33A529CE0E4F /* PaywallViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B463093E8FF19B4E69179A /* PaywallViewModel.swift */; };
 		4165FA39BF82F9D5F2788CC5 /* TestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2552CC1C5C16F23A57BCDA4C /* TestApp.swift */; };
 		41E14EB2E8854D111F2C8E31 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C021A85009B63EDF1B7BD53 /* Theme.swift */; };
+		4308CF8524B96D2257EF0AA3 /* ContinuousCircuitExplainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09C1D99612A09900BCA6B373 /* ContinuousCircuitExplainerTests.swift */; };
 		43E335FF4EF63ADD3667733B /* SessionSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B788CD531F4325E4A9DB967 /* SessionSummary.swift */; };
 		43E8759D94CE6ADCA3D227FB /* ProxyVarietyLanguageProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA816A1AE4C17D0C91DE563 /* ProxyVarietyLanguageProviderTests.swift */; };
 		4472B35FB835C7DAAFED51E6 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21CB9ED081B1EC44B1D4E7DA /* PersistenceController.swift */; };
@@ -94,6 +95,7 @@
 		7E2D2AAE8AEFE2A054422540 /* StartSeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48E1D067DCDB47ABC5AB069 /* StartSeedTests.swift */; };
 		7E43D00C773E0BE436FEFA42 /* SessionShapeSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D0DC040668B3F10A37D858 /* SessionShapeSelectionTests.swift */; };
 		7F662FA76F8D07213282AE0E /* ColdStartSeedingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406DE1A1467EFCF0938D1246 /* ColdStartSeedingTests.swift */; };
+		7F6BB0B2E2AB85D299B56D07 /* ContinuousCircuitExplainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0BFF79B936A0EBBEB5FDFBE /* ContinuousCircuitExplainerView.swift */; };
 		7FF8823409CD37C9BE09C946 /* ExerciseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E5A534AA361B55692C6C190 /* ExerciseServiceTests.swift */; };
 		81A145EA317316CFBC7184F4 /* ReadyViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FE562C9E2D008C92DB85B21 /* ReadyViewModelTests.swift */; };
 		8234AFC18D1893CC336B0DC9 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F85C64165B442A49C91C183 /* OnboardingViewModel.swift */; };
@@ -204,6 +206,7 @@
 		0535D9A19CD2F1050908D03D /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		05A59FC880465B5C874C0072 /* SessionPolicyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyServiceTests.swift; sourceTree = "<group>"; };
 		06D30DA3DD69EB58EE599F08 /* USCC08PaceEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USCC08PaceEvidenceTests.swift; sourceTree = "<group>"; };
+		09C1D99612A09900BCA6B373 /* ContinuousCircuitExplainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousCircuitExplainerTests.swift; sourceTree = "<group>"; };
 		0AA816A1AE4C17D0C91DE563 /* ProxyVarietyLanguageProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProviderTests.swift; sourceTree = "<group>"; };
 		0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
 		0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthPrimaryRegressionTests.swift; sourceTree = "<group>"; };
@@ -369,6 +372,7 @@
 		EE36BF502DAB7F6EA85794DE /* AccountDeletionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionServiceTests.swift; sourceTree = "<group>"; };
 		EF888D00CB3C7612EB72A396 /* MovementPatternFocusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementPatternFocusTests.swift; sourceTree = "<group>"; };
 		F09F0C0644F2443185F7A37A /* DeterministicSessionPolicyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterministicSessionPolicyService.swift; sourceTree = "<group>"; };
+		F0BFF79B936A0EBBEB5FDFBE /* ContinuousCircuitExplainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousCircuitExplainerView.swift; sourceTree = "<group>"; };
 		F0D9E0BEF8C9F70009DCA8F6 /* Enums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enums.swift; sourceTree = "<group>"; };
 		F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataServicesTests.swift; sourceTree = "<group>"; };
 		F4A475E54BF81899FCA16BF7 /* AppleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthService.swift; sourceTree = "<group>"; };
@@ -574,6 +578,7 @@
 			isa = PBXGroup;
 			children = (
 				63BD9CFC17194608C1F4C42E /* ActiveSessionView.swift */,
+				F0BFF79B936A0EBBEB5FDFBE /* ContinuousCircuitExplainerView.swift */,
 			);
 			path = ActiveSession;
 			sourceTree = "<group>";
@@ -605,6 +610,7 @@
 				406DE1A1467EFCF0938D1246 /* ColdStartSeedingTests.swift */,
 				C342BE08A5755BD21B034C7D /* ConsistencyScoreTests.swift */,
 				172293D309B076F0FBE60521 /* ConsistencyTrendTests.swift */,
+				09C1D99612A09900BCA6B373 /* ContinuousCircuitExplainerTests.swift */,
 				F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */,
 				FD32B466256E5519DC297162 /* DefaultDurationLearningTests.swift */,
 				4E289589B4FB69D02E65D5B6 /* DefaultsSnapshot.swift */,
@@ -980,6 +986,7 @@
 				7F662FA76F8D07213282AE0E /* ColdStartSeedingTests.swift in Sources */,
 				020372D440DD73847A4395CA /* ConsistencyScoreTests.swift in Sources */,
 				8E3134D1859840AEB5051D5F /* ConsistencyTrendTests.swift in Sources */,
+				4308CF8524B96D2257EF0AA3 /* ContinuousCircuitExplainerTests.swift in Sources */,
 				B4B38F942E95757ABABB4B3D /* CoreDataServicesTests.swift in Sources */,
 				CEF4EC76DE91F57C33F48F7A /* DefaultDurationLearningTests.swift in Sources */,
 				A2607F5F147453503D83D621 /* DefaultsSnapshot.swift in Sources */,
@@ -1083,6 +1090,7 @@
 				7CAEB69CC3054208C7B23CD3 /* ColdStartOverride.swift in Sources */,
 				2E92695475A99C6DDDA0F746 /* ConsistencyScore.swift in Sources */,
 				B90F66AAE5B68808B2416420 /* ConsistencyTrend.swift in Sources */,
+				7F6BB0B2E2AB85D299B56D07 /* ContinuousCircuitExplainerView.swift in Sources */,
 				C818C489501F89EAE1AAD756 /* CoreDataActiveSessionStore.swift in Sources */,
 				0890D6815C2B90FC21E07C38 /* CoreDataSessionPolicyStore.swift in Sources */,
 				D0CC216A5F6C685B569C2C8F /* CoreDataUserService.swift in Sources */,

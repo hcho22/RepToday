@@ -71,6 +71,28 @@ final class AppState {
         }
     }
 
+    /// One-shot flag for the continuous-circuit first-run explainer (US-CC13): `true` once the user
+    /// has seen the one-time introduction to the self-driving player. Persisted so the explainer is
+    /// shown at most once ever, surviving relaunch (and - like the rest of `AppState` - a backup
+    /// restore). Defaults to unseen: unlike the opt-out flag, absent means "not yet seen", which is
+    /// exactly what `bool(forKey:)` answers for a never-written key, so no `object(forKey:)` guard is
+    /// needed. It gates presentation only - it cohorts nothing and emits nothing.
+    var hasSeenContinuousCircuitExplainer: Bool {
+        didSet {
+            userDefaults.set(hasSeenContinuousCircuitExplainer, forKey: Keys.hasSeenContinuousCircuitExplainer)
+        }
+    }
+
+    /// Whether the continuous-circuit explainer should be presented on this arrival at the player -
+    /// the read side of the one-shot flag, so a call site never has to remember to negate it.
+    var shouldShowContinuousCircuitExplainer: Bool { !hasSeenContinuousCircuitExplainer }
+
+    /// Records that the explainer has been shown, flipping the one-shot flag so it is never presented
+    /// again. Idempotent: calling it twice is a persisted no-op the second time.
+    func markContinuousCircuitExplainerSeen() {
+        hasSeenContinuousCircuitExplainer = true
+    }
+
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
     /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
     /// the id is the half of the identity that gets replaced, while a recorded origin is the half
@@ -230,6 +252,9 @@ final class AppState {
         // `isAnalyticsEnabled(in:)` for why that cannot be a plain `bool(forKey:)`.
         analyticsEnabled = AppState.isAnalyticsEnabled(in: userDefaults)
 
+        // Unseen by default: a never-written key reads `false`, which is the honest "not yet seen".
+        hasSeenContinuousCircuitExplainer = userDefaults.bool(forKey: Keys.hasSeenContinuousCircuitExplainer)
+
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date
 
@@ -290,6 +315,7 @@ final class AppState {
         static let firstLaunchAt = "AppState.firstLaunchAt"
         static let firstLaunchUnknown = "AppState.firstLaunchUnknown"
         static let lastActiveAt = "AppState.lastActiveAt"
+        static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
     }
 }
 
