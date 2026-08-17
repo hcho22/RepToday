@@ -168,12 +168,12 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     private func player(_ workout: Workout, engine: any WorkoutEngineProtocol) -> ActiveSessionViewModel {
         ActiveSessionViewModel(
             workout: workout, swapEngine: engine, user: steadyUser(), recentLogs: history(),
-            sessionPolicy: .default, now: { self.asOf }, feedback: SilentRestFeedback()
+            sessionPolicy: .default, now: { self.asOf }, cuePlayer: SilentCuePlayer()
         )
     }
 
-    private struct SilentRestFeedback: RestTimerFeedback {
-        func restDidComplete() {}
+    private struct SilentCuePlayer: SessionCuePlayer {
+        func play(_ cue: SessionCue, suppressAudio: Bool) {}
     }
 
     /// The planned wall-clock of a (possibly swapped) lineup, measured with the engine's own even-round

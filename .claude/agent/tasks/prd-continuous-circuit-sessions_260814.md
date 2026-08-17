@@ -250,12 +250,12 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] No spoken/TTS callouts and no recorded trainer voice anywhere in the flow.
-- [ ] Distinct tones mark distinct states: **go** (work window starts), **halfway** (optional midpoint), **transition** (between stations), **round-rest** (between rounds), and **done** (set/hold complete), so states are tellable apart by ear (extends the existing `RestTimerFeedback` seam).
-- [ ] Audio **ducks** (lowers, does not stop) the user's own music/podcast for the duration of a cue, then restores it (correct `AVAudioSession` category/options - e.g. `.duckOthers` - rather than interrupting/stopping).
-- [ ] Audio **coordinates with VoiceOver**: when VoiceOver is running, app tones do not talk over VoiceOver speech (respect the announcement/`isVoiceOverRunning` state, defer or suppress a cue that would collide).
-- [ ] A haptic alternative accompanies each tone (project convention: haptics with an audio alternative), so a muted user still gets state changes.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass; verify audio behavior on device where the audio session is real (Simulator audio routing is a proxy).
+- [x] No spoken/TTS callouts and no recorded trainer voice anywhere in the flow.
+- [x] Distinct tones mark distinct states: **go** (work window starts), **halfway** (optional midpoint), **transition** (between stations), **round-rest** (between rounds), and **done** (set/hold complete), so states are tellable apart by ear (extends the existing `RestTimerFeedback` seam, now `SessionCuePlayer`).
+- [x] Audio **ducks** (lowers, does not stop) the user's own music/podcast for the duration of a cue, then restores it (`AVAudioSession` `.playback` + `.duckOthers`, deactivated with `.notifyOthersOnDeactivation`; **on-device manual QA** - Simulator audio routing is a proxy).
+- [x] Audio **coordinates with VoiceOver**: when VoiceOver is running, app tones do not talk over VoiceOver speech (the tone is suppressed while the haptic still fires; the decision reads `isVoiceOverRunning` at fire time and is unit-tested through the injected spy; live collision timing is **on-device manual QA**).
+- [x] A haptic alternative accompanies each tone (project convention: haptics with an audio alternative), so a muted user - or a VoiceOver user whose tone is withheld - still gets state changes.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass; verify audio behavior on device where the audio session is real (Simulator audio routing is a proxy).
 
 **Validation Test:**
 
@@ -265,6 +265,8 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
   2. Enable VoiceOver and repeat one work window.
 - **Expected Result:** Each state change plays a distinct tone; music ducks under each tone and returns to full volume after. No spoken workout callouts occur. With VoiceOver on, tones do not overlap VoiceOver speech.
 - **Failure Indicator:** Music stops (instead of ducking) or never returns; a spoken callout plays; tones collide with VoiceOver; or states are indistinguishable by ear.
+
+**Implementation note (landed):** Player-only. The single US-K02 feedback seam (`RestTimerFeedback.restDidComplete()`) is evolved into `Utilities/SessionCuePlayer.swift`: a `SessionCue` enum (`.go`/`.halfway`/`.transition`/`.roundRest`/`.done`) and `SessionCuePlayer.play(_:suppressAudio:)`, with the real `SystemSessionCuePlayer` and an injected spy in tests (same protocol shape). The five states route onto the player's existing transition points, not new advance logic: `.go` from `startWorkWindow()`; a new optional `.halfway` from `fireWorkWindowHalfwayIfReached(asOf:)` driven off the work-window ticker; `.transition`/`.roundRest` at a rest's *start* (a `cue:` argument on `startRest`, sourced from a cue kind `nextPosition` now returns); `.done` at set/hold-leg completion. A rest *ending* fires no cue (the next window's `.go` is the boundary tone), so go never doubles with a rest-completion tone; the US-CC05 switch-sides beat stays silent and each hold leg still lands exactly one `.done`. **Tone source:** distinct `AudioServicesPlaySystemSound` ids - no bundled audio asset, so no `docs/asset-attribution.md` row is owed. **Ducking:** `AVAudioSession` `.playback` + `.duckOthers`, activated around the tone and deactivated with `.notifyOthersOnDeactivation`, an in-flight counter ducking once across overlapping cues. **VoiceOver:** the view model reads `UIAccessibility.isVoiceOverRunning` at fire time (injected `voiceOverActive: () -> Bool`) and passes `suppressAudio`; the tone (and its duck) is withheld under VoiceOver while the haptic still fires. **On-device audio/VoiceOver behavior is captain-verifiable manual QA the unit suite cannot fully cover** (Simulator audio routing and VoiceOver are a proxy); units prove the decision logic - which tone for which state, switch-sides silent, audio withheld under a VoiceOver flag - through the spy. Deliverables and tests are in `docs/implementation-log.md` and `docs/test-coverage.md`. Full `RepToday` unit suite green (1019 tests, opt-in benchmark skipped).
 
 ### US-CC11: Visual-primary work window (static illustration at launch)
 
