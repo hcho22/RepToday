@@ -147,6 +147,22 @@ enum AccessibilityTree {
         return found
     }
 
+    /// The first accessibility element whose label satisfies `predicate`, so a test can reach an element
+    /// whose label carries live-changing text (a countdown's "N seconds remaining") by matching its
+    /// stable prefix - and then read its traits or value. Used by US-CC14 to assert the countdown ring
+    /// carries `.updatesFrequently`.
+    static func element(whereLabel predicate: (String) -> Bool, in root: UIView) -> NSObject? {
+        activate()
+
+        var found: NSObject?
+        walk(root) { node in
+            guard node.isAccessibilityElement, let label = node.accessibilityLabel, predicate(label) else { return true }
+            found = node
+            return false
+        }
+        return found
+    }
+
     /// Attaches an assistive client and gives the run loop a turn to build the tree behind it.
     private static func activate() {
         _ = UIApplication.shared.accessibilityActivate()

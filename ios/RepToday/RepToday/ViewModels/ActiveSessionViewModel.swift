@@ -1238,6 +1238,38 @@ final class ActiveSessionViewModel {
         if fireFeedback { fireCue(.done) }
     }
 
+    // MARK: - "+ More time" (US-CC14)
+
+    /// Whether the live auto-advancing countdown - a work window or a hold leg - can be extended by the
+    /// first-class **+ More time** control (US-CC14 / FR-16). The rest keeps its own "+15s"
+    /// (`extendRest`), so this covers exactly the two follow-along countdowns the rest does not: it is
+    /// `false` on an idle Start-hold training step, during a rest, and on the completion screen, where
+    /// there is no counting-down window or hold to give more time to. Stays `true` across a user pause,
+    /// so a paused countdown can still be lengthened before it resumes.
+    var canExtendActiveCountdown: Bool { isRunningWorkWindow || isHolding }
+
+    /// Extend the live work window or hold leg by `seconds` - **+ More time** (US-CC14), the always-
+    /// available "never rush anyone" hatch (FR-16). It adds the **same +15s increment the rest's
+    /// "+ More time" uses** (`restExtension`), so the one affordance reads the same wherever the user
+    /// meets it, and it extends whichever countdown is live (the two are mutually exclusive - a running
+    /// window means no hold and vice versa). Works while paused too, adding to the frozen remainder.
+    ///
+    /// This is a **display/timer extension only**. It never changes what is logged: US-CC09 stands, so
+    /// the set still records prescribed = performed however long the window ran (there is no "did more
+    /// reps" signal here, only "give me the same set more clock"). And it never touches the engine's
+    /// fixed planned wall-clock - the plan is settled at assembly; this is a runtime affordance layered
+    /// over it, exactly like `extendRest`. Neither the work window nor the hold leg is persisted, so -
+    /// unlike `extendRest` - this writes no snapshot: a resumed session re-opens them fresh regardless.
+    /// A no-op when neither countdown is running.
+    func extendActiveCountdown(by seconds: Int = ActiveSessionViewModel.restExtension) {
+        guard seconds > 0 else { return }
+        if isRunningWorkWindow {
+            workWindow?.extend(by: seconds)
+        } else if isHolding {
+            hold?.extend(by: seconds)
+        }
+    }
+
     // MARK: - User pause (US-CC06)
 
     /// True while the user has explicitly paused the session from the player (US-CC06) - one of the quiet

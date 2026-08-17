@@ -2437,6 +2437,98 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertFalse(vm.skippedStepIDs.contains(stepID), "Done is never a skip")
     }
 
+    // MARK: - "+ More time" (US-CC14)
+
+    /// **+ More time** is offered on a live work window and adds the same +15s the rest's "+ More time"
+    /// uses, extending both the remaining time and the ring's total - a pure display/timer extension.
+    func testMoreTimeExtendsTheLiveWorkWindow() throws {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock })
+        vm.start()
+
+        let total = try XCTUnwrap(vm.workWindowSecondsPerSet)
+        XCTAssertTrue(vm.canExtendActiveCountdown, "+ More time is available on a running work window")
+        XCTAssertEqual(vm.workWindowTotalSeconds, total)
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), total)
+
+        // A few seconds in, the user asks for more time.
+        clock = start.addingTimeInterval(4)
+        vm.extendActiveCountdown()
+
+        XCTAssertEqual(vm.workWindowTotalSeconds, total + ActiveSessionViewModel.restExtension,
+                       "the ring's total grows by the shared +15s increment")
+        XCTAssertEqual(vm.workWindowRemaining(asOf: clock), total - 4 + ActiveSessionViewModel.restExtension,
+                       "and the remaining time grows by the same amount")
+        XCTAssertTrue(vm.isRunningWorkWindow, "the window is still running, not restarted")
+        XCTAssertEqual(vm.completedSetCount, 0, "extending logs nothing (US-CC09)")
+    }
+
+    /// **+ More time** works on a live hold leg too, extending its countdown by the same +15s.
+    func testMoreTimeExtendsALiveHoldLeg() {
+        var clock = start
+        let vm = makeViewModel(singleHoldWorkout(sets: 1, seconds: 20), clock: { clock })
+        vm.start()
+        XCTAssertFalse(vm.canExtendActiveCountdown, "an idle Start-hold training step has nothing to extend")
+
+        vm.startHold()
+        XCTAssertTrue(vm.canExtendActiveCountdown, "+ More time is available on a running hold leg")
+        XCTAssertEqual(vm.holdTotalSeconds, 20)
+
+        clock = start.addingTimeInterval(5)
+        vm.extendActiveCountdown()
+
+        XCTAssertEqual(vm.holdTotalSeconds, 20 + ActiveSessionViewModel.restExtension,
+                       "the hold leg's total grows by the shared +15s increment")
+        XCTAssertEqual(vm.holdRemaining(asOf: clock), 20 - 5 + ActiveSessionViewModel.restExtension,
+                       "and its remaining time grows by the same amount")
+        XCTAssertTrue(vm.isHolding, "the leg is still running, not restarted")
+    }
+
+    /// **+ More time** is a no-op with no live countdown - during a rest (which carries its own "+15s")
+    /// and once the session is complete - so it can never disturb a state it does not own.
+    func testMoreTimeIsANoOpWithNoLiveCountdown() throws {
+        var clock = start
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock })
+        vm.start()
+        let window = try XCTUnwrap(vm.workWindowSecondsPerSet)
+
+        // Drive the window to zero so the player is now resting.
+        clock = start.addingTimeInterval(TimeInterval(window))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isResting)
+        XCTAssertFalse(vm.canExtendActiveCountdown, "the rest is not a window/hold - it has its own +15s")
+
+        let restBefore = vm.restRemaining(asOf: clock)
+        vm.extendActiveCountdown()
+        XCTAssertEqual(vm.restRemaining(asOf: clock), restBefore, "+ More time never touches the rest")
+    }
+
+    /// Extending the window changes only the clock, never the log: however long the user stretches it,
+    /// the set still records prescribed = performed exactly once at the (now later) zero (US-CC09).
+    func testMoreTimeNeverChangesWhatIsLogged() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        let vm = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { clock }, feedback: spy)
+        let stepID = try XCTUnwrap(vm.currentStep?.id)
+        vm.start()
+        let window = try XCTUnwrap(vm.workWindowSecondsPerSet)
+
+        vm.extendActiveCountdown()
+
+        // At the *original* zero the extended window has not elapsed - nothing records.
+        clock = start.addingTimeInterval(TimeInterval(window))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isRunningWorkWindow, "the extension pushed the deadline out")
+        XCTAssertEqual(vm.completedSetCount, 0)
+
+        // At the extended zero it records once, prescribed = performed, exactly as an un-extended window.
+        clock = start.addingTimeInterval(TimeInterval(window + ActiveSessionViewModel.restExtension))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertEqual(vm.completedSets[stepID], [CompletedSet(reps: 12, durationSeconds: nil)],
+                       "the extension never changes what is logged (US-CC09)")
+        XCTAssertEqual(spy.completions, 1, "the completion cue still fires exactly once")
+    }
+
     /// Backgrounding freezes the window rather than letting it blow past, and a frozen window never
     /// auto-completes however long the app is away - the same `Countdown` pause semantics as the rest
     /// and hold timers.
