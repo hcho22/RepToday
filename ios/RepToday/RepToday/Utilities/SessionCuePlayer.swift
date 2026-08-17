@@ -12,7 +12,9 @@ import AVFoundation
 /// through is marked by its own tone (and its own haptic), so the states are tellable apart by ear -
 /// and by touch when the tone is muted or withheld. One case per state:
 ///
-/// - `.go` - a work window has started; begin the reps now.
+/// - `.go` - an effort begins or is ready to begin; start the work now. Fires when a work window
+///   auto-starts (begin the reps), and when a natural rest reveals a manual strength/primal training
+///   hold that awaits its Start-hold tap (begin the hold) - the two places nothing else self-cues.
 /// - `.halfway` - the (optional) midpoint of a work window.
 /// - `.transition` - a short between-station transition inside a circuit round has begun (US-CC04).
 /// - `.roundRest` - the bounded between-round rest has begun (US-CC04).

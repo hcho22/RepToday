@@ -2538,6 +2538,68 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(resumeSpy.count(of: .go), 1, "an in-session transition still fires the go cue")
     }
 
+    /// A natural rest ending is never silent at a boundary the user must act on (US-CC10): when a
+    /// transition/round rest reveals a manual strength/primal *training* hold - which keeps its US-O03
+    /// Start-hold tap and so self-cues on nothing - `completeRestIfElapsed` sounds `.go`, restoring
+    /// US-K02's "rest over" signal. The hold does *not* auto-start (it waits for the tap), and firing
+    /// `.go` adds no `.done`. The complementary rep case still fires a single, non-doubled `.go` from
+    /// its auto-starting window.
+    func testRestRevealingManualTrainingHoldFiresGoWithoutAutoStarting() throws {
+        var clock = start
+        let spy = SpyCuePlayer()
+        // A strength circuit: a rep station immediately followed by a manual training hold station.
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                repPrescription("push_up", sets: 2, reps: 12),
+                holdPrescription("plank", sets: 2, seconds: 30)
+            ]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [strength]
+        )
+        let vm = makeViewModel(workout, clock: { clock }, feedback: spy)
+        vm.start()
+        XCTAssertEqual(spy.count(of: .go), 1, "the first rep window fires .go on start")
+
+        // Finish push_up round 1 -> the between-station rest opens toward the plank hold station.
+        clock = start.addingTimeInterval(TimeInterval(try XCTUnwrap(vm.workWindowSecondsPerSet)))
+        vm.completeWorkWindowIfElapsed(asOf: clock)
+        XCTAssertTrue(vm.isResting, "a transition rest opens before the hold station")
+        XCTAssertEqual(vm.currentStep?.prescription.exercise.id, "plank")
+        XCTAssertTrue(vm.currentStepIsManualTrainingHold, "the revealed station is a manual training hold")
+        let doneAfterWindow = spy.completions
+
+        // Elapse the rest to zero: it reveals the manual training hold, which self-cues on nothing, so
+        // completeRestIfElapsed sounds .go.
+        clock = clock.addingTimeInterval(TimeInterval(vm.restTotalSeconds))
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertFalse(vm.isResting, "the rest ended")
+        XCTAssertFalse(vm.isHolding, "a training hold waits for the manual Start-hold tap - it does not auto-start")
+        XCTAssertFalse(vm.isRunningWorkWindow, "a hold is not a work window")
+        XCTAssertEqual(spy.count(of: .go), 2, "the rest ending sounds .go for the manual hold")
+        XCTAssertEqual(spy.completions, doneAfterWindow, "firing .go here adds no .done")
+
+        // Idempotent: repeated ticks after the rest has already ended do not re-fire.
+        vm.completeRestIfElapsed(asOf: clock)
+        XCTAssertEqual(spy.count(of: .go), 2, "the go cue fires once, not per tick")
+
+        // Complementary case: a rest revealing a rep-based set fires a single, non-doubled .go from the
+        // auto-starting window, not this rest-end path.
+        var repClock = start
+        let repSpy = SpyCuePlayer()
+        let repVM = makeViewModel(strengthWorkout(sets: 2, reps: 12), clock: { repClock }, feedback: repSpy)
+        repVM.start()
+        repClock = start.addingTimeInterval(TimeInterval(try XCTUnwrap(repVM.workWindowSecondsPerSet)))
+        repVM.completeWorkWindowIfElapsed(asOf: repClock)
+        XCTAssertTrue(repVM.isResting)
+        repClock = repClock.addingTimeInterval(TimeInterval(repVM.restTotalSeconds))
+        repVM.completeRestIfElapsed(asOf: repClock)
+        XCTAssertTrue(repVM.isRunningWorkWindow, "the next rep window auto-started")
+        XCTAssertEqual(repSpy.count(of: .go), 2, "one .go on start and one from the auto-started window - not doubled")
+    }
+
     /// The optional midpoint tone fires exactly once, at (or just past) the middle of a work window -
     /// never before the midpoint, never twice, and never coinciding with the `.done` cue at zero.
     func testWorkWindowHalfwayFiresOnceAtMidpoint() throws {

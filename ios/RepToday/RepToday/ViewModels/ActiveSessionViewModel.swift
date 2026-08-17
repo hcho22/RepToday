@@ -846,6 +846,15 @@ final class ActiveSessionViewModel {
         // off their own path.
         startWorkWindow()
         autoStartHoldIfNeeded()
+        // If nothing self-cued and the rest revealed a manual strength/primal training hold - which keeps
+        // the US-O03 Start-hold tap and so fires no `.go` of its own - sound the `.go` here so a natural
+        // rest ending is never silent at a boundary the user must act on (US-CC10, restoring US-K02's
+        // "rest over" signal). A rep-based set already fired `.go` from its auto-starting window and a
+        // bookend hold auto-started hands-free, so both leave a window or hold running and are skipped;
+        // `skipRest` deliberately stays silent (the user chose to move on).
+        if !isRunningWorkWindow, !isHolding, currentStepIsManualTrainingHold {
+            fireCue(.go)
+        }
         persist()
     }
 
@@ -931,6 +940,17 @@ final class ActiveSessionViewModel {
     var currentStepIsBookendHold: Bool {
         guard let step = currentStep, holdSecondsPerSide != nil else { return false }
         return !Self.autoAdvancingCategories.contains(step.blockCategory)
+    }
+
+    /// Whether the current step is a timed strength / primal *training* hold - the complement of
+    /// `currentStepIsBookendHold` among timed steps. This is the one revealed step that self-cues on
+    /// nothing: a rep-based set fires `.go` from its auto-starting work window and a bookend hold
+    /// auto-starts hands-free, but a training hold keeps the US-O03 manual Start-hold path, so when a
+    /// natural rest reveals it the flow would otherwise go silent at a boundary the user must act on
+    /// (US-CC10). `completeRestIfElapsed` fires `.go` for exactly this case.
+    var currentStepIsManualTrainingHold: Bool {
+        guard let step = currentStep, holdSecondsPerSide != nil else { return false }
+        return Self.autoAdvancingCategories.contains(step.blockCategory)
     }
 
     /// Whether a bookend hold leg should auto-start right now (US-CC05): a bookend hold is on screen and
