@@ -307,6 +307,9 @@ struct ActiveSessionView: View {
             Text(step.prescription.exercise.displayName)
                 .font(Theme.Typography.largeTitle)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                // A long movement name must wrap at the largest Dynamic Type sizes rather than
+                // truncate away the end of the name (US-CC14, AC3).
+                .fixedSize(horizontal: false, vertical: true)
             // The per-side targets are the longest strings this line renders; letting it grow
             // vertically keeps "3 × 0:30 per side" whole at the largest Dynamic Type sizes rather than
             // truncating away the part that says how much work the set actually is.
@@ -341,11 +344,15 @@ struct ActiveSessionView: View {
             Text(progressText)
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                // "Round N of M" / "Set N of M" wraps rather than truncating at the largest Dynamic
+                // Type sizes (US-CC14, AC3).
+                .fixedSize(horizontal: false, vertical: true)
 
             if showsSide {
                 Text(sideText)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: Theme.Spacing.sm) {
@@ -383,6 +390,22 @@ struct ActiveSessionView: View {
             primaryAction
 
             HStack(spacing: Theme.Spacing.md) {
+                // US-CC14 / FR-16: **+ More time** is first-class and always present on a live work
+                // window or hold - the "never rush anyone" hatch. It adds the same +15s the rest's
+                // "+ More time" uses, purely to the on-screen countdown; it changes nothing logged
+                // (US-CC09) and never touches the plan. Shown only while a window or hold is counting
+                // down (the rest overlay carries its own "+15s"), so the two never double up.
+                if viewModel.canExtendActiveCountdown {
+                    secondaryAction(
+                        title: "+ More time",
+                        accessibilityLabel: "More time",
+                        accessibilityHint: "Adds \(ActiveSessionViewModel.restExtension) seconds to the current timer",
+                        isEnabled: true
+                    ) {
+                        viewModel.extendActiveCountdown()
+                    }
+                }
+
                 // A swap reshapes the slot the countdown is timing, so it is offered between holds
                 // rather than during one - dimmed in place, so the row keeps its shape.
                 if viewModel.canSwap {
@@ -471,8 +494,10 @@ struct ActiveSessionView: View {
             } label: {
                 Text("Stop hold")
                     .font(Theme.Typography.button)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
             .buttonStyle(.bordered)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
@@ -484,8 +509,10 @@ struct ActiveSessionView: View {
             } label: {
                 Text(startHoldTitle)
                     .font(Theme.Typography.button)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
@@ -506,8 +533,10 @@ struct ActiveSessionView: View {
             } label: {
                 Text("Done")
                     .font(Theme.Typography.button)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
@@ -519,8 +548,10 @@ struct ActiveSessionView: View {
             } label: {
                 Text(completeButtonTitle)
                     .font(Theme.Typography.button)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.Spacing.workoutTouchTarget)
+                    .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
@@ -854,9 +885,19 @@ private struct SessionTopBar: View {
     }
 }
 
-/// The countdown ring shared by the rest overlay (US-K02) and the Hold Timer (US-O03): a track plus an
-/// accent arc that empties as the countdown runs out, with the remaining time in its centre. One
-/// implementation, so the two timers the user meets in a session read as the same object.
+/// The countdown ring shared by the rest overlay (US-K02), the Hold Timer (US-O03), and the
+/// visual-primary work window (US-CC01/CC11): a track plus an accent arc that empties as the countdown
+/// runs out, with the remaining time in its centre. One implementation, so the three timers the user
+/// meets in a session read as the same object - and one place the US-CC14 accessibility contract lands.
+///
+/// **VoiceOver (US-CC14, AC2):** the ring is a single element carrying `.updatesFrequently`, so VoiceOver
+/// does *not* announce every per-second change or pull focus onto the drawing as it ticks; the remaining
+/// time stays in the label and is read **on demand** when the user focuses the element. The label keeps
+/// the "<name>, N seconds remaining" shape the rest of the flow (and its evidence suites) already speak.
+///
+/// **Reduce Motion (US-CC14, AC4):** the sweeping arc animation is dropped when Reduce Motion is on - the
+/// arc still redraws to the current fraction each tick, but as a discrete step rather than a smooth
+/// sweep, so the ring never animates against the preference. The centre time is what the user reads.
 private struct CountdownRing: View {
     let remaining: Int
     let fraction: Double
@@ -869,6 +910,8 @@ private struct CountdownRing: View {
     var lineWidth: CGFloat = 12
     var font: Font = Theme.Typography.largeTitle
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ZStack {
             Circle()
@@ -878,16 +921,26 @@ private struct CountdownRing: View {
                 .trim(from: 0, to: fraction)
                 .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.5), value: fraction)
+                // US-CC14: the sweep animates only when Reduce Motion is off; on, the arc steps to the
+                // new fraction with no animation so the ring never sweeps against the preference.
+                .animation(reduceMotion ? nil : .linear(duration: 0.5), value: fraction)
 
             Text(ActiveSessionView.clockText(remaining))
                 .font(font)
                 .monospacedDigit()
+                // At the largest Dynamic Type sizes a longer clock ("10:00") must shrink to stay inside
+                // the fixed-diameter ring rather than clip or overflow it (US-CC14, AC3).
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
                 .foregroundStyle(Theme.Colors.textPrimary)
         }
         .frame(width: diameter, height: diameter)
         .accessibilityElement()
         .accessibilityLabel(accessibilityLabel)
+        // US-CC14 (AC2): mark the ring as frequently self-updating so VoiceOver polls it on demand
+        // instead of announcing every tick or stealing focus as the countdown runs down. The remaining
+        // time stays queryable in the label; it is simply not spoken continuously.
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
