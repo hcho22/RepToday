@@ -62,7 +62,7 @@ At launch no user has earned the Strength Phase, so the MVP ships the Discipline
 ### Active Session Experience
 
 - Large touch targets (60pt minimum on active workout screens).
-- Follow along without touching the phone - a rep-based set in the main work counts its own window down and flows into the rest and on to the next movement with no tap. A prominent "Done" ends the window the moment you finish your reps, and being caught mid-rep when it reaches zero costs you nothing: it's an escape hatch, not a demand.
+- Follow along without touching the phone - a rep-based set in the main work shows the movement on screen beside its own counting-down window and flows into the rest and on to the next movement with no tap, so you can follow by eye without a voice. A prominent "Done" ends the window the moment you finish your reps, and being caught mid-rep when it reaches zero costs you nothing: it's an escape hatch, not a demand.
 - Rounds, not a list to grind through - the main work is played as a circuit, one set of each movement and then around again, with the screen reading "Round 2 of 5" so you always know where you are. Warm-up and cooldown stay linear.
 - Timed rests carry the flow between everything - a short one between movements inside a round, a longer one between rounds - each naming what's up next, and each skippable, extendable, and paused correctly when the app is backgrounded.
 - No running clock during the session - a total ticking up in the corner turns a five-minute session into something to get through, so the time you took is revealed once, on the completion summary.

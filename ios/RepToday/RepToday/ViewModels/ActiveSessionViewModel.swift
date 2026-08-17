@@ -176,9 +176,22 @@ final class ActiveSessionViewModel {
     enum RestContext { case rest, switchSides }
     private(set) var restContext: RestContext = .rest
 
+    /// The cue the running rest announced at its start (US-CC10), retained so the overlay can tell a
+    /// short between-station **transition beat** (`.transition`) apart from a longer between-round rest
+    /// (`.roundRest`) and give the transition its dedicated "Next: <exercise>" prominence (US-CC11).
+    /// In-memory only, exactly like `restContext`: a rest restored on resume comes back with no cue, so
+    /// it reads as a plain rest - no schema change and no migration owed.
+    private(set) var restCue: SessionCue?
+
     /// True while the current rest overlay is the brief "Switch sides" beat between the two legs of a
     /// per-side bookend hold (US-CC05), so the overlay names it rather than showing a generic "Rest".
     var isSwitchingSides: Bool { isResting && restContext == .switchSides }
+
+    /// True while the current rest overlay is the short between-station **transition beat** (US-CC04) -
+    /// the visual substitute for a spoken "next up", so the overlay leads with a prominent
+    /// "Next: <exercise>" rather than a generic "Next up" (US-CC11). A between-round rest and a plain
+    /// bookend rest read `false`; a switch-sides beat carries no cue and so reads `false` too.
+    var isTransitionBeat: Bool { isResting && restCue == .transition }
 
     // MARK: - Hold timer (US-O03)
 
@@ -827,6 +840,7 @@ final class ActiveSessionViewModel {
         guard seconds > 0 else { return }
         rest = Countdown(seconds: seconds, from: now())
         restContext = context
+        restCue = cue
         if let cue { fireCue(cue) }
     }
 
@@ -903,6 +917,7 @@ final class ActiveSessionViewModel {
         guard isResting else { return }
         rest = nil
         restContext = .rest
+        restCue = nil
     }
 
     // MARK: - Hold timer (US-O03)

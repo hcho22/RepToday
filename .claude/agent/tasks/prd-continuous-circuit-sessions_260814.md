@@ -274,13 +274,13 @@ Every UI-bearing story's Validation Test targets the running iOS app in a booted
 
 **Acceptance Criteria:**
 
-- [ ] Each work window shows a clear **static illustration** of the movement plus its name, the rep/hold target (via `targetText`), and the countdown ring.
-- [ ] During the between-station transition beat, an "Next: <exercise>" cue is **visually prominent** (this is the visual substitute for a spoken "next up").
-- [ ] Looping per-exercise animations are an explicit **fast-follow**, out of scope here: the existing US-O01 Lottie seam (`ExerciseDemoView` / `LottieDemoView` / `Exercise.animationName`) is preserved so that dropping in ~71 per-movement clips later is a data change, not a rewrite. Where a clip already exists it may play; where it does not, the static illustration shows.
-- [ ] Text-and-ring-only (no illustration) is explicitly rejected as too bare - a static illustration must be present at launch.
-- [ ] Reduce Motion is honored: with Reduce Motion on, any animation is stilled to the static illustration (matches the existing `reduceMotion` handling in `LottieDemoView`).
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in the running app (Simulator, `RepTodayUITests`).
+- [x] Each work window shows a clear **static illustration** of the movement plus its name, the rep/hold target (via `targetText`), and the countdown ring.
+- [x] During the between-station transition beat, an "Next: <exercise>" cue is **visually prominent** (this is the visual substitute for a spoken "next up").
+- [x] Looping per-exercise animations are an explicit **fast-follow**, out of scope here: the existing US-O01 Lottie seam (`ExerciseDemoView` / `LottieDemoView` / `Exercise.animationName`) is preserved so that dropping in ~71 per-movement clips later is a data change, not a rewrite. Where a clip already exists it may play; where it does not, the static illustration shows.
+- [x] Text-and-ring-only (no illustration) is explicitly rejected as too bare - a static illustration must be present at launch.
+- [x] Reduce Motion is honored: with Reduce Motion on, any animation is stilled to the static illustration (matches the existing `reduceMotion` handling in `LottieDemoView`).
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in the running app (Simulator, `RepTodayUITests`).
 
 **Validation Test:**
 
