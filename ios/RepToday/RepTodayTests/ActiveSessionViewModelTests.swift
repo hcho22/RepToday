@@ -465,6 +465,37 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.restTotalSeconds, 45, "between rounds is the round rest")
     }
 
+    /// The overlay can tell a between-station **transition beat** apart from a between-round rest so it
+    /// can give the transition its prominent "Next: <exercise>" cue (US-CC11): a between-station gap
+    /// reads `isTransitionBeat == true`, a between-round rest reads `false`, and no rest reads `false`.
+    func testTransitionBeatIsDistinctFromRoundRest() {
+        let strength = WorkoutBlock(
+            id: UUID(), title: "Strength", category: .strength,
+            exercises: [
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "push_up"), sets: 2, reps: 12, durationSeconds: nil, restSeconds: 45),
+                PrescribedExercise(id: UUID(), exercise: repExercise(id: "squat", pattern: .squat), sets: 2, reps: 12, durationSeconds: nil, restSeconds: 45)
+            ]
+        )
+        let workout = Workout(
+            id: UUID(), createdAt: start, shape: .blend, focusPillar: nil,
+            requestedMinutes: 15, wasReturn: false, blocks: [strength]
+        )
+        let vm = makeViewModel(workout, clock: { self.start })
+
+        XCTAssertFalse(vm.isTransitionBeat, "no rest is running at the first station")
+
+        // push_up round 1 -> squat round 1 crosses the short between-station transition.
+        vm.completeSet()
+        XCTAssertTrue(vm.isTransitionBeat, "a between-station gap is a transition beat")
+        vm.skipRest()
+        XCTAssertFalse(vm.isTransitionBeat, "skipping the rest ends the beat")
+
+        // squat round 1 -> push_up round 2 crosses the longer between-round rest, not a transition.
+        vm.completeSet()
+        XCTAssertTrue(vm.isResting, "a between-round rest is running")
+        XCTAssertFalse(vm.isTransitionBeat, "a between-round rest is not a transition beat")
+    }
+
     /// A skip inside the circuit removes the exercise from every remaining round (US-CC02): the rotation
     /// never returns to it, it logs not-done with no completed sets, and the other stations still finish
     /// their full round count.

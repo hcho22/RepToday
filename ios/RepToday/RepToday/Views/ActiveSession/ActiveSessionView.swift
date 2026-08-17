@@ -204,12 +204,13 @@ struct ActiveSessionView: View {
                         blockContext(step)
                         // While a hold runs, the countdown takes the demo's place: the user is already
                         // in position, so what they need on screen is the time left, not the shape. A
-                        // rep-based training set is the same - it auto-advances on its own work window
-                        // (US-CC01), so its countdown ring stands in the demo slot the whole time.
+                        // rep-based training set differs (US-CC11): its auto-advancing work window is
+                        // *visual*-primary, pairing the movement illustration with a compact countdown
+                        // ring in the same slot so the user follows along by eye without voice.
                         if viewModel.isHolding {
                             HoldCountdownView(viewModel: viewModel)
                         } else if viewModel.currentStepAutoAdvances {
-                            WorkWindowCountdownView(viewModel: viewModel)
+                            WorkWindowCountdownView(viewModel: viewModel, prescription: step.prescription)
                         } else {
                             ExerciseDemoView(prescription: step.prescription)
                         }
@@ -800,26 +801,30 @@ private struct CountdownRing: View {
     let fraction: Double
     let accessibilityLabel: String
 
-    private static let diameter: CGFloat = 200
-    private static let lineWidth: CGFloat = 12
+    /// The ring's size and typography. The hold (US-O03) and rest (US-K02) overlays keep the full-size
+    /// defaults, where the ring is the whole slot; the visual-primary work window (US-CC11) pairs a
+    /// compact ring beside a larger movement illustration, so it passes a smaller diameter and font.
+    var diameter: CGFloat = 200
+    var lineWidth: CGFloat = 12
+    var font: Font = Theme.Typography.largeTitle
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Theme.Colors.surface, lineWidth: Self.lineWidth)
+                .stroke(Theme.Colors.surface, lineWidth: lineWidth)
 
             Circle()
                 .trim(from: 0, to: fraction)
-                .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.5), value: fraction)
 
             Text(ActiveSessionView.clockText(remaining))
-                .font(Theme.Typography.largeTitle)
+                .font(font)
                 .monospacedDigit()
                 .foregroundStyle(Theme.Colors.textPrimary)
         }
-        .frame(width: Self.diameter, height: Self.diameter)
+        .frame(width: diameter, height: diameter)
         .accessibilityElement()
         .accessibilityLabel(accessibilityLabel)
     }
@@ -864,19 +869,34 @@ private struct HoldCountdownView: View {
 
 // MARK: - Work window (US-CC01)
 
-/// The auto-advancing work window for a rep-based training set (US-CC01).
+/// The visual-primary auto-advancing work window for a rep-based training set (US-CC01, made
+/// visual-primary in US-CC11).
 ///
-/// It takes the demo's place while the set is on screen and counts the set's planned per-set seconds
-/// down - the same number the engine budgeted (`SessionAssembly.workSecondsPerSet`, US-CC08), so the
-/// screen window can never drift from the plan. Unlike the Hold Timer it *auto-starts*: appearing is
-/// enough to begin the countdown, so a rep-based set is hands-free with no Start tap. At zero the view
-/// model records the set completed (identical to a tapped completion) and flows into the rest, firing
-/// the same accessible cue exactly once. The ticker lives here so it exists only while the window is on
-/// screen, and it drives a *pure* check (`completeWorkWindowIfElapsed`) that is a no-op until the
-/// deadline passes, so the cue can never fire early or per tick. A swap finishing (`isSwapping` back to
-/// false) re-arms the window for whatever slot now occupies the position.
+/// It fills the demo slot while the set is on screen, pairing a **clear static movement illustration**
+/// (so the user can follow along by eye, since there is no voice) with a compact **countdown ring**
+/// that counts the set's planned per-set seconds down - the same number the engine budgeted
+/// (`SessionAssembly.workSecondsPerSet`, US-CC08), so the screen window can never drift from the plan.
+/// The illustration is the same `ExerciseIllustration` the standalone demo shows, so the US-O01 Lottie
+/// seam is preserved by construction: where a per-movement clip exists it plays, where none does the
+/// SF-Symbol glyph shows, and Reduce Motion stills either - a text-and-ring-only window is deliberately
+/// rejected as too bare (US-CC11 AC).
+///
+/// Unlike the Hold Timer it *auto-starts*: appearing is enough to begin the countdown, so a rep-based
+/// set is hands-free with no Start tap. At zero the view model records the set completed (identical to a
+/// tapped completion) and flows into the rest, firing the same accessible cue exactly once. The ticker
+/// lives here so it exists only while the window is on screen, and it drives a *pure* check
+/// (`completeWorkWindowIfElapsed`) that is a no-op until the deadline passes, so the cue can never fire
+/// early or per tick. A swap finishing (`isSwapping` back to false) re-arms the window for whatever slot
+/// now occupies the position.
 private struct WorkWindowCountdownView: View {
     let viewModel: ActiveSessionViewModel
+    let prescription: PrescribedExercise
+
+    /// The compact ring's dimensions - smaller than the hold/rest ring so the movement illustration is
+    /// the hero of the slot (the window is *visual*-primary, US-CC11) while the countdown stays legible
+    /// beside it.
+    private static let ringDiameter: CGFloat = 132
+    private static let ringLineWidth: CGFloat = 10
 
     /// Drives the countdown display and the auto-advance/cue check. Kept off the view body so the
     /// mutation happens in an action closure, never during a render pass.
@@ -890,13 +910,27 @@ private struct WorkWindowCountdownView: View {
         let total = max(viewModel.workWindowSecondsPerSet ?? viewModel.workWindowTotalSeconds, 1)
         let remaining = viewModel.isRunningWorkWindow ? viewModel.workWindowRemaining(asOf: currentDate) : total
 
-        CountdownRing(
-            remaining: remaining,
-            fraction: min(1, max(0, Double(remaining) / Double(total))),
-            accessibilityLabel: "Work window, \(remaining) seconds remaining"
-        )
-        // The countdown stands in the demo's own card, so it changes what is in the slot and nothing
-        // else - not the card under it, not the exercise name and target below it.
+        HStack(spacing: Theme.Spacing.lg) {
+            // The movement illustration leads - the user follows along by eye. It carries its own
+            // "<name> demonstration" label so the ring, name, and target each stay distinct to VoiceOver.
+            ExerciseIllustration(prescription: prescription, size: 132, animatesGlyph: false)
+                .frame(maxWidth: .infinity)
+                .accessibilityElement()
+                .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
+
+            CountdownRing(
+                remaining: remaining,
+                fraction: min(1, max(0, Double(remaining) / Double(total))),
+                accessibilityLabel: "Work window, \(remaining) seconds remaining",
+                diameter: Self.ringDiameter,
+                lineWidth: Self.ringLineWidth,
+                font: Theme.Typography.title
+            )
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        // Illustration and ring stand together in the demo's own card, so the visual-primary window
+        // changes what is in the slot and nothing else - not the card under it, not the exercise name
+        // and target below it.
         .exerciseSlotCard()
         // Auto-start on appear (hands-free) - and after a swap settles, where the view stays mounted so
         // no fresh `onAppear` fires. Both are idempotent via `canStartWorkWindow`.
@@ -957,16 +991,19 @@ private struct RestView: View {
             VStack(spacing: Theme.Spacing.lg) {
                 // A per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 hands-free
                 // (US-CC05); the beat reuses this rest overlay but names itself so the user knows to
-                // change position rather than read it as a plain between-set rest.
-                Text(viewModel.isSwitchingSides ? "Switch sides" : "Rest")
+                // change position rather than read it as a plain between-set rest. Every other gap - a
+                // between-station transition (US-CC04) and a between-round rest - stays a "Rest" here; the
+                // transition beat earns its distinctness below, in `nextUp`'s prominent "Next: <exercise>"
+                // (US-CC11), rather than by renaming this shared header.
+                let heading = viewModel.isSwitchingSides ? "Switch sides" : "Rest"
+                Text(heading)
                     .font(Theme.Typography.title)
                     .foregroundStyle(Theme.Colors.textSecondary)
 
                 CountdownRing(
                     remaining: remaining,
                     fraction: fraction,
-                    accessibilityLabel: (viewModel.isSwitchingSides ? "Switch sides" : "Rest")
-                        + ", \(remaining) seconds remaining"
+                    accessibilityLabel: heading + ", \(remaining) seconds remaining"
                 )
                 .padding(.horizontal, Theme.Spacing.lg)
 
@@ -986,6 +1023,11 @@ private struct RestView: View {
     /// A preview of the effort the rest is pacing toward, so the user knows what is next. Inside a
     /// training-block circuit the rest paces toward a round ("Round N of M", US-CC02); a linear bookend
     /// paces toward the exercise's next set.
+    ///
+    /// A between-station **transition beat** (US-CC04) gets its own prominent treatment (US-CC11): since
+    /// there is no spoken "next up", the movement name leads as a large "Next: <exercise>" so the visual
+    /// cue reads at a glance rather than as a quiet caption. A between-round rest and a plain bookend
+    /// rest keep the quieter "Next up" heading; a switch-sides beat names the owed side instead.
     @ViewBuilder
     private var nextUp: some View {
         if let step = viewModel.currentStep {
@@ -993,7 +1035,8 @@ private struct RestView: View {
             // side owed ("Side 2 of 2") rather than a set/round; every other rest paces toward the next
             // set, round, or stretch.
             let switching = viewModel.isSwitchingSides
-            let heading = switching ? "Same stretch" : "Next up"
+            let transition = viewModel.isTransitionBeat
+            let name = step.prescription.exercise.displayName
             let progressText: String = {
                 if switching {
                     return "Side \(viewModel.holdSide) of \(viewModel.holdSidesPerSet)"
@@ -1004,18 +1047,29 @@ private struct RestView: View {
                 return "Set \(viewModel.currentSet) of \(step.prescription.sets)"
             }()
             VStack(spacing: Theme.Spacing.xs) {
-                Text(heading)
+                Text(transition ? "Next" : (switching ? "Same stretch" : "Next up"))
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
-                Text(step.prescription.exercise.displayName)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text(name)
+                    // The transition beat is the visual substitute for a spoken "next up", so the
+                    // movement name is prominent (largeTitle) rather than the quieter headline a plain
+                    // rest uses.
+                    .font(transition ? Theme.Typography.largeTitle : Theme.Typography.headline)
+                    .foregroundStyle(transition ? Theme.Colors.accent : Theme.Colors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(progressText)
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(heading), \(step.prescription.exercise.displayName), \(progressText)")
+            // The transition beat announces the prominent visual cue verbatim ("Next: <exercise>"); the
+            // quieter rests keep their existing "<heading>, <name>, <progress>" phrasing.
+            .accessibilityLabel(
+                transition
+                    ? "Next: \(name), \(progressText)"
+                    : "\(switching ? "Same stretch" : "Next up"), \(name), \(progressText)"
+            )
         }
     }
 
@@ -1064,26 +1118,50 @@ private struct RestView: View {
 /// user's preference. The `"<displayName> demonstration"` accessibility label is retained.
 struct ExerciseDemoView: View {
     let prescription: PrescribedExercise
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The height of the demo slot. Shared with the Hold Timer's countdown (US-O03), which stands in
-    /// this same slot while a hold runs, so the swap between them shifts nothing below it.
+    /// The height of the demo slot. Shared with the Hold Timer's countdown (US-O03) and the
+    /// visual-primary work window (US-CC11), which both stand in this same slot, so swapping between the
+    /// three shifts nothing below it.
     static let height: CGFloat = 220
 
     var body: some View {
-        demo
+        ExerciseIllustration(prescription: prescription)
             .exerciseSlotCard()
             .accessibilityElement()
             .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
     }
+}
 
-    /// The bundled Lottie animation when the exercise names one that actually resolves to a file,
-    /// else the SF-Symbol fallback so a demo is never blank.
-    @ViewBuilder
-    private var demo: some View {
+/// The movement illustration itself - the bundled Lottie clip when the exercise names one that resolves
+/// (US-O01), otherwise the movement-appropriate SF-Symbol glyph so a demonstration is never blank.
+///
+/// Carries no card chrome or accessibility of its own: `ExerciseDemoView` (US-K01) frames and labels it
+/// in the standalone demo slot, and the visual-primary work window (US-CC11) embeds the same content
+/// beside its countdown ring. Sharing one source is what keeps the Lottie fast-follow a data change -
+/// dropping in ~71 per-movement clips lights them up in both hosts at once, no rewrite.
+///
+/// Under Reduce Motion the animation holds its first frame and the glyph drops its pulse for a static
+/// glyph - the required accessible still - so the illustration never animates against the preference.
+struct ExerciseIllustration: View {
+    let prescription: PrescribedExercise
+
+    /// The intrinsic size of the illustration content. The work window passes a smaller value so the
+    /// glyph/clip sits comfortably beside its ring; the standalone demo slot keeps the roomier default.
+    var size: CGFloat = 200
+
+    /// Whether the SF-Symbol glyph pulses. The standalone demo pulses it to read as "this is the live
+    /// demo" (US-K01); the visual-primary work window (US-CC11) wants a **static illustration at launch**
+    /// (the countdown ring is the live element beside it, and the AC requires the illustration be still
+    /// where no clip exists), so it passes `false`. A bundled Lottie clip still plays where one exists -
+    /// the AC allows that - and Reduce Motion stills either regardless.
+    var animatesGlyph: Bool = true
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         if let name = prescription.exercise.animationName, LottieAnimation.named(name) != nil {
             LottieDemoView(animationName: name, isPlaying: !reduceMotion)
-                .frame(width: 200, height: 200)
+                .frame(width: size, height: size)
         } else {
             glyph
         }
@@ -1092,11 +1170,11 @@ struct ExerciseDemoView: View {
     @ViewBuilder
     private var glyph: some View {
         let base = Image(systemName: symbolName)
-            .font(.system(size: 92, weight: .semibold))
+            .font(.system(size: size * 0.46, weight: .semibold))
             .foregroundStyle(Theme.Colors.accent)
 
-        if reduceMotion {
-            base // static fallback - no animation against the user's Reduce Motion preference
+        if reduceMotion || !animatesGlyph {
+            base // static fallback - no animation against Reduce Motion, or where a still illustration is wanted
         } else {
             base.symbolEffect(.pulse, options: .repeating) // auto-plays continuously
         }
