@@ -1017,6 +1017,15 @@ Deliverables: the `extendActiveCountdown`/`canExtendActiveCountdown` view-model 
 Manual QA the unit suite cannot cover (recorded in `artifacts/reports/us-cc14/validation.md`): the Reduce-Motion ring stilling (the `accessibilityReduceMotion` environment value is read-only and cannot be overridden on a hosted surface, so it is enforced by the animation gate and confirmed on device) and live on-device VoiceOver focus/announcement cadence on the running countdown.
 Verified in the running app: the production `ActiveSessionView` hosted in a real key window shows "+ More time" as a labeled hittable control on both the work window and an auto-started hold, and activating it lengthens the ring's spoken remaining time. Full `RepToday` unit suite green (1040 tests, 1 opt-in benchmark skipped, 0 failures). US-CC14 acceptance boxes flipped in the PRD.
 
+### Round cap and wide circuits - record the decision (US-RC05)
+
+A **docs-only** story (no `Services/`, test, or Swift change): it records the round-cap/go-wider decision that shipped in US-RC01, so the reshaped fill model is not a surprise to a future reader.
+Deliverables: `docs/adr/0004-round-cap-wide-circuit.md` (Status "Accepted and implemented", 2026-08-18) states the `2...4` round rails (`SessionAssembly.minTrainingSets = 2`, `maxTrainingSets = 4`, verified against source), the second-chain accessory rule, depth-first fill, and the accepted bounded depth mismatch (zero tiers for beginner/intermediate, at most one for advanced, never seeded above an earned tier), and records that it **supersedes** ADR-0003's 45-minute "8 rounds x 4 stations" consequence (the round rail ADR-0003 pinned at `maxTrainingSets` is what US-RC01 retired).
+`CONTEXT.md` gains a **"Wide Circuit"** glossary term pointing to ADR-0004 and the owning code (`SessionAssembly`, `ProgressionChainSelection`).
+ADR-0003's superseded consequence note is annotated forward to ADR-0004 (its even-round uniformity and +/-60s tolerance kept intact; only the round rail moved).
+All cross-links resolve: CONTEXT "Wide Circuit" -> ADR-0004 -> back-link to ADR-0003, and ADR-0003 -> ADR-0004.
+US-RC05 acceptance boxes flipped in the PRD; with it the Round Cap and Wide Circuits PRD is complete.
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.
