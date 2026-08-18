@@ -1,5 +1,8 @@
 # PRD: Round Cap and Wide Circuits
 
+- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. US-RC02 (a standing "2-4 rounds, always" regression guard), US-RC03 (accessory progression/Adaptive Overload parity), US-RC04 (pin the accepted depth mismatch), and US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remain open.
+- Story prefix: `US-RC##`.
+
 ## Introduction
 
 Today the deterministic session engine fills a longer workout by adding **rounds** to a circuit: every exercise in a strength block shares the block's round count, so a 60-minute session presents each movement at 7-8 sets (e.g. `Pike Push-Up 7 x 8`).
@@ -32,15 +35,15 @@ This is the coupled core change; it is landed as one unit because capping rounds
 
 **Acceptance Criteria:**
 
-- [ ] The training-block round rails change to `minTrainingSets = 2`, `maxTrainingSets = 4` in `SessionAssembly` (was `1...8`).
-- [ ] `SessionAssembly` generates, for each strength movement pattern, the frontier tier of the pattern's **top-N progression chains** (not just the top-1), adding the extra ones to the block reserve as **accessories**; the per-pattern chain ranking reuses `ProgressionChainSelection` / the existing staleness ordering, and each accessory is the frontier of its own chain.
-- [ ] The timing fit is **depth-first**: it takes every active station to the `maxTrainingSets` cap (4) before promoting an accessory from the reserve; an accessory is only promoted when four rounds of the current stations still fall short of the request.
-- [ ] Every exercise in a training block still carries the **same** round count (the block stays even, per ADR-0003); an accessory joins at the block's current round count.
-- [ ] Sessions land within +/-60s (`toleranceSeconds`) for requested lengths 5/10/15/20/30/45/60 across beginner, intermediate, and advanced users (the existing `SessionAssemblyTests` / `UniformSessionShapeTests` tolerance checks pass unchanged).
-- [ ] No accessory is ever seeded at a tier the user has not cleared; a fresh (untouched) second chain is entered at its gentlest eligible tier exactly like any chain entry.
-- [ ] Strength still holds the majority of training time; mobility appears only as warm-up/cooldown bookends; the extended (41-60 min) session still carries a dedicated primal block that strength leads.
-- [ ] Determinism and `asOf`-purity are preserved (same inputs produce the same session; no wall-clock read inside the engine).
-- [ ] Full `xcodebuild` unit suite (`-scheme RepToday test`) passes.
+- [x] The training-block round rails change to `minTrainingSets = 2`, `maxTrainingSets = 4` in `SessionAssembly` (was `1...8`).
+- [x] `SessionAssembly` generates, for each strength movement pattern, the frontier tier of the pattern's **top-N progression chains** (not just the top-1), adding the extra ones to the block reserve as **accessories**; the per-pattern chain ranking reuses `ProgressionChainSelection` / the existing staleness ordering, and each accessory is the frontier of its own chain.
+- [x] The timing fit is **depth-first**: it takes every active station to the `maxTrainingSets` cap (4) before promoting an accessory from the reserve; an accessory is only promoted when four rounds of the current stations still fall short of the request.
+- [x] Every exercise in a training block still carries the **same** round count (the block stays even, per ADR-0003); an accessory joins at the block's current round count.
+- [x] Sessions land within +/-60s (`toleranceSeconds`) for requested lengths 5/10/15/20/30/45/60 across beginner, intermediate, and advanced users (the existing `SessionAssemblyTests` / `UniformSessionShapeTests` tolerance checks pass unchanged).
+- [x] No accessory is ever seeded at a tier the user has not cleared; a fresh (untouched) second chain is entered at its gentlest eligible tier exactly like any chain entry.
+- [x] Strength still holds the majority of training time; mobility appears only as warm-up/cooldown bookends; the extended (41-60 min) session still carries a dedicated primal block that strength leads.
+- [x] Determinism and `asOf`-purity are preserved (same inputs produce the same session; no wall-clock read inside the engine).
+- [x] Full `xcodebuild` unit suite (`-scheme RepToday test`) passes.
 
 **Validation Test:**
 
