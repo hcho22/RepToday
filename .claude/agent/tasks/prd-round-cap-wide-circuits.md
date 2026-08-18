@@ -1,6 +1,6 @@
 # PRD: Round Cap and Wide Circuits
 
-- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). US-RC03 (accessory progression/Adaptive Overload parity), US-RC04 (pin the accepted depth mismatch), and US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remain open.
+- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). **US-RC03** (accessory progression/Adaptive Overload parity, `AccessoryProgressionParityTests`) **has also landed** (test-and-docs-only, no production change - the parity was already structural from US-RC01, so this is a standing guard rather than new machinery). US-RC04 (pin the accepted depth mismatch) and US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remain open.
 - Story prefix: `US-RC##`.
 
 ## Introduction
@@ -83,12 +83,14 @@ This is the coupled core change; it is landed as one unit because capping rounds
 
 **Acceptance Criteria:**
 
-- [ ] An accessory (a second-chain frontier) advances its own chain when that chain's `advancementCriteria` are met in the logs, identical to a primary station (no separate "accessory" progression path exists).
-- [ ] Adaptive Overload targets an accessory capacity-relative to that movement (reps/holds), so an easier second-chain movement earns proportionally more reps.
-- [ ] The `varietyWindow` no-repeat preference applies per chain, so an accessory is subject to the same recent-use avoidance as any station.
-- [ ] Tests cover: an accessory clearing its criteria advances that chain next session; an easier accessory receives a higher rep target than a harder primary; and an accessory used recently is de-preferred.
-- [ ] A row is added to `docs/test-coverage.md`.
-- [ ] Full `xcodebuild` unit suite passes.
+- [x] An accessory (a second-chain frontier) advances its own chain when that chain's `advancementCriteria` are met in the logs, identical to a primary station (no separate "accessory" progression path exists).
+- [x] Adaptive Overload targets an accessory capacity-relative to that movement (reps/holds), so an easier second-chain movement earns proportionally more reps.
+- [x] The `varietyWindow` no-repeat preference applies per chain, so an accessory is subject to the same recent-use avoidance as any station.
+- [x] Tests cover: an accessory clearing its criteria advances that chain next session; an easier accessory receives a higher rep target than a harder primary; and an accessory used recently is de-preferred.
+- [x] A row is added to `docs/test-coverage.md`.
+- [x] Full `xcodebuild` unit suite passes.
+
+_Landed test-and-docs-only (`AccessoryProgressionParityTests`): the parity was already structural from US-RC01 - Step 5's `ProgressionChainSelection.selectAll` ranks every chain through one `selectInChain` (an accessory is a lower-ranked result of that same call) and Step 6's `SessionAssembly` `appendTrainingItem` doses every station through one `AdaptiveOverload.target`, so no separate accessory path exists and no production change was needed._
 
 **Validation Test:**
 
