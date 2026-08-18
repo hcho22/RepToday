@@ -1,6 +1,6 @@
 # PRD: Round Cap and Wide Circuits
 
-- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. US-RC02 (a standing "2-4 rounds, always" regression guard), US-RC03 (accessory progression/Adaptive Overload parity), US-RC04 (pin the accepted depth mismatch), and US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remain open.
+- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). US-RC03 (accessory progression/Adaptive Overload parity), US-RC04 (pin the accepted depth mismatch), and US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remain open.
 - Story prefix: `US-RC##`.
 
 ## Introduction
@@ -62,11 +62,11 @@ This is the coupled core change; it is landed as one unit because capping rounds
 
 **Acceptance Criteria:**
 
-- [ ] A test in `RepTodayTests` assembles sessions across 5/10/15/20/30/45/60 minutes and all three fitness levels and asserts every training-block exercise has `sets` in `2...4`.
-- [ ] The test asserts each training block is internally even (one round count per block).
-- [ ] The test is in the routinely-run unit bundle (runs under `-scheme RepToday test` locally and in CI).
-- [ ] A row is added to `docs/test-coverage.md`.
-- [ ] Full `xcodebuild` unit suite passes.
+- [x] A test in `RepTodayTests` assembles sessions across 5/10/15/20/30/45/60 minutes and all three fitness levels and asserts every training-block exercise has `sets` in `2...4`.
+- [x] The test asserts each training block is internally even (one round count per block).
+- [x] The test is in the routinely-run unit bundle (runs under `-scheme RepToday test` locally and in CI).
+- [x] A row is added to `docs/test-coverage.md`.
+- [x] Full `xcodebuild` unit suite passes.
 
 **Validation Test:**
 
