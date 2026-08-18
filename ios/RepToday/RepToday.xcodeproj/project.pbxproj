@@ -139,6 +139,7 @@
 		BE7FD965AC71FB0E4542DBD3 /* SitsLongBookendBiasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FDE13F73ED982C61B45519 /* SitsLongBookendBiasTests.swift */; };
 		C130C08495D12FC5F98C5B7D /* HealthAccessPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ED5CBC6B6FCC45A3C35542 /* HealthAccessPrompt.swift */; };
 		C3039CC96FBFBEAB9EA8ED31 /* VarietyLanguageResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CF49ED5905DDFE244635E7 /* VarietyLanguageResolver.swift */; };
+		C3F8C469587B74244EACB9B0 /* RoundCapWideCircuitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D67B74E0EF0CD04106EF4EE /* RoundCapWideCircuitsTests.swift */; };
 		C519FA42C7AEE33C9EE464C1 /* RepTodayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1C83C83DD5D2B72C9F4234 /* RepTodayApp.swift */; };
 		C772B168E185D4FDA018A3B7 /* LegalLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30A552FD123EF68227D6B42 /* LegalLinks.swift */; };
 		C818C489501F89EAE1AAD756 /* CoreDataActiveSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18A0462A9065711166A987AB /* CoreDataActiveSessionStore.swift */; };
@@ -268,6 +269,7 @@
 		59C738BA5FCD52129CBF4A5E /* ProxyVarietyLanguageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProvider.swift; sourceTree = "<group>"; };
 		5C021A85009B63EDF1B7BD53 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		5D2933C5C50DB6D05383878C /* ProgressAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressAnalyticsTests.swift; sourceTree = "<group>"; };
+		5D67B74E0EF0CD04106EF4EE /* RoundCapWideCircuitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundCapWideCircuitsTests.swift; sourceTree = "<group>"; };
 		5E9F336C2F02E02793D884CB /* CoreDataWorkoutLogService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataWorkoutLogService.swift; sourceTree = "<group>"; };
 		606B9B7BB74223A1679C33DD /* UniformSessionShapeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniformSessionShapeTests.swift; sourceTree = "<group>"; };
 		617A3A6BD894EFD11DE252C7 /* AuthCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentialStore.swift; sourceTree = "<group>"; };
@@ -652,6 +654,7 @@
 				C3FAEA2B49361473360711E8 /* ReprogramTriggerDetectionTests.swift */,
 				C967382395B520C6462AB386 /* ReprogramTriggerTests.swift */,
 				85274C4D6459D630BE1E4978 /* ReturnOverrideTests.swift */,
+				5D67B74E0EF0CD04106EF4EE /* RoundCapWideCircuitsTests.swift */,
 				4457921384313AE075631568 /* ScaffoldTests.swift */,
 				E11AEB547E75AA4203A4733E /* ServiceContainerTests.swift */,
 				1CD1E11A5E5F6BA2587259DF /* SessionAssemblyTests.swift */,
@@ -1029,6 +1032,7 @@
 				FB4F4DE00F43E0974C571C69 /* ReprogramTriggerDetectionTests.swift in Sources */,
 				36440595B4EDD87B81F821C7 /* ReprogramTriggerTests.swift in Sources */,
 				AC55155DABE13639BB5C29FA /* ReturnOverrideTests.swift in Sources */,
+				C3F8C469587B74244EACB9B0 /* RoundCapWideCircuitsTests.swift in Sources */,
 				59F1A03000C0D4DC459AD793 /* ScaffoldTests.swift in Sources */,
 				2B9C1A24713A0F491E48ECA6 /* ServiceContainerTests.swift in Sources */,
 				575215208B032A64231FBF27 /* SessionAssemblyTests.swift in Sources */,

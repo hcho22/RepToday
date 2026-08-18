@@ -248,14 +248,37 @@ enum ProgressionChainSelection {
     // MARK: Per-pattern selection
 
     /// Selects the single exercise to prescribe for `pattern`, integrating every chain available
-    /// for it and the `varietyWindow` no-repeat rule.
+    /// for it and the `varietyWindow` no-repeat rule. The primary (best-ranked) result of
+    /// `selectAll`; see that function for the ranking this delegates to.
+    static func select(
+        pattern: MovementPattern,
+        library: [Exercise],
+        pool: [Exercise],
+        recentLogs: [WorkoutLog],
+        varietyWindow: Int = recentSessionWindow,
+        withheldByStartSeed: Set<String> = []
+    ) -> ChainSelection? {
+        selectAll(
+            pattern: pattern,
+            library: library,
+            pool: pool,
+            recentLogs: recentLogs,
+            varietyWindow: varietyWindow,
+            withheldByStartSeed: withheldByStartSeed
+        ).first
+    }
+
+    /// Ranks **every** chain available for `pattern`, best first, in the same preference order
+    /// `select` singles a winner out of - freshness, then the chain the user is actively
+    /// progressing, then the gentler option, deterministically. `select` is exactly `.first` of
+    /// this; US-RC01's wide-circuit accessories are every result *after* the first, each an honest
+    /// frontier of its own chain (`selectInChain`'s existing earned-progression and Start-Seed-band
+    /// rules apply per chain, so an accessory is bound by them exactly like a primary).
     ///
     /// `library` is the full catalog (so each chain is reasoned about end-to-end); `pool` is the
     /// eligible pool from Step 4 (so only safe, level-appropriate tiers are prescribable). Each
-    /// chain present for the pattern is resolved by `selectInChain`; among the resulting
-    /// candidates a fresh one (not used in the last `varietyWindow` sessions) is preferred,
-    /// and ties break toward the chain the user is actively progressing, then the gentler option,
-    /// deterministically. Returns `nil` when the pattern has no eligible tier in any chain.
+    /// chain present for the pattern is resolved by `selectInChain`, one candidate per chain.
+    /// Returns `[]` when the pattern has no eligible tier in any chain.
     ///
     /// `varietyWindow` is the Session Policy lever (US-E03) replacing the previously hardcoded
     /// no-repeat window; it defaults to `recentSessionWindow` so a caller that does not pass a
@@ -270,14 +293,14 @@ enum ProgressionChainSelection {
     /// withheld - the pool has been capped beneath the band by a Return or an injury filter - the
     /// band is unreachable rather than violated, every candidate comes back into scope, and the
     /// variety window applies over them normally instead of silently switching itself off.
-    static func select(
+    static func selectAll(
         pattern: MovementPattern,
         library: [Exercise],
         pool: [Exercise],
         recentLogs: [WorkoutLog],
         varietyWindow: Int = recentSessionWindow,
         withheldByStartSeed: Set<String> = []
-    ) -> ChainSelection? {
+    ) -> [ChainSelection] {
         let eligibleIds = Set(pool.map(\.id))
         let chains = Dictionary(
             grouping: library.filter { $0.movementPattern == pattern },
@@ -294,21 +317,28 @@ enum ProgressionChainSelection {
                     withheldByStartSeed: withheldByStartSeed
                 )
             }
-        guard !candidates.isEmpty else { return nil }
+        guard !candidates.isEmpty else { return [] }
 
         let recentlyUsed = recentlyUsedExerciseIds(recentLogs: recentLogs, window: varietyWindow)
         let lastWorked = lastWorkedByChain(recentLogs: recentLogs, library: library)
 
-        // "Never on offer" is not "fresh". Set the withheld candidates aside first - unless that
-        // leaves nothing, in which case the band is simply unreachable this session and every
-        // candidate is back in scope. Then prefer a fresh one, falling back to the whole scope
-        // (variety never beats having an exercise at all).
-        let inBand = candidates.filter { !withheldByStartSeed.contains($0.exercise.id) }
-        let inScope = inBand.isEmpty ? candidates : inBand
-        let fresh = inScope.filter { !recentlyUsed.contains($0.exercise.id) }
-        let pickFrom = fresh.isEmpty ? inScope : fresh
-
-        return pickFrom.min { lhs, rhs in
+        // Every chain's candidate is ranked, not filtered out - US-RC01 needs every one of them as a
+        // possible accessory, not just the single winner `select` (`.first`) reads off the front. Both
+        // "never on offer" and "not fresh" are preferences, expressed as leading sort keys rather than
+        // pre-filters-with-fallback: a withheld or recently-used candidate sorts *behind* an in-band,
+        // fresh one, but is never dropped, so a chain the user happens to be actively working (and is
+        // therefore "not fresh") still has an honest shot at being ranked - just lower - as an accessory.
+        // This reproduces `select`'s old filter-with-fallback exactly at `.first` (when a dimension
+        // cannot differentiate - e.g. every candidate is equally withheld - sorting on it is a no-op,
+        // the same as the old fallback-to-the-whole-scope behavior), while no longer silently discarding
+        // every candidate that dimension would have filtered out.
+        return candidates.sorted { lhs, rhs in
+            let lhsWithheld = withheldByStartSeed.contains(lhs.exercise.id)
+            let rhsWithheld = withheldByStartSeed.contains(rhs.exercise.id)
+            if lhsWithheld != rhsWithheld { return !lhsWithheld }
+            let lhsFresh = !recentlyUsed.contains(lhs.exercise.id)
+            let rhsFresh = !recentlyUsed.contains(rhs.exercise.id)
+            if lhsFresh != rhsFresh { return lhsFresh }
             // The chain the user worked most recently wins (keep them on their active chain).
             let lhsWorked = lastWorked[lhs.chainId]
             let rhsWorked = lastWorked[rhs.chainId]
