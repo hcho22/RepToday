@@ -1,6 +1,6 @@
 # PRD: Round Cap and Wide Circuits
 
-- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). **US-RC03** (accessory progression/Adaptive Overload parity, `AccessoryProgressionParityTests`) **has also landed** (test-and-docs-only, no production change - the parity was already structural from US-RC01, so this is a standing guard rather than new machinery). **US-RC04** (pin the accepted depth mismatch, `AccessoryDepthMismatchTests`) **has also landed** (test-and-docs-only, no production change - the bound is already structural from US-RC01's difficulty cap + per-chain base-tier entry). US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remains open.
+- Status: **Complete.** **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). **US-RC03** (accessory progression/Adaptive Overload parity, `AccessoryProgressionParityTests`) **has also landed** (test-and-docs-only, no production change - the parity was already structural from US-RC01, so this is a standing guard rather than new machinery). **US-RC04** (pin the accepted depth mismatch, `AccessoryDepthMismatchTests`) **has also landed** (test-and-docs-only, no production change - the bound is already structural from US-RC01's difficulty cap + per-chain base-tier entry). **US-RC05** (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) **has also landed** (docs-only, no production change) - with it this PRD is complete.
 - Story prefix: `US-RC##`.
 
 ## Introduction
@@ -131,11 +131,11 @@ _Landed test-and-docs-only (`AccessoryDepthMismatchTests`): the bound is already
 
 **Acceptance Criteria:**
 
-- [ ] `docs/adr/0004-round-cap-wide-circuit.md` is added (Status: Accepted and implemented, dated), and it notes that it supersedes ADR-0003's 45-minute "8 rounds x 4 stations" consequence.
-- [ ] A "Wide Circuit" term is added to `CONTEXT.md`, pointing to ADR-0004 and the owning code (`SessionAssembly`, `ProgressionChainSelection`).
-- [ ] ADR-0003's consequence note is annotated (or cross-referenced) to point forward to ADR-0004 for the retired round rail.
-- [ ] `docs/implementation-log.md` records the change.
-- [ ] Links between the ADRs and CONTEXT resolve.
+- [x] `docs/adr/0004-round-cap-wide-circuit.md` is added (Status: Accepted and implemented, dated), and it notes that it supersedes ADR-0003's 45-minute "8 rounds x 4 stations" consequence.
+- [x] A "Wide Circuit" term is added to `CONTEXT.md`, pointing to ADR-0004 and the owning code (`SessionAssembly`, `ProgressionChainSelection`).
+- [x] ADR-0003's consequence note is annotated (or cross-referenced) to point forward to ADR-0004 for the retired round rail.
+- [x] `docs/implementation-log.md` records the change.
+- [x] Links between the ADRs and CONTEXT resolve.
 
 **Validation Test:**
 
