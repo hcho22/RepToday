@@ -35,6 +35,8 @@ _Recurring preferences the user has confirmed, and conventions specific to how P
 - **PRD doubles as a progress tracker.** As each task/user story from a generated PRD is completed, mark its acceptance-criteria checkboxes `[ ]` → `[x]` in the PRD file (`.claude/agent/tasks/prd-*.md`), so done vs. remaining is visible at a glance.
 - **Post-implementation archive PRDs** - a PRD authored outside the repo (e.g. from a design grill) and shipped before it was committed gets archived into `.claude/agent/tasks/prd-*_<YYMMDD>.md` after the fact; keep the source text faithful and add a `**Status:** Complete - shipped` header line citing the stories/PRs, rather than re-checking the acceptance boxes here.
 - **For rename/refactor/infra PRDs** (no new feature behavior), Validation Tests lean on **grep guards** ("`grep -rn OLD` returns nothing"), the full `xcodebuild` test suite, and a Simulator boot check - not feature interactions. Order stories by dependency and call out irreversible-after-publish fields (bundle id, CloudKit container, StoreKit ids) explicitly.
+- Engine / session-shape PRDs are often **engine-only**: the continuous-circuit player (US-CC02 onward) renders stations and round counts data-drivenly, so a new session shape usually needs no player/UI story.
+  Verify the player already handles it before scoping any UI work.
 
 ## Mistakes to Avoid
 
