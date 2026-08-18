@@ -1,6 +1,6 @@
 # PRD: Round Cap and Wide Circuits
 
-- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). **US-RC03** (accessory progression/Adaptive Overload parity, `AccessoryProgressionParityTests`) **has also landed** (test-and-docs-only, no production change - the parity was already structural from US-RC01, so this is a standing guard rather than new machinery). US-RC04 (pin the accepted depth mismatch) and US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remain open.
+- Status: In progress. **US-RC01** (cap rounds to `2...4` and fill longer sessions by going wider, the coupled engine core) **has landed** - see `AGENTS.md`'s Fourth PRD note and the `docs/test-coverage.md` row for what shipped, including the two latent timing-fit bugs the cap exposed and fixed. **US-RC02** (the standing "2-4 rounds, always" regression guard, `RoundCapInvariantGuardTests`) **has also landed** (test-and-docs-only, no production change). **US-RC03** (accessory progression/Adaptive Overload parity, `AccessoryProgressionParityTests`) **has also landed** (test-and-docs-only, no production change - the parity was already structural from US-RC01, so this is a standing guard rather than new machinery). **US-RC04** (pin the accepted depth mismatch, `AccessoryDepthMismatchTests`) **has also landed** (test-and-docs-only, no production change - the bound is already structural from US-RC01's difficulty cap + per-chain base-tier entry). US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remains open.
 - Story prefix: `US-RC##`.
 
 ## Introduction
@@ -108,11 +108,13 @@ _Landed test-and-docs-only (`AccessoryProgressionParityTests`): the parity was a
 
 **Acceptance Criteria:**
 
-- [ ] A test asserts that for beginner (difficulty cap 1-2) and intermediate (1-3) users, a pattern's accessory frontier is within the same reachable band as its primary (zero-to-negligible mismatch).
-- [ ] A test asserts an advanced user maxed on a deep chain receives a second-chain accessory no more than one tier below the primary in steady state, and that an **untouched** second chain is entered at its base tier (not seeded higher).
-- [ ] No code path seeds an accessory above the tier the user has cleared (the earned-progression invariant holds for accessories).
-- [ ] A row is added to `docs/test-coverage.md`.
-- [ ] Full `xcodebuild` unit suite passes.
+- [x] A test asserts that for beginner (difficulty cap 1-2) and intermediate (1-3) users, a pattern's accessory frontier is within the same reachable band as its primary (zero-to-negligible mismatch).
+- [x] A test asserts an advanced user maxed on a deep chain receives a second-chain accessory no more than one tier below the primary in steady state, and that an **untouched** second chain is entered at its base tier (not seeded higher).
+- [x] No code path seeds an accessory above the tier the user has cleared (the earned-progression invariant holds for accessories).
+- [x] A row is added to `docs/test-coverage.md`.
+- [x] Full `xcodebuild` unit suite passes.
+
+_Landed test-and-docs-only (`AccessoryDepthMismatchTests`): the bound is already structural from US-RC01, so no production change was needed - this is a standing guard on the two facts that keep the accepted mismatch (ADR-0004) honest and bounded. **Bounded by the difficulty cap:** the one `ExercisePoolFilter.eligiblePool` pass inside `planBlocks` clamps both the primary and the accessory to the user's level band (beginner 1-2, intermediate 1-3, advanced 1-5), so for a beginner (standard/floor-dips, both difficulty 2) and an intermediate (diamond/pike, both difficulty 3) both chains top out at the cap ceiling and the maxed mismatch is **zero**, while an advanced discipline-phase user maxes horizontal at archer (difficulty 4 - one-arm is Strength-gated) and vertical at pike (difficulty 3), an accepted mismatch of exactly **one** tier. **Never seeded above an earned tier:** an untouched second chain enters at `selectInChain`'s no-history base tier (order 0), never nudged up to the pattern frontier the user cleared on the other chain, so an advanced user deep on horizontal push still meets vertical push at floor-dips. Read off the fit-independent `planBlocks` reserve over the real push chains; the broad `testNoAccessoryIsEverSeededAboveTheUsersDifficultyCap` guard is bound to the live `difficultyCap(for:)` so removing the cap or adding a cap-skipping accessory path fails it._
 
 **Validation Test:**
 
