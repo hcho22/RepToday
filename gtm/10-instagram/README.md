@@ -72,7 +72,7 @@ AB-2 tests "admit the cost" (leg A) against "pure negation of loss" (leg B), so 
 ## Claim hygiene
 
 Every asset here was written against `../02-brand/brand-guidelines.md` and checked against `../08-redteam/pre-publication-checklist.md`.
-Two of the checks are automated and re-runnable.
+Three of the checks are automated and re-runnable, and all three were sabotage-checked rather than trusted.
 
 ### `claim-audit.py`
 
@@ -93,7 +93,7 @@ It parses the frozen files live rather than hard-coding a hook list, so it canno
 Current result:
 
 ```
-Audited 45 authored file(s) in gtm/10-instagram/, of which 40 are publishable copy (slides and captions).
+Audited 46 authored file(s) in gtm/10-instagram/, of which 40 are publishable copy (slides and captions).
 Checked against 40 quoted sentence(s) frozen in gtm/05-social-pmf/.
 
 PASS  0 em dashes, 0 en dashes, 0 'RepToday', 0 'Rest Tomorrow',
@@ -113,6 +113,21 @@ That rule exists because `gate-test-asset-v2` shipped with its proof line cut mi
 The check enforces it: every slide must be exactly 1080x1350, with no ink within 72px of any edge.
 Since each slide has 80px of padding, ink in that band means either an overflow clipped at the canvas boundary or a broken margin.
 Both fail the build.
+
+### `widow-check.py`
+
+Also runs automatically at the end of `render.sh`.
+
+Headlines carry explicit `<br>` breaks, which are predictable on a fixed canvas but easy to invalidate: any copy edit can silently re-widow a line, and a lone short word stranded on its own line is a defect at this type size.
+This guard measures **real line boxes** rather than guessing at them.
+It copies each slide beside its original so the relative stylesheet still resolves, injects a measuring script, and has headless Chrome walk every word with a `Range`, group words by the top of their client rect, and report the resulting lines.
+Anything set at 40px or larger is checked (headlines, the stacked statements, the hotel-room-test conditions); body copy at 34px is ordinary prose and is left alone.
+A line that is a single word of 6 characters or fewer fails, which catches the real defects ("it.", "plan.") while leaving a deliberate lone "workout." alone.
+
+Grouping is by rect top **within a tolerance**, not by exact equality.
+A bold `<span>` inside a regular-weight line reports a slightly different top for its own inline box, and exact matching read that as a second line and reported two widows that were not on screen.
+
+Sabotage-checked: removing the explicit breaks from one headline reproduces the original `it.` widow, and restoring them passes.
 
 ### Claims deliberately not made
 
@@ -182,15 +197,29 @@ All of it lives in one shared `carousel.css`, so the brand tokens have a single 
 - **Type:** the section 5 marketing scale rendered at 2x for the 1080px canvas, all ratios preserved. Nothing is set below the scale. Headlines are sentence case with a period, never all-caps, never title case.
 - **Spacing:** base-4, doubled. 80px canvas margin on every side, the section 5 minimum at 1080 wide.
 - **Ready Mark:** the section 3 reference SVG, inline and unmodified, so the construction ratios travel with it. It appears small in the top left of each hook slide and in the wordmark lockup on each closing slide, with clear space well above the 25% minimum.
-- **Composition:** content slides share one layout. The overline sits at the top as a running label and the copy block is anchored low, in the thumb zone, so the eye lands in the same place on every slide of a swipe. The calm space between them is intentional.
+- **Composition:** every slide in every carousel uses the same three zones, so the eye lands in the same place across a whole swipe and the covers agree with the interiors.
+
+  | Zone | Holds | Behaviour |
+  |---|---|---|
+  | `.rail-top` | the Ready Mark, or the eyebrow, or nothing | pinned to the top padding edge, `min-height: 64px` |
+  | `.zone` | headline and body, as one block | optically centred, and the only zone that flexes |
+  | `.rail-bottom` | the swipe affordance, or the sign-off block, or nothing | pinned to the bottom padding edge, `min-height: 32px` |
+
+  Both rails reserve a minimum so the content zone starts and ends at the same y whether its rail holds the 64px mark, a 32px eyebrow, or nothing. The slack is split above and below the content block rather than dumped on one side, and the content block sits 48px above true centre, which is the usual optical correction for a text block: centred mathematically it reads as sitting low. The sign-off slide's balance is the reference the rest are tuned against.
+
+  An earlier revision drove this with a single auto margin, so any slide carrying one pressed its content against the bottom edge while the rest sat near the middle. Across a swipe that read as a rendering fault rather than as deliberate whitespace, which is why the layout is now zone-based and why `.spacer` and `.anchor` no longer exist.
+
+- **Headline line breaks are explicit.** Headlines carry `<br>` rather than relying on the browser, because a fixed canvas makes explicit breaks predictable and because auto-wrapping stranded single short words ("A missed day moves the / number. It cannot empty / it."). Two slide-02 headlines also dropped from Display to H1, which fits them in two clean lines instead of a widowed three and means every non-cover slide now sits in the H1/H2 range. `widow-check.py` is the guard, and it measures rather than guesses: see below.
+
+- **Swipe affordance: the cover only.** Slide 1 of every carousel carries a quiet "Swipe" in the bottom rail and no interior slide does. Instagram already renders its own dot indicators once a reader is inside the post, so repeating the instruction on six of seven slides is noise, and the cover is the only slide where a reader does not yet know there is more. The rule is uniform across all five carousels; the bottom rail reserves the space on every slide either way, so the composition does not shift between a cover and an interior.
 
 ### Slide 1 reads at grid-thumbnail size
 
-Tested, not assumed.
+Tested, not assumed, and re-tested after the composition changed.
 All five hook slides were downscaled and read back, and the Display-size hook is legible on every one, because every hook is 7 words or fewer.
 The test was run at **128px wide** (a 4:5 tile 160px tall), which is stricter than the roughly 160px-wide grid cell the assets actually have to survive.
 The Micro-scale overline does not resolve at that size, which is fine and expected: the headline is designed to carry the thumbnail by itself.
-Hook headlines are also positioned within the central square of the 4:5 canvas, so they survive a 1:1 centre crop as well as the 4:5 grid tile.
+Hook headlines also sit within the central square of the 4:5 canvas, so they survive a 1:1 centre crop as well as the 4:5 grid tile.
 If a future hook needs more words, shorten the words rather than shrinking the type, which the type scale forbids.
 
 ### Regenerating the PNGs
@@ -203,7 +232,7 @@ CHROME=/path/to/chrome ./gtm/10-instagram/render.sh    # if Chrome is not auto-f
 
 The HTML is the source of truth and the PNGs under each `carousel-*/render/` are build output.
 Both are committed, so a reviewer can see the assets without running anything, and a clean checkout reproduces them byte for byte.
-`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs the fit check.
+`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs both the fit check and the widow check, so a layout that does not fit or a headline that widows fails the regenerate instead of reaching a reviewer.
 
 ### Publishing, when Gate 0 clears
 

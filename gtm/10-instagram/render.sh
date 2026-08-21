@@ -84,3 +84,7 @@ done
 echo
 echo "Rendered $COUNT slide(s). Checking fit..."
 python3 "$HERE/fit-check.py" "${RENDERED[@]}"
+
+echo
+echo "Checking headline line breaks..."
+CHROME="$CHROME" python3 "$HERE/widow-check.py" "${CAROUSELS[@]}"

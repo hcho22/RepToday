@@ -125,15 +125,45 @@ body {
 
 /* ---------- Structure helpers ---------- */
 
-.spacer { flex: 1 1 auto; min-height: 32px; }
-.footer { margin-top: auto; }
+/* ---------- Three-zone composition ----------
+   Every slide in every carousel uses the same three zones, so the eye lands in
+   the same place across a whole swipe and covers agree with interiors.
 
-/* Content slides share one composition: the overline sits at the top of the
-   canvas as a running label, and the copy block is anchored low, where the
-   thumb is and where the eye lands on every slide of the swipe. The calm void
-   between them is deliberate, not leftover space (section 6, "layouts
-   breathe"). Every content slide therefore shares a baseline. */
-.anchor { margin-top: auto; padding-bottom: 40px; }
+     .rail-top     the Ready Mark or the eyebrow, pinned to the top padding edge
+     .zone         headline and body as one block, optically centred
+     .rail-bottom  the swipe affordance or the sign-off block, pinned to the
+                   bottom padding edge
+
+   Only the empty space flexes, and it is split above and below the content
+   block rather than dumped on one side. An earlier version drove this with a
+   single auto margin, which pushed content hard against the bottom edge on any
+   slide that had one and left the rest near the middle: across a swipe that
+   read as a rendering fault rather than as deliberate whitespace. */
+
+.rail {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Both rails reserve a fixed minimum so the content zone begins and ends at the
+   same y on every slide, whether its rail holds the 64px Ready Mark, a 32px
+   eyebrow line, or nothing at all. A sign-off rail is taller than its minimum
+   and is meant to be: that slide's balance is the reference for the rest. */
+.rail-top { min-height: 64px; }
+.rail-bottom { min-height: 32px; }
+
+.zone {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Optical centring. Half of this is the upward shift, so the block sits 48px
+     above true centre. A text block centred mathematically reads as sitting
+     low, and this is the usual correction. */
+  padding-bottom: 96px;
+}
 
 /* Quiet Moss rule used as the single accent mark on a slide. */
 .rule {

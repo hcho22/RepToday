@@ -37,3 +37,7 @@ node_modules/
 .DS_Store
 *.swp
 *~
+
+# Python (gtm/ tooling: claim-audit.py, fit-check.py, widow-check.py)
+__pycache__/
+*.py[cod]
