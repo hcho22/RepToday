@@ -23,6 +23,12 @@ Two jobs.
    rule requires.
 
    This script only reads gtm/05-social-pmf/. It never writes there.
+
+   It guards the verbatim half of that rule and only the verbatim half. The rule
+   is about the proposition, and a leg restated in different words is the same
+   pre-exposure with none of the same bytes, which no string check can see.
+   README.md names, in the specific, which propositions this folder may not
+   carry; read it before writing a headline.
 """
 
 import os
@@ -86,6 +92,19 @@ def normalize(text):
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
+def blank_tags(text):
+    """Replace every HTML tag with spaces, preserving length and line breaks.
+
+    A reader sees a headline, not its markup, so the string and frozen-hook
+    checks have to see it the same way: "71<br>movements" and a leg hook broken
+    across two lines are violations that matching the raw file misses entirely,
+    and headlines here carry explicit <br> exactly where a break would land.
+    Blanking rather than deleting keeps every byte offset intact, so the line
+    numbers reported below still point at the real line.
+    """
+    return re.sub(r"<[^>]*>", lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
+
 def authored_files():
     out = []
     for root, _dirs, names in os.walk(HERE):
@@ -112,11 +131,13 @@ def frozen_hooks():
     """
     hooks = set()
     leg_hooks = set()
+    problems = []
 
     for name in ("angles.md", "ab-pairs.md"):
         path = os.path.join(PMF, name)
         if not os.path.exists(path):
-            print("WARN  could not read %s; the hook check is incomplete." % path)
+            problems.append("could not read %s, so the frozen-hook check cannot "
+                            "run at all" % os.path.relpath(path, HERE))
             continue
         for line in open(path, encoding="utf-8"):
             for cell in line.split("|"):
@@ -133,40 +154,57 @@ def frozen_hooks():
     # contribute more than one string each; fewer than 12 means the parser has
     # regressed and the experiment-integrity half of this audit is not actually
     # running.
+    #
+    # These are failures, not warnings, and that distinction is the whole point:
+    # a guard that cannot run must not report PASS. If the PMF files move or a
+    # reformat turns their straight quotes typographic, `hooks` comes back empty,
+    # the hook loop matches nothing, and every printed line below would otherwise
+    # read as a clean run of a check that never happened.
     if len(leg_hooks) < 12:
-        print("WARN  parsed only %d A/B leg hook(s) from ab-pairs.md, expected at "
-              "least 12. The no-verbatim-restatement check may be incomplete."
-              % len(leg_hooks))
+        problems.append("parsed only %d A/B leg hook(s) from ab-pairs.md, expected "
+                        "at least 12, so the no-restatement check is incomplete"
+                        % len(leg_hooks))
 
-    return hooks
+    return hooks, problems
 
 
 def main():
     files = authored_files()
     copy_files = [p for p in files if is_publishable_copy(p)]
-    hooks = frozen_hooks()
-    failures = []
+    hooks, problems = frozen_hooks()
+    failures = ["%s (this audit cannot pass while it cannot check)" % p
+                for p in problems]
 
     for path in files:
         raw = open(path, encoding="utf-8").read()
         rel = os.path.relpath(path, HERE)
 
-        # Character check: everything, documentation included.
+        # Character check: everything, documentation included, on the raw bytes.
         for char, label in BANNED_CHARS.items():
             if char in raw:
                 line = raw[:raw.index(char)].count("\n") + 1
                 failures.append("%s:%d contains %s" % (rel, line, label))
 
-        # String and frozen-hook checks: publishable copy only.
+        # String and frozen-hook checks: publishable copy only, and against the
+        # text a reader sees rather than the markup that produces it.
         if not is_publishable_copy(path):
             continue
 
+        visible = blank_tags(raw)
+        seen = set()
         for pattern, why, flags in BANNED_PATTERNS:
-            for m in re.finditer(pattern, raw, flags):
-                line = raw[:m.start()].count("\n") + 1
-                failures.append("%s:%d %r - %s" % (rel, line, m.group(0), why))
+            # Both scans, because they catch different things: the visible text
+            # catches a match split across a tag, and the raw file still covers
+            # attribute values (a title or an aria-label is authored copy too).
+            for source in (visible, raw):
+                for m in re.finditer(pattern, source, flags):
+                    line = source[:m.start()].count("\n") + 1
+                    hit = "%s:%d %r - %s" % (rel, line, m.group(0).strip(), why)
+                    if hit not in seen:
+                        seen.add(hit)
+                        failures.append(hit)
 
-        flat = normalize(raw)
+        flat = normalize(visible)
         for hook in hooks:
             if hook in flat:
                 failures.append("%s restates a frozen PMF hook verbatim: %r" % (rel, hook))

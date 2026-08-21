@@ -41,3 +41,8 @@ node_modules/
 # Python (gtm/ tooling: claim-audit.py, fit-check.py, widow-check.py)
 __pycache__/
 *.py[cod]
+
+# widow-check.py measures a copy of each slide beside the original, so the
+# stylesheet link resolves. It removes the copy itself; this is the backstop
+# for a run that is killed before it can.
+.widow-check-*.html

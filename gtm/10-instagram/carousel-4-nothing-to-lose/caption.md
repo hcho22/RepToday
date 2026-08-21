@@ -43,4 +43,4 @@ iOS, not released yet. Link in bio.
 
 **Slide 6.** A small green label at the top reads "After a gap". Large dark type reads: "Coming back is the event, not the failure." Below it: "Return after a week away and the app opens to a session that is easy and winnable, and it treats the return itself as the thing worth marking."
 
-**Slide 7.** Closing card. Large dark type reads: "You're someone who moves." Below it: "The score's job is to reflect that, not to threaten it." At the bottom, the Ready Mark beside the words "Rep Today", then the line "iOS, not released yet. Link in bio.", then small grey legal type: "Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved."
+**Slide 7.** Closing card. Large dark type reads: "You're someone who moves." Below it: "The score's job is to reflect that, not to threaten it." At the bottom, the Ready Mark beside the words "Rep Today", then the line "iOS, not released yet.", then small grey legal type: "Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved."

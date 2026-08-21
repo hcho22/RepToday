@@ -22,7 +22,7 @@ So I moved the deciding. An engine on the phone assembles the whole session, off
 
 What it is not: a strength program, coaching, or a replacement for a gym. It is the app for the evenings when the gym was never going to happen.
 
-I wanted one that was already ready. So that is the one I built.
+I wanted one that did the deciding for me. So that is the one I built.
 
 iOS, not released yet. Link in bio.
 
@@ -44,4 +44,4 @@ iOS, not released yet. Link in bio.
 
 **Slide 6.** A small green label at the top reads "Being straight about it". Large dark type reads: "What it is not." Below it: "It is not a strength program. It is not coaching. It is not a replacement for a gym, and it is not trying to be one." and "It is the app for the evenings when the gym was never going to happen."
 
-**Slide 7.** Closing card. Large dark type reads: "I wanted one that was already ready. So that is the one I built." At the bottom, the Ready Mark beside the words "Rep Today", then the line "iOS, not released yet. Link in bio.", then small grey legal type: "Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved."
+**Slide 7.** Closing card. Large dark type reads: "I wanted one that did the deciding for me. So that is the one I built." At the bottom, the Ready Mark beside the words "Rep Today", then the line "iOS, not released yet.", then small grey legal type: "Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved."

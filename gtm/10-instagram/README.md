@@ -19,7 +19,7 @@ Each is 7 slides at 1080x1350 (Instagram 4:5 portrait), authored as HTML and ren
 
 | # | Folder | Slot | What it does |
 |---|--------|------|--------------|
-| 1 | `carousel-1-already-there/` | **Pinned** | What it is. The friction thesis, then the inversion: you do not pick a workout, it is on screen when the app opens. |
+| 1 | `carousel-1-you-do-not-pick/` | **Pinned** | What it is. The friction thesis, then the inversion: you do not pick a workout, the session is chosen for you. |
 | 2 | `carousel-2-why-i-built-this/` | **Pinned** | Why we made it. First-person founder origin, deliberately small. Consistency dies in the gap between deciding to move and moving. |
 | 3 | `carousel-3-this-is-for-you-if/` | **Pinned** | Who it is for. Recognition rather than aspiration, closing honestly on who it is *not* for. |
 | 4 | `carousel-4-nothing-to-lose/` | Evergreen | The problem it solves. The forgiveness pillar as a manifesto: no streaks, badges, XP, or leaderboards anywhere. |
@@ -44,7 +44,7 @@ Instagram is a non-adjudicating distribution mirror in that experiment.
 This folder is a separate, additive surface, and the separation is load-bearing:
 
 - **Carousel performance never adjudicates an angle.** No result from these posts kills, revives, or ranks anything in the angle bank. Nothing here is written to `creative-log.json`, and nothing here should be.
-- **No slide or caption restates an A/B pair leg hook verbatim.** Pre-exposing one leg biases the day-N versus day-N+7 comparison that the pair exists to resolve. This is enforced mechanically, not by care alone: see `claim-audit.py` below.
+- **No slide or caption pre-exposes an A/B pair leg, as a string or as a proposition.** Pre-exposing one leg biases the day-N versus day-N+7 comparison that the pair exists to resolve, and what biases it is a reader arriving at the leg already familiar with what it says, not with how it was spelled. The verbatim half is enforced mechanically by `claim-audit.py` below. The idea half cannot be, and is written out in the specific just below so it cannot recur by being forgotten.
 - **Nothing under `../05-social-pmf/` was modified.** Not one character. The audit script reads those files and never writes to them.
 
 Drawing on Hero A, Hero B, and the five messaging pillars in `../02-brand/positioning.md` is fine and encouraged, because those are positioning rather than frozen experiment hooks.
@@ -56,14 +56,22 @@ Two of the five carousels were briefed under working titles that turned out to b
 
 | Working title | Collides with | On-slide headline used instead |
 |---|---|---|
-| "Open the app. The workout is already there." | AB-1, leg B | **"You do not pick a workout."** (slide 1) then **"It is on screen when the app opens."** (slide 2) |
+| "Open the app. The workout is already there." | AB-1, leg B | **"You do not pick a workout."** (slide 1) then **"The session is chosen for you."** (slide 2) |
 | "Missing a day never zeroes you out." | AB-2, leg B | **"There is nothing here to lose."** |
 
 Both working titles are also approved hero headlines in `../02-brand/brand-guidelines.md` section 9, which is exactly why the collision is easy to miss: the A/B pairs froze the hero headlines as leg B of their pairs.
-Where the two rules meet, the experiment-integrity rule governs the exact string and the positioning rule governs the idea.
-So the ideas are used in full and the strings are not.
+Where the two rules meet, the experiment-integrity rule governs, and it governs the proposition rather than only the sentence.
 
-Carousel 1's replacement is not a workaround, it is better: "You do not pick a workout. It is on screen when the app opens." is the messaging hierarchy's own pillar-1 line, and splitting it across slides 1 and 2 makes the swipe itself perform the inversion.
+**What that means for AB-1, concretely, because this is the rule that is easy to satisfy on paper and break in fact.**
+Leg B's proposition is that the workout is *already there when you open the app*.
+An earlier revision of carousel 1 avoided leg B's string and then said the same thing in different words ("It is on screen when the app opens", "It opens ready. That is the entire idea."), which pre-exposes exactly what the pair is trying to measure.
+So no hook, headline, eyebrow, caption opening line, or closing line anywhere in this folder now asserts that the workout is there or ready at the moment of opening.
+What carousel 1 carries instead is the truth underneath it: **you do not pick the workout, the choosing is done for you, there is no menu.**
+That is `positioning.md` pillar 1, it belongs to neither leg of AB-1, and it is what the whole carousel is now built on, which is why the folder is `carousel-1-you-do-not-pick/` rather than named after the leg-B phrasing it used to echo.
+
+The one thing the rule permits is a mechanism sentence in body copy, once, inside a slide, where explaining *how* the session gets there requires saying that the app opens to it.
+An explanation on slide 4 of a swipe is not what builds hook familiarity; a hook is.
+The line to hold is that the leg-B claim may never occupy a hook position, and the two rules are settled the same way everywhere: the idea belongs to positioning, the specific proposition under test belongs to the experiment.
 
 Carousel 4's replacement deliberately enters from a third direction.
 AB-2 tests "admit the cost" (leg A) against "pure negation of loss" (leg B), so a forgiveness hook written either way would lean on one leg.
@@ -76,6 +84,8 @@ Three of the checks are automated and re-runnable, and all three were sabotage-c
 
 ### `claim-audit.py`
 
+Runs automatically at the end of `render.sh`, and on its own:
+
 ```bash
 python3 gtm/10-instagram/claim-audit.py
 ```
@@ -87,8 +97,13 @@ The **string and frozen-hook checks** cover publishable copy only, meaning the 4
 This README and the folder's tooling are excluded from those, because documenting a banned string requires quoting it, and string-matching the documentation would flag the very lines that record the rule.
 The **character check** covers every file including this one, because the no-em-dash rule genuinely does extend to the README.
 
+Inside a slide, those two checks read the copy **with the markup blanked out**, because a reader sees the headline and not its tags.
+Matching the raw file missed anything spanning an inline tag, and this folder line-breaks its headlines with explicit `<br>` exactly where a break would land, so `71<br>movements` or a leg hook broken over two lines was invisible to the guard at precisely the place it was most likely to occur.
+Tags are blanked rather than deleted, so reported line numbers still point at the real line, and the patterns are also run against the raw file so an attribute value stays covered.
+
 That last check is a deliberate **superset** of the rule: it guards all 12 A/B leg hooks plus the angle bank's hooks and the mined review quotes, so it is stricter than "no A/B leg hook verbatim" requires.
-It parses the frozen files live rather than hard-coding a hook list, so it cannot drift out of date, and it warns if it parses fewer than the 12 expected leg hooks.
+It parses the frozen files live rather than hard-coding a hook list, so it cannot drift out of date.
+Its two integrity self-checks (the PMF files are readable, and at least the 12 expected leg hooks parsed out of them) are **failures, not warnings**: a check that cannot run must not be able to print PASS, and both would otherwise leave the hook list empty and every hook comparison trivially satisfied.
 
 Current result:
 
@@ -103,6 +118,7 @@ PASS  0 em dashes, 0 en dashes, 0 'RepToday', 0 'Rest Tomorrow',
 
 The guard was sabotage-checked rather than trusted: injecting an em dash, `RepToday`, `under 100 milliseconds`, and `57 movements` into one slide produced 5 findings, and separately injecting each of four real A/B leg hooks produced a finding every time.
 All 12 leg hooks are confirmed present in the guarded set.
+The two later repairs were sabotage-checked the same way: a movement count and a leg hook each split across a `<br>` are both caught, and pointing the script at a missing PMF directory fails the run instead of reporting a clean pass.
 
 ### `fit-check.py`
 
@@ -121,6 +137,7 @@ Also runs automatically at the end of `render.sh`.
 Headlines carry explicit `<br>` breaks, which are predictable on a fixed canvas but easy to invalidate: any copy edit can silently re-widow a line, and a lone short word stranded on its own line is a defect at this type size.
 This guard measures **real line boxes** rather than guessing at them.
 It copies each slide beside its original so the relative stylesheet still resolves, injects a measuring script, and has headless Chrome walk every word with a `Range`, group words by the top of their client rect, and report the resulting lines.
+That copy has to land in a tracked directory, so it is named uniquely per run and removed afterwards, and `.gitignore` carries the pattern as the backstop for a run killed before it can clean up.
 Anything set at 40px or larger is checked (headlines, the stacked statements, the hotel-room-test conditions); body copy at 34px is ordinary prose and is left alone.
 A line that is a single word of 6 characters or fewer fails, which catches the real defects ("it.", "plan.") while leaving a deliberate lone "workout." alone.
 
@@ -133,12 +150,12 @@ Sabotage-checked: removing the explicit breaks from one headline reproduces the 
 
 These are the traps specific to this package, recorded so a future editor does not "helpfully" restore them:
 
-- **No speed figure, anywhere.** Not "under 100 milliseconds", not a number of any kind. The real-device p95 on iPhone XS / iOS 17 is still outstanding in the pre-publication checklist, and that item explicitly blocks social assets. `positioning.md` and `brand-guidelines.md` both still print the number; they are ahead of the evidence. Instant readiness is expressed qualitatively instead ("it is on screen when the app opens"). Because these carry no number, that outstanding benchmark does **not** block this folder.
+- **No speed figure, anywhere.** Not "under 100 milliseconds", not a number of any kind. The real-device p95 on iPhone XS / iOS 17 is still outstanding in the pre-publication checklist, and that item explicitly blocks social assets. `positioning.md` and `brand-guidelines.md` both still print the number; they are ahead of the evidence. What the copy claims instead is not speed at all but the absence of a decision ("the session is chosen for you"), which needs no benchmark to be true. Because these carry no number, that outstanding benchmark does **not** block this folder.
 - **No movement or exercise count.** The figure printed across the GTM package is stale and the correct framing is an open captain decision. The copy says "bodyweight" and "no equipment" and counts nothing.
 - **No app screens.** Every slide is typographic or diagrammatic. No slide depicts, mocks, or simulates a Ready Screen, so no slide carries the "Screen images simulated" disclosure and none needed to. This was the safest reading of section 10's pre-launch UI stand-in rule; the Ready Mark is the approved stand-in visual and is what these use.
 - **No AI mention.** Keeping AI out of all five entirely is the simplest safe path, so none of them owes the AI disclosure.
 - **No social proof.** Zero users, downloads, ratings, reviews, and testimonials exist, and nothing here implies otherwise.
-- **No download CTA**, because there is no App Store listing. The status line is "iOS, not released yet. Link in bio." Instagram allows no clickable link in a caption, so nothing here promises a tappable one.
+- **No download CTA, and no destination promised on a slide.** There is no App Store listing, so the status line burned into the closing slide of all five is exactly "iOS, not released yet." and stops there. "Link in bio." lives in the five `caption.md` files only, deliberately: a caption is editable after posting and a rendered PNG is not, and neither the profile nor the domain that a bio link would point at is confirmed yet (the account is a Gate 0 blocker above, and `../08-redteam/pre-publication-checklist.md` blocks any asset carrying a URL until the domain is decided). If the bio destination does not exist at post time, drop that one caption line; nothing has to be re-rendered.
 - **No competitor named, and no competitor motive claimed.** Slide copy describes mechanisms ("a workout that needs a server has already chosen when"), never why any company chose one. "Most" is the ceiling on every generalization; "every" appears nowhere.
 - **No streak, countdown, challenge, or "day N of" framing** as a device. The mechanic is named exactly once per carousel, only to say it was not built, per section 7 rule 8.
 - **No emojis**, in slides or captions.
@@ -163,7 +180,7 @@ Run against `../08-redteam/pre-publication-checklist.md`, item by item:
 | Verify Instagram handle availability for `@reptoday` | **Yes** | **BLOCKS publication.** The account is not confirmed created. |
 | Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
 | Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Open. Every mechanic claimed here is in the shipped engine, but the package convention is to re-verify against the binary before launch day. |
-| Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. |
+| Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. The captions say "Link in bio", which names the profile rather than a destination; that the bio has one to point at is part of the account item above. |
 | Privacy policy, FAQ / event-schema / nutrition-label reconciliation | No | No asset here makes a data-practices claim. |
 | Account deletion path | No | Submission concern, not an asset concern. |
 | Confirm App Store pricing, regenerate screenshot 05 | No | No asset here states a price. |
@@ -226,13 +243,15 @@ If a future hook needs more words, shorten the words rather than shrinking the t
 
 ```bash
 ./gtm/10-instagram/render.sh                          # all five carousels
-./gtm/10-instagram/render.sh carousel-1-already-there  # just one
+./gtm/10-instagram/render.sh carousel-1-you-do-not-pick  # just one
 CHROME=/path/to/chrome ./gtm/10-instagram/render.sh    # if Chrome is not auto-found
 ```
 
 The HTML is the source of truth and the PNGs under each `carousel-*/render/` are build output.
-Both are committed, so a reviewer can see the assets without running anything, and a clean checkout reproduces them byte for byte.
-`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs both the fit check and the widow check, so a layout that does not fit or a headline that widows fails the regenerate instead of reaching a reviewer.
+Both are committed, so a reviewer can see the assets without running anything.
+Re-rendering on **the same Chrome build** reproduces them byte for byte, which is what makes a diff meaningful after a copy edit; a different Chrome version can rasterize, compress, or font-fall-back differently and produce a whole-folder binary diff with no copy change behind it, so read an unexplained 35-file image diff as a toolchain difference before reading it as a regression.
+`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs all three guards, so a layout that does not fit, a headline that widows, or a claim that collides fails the regenerate instead of reaching a reviewer.
+Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing.
 
 ### Publishing, when Gate 0 clears
 

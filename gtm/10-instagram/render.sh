@@ -3,7 +3,7 @@
 # Regenerate every Instagram carousel PNG from its HTML source.
 #
 #   ./gtm/10-instagram/render.sh            # render all five carousels
-#   ./gtm/10-instagram/render.sh carousel-1-already-there   # render one
+#   ./gtm/10-instagram/render.sh carousel-1-you-do-not-pick   # render one
 #
 # The HTML is the source of truth; the PNGs under each carousel-*/render/ are
 # build output, committed so a reviewer can see the assets without a toolchain.
@@ -12,10 +12,12 @@
 # D-003 (free local tooling only: Chrome headless for capture). No npm install,
 # no Puppeteer, no network.
 #
-# After rendering, fit-check.py enforces brand-guidelines.md section 5's
-# "fit before ship" rule: every slide must be exactly 1080x1350 with nothing
-# clipped at the canvas edge. A clipped legal line fails the build here rather
-# than reaching a reviewer.
+# After rendering, all three guards run, so a regenerate is the folder's build:
+# fit-check.py enforces brand-guidelines.md section 5's "fit before ship" rule
+# (every slide exactly 1080x1350 with nothing clipped at the canvas edge, so a
+# clipped legal line fails here rather than reaching a reviewer), widow-check.py
+# measures the headline line boxes, and claim-audit.py checks the copy against
+# the banned claims and the frozen hooks in ../05-social-pmf/.
 
 set -euo pipefail
 
@@ -82,9 +84,24 @@ for name in "${CAROUSELS[@]}"; do
 done
 
 echo
+# A named carousel directory holding no slide-*.html would otherwise hand the
+# checks an empty list, and "Fit check passed: 0 slide(s)" exiting 0 is a green
+# run that verified nothing. Fail instead of reporting a vacuous pass.
+if [ "$COUNT" -eq 0 ]; then
+  echo "Rendered no slides. Nothing was checked, so nothing is verified." >&2
+  exit 1
+fi
+
 echo "Rendered $COUNT slide(s). Checking fit..."
 python3 "$HERE/fit-check.py" "${RENDERED[@]}"
 
 echo
 echo "Checking headline line breaks..."
 CHROME="$CHROME" python3 "$HERE/widow-check.py" "${CAROUSELS[@]}"
+
+# The claim audit always covers the whole folder, whichever carousel was
+# rendered: it reads the frozen files in ../05-social-pmf/ and a copy edit that
+# collides with one of them is a publication blocker, not a layout detail.
+echo
+echo "Auditing claims and experiment integrity..."
+python3 "$HERE/claim-audit.py"

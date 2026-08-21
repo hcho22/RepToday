@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -96,10 +97,17 @@ def find_chrome():
 
 
 def measure(chrome, slide_path):
-    tmp = os.path.join(os.path.dirname(slide_path), ".widow-check-tmp.html")
+    # The measuring copy has to live beside the original so the relative
+    # stylesheet link still resolves, which puts it inside a tracked directory.
+    # Its name is therefore unique per run rather than fixed: a fixed name is
+    # clobbered by a concurrent run and, if the process is killed outright, is
+    # left behind in the tree as a stray render artifact someone can commit.
     html = open(slide_path, encoding="utf-8").read()
     js = MEASURE_JS % json.dumps(SELECTOR)
-    open(tmp, "w", encoding="utf-8").write(html.replace("</body>", js + "\n</body>"))
+    fd, tmp = tempfile.mkstemp(prefix=".widow-check-", suffix=".html",
+                               dir=os.path.dirname(slide_path))
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(html.replace("</body>", js + "\n</body>"))
     try:
         out = subprocess.run(
             [chrome, "--headless", "--disable-gpu", "--hide-scrollbars",

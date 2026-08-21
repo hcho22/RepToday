@@ -66,7 +66,12 @@ body {
   color: var(--ink);
 }
 
-/* ---------- Type scale (section 5, at 2x) ---------- */
+/* ---------- Type scale (section 5, at 2x) ----------
+   The scale is carried in full on purpose, including the steps no slide uses
+   today (.h3, .small): this is the brand scale rendered for this canvas, and a
+   future slide that needs a step must find it here rather than invent a size,
+   which is what the "nothing below the scale" rule is protecting against. Every
+   rule below the scale is in use; if one falls out of use, delete it. */
 
 .overline {           /* Micro 12/16 */
   font-size: 24px;
@@ -75,7 +80,6 @@ body {
   letter-spacing: 0.04em;
   color: var(--moss);
 }
-.overline.quiet { color: var(--slate); }
 
 .display {            /* Display 56/60 */
   font-size: 112px;
@@ -186,12 +190,6 @@ body {
 }
 .stack > li:last-child { border-bottom: 2px solid var(--hairline); }
 .stack > li .lede { font-weight: 600; }
-.stack > li .note {
-  display: block;
-  font-size: 30px;
-  line-height: 44px;
-  color: var(--slate);
-}
 
 /* Two-step diagram: labelled steps with a Moss connector, no arrows-as-glyphs. */
 .steps { display: flex; align-items: stretch; gap: 32px; }
@@ -266,7 +264,10 @@ body {
 }
 
 /* The canonical clearance line (section 2). Always last, always Small,
-   always Slate, never below 24px rendered at 1080 wide. */
+   always Slate, never below 24px rendered at 1080 wide. It restates Small's
+   values rather than composing with .small deliberately: the one line that may
+   never render wrong must not depend on a second class being present in the
+   markup. */
 .legal {
   margin-top: 24px;
   font-size: 28px;
