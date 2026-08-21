@@ -1,0 +1,213 @@
+# Instagram carousels - launch profile presence
+
+## Publication status: NOTHING HERE IS PUBLISHED, AND NOTHING HERE MAY BE
+
+These are launch-ready assets that sit in the repo until the captain clears Gate 0.
+Two things block them, and both are outside this folder:
+
+1. **USPTO trademark clearance for "Rep Today" is not finalized.**
+   `../08-redteam/pre-publication-checklist.md` marks that item *(blocking: everything public)*, and a carousel on a public profile is public.
+2. **The Instagram account is not confirmed created.**
+   The same checklist still carries an open item to verify handle availability for `@reptoday`, which login walls prevented checking.
+
+Do not post these, schedule these, or hand them to anyone to post, until the captain says Gate 0 is clear.
+
+## What this folder is
+
+Five carousel posts that establish the Rep Today profile: what the product is, why it was made, who it is for, and the two positions it is willing to argue.
+Each is 7 slides at 1080x1350 (Instagram 4:5 portrait), authored as HTML and rendered to PNG.
+
+| # | Folder | Slot | What it does |
+|---|--------|------|--------------|
+| 1 | `carousel-1-already-there/` | **Pinned** | What it is. The friction thesis, then the inversion: you do not pick a workout, it is on screen when the app opens. |
+| 2 | `carousel-2-why-i-built-this/` | **Pinned** | Why we made it. First-person founder origin, deliberately small. Consistency dies in the gap between deciding to move and moving. |
+| 3 | `carousel-3-this-is-for-you-if/` | **Pinned** | Who it is for. Recognition rather than aspiration, closing honestly on who it is *not* for. |
+| 4 | `carousel-4-nothing-to-lose/` | Evergreen | The problem it solves. The forgiveness pillar as a manifesto: no streaks, badges, XP, or leaderboards anywhere. |
+| 5 | `carousel-5-a-floor-and-a-wall/` | Evergreen | The constraint as identity. Zero equipment and offline generation as the whole design, not a feature bullet. |
+
+### Pinned versus evergreen
+
+Instagram allows exactly three pinned posts.
+Carousels 1, 2 and 3 are those three: they are the permanent top row of the profile and are built to work **as a set**, answering what / why / who in that reading order.
+A visitor who reads only the top row should come away knowing what the product does, why it exists, and whether it is for them.
+They are written to stay true indefinitely, so they should not need rotation.
+
+Carousels 4 and 5 are rotation posts.
+They are not pinned, they argue one position each, and either can be re-posted whenever the feed needs a post without anything new to announce.
+If a pinned post is ever replaced, replace it with another post that answers the same one of the three questions, so the top row keeps its shape.
+
+## These are NOT experiment assets
+
+`../05-social-pmf/` is a **pre-registered experiment**: 16 angles with frozen hooks and 6 A/B hook pairs, locked before any results existed.
+Instagram is a non-adjudicating distribution mirror in that experiment.
+
+This folder is a separate, additive surface, and the separation is load-bearing:
+
+- **Carousel performance never adjudicates an angle.** No result from these posts kills, revives, or ranks anything in the angle bank. Nothing here is written to `creative-log.json`, and nothing here should be.
+- **No slide or caption restates an A/B pair leg hook verbatim.** Pre-exposing one leg biases the day-N versus day-N+7 comparison that the pair exists to resolve. This is enforced mechanically, not by care alone: see `claim-audit.py` below.
+- **Nothing under `../05-social-pmf/` was modified.** Not one character. The audit script reads those files and never writes to them.
+
+Drawing on Hero A, Hero B, and the five messaging pillars in `../02-brand/positioning.md` is fine and encouraged, because those are positioning rather than frozen experiment hooks.
+That is what these carousels do.
+
+### The headline adjustment, and why it was necessary
+
+Two of the five carousels were briefed under working titles that turned out to be **verbatim A/B leg hooks**:
+
+| Working title | Collides with | On-slide headline used instead |
+|---|---|---|
+| "Open the app. The workout is already there." | AB-1, leg B | **"You do not pick a workout."** (slide 1) then **"It is on screen when the app opens."** (slide 2) |
+| "Missing a day never zeroes you out." | AB-2, leg B | **"There is nothing here to lose."** |
+
+Both working titles are also approved hero headlines in `../02-brand/brand-guidelines.md` section 9, which is exactly why the collision is easy to miss: the A/B pairs froze the hero headlines as leg B of their pairs.
+Where the two rules meet, the experiment-integrity rule governs the exact string and the positioning rule governs the idea.
+So the ideas are used in full and the strings are not.
+
+Carousel 1's replacement is not a workaround, it is better: "You do not pick a workout. It is on screen when the app opens." is the messaging hierarchy's own pillar-1 line, and splitting it across slides 1 and 2 makes the swipe itself perform the inversion.
+
+Carousel 4's replacement deliberately enters from a third direction.
+AB-2 tests "admit the cost" (leg A) against "pure negation of loss" (leg B), so a forgiveness hook written either way would lean on one leg.
+"There is nothing here to lose" is an inventory of absent machinery instead, which is neither leg's framing.
+
+## Claim hygiene
+
+Every asset here was written against `../02-brand/brand-guidelines.md` and checked against `../08-redteam/pre-publication-checklist.md`.
+Two of the checks are automated and re-runnable.
+
+### `claim-audit.py`
+
+```bash
+python3 gtm/10-instagram/claim-audit.py
+```
+
+Fails the run on: em dashes, en dashes, `RepToday`, `REP Today`, `Rest Tomorrow`, any speed figure, any movement or exercise count, `day N of` framing, and any verbatim reuse of a sentence quoted in `angles.md` or `ab-pairs.md`.
+
+It uses two scopes, because they answer different questions.
+The **string and frozen-hook checks** cover publishable copy only, meaning the 40 slide HTML files and captions that actually reach a reader.
+This README and the folder's tooling are excluded from those, because documenting a banned string requires quoting it, and string-matching the documentation would flag the very lines that record the rule.
+The **character check** covers every file including this one, because the no-em-dash rule genuinely does extend to the README.
+
+That last check is a deliberate **superset** of the rule: it guards all 12 A/B leg hooks plus the angle bank's hooks and the mined review quotes, so it is stricter than "no A/B leg hook verbatim" requires.
+It parses the frozen files live rather than hard-coding a hook list, so it cannot drift out of date, and it warns if it parses fewer than the 12 expected leg hooks.
+
+Current result:
+
+```
+Audited 45 authored file(s) in gtm/10-instagram/, of which 40 are publishable copy (slides and captions).
+Checked against 40 quoted sentence(s) frozen in gtm/05-social-pmf/.
+
+PASS  0 em dashes, 0 en dashes, 0 'RepToday', 0 'Rest Tomorrow',
+      0 speed figures, 0 movement counts, 0 'day N of' framings,
+      0 verbatim reuses of a pre-registered PMF hook.
+```
+
+The guard was sabotage-checked rather than trusted: injecting an em dash, `RepToday`, `under 100 milliseconds`, and `57 movements` into one slide produced 5 findings, and separately injecting each of four real A/B leg hooks produced a finding every time.
+All 12 leg hooks are confirmed present in the guarded set.
+
+### `fit-check.py`
+
+Runs automatically at the end of `render.sh`.
+`brand-guidelines.md` section 5 requires that a fixed-canvas asset be rendered at final pixel size and checked, because clipping any required line is a hard failure.
+That rule exists because `gate-test-asset-v2` shipped with its proof line cut mid-sentence and its entire legal line invisible, and only rendering revealed it.
+
+The check enforces it: every slide must be exactly 1080x1350, with no ink within 72px of any edge.
+Since each slide has 80px of padding, ink in that band means either an overflow clipped at the canvas boundary or a broken margin.
+Both fail the build.
+
+### Claims deliberately not made
+
+These are the traps specific to this package, recorded so a future editor does not "helpfully" restore them:
+
+- **No speed figure, anywhere.** Not "under 100 milliseconds", not a number of any kind. The real-device p95 on iPhone XS / iOS 17 is still outstanding in the pre-publication checklist, and that item explicitly blocks social assets. `positioning.md` and `brand-guidelines.md` both still print the number; they are ahead of the evidence. Instant readiness is expressed qualitatively instead ("it is on screen when the app opens"). Because these carry no number, that outstanding benchmark does **not** block this folder.
+- **No movement or exercise count.** The figure printed across the GTM package is stale and the correct framing is an open captain decision. The copy says "bodyweight" and "no equipment" and counts nothing.
+- **No app screens.** Every slide is typographic or diagrammatic. No slide depicts, mocks, or simulates a Ready Screen, so no slide carries the "Screen images simulated" disclosure and none needed to. This was the safest reading of section 10's pre-launch UI stand-in rule; the Ready Mark is the approved stand-in visual and is what these use.
+- **No AI mention.** Keeping AI out of all five entirely is the simplest safe path, so none of them owes the AI disclosure.
+- **No social proof.** Zero users, downloads, ratings, reviews, and testimonials exist, and nothing here implies otherwise.
+- **No download CTA**, because there is no App Store listing. The status line is "iOS, not released yet. Link in bio." Instagram allows no clickable link in a caption, so nothing here promises a tappable one.
+- **No competitor named, and no competitor motive claimed.** Slide copy describes mechanisms ("a workout that needs a server has already chosen when"), never why any company chose one. "Most" is the ceiling on every generalization; "every" appears nowhere.
+- **No streak, countdown, challenge, or "day N of" framing** as a device. The mechanic is named exactly once per carousel, only to say it was not built, per section 7 rule 8.
+- **No emojis**, in slides or captions.
+- **The legal line is on the final slide of all five carousels**, verbatim and last, in Small / Slate, comfortably above the 24px floor.
+
+### Two stale sources this folder had to route around
+
+Worth flagging, because they will bite the next asset written from these documents:
+
+1. **Mobility is no longer co-primary.** `brand-guidelines.md` section 1 and `positioning.md` pillar 5 both still describe mobility as co-primary with strength, and pillar 5's line is "Half your session can be the part other apps skip." The shipped engine contradicts this: US-M01 made every session strength-led and removed the mobility middle block entirely, leaving mobility as the warm-up and cooldown bookends. **Pillar 5 is therefore unused in all five carousels**, because publishing it would be a false claim about the shipped product.
+2. **The "57 movements" figure** appears in `positioning.md` pillar 4 and throughout `03-site/index.html`. It is stale. Nothing here counts movements.
+
+Neither was fixed here: this task's scope is the carousels, and both documents are owned elsewhere.
+
+### Pre-publication checklist pass
+
+Run against `../08-redteam/pre-publication-checklist.md`, item by item:
+
+| Item | Applies? | Status for this folder |
+|---|---|---|
+| USPTO trademark search *(blocking: everything public)* | **Yes** | **BLOCKS publication.** Assets carry the canonical clearance line and never claim or imply clearance. |
+| Verify Instagram handle availability for `@reptoday` | **Yes** | **BLOCKS publication.** The account is not confirmed created. |
+| Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
+| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Open. Every mechanic claimed here is in the shipped engine, but the package convention is to re-verify against the binary before launch day. |
+| Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. |
+| Privacy policy, FAQ / event-schema / nutrition-label reconciliation | No | No asset here makes a data-practices claim. |
+| Account deletion path | No | Submission concern, not an asset concern. |
+| Confirm App Store pricing, regenerate screenshot 05 | No | No asset here states a price. |
+| Re-record the video voiceover | No | Video only. |
+| Capture real App Store submission screenshots | No | No asset here depicts an app screen. |
+| Landing page one low-pressure action | No | Site, already done. |
+| Reddit self-promotion rules | No | Different channel. |
+| Measurement items (K5, opt-out revisit, K8 rubric) | No | Carousels adjudicate nothing. |
+
+Two blockers, both external to the assets and both Gate 0 items.
+One item to re-check at launch.
+No finding required a copy change beyond what is already recorded above.
+
+## Design and build
+
+### Why one HTML file per slide
+
+Each slide is its own document (`slide-01.html` ... `slide-07.html`) rather than one `slides.html` holding every stage.
+Headless Chrome's `--screenshot` captures one viewport per document, so a per-slide document renders at exactly 1080x1350 with no cropping step, no scroll position to get wrong, and no risk of a multi-stage page capturing only its first frame.
+A single multi-stage document would need element-level clipping, which means a CDP or Puppeteer dependency, and the package's standing tooling decision (D-003 in `../decisions-log.md`) is free local tooling only: Chrome headless for capture.
+Per-slide documents also re-render and diff independently, so a copy fix touches one file and one PNG.
+
+`overflow: hidden` on `.slide` is deliberate. It turns any overflow into ink at the canvas edge, which is exactly what `fit-check.py` detects, so a layout that does not fit fails the build instead of shipping clipped.
+
+### The design system
+
+All of it lives in one shared `carousel.css`, so the brand tokens have a single definition across all 35 slides.
+
+- **Theme: Paper only.** Section 4 names Paper the default for marketing and scopes Night to product-adjacent and video work. All five carousels are Paper, which also means the profile grid reads as one calm surface rather than five treatments.
+- **Accent: Moss only.** Clay is unused across the entire folder, which satisfies "one accent per asset" with room to spare.
+- **Type:** the section 5 marketing scale rendered at 2x for the 1080px canvas, all ratios preserved. Nothing is set below the scale. Headlines are sentence case with a period, never all-caps, never title case.
+- **Spacing:** base-4, doubled. 80px canvas margin on every side, the section 5 minimum at 1080 wide.
+- **Ready Mark:** the section 3 reference SVG, inline and unmodified, so the construction ratios travel with it. It appears small in the top left of each hook slide and in the wordmark lockup on each closing slide, with clear space well above the 25% minimum.
+- **Composition:** content slides share one layout. The overline sits at the top as a running label and the copy block is anchored low, in the thumb zone, so the eye lands in the same place on every slide of a swipe. The calm space between them is intentional.
+
+### Slide 1 reads at grid-thumbnail size
+
+Tested, not assumed.
+All five hook slides were downscaled and read back, and the Display-size hook is legible on every one, because every hook is 7 words or fewer.
+The test was run at **128px wide** (a 4:5 tile 160px tall), which is stricter than the roughly 160px-wide grid cell the assets actually have to survive.
+The Micro-scale overline does not resolve at that size, which is fine and expected: the headline is designed to carry the thumbnail by itself.
+Hook headlines are also positioned within the central square of the 4:5 canvas, so they survive a 1:1 centre crop as well as the 4:5 grid tile.
+If a future hook needs more words, shorten the words rather than shrinking the type, which the type scale forbids.
+
+### Regenerating the PNGs
+
+```bash
+./gtm/10-instagram/render.sh                          # all five carousels
+./gtm/10-instagram/render.sh carousel-1-already-there  # just one
+CHROME=/path/to/chrome ./gtm/10-instagram/render.sh    # if Chrome is not auto-found
+```
+
+The HTML is the source of truth and the PNGs under each `carousel-*/render/` are build output.
+Both are committed, so a reviewer can see the assets without running anything, and a clean checkout reproduces them byte for byte.
+`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs the fit check.
+
+### Publishing, when Gate 0 clears
+
+Upload `render/slide-01.png` through `render/slide-07.png` in order.
+`caption.md` in each carousel folder holds the caption to paste, the per-slide alt text, and the hashtag set.
+Set the alt text per slide in Instagram's accessibility field; it describes each slide's actual content and layout rather than decorating it, which matters more than usual here because these slides *are* text.
+Hashtag sets are short, honest, and descriptive, with no engagement-bait or follower-farming tags.

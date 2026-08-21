@@ -1,0 +1,246 @@
+/* Rep Today - Instagram carousel slide system.
+   One shared stylesheet for every slide in gtm/10-instagram/.
+
+   Canvas: 1080 x 1350 (Instagram 4:5 portrait).
+   Theme: Paper (brand-guidelines.md section 4, "default for marketing").
+   Type: the marketing scale from section 5, rendered at 2x for the 1080px canvas,
+         all ratios preserved. Nothing here is smaller than the scale allows.
+   Accent: Moss only. Clay is deliberately unused across the whole folder, which
+         satisfies "one accent per asset" (section 4) with room to spare.
+   Spacing: base-4 (4/8/16/24/32/48/64) doubled for the 2x canvas.
+   Margin: 80px on every side, the section 5 minimum for a 1080-wide canvas. */
+
+:root {
+  --paper: #FAF7F2;
+  --ink: #1B2228;
+  --slate: #525E66;
+  --moss: #2E6B4E;
+  --hairline: rgba(27, 34, 40, 0.14);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 1080px;
+  height: 1350px;
+  background: var(--paper); /* Paper, never pure white (section 4) */
+}
+
+body {
+  color: var(--ink);
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The slide canvas. overflow:hidden is deliberate: it is the tripwire for the
+   section 5 "fit before ship" rule. If anything overflows, render.sh's edge
+   check sees ink in the margin band and fails the build instead of shipping a
+   clipped legal line (the failure mode that killed gate-test-asset-v2). */
+.slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1080px;
+  height: 1350px;
+  padding: 80px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------- Ready Mark (section 3) ----------
+   The reference SVG carries the construction: radius 22% of side, stroke 7%,
+   circle diameter 30%, circle centre at 70% of height. Never restyled here. */
+
+.mark { display: block; width: 64px; height: 64px; }
+
+/* Wordmark lockup: mark left of the name, gap = 50% of the mark's width,
+   name cap height ~2/3 of the mark's height, Bold, Ink on Paper. */
+.wordmark { display: flex; align-items: center; }
+.wordmark .mark { width: 72px; height: 72px; }
+.wordmark .name {
+  margin-left: 36px;
+  font-size: 48px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ---------- Type scale (section 5, at 2x) ---------- */
+
+.overline {           /* Micro 12/16 */
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--moss);
+}
+.overline.quiet { color: var(--slate); }
+
+.display {            /* Display 56/60 */
+  font-size: 112px;
+  line-height: 120px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.h1 {                 /* H1 40/46 */
+  font-size: 80px;
+  line-height: 92px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.h2 {                 /* H2 28/34 */
+  font-size: 56px;
+  line-height: 68px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.h3 {                 /* H3 22/28 */
+  font-size: 44px;
+  line-height: 56px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.body {               /* Body 17/26 */
+  font-size: 34px;
+  line-height: 52px;
+  font-weight: 400;
+  color: var(--ink);
+  max-width: 900px;   /* ~26em, under the 34em max measure (section 6) */
+}
+.body.muted { color: var(--slate); }
+
+.small {              /* Small 14/20 */
+  font-size: 28px;
+  line-height: 40px;
+  font-weight: 400;
+  color: var(--slate);
+}
+
+/* ---------- Structure helpers ---------- */
+
+.spacer { flex: 1 1 auto; min-height: 32px; }
+.footer { margin-top: auto; }
+
+/* Content slides share one composition: the overline sits at the top of the
+   canvas as a running label, and the copy block is anchored low, where the
+   thumb is and where the eye lands on every slide of the swipe. The calm void
+   between them is deliberate, not leftover space (section 6, "layouts
+   breathe"). Every content slide therefore shares a baseline. */
+.anchor { margin-top: auto; padding-bottom: 40px; }
+
+/* Quiet Moss rule used as the single accent mark on a slide. */
+.rule {
+  width: 120px;
+  height: 8px;
+  background: var(--moss);
+  border-radius: 4px;
+}
+
+/* Stacked statements: a hairline-separated list, no bullets, no icons. */
+.stack { display: flex; flex-direction: column; }
+.stack > li {
+  list-style: none;
+  padding: 32px 0;
+  border-top: 2px solid var(--hairline);
+  font-size: 40px;
+  line-height: 56px;
+  font-weight: 400;
+  color: var(--ink);
+}
+.stack > li:last-child { border-bottom: 2px solid var(--hairline); }
+.stack > li .lede { font-weight: 600; }
+.stack > li .note {
+  display: block;
+  font-size: 30px;
+  line-height: 44px;
+  color: var(--slate);
+}
+
+/* Two-step diagram: labelled steps with a Moss connector, no arrows-as-glyphs. */
+.steps { display: flex; align-items: stretch; gap: 32px; }
+.step {
+  flex: 1 1 0;
+  border: 2px solid var(--hairline);
+  border-radius: 32px;   /* 16px card radius at 2x (section 6) */
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.step .step-label {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--moss);
+}
+.step .step-name {
+  margin-top: 16px;
+  font-size: 56px;
+  line-height: 68px;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* The connector between two steps is a Moss dot, echoing the Ready Mark's
+   circle. Deliberately not a horizontal bar: a bar between two words reads
+   optically as a dash, and this brand does not use dashes that way. */
+.link {
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--moss);
+}
+
+/* Condition rows: a claim per line with a Moss tick drawn as a shape, not an emoji. */
+.conds { display: flex; flex-direction: column; gap: 40px; }
+.cond { display: flex; align-items: baseline; gap: 32px; }
+.cond .dot {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--moss);
+  transform: translateY(-6px);
+}
+.cond .txt {
+  font-size: 44px;
+  line-height: 56px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Swipe affordance, hook slides only. */
+.swipe {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--slate);
+}
+
+/* ---------- Closing slide ---------- */
+
+.status {
+  font-size: 34px;
+  line-height: 52px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+/* The canonical clearance line (section 2). Always last, always Small,
+   always Slate, never below 24px rendered at 1080 wide. */
+.legal {
+  margin-top: 24px;
+  font-size: 28px;
+  line-height: 40px;
+  font-weight: 400;
+  color: var(--slate);
+}
