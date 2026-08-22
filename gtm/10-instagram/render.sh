@@ -62,6 +62,24 @@ else
   for dir in "$HERE"/carousel-*/; do CAROUSELS+=("$(basename "$dir")"); done
 fi
 
+# Every name is resolved to a real carousel directory here, before the scratch
+# directory or any render/ directory is created, so a bad argument costs the
+# worktree nothing. A bare -d test is not enough on its own: basename maps a
+# degenerate argument back onto this folder ("" and "." both do), which passes
+# -d and would create a stray gtm/10-instagram/render/ that outlives the run's
+# own correct "Rendered no slides." failure. Requiring the carousel- prefix is
+# what makes that unreachable.
+for name in "${CAROUSELS[@]}"; do
+  case "$name" in
+    carousel-*) ;;
+    *) echo "Not a carousel: ${name:-(empty argument)}" >&2; exit 1 ;;
+  esac
+  if [ ! -d "$HERE/$name" ]; then
+    echo "No such carousel: $name" >&2
+    exit 1
+  fi
+done
+
 RENDERED=()
 COUNT=0
 
@@ -85,10 +103,6 @@ trap 'rm -rf "$SCRATCH"' EXIT
 
 for name in "${CAROUSELS[@]}"; do
   dir="$HERE/$name"
-  if [ ! -d "$dir" ]; then
-    echo "No such carousel: $name" >&2
-    exit 1
-  fi
   mkdir -p "$dir/render"
   for html in "$dir"/slide-*.html; do
     [ -e "$html" ] || continue

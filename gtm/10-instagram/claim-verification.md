@@ -35,8 +35,8 @@ The figures below come from a run that regenerated the project first and carried
 
 Each `caption.md` restates its slides and then quotes every slide verbatim as alt text.
 That correspondence is a **committed, re-runnable guard** rather than a one-off check: `alt-text-check.py` compares every copy-bearing slide element against its own slide's alt-text paragraph and fails on any word that has drifted, so a slide row below covers its caption and alt-text restatements too.
-It reports the number it compared on each run (128 at this commit) rather than pinning it here, and it reads which elements carry copy out of `carousel.css` rather than from a list, so a text style added later is covered by construction.
-It is wired into `render.sh` beside the other three and is sabotage-checked in all four directions (see the README).
+It reports the number it compared on each run rather than pinning it here, and it reads which elements carry copy out of `carousel.css` rather than from a list, so a text style added later is covered by construction.
+It is wired into `render.sh` beside the other three and is sabotage-checked in every direction the README enumerates.
 Earlier revisions of this document asserted the property from a script that was run once by hand and not committed, which left the folder's most drift-prone correspondence resting on trust in a folder whose whole standard is guards rather than trust.
 The single intentional divergence is `carousel-1` slide 6, where the slide's `What "no deciding" means here, exactly.` is nested inside a double-quoted alt-text string and so uses single quotes there; the guard unifies quote glyphs for exactly this reason and relaxes nothing else.
 Caption-only claims (sentences with no slide counterpart) are listed separately per carousel.

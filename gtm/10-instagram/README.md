@@ -96,7 +96,8 @@ Runs automatically at the end of `render.sh`, and on its own:
 python3 gtm/10-instagram/claim-audit.py
 ```
 
-Fails the run on: em dashes, en dashes, `RepToday`, `REP Today`, `Rest Tomorrow`, any speed figure, any movement or exercise count, `day N of` framing, and any verbatim reuse of a sentence quoted in `angles.md` or `ab-pairs.md`.
+Fails the run on: em dashes, en dashes, `RepToday`, `REP Today`, `Rest Tomorrow`, any numeric speed figure, any numeric movement or exercise count, `day N of` framing, and any verbatim reuse of a sentence quoted in `angles.md` or `ab-pairs.md`.
+The two figure patterns are digit-bearing, so a spelled-out number ("seventy-one movements", "under a tenth of a second") reads as clean here; the editorial rule below is absolute and the guard catches the form a draft actually reaches for.
 
 It uses two scopes, because they answer different questions.
 The **string and frozen-hook checks** cover publishable copy only, meaning the slide HTML files and the captions that actually reach a reader.
@@ -209,6 +210,11 @@ These are the traps specific to this package, recorded so a future editor does n
   It is a historical maximum recomputed over the full log history (`Services/Consistency/ConsistencyScore.swift:174-194`), which is why "only counts up" is true of it and why "no streaks anywhere" would not be. Do not re-tighten this back to the absolute.
 - **No emojis**, in slides or captions.
 - **The legal line is on the final slide of all five carousels**, verbatim and last, in Small / Slate, comfortably above the 24px floor.
+- **No summarising sentence that tallies or compresses.**
+  Do not write a sentence that counts findings, totals a property across the slides, or folds a multi-part condition into one confident clause.
+  State each fact where it belongs and point at whatever settles it, because a summary is a second copy of the truth and it is the copy that goes stale first.
+  Both the carousel-5 hotel-room note above and the claim row in the pre-publication table below lost a closing tally and got nothing in its place, and neither reads worse for it.
+  A style rule stays true where a description of the current state does not, so write the rule rather than the inventory; and if a sentence seems to want a number to sound authoritative, cut the sentence rather than checking the number.
 
 ### Two stale sources this folder had to route around
 
@@ -228,7 +234,7 @@ Run against `../08-redteam/pre-publication-checklist.md`, item by item:
 | USPTO trademark search *(blocking: everything public)* | **Yes** | **BLOCKS publication.** Assets carry the canonical clearance line and never claim or imply clearance. |
 | Verify Instagram handle availability for `@reptoday` | **Yes** | **BLOCKS publication.** The account is not confirmed created. |
 | Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
-| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. Eight claims were wrong or imprecise and are corrected; nine more are recorded as verified-with-caveat so they are not rediscovered. |
+| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. |
 | Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. The captions say "Link in bio", which names the profile rather than a destination; that the bio has one to point at is part of the account item above. |
 | Privacy policy, FAQ / event-schema / nutrition-label reconciliation | **Yes, narrowly** | One claim: carousel 1 slide 6 says iOS asks once for permission to write your sessions to Apple Health and that declining changes nothing. Verified against `RootView.swift` (the request is unconditional on entering the main tabs, so it is a system ask and not an in-app switch) and `HealthKitService.swift` (write-only, and a denial is a quiet no-op). Nothing here describes analytics, and no asset states a retention or sharing practice. |
 | Account deletion path | No | Submission concern, not an asset concern. |
@@ -303,7 +309,11 @@ Re-rendering on **the same Chrome build** reproduces them byte for byte, which i
 Chrome's own stderr is captured rather than discarded and is printed with its exit status if a capture fails, so a render that dies says why instead of exiting bare.
 Chrome captures to a scratch file outside the carousel folders and it is renamed over the committed PNG only once that capture is known good, so "the file is there" cannot stand in for "this run produced it": what the guards go on to read is the file this run wrote, never last week's pixels left behind by a capture that failed.
 Because the committed PNG is replaced rather than removed first, a failed render leaves the worktree as it found it instead of deleting the previous build output and making the operator restore it, and no half-written screenshot is ever visible at the committed path.
-Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, an empty path list, or a folder holding no publishable copy fails in `fit-check.py`, `widow-check.py`, `claim-audit.py` and `alt-text-check.py` too, because a check with nothing to check must never print PASS.
+Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard carries that floor for itself rather than trusting the caller - in the terms of whatever it is actually handed, which differs per guard.
+`widow-check.py` and `alt-text-check.py` are handed carousel names, so a mistyped name fails in both, as does a named folder that yields no slide to measure or no copy to compare.
+`fit-check.py` is handed rendered PNG paths and nothing else, so the one caller mistake it can see is an empty path list.
+`claim-audit.py` is handed no argument at all and scopes itself over the folder, so its floor is finding no authored file, or no `carousel-*/slide-*.html` and `carousel-*/caption.md` to scan.
+Different inputs, one rule: a check with nothing to check must never print PASS.
 
 ### Publishing, when Gate 0 clears
 
