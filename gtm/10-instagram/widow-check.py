@@ -158,11 +158,21 @@ def main(argv):
     # A named carousel that does not exist is a mistyped argument, not an empty
     # result. Measuring nothing and printing PASS is the one answer a guard must
     # never give, so an unknown name and a zero-slide run both fail below.
+    #
+    # The per-name floor is what the aggregate check cannot carry: a slide-less
+    # folder named beside a populated one is measured not at all, yet the run
+    # would still have a positive slide count from its sibling and print PASS
+    # over the name it read nothing out of.
     for name in dirs:
         if not os.path.isdir(os.path.join(HERE, name)):
             failures.append("no such carousel directory: %s" % name)
             continue
-        for slide in sorted(glob.glob(os.path.join(HERE, name, "slide-*.html"))):
+        found = sorted(glob.glob(os.path.join(HERE, name, "slide-*.html")))
+        if not found:
+            failures.append("%s holds no slide-*.html, so nothing was measured"
+                            % name)
+            continue
+        for slide in found:
             slides += 1
             for entry in measure(chrome, slide):
                 for w in widows(entry):

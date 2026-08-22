@@ -27,7 +27,7 @@ Every score figure quoted below was produced by **executing** the shipped `Consi
 The scoring claims are the ones four earlier rounds kept getting subtly wrong, so they were measured rather than reasoned about.
 The probe was a throwaway and is not committed; it drove `evaluate(logs:weeklyGoal:asOf:calendar:)` directly with `weeklyGoal: 3` and a fixed `asOf`, which is enough to reproduce every number here.
 
-It was checked for non-vacuity rather than trusted, in the same spirit as this folder's four guards.
+It was checked for non-vacuity rather than trusted, in the same spirit as the sabotage checks the README records against the guards that carry one.
 An early run passed while silently executing nothing, because the probe file had been recreated after `xcodegen generate` last ran and so was not in the project, which made `-only-testing` match no tests and report success over zero assertions.
 The figures below come from a run that regenerated the project first and carried one deliberately wrong expected value: the wrong one failed with the actual number attached and every real one passed, so the run is known to have executed.
 

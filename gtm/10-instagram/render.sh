@@ -63,12 +63,12 @@ else
 fi
 
 # Every name is resolved to a real carousel directory here, before the scratch
-# directory or any render/ directory is created, so a bad argument costs the
-# worktree nothing. A bare -d test is not enough on its own: basename maps a
-# degenerate argument back onto this folder ("" and "." both do), which passes
-# -d and would create a stray gtm/10-instagram/render/ that outlives the run's
-# own correct "Rendered no slides." failure. Requiring the carousel- prefix is
-# what makes that unreachable.
+# directory is created and before any name reaches the render loop, so a bad
+# argument costs the worktree nothing. A bare -d test is not enough on its own:
+# basename maps a degenerate argument back onto this folder ("" and "." both
+# do), which passes -d and would put a stray gtm/10-instagram/render/ in the
+# render loop's way. Requiring the carousel- prefix is what makes that
+# unreachable; the loop itself creates a render/ only once it holds a slide.
 for name in "${CAROUSELS[@]}"; do
   case "$name" in
     carousel-*) ;;
@@ -103,9 +103,13 @@ trap 'rm -rf "$SCRATCH"' EXIT
 
 for name in "${CAROUSELS[@]}"; do
   dir="$HERE/$name"
-  mkdir -p "$dir/render"
   for html in "$dir"/slide-*.html; do
     [ -e "$html" ] || continue
+    # Created here rather than per carousel, so a validly named but slide-less
+    # directory is not handed an empty untracked render/ that outlives the run's
+    # own correct "Rendered no slides." failure. There is a slide in hand by the
+    # time this runs, so the directory is always created for something.
+    mkdir -p "$dir/render"
     base="$(basename "$html" .html)"
     out="$dir/render/$base.png"
     # The scratch name keeps the .png extension because Chrome picks the image
