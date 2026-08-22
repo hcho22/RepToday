@@ -52,6 +52,24 @@ fi
 RENDERED=()
 COUNT=0
 
+# Chrome captures into a scratch directory this run alone owns, and each capture
+# is renamed over its committed PNG only once it is known good. So the check
+# below still reads "this run produced it" rather than "a file is there" - a
+# stale render can never be mistaken for a fresh one - while a failed capture
+# leaves the committed artifact untouched instead of deleting it out of the
+# worktree and making the operator restore it. It also closes the window where a
+# half-written screenshot sat at the committed path.
+#
+# The name is unique per run rather than fixed, for the same two reasons
+# widow-check.py picks mkstemp over a fixed name: a fixed name is clobbered by a
+# concurrent run over the same slide, and a run killed outright leaves it behind
+# in the tree as a stray artifact someone can commit. It lives under $HERE so
+# the rename stays on one filesystem and is therefore atomic; the trap removes
+# it on any exit, and .gitignore carries the pattern as the backstop for a run
+# killed before the trap can fire.
+SCRATCH="$(mktemp -d "$HERE/.render-scratch-XXXXXX")"
+trap 'rm -rf "$SCRATCH"' EXIT
+
 for name in "${CAROUSELS[@]}"; do
   dir="$HERE/$name"
   if [ ! -d "$dir" ]; then
@@ -63,19 +81,12 @@ for name in "${CAROUSELS[@]}"; do
     [ -e "$html" ] || continue
     base="$(basename "$html" .html)"
     out="$dir/render/$base.png"
-    # Chrome captures to a scratch path that this run alone owns, and it is
-    # moved over the committed PNG only once the capture is known good. So the
-    # check below still reads "this run produced it" rather than "a file is
-    # there" - a stale render can never be mistaken for a fresh one - while a
-    # failed capture leaves the committed artifact untouched instead of
-    # deleting it out of the worktree and making the operator restore it. It
-    # also closes the window where a half-written screenshot sat at $out.
-    #
     # The scratch name keeps the .png extension because Chrome picks the image
     # format from it and refuses anything else ("Unsupported screenshot image
-    # file type"); the leading dot is what keeps it out of a render/*.png glob
-    # and out of the committed listing.
-    tmp="$dir/render/.$base.scratch.png"
+    # file type"). It is qualified by carousel as well as slide because two
+    # carousels have a slide-01.html each and this run renders into one
+    # directory.
+    tmp="$SCRATCH/$name-$base.png"
     rm -f "$tmp"
     # --window-size fixes the capture at the 4:5 canvas; --force-device-scale-factor=1
     # keeps it at exactly 1080x1350 rather than a Retina multiple.

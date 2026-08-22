@@ -149,7 +149,9 @@ This guard measures **real line boxes** rather than guessing at them.
 It copies each slide beside its original so the relative stylesheet still resolves, injects a measuring script, and has headless Chrome walk every word with a `Range`, group words by the top of their client rect, and report the resulting lines.
 That copy has to land in a tracked directory, so it is named uniquely per run and removed afterwards, and `.gitignore` carries the pattern as the backstop for a run killed before it can clean up.
 Anything set at 40px or larger is checked (headlines, the stacked statements, the hotel-room-test conditions, the two-step diagram's step names, and the wordmark); body copy at 34px is ordinary prose and is left alone.
-The selector is bound to that 40px threshold rather than to whichever classes happen to wrap today: `.step-name` (56px) and `.wordmark .name` (48px) are single-line on every current slide, so leaving them out was a check that could not fire rather than a check that passed.
+The selector covers classes that do not currently wrap as well as ones that do: `.step-name` (56px) and `.wordmark .name` (48px) are single-line on every current slide, so leaving them out was a check that could not fire rather than a check that passed.
+That selector is a hand-kept list transcribed from `carousel.css`, not derived from it, and nothing fails when the two diverge, so a rule added to the stylesheet at 40px or larger has to be added to the list by hand or its copy goes unmeasured on a green run.
+`alt-text-check.py` derives its own set instead; making this guard do the same changes which elements it measures and wants its sabotage check re-run, so it is filed as separate work.
 A line that is a single word of 6 characters or fewer fails, which catches the real defects ("it.", "plan.") while leaving a deliberate lone "workout." alone.
 
 Grouping is by rect top **within a tolerance**, not by exact equality.
@@ -171,8 +173,9 @@ Two normalizations are allowed, both about transport rather than words: whitespa
 Nothing else is relaxed: a changed, dropped, or reordered word fails.
 It carries the same input floor as the other three, and for the same reason.
 
-Which elements count as copy-bearing is read out of `carousel.css` rather than kept as a list in the script, on the same principle the widow-check selector was corrected onto: a rule that sets a font size, by either `font-size` or the `font` shorthand, is a text style, so its subject is an element that can hold authored copy.
+Which elements count as copy-bearing is read out of `carousel.css` rather than kept as a list in the script: a rule that sets a font size, by either `font-size` or the `font` shorthand, is a text style, so its subject is an element that can hold authored copy.
 A hand-kept list is bound by memory, and the first version of this guard had already left `.small` out of it, which would have been an unchecked class reading as a passing one the day a slide used it.
+The widow-check selector is still such a list, corrected in place by adding the two classes it had missed rather than by deriving it; that gap is recorded above and filed as separate work.
 Two things follow. A text style added to the stylesheet later is covered with no edit here. And a class the stylesheet does not style **at all** fails the run rather than being skipped, because the script cannot tell whether it holds copy.
 An unreadable or text-style-free stylesheet is likewise a failure, since a derived set that comes back empty would otherwise make every slide compare as clean.
 
@@ -295,7 +298,8 @@ Both are committed, so a reviewer can see the assets without running anything.
 Re-rendering on **the same Chrome build** reproduces them byte for byte, which is what makes a diff meaningful after a copy edit; a different Chrome version can rasterize, compress, or font-fall-back differently and produce a whole-folder binary diff with no copy change behind it, so read an unexplained 35-file image diff as a toolchain difference before reading it as a regression.
 `render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs all four guards, so a layout that does not fit, a headline that widows, a claim that collides, or alt text that has drifted off its slide fails the regenerate instead of reaching a reviewer.
 Chrome's own stderr is captured rather than discarded and is printed with its exit status if a capture fails, so a render that dies says why instead of exiting bare.
-Each slide's previous PNG is removed before its capture, so "the file is there" cannot stand in for "this run produced it": a failed capture that left the stale render in place would otherwise report the slide as rendered and hand the guards last week's pixels to verify.
+Chrome captures to a scratch file outside the carousel folders and it is renamed over the committed PNG only once that capture is known good, so "the file is there" cannot stand in for "this run produced it": what the guards go on to read is the file this run wrote, never last week's pixels left behind by a capture that failed.
+Because the committed PNG is replaced rather than removed first, a failed render leaves the worktree as it found it instead of deleting the previous build output and making the operator restore it, and no half-written screenshot is ever visible at the committed path.
 Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, an empty path list, or a folder holding no publishable copy fails in `fit-check.py`, `widow-check.py`, `claim-audit.py` and `alt-text-check.py` too, because a check with nothing to check must never print PASS.
 
 ### Publishing, when Gate 0 clears

@@ -260,7 +260,7 @@ The remaining engine-internal citations (1.3, 4.5 to 4.8, 4.13, 5.3, 5.4) all ba
 
 **F14. README restated absolutes the slides had already corrected.**
 
-`README.md:25` summarised carousel 4 as "no streaks, badges, XP, or leaderboards anywhere", and `README.md:201` (the "Claims deliberately not made" bullet on streak framing) said the mechanic is "named exactly once per carousel, only to say it was not built".
+`README.md:25` summarised carousel 4 as "no streaks, badges, XP, or leaderboards anywhere", and `README.md:204` (the "Claims deliberately not made" bullet on streak framing) said the mechanic is "named exactly once per carousel, only to say it was not built".
 Both are the pre-correction absolute: the app does surface one chain-shaped number, `Best run: N weeks on goal.`, which is why carousel 4 slide 2 names it rather than denying it.
 Both lines now carry the qualification, and the bullet records *why* the negation is deliberately not an absolute so it does not get re-tightened.
 

@@ -17,10 +17,14 @@ Anything set at 40px or larger is checked: headlines, the stacked statements,
 the hotel-room-test conditions, the two-step diagram's step names, and the
 wordmark. Body copy at 34px is ordinary prose and is left alone.
 
-The selector is the whole guarantee, so it is kept in step with carousel.css by
-threshold rather than by memory: every rule there setting font-size to 40px or
-more is represented below, whether or not its copy currently wraps. A class
-left out is not a passing check, it is an unchecked one.
+The selector is the whole guarantee, and it is hand-kept. The list below was
+transcribed by reading carousel.css; nothing here re-reads the stylesheet, and
+nothing fails when the two diverge. Add a rule at 40px or larger to carousel.css
+and it has to be added below by hand, or its copy goes unmeasured on a green
+run - a class left out is not a passing check, it is an unchecked one.
+alt-text-check.py derives its own set from carousel.css instead of keeping a
+list. Doing the same here would change which elements this guard measures, so
+it is filed as separate work rather than done in passing.
 
 Usage:  python3 gtm/10-instagram/widow-check.py [carousel-dir ...]
 """
@@ -41,8 +45,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # widow. "it" and "plan" are defects; a lone "workout." reads as deliberate.
 MAX_WIDOW_WORD = 6
 
-# Every carousel.css rule at 40px or larger: .display 112, .h1 80, .h2 56,
-# .h3 44, .step-name 56, .wordmark .name 48, .stack > li 40, .cond .txt 44.
+# Hand-transcribed from carousel.css - every rule there at 40px or larger as of
+# this writing: .display 112, .h1 80, .h2 56, .h3 44, .step-name 56,
+# .wordmark .name 48, .stack > li 40, .cond .txt 44. Nothing checks that this is
+# still complete; keep it in step by hand when carousel.css gains a large rule.
 SELECTOR = (".display, .h1, .h2, .h3, .stack > li, .cond .txt, "
             ".step-name, .wordmark .name")
 
