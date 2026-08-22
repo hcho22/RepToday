@@ -18,10 +18,20 @@ its own slide's alt-text paragraph. Not the reverse - alt text also describes
 layout, colour and the Ready Mark, which have no on-slide string.
 
 Which elements those are is read out of carousel.css rather than kept as a list
-here: a rule that sets a font-size is a text style, so its subject can hold
-copy. A hand-kept list would exclude the next text style someone adds, and an
-unchecked class must not read as a passing one - so a slide class the
-stylesheet does not style at all fails the run rather than being skipped.
+here: a rule that sets a font size, by either `font-size` or the `font`
+shorthand, is a text style, so its subject can hold copy. A hand-kept list would
+exclude the next text style someone adds, and an unchecked class must not read
+as a passing one - so a slide class the stylesheet does not style at all fails
+the run rather than being skipped.
+
+That derivation is not trusted either, because every allow-list fails the same
+way: by omission. So the guard also asserts its own coverage - every run of
+non-whitespace text on the slide canvas has to sit inside an element the
+derivation collected, and text that does not fails the run. An unclassed
+`<p>Some copy</p>`, a class the stylesheet styles by a route this parser does
+not model, or a text style added in a form the regex misses are then all one
+failure with one message, rather than three holes each needing its own patch.
+Only document metadata is outside the canvas and exempt.
 
 Comparison is verbatim up to two normalizations, both of which are about the
 transport rather than the words:
@@ -52,6 +62,11 @@ STYLESHEET = os.path.join(HERE, "carousel.css")
 VOID = {"br", "img", "hr", "input", "meta", "link", "source",
         "path", "circle", "rect", "polygon", "polyline", "line", "ellipse", "use"}
 
+# Text here is document metadata rather than anything the canvas renders, so it
+# is exempt from the coverage assertion. Nothing else is: an element on the
+# slide holding text no text style claims is a finding.
+OFF_CANVAS = {"head", "title", "style", "script"}
+
 # Classes a slide may carry that carousel.css does not name, because they are
 # not styling hooks: none today. Anything else unknown to the stylesheet is a
 # failure rather than a silent skip, since an unchecked class must not read as
@@ -63,10 +78,16 @@ def stylesheet_classes(path):
     """(copy-bearing selectors, every class carousel.css styles) from the CSS.
 
     The copy set is bound to the stylesheet rather than kept by hand: a rule
-    that sets a font-size is a text style, so its subject is an element that
+    that sets a font size is a text style, so its subject is an element that
     can hold authored copy. That is what keeps a newly added text style from
     being excluded from this guard by an allow-list nobody remembered to
     extend - the same defect the widow-check selector was corrected for.
+
+    Both spellings of "sets a font size" count. `font-size` is the one every
+    rule in carousel.css uses today, and the `font` shorthand sets a size too,
+    so matching only the longhand would reintroduce exactly the omission this
+    derivation exists to remove. The other font longhands (-family, -weight,
+    and the rest) set no size and do not qualify.
 
     Returns (classes, tags, known). `tags` carries the one text style whose
     subject is an element rather than a class (`.stack > li`).
@@ -75,7 +96,7 @@ def stylesheet_classes(path):
 
     classes, tags, known = set(), set(), set()
     for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
-        text_style = re.search(r"(^|[\s;])font-size\s*:", body)
+        text_style = re.search(r"(^|[\s;])font(-size)?\s*:", body)
         for selector in selectors.split(","):
             compounds = [c for c in re.split(r"[\s>+~]+", selector.strip()) if c]
             if not compounds:
@@ -103,16 +124,29 @@ except OSError as error:
 
 
 class SlideCopy(HTMLParser):
-    """Collect the text of every copy-bearing element, outermost first."""
+    """Collect the text of every copy-bearing element, outermost first.
+
+    `uncovered` is the coverage assertion: canvas text that landed in no
+    collected element at all. Collection is by class or tag, so text in an
+    element carrying neither - the bare `<p>` an allow-list can never name -
+    would otherwise be dropped silently and leave the run green.
+    """
 
     def __init__(self):
         super().__init__()
         self.depth = 0
+        self.off_canvas = 0
         self.buf = []
         self.texts = []
+        self.uncovered = []
         self.unknown = set()
 
     def handle_starttag(self, tag, attrs):
+        if tag in OFF_CANVAS:
+            self.off_canvas += 1
+            return
+        if self.off_canvas:
+            return
         classes = set((dict(attrs).get("class") or "").split())
         self.unknown |= classes - KNOWN_CLASSES - UNSTYLED_OK
         if tag in VOID:
@@ -127,7 +161,10 @@ class SlideCopy(HTMLParser):
             self.buf = []
 
     def handle_endtag(self, tag):
-        if tag in VOID or not self.depth:
+        if tag in OFF_CANVAS:
+            self.off_canvas = max(0, self.off_canvas - 1)
+            return
+        if self.off_canvas or tag in VOID or not self.depth:
             return
         self.depth -= 1
         if self.depth == 0:
@@ -136,8 +173,12 @@ class SlideCopy(HTMLParser):
                 self.texts.append(text)
 
     def handle_data(self, data):
+        if self.off_canvas:
+            return
         if self.depth:
             self.buf.append(data)
+        elif data.strip():
+            self.uncovered.append(collapse(data))
 
 
 def collapse(text):
@@ -213,6 +254,10 @@ def check_carousel(name):
             failures.append("%s carries class %r, which carousel.css does not "
                             "style, so this guard cannot tell whether it holds "
                             "copy" % (rel, unknown))
+        for stray in parser.uncovered:
+            failures.append("%s renders %r outside every element carousel.css "
+                            "gives a text style, so it was compared against "
+                            "nothing" % (rel, stray))
         if not parser.texts:
             failures.append("%s yielded no copy at all, so its alt text was "
                             "compared against nothing" % rel)

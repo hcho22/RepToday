@@ -72,7 +72,7 @@ Near-miss paraphrase is where the verbatim rule is thinnest, so it is worth chec
 
 **Carousel 5 keeps the hotel room. Why the eye-check cleared it, recorded with low confidence rather than asserted.** AB-5 leg B is the single sentence *"Five minutes on a hotel-room floor still counts."*, so what would pre-expose that leg is the **combination** of three things: five minutes as the session, a hotel-room floor, and the claim that it *still counts*. Carousel 3's small-windows slide was close enough to assembling all three in a reader's head that the hotel room came off it.
 
-  Carousel 5 does carry a session-length range: its closing card reads "Bodyweight. Offline. 5 to 60 minutes." (`carousel-5-a-floor-and-a-wall/slide-07.html:16`, mirrored at that folder's `caption.md:41`). So the grounds are narrower than "it names no length". They are that carousel 5 never names five minutes as *the* session (the range is a span on a spec line, two slides away), never puts a length on the same slide as the hotel room, and resolves its hotel-room slide to "The session still builds." - a claim about offline generation, not about a short session counting. Two of leg B's three parts are absent, and the third is on a different card.
+  Carousel 5 does carry a session-length range: its closing card reads "Bodyweight. Offline. 5 to 60 minutes." (`carousel-5-a-floor-and-a-wall/slide-07.html:16`, mirrored at that folder's `caption.md:41`). So the grounds are narrower than "it names no length". They are that carousel 5 never names five minutes as *the* session (the range is a span on a spec line, two slides away), never puts a length on the same slide as the hotel room, and resolves its hotel-room slide to "The session still builds." - a claim about offline generation, not about a short session counting.
 
   The edge, so a future editor sees it rather than re-deriving it: pairing five minutes *specifically* with the hotel room, or turning "The session still builds." into a counting claim. An earlier revision of this note named "adding a session length" as the tripwire, which shipped copy already does - that framing was wrong and is corrected here.
 
@@ -171,14 +171,20 @@ Two normalizations are allowed, both about transport rather than words: whitespa
 Nothing else is relaxed: a changed, dropped, or reordered word fails.
 It carries the same input floor as the other three, and for the same reason.
 
-Which elements count as copy-bearing is read out of `carousel.css` rather than kept as a list in the script, on the same principle the widow-check selector was corrected onto: a rule that sets a `font-size` is a text style, so its subject is an element that can hold authored copy.
+Which elements count as copy-bearing is read out of `carousel.css` rather than kept as a list in the script, on the same principle the widow-check selector was corrected onto: a rule that sets a font size, by either `font-size` or the `font` shorthand, is a text style, so its subject is an element that can hold authored copy.
 A hand-kept list is bound by memory, and the first version of this guard had already left `.small` out of it, which would have been an unchecked class reading as a passing one the day a slide used it.
 Two things follow. A text style added to the stylesheet later is covered with no edit here. And a class the stylesheet does not style **at all** fails the run rather than being skipped, because the script cannot tell whether it holds copy.
 An unreadable or text-style-free stylesheet is likewise a failure, since a derived set that comes back empty would otherwise make every slide compare as clean.
 
+The derivation is not trusted either, because every allow-list fails the same way, by omission: the guard asserts its own coverage.
+Every run of non-whitespace text on the slide canvas has to sit inside an element the derivation collected, and text that does not fails the run rather than being dropped.
+That is what closes the case no allow-list can name - an unclassed `<p>Some copy</p>` carries no class to recognise or reject, so it was previously neither collected nor reported, and its copy was compared against nothing on a green run.
+It also means a text style written in a form the derivation misses surfaces as a coverage failure rather than as silence, which is why the two rules are worth more together than either is alone.
+Only document metadata is off-canvas and exempt: `<head>`, `<title>`, `<style>`, `<script>`.
+
 An alt paragraph is read to the next blank line rather than to the end of its physical line, so a caption written one sentence per line (this repo's markdown convention) is still compared whole, and two paragraphs claiming the same slide number are reported instead of one silently winning.
 
-Sabotage-checked in every direction it can fail: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, a folder with no `carousel-*` directories fails instead of printing PASS over nothing, a `.small` element whose text is absent from the alt block fails, an unrecognised class fails, a hidden `carousel.css` fails, and a duplicated `**Slide N.**` paragraph is named.
+Sabotage-checked in every direction it can fail: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, a folder with no `carousel-*` directories fails instead of printing PASS over nothing, a `.small` element whose text is absent from the alt block fails, an unrecognised class fails, an unclassed `<p>` holding copy fails on the coverage rule, a hidden `carousel.css` fails, and a duplicated `**Slide N.**` paragraph is named.
 Current result: `Compared 128 slide element(s) against the alt text in 5 caption(s).`
 
 ### Claims deliberately not made
@@ -216,7 +222,7 @@ Run against `../08-redteam/pre-publication-checklist.md`, item by item:
 | USPTO trademark search *(blocking: everything public)* | **Yes** | **BLOCKS publication.** Assets carry the canonical clearance line and never claim or imply clearance. |
 | Verify Instagram handle availability for `@reptoday` | **Yes** | **BLOCKS publication.** The account is not confirmed created. |
 | Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
-| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. Seven claims were wrong or imprecise and are corrected; nine more are recorded as verified-with-caveat so they are not rediscovered. |
+| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. Eight claims were wrong or imprecise and are corrected; nine more are recorded as verified-with-caveat so they are not rediscovered. |
 | Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. The captions say "Link in bio", which names the profile rather than a destination; that the bio has one to point at is part of the account item above. |
 | Privacy policy, FAQ / event-schema / nutrition-label reconciliation | **Yes, narrowly** | One claim: carousel 1 slide 6 says iOS asks once for permission to write your sessions to Apple Health and that declining changes nothing. Verified against `RootView.swift` (the request is unconditional on entering the main tabs, so it is a system ask and not an in-app switch) and `HealthKitService.swift` (write-only, and a denial is a quiet no-op). Nothing here describes analytics, and no asset states a retention or sharing practice. |
 | Account deletion path | No | Submission concern, not an asset concern. |

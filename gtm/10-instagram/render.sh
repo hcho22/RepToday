@@ -63,12 +63,20 @@ for name in "${CAROUSELS[@]}"; do
     [ -e "$html" ] || continue
     base="$(basename "$html" .html)"
     out="$dir/render/$base.png"
-    # The previous PNG is removed before the capture, so the check below reads
-    # "this run produced it" rather than "a file is there". Left in place, a
-    # capture that fails outright leaves the stale render sitting at $out, which
-    # satisfies a bare existence test and reports a slide as rendered when it
-    # was not, then hands the guards last week's pixels to verify.
-    rm -f "$out"
+    # Chrome captures to a scratch path that this run alone owns, and it is
+    # moved over the committed PNG only once the capture is known good. So the
+    # check below still reads "this run produced it" rather than "a file is
+    # there" - a stale render can never be mistaken for a fresh one - while a
+    # failed capture leaves the committed artifact untouched instead of
+    # deleting it out of the worktree and making the operator restore it. It
+    # also closes the window where a half-written screenshot sat at $out.
+    #
+    # The scratch name keeps the .png extension because Chrome picks the image
+    # format from it and refuses anything else ("Unsupported screenshot image
+    # file type"); the leading dot is what keeps it out of a render/*.png glob
+    # and out of the committed listing.
+    tmp="$dir/render/.$base.scratch.png"
+    rm -f "$tmp"
     # --window-size fixes the capture at the 4:5 canvas; --force-device-scale-factor=1
     # keeps it at exactly 1080x1350 rather than a Retina multiple.
     #
@@ -85,9 +93,10 @@ for name in "${CAROUSELS[@]}"; do
       --force-device-scale-factor=1 \
       --window-size=1080,1350 \
       --default-background-color=FAF7F2 \
-      --screenshot="$out" \
+      --screenshot="$tmp" \
       "file://$html" 2>&1 >/dev/null)" || chrome_status=$?
-    if [ "$chrome_status" -ne 0 ] || [ ! -s "$out" ]; then
+    if [ "$chrome_status" -ne 0 ] || [ ! -s "$tmp" ]; then
+      rm -f "$tmp"
       if [ "$chrome_status" -ne 0 ]; then
         echo "Chrome exited $chrome_status rendering $html" >&2
       else
@@ -99,6 +108,7 @@ for name in "${CAROUSELS[@]}"; do
       fi
       exit 1
     fi
+    mv -f "$tmp" "$out"
     RENDERED+=("$out")
     COUNT=$((COUNT + 1))
     echo "rendered  $name/$base.png"
