@@ -16,9 +16,9 @@ The windows are real, and they are small. 9pm, once the kids are finally down. 7
 
 You never lacked the will. You lacked a session you did not have to plan.
 
-So Rep Today does the deciding. Not more options, fewer. One session, sized to the time you actually have, already built by the time you get there. If the length is wrong, one tap changes it, anywhere from 5 to 60 minutes.
+So Rep Today does the deciding. Not more options, fewer. One session, sized to the time you actually have, already built by the time you get there. If the length is wrong, one tap changes it, from 5 minutes up to 60.
 
-And if the gym is not happening this week, that is a calendar, not a character flaw. This is built for a patch of floor, with no equipment and no signal required.
+And if the gym is not happening this week, that is a calendar, not a character flaw. This is built for a patch of floor and a wall, with no equipment and no signal required.
 
 Honestly, this is not for you if you want a catalog to browse, if you want to build and edit your own sessions, or if you want a coach, a strength program, or a gym replacement. Rep Today is none of those, and it is not trying to become them.
 
@@ -38,9 +38,9 @@ iOS, not released yet. Link in bio.
 
 **Slide 3.** A small green label at the top reads "The part nobody says out loud". The rest of the card is a single large dark statement: "You never lacked the will. You lacked a session you did not have to plan."
 
-**Slide 4.** A small green label at the top reads "What you actually want". Large dark type reads: "The deciding, done." Below it, two paragraphs: "Not more options. Fewer. One session, sized to the time you actually have, already built by the time you get there." and "If the length is wrong, one tap changes it. Anywhere from 5 to 60 minutes."
+**Slide 4.** A small green label at the top reads "What you actually want". Large dark type reads: "The deciding, done." Below it, two paragraphs: "Not more options. Fewer. One session, sized to the time you actually have, already built by the time you get there." and "If the length is wrong, one tap changes it, from 5 minutes up to 60."
 
-**Slide 5.** A small green label at the top reads "And if the gym is not happening". Large dark type reads: "That is a calendar, not a character flaw." Below it: "This is built for the weeks the gym was never going to happen. A patch of floor, no equipment, no signal required."
+**Slide 5.** A small green label at the top reads "And if the gym is not happening". Large dark type reads: "That is a calendar, not a character flaw." Below it: "This is built for the weeks the gym was never going to happen. A patch of floor, a wall, no equipment, no signal required."
 
 **Slide 6.** A small green label at the top reads "And honestly, this is not for you if". Below it, three statements separated by thin horizontal rules: "You want a catalog to browse." / "You want to build and edit your own sessions." / "You want a coach, a strength program, or a gym replacement." A grey line underneath reads: "Rep Today is none of those, and it is not trying to become them."
 

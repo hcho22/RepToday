@@ -15,11 +15,11 @@ No streak you can break. No badges. No XP. No levels. No leaderboards. Not on th
 
 What there is instead is a Consistency Score: a rolling average of showing up, rather than a count of days in a row.
 
-The score reads the week, not the day. Miss a day and still meet your weekly goal, and the number does not move at all. A week that falls short dents it, the dent is small, and it fades as the weeks after it come in.
+Nothing in the score is measured in days, so there is no day to miss. It averages your recent weeks: a week that falls short dents it, the dent shrinks with every week after, and after eight it is gone entirely.
 
 The shortest session is a full show-up. Not partial credit, not an asterisk. The short session you had time for counts exactly the same as the long one you did not. Sessions run anywhere from 5 to 60 minutes.
 
-And coming back is the event, not the failure. Return after a week away and the app opens to a session that is easy and winnable, and it treats the return itself as the thing worth marking.
+And coming back is the event, not the failure. Come back after a week away and the session waiting is deliberately gentler. The weeks you were away are excused from the score, and the session you came back with counts as a full week.
 
 You're someone who moves. The score's job is to reflect that, not to threaten it.
 
@@ -37,10 +37,10 @@ iOS, not released yet. Link in bio.
 
 **Slide 3.** A small green label at the top reads "What there is instead". Large dark type reads: "A score that forgives." Below it: "Rep Today keeps a Consistency Score: a rolling average of showing up, not a count of days in a row."
 
-**Slide 4.** A small green label at the top reads "The honest version". Large dark type reads: "A short week moves the number. It cannot empty it." Below it: "The score reads the week, not the day: miss a day and still meet your weekly goal, and it does not move at all. A week that falls short dents it, the dent is small, and it fades as the weeks after it come in."
+**Slide 4.** A small green label at the top reads "The honest version". Large dark type reads: "A short week moves the number. It cannot empty it." Below it: "Nothing in the score is measured in days, so there is no day to miss. It averages your recent weeks: a week that falls short dents it, the dent shrinks with every week after, and after eight it is gone entirely."
 
 **Slide 5.** A small green label at the top reads "Where the floor sits". Large dark type reads: "The shortest session is a full show-up." Below it: "Not partial credit. Not an asterisk. The short session you had time for counts exactly the same as the long one you did not. Sessions run anywhere from 5 to 60 minutes."
 
-**Slide 6.** A small green label at the top reads "After a gap". Large dark type reads: "Coming back is the event, not the failure." Below it: "Return after a week away and the app opens to a session that is easy and winnable, and it treats the return itself as the thing worth marking."
+**Slide 6.** A small green label at the top reads "After a gap". Large dark type reads: "Coming back is the event, not the failure." Below it: "Come back after a week away and the session waiting is deliberately gentler. The weeks you were away are excused from the score, and the session you came back with counts as a full week."
 
 **Slide 7.** Closing card. Large dark type reads: "You're someone who moves." Below it: "The score's job is to reflect that, not to threaten it." At the bottom, the Ready Mark beside the words "Rep Today", then the line "iOS, not released yet.", then small grey legal type: "Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved."

@@ -22,7 +22,7 @@ Each is 7 slides at 1080x1350 (Instagram 4:5 portrait), authored as HTML and ren
 | 1 | `carousel-1-you-do-not-pick/` | **Pinned** | What it is. The friction thesis, then the inversion: you do not pick a workout, the session is chosen for you. |
 | 2 | `carousel-2-why-i-built-this/` | **Pinned** | Why we made it. First-person founder origin, deliberately small. Consistency dies in the gap between deciding to move and moving. |
 | 3 | `carousel-3-this-is-for-you-if/` | **Pinned** | Who it is for. Recognition rather than aspiration, closing honestly on who it is *not* for. |
-| 4 | `carousel-4-nothing-to-lose/` | Evergreen | The problem it solves. The forgiveness pillar as a manifesto: no streaks, badges, XP, or leaderboards anywhere. |
+| 4 | `carousel-4-nothing-to-lose/` | Evergreen | The problem it solves. The forgiveness pillar as a manifesto: no streak to break, no badges, XP, or leaderboards - and the one run the app does show you (`Best run: N weeks on goal.`) is a historical maximum that only counts up. |
 | 5 | `carousel-5-a-floor-and-a-wall/` | Evergreen | The constraint as identity. Zero equipment and offline generation as the whole design, not a feature bullet. |
 
 ### Pinned versus evergreen
@@ -74,6 +74,11 @@ Near-miss paraphrase is where the verbatim rule is thinnest, so it is worth chec
 
 Every asset here was written against `../02-brand/brand-guidelines.md` and checked against `../08-redteam/pre-publication-checklist.md`.
 Three of the checks are automated and re-runnable, and all three were sabotage-checked rather than trusted.
+
+**The three scripts check format, not truth.** They catch a banned string, a clipped line, and a stranded word; none of them can tell whether a sentence describes the shipped app.
+That is what `claim-verification.md` is for: every behavioural claim on all 35 slides and all 5 captions, each with the code `file:line` that settles it and a verdict.
+Read it before editing any copy here, and add a row rather than trusting that a new sentence is obviously true.
+The copy in this folder was originally written from the brand documents rather than from the app, and four consecutive review rounds each found more claims that were true-sounding, written in good faith, and wrong.
 
 ### `claim-audit.py`
 
@@ -154,7 +159,9 @@ These are the traps specific to this package, recorded so a future editor does n
 - **No social proof.** Zero users, downloads, ratings, reviews, and testimonials exist, and nothing here implies otherwise.
 - **No download CTA, and no destination promised on a slide.** There is no App Store listing, so the status line burned into the closing slide of all five is exactly "iOS, not released yet." and stops there. "Link in bio." lives in the five `caption.md` files only, deliberately: a caption is editable after posting and a rendered PNG is not, and neither the profile nor the domain that a bio link would point at is confirmed yet (the account is a Gate 0 blocker above, and `../08-redteam/pre-publication-checklist.md` blocks any asset carrying a URL until the domain is decided). If the bio destination does not exist at post time, drop that one caption line; nothing has to be re-rendered.
 - **No competitor named, and no competitor motive claimed.** Slide copy describes mechanisms ("a workout that needs a server has already chosen when"), never why any company chose one. "Most" is the ceiling on every generalization; "every" appears nowhere.
-- **No streak, countdown, challenge, or "day N of" framing** as a device. The mechanic is named exactly once per carousel, only to say it was not built, per section 7 rule 8.
+- **No streak, countdown, challenge, or "day N of" framing** as a device, per section 7 rule 8. The mechanic is named once per carousel, and only to say it was not built.
+  That negation is deliberately *not* an absolute, and the difference is load-bearing: the app does surface one chain-shaped number, `Best run: N weeks on goal.` (`Views/Ready/ReadyView.swift:365`, `Views/Progress/ProgressTabView.swift:210`), so carousel 4 slide 2 names it rather than claiming nothing of the kind exists.
+  It is a historical maximum recomputed over the full log history (`Services/Consistency/ConsistencyScore.swift:174-194`), which is why "only counts up" is true of it and why "no streaks anywhere" would not be. Do not re-tighten this back to the absolute.
 - **No emojis**, in slides or captions.
 - **The legal line is on the final slide of all five carousels**, verbatim and last, in Small / Slate, comfortably above the 24px floor.
 
@@ -176,7 +183,7 @@ Run against `../08-redteam/pre-publication-checklist.md`, item by item:
 | USPTO trademark search *(blocking: everything public)* | **Yes** | **BLOCKS publication.** Assets carry the canonical clearance line and never claim or imply clearance. |
 | Verify Instagram handle availability for `@reptoday` | **Yes** | **BLOCKS publication.** The account is not confirmed created. |
 | Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
-| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Open. Every mechanic claimed here is in the shipped engine, but the package convention is to re-verify against the binary before launch day. |
+| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. Six claims were wrong or imprecise and are corrected; seven more are recorded as verified-with-caveat so they are not rediscovered. |
 | Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. The captions say "Link in bio", which names the profile rather than a destination; that the bio has one to point at is part of the account item above. |
 | Privacy policy, FAQ / event-schema / nutrition-label reconciliation | **Yes, narrowly** | One claim: carousel 1 slide 6 says iOS asks once for permission to write your sessions to Apple Health and that declining changes nothing. Verified against `RootView.swift` (the request is unconditional on entering the main tabs, so it is a system ask and not an in-app switch) and `HealthKitService.swift` (write-only, and a denial is a quiet no-op). Nothing here describes analytics, and no asset states a retention or sharing practice. |
 | Account deletion path | No | Submission concern, not an asset concern. |

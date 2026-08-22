@@ -18,7 +18,7 @@ That is the part I kept getting wrong. Consistency does not die at the workout. 
 
 Open an app. Pick a program. Pick a length. Scroll a library. Work out whether tonight counts as a real workout. None of that is exercise, and every step is somewhere to stop. Most nights I stopped.
 
-So I moved the deciding. An engine on the phone assembles the whole session, offline, and the app opens straight to it. It does not ask what you want. It has already chosen, and it will swap a movement mid-session if it chose wrong.
+So I moved the deciding. An engine on the phone assembles the whole session, offline, and the app opens straight to it. It does not ask what you want. It has already chosen, and if it chose wrong for you, one tap mid-session swaps that movement for a similar one.
 
 What it is not: a strength program, coaching, or a replacement for a gym. It is the app for the evenings when the gym was never going to happen.
 
@@ -40,7 +40,7 @@ iOS, not released yet. Link in bio.
 
 **Slide 4.** A small green label at the top reads "What lives in the gap". Large dark type reads: "Every decision in there is friction." Below it, two paragraphs: "Open an app. Pick a program. Pick a length. Scroll a library. Work out whether tonight counts as a real workout." and "None of that is exercise. All of it is in the way, and each step is somewhere to stop. Most nights I stopped."
 
-**Slide 5.** A small green label at the top reads "So I moved the deciding". Large dark type reads: "The app does the choosing before you get there." Below it, two paragraphs: "An engine on the phone assembles the whole session, offline, and the app opens straight to it. It does not ask what you want." and "It has already chosen, and it will swap a movement mid-session if it chose wrong."
+**Slide 5.** A small green label at the top reads "So I moved the deciding". Large dark type reads: "The app does the choosing before you get there." Below it, two paragraphs: "An engine on the phone assembles the whole session, offline, and the app opens straight to it. It does not ask what you want." and "It has already chosen, and if it chose wrong for you, one tap mid-session swaps that movement for a similar one."
 
 **Slide 6.** A small green label at the top reads "Being straight about it". Large dark type reads: "What it is not." Below it: "It is not a strength program. It is not coaching. It is not a replacement for a gym, and it is not trying to be one." and "It is the app for the evenings when the gym was never going to happen."
 
