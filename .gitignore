@@ -38,7 +38,7 @@ node_modules/
 *.swp
 *~
 
-# Python (gtm/ tooling: claim-audit.py, fit-check.py, widow-check.py)
+# Python (gtm/ tooling)
 __pycache__/
 *.py[cod]
 

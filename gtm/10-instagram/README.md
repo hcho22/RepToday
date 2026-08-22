@@ -173,7 +173,7 @@ That is the same class of drift the README correction below caught, where a summ
 It asserts that every copy-bearing element on every slide appears verbatim inside its own slide's alt-text paragraph, and not the reverse: alt text also describes layout, colour and the Ready Mark, none of which has an on-slide string.
 Two normalizations are allowed, both about transport rather than words: whitespace collapses and a tag becomes a space (a headline may carry an explicit `<br>`, and alt text writes that headline as one flowing sentence), and quote glyphs are unified (alt text nests slide copy inside a double-quoted string, so carousel 1 slide 6's `What "no deciding" means here, exactly.` has to switch to single quotes there).
 Nothing else is relaxed: a changed, dropped, or reordered word fails.
-It carries the same input floor as the other three, and for the same reason.
+It observes the rule the other guards do - a check with nothing to check must never print PASS - and the floor it carries for that is stated with theirs under **Regenerating the PNGs** below, in the terms of what each guard is actually handed.
 
 Which elements count as copy-bearing is read out of `carousel.css` rather than kept as a list in the script: a rule that sets a font size, by either `font-size` or the `font` shorthand, is a text style, so its subject is an element that can hold authored copy.
 A hand-kept list is bound by memory, and the first version of this guard had already left `.small` out of it, which would have been an unchecked class reading as a passing one the day a slide used it.
@@ -189,7 +189,7 @@ Only document metadata is off-canvas and exempt: `<head>`, `<title>`, `<style>`,
 
 An alt paragraph is read to the next blank line rather than to the end of its physical line, so a caption written one sentence per line (this repo's markdown convention) is still compared whole, and two paragraphs claiming the same slide number are reported instead of one silently winning.
 
-Sabotage-checked in every direction it can fail: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, a folder with no `carousel-*` directories fails instead of printing PASS over nothing, a `.small` element whose text is absent from the alt block fails, an unrecognised class fails, an unclassed `<p>` holding copy fails on the coverage rule, a hidden `carousel.css` fails, and a duplicated `**Slide N.**` paragraph is named.
+Sabotage-checked in these directions: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, a folder with no `carousel-*` directories fails instead of printing PASS over nothing, a `.small` element whose text is absent from the alt block fails, an unrecognised class fails, an unclassed `<p>` holding copy fails on the coverage rule, a hidden `carousel.css` fails, and a duplicated `**Slide N.**` paragraph is named.
 Current result: `Compared 128 slide element(s) against the alt text in 5 caption(s).`
 
 ### Claims deliberately not made
