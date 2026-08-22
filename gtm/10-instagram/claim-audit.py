@@ -24,11 +24,10 @@ Two jobs.
 
    This script only reads gtm/05-social-pmf/. It never writes there.
 
-   It guards the verbatim half of that rule and only the verbatim half. The rule
-   is about the proposition, and a leg restated in different words is the same
-   pre-exposure with none of the same bytes, which no string check can see.
-   README.md names, in the specific, which propositions this folder may not
-   carry; read it before writing a headline.
+   The rule it guards is verbatim reuse, which is the whole rule: the pairs run
+   on TikTok and YouTube Shorts and Instagram is not a test platform, so what a
+   carousel must not do is put a frozen leg's sentence in front of a reader.
+   README.md records why the scope stops there.
 """
 
 import os
@@ -204,10 +203,17 @@ def main():
                         seen.add(hit)
                         failures.append(hit)
 
-        flat = normalize(visible)
-        for hook in hooks:
-            if hook in flat:
-                failures.append("%s restates a frozen PMF hook verbatim: %r" % (rel, hook))
+        # Same two scans, and for the same reason: blanking the tags is what
+        # catches a hook broken across a <br>, and the raw file is what keeps a
+        # hook parked in a <title>, an alt, or an aria-label from slipping past.
+        for source in (visible, raw):
+            flat = normalize(source)
+            for hook in hooks:
+                if hook in flat:
+                    hit = "%s restates a frozen PMF hook verbatim: %r" % (rel, hook)
+                    if hit not in seen:
+                        seen.add(hit)
+                        failures.append(hit)
 
     print("Audited %d authored file(s) in gtm/10-instagram/, of which %d are "
           "publishable copy (slides and captions)." % (len(files), len(copy_files)))

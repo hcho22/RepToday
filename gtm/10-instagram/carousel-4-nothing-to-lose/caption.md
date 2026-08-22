@@ -17,7 +17,7 @@ What there is instead is a Consistency Score: a rolling average of showing up, r
 
 A missed day moves that number. The dent is real, it is small, and it recovers as soon as you do. What the score will not do is go back to zero, because there is no zero to go back to.
 
-Five minutes counts as a full show-up. Not partial credit, not an asterisk. The short session you had time for counts exactly the same as the long one you did not.
+The shortest session is a full show-up. Not partial credit, not an asterisk. The short session you had time for counts exactly the same as the long one you did not.
 
 And coming back is the event, not the failure. Return after a week away and the app opens to a session that is easy and winnable, and it treats the return itself as the thing worth marking.
 
@@ -39,7 +39,7 @@ iOS, not released yet. Link in bio.
 
 **Slide 4.** A small green label at the top reads "The honest version". Large dark type reads: "A missed day moves the number. It cannot empty it." Below it: "The dent is real, and it is small, and it recovers as soon as you do. What a missed day cannot do is wipe out the weeks of showing up behind it."
 
-**Slide 5.** A small green label at the top reads "Where the floor sits". Large dark type reads: "Five minutes counts as a full show-up." Below it: "Not partial credit. Not an asterisk. The short session you had time for counts exactly the same as the long one you did not."
+**Slide 5.** A small green label at the top reads "Where the floor sits". Large dark type reads: "The shortest session is a full show-up." Below it: "Not partial credit. Not an asterisk. The short session you had time for counts exactly the same as the long one you did not."
 
 **Slide 6.** A small green label at the top reads "After a gap". Large dark type reads: "Coming back is the event, not the failure." Below it: "Return after a week away and the app opens to a session that is easy and winnable, and it treats the return itself as the thing worth marking."
 

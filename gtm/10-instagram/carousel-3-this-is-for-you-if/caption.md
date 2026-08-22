@@ -12,7 +12,7 @@ the load-bearing one: it is what makes the other six credible.
 
 This is for you if you have ten minutes and no plan.
 
-The windows are real, and they are small. 9pm, once the kids are finally down. 7am in a hotel room, before the first meeting. Ten minutes between calls, in whatever you are already wearing.
+The windows are real, and they are small. 9pm, once the kids are finally down. 7am, before the first meeting of the day. Ten minutes between calls, in whatever you are already wearing.
 
 You never lacked the will. You lacked a session you did not have to plan.
 
@@ -34,7 +34,7 @@ iOS, not released yet. Link in bio.
 
 **Slide 1.** The Rep Today Ready Mark, a green outlined rounded square with a filled circle low inside it, sits small in the top left of a warm off-white card. A small green label reads "This is for you if". Below it, large dark type: "You have ten minutes and no plan." The word "Swipe" sits quietly at the bottom left.
 
-**Slide 2.** A small green label at the top reads "The windows are real, and they are small". Below it, three statements separated by thin horizontal rules, each opening in bold: "9pm, once the kids are finally down." / "7am in a hotel room, before the first meeting." / "Ten minutes between calls, in whatever you are already wearing."
+**Slide 2.** A small green label at the top reads "The windows are real, and they are small". Below it, three statements separated by thin horizontal rules, each opening in bold: "9pm, once the kids are finally down." / "7am, before the first meeting of the day." / "Ten minutes between calls, in whatever you are already wearing."
 
 **Slide 3.** A small green label at the top reads "The part nobody says out loud". The rest of the card is a single large dark statement: "You never lacked the will. You lacked a session you did not have to plan."
 

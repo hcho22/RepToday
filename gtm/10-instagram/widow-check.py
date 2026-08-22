@@ -140,7 +140,13 @@ def main(argv):
     dirs = argv or sorted(os.path.basename(d.rstrip("/"))
                           for d in glob.glob(os.path.join(HERE, "carousel-*/")))
     slides, failures = 0, []
+    # A named carousel that does not exist is a mistyped argument, not an empty
+    # result. Measuring nothing and printing PASS is the one answer a guard must
+    # never give, so an unknown name and a zero-slide run both fail below.
     for name in dirs:
+        if not os.path.isdir(os.path.join(HERE, name)):
+            failures.append("no such carousel directory: %s" % name)
+            continue
         for slide in sorted(glob.glob(os.path.join(HERE, name, "slide-*.html"))):
             slides += 1
             for entry in measure(chrome, slide):
@@ -149,12 +155,15 @@ def main(argv):
                                     % (os.path.relpath(slide, HERE), entry["cls"], w,
                                        " / ".join(entry["lines"])))
 
+    if slides == 0:
+        failures.append("measured no slides at all, so nothing was checked.")
+
     print("Measured line boxes on %d slide(s)." % slides)
     print()
     if failures:
         for f in failures:
             print("FAIL  %s" % f)
-        print("\n%d widow(s)." % len(failures))
+        print("\n%d finding(s)." % len(failures))
         return 1
     print("PASS  no headline or large-type line is a lone word of %d characters "
           "or fewer." % MAX_WIDOW_WORD)

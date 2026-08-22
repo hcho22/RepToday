@@ -119,6 +119,13 @@ def check(path):
 
 
 def main(paths):
+    # A check with nothing to check must not print PASS. Handed an empty path
+    # list, this would otherwise report a clean run over zero slides, which is
+    # the one result a guard is never allowed to give.
+    if not paths:
+        print("FAIL  no slides to check: fit-check.py was given no paths.")
+        return 1
+
     failures = 0
     for path in paths:
         try:

@@ -44,7 +44,9 @@ Instagram is a non-adjudicating distribution mirror in that experiment.
 This folder is a separate, additive surface, and the separation is load-bearing:
 
 - **Carousel performance never adjudicates an angle.** No result from these posts kills, revives, or ranks anything in the angle bank. Nothing here is written to `creative-log.json`, and nothing here should be.
-- **No slide or caption pre-exposes an A/B pair leg, as a string or as a proposition.** Pre-exposing one leg biases the day-N versus day-N+7 comparison that the pair exists to resolve, and what biases it is a reader arriving at the leg already familiar with what it says, not with how it was spelled. The verbatim half is enforced mechanically by `claim-audit.py` below. The idea half cannot be, and is written out in the specific just below so it cannot recur by being forgotten.
+- **No slide or caption restates an A/B pair leg hook verbatim.** Putting a frozen leg's own sentence in front of a reader pre-exposes it and biases the day-N versus day-N+7 comparison the pair exists to resolve. `claim-audit.py` below enforces this mechanically.
+
+  The rule is verbatim-scoped on purpose, and the scope is worth recording so it does not get quietly widened again: the pairs run on TikTok and YouTube Shorts, `../05-social-pmf/platform-assignment.md` explicitly excludes Instagram as a test platform, and the positioning pillars underneath the hooks are deliberately shared with this folder (see the line below), so a rule reaching past the strings would forbid the carousels from saying what the product is.
 - **Nothing under `../05-social-pmf/` was modified.** Not one character. The audit script reads those files and never writes to them.
 
 Drawing on Hero A, Hero B, and the five messaging pillars in `../02-brand/positioning.md` is fine and encouraged, because those are positioning rather than frozen experiment hooks.
@@ -60,22 +62,13 @@ Two of the five carousels were briefed under working titles that turned out to b
 | "Missing a day never zeroes you out." | AB-2, leg B | **"There is nothing here to lose."** |
 
 Both working titles are also approved hero headlines in `../02-brand/brand-guidelines.md` section 9, which is exactly why the collision is easy to miss: the A/B pairs froze the hero headlines as leg B of their pairs.
-Where the two rules meet, the experiment-integrity rule governs, and it governs the proposition rather than only the sentence.
+Where the two rules meet, the experiment-integrity rule governs the sentence and positioning governs the idea.
 
-**What that means for AB-1, concretely, because this is the rule that is easy to satisfy on paper and break in fact.**
-Leg B's proposition is that the workout is *already there when you open the app*.
-An earlier revision of carousel 1 avoided leg B's string and then said the same thing in different words ("It is on screen when the app opens", "It opens ready. That is the entire idea."), which pre-exposes exactly what the pair is trying to measure.
-So no hook, headline, eyebrow, caption opening line, or closing line anywhere in this folder now asserts that the workout is there or ready at the moment of opening.
-What carousel 1 carries instead is the truth underneath it: **you do not pick the workout, the choosing is done for you, there is no menu.**
-That is `positioning.md` pillar 1, it belongs to neither leg of AB-1, and it is what the whole carousel is now built on, which is why the folder is `carousel-1-you-do-not-pick/` rather than named after the leg-B phrasing it used to echo.
+So carousel 1 leads on the truth underneath AB-1's leg B rather than on leg B's own line: **you do not pick the workout, the choosing is done for you, there is no menu.**
+That is `positioning.md` pillar 1, which is shared on purpose, and it is what the whole carousel is built on, which is why the folder is `carousel-1-you-do-not-pick/`.
 
-The one thing the rule permits is a mechanism sentence in body copy, once, inside a slide, where explaining *how* the session gets there requires saying that the app opens to it.
-An explanation on slide 4 of a swipe is not what builds hook familiarity; a hook is.
-The line to hold is that the leg-B claim may never occupy a hook position, and the two rules are settled the same way everywhere: the idea belongs to positioning, the specific proposition under test belongs to the experiment.
-
-Carousel 4's replacement deliberately enters from a third direction.
-AB-2 tests "admit the cost" (leg A) against "pure negation of loss" (leg B), so a forgiveness hook written either way would lean on one leg.
-"There is nothing here to lose" is an inventory of absent machinery instead, which is neither leg's framing.
+A handful of lines were also moved off strings that sat within about a word of a frozen hook, where the guard would have passed on a technicality rather than because the copy was clear of it: carousel 4's floor slide now reads "The shortest session is a full show-up." rather than pairing five minutes with counting as showing up (AB-5 leg A), and carousel 3's small-windows slide no longer situates one in a hotel room (AB-5 leg B's distinguishing move).
+Near-miss paraphrase is where the verbatim rule is thinnest, so it is worth checking a new headline against `ab-pairs.md` by eye even when the script is green.
 
 ## Claim hygiene
 
@@ -99,7 +92,7 @@ The **character check** covers every file including this one, because the no-em-
 
 Inside a slide, those two checks read the copy **with the markup blanked out**, because a reader sees the headline and not its tags.
 Matching the raw file missed anything spanning an inline tag, and this folder line-breaks its headlines with explicit `<br>` exactly where a break would land, so `71<br>movements` or a leg hook broken over two lines was invisible to the guard at precisely the place it was most likely to occur.
-Tags are blanked rather than deleted, so reported line numbers still point at the real line, and the patterns are also run against the raw file so an attribute value stays covered.
+Tags are blanked rather than deleted, so reported line numbers still point at the real line, and both checks are also run against the raw file so an attribute value stays covered: every slide carries a `<title>` and an `aria-label`, which are authored copy a hook could hide in just as easily as a banned figure could.
 
 That last check is a deliberate **superset** of the rule: it guards all 12 A/B leg hooks plus the angle bank's hooks and the mined review quotes, so it is stricter than "no A/B leg hook verbatim" requires.
 It parses the frozen files live rather than hard-coding a hook list, so it cannot drift out of date.
@@ -181,7 +174,7 @@ Run against `../08-redteam/pre-publication-checklist.md`, item by item:
 | Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
 | Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Open. Every mechanic claimed here is in the shipped engine, but the package convention is to re-verify against the binary before launch day. |
 | Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. The captions say "Link in bio", which names the profile rather than a destination; that the bio has one to point at is part of the account item above. |
-| Privacy policy, FAQ / event-schema / nutrition-label reconciliation | No | No asset here makes a data-practices claim. |
+| Privacy policy, FAQ / event-schema / nutrition-label reconciliation | **Yes, narrowly** | One claim: carousel 1 slide 6 says iOS asks once for permission to write your sessions to Apple Health and that declining changes nothing. Verified against `RootView.swift` (the request is unconditional on entering the main tabs, so it is a system ask and not an in-app switch) and `HealthKitService.swift` (write-only, and a denial is a quiet no-op). Nothing here describes analytics, and no asset states a retention or sharing practice. |
 | Account deletion path | No | Submission concern, not an asset concern. |
 | Confirm App Store pricing, regenerate screenshot 05 | No | No asset here states a price. |
 | Re-record the video voiceover | No | Video only. |
@@ -251,7 +244,7 @@ The HTML is the source of truth and the PNGs under each `carousel-*/render/` are
 Both are committed, so a reviewer can see the assets without running anything.
 Re-rendering on **the same Chrome build** reproduces them byte for byte, which is what makes a diff meaningful after a copy edit; a different Chrome version can rasterize, compress, or font-fall-back differently and produce a whole-folder binary diff with no copy change behind it, so read an unexplained 35-file image diff as a toolchain difference before reading it as a regression.
 `render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs all three guards, so a layout that does not fit, a headline that widows, or a claim that collides fails the regenerate instead of reaching a reviewer.
-Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing.
+Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, or an empty path list fails in `fit-check.py` and `widow-check.py` too, because a check with nothing to check must never print PASS.
 
 ### Publishing, when Gate 0 clears
 
