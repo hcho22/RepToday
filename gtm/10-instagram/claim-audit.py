@@ -171,6 +171,20 @@ def main():
     files = authored_files()
     copy_files = [p for p in files if is_publishable_copy(p)]
     hooks, problems = frozen_hooks()
+
+    # The same rule the frozen-hook self-checks enforce, applied to this audit's
+    # own scope: a check with nothing to check must not print PASS. `files` is
+    # empty if the folder is moved, and `copy_files` is empty if the carousel
+    # directories are ever renamed off the `carousel-` prefix `is_publishable_copy`
+    # keys on - and this is the publication blocker, so a green run over zero
+    # slides is the one result it may never give.
+    if not files:
+        problems.append("found no authored files in gtm/10-instagram/ at all")
+    elif not copy_files:
+        problems.append("found no publishable copy (no carousel-*/slide-*.html or "
+                        "carousel-*/caption.md), so the banned-string and "
+                        "frozen-hook checks scanned nothing")
+
     failures = ["%s (this audit cannot pass while it cannot check)" % p
                 for p in problems]
 

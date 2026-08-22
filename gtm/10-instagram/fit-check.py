@@ -92,6 +92,23 @@ def is_paper(px):
     return all(abs(px[i] - PAPER[i]) <= TOLERANCE for i in range(3))
 
 
+def has_ink(rows, width, height):
+    """Whether any pixel inside the safe area is something other than Paper.
+
+    An all-Paper canvas is otherwise this check's cleanest possible pass, and it
+    is exactly what a slide renders as when its file:// URL fails to resolve:
+    render.sh passes --default-background-color=FAF7F2 and only tests that the
+    PNG is non-empty, which a valid blank capture satisfies. Requiring ink turns
+    "nothing is clipped" into "nothing is clipped and something rendered".
+    """
+    for y in range(BAND, height - BAND):
+        row = rows[y]
+        for x in range(BAND, width - BAND):
+            if not is_paper(row[x]):
+                return True
+    return False
+
+
 def check(path):
     """Return a list of human-readable failures for one rendered slide."""
     width, height, rows = read_png(path)
@@ -99,6 +116,12 @@ def check(path):
 
     if (width, height) != EXPECTED:
         problems.append("size is %dx%d, expected %dx%d" % (width, height, *EXPECTED))
+        return problems
+
+    if not has_ink(rows, width, height):
+        problems.append("is blank: every pixel inside the safe area is Paper, so "
+                        "the page rendered nothing (a broken file:// path or an "
+                        "empty slide), and a blank canvas must not pass a fit check")
         return problems
 
     for y in range(height):

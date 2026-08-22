@@ -123,6 +123,10 @@ The check enforces it: every slide must be exactly 1080x1350, with no ink within
 Since each slide has 80px of padding, ink in that band means either an overflow clipped at the canvas boundary or a broken margin.
 Both fail the build.
 
+It also requires that the safe area contain ink at all, because an empty margin band is otherwise satisfied most cleanly by a blank canvas.
+A slide whose `file://` path fails to resolve renders as bare Paper (`render.sh` passes `--default-background-color=FAF7F2`) and produces a valid, non-empty PNG, so the byte-size test on the capture cannot tell that apart from a real slide.
+Requiring one non-Paper pixel inside the safe area turns "nothing is clipped" into "nothing is clipped and something rendered".
+
 ### `widow-check.py`
 
 Also runs automatically at the end of `render.sh`.
@@ -244,7 +248,7 @@ The HTML is the source of truth and the PNGs under each `carousel-*/render/` are
 Both are committed, so a reviewer can see the assets without running anything.
 Re-rendering on **the same Chrome build** reproduces them byte for byte, which is what makes a diff meaningful after a copy edit; a different Chrome version can rasterize, compress, or font-fall-back differently and produce a whole-folder binary diff with no copy change behind it, so read an unexplained 35-file image diff as a toolchain difference before reading it as a regression.
 `render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs all three guards, so a layout that does not fit, a headline that widows, or a claim that collides fails the regenerate instead of reaching a reviewer.
-Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, or an empty path list fails in `fit-check.py` and `widow-check.py` too, because a check with nothing to check must never print PASS.
+Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, an empty path list, or a folder holding no publishable copy fails in `fit-check.py`, `widow-check.py` and `claim-audit.py` too, because a check with nothing to check must never print PASS.
 
 ### Publishing, when Gate 0 clears
 
