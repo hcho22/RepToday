@@ -27,6 +27,10 @@ Every score figure quoted below was produced by **executing** the shipped `Consi
 The scoring claims are the ones four earlier rounds kept getting subtly wrong, so they were measured rather than reasoned about.
 The probe was a throwaway and is not committed; it drove `evaluate(logs:weeklyGoal:asOf:calendar:)` directly with `weeklyGoal: 3` and a fixed `asOf`, which is enough to reproduce every number here.
 
+It was checked for non-vacuity rather than trusted, in the same spirit as this folder's three guards.
+An early run passed while silently executing nothing, because the probe file had been recreated after `xcodegen generate` last ran and so was not in the project, which made `-only-testing` match no tests and report success over zero assertions.
+The figures below come from a run that regenerated the project first and carried one deliberately wrong expected value: the wrong one failed with the actual number attached and every real one passed, so the run is known to have executed.
+
 ## Scope note on captions and alt text
 
 Each `caption.md` restates its slides and then quotes every slide verbatim as alt text.
@@ -114,7 +118,7 @@ Neither is factually wrong, so neither was touched.
 | 4.2 | "Not on the home screen, not in the history, not anywhere." | `slide-02.html:22` | as 4.1 | true |
 | 4.3 | "The one run the app shows you is your longest ever, and that number only counts up." | `slide-02.html:22` | `Services/Consistency/ConsistencyScore.swift:174-194` (historical maximum over all history); rendered `Views/Ready/ReadyView.swift:365` and `Views/Progress/ProgressTabView.swift:210`; full-history reads at `ViewModels/ReadyViewModel.swift:214` and `ViewModels/ProgressViewModel.swift:99` | true (caveat: see F4) |
 | 4.4 | "Rep Today keeps a Consistency Score: a rolling average of showing up, not a count of days in a row." | `slide-03.html:17` | `Services/Consistency/ConsistencyScore.swift:102-140`, `:164-166` (linear recency weight), `:45` (8-week window) | true |
-| 4.5 | "A short week moves the number. It cannot empty it." | `slide-04.html:16` | Worst single short week is 100 to 85.2; worst single empty week is 100 to 77.8, never 0 (`ConsistencyScore.swift:114`, `:130`, `:164-166`) | true (caveat: see F11) |
+| 4.5 | "A short week moves the number. It cannot empty it." | `slide-04.html:16` | Worst single short week is 100 to 85.2; worst single empty week is 100 to 77.8, never 0 (`ConsistencyScore.swift:114`, `:130`, `:164-166`) | true (caveats: see F11 and F15) |
 | 4.6 | "Nothing in the score is measured in days, so there is no day to miss." | `slide-04.html:17` | `Services/Consistency/ConsistencyScore.swift:81` (bucketed by `weeksAgo`), `:130` (adherence from the weekly count only), `:204-212` (week math) | **fixed** (was F3) |
 | 4.7 | "It averages your recent weeks" | `slide-04.html:17` | `Services/Consistency/ConsistencyScore.swift:102-140` | **fixed** (was F3) |
 | 4.8 | "a week that falls short dents it, the dent shrinks with every week after, and after eight it is gone entirely" | `slide-04.html:17` | `Services/Consistency/ConsistencyScore.swift:164-166` (weight falls linearly), `:45` and `:110` (weeks 8 or more ago are outside the window) | **fixed** (was F3) |
@@ -284,6 +288,17 @@ Quantified under F3: a user with eight on-goal weeks reads 77.8 on the first mor
 No surviving claim contradicts this, because F3 removed the sentence that did.
 It does sit in tension with slide 7's "The score's job is to reflect that, not to threaten it", which is an intent claim with no mechanic behind it rather than a checkable one.
 Left as written; flagged here because it is the single most surprising behavior behind this carousel and it is what made the original slide 4 wrong.
+
+**F15. The score can reach exactly 0, so "it cannot empty it" survives only because it is scoped to a single short week.**
+
+Carried forward from an earlier round rather than rediscovered, and re-confirmed here by execution.
+After 8 or more consecutive idle weeks the score is exactly **0.0**: `oldestIncluded` caps the window at 7 weeks ago (`ConsistencyScore.swift:110`), every week in it is empty and unexcused, so the weighted sum is zero.
+Measured: last activity 8 weeks ago scores 0.0, and 9 weeks ago also 0.0.
+Seven weeks ago is the last week that still registers at all, and it scores 2.8, because that week carries the minimum weight of 1 against a total of 36.
+
+Slide 4's headline is scoped to "a short week", singular, and one short week can only take a full score to 85.2 (or 77.8 if the week is entirely empty).
+So the claim is true as written and was left alone.
+It would become false the moment anyone generalised it to "it can never reach zero", which is why this is recorded rather than left to be re-derived a third time.
 
 **F13. One shipped movement's name implies a surface that "a floor and a wall" does not cover.**
 
