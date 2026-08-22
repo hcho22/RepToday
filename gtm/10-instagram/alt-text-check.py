@@ -17,6 +17,12 @@ What it checks: every copy-bearing element on every slide appears verbatim insid
 its own slide's alt-text paragraph. Not the reverse - alt text also describes
 layout, colour and the Ready Mark, which have no on-slide string.
 
+Which elements those are is read out of carousel.css rather than kept as a list
+here: a rule that sets a font-size is a text style, so its subject can hold
+copy. A hand-kept list would exclude the next text style someone adds, and an
+unchecked class must not read as a passing one - so a slide class the
+stylesheet does not style at all fails the run rather than being skipped.
+
 Comparison is verbatim up to two normalizations, both of which are about the
 transport rather than the words:
 
@@ -39,20 +45,61 @@ from html.parser import HTMLParser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Every class in carousel.css that carries authored copy, plus the stacked
-# statements, which are <li> and carry no class of their own. Layout classes
-# (.slide, .zone, .rail, .steps, .step, .cond, .wordmark) hold no text directly
-# and are reached through their children, and .lede is an inline emphasis span
-# inside an <li> rather than an element of its own.
-COPY_CLASSES = {
-    "display", "h1", "h2", "h3", "body", "overline",
-    "step-label", "step-name", "txt", "swipe", "name", "status", "legal",
-}
+STYLESHEET = os.path.join(HERE, "carousel.css")
 
 # Void and SVG-shape elements never close, so they must not be treated as
 # nesting; <br> is the one that carries meaning here, as a word boundary.
 VOID = {"br", "img", "hr", "input", "meta", "link", "source",
         "path", "circle", "rect", "polygon", "polyline", "line", "ellipse", "use"}
+
+# Classes a slide may carry that carousel.css does not name, because they are
+# not styling hooks: none today. Anything else unknown to the stylesheet is a
+# failure rather than a silent skip, since an unchecked class must not read as
+# a passing one.
+UNSTYLED_OK = set()
+
+
+def stylesheet_classes(path):
+    """(copy-bearing selectors, every class carousel.css styles) from the CSS.
+
+    The copy set is bound to the stylesheet rather than kept by hand: a rule
+    that sets a font-size is a text style, so its subject is an element that
+    can hold authored copy. That is what keeps a newly added text style from
+    being excluded from this guard by an allow-list nobody remembered to
+    extend - the same defect the widow-check selector was corrected for.
+
+    Returns (classes, tags, known). `tags` carries the one text style whose
+    subject is an element rather than a class (`.stack > li`).
+    """
+    css = re.sub(r"/\*.*?\*/", "", open(path, encoding="utf-8").read(), flags=re.S)
+
+    classes, tags, known = set(), set(), set()
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        text_style = re.search(r"(^|[\s;])font-size\s*:", body)
+        for selector in selectors.split(","):
+            compounds = [c for c in re.split(r"[\s>+~]+", selector.strip()) if c]
+            if not compounds:
+                continue
+            for compound in compounds:
+                known.update(re.findall(r"\.([A-Za-z0-9_-]+)", compound))
+            if not text_style:
+                continue
+            # A rule styles its rightmost compound; that is the element the
+            # copy actually sits in.
+            subject = re.findall(r"\.([A-Za-z0-9_-]+)", compounds[-1])
+            if subject:
+                classes.update(subject)
+            else:
+                tags.add(compounds[-1].lower())
+    return classes, tags, known
+
+
+try:
+    COPY_CLASSES, COPY_TAGS, KNOWN_CLASSES = stylesheet_classes(STYLESHEET)
+    STYLESHEET_ERROR = None
+except OSError as error:
+    COPY_CLASSES, COPY_TAGS, KNOWN_CLASSES = set(), set(), set()
+    STYLESHEET_ERROR = str(error)
 
 
 class SlideCopy(HTMLParser):
@@ -63,8 +110,11 @@ class SlideCopy(HTMLParser):
         self.depth = 0
         self.buf = []
         self.texts = []
+        self.unknown = set()
 
     def handle_starttag(self, tag, attrs):
+        classes = set((dict(attrs).get("class") or "").split())
+        self.unknown |= classes - KNOWN_CLASSES - UNSTYLED_OK
         if tag in VOID:
             if self.depth:
                 self.buf.append(" ")
@@ -72,8 +122,7 @@ class SlideCopy(HTMLParser):
         if self.depth:
             self.depth += 1
             return
-        classes = set((dict(attrs).get("class") or "").split())
-        if (classes & COPY_CLASSES) or tag == "li":
+        if (classes & COPY_CLASSES) or tag in COPY_TAGS:
             self.depth = 1
             self.buf = []
 
@@ -101,13 +150,29 @@ def comparable(text):
 
 
 def alt_paragraphs(caption_path):
-    """{slide number: alt text} from a caption's '## Alt text' block."""
+    """({slide number: alt text}, problems) from a caption's '## Alt text' block.
+
+    A paragraph runs to the next blank line, not to the end of the physical
+    line: this repo writes long markdown one sentence per line, so an alt
+    paragraph split that way must still be read whole rather than compared
+    against its first sentence alone.
+    """
     text = open(caption_path, encoding="utf-8").read()
     parts = text.split("## Alt text", 1)
     if len(parts) < 2:
-        return None
-    return {int(n): collapse(body)
-            for n, body in re.findall(r"\*\*Slide (\d+)\.\*\*(.*)", parts[1])}
+        return None, []
+
+    alts, problems = {}, []
+    for number, body in re.findall(r"\*\*Slide (\d+)\.\*\*(.*?)(?=\n[ \t]*\n|\Z)",
+                                   parts[1], re.S):
+        number = int(number)
+        if number in alts:
+            problems.append("%s describes slide %d more than once, so only one "
+                            "of those paragraphs would be checked"
+                            % (os.path.relpath(caption_path, HERE), number))
+            continue
+        alts[number] = collapse(body)
+    return alts, problems
 
 
 def check_carousel(name):
@@ -122,9 +187,10 @@ def check_carousel(name):
     if not os.path.isfile(caption):
         return 0, ["%s has no caption.md, so its slides have no alt text" % name]
 
-    alts = alt_paragraphs(caption)
+    alts, problems = alt_paragraphs(caption)
     if alts is None:
         return 0, ["%s/caption.md has no '## Alt text' block" % name]
+    failures.extend(problems)
 
     slides = sorted(glob.glob(os.path.join(directory, "slide-*.html")))
     if not slides:
@@ -143,6 +209,10 @@ def check_carousel(name):
 
         parser = SlideCopy()
         parser.feed(open(slide, encoding="utf-8").read())
+        for unknown in sorted(parser.unknown):
+            failures.append("%s carries class %r, which carousel.css does not "
+                            "style, so this guard cannot tell whether it holds "
+                            "copy" % (rel, unknown))
         if not parser.texts:
             failures.append("%s yielded no copy at all, so its alt text was "
                             "compared against nothing" % rel)
@@ -167,10 +237,21 @@ def main(argv):
                            for d in glob.glob(os.path.join(HERE, "carousel-*/")))
 
     checked, failures = 0, []
-    for name in names:
-        count, problems = check_carousel(name)
-        checked += count
-        failures.extend(problems)
+
+    # The copy set is derived, so a stylesheet that will not parse leaves it
+    # empty and every slide trivially clean. That is a failure, not a pass, in
+    # the same spirit as claim-audit.py's integrity self-checks.
+    if STYLESHEET_ERROR:
+        failures.append("could not read carousel.css (%s), so no copy class was "
+                        "derived" % STYLESHEET_ERROR)
+    elif not COPY_CLASSES:
+        failures.append("carousel.css yielded no text styles, so every slide "
+                        "would compare as empty")
+    else:
+        for name in names:
+            count, problems = check_carousel(name)
+            checked += count
+            failures.extend(problems)
 
     # The same floor the other three guards carry: a check with nothing to check
     # must never print PASS. An empty argument list, a renamed folder, or a set

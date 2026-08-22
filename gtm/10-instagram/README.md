@@ -70,9 +70,13 @@ That is `positioning.md` pillar 1, which is shared on purpose, and it is what th
 A handful of lines were also moved off strings that sat within about a word of a frozen hook, where the guard would have passed on a technicality rather than because the copy was clear of it: carousel 4's floor slide now reads "The shortest session is a full show-up." rather than pairing five minutes with counting as showing up (AB-5 leg A), and carousel 3's small-windows slide no longer situates one in a hotel room (AB-5 leg B's distinguishing move).
 Near-miss paraphrase is where the verbatim rule is thinnest, so it is worth checking a new headline against `ab-pairs.md` by eye even when the script is green.
 
-**Carousel 5 keeps the hotel room, and that is not an inconsistency.** AB-5 leg B is the single sentence *"Five minutes on a hotel-room floor still counts."*, so what pre-exposes that leg is the **combination** of three things: a five-minute session, a hotel-room floor, and the claim that it *still counts*. Carousel 3's small-windows slide was one addition away from assembling all three in a reader's head, which is why the hotel room came off it. Carousel 5 is not near that combination and cannot get there by accident: the whole post is about *where* you can train rather than *how little* you can do, it names no session length anywhere (the words "five" and "5 min" appear nowhere in the folder), and its hotel-room slide resolves to "The session still builds." rather than to anything counting. The room is the post's own thesis being tested, not leg B's distinguishing move being borrowed.
+**Carousel 5 keeps the hotel room. Why the eye-check cleared it, recorded with low confidence rather than asserted.** AB-5 leg B is the single sentence *"Five minutes on a hotel-room floor still counts."*, so what would pre-expose that leg is the **combination** of three things: five minutes as the session, a hotel-room floor, and the claim that it *still counts*. Carousel 3's small-windows slide was close enough to assembling all three in a reader's head that the hotel room came off it.
 
-  What would break it, so a future editor can see the edge rather than re-derive it: adding a session length to carousel 5, or turning "The session still builds." into a claim about a short session still counting. Either one, on its own, completes leg B on that post. The verbatim rule stays verbatim-scoped; this note records why an eye-check clears carousel 5, not a widening of the rule.
+  Carousel 5 does carry a session-length range: its closing card reads "Bodyweight. Offline. 5 to 60 minutes." (`carousel-5-a-floor-and-a-wall/slide-07.html:16`, mirrored at that folder's `caption.md:41`). So the grounds are narrower than "it names no length". They are that carousel 5 never names five minutes as *the* session (the range is a span on a spec line, two slides away), never puts a length on the same slide as the hotel room, and resolves its hotel-room slide to "The session still builds." - a claim about offline generation, not about a short session counting. Two of leg B's three parts are absent, and the third is on a different card.
+
+  The edge, so a future editor sees it rather than re-deriving it: pairing five minutes *specifically* with the hotel room, or turning "The session still builds." into a counting claim. An earlier revision of this note named "adding a session length" as the tripwire, which shipped copy already does - that framing was wrong and is corrected here.
+
+  How this was checked, so the next reader can judge its reach rather than inherit the conclusion: a case-insensitive string search of the carousel-5 folder for `five`, `5 min` and `5-min`, plus reading all seven slides. The string search alone is what produced the wrong claim above, because it does not match `5 to 60 minutes`; a negative result recorded anywhere in this folder should name the pattern that produced it for exactly that reason. The verbatim rule stays verbatim-scoped, and this note records an eye-check rather than widening it.
 
 ## Claim hygiene
 
@@ -167,7 +171,14 @@ Two normalizations are allowed, both about transport rather than words: whitespa
 Nothing else is relaxed: a changed, dropped, or reordered word fails.
 It carries the same input floor as the other three, and for the same reason.
 
-Sabotage-checked in all four directions: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, and pointing it at a folder with no `carousel-*` directories fails instead of printing PASS over nothing.
+Which elements count as copy-bearing is read out of `carousel.css` rather than kept as a list in the script, on the same principle the widow-check selector was corrected onto: a rule that sets a `font-size` is a text style, so its subject is an element that can hold authored copy.
+A hand-kept list is bound by memory, and the first version of this guard had already left `.small` out of it, which would have been an unchecked class reading as a passing one the day a slide used it.
+Two things follow. A text style added to the stylesheet later is covered with no edit here. And a class the stylesheet does not style **at all** fails the run rather than being skipped, because the script cannot tell whether it holds copy.
+An unreadable or text-style-free stylesheet is likewise a failure, since a derived set that comes back empty would otherwise make every slide compare as clean.
+
+An alt paragraph is read to the next blank line rather than to the end of its physical line, so a caption written one sentence per line (this repo's markdown convention) is still compared whole, and two paragraphs claiming the same slide number are reported instead of one silently winning.
+
+Sabotage-checked in every direction it can fail: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, a folder with no `carousel-*` directories fails instead of printing PASS over nothing, a `.small` element whose text is absent from the alt block fails, an unrecognised class fails, a hidden `carousel.css` fails, and a duplicated `**Slide N.**` paragraph is named.
 Current result: `Compared 128 slide element(s) against the alt text in 5 caption(s).`
 
 ### Claims deliberately not made

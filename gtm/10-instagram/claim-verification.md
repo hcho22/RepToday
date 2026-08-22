@@ -34,7 +34,8 @@ The figures below come from a run that regenerated the project first and carried
 ## Scope note on captions and alt text
 
 Each `caption.md` restates its slides and then quotes every slide verbatim as alt text.
-That correspondence is a **committed, re-runnable guard** rather than a one-off check: `alt-text-check.py` compares all 128 copy-bearing slide elements against their own slide's alt-text paragraph and fails on any word that has drifted, so a slide row below covers its caption and alt-text restatements too.
+That correspondence is a **committed, re-runnable guard** rather than a one-off check: `alt-text-check.py` compares every copy-bearing slide element against its own slide's alt-text paragraph and fails on any word that has drifted, so a slide row below covers its caption and alt-text restatements too.
+It reports the number it compared on each run (128 at this commit) rather than pinning it here, and it reads which elements carry copy out of `carousel.css` rather than from a list, so a text style added later is covered by construction.
 It is wired into `render.sh` beside the other three and is sabotage-checked in all four directions (see the README).
 Earlier revisions of this document asserted the property from a script that was run once by hand and not committed, which left the folder's most drift-prone correspondence resting on trust in a folder whose whole standard is guards rather than trust.
 The single intentional divergence is `carousel-1` slide 6, where the slide's `What "no deciding" means here, exactly.` is nested inside a double-quoted alt-text string and so uses single quotes there; the guard unifies quote glyphs for exactly this reason and relaxes nothing else.
@@ -259,9 +260,25 @@ The remaining engine-internal citations (1.3, 4.5 to 4.8, 4.13, 5.3, 5.4) all ba
 
 **F14. README restated absolutes the slides had already corrected.**
 
-`README.md:25` summarised carousel 4 as "no streaks, badges, XP, or leaderboards anywhere", and `README.md:157` said the mechanic is "named exactly once per carousel, only to say it was not built".
+`README.md:25` summarised carousel 4 as "no streaks, badges, XP, or leaderboards anywhere", and `README.md:195` (the "Claims deliberately not made" bullet on streak framing) said the mechanic is "named exactly once per carousel, only to say it was not built".
 Both are the pre-correction absolute: the app does surface one chain-shaped number, `Best run: N weeks on goal.`, which is why carousel 4 slide 2 names it rather than denying it.
-Both lines now carry the qualification, and `:157` records *why* the negation is deliberately not an absolute so it does not get re-tightened.
+Both lines now carry the qualification, and the bullet records *why* the negation is deliberately not an absolute so it does not get re-tightened.
+
+**F17. The README's own note explaining why carousel 5 keeps the hotel room rested on a false premise, taken from a search too narrow to establish it.**
+
+Was: *"it names no session length anywhere (the words 'five' and '5 min' appear nowhere in the folder)"*, and, as the stated tripwire, *"adding a session length to carousel 5, or turning 'The session still builds.' into a claim about a short session still counting. Either one, on its own, completes leg B on that post."*
+
+Carousel 5 does carry a session-length range: `carousel-5-a-floor-and-a-wall/slide-07.html:16` reads "Bodyweight. Offline. 5 to 60 minutes.", mirrored at that folder's `caption.md:41`.
+The parenthetical was true only because it named two strings that happen to be absent; the note's conclusion therefore did not follow from its premise, and by its own tripwire the tripwire was already tripped.
+No carousel copy changed - the range is correct and stays - but the recorded reasoning did, and the audit trail is exactly where a false premise does the most damage, because the next editor inherits it.
+
+The note now states the true premise and the narrower grounds that actually hold: carousel 5 never names five minutes as *the* session, never puts a length on the same slide as the hotel room, and resolves its hotel-room slide to "The session still builds.", a claim about offline generation rather than about a short session counting.
+The real edge is pairing five minutes specifically with the hotel room, or turning "still builds" into a counting claim.
+
+The root cause is worth more than the correction: the negative result came from a case-insensitive string search for `five`, `5 min` and `5-min`, which does not match `5 to 60 minutes`, and it was written up as though it had searched the concept.
+So the note now records the pattern that produced it.
+Any negative result recorded in this folder should name its method, so a reader can judge its reach instead of inheriting a conclusion.
+The A/B pre-exposure rule itself is unchanged and stays verbatim-scoped.
 
 ### Verified, not changed, recorded so they are not rediscovered
 
@@ -355,4 +372,5 @@ The four guards in this folder cover format and correspondence, not truth, and a
 ```
 
 `fit-check.py` confirms every slide is exactly 1080x1350 with a clean 72px margin band, `widow-check.py` measures real line boxes and confirms no large-type line is a stranded short word, `claim-audit.py` confirms no banned string and no verbatim reuse of a pre-registered PMF hook, and `alt-text-check.py` confirms every slide's copy is still quoted verbatim in its own alt text.
-Re-rendering on the same Chrome build touched only the five slides whose copy changed, which is the byte-for-byte reproducibility the folder README claims.
+Re-rendering on the same Chrome build is byte-for-byte reproducible, as the folder README claims: the render diff of each commit in this pass is scoped to exactly the slides whose copy that commit changed, and no others.
+Stated as the property rather than as a count, because a count of re-rendered slides describes one past run and goes stale on the next.
