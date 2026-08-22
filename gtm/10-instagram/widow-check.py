@@ -14,8 +14,13 @@ walks every word of every large-type element with a Range, groups words by the
 top of their client rect, and reports the resulting lines.
 
 Anything set at 40px or larger is checked: headlines, the stacked statements,
-and the hotel-room-test conditions. Body copy at 34px is ordinary prose and is
-left alone.
+the hotel-room-test conditions, the two-step diagram's step names, and the
+wordmark. Body copy at 34px is ordinary prose and is left alone.
+
+The selector is the whole guarantee, so it is kept in step with carousel.css by
+threshold rather than by memory: every rule there setting font-size to 40px or
+more is represented below, whether or not its copy currently wraps. A class
+left out is not a passing check, it is an unchecked one.
 
 Usage:  python3 gtm/10-instagram/widow-check.py [carousel-dir ...]
 """
@@ -36,7 +41,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # widow. "it" and "plan" are defects; a lone "workout." reads as deliberate.
 MAX_WIDOW_WORD = 6
 
-SELECTOR = ".display, .h1, .h2, .h3, .stack > li, .cond .txt"
+# Every carousel.css rule at 40px or larger: .display 112, .h1 80, .h2 56,
+# .h3 44, .step-name 56, .wordmark .name 48, .stack > li 40, .cond .txt 44.
+SELECTOR = (".display, .h1, .h2, .h3, .stack > li, .cond .txt, "
+            ".step-name, .wordmark .name")
 
 MEASURE_JS = """
 <script>

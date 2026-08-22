@@ -12,12 +12,13 @@
 # D-003 (free local tooling only: Chrome headless for capture). No npm install,
 # no Puppeteer, no network.
 #
-# After rendering, all three guards run, so a regenerate is the folder's build:
+# After rendering, all four guards run, so a regenerate is the folder's build:
 # fit-check.py enforces brand-guidelines.md section 5's "fit before ship" rule
 # (every slide exactly 1080x1350 with nothing clipped at the canvas edge, so a
 # clipped legal line fails here rather than reaching a reviewer), widow-check.py
-# measures the headline line boxes, and claim-audit.py checks the copy against
-# the banned claims and the frozen hooks in ../05-social-pmf/.
+# measures the headline line boxes, claim-audit.py checks the copy against the
+# banned claims and the frozen hooks in ../05-social-pmf/, and alt-text-check.py
+# confirms every slide's copy is still quoted verbatim in its own alt text.
 
 set -euo pipefail
 
@@ -62,9 +63,22 @@ for name in "${CAROUSELS[@]}"; do
     [ -e "$html" ] || continue
     base="$(basename "$html" .html)"
     out="$dir/render/$base.png"
+    # The previous PNG is removed before the capture, so the check below reads
+    # "this run produced it" rather than "a file is there". Left in place, a
+    # capture that fails outright leaves the stale render sitting at $out, which
+    # satisfies a bare existence test and reports a slide as rendered when it
+    # was not, then hands the guards last week's pixels to verify.
+    rm -f "$out"
     # --window-size fixes the capture at the 4:5 canvas; --force-device-scale-factor=1
     # keeps it at exactly 1080x1350 rather than a Retina multiple.
-    "$CHROME" \
+    #
+    # Chrome's own diagnostics are captured rather than discarded, and its exit
+    # status is caught rather than left to `set -e`, which aborted the script
+    # before the check below could say which slide died or why. Both a non-zero
+    # exit and a missing capture are failures here, and both print what Chrome
+    # said, so a render that dies says so instead of exiting bare.
+    chrome_status=0
+    chrome_log="$("$CHROME" \
       --headless \
       --disable-gpu \
       --hide-scrollbars \
@@ -72,9 +86,17 @@ for name in "${CAROUSELS[@]}"; do
       --window-size=1080,1350 \
       --default-background-color=FAF7F2 \
       --screenshot="$out" \
-      "file://$html" >/dev/null 2>&1
-    if [ ! -s "$out" ]; then
-      echo "Chrome produced no output for $html" >&2
+      "file://$html" 2>&1 >/dev/null)" || chrome_status=$?
+    if [ "$chrome_status" -ne 0 ] || [ ! -s "$out" ]; then
+      if [ "$chrome_status" -ne 0 ]; then
+        echo "Chrome exited $chrome_status rendering $html" >&2
+      else
+        echo "Chrome produced no output for $html" >&2
+      fi
+      if [ -n "$chrome_log" ]; then
+        echo "Chrome said:" >&2
+        echo "$chrome_log" >&2
+      fi
       exit 1
     fi
     RENDERED+=("$out")
@@ -98,6 +120,10 @@ python3 "$HERE/fit-check.py" "${RENDERED[@]}"
 echo
 echo "Checking headline line breaks..."
 CHROME="$CHROME" python3 "$HERE/widow-check.py" "${CAROUSELS[@]}"
+
+echo
+echo "Checking alt text against slide copy..."
+python3 "$HERE/alt-text-check.py" "${CAROUSELS[@]}"
 
 # The claim audit always covers the whole folder, whichever carousel was
 # rendered: it reads the frozen files in ../05-social-pmf/ and a copy edit that

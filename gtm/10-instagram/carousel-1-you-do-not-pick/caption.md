@@ -25,7 +25,7 @@ iOS, not released yet. Link in bio.
 
 **Slide 1.** The Rep Today Ready Mark, a green outlined rounded square with a filled circle low inside it, sits small in the top left of a warm off-white card. Below a short green rule, large dark type reads: "You do not pick a workout." The word "Swipe" sits quietly at the bottom left.
 
-**Slide 2.** A warm off-white card. A small green label at the top reads "What you get instead". Large dark type reads: "The session is chosen for you." Beneath it, smaller text: "A complete bodyweight session, assembled on your phone and sized to the time you have. Anywhere from 5 to 60 minutes. One Start button, nothing to browse."
+**Slide 2.** A warm off-white card. A small green label at the top reads "What you get instead". Large dark type reads: "The session is chosen for you." Beneath it, smaller text: "A complete bodyweight session, assembled on your phone and sized to the time you have, from 5 minutes up to 60. One Start button, nothing to browse."
 
 **Slide 3.** A small green label at the top reads "The gap". Large dark type reads: "Wanting to move is not the hard part." Below it, two short paragraphs: "The hard part is the stack of small choices in between. Which app. Which program. How long do I have. Is this the right one. Where did I leave off." and "Each one is small. Together they are the reason the mat stayed rolled up."
 

@@ -64,25 +64,33 @@ def read_png(path):
         line = bytearray(raw[at + 1:at + 1 + stride])
         at += 1 + stride
         # Undo the per-scanline filter (PNG spec section 9).
-        for i in range(stride):
-            a = line[i - channels] if i >= channels else 0
-            b = prev[i]
-            c = prev[i - channels] if i >= channels else 0
-            if ftype == 0:
-                pass
-            elif ftype == 1:
-                line[i] = (line[i] + a) & 0xFF
-            elif ftype == 2:
-                line[i] = (line[i] + b) & 0xFF
-            elif ftype == 3:
-                line[i] = (line[i] + (a + b) // 2) & 0xFF
-            elif ftype == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                pred = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
-                line[i] = (line[i] + pred) & 0xFF
-            else:
-                raise ValueError("bad filter type %d" % ftype)
+        #
+        # The two filters Chrome emits most on these flat-colour slides get a
+        # short circuit each, because a per-byte Python loop over 1080x1350x3
+        # bytes on every slide is the whole cost of this check. None (0) is
+        # already unfiltered, and Up (2) depends only on `prev`, so it is a
+        # whole-row addition with no left/upper-left predictor to carry. Sub,
+        # Average and Paeth read the byte to their left and so stay sequential.
+        if ftype == 0:
+            pass
+        elif ftype == 2:
+            line = bytearray((line[i] + prev[i]) & 0xFF for i in range(stride))
+        elif ftype in (1, 3, 4):
+            for i in range(stride):
+                a = line[i - channels] if i >= channels else 0
+                b = prev[i]
+                c = prev[i - channels] if i >= channels else 0
+                if ftype == 1:
+                    line[i] = (line[i] + a) & 0xFF
+                elif ftype == 3:
+                    line[i] = (line[i] + (a + b) // 2) & 0xFF
+                else:
+                    p = a + b - c
+                    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                    pred = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                    line[i] = (line[i] + pred) & 0xFF
+        else:
+            raise ValueError("bad filter type %d" % ftype)
         rows.append([tuple(line[x * channels:x * channels + 3]) for x in range(width)])
         prev = line
     return width, height, rows

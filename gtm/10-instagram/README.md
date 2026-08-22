@@ -70,12 +70,16 @@ That is `positioning.md` pillar 1, which is shared on purpose, and it is what th
 A handful of lines were also moved off strings that sat within about a word of a frozen hook, where the guard would have passed on a technicality rather than because the copy was clear of it: carousel 4's floor slide now reads "The shortest session is a full show-up." rather than pairing five minutes with counting as showing up (AB-5 leg A), and carousel 3's small-windows slide no longer situates one in a hotel room (AB-5 leg B's distinguishing move).
 Near-miss paraphrase is where the verbatim rule is thinnest, so it is worth checking a new headline against `ab-pairs.md` by eye even when the script is green.
 
+**Carousel 5 keeps the hotel room, and that is not an inconsistency.** AB-5 leg B is the single sentence *"Five minutes on a hotel-room floor still counts."*, so what pre-exposes that leg is the **combination** of three things: a five-minute session, a hotel-room floor, and the claim that it *still counts*. Carousel 3's small-windows slide was one addition away from assembling all three in a reader's head, which is why the hotel room came off it. Carousel 5 is not near that combination and cannot get there by accident: the whole post is about *where* you can train rather than *how little* you can do, it names no session length anywhere (the words "five" and "5 min" appear nowhere in the folder), and its hotel-room slide resolves to "The session still builds." rather than to anything counting. The room is the post's own thesis being tested, not leg B's distinguishing move being borrowed.
+
+  What would break it, so a future editor can see the edge rather than re-derive it: adding a session length to carousel 5, or turning "The session still builds." into a claim about a short session still counting. Either one, on its own, completes leg B on that post. The verbatim rule stays verbatim-scoped; this note records why an eye-check clears carousel 5, not a widening of the rule.
+
 ## Claim hygiene
 
 Every asset here was written against `../02-brand/brand-guidelines.md` and checked against `../08-redteam/pre-publication-checklist.md`.
-Three of the checks are automated and re-runnable, and all three were sabotage-checked rather than trusted.
+Four of the checks are automated and re-runnable, and all four were sabotage-checked rather than trusted.
 
-**The three scripts check format, not truth.** They catch a banned string, a clipped line, and a stranded word; none of them can tell whether a sentence describes the shipped app.
+**The four scripts check format and correspondence, not truth.** They catch a banned string, a clipped line, a stranded word, and a slide whose alt text has drifted off it; none of them can tell whether a sentence describes the shipped app.
 That is what `claim-verification.md` is for: every behavioural claim on all 35 slides and all 5 captions, each with the code `file:line` that settles it and a verdict.
 Read it before editing any copy here, and add a row rather than trusting that a new sentence is obviously true.
 The copy in this folder was originally written from the brand documents rather than from the app, and four consecutive review rounds each found more claims that were true-sounding, written in good faith, and wrong.
@@ -106,7 +110,7 @@ Its two integrity self-checks (the PMF files are readable, and at least the 12 e
 Current result:
 
 ```
-Audited 46 authored file(s) in gtm/10-instagram/, of which 40 are publishable copy (slides and captions).
+Audited 48 authored file(s) in gtm/10-instagram/, of which 40 are publishable copy (slides and captions).
 Checked against 40 quoted sentence(s) frozen in gtm/05-social-pmf/.
 
 PASS  0 em dashes, 0 en dashes, 0 'RepToday', 0 'Rest Tomorrow',
@@ -140,13 +144,31 @@ Headlines carry explicit `<br>` breaks, which are predictable on a fixed canvas 
 This guard measures **real line boxes** rather than guessing at them.
 It copies each slide beside its original so the relative stylesheet still resolves, injects a measuring script, and has headless Chrome walk every word with a `Range`, group words by the top of their client rect, and report the resulting lines.
 That copy has to land in a tracked directory, so it is named uniquely per run and removed afterwards, and `.gitignore` carries the pattern as the backstop for a run killed before it can clean up.
-Anything set at 40px or larger is checked (headlines, the stacked statements, the hotel-room-test conditions); body copy at 34px is ordinary prose and is left alone.
+Anything set at 40px or larger is checked (headlines, the stacked statements, the hotel-room-test conditions, the two-step diagram's step names, and the wordmark); body copy at 34px is ordinary prose and is left alone.
+The selector is bound to that 40px threshold rather than to whichever classes happen to wrap today: `.step-name` (56px) and `.wordmark .name` (48px) are single-line on every current slide, so leaving them out was a check that could not fire rather than a check that passed.
 A line that is a single word of 6 characters or fewer fails, which catches the real defects ("it.", "plan.") while leaving a deliberate lone "workout." alone.
 
 Grouping is by rect top **within a tolerance**, not by exact equality.
 A bold `<span>` inside a regular-weight line reports a slightly different top for its own inline box, and exact matching read that as a second line and reported two widows that were not on screen.
 
 Sabotage-checked: removing the explicit breaks from one headline reproduces the original `it.` widow, and restoring them passes.
+
+### `alt-text-check.py`
+
+Also runs automatically at the end of `render.sh`.
+
+Each `caption.md` quotes its slides verbatim in an `## Alt text` block, and that block is what a screen-reader user gets instead of the PNG.
+Nothing structural keeps the two in step: the copy lives in the slide HTML and the restatement lives in a different file, so a copy edit that touches one and not the other ships a slide whose picture and description disagree.
+That is the same class of drift the README correction below caught, where a summary still carried an absolute the slides had been corrected off.
+`claim-verification.md` originally asserted this property from a script that was run once by hand and not committed; this is that assertion made standing, and it is the one guard here that checks a *correspondence* rather than a format.
+
+It asserts that every copy-bearing element on every slide appears verbatim inside its own slide's alt-text paragraph, and not the reverse: alt text also describes layout, colour and the Ready Mark, none of which has an on-slide string.
+Two normalizations are allowed, both about transport rather than words: whitespace collapses and a tag becomes a space (headlines carry explicit `<br>` that alt text writes as one flowing sentence), and quote glyphs are unified (alt text nests slide copy inside a double-quoted string, so carousel 1 slide 6's `What "no deciding" means here, exactly.` has to switch to single quotes there).
+Nothing else is relaxed: a changed, dropped, or reordered word fails.
+It carries the same input floor as the other three, and for the same reason.
+
+Sabotage-checked in all four directions: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, and pointing it at a folder with no `carousel-*` directories fails instead of printing PASS over nothing.
+Current result: `Compared 128 slide element(s) against the alt text in 5 caption(s).`
 
 ### Claims deliberately not made
 
@@ -183,7 +205,7 @@ Run against `../08-redteam/pre-publication-checklist.md`, item by item:
 | USPTO trademark search *(blocking: everything public)* | **Yes** | **BLOCKS publication.** Assets carry the canonical clearance line and never claim or imply clearance. |
 | Verify Instagram handle availability for `@reptoday` | **Yes** | **BLOCKS publication.** The account is not confirmed created. |
 | Device benchmark for the speed claim *(blocking: social)* | No | Does not block: no asset here carries a speed figure. |
-| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. Six claims were wrong or imprecise and are corrected; seven more are recorded as verified-with-caveat so they are not rediscovered. |
+| Verify every behavioural claim against the approved binary before launch day | **Yes, at launch** | Discharged at source level; the binary re-check is still owed. Every behavioural claim on all 35 slides and all 5 captions is checked against shipped code, claim by claim, in `claim-verification.md`. Seven claims were wrong or imprecise and are corrected; nine more are recorded as verified-with-caveat so they are not rediscovered. |
 | Domain decision / register before any asset carrying a URL ships | No | No asset here carries a URL. The captions say "Link in bio", which names the profile rather than a destination; that the bio has one to point at is part of the account item above. |
 | Privacy policy, FAQ / event-schema / nutrition-label reconciliation | **Yes, narrowly** | One claim: carousel 1 slide 6 says iOS asks once for permission to write your sessions to Apple Health and that declining changes nothing. Verified against `RootView.swift` (the request is unconditional on entering the main tabs, so it is a system ask and not an in-app switch) and `HealthKitService.swift` (write-only, and a denial is a quiet no-op). Nothing here describes analytics, and no asset states a retention or sharing practice. |
 | Account deletion path | No | Submission concern, not an asset concern. |
@@ -254,8 +276,10 @@ CHROME=/path/to/chrome ./gtm/10-instagram/render.sh    # if Chrome is not auto-f
 The HTML is the source of truth and the PNGs under each `carousel-*/render/` are build output.
 Both are committed, so a reviewer can see the assets without running anything.
 Re-rendering on **the same Chrome build** reproduces them byte for byte, which is what makes a diff meaningful after a copy edit; a different Chrome version can rasterize, compress, or font-fall-back differently and produce a whole-folder binary diff with no copy change behind it, so read an unexplained 35-file image diff as a toolchain difference before reading it as a regression.
-`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs all three guards, so a layout that does not fit, a headline that widows, or a claim that collides fails the regenerate instead of reaching a reviewer.
-Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, an empty path list, or a folder holding no publishable copy fails in `fit-check.py`, `widow-check.py` and `claim-audit.py` too, because a check with nothing to check must never print PASS.
+`render.sh` finds Chrome or Chromium itself, renders every slide at a forced device scale factor of 1, and then runs all four guards, so a layout that does not fit, a headline that widows, a claim that collides, or alt text that has drifted off its slide fails the regenerate instead of reaching a reviewer.
+Chrome's own stderr is captured rather than discarded and is printed with its exit status if a capture fails, so a render that dies says why instead of exiting bare.
+Each slide's previous PNG is removed before its capture, so "the file is there" cannot stand in for "this run produced it": a failed capture that left the stale render in place would otherwise report the slide as rendered and hand the guards last week's pixels to verify.
+Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard enforces that for itself rather than trusting the caller: a mistyped carousel name, an empty directory, an empty path list, or a folder holding no publishable copy fails in `fit-check.py`, `widow-check.py`, `claim-audit.py` and `alt-text-check.py` too, because a check with nothing to check must never print PASS.
 
 ### Publishing, when Gate 0 clears
 

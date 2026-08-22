@@ -193,9 +193,12 @@ def main():
         rel = os.path.relpath(path, HERE)
 
         # Character check: everything, documentation included, on the raw bytes.
+        # Every occurrence, not just the first: reporting one hit per character
+        # per file makes an editor fix it, re-run, and discover the next, once
+        # for as many as exist, and understates the count printed at the end.
         for char, label in BANNED_CHARS.items():
-            if char in raw:
-                line = raw[:raw.index(char)].count("\n") + 1
+            for m in re.finditer(re.escape(char), raw):
+                line = raw[:m.start()].count("\n") + 1
                 failures.append("%s:%d contains %s" % (rel, line, label))
 
         # String and frozen-hook checks: publishable copy only, and against the

@@ -34,8 +34,10 @@ The figures below come from a run that regenerated the project first and carried
 ## Scope note on captions and alt text
 
 Each `caption.md` restates its slides and then quotes every slide verbatim as alt text.
-A mechanical check over all 72 substantive slide elements confirms each one appears in its own caption, so a slide row below covers its caption and alt-text restatements too.
-The single intentional divergence is `carousel-1` slide 6, where the slide's `What "no deciding" means here, exactly.` is nested inside a double-quoted alt-text string and so uses single quotes there.
+That correspondence is a **committed, re-runnable guard** rather than a one-off check: `alt-text-check.py` compares all 128 copy-bearing slide elements against their own slide's alt-text paragraph and fails on any word that has drifted, so a slide row below covers its caption and alt-text restatements too.
+It is wired into `render.sh` beside the other three and is sabotage-checked in all four directions (see the README).
+Earlier revisions of this document asserted the property from a script that was run once by hand and not committed, which left the folder's most drift-prone correspondence resting on trust in a folder whose whole standard is guards rather than trust.
+The single intentional divergence is `carousel-1` slide 6, where the slide's `What "no deciding" means here, exactly.` is nested inside a double-quoted alt-text string and so uses single quotes there; the guard unifies quote glyphs for exactly this reason and relaxes nothing else.
 Caption-only claims (sentences with no slide counterpart) are listed separately per carousel.
 
 ---
@@ -47,7 +49,7 @@ Caption-only claims (sentences with no slide counterpart) are listed separately 
 | 1.1 | "You do not pick a workout." | `slide-01.html:20` | `ViewModels/OnboardingViewModel.swift:257-260`, `Views/Ready/ReadyView.swift:188-206` | true |
 | 1.2 | "The session is chosen for you." | `slide-02.html:16` | `ViewModels/ReadyViewModel.swift:183`, `:407-415` | true |
 | 1.3 | "A complete bodyweight session, assembled on your phone" | `slide-02.html:17` | `Services/Mock/MockServices.swift:28-50`, `Services/Mock/MockExerciseService.swift:143-145` | true |
-| 1.4 | "sized to the time you have. Anywhere from 5 to 60 minutes." | `slide-02.html:17` | `Services/Engine/SessionShapeSelection.swift:45` (`supportedRange = 5...60`) | true (caveat: see F7) |
+| 1.4 | "sized to the time you have, from 5 minutes up to 60." | `slide-02.html:17` | `Services/Programmer/DefaultDurationLearning.swift:37` (`chipValues = [5, 10, 15, 20, 30, 45, 60]`), consumed verbatim at `ViewModels/ReadyViewModel.swift:59` and `Views/Onboarding/OnboardingView.swift:653` | **fixed** (was F16) |
 | 1.5 | "One Start button, nothing to browse." | `slide-02.html:17` | `Views/Ready/ReadyView.swift:188-206` (one Start, never disabled); no catalog surface exists | true (caveat: see F8) |
 | 1.6 | "Wanting to move is not the hard part." plus the stack-of-choices copy | `slide-03.html:16-18` | none | not code-checkable (thesis, not a mechanic) |
 | 1.7 | "So the deciding happens before you arrive." | `slide-04.html:16` | `ViewModels/ReadyViewModel.swift:183` (generate runs inside `load()`, before render) | true |
@@ -124,7 +126,7 @@ Neither is factually wrong, so neither was touched.
 | 4.8 | "a week that falls short dents it, the dent shrinks with every week after, and after eight it is gone entirely" | `slide-04.html:17` | `Services/Consistency/ConsistencyScore.swift:164-166` (weight falls linearly), `:45` and `:110` (weeks 8 or more ago are outside the window) | **fixed** (was F3) |
 | 4.9 | "The shortest session is a full show-up." | `slide-05.html:16` | `Services/Consistency/ConsistencyScore.swift:83` (any log counts as one workout, duration never read), `:10-12`; `Views/Ready/ReadyView.swift:362` renders "Every time you show up counts - even five minutes." | true |
 | 4.10 | "The short session you had time for counts exactly the same as the long one you did not." | `slide-05.html:17` | as 4.9 | true |
-| 4.11 | "Sessions run anywhere from 5 to 60 minutes." | `slide-05.html:17` | `Services/Engine/SessionShapeSelection.swift:45` | true |
+| 4.11 | "Sessions run anywhere from 5 to 60 minutes." | `slide-05.html:17` | `Services/Programmer/DefaultDurationLearning.swift:37` (the chip vocabulary the user actually touches, spanning 5 to 60); `Services/Engine/SessionShapeSelection.swift:45` corroborates that the engine accepts the whole span | true (caveat: see F16) |
 | 4.12 | "Coming back is the event, not the failure." | `slide-06.html:16` | Supported by 4.13 and 4.14 below | true |
 | 4.13 | "Come back after a week away and the session waiting is deliberately gentler." | `slide-06.html:17` | `Services/Engine/ReturnOverride.swift:38` (7 calendar days), `:64-68`, `:53` and `:94-98` (difficulty capped at 2), `:48` and `:110-111` (volume scaled to 0.7) | **fixed** (was F12) |
 | 4.14 | "The weeks you were away are excused from the score, and the session you came back with counts as a full week." | `slide-06.html:17` | `Services/Consistency/ConsistencyScore.swift:121-123` and `:148-159` (gap weeks excused), `:125-128` (the return week scores a full 1.0), `:84` (`wasReturn` stamped from the log) | **fixed** (was F12) |
@@ -229,7 +231,31 @@ A reader with 25 minutes taps 20 or 30.
 Coupled to "one tap changes it", "anywhere" promised a choice the app does not offer.
 Now: *"If the length is wrong, one tap changes it, from 5 minutes up to 60."*
 
-The bare range statements elsewhere ("Sessions run anywhere from 5 to 60 minutes", `carousel-4/slide-05.html:17`, and `carousel-1/slide-02.html:17`) describe the span of session lengths rather than a selectable value, are true as written, and were left alone.
+The bare range statement elsewhere ("Sessions run anywhere from 5 to 60 minutes", `carousel-4/slide-05.html:17`) describes the span of session lengths that exist rather than a selectable value, is true as written, and was left alone.
+
+This rationale was originally extended to `carousel-1/slide-02.html:17` as well, which was wrong: that sentence carries selection framing. See F16.
+
+**F16. Carousel 1 slide 2 carried the same continuum framing F7 corrected on carousel 3, and this table certified it on evidence that does not settle it.**
+
+Was: *"A complete bodyweight session, assembled on your phone and sized to the time you have. Anywhere from 5 to 60 minutes. One Start button, nothing to browse."*
+
+F7 corrected exactly this framing on carousel 3 and then exempted this sentence, on the reasoning that a bare range statement describes the span of session lengths rather than a selectable value.
+That reasoning holds for `carousel-4/slide-05.html:17` ("Sessions run anywhere from 5 to 60 minutes", a statement about what exists) and does not hold here, where "sized to the time you have" **is** the selection framing and "Anywhere" attaches directly to it.
+The duration input is seven discrete chips everywhere a user can touch it: `Services/Programmer/DefaultDurationLearning.swift:37` defines `chipValues = [5, 10, 15, 20, 30, 45, 60]`, whose own doc comment says "the Ready Screen offers chips, not arbitrary minute values", and `ViewModels/ReadyViewModel.swift:59` and `Views/Onboarding/OnboardingView.swift:653` both consume that array verbatim.
+A reader with 25 minutes taps 20 or 30.
+Now: *"A complete bodyweight session, assembled on your phone and sized to the time you have, from 5 minutes up to 60. One Start button, nothing to browse."*
+Mirrored into the slide alt text at `caption.md:28` in the same commit.
+
+The row itself was the second half of the defect, and is the more serious half.
+Claim 1.4 read verdict **true** citing `Services/Engine/SessionShapeSelection.swift:45` (`supportedRange = 5...60`), which is an engine-internal clamp on an arbitrary `Int` the UI never supplies; its own doc comment says it exists so "the mapping is total".
+A clamp cannot settle a claim about what a user may pick, so the row certified a user-facing claim on evidence that does not reach it, and a table that does so is worse than no table because the next reader trusts it.
+Row 1.4 now records the corrected copy against the chip vocabulary.
+
+Every other row was re-checked for the same defect, and the rule that separates them is whether the claim is about **what the user may select** or about **what the engine produces**.
+Only one other row rested on an engine-internal constant for a selection-shaped claim: 4.11 cited `SessionShapeSelection.swift:45` alone for "Sessions run anywhere from 5 to 60 minutes".
+The copy there is correct and captain-signed-off and was not touched, but the citation now leads with the chip vocabulary and keeps `supportedRange` only as corroboration.
+Rows 3.10 and 5.10 restate 1.4 and 4.11 by reference and inherit both corrections.
+The remaining engine-internal citations (1.3, 4.5 to 4.8, 4.13, 5.3, 5.4) all back claims about what the engine *produces* - the pool it draws from, the number it computes, the session it assembles - where engine source is the settling evidence rather than a proxy for one, so none of them has this defect.
 
 **F14. README restated absolutes the slides had already corrected.**
 
@@ -322,11 +348,11 @@ When an approved binary exists, the rows above are the checklist to walk against
 
 ## Re-running the mechanical guards
 
-The three guards in this folder cover format, not truth, and all three pass on this commit.
+The four guards in this folder cover format and correspondence, not truth, and all four pass on this commit.
 
 ```bash
-./gtm/10-instagram/render.sh    # re-renders 35 slides, then runs all three guards
+./gtm/10-instagram/render.sh    # re-renders 35 slides, then runs all four guards
 ```
 
-`fit-check.py` confirms every slide is exactly 1080x1350 with a clean 72px margin band, `widow-check.py` measures real line boxes and confirms no large-type line is a stranded short word, and `claim-audit.py` confirms no banned string and no verbatim reuse of a pre-registered PMF hook.
+`fit-check.py` confirms every slide is exactly 1080x1350 with a clean 72px margin band, `widow-check.py` measures real line boxes and confirms no large-type line is a stranded short word, `claim-audit.py` confirms no banned string and no verbatim reuse of a pre-registered PMF hook, and `alt-text-check.py` confirms every slide's copy is still quoted verbatim in its own alt text.
 Re-rendering on the same Chrome build touched only the five slides whose copy changed, which is the byte-for-byte reproducibility the folder README claims.
