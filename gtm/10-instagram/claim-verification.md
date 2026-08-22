@@ -27,7 +27,7 @@ Every score figure quoted below was produced by **executing** the shipped `Consi
 The scoring claims are the ones four earlier rounds kept getting subtly wrong, so they were measured rather than reasoned about.
 The probe was a throwaway and is not committed; it drove `evaluate(logs:weeklyGoal:asOf:calendar:)` directly with `weeklyGoal: 3` and a fixed `asOf`, which is enough to reproduce every number here.
 
-It was checked for non-vacuity rather than trusted, in the same spirit as this folder's three guards.
+It was checked for non-vacuity rather than trusted, in the same spirit as this folder's four guards.
 An early run passed while silently executing nothing, because the probe file had been recreated after `xcodegen generate` last ran and so was not in the project, which made `-only-testing` match no tests and report success over zero assertions.
 The figures below come from a run that regenerated the project first and carried one deliberately wrong expected value: the wrong one failed with the actual number attached and every real one passed, so the run is known to have executed.
 
@@ -47,7 +47,7 @@ Caption-only claims (sentences with no slide counterpart) are listed separately 
 
 | # | Claim | Slide | Code | Verdict |
 |---|---|---|---|---|
-| 1.1 | "You do not pick a workout." | `slide-01.html:20` | `ViewModels/OnboardingViewModel.swift:257-260`, `Views/Ready/ReadyView.swift:188-206` | true |
+| 1.1 | "You do not pick a workout." | `slide-01.html:20` | `ViewModels/OnboardingViewModel.swift:29-38` (the six onboarding steps, none of them a workout choice), `Views/Ready/ReadyView.swift:188-206` | true |
 | 1.2 | "The session is chosen for you." | `slide-02.html:16` | `ViewModels/ReadyViewModel.swift:183`, `:407-415` | true |
 | 1.3 | "A complete bodyweight session, assembled on your phone" | `slide-02.html:17` | `Services/Mock/MockServices.swift:28-50`, `Services/Mock/MockExerciseService.swift:143-145` | true |
 | 1.4 | "sized to the time you have, from 5 minutes up to 60." | `slide-02.html:17` | `Services/Programmer/DefaultDurationLearning.swift:37` (`chipValues = [5, 10, 15, 20, 30, 45, 60]`), consumed verbatim at `ViewModels/ReadyViewModel.swift:59` and `Views/Onboarding/OnboardingView.swift:653` | **fixed** (was F16) |
@@ -83,7 +83,7 @@ Caption-only claims: none. Every caption sentence restates a slide claim above.
 | 2.4 | "It does not ask what you want." | `slide-05.html:17` | No picker on the path; `Views/Ready/ReadyView.swift:188-206` | true |
 | 2.5 | "if it chose wrong for you, one tap mid-session swaps that movement for a similar one" | `slide-05.html:18` | `Views/ActiveSession/ActiveSessionView.swift:411-419`; `ViewModels/ActiveSessionViewModel.swift:684-686`, `:702-778`; `Services/Engine/ExerciseSwap.swift:138,151,156` | **fixed** (was F1) |
 | 2.6 | "It is not a strength program. It is not coaching." | `slide-06.html:17` | No program, plan, schedule, or coaching surface exists in `Views/`; grep for a user-facing "program" string returns nothing | true (caveat: see F10) |
-| 2.7 | "It is not a replacement for a gym, and it is not trying to be one." | `slide-06.html:17` | Consistent with the MVP non-goals in `AGENTS.md` | not code-checkable (positioning) |
+| 2.7 | "It is not a replacement for a gym, and it is not trying to be one." | `slide-06.html:17` | Consistent with the MVP non-goals in the repo-root `AGENTS.md` | not code-checkable (positioning) |
 | 2.8 | "I wanted one that did the deciding for me. So that is the one I built." | `slide-07.html:15` | none | not code-checkable (first-person) |
 
 Caption-only claims: none.
@@ -171,7 +171,7 @@ The sentence read as machine self-correction, which is a capability the product 
 Now: *"It has already chosen, and if it chose wrong for you, one tap mid-session swaps that movement for a similar one."*
 
 Recorded edge, deliberately not put on the slide: the swap can decline.
-When `ExerciseSwap` finds no safe same-pattern peer inside the time budget the original movement stays, and the app says so in-product ("No safe alternative for this one - it stays in your session.", `ActiveSessionView.swift:580`).
+When `ExerciseSwap` finds no safe same-pattern peer inside the time budget the original movement stays, and the app says so in-product ("No safe alternative for this one - it stays in your session.", `ActiveSessionView.swift:581`).
 The product discloses this itself at the moment it happens, which is the right place for it.
 
 **F2. Carousel 3 slide 5: "a patch of floor" omitted the wall.**
@@ -253,16 +253,24 @@ A clamp cannot settle a claim about what a user may pick, so the row certified a
 Row 1.4 now records the corrected copy against the chip vocabulary.
 
 Every other row was re-checked for the same defect, and the rule that separates them is whether the claim is about **what the user may select** or about **what the engine produces**.
-Only one other row rested on an engine-internal constant for a selection-shaped claim: 4.11 cited `SessionShapeSelection.swift:45` alone for "Sessions run anywhere from 5 to 60 minutes".
+A selection-shaped claim is settled only by the vocabulary the UI actually offers; an engine-internal constant is a proxy for that and cannot certify it.
+A claim about what the engine produces - the pool it draws from, the number it computes, the session it assembles - is settled by engine source directly, because there the engine is the subject rather than a stand-in for one.
+Applying that rule: only one other row rested on an engine-internal constant for a selection-shaped claim, 4.11, which cited `SessionShapeSelection.swift:45` alone for "Sessions run anywhere from 5 to 60 minutes".
 The copy there is correct and captain-signed-off and was not touched, but the citation now leads with the chip vocabulary and keeps `supportedRange` only as corroboration.
 Rows 3.10 and 5.10 restate 1.4 and 4.11 by reference and inherit both corrections.
-The remaining engine-internal citations (1.3, 4.5 to 4.8, 4.13, 5.3, 5.4) all back claims about what the engine *produces* - the pool it draws from, the number it computes, the session it assembles - where engine source is the settling evidence rather than a proxy for one, so none of them has this defect.
+Every remaining row citing engine source is an engine-produces claim under that rule, so none of them carries this defect.
+The rule is recorded here instead of the list of row numbers it was applied to, because a list is a second thing to keep in step with the table and goes stale the moment a row is added - which is the failure this finding exists to record, one level up.
 
 **F14. README restated absolutes the slides had already corrected.**
 
-`README.md:25` summarised carousel 4 as "no streaks, badges, XP, or leaderboards anywhere", and `README.md:204` (the "Claims deliberately not made" bullet on streak framing) said the mechanic is "named exactly once per carousel, only to say it was not built".
+`README.md:25` summarised carousel 4 as "no streaks, badges, XP, or leaderboards anywhere", and the "Claims deliberately not made" bullet on streak framing said the mechanic is "named exactly once per carousel, only to say it was not built".
 Both are the pre-correction absolute: the app does surface one chain-shaped number, `Best run: N weeks on goal.`, which is why carousel 4 slide 2 names it rather than denying it.
 Both lines now carry the qualification, and the bullet records *why* the negation is deliberately not an absolute so it does not get re-tightened.
+
+This finding's own first fix was incomplete, and the residue is worth recording.
+It corrected "exactly once" but left the rest of the sentence asserting that each carousel names the mechanic - which no carousel but 4 does, and which carousel 4 does for four mechanics at once rather than one.
+The bullet is now written as guidance for a future slide (name one only to say it was not built, never as a device) rather than as a description of what the five carousels did, so there is no per-carousel universal left to falsify.
+The general lesson is the same one F17 records: a sentence stating a style intention in the past tense reads as a verified description, and the next editor has no way to tell which it was.
 
 **F17. The README's own note explaining why carousel 5 keeps the hotel room rested on a false premise, taken from a search too narrow to establish it.**
 
@@ -289,7 +297,7 @@ Given a fixed log set and goal it is monotonically non-decreasing, because the s
 Adding a workout can only move a week onto goal, never off it.
 `weeklyGoal` cannot rise (it is written once and has no UI), so the one input that could retroactively disqualify weeks is pinned.
 
-Three paths could still show a smaller number: a full-history read failure on the Ready screen falls back to the 70-day window (`ViewModels/ReadyViewModel.swift:214`), a locale change to the first weekday can re-split weeks (`ConsistencyScore.swift:204-212` uses `Calendar.current`), and account deletion zeroes everything.
+Three paths could still show a smaller number: a full-history read failure on the Ready screen falls back to the 70-day window (`ViewModels/ReadyViewModel.swift:214`), a locale change to the first weekday can re-split weeks (the week math at `ConsistencyScore.swift:204-212` takes its calendar as a parameter, and the `Calendar.current` default that supplies it in production enters at `:59` and `:226`), and account deletion zeroes everything.
 The first is a degraded read and the third is a deliberate wipe, so the signed-off claim stands as written.
 This is recorded rather than acted on, because it is a caveat on a captain-approved line, not a defect in it.
 

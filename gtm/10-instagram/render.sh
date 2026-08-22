@@ -42,8 +42,21 @@ if [ -z "$CHROME" ] || [ ! -x "$CHROME" ]; then
   exit 1
 fi
 
+# Each carousel argument is reduced to a bare directory name here, before
+# anything is built from it, so every consumer below sees the same normalized
+# form: the render loop, the scratch filename, and the three guards that are
+# handed this array verbatim at the end.
+#
+# Tab completion in both bash and zsh appends a trailing slash, and a
+# path-qualified argument is the other natural way to type one. Either reaches
+# the scratch filename as a path separator, naming a subdirectory that does not
+# exist; Chrome then cannot write there and still exits 0, so the run died
+# reporting "Chrome produced no output" - blaming Chrome for a path this script
+# built. basename strips both forms, which makes that failure unreachable rather
+# than merely better reported.
 if [ "$#" -gt 0 ]; then
-  CAROUSELS=("$@")
+  CAROUSELS=()
+  for arg in "$@"; do CAROUSELS+=("$(basename -- "$arg")"); done
 else
   CAROUSELS=()
   for dir in "$HERE"/carousel-*/; do CAROUSELS+=("$(basename "$dir")"); done

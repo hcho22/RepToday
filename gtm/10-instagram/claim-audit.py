@@ -105,9 +105,31 @@ def blank_tags(text):
 
 
 def authored_files():
+    """Every authored text file in this folder, and nothing a tool left behind.
+
+    The walk prunes build detritus rather than descending it, for two reasons.
+
+    The count printed at the end is quoted in README.md as this audit's current
+    result, so it has to be a property of what is committed rather than of
+    whatever happens to be sitting in the tree. widow-check.py and render.sh both
+    write scratch copies here, and a run killed before its cleanup leaves them
+    behind - which is why .gitignore carries both patterns.
+
+    The second reason is the one that matters more. A leftover `.widow-check-*.html`
+    is a copy of a slide, but its name does not start with `slide-`, so
+    `is_publishable_copy` reads it as documentation and gives it the character
+    check without the banned-string or frozen-hook checks. That is slide copy
+    getting a weaker check than a slide, silently, on a green run. Skipping the
+    file entirely is correct: the original it was copied from is audited in full.
+    """
     out = []
-    for root, _dirs, names in os.walk(HERE):
+    for root, dirs, names in os.walk(HERE):
+        # Prune in place so os.walk does not descend them at all. Dot-directories
+        # covers `.render-scratch-*` and anything else a tool hides here.
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for name in sorted(names):
+            if name.startswith("."):
+                continue
             if os.path.splitext(name)[1] not in TEXT_EXTS:
                 continue
             out.append(os.path.join(root, name))

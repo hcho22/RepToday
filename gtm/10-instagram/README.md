@@ -99,13 +99,13 @@ python3 gtm/10-instagram/claim-audit.py
 Fails the run on: em dashes, en dashes, `RepToday`, `REP Today`, `Rest Tomorrow`, any speed figure, any movement or exercise count, `day N of` framing, and any verbatim reuse of a sentence quoted in `angles.md` or `ab-pairs.md`.
 
 It uses two scopes, because they answer different questions.
-The **string and frozen-hook checks** cover publishable copy only, meaning the 40 slide HTML files and captions that actually reach a reader.
+The **string and frozen-hook checks** cover publishable copy only, meaning the slide HTML files and the captions that actually reach a reader.
 This README and the folder's tooling are excluded from those, because documenting a banned string requires quoting it, and string-matching the documentation would flag the very lines that record the rule.
 The **character check** covers every file including this one, because the no-em-dash rule genuinely does extend to the README.
 
 Inside a slide, those two checks read the copy **with the markup blanked out**, because a reader sees the headline and not its tags.
-Matching the raw file missed anything spanning an inline tag, and this folder line-breaks its headlines with explicit `<br>` exactly where a break would land, so `71<br>movements` or a leg hook broken over two lines was invisible to the guard at precisely the place it was most likely to occur.
-Tags are blanked rather than deleted, so reported line numbers still point at the real line, and both checks are also run against the raw file so an attribute value stays covered: every slide carries a `<title>` and an `aria-label`, which are authored copy a hook could hide in just as easily as a banned figure could.
+Matching the raw file missed anything spanning an inline tag, and a headline here may carry an explicit `<br>` mid-sentence (see the line-break preference below), so `71<br>movements` or a leg hook broken over two lines was invisible to the guard at precisely the place it was most likely to occur.
+Tags are blanked rather than deleted, so reported line numbers still point at the real line, and both checks are also run against the raw file so an attribute value stays covered: every slide carries a `<title>`, and some carry an `aria-label` as well, both of which are authored copy a hook could hide in just as easily as a banned figure could.
 
 That last check is a deliberate **superset** of the rule: it guards all 12 A/B leg hooks plus the angle bank's hooks and the mined review quotes, so it is stricter than "no A/B leg hook verbatim" requires.
 It parses the frozen files live rather than hard-coding a hook list, so it cannot drift out of date.
@@ -200,8 +200,11 @@ These are the traps specific to this package, recorded so a future editor does n
 - **No AI mention.** Keeping AI out of all five entirely is the simplest safe path, so none of them owes the AI disclosure.
 - **No social proof.** Zero users, downloads, ratings, reviews, and testimonials exist, and nothing here implies otherwise.
 - **No download CTA, and no destination promised on a slide.** There is no App Store listing, so the status line burned into the closing slide of all five is exactly "iOS, not released yet." and stops there. "Link in bio." lives in the five `caption.md` files only, deliberately: a caption is editable after posting and a rendered PNG is not, and neither the profile nor the domain that a bio link would point at is confirmed yet (the account is a Gate 0 blocker above, and `../08-redteam/pre-publication-checklist.md` blocks any asset carrying a URL until the domain is decided). If the bio destination does not exist at post time, drop that one caption line; nothing has to be re-rendered.
-- **No competitor named, and no competitor motive claimed.** Slide copy describes mechanisms ("a workout that needs a server has already chosen when"), never why any company chose one. "Most" is the ceiling on every generalization; "every" appears nowhere.
-- **No streak, countdown, challenge, or "day N of" framing** as a device, per section 7 rule 8. The mechanic is named once per carousel, and only to say it was not built.
+- **No competitor named, and no competitor motive claimed.** Slide copy describes mechanisms ("a workout that needs a server has already chosen when"), never why any company chose one.
+  Keep a generalization bounded to what its subject can settle.
+  A universal about Rep Today's own design is fine, because the code settles it: "Every movement in Rep Today is bodyweight" is checkable and checked (row 5.2 of `claim-verification.md`).
+  A universal about other apps, other companies, or what most people do is not, because nothing here can settle it, and that is the claim this bullet exists to keep out.
+- **No streak, countdown, challenge, or "day N of" framing** as a device, per section 7 rule 8. A slide does not have to name one of these mechanics at all, and naming none is the easiest way to satisfy the rule. If a slide does name one, it may only be to say it was not built, and never to use it as a device.
   That negation is deliberately *not* an absolute, and the difference is load-bearing: the app does surface one chain-shaped number, `Best run: N weeks on goal.` (`Views/Ready/ReadyView.swift:365`, `Views/Progress/ProgressTabView.swift:210`), so carousel 4 slide 2 names it rather than claiming nothing of the kind exists.
   It is a historical maximum recomputed over the full log history (`Services/Consistency/ConsistencyScore.swift:174-194`), which is why "only counts up" is true of it and why "no streaks anywhere" would not be. Do not re-tighten this back to the absolute.
 - **No emojis**, in slides or captions.
@@ -272,7 +275,7 @@ All of it lives in one shared `carousel.css`, so the brand tokens have a single 
 
   An earlier revision drove this with a single auto margin, so any slide carrying one pressed its content against the bottom edge while the rest sat near the middle. Across a swipe that read as a rendering fault rather than as deliberate whitespace, which is why the layout is now zone-based and why `.spacer` and `.anchor` no longer exist.
 
-- **Headline line breaks are explicit.** Headlines carry `<br>` rather than relying on the browser, because a fixed canvas makes explicit breaks predictable and because auto-wrapping stranded single short words ("A missed day moves the / number. It cannot empty / it."). Two slide-02 headlines also dropped from Display to H1, which fits them in two clean lines instead of a widowed three and means every non-cover slide now sits in the H1/H2 range. `widow-check.py` is the guard, and it measures rather than guesses: see below.
+- **Prefer an explicit `<br>` on any headline that wraps.** A fixed canvas makes an explicit break predictable, and auto-wrapping is what stranded single short words ("A missed day moves the / number. It cannot empty / it."). This is a preference for the editor rather than a property of the folder: a headline short enough to sit on one line needs no break, and where a headline does wrap the break belongs in the markup rather than in the browser's hands. Two slide-02 headlines also dropped from Display to H1, which fits them in two clean lines instead of a widowed three and means every non-cover slide now sits in the H1/H2 range. `widow-check.py` is the guard, and it measures rather than guesses: see below.
 
 - **Swipe affordance: the cover only.** Slide 1 of every carousel carries a quiet "Swipe" in the bottom rail and no interior slide does. Instagram already renders its own dot indicators once a reader is inside the post, so repeating the instruction on six of seven slides is noise, and the cover is the only slide where a reader does not yet know there is more. The rule is uniform across all five carousels; the bottom rail reserves the space on every slide either way, so the composition does not shift between a cover and an interior.
 
