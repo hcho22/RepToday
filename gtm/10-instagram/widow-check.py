@@ -2,10 +2,11 @@
 """Headline widow check for the rendered carousel slides.
 
 A single short word stranded on its own line is a defect at these type sizes
-("A missed day moves the / number. It cannot empty / it."). Headlines here carry
-explicit <br> breaks rather than relying on the browser, because the canvas is a
-fixed size and explicit breaks are predictable. Explicit breaks are also easy to
-invalidate: any copy edit can re-widow a line silently. This is the guard.
+("A missed day moves the / number. It cannot empty / it."). Where a headline
+wraps, the break preferably sits in the markup as an explicit <br> rather than in
+the browser's hands, because the canvas is a fixed size and an explicit break is
+predictable. Either kind of line is easy to invalidate, though: a copy edit can
+silently move an explicit break or shift an auto-wrap. This is the guard.
 
 It measures real line boxes rather than guessing. Each slide is copied beside
 its original (so the relative stylesheet link still resolves), a measuring

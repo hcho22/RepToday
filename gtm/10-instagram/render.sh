@@ -44,7 +44,7 @@ fi
 
 # Each carousel argument is reduced to a bare directory name here, before
 # anything is built from it, so every consumer below sees the same normalized
-# form: the render loop, the scratch filename, and the three guards that are
+# form: the render loop, the scratch filename, and the two guards that are
 # handed this array verbatim at the end.
 #
 # Tab completion in both bash and zsh appends a trailing slash, and a

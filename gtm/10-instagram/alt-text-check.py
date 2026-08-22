@@ -36,8 +36,8 @@ Only document metadata is outside the canvas and exempt.
 Comparison is verbatim up to two normalizations, both of which are about the
 transport rather than the words:
 
-  * Whitespace collapses, and a tag becomes a space. A headline carries explicit
-    <br> breaks that alt text writes as one flowing sentence.
+  * Whitespace collapses, and a tag becomes a space. A headline may carry an
+    explicit <br>, and alt text writes that headline as one flowing sentence.
   * Quote glyphs are unified. Alt text nests slide copy inside a double-quoted
     string, so a slide that quotes something itself has to switch to single
     quotes there (carousel 1 slide 6, `What "no deciding" means here, exactly.`).

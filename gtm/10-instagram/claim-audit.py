@@ -97,7 +97,8 @@ def blank_tags(text):
     A reader sees a headline, not its markup, so the string and frozen-hook
     checks have to see it the same way: "71<br>movements" and a leg hook broken
     across two lines are violations that matching the raw file misses entirely,
-    and headlines here carry explicit <br> exactly where a break would land.
+    and a headline here may carry an explicit <br> mid-sentence, which is
+    exactly where such a split is most likely to land.
     Blanking rather than deleting keeps every byte offset intact, so the line
     numbers reported below still point at the real line.
     """

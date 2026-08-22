@@ -144,7 +144,7 @@ Requiring one non-Paper pixel inside the safe area turns "nothing is clipped" in
 
 Also runs automatically at the end of `render.sh`.
 
-Headlines carry explicit `<br>` breaks, which are predictable on a fixed canvas but easy to invalidate: any copy edit can silently re-widow a line, and a lone short word stranded on its own line is a defect at this type size.
+A lone short word stranded on its own line is a defect at this type size, and a headline's line break is easy to invalidate whichever way it was set: where a headline carries an explicit `<br>`, a copy edit around it can silently re-widow the line, and where the wrap is left to the browser, it moves on its own as the words change.
 This guard measures **real line boxes** rather than guessing at them.
 It copies each slide beside its original so the relative stylesheet still resolves, injects a measuring script, and has headless Chrome walk every word with a `Range`, group words by the top of their client rect, and report the resulting lines.
 That copy has to land in a tracked directory, so it is named uniquely per run and removed afterwards, and `.gitignore` carries the pattern as the backstop for a run killed before it can clean up.
@@ -169,7 +169,7 @@ That is the same class of drift the README correction below caught, where a summ
 `claim-verification.md` originally asserted this property from a script that was run once by hand and not committed; this is that assertion made standing, and it is the one guard here that checks a *correspondence* rather than a format.
 
 It asserts that every copy-bearing element on every slide appears verbatim inside its own slide's alt-text paragraph, and not the reverse: alt text also describes layout, colour and the Ready Mark, none of which has an on-slide string.
-Two normalizations are allowed, both about transport rather than words: whitespace collapses and a tag becomes a space (headlines carry explicit `<br>` that alt text writes as one flowing sentence), and quote glyphs are unified (alt text nests slide copy inside a double-quoted string, so carousel 1 slide 6's `What "no deciding" means here, exactly.` has to switch to single quotes there).
+Two normalizations are allowed, both about transport rather than words: whitespace collapses and a tag becomes a space (a headline may carry an explicit `<br>`, and alt text writes that headline as one flowing sentence), and quote glyphs are unified (alt text nests slide copy inside a double-quoted string, so carousel 1 slide 6's `What "no deciding" means here, exactly.` has to switch to single quotes there).
 Nothing else is relaxed: a changed, dropped, or reordered word fails.
 It carries the same input floor as the other three, and for the same reason.
 
