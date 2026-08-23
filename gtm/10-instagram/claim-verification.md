@@ -1,6 +1,6 @@
 # Instagram carousels: behavioral claim verification
 
-Every behavioral claim across all 56 slide HTML files and all 8 `caption.md` files, checked against the shipped iOS source.
+Every behavioral claim across every slide HTML file and every `caption.md` file, checked against the shipped iOS source.
 
 ## Why this file exists
 
@@ -218,6 +218,64 @@ Caption-only claims: none. The caption's scene sentences restate the recognition
 
 ---
 
+## Carousel 12: "The way back is gentle."
+
+This carousel goes deep on the return-after-a-gap experience, so two precise things are recorded before the table, because both are exactly where the copy could have drifted.
+
+**The "celebration" is a scoring treatment, never a screen.** The brand deck (Hero B) and one frozen PMF angle (P13) both say the app "celebrates" a comeback, but F12 established - and the current source confirms - that nothing the user can see marks a return: `wasReturn` is read only by the scorer (`Services/Consistency/ConsistencyScore.swift:84`), the policy exclusion (`Services/Programmer/DeterministicSessionPolicyService.swift:208`), and the swap ease (`Services/Engine/ExerciseSwap.swift:170`); it reaches the log write and one telemetry property and **no view**. There is no welcome-back copy anywhere in `Views/`. So no slide claims a banner. Slide 6 states the honest version instead - the comeback is counted in the *score*, not on a *screen* - and says so in as many words ("It is not a banner and not a badge").
+
+**Mid-week versus settled-week, stated precisely (the F3/F11 nuance the score's layers create).** The score is a weighted rolling average whose in-progress week is bucket 0 at the **highest** recency weight (`ConsistencyScore.swift:110`, `:114`, `:164-166`), so a fresh week begins at zero adherence and climbs as sessions land. A comeback session does not dodge this by existing; it resolves it *once logged*: the moment a `wasReturn` session is recorded, that week is in `returnWeeks` and its adherence is set to a full `1.0` regardless of count (`:125-128`). So "counts as a full week" (slide 6) is a **week-level** treatment that takes effect when the comeback session is completed - not a mid-session UI event and not an automatic pre-session bump.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 12.1 | "The way back is gentle." | `slide-01.html:20` | Supported by 12.2 to 12.4: the Return override serves the first session back easy and winnable | true |
+| 12.2 | "A week away changes the next session." plus "Go about seven days without finishing a session, and the one waiting when you come back is built as a comeback, not a normal day." | `slide-02.html:16-17` | `Services/Engine/ReturnOverride.swift:38` (`returnThresholdDays = 7`), `:64-68` (`isReturn`: gap at or past the threshold), `:74-86` (`daysSinceLastSession`, measured from the most recent completed log) | true |
+| 12.3 | "It meets you where you are now, not where you left off." plus "However hard you were training before the gap, the comeback is capped to an easier level, so a strong past week can never serve you a punishing one." | `slide-03.html:16-17` | `Services/Engine/ReturnOverride.swift:53` (`returnMaxDifficulty = 2`), `:94-98` (`returnPool` caps the eligible pool to that tier), `:50-53` (doc: a strong pre-gap history cannot serve a punishing tier) | true |
+| 12.4 | "The catch-up is spread out, never loaded onto day one." plus "The first session back asks for less, not more. Whatever readjustment the time away calls for is eased in over the next few sessions, never dumped on the one you returned with." | `slide-04.html:16-17` | `Services/Engine/ReturnOverride.swift:48` (`reentryFloorScale = 0.7`), `:110-111` (the Return serves that eased volume floor), `:40-43` and `:118-125` (the Re-entry Ramp walks volume back over `rampSessions = 3`), `:5-7` and `:19-25` (doc: the readjustment is spread across the following sessions, never loaded onto the Return) | true |
+| 12.5 | "The weeks you were gone are not counted against you." plus "Consistency in Rep Today is a rolling average of showing up, not a run of days. The empty weeks a comeback closes are dropped from that average, not scored as misses." | `slide-05.html:16-17` | `Services/Consistency/ConsistencyScore.swift:102-140` (weighted rolling average of weekly adherence), `:164-166` (linear recency weight), `:81` and `:204-212` (bucketed by whole weeks, never days), `:118-123` and `:148-159` (empty gap weeks a Return closed are excused from the average) | true |
+| 12.6 | "The session you come back with counts as a full week." plus "It is not a banner and not a badge. The comeback is counted in the score instead: that one session lands as a full week, so coming back can only steady your number or rebuild it, never lower it." | `slide-06.html:16-17` | `Services/Consistency/ConsistencyScore.swift:125-128` (a Return week scores adherence `1.0`), `:84` (`wasReturn` stamped from the log), `:21-24` (doc: a comeback cannot reduce the score, only preserve or rebuild it); "not a banner and not a badge" is settled by the visible-surface absence in F12 and the section note above | true (caveat: see the section note and F12; "counts as a full week" is week-level, resolved once the comeback session is logged) |
+| 12.7 | "The comeback matters most." plus "So it is the session Rep Today makes the easiest." | `slide-07.html:15-16` | The "easiest" half is the Return override of 12.2 to 12.4 (`Services/Engine/ReturnOverride.swift`) | true (caveat: "matters most" is intent, not a mechanic; the easiest-session half is 12.2 to 12.4) |
+
+Caption-only claims: none. Every caption sentence restates a slide claim above.
+
+---
+
+## Carousel 13: "Straight answers."
+
+Every answer is settled against shipped behaviour, not the brand deck. This carousel deliberately makes **no** AI claim on any slide or in the caption, so it owes no AI disclosure (the launch checklist's disclosure rule triggers only on an AI mention).
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 13.1 | "Straight answers." plus "The questions people ask" | `slide-01.html:19-20` | Cover label for the FAQ; the answers are settled by 13.2 to 13.7 | not code-checkable (cover framing) |
+| 13.2 | "Yes. Every workout is free." plus "Not a trial, not a teaser. Every workout Rep Today builds is free to do, with no session locked behind a purchase." | `slide-02.html:16-17` | `Views/Paywall/PaywallView.swift:93` ("Your workouts are always free"); `Views/Progress/ProgressTabView.swift:100-102` ("The core loop and the basic history above are never gated"); the paywall's only entry point is the Progress upsell (`:63-72`, `:103-107`) | true |
+| 13.3 | "Only a deeper look at your own progress." plus "Premium adds a richer view of how your training is balancing out over time. It never touches the workouts, and the core of the app stands on its own without it." | `slide-03.html:16-17` | `Views/Progress/ProgressTabView.swift:100-107` (only the `DeepAnalyticsSection` is entitlement-gated; the core loop and basic history are never gated); `Views/Paywall/PaywallView.swift:100-105` (the gated depth: pattern balance, weekly volume, difficulty mix), `:93` | true |
+| 13.4 | "No account, no sign-up." plus "The app works without signing in to anything. Sign in with Apple is there if you want it, and skipping it changes nothing about the workouts." | `slide-04.html:16-17` | `ViewModels/OnboardingViewModel.swift:286-292` (`resolvedIdentifier` falls back to a local identifier, resolves offline, never blocks `finish()`); `Views/Onboarding/OnboardingView.swift:238-250` (Sign in with Apple is optional and skippable, as row 1.14); `Persistence/PersistenceController.swift:5-17` (the core loop always works without an account). The copy was softened off an earlier "sync across devices" clause, which conflated Sign in with Apple identity with CloudKit's iCloud-account sync; the accurate sync statement lives on slide 6 (13.6) | true |
+| 13.5 | "Yes. Airplane mode is fine." plus "Every session is built on your phone, by your phone, the moment you open it. Nothing is fetched, so a plane, a basement, or a dead zone changes nothing." | `slide-05.html:16-17` | `Services/Mock/MockServices.swift:28-50` and every file under `Services/Engine/` imports Foundation only; the library decodes from the app bundle at `Services/Mock/MockExerciseService.swift:86-97`, never fetched (as rows 1.21, 5.6, 5.7) | true (caveat: scoped to session generation, as F9) |
+| 13.6 | "Your history is yours. Sharing is optional." plus "Your workout history lives on your device and syncs only to your own private iCloud, never to us. The one thing you can share is anonymous usage data, on unless you turn it off in Settings, and counted against a random number rather than your name." | `slide-06.html:16-17` | `Persistence/PersistenceController.swift:5-17` (the durable store is on-device; sync is additive and falls back to local-only), `:9` and `:29-31` (the Cloud store mirrors to the user's own private CloudKit database); `Views/Settings/SettingsView.swift:23` (the opt-out `Toggle` bound to `AppState.analyticsEnabled`), `:179` ("Share anonymous usage data"), `:192-195` (counted against a random per-install number, never name, email, or device); the gate defaults on, so "on unless you turn it off" is accurate | true |
+| 13.7 | "Then just start." plus "The session is ready when you are." | `slide-07.html:15-16` | `ViewModels/ReadyViewModel.swift:183`, `:407-415` (the session is generated inside `load()`, before the Ready screen renders), as rows 1.7, 1.8, 3.3 | true |
+
+Caption-only claims: none. Every caption sentence restates a slide claim above.
+
+---
+
+## Carousel 14: "It is coming to iOS."
+
+A launch announcement, written to stay true across the whole pre-launch window: no slide names a date, promises a listing, or carries a URL. The product-mechanic claims reuse the same code the pinned carousels are settled against; the status claims are true because the pre-publication checklist still carries the listing as unbuilt.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 14.1 | "It is coming to iOS." | `slide-01.html:20` | Rep Today is an iOS app (the whole `ios/` target; repo-root `AGENTS.md`); the pre-launch framing is honest because no App Store listing exists | not code-checkable (pre-launch status / positioning) |
+| 14.2 | "A complete session, already on the screen." plus "You open Rep Today and the workout is already built and waiting. No browsing and no questions between opening it and starting." | `slide-02.html:16-17` | `ViewModels/ReadyViewModel.swift:183`, `:407-415` (generate runs inside `load()`, before render); no catalog or picker on the path (as rows 1.7, 1.8, 1.9, 1.13) | true |
+| 14.3 | "No equipment. No account. No signal." plus "Bodyweight movements only, built on your phone with no connection, and no sign-in standing between you and your first session." | `slide-03.html:16-17` | Bodyweight: `Resources/Exercises.json` (every entry `equipment: []`), enforced `Services/Mock/MockExerciseService.swift:143-145` (as 1.20, 5.2); offline generation as 1.21, 5.6; the local-identifier no-account path as 1.14 and 13.4 | true |
+| 14.4 | "As much time as you have. Five minutes, up to sixty." plus "Tell Rep Today how long you have and it sizes the whole session to fit, anywhere from a five-minute reset to a full hour." | `slide-04.html:16-17` | `Services/Programmer/DefaultDurationLearning.swift:37` (`chipValues = [5, 10, 15, 20, 30, 45, 60]`, the vocabulary the user actually touches, spanning five to sixty), consumed at `ViewModels/ReadyViewModel.swift:59`; the engine accepts the whole span (as 1.4, 4.11) | true |
+| 14.5 | "For the people who keep meaning to move." plus "Busy, desk-bound, out of patience for planning a workout, and looking for one that is already decided by the time they open the app." | `slide-05.html:16-17` | The "already decided by the time they open the app" half is 14.2; the audience description is `positioning.md`'s "busy, desk-bound adults" | true (caveat: the audience description is positioning, not a mechanic; the readiness half is 14.2) |
+| 14.6 | "Not out yet, and no countdown to it." plus "Rep Today is an iOS app that has not been released. There is no App Store page, and no date to promise here: this is a heads-up, not a launch clock." | `slide-06.html:16-17` | Pre-launch status is true: no App Store listing exists (`../08-redteam/pre-publication-checklist.md`; the README pre-publication table). No mechanic; the honest status beat | not code-checkable (pre-launch status statement) |
+| 14.7 | "When it opens, it opens ready." plus "That is the whole idea behind Rep Today." | `slide-07.html:15-16` | `ViewModels/ReadyViewModel.swift:183`, `:407-415` (opens to an already-built session), as 14.2 | true |
+
+Caption-only claims: the caption closes on "iOS, not released yet. Join the waitlist at the link in bio.", which names the bio link rather than a destination on any slide (per the folder's rule that no slide carries a URL or a CTA). Not a behavioural claim about the app.
+
+---
+
 ## Findings
 
 ### Carousels 6 to 8 (written from code; one deliberate routing-around recorded)
@@ -348,7 +406,7 @@ Both lines now carry the qualification, and the bullet records *why* the negatio
 
 This finding's own first fix was incomplete, and the residue is worth recording.
 It corrected "exactly once" but left the rest of the sentence asserting that each carousel names the mechanic - which no carousel but 4 does, and which carousel 4 does for four mechanics at once rather than one.
-The bullet is now written as guidance for a future slide (name one only to say it was not built, never as a device) rather than as a description of what the five carousels did, so there is no per-carousel universal left to falsify.
+The bullet is now written as guidance for a future slide (name one only to say it was not built, never as a device) rather than as a description of what the carousels did, so there is no per-carousel universal left to falsify.
 The general lesson is the same one F17 records: a sentence stating a style intention in the past tense reads as a verified description, and the next editor has no way to tell which it was.
 
 **F17. The README's own note explaining why carousel 5 keeps the hotel room rested on a false premise, taken from a search too narrow to establish it.**
@@ -456,7 +514,7 @@ When an approved binary exists, the rows above are the checklist to walk against
 The four guards in this folder cover format and correspondence, not truth, and all four pass on this commit.
 
 ```bash
-./gtm/10-instagram/render.sh    # re-renders 56 slides, then runs all four guards
+./gtm/10-instagram/render.sh    # re-renders every slide, then runs all four guards
 ```
 
 `fit-check.py` confirms every slide is exactly 1080x1350 with a clean 72px margin band, `widow-check.py` measures real line boxes and confirms no large-type line is a stranded short word, `claim-audit.py` confirms no banned string and no verbatim reuse of a pre-registered PMF hook, and `alt-text-check.py` confirms every slide's copy is still quoted verbatim in its own alt text.
