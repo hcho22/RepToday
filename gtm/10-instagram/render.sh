@@ -2,7 +2,7 @@
 #
 # Regenerate every Instagram carousel PNG from its HTML source.
 #
-#   ./gtm/10-instagram/render.sh            # render all eight carousels
+#   ./gtm/10-instagram/render.sh            # render every carousel
 #   ./gtm/10-instagram/render.sh carousel-1-you-do-not-pick   # render one
 #
 # The HTML is the source of truth; the PNGs under each carousel-*/render/ are

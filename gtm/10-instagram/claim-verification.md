@@ -1,6 +1,6 @@
 # Instagram carousels: behavioral claim verification
 
-Every behavioral claim across all 56 slide HTML files and all 8 `caption.md` files, checked against the shipped iOS source.
+Every behavioral claim across every slide HTML file and every `caption.md` file, checked against the shipped iOS source.
 
 ## Why this file exists
 
@@ -406,7 +406,7 @@ Both lines now carry the qualification, and the bullet records *why* the negatio
 
 This finding's own first fix was incomplete, and the residue is worth recording.
 It corrected "exactly once" but left the rest of the sentence asserting that each carousel names the mechanic - which no carousel but 4 does, and which carousel 4 does for four mechanics at once rather than one.
-The bullet is now written as guidance for a future slide (name one only to say it was not built, never as a device) rather than as a description of what the five carousels did, so there is no per-carousel universal left to falsify.
+The bullet is now written as guidance for a future slide (name one only to say it was not built, never as a device) rather than as a description of what the carousels did, so there is no per-carousel universal left to falsify.
 The general lesson is the same one F17 records: a sentence stating a style intention in the past tense reads as a verified description, and the next editor has no way to tell which it was.
 
 **F17. The README's own note explaining why carousel 5 keeps the hotel room rested on a false premise, taken from a search too narrow to establish it.**
@@ -514,7 +514,7 @@ When an approved binary exists, the rows above are the checklist to walk against
 The four guards in this folder cover format and correspondence, not truth, and all four pass on this commit.
 
 ```bash
-./gtm/10-instagram/render.sh    # re-renders 56 slides, then runs all four guards
+./gtm/10-instagram/render.sh    # re-renders every slide, then runs all four guards
 ```
 
 `fit-check.py` confirms every slide is exactly 1080x1350 with a clean 72px margin band, `widow-check.py` measures real line boxes and confirms no large-type line is a stranded short word, `claim-audit.py` confirms no banned string and no verbatim reuse of a pre-registered PMF hook, and `alt-text-check.py` confirms every slide's copy is still quoted verbatim in its own alt text.
