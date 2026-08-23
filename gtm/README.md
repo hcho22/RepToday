@@ -30,7 +30,7 @@ open 04-video/launch-video.mp4
 | `07-thesis/` | Investment thesis with kill criteria K0-K9, plus the pre-registered K8 wedge-comprehension coding rubric (`k8-wedge-comprehension-rubric.md`) |
 | `08-redteam/` | v2 personas + dossier + pre-publication checklist + App Store privacy nutrition labels spec (`app-store-privacy-labels.md`), v1 persona history |
 | `09-extras/` | Investor teaser, App Store screenshot comps, social launch kit, review-response playbook (invented deliverable), `marketing-agent/` build spec + creative loop |
-| `10-instagram/` | Launch profile presence: five 7-slide carousels authored as HTML and rendered to PNG, with captions and alt text, a behavioral claim-verification table (`claim-verification.md`), and four re-runnable guards wired into `render.sh`; Gate 0 blocks posting (see the folder README) |
+| `10-instagram/` | Launch profile presence: eight 7-slide carousels authored as HTML and rendered to PNG, with captions and alt text, a behavioral claim-verification table (`claim-verification.md`), and four re-runnable guards wired into `render.sh`; Gate 0 blocks posting (see the folder README) |
 | `decisions-log.md` | Every decision moving this package or its kill criteria (v2 run: D-101..D-107; outside a run: D-108..D-111), tagged by who decided |
 | `sources.md` | Every URL cited, with fetch timestamp (v1 + v2 runs) |
 | `self-grade.md` | Self-grade record |

@@ -236,7 +236,7 @@ The shipped engine contradicts every part of the pillar-5 framing:
 
 Publishing "co-primary" or "half" would therefore be a false claim about the product. Rather than publish it or drop the mobility post, carousel 7 argues the true story the engine does support - quality over quantity: the mobility you get is deliberately chosen, matched to the day's lead movement (7.3), biased toward hip and posture relief when you sit all day (7.4), rotated for variety (7.5), and honestly scoped as the frame around a strength-led session rather than half of it (7.6).
 
-This is the same routing-around the README's "Two stale sources this folder had to route around" note already records for pillar 5, which said pillar 5 was "unused in all five carousels because publishing it would be a false claim about the shipped product". Carousel 7 is the first asset to build on the corrected, code-true version of the underlying idea, and it makes none of the claims that note forbids. Recorded prominently because a future editor who reads pillar 5 will be tempted to restore the co-primary / half framing, and it is false.
+This is the same routing-around the README's "Two stale sources this folder had to route around" note already records for pillar 5, whose "co-primary" / "half the session" framing is "never published as written" and which records that "Carousels 1 to 5 do not use pillar 5 at all". Carousel 7 is the first asset to build on the corrected, code-true version of the underlying idea, and it makes none of the claims that note forbids. Recorded prominently because a future editor who reads pillar 5 will be tempted to restore the co-primary / half framing, and it is false.
 
 ### Corrected in this commit
 
@@ -456,7 +456,7 @@ When an approved binary exists, the rows above are the checklist to walk against
 The four guards in this folder cover format and correspondence, not truth, and all four pass on this commit.
 
 ```bash
-./gtm/10-instagram/render.sh    # re-renders 35 slides, then runs all four guards
+./gtm/10-instagram/render.sh    # re-renders 56 slides, then runs all four guards
 ```
 
 `fit-check.py` confirms every slide is exactly 1080x1350 with a clean 72px margin band, `widow-check.py` measures real line boxes and confirms no large-type line is a stranded short word, `claim-audit.py` confirms no banned string and no verbatim reuse of a pre-registered PMF hook, and `alt-text-check.py` confirms every slide's copy is still quoted verbatim in its own alt text.
