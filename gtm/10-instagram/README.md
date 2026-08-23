@@ -63,7 +63,7 @@ That is what these carousels do.
 
 ### The headline adjustment, and why it was necessary
 
-Two of the first five carousels were briefed under working titles that turned out to be **verbatim A/B leg hooks**:
+Two of these carousels were briefed under working titles that turned out to be **verbatim A/B leg hooks**:
 
 | Working title | Collides with | On-slide headline used instead |
 |---|---|---|
