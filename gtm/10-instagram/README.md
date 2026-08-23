@@ -27,6 +27,9 @@ Each is 7 slides at 1080x1350 (Instagram 4:5 portrait), authored as HTML and ren
 | 6 | `carousel-6-free-forever/` | Evergreen | Free forever. Every workout is free and unlimited; the one paid tier adds only a deeper analytics view and never gates the core loop (pillar 2). |
 | 7 | `carousel-7-mobility-pillar/` | Evergreen | Mobility, chosen on purpose. The warm-up and cooldown are matched to the day's movement and biased toward hip and posture relief for desk workers - a deliberate frame, not co-primary (see the stale-source note below and F18). |
 | 8 | `carousel-8-9pm-problem/` | Evergreen | The 9pm recognition. The ICP's last window of the day, and the decision the app takes off your plate. |
+| 12 | `carousel-12-comeback/` | Evergreen | Returning after a gap, in depth. The comeback session is served easier (difficulty capped, volume eased, the catch-up spread over later sessions) and the away weeks are forgiven by the score. The "celebration" is a scoring treatment, never a screen: no slide claims a welcome-back banner, because none exists (F12). |
+| 13 | `carousel-13-honest-faq/` | Evergreen | The honest FAQ. Is it free (yes, the workouts; premium adds only a deeper progress view), do I need an account (no), does it work offline (yes), what about my data - each answered against the code. Deliberately makes no AI claim, so it owes no AI disclosure. |
+| 14 | `carousel-14-coming-soon/` | Evergreen | The launch announcement, written to stay true across the whole pre-launch window. What opens, what it needs, and an honest "not out yet" beat with no date and no App Store page. The waitlist call to action lives in the caption only and points to the bio link. |
 
 ### Pinned versus evergreen
 
