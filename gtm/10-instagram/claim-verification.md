@@ -365,7 +365,8 @@ It is recorded here rather than fixed, in the same spirit as `reptoday-weekly-go
 
 ## Standing checklist item
 
-`../08-redteam/pre-publication-checklist.md` carries "verify every behavioural claim against the actual approved binary before launch day".
+`../08-redteam/pre-publication-checklist.md` carries "Verify every behavioral claim in the site/video/screenshots against the actual approved binary before launch day".
+The item enumerates the surfaces that existed when it was written; these carousels are the same class of pre-launch asset, so the item is read as covering them too.
 
 This pass discharges that item **for the Instagram surface at the source level**, which is the strongest form available before a build exists to install.
 It is not a binary check and does not claim to be: it reads shipped source, not a signed artifact.
