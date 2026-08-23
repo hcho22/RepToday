@@ -1,6 +1,6 @@
 # Instagram carousels: behavioral claim verification
 
-Every behavioral claim across all 35 slide HTML files and all 5 `caption.md` files, checked against the shipped iOS source.
+Every behavioral claim across all 56 slide HTML files and all 8 `caption.md` files, checked against the shipped iOS source.
 
 ## Why this file exists
 
@@ -157,7 +157,86 @@ Caption-only claims: none.
 
 ---
 
+## Carousel 6: "The workout is the free part."
+
+Positioning pillar 2 (free means the workouts, forever; premium gates only depth).
+Written from code, not from the pillar: pillar 2 also lists premium as gating "the earned Strength Phase", which the code does not support and this carousel does not claim (see the note under the table, and F18).
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 6.1 | "The workout is the free part." | `slide-01.html:20` | Settled by 6.2, 6.6, 6.7 (the whole loop is free; only the deeper analytics view is paid) | true |
+| 6.2 | "Every session. Unlimited." plus "The complete session Rep Today opens to is free, every time, with no limit on how many you generate." | `slide-02.html:16-17` | `Services/Subscription/StoreKitSubscriptionService.swift:10-11` ("Never gates the loop. Premium only unlocks the depth layer (US-M02). Free is unlimited core workouts forever"); `Services/Subscription/StoreKitFacade.swift:3-4` ("the free tier keeps working unlimited, so a StoreKit failure never blocks a workout"); the generation path carries no entitlement gate (`ViewModels/ReadyViewModel.swift:399-415`; `Services/Engine/SessionAssembly.swift` has no premium/subscription reference) | true |
+| 6.3 | "No account to make, and no card to enter." | `slide-02.html:17` | `ViewModels/OnboardingViewModel.swift:286-292` (local UUID fallback, no account required - as row 1.14); the open-to-Start path never reaches a purchase (`ViewModels/PaywallViewModel.swift:7-9`; the paywall's sole call site is `Views/Progress/ProgressTabView.swift:63-72`) | true |
+| 6.4 | "A workout you have to pay to reach has already chosen who gets to do it." | `slide-03.html:16` | Describes a mechanism in the abstract, names no company and claims no motive - the free-tier analog of row 5.8 and the same construction the folder blesses there | not code-checkable (argument) |
+| 6.5 | "Rep Today does not. The session is there the moment you open it, and starting it never costs anything." | `slide-03.html:17` | Session assembled before render (`ViewModels/ReadyViewModel.swift:152` `load()`, `:399-415` `generate()`; as rows 1.7/1.8); Start reaches no paywall (`Views/Ready/ReadyView.swift:188-206`, no entitlement reference; `StoreKitSubscriptionService.swift:10-11`) | true |
+| 6.6 | "One thing is paid: a deeper view." plus "Pattern-by-pattern balance, your weekly training volume, and how your sessions have felt over time. That is what the paid tier unlocks, and it is the only thing it unlocks." | `slide-04.html:16-17` | `Views/Progress/ProgressTabView.swift:822` (the verbatim in-product feature line: "Unlock pattern-by-pattern balance, your weekly training volume, and how your sessions have felt over time."), `:630-653` (`DeepAnalyticsSection` = pattern balance, weekly volume, difficulty mix); `Services/Progress/ProgressAnalytics.swift:13-16` (only `deep` is gated, at the render boundary); `StoreKitSubscriptionService.swift:10-11` ("Premium only unlocks the depth layer") | true |
+| 6.7 | "The workouts stay free." | `slide-04.html:17` | `Views/Progress/ProgressTabView.swift:826` ("Your workouts are always free - Premium just adds the deeper view"); `StoreKitSubscriptionService.swift:10-11` | true |
+| 6.8 | "One quiet card, in one place." plus "The invitation to go deeper is a single card on the Progress tab. It is never a popup, never mid-session, and it never stands between you and Start." | `slide-05.html:16-17` | `Views/Progress/ProgressTabView.swift:801-806` (`PremiumUpsellCard` = "a single quiet card, never a modal or repeated prompt"; "the only entry point; nothing here gates the core loop"), `:103-106` (rendered in place of the deep layer for free users, on the Progress tab); the paywall is presented only as a Progress-tab sheet (`:63-72`), never on the Ready/Start path | true (caveat: see F6) |
+| 6.9 | "Free is the workout. Paid is the view." plus "The paid tier only ever adds a deeper look at training you already did for free. It does not sit between you and a session, and by the way it is built, it cannot." | `slide-06.html:16-17` | `Services/Progress/ProgressAnalytics.swift:13-16` (the free/paid split "lives at the render boundary"; the analytics are computed from the user's own `WorkoutLog` history, `:1-10`); `StoreKitSubscriptionService.swift:10-11`; the generation/Start path carries no entitlement gate (structural, as 6.5) | true |
+| 6.10 | "The workouts were never the paid part." plus "Use Rep Today for as long as you like without paying anything. Premium is there if you want the deeper view, and invisible if you do not." | `slide-07.html:15-16` | `StoreKitSubscriptionService.swift:10-11` ("Free is unlimited core workouts forever"); premium surfaces only as the one opt-in card that renders when a free user opens the Progress tab's deep layer (`Views/Progress/ProgressTabView.swift:103-106`) | true |
+
+Caption-only claims: none. Every caption sentence restates a slide claim above.
+
+Pillar 2's "earned Strength Phase" is deliberately not carried on any slide: `Services/Consistency/PhaseEvaluator.swift` gates the Strength Phase on consistency and cleared entry tiers and carries no subscription/entitlement reference, so it is earned, never sold. Publishing "premium gates the Strength Phase" would be false; recorded so a future editor does not restore it. See F18 for the parallel pillar-5 routing-around.
+
+---
+
+## Carousel 7: "The warm-up is not filler."
+
+The mobility post. It deliberately does not make positioning pillar 5's "co-primary" / "half the session" claim, because the shipped engine contradicts it - see F18 for the full record. Every line below is the true, code-supported matched-bookend story.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 7.1 | "The warm-up is not filler." | `slide-01.html:20` | Thesis; settled by 7.2 to 7.6 below | true |
+| 7.2 | "Every session opens with mobility." plus "A stretch on the way in, chosen for the day. Past ten minutes, a cooldown of held stretches on the way out." | `slide-02.html:16-17` | `Services/Engine/SessionAssembly.swift:24-26` (every session opens with a `.warmup` mobility block; past `cooldownThresholdMinutes` closes with a static-stretch cooldown), `:144-153` (`warmupExerciseCount` is at least 1 at every length, so even a 5-minute session opens with a warm-up), `:155-157` (`cooldownThresholdMinutes = 10`: 15/20/30/45/60 get a cooldown, 5/10 do not - "past ten minutes"), `:1132-1134` (`cooldownBlock` draws holds first) | true |
+| 7.3 | "It matches what you are about to train." plus "Every stretch is tagged with the movements it complements, and the session opens with one that fits the day's main pattern. The way in shifts as your training does." | `slide-03.html:16-17` | `Models/Exercise.swift` `complements: [MovementPattern]` (the US-M02 tag, present on all 26 mobility movements in `Resources/Exercises.json`, load-validated); `Services/Engine/SessionAssembly.swift:1417-1419` (`leadStrengthPattern` = the day's lead strength pattern), `:1373-1385` (`leadingComplement` promotes the best-variety stretch whose `complements` names the lead pattern to the front of the bookend) | true |
+| 7.4 | "Tell it, and it leads with your hips." plus "Say you sit six or more hours most days, and the warm-up leads with hip and posture openers first, the stretches that counter a chair." | `slide-04.html:16-17` | `Views/Onboarding/OnboardingView.swift:621-629` (the onboarding toggle "I sit 6+ hours most days" sets `sitsLong`); `Services/Engine/SessionAssembly.swift:1405-1409` (`postureHipLean` stable-partitions the bookend pool so posture/hip openers lead when `sitsLong`), `:434-440` (`postureHipPatterns = [.squat, .hinge]`, the hip-dominant patterns), `:442-448` (`isPostureHipOpener` = a stretch complementing one of those) | true (caveat) |
+| 7.5 | "Rarely the same stretch twice." plus "The pool turns over on its own. What you did last time gets pushed back, and the longest-ago and never-tried stretches come first." | `slide-05.html:16-17` | `Services/Engine/SessionAssembly.swift:1336-1359` (`orderedMobility` sorts never-worked and longest-ago first), `:1433-1439` (`recentlyUsedIds` pushes the last `varietyWindow` sessions' stretches back), `:1421-1431` (`mobilityLastWorked` supplies the longest-ago ordering) | true |
+| 7.6 | "It frames the work. It is not the work." plus "Every session is strength-led. The stretches open and close it. They are not the main event, and they are not padding either: each one is chosen to earn the minute it takes." | `slide-06.html:16-17` | `Services/Engine/SessionAssembly.swift:11-12,24-26` (every session strength-led since US-M01; mobility appears only as the warm-up/cooldown bookends, never a training block); `Models/SessionPolicy.swift:37-43` (`pillarWeighting` inert - there is no mobility-share lever); "chosen to earn the minute" restates 7.3 to 7.5 | true |
+| 7.7 | "The stretch was picked on purpose." plus "Not a generic warm-up bolted on the front. One matched to the day, and to how you spend it." | `slide-07.html:15-16` | Restates 7.3 (matched to the day) and 7.4 (matched to how you sit); "generic warm-up bolted on the front" describes what this is *not*, a self-referential contrast that names no other app | true |
+
+Caption-only claims: none.
+
+The 7.4 caveat, recorded so it is not rediscovered: the shipped `sitsLong` behavior is a pure *reorder* of the fixed-count bookend pool toward posture/hip openers (`postureHipLean`), not a lean on session *size*. The in-product onboarding caption at `Views/Onboarding/OnboardingView.swift:626` ("We'll lean your shorter sessions toward mobility.") overstates that; the slide copy describes the actual reorder ("leads with hip and posture openers first"), not a size change, so it is true where the in-app caption is loose.
+
+---
+
+## Carousel 8: "It is 9pm."
+
+The 9pm day-in-life recognition. The scene beats are recognition and are marked "not code-checkable" the same way carousel 3's windows are (row 3.1); the product claims woven through are verified against code.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 8.1 | "It is 9pm." plus "The kids are down. The house is quiet." plus "You have maybe ten minutes before the couch wins. The will is there. The window is small, and it is closing." | `slide-01.html:20`, `slide-02.html:16-17` | none | not code-checkable (audience recognition; as 3.1) |
+| 8.2 | "The last thing you have energy for is a decision." plus "Not the movement. The choosing. Which app, which workout, how long, where to start. That is the part that loses to the couch." | `slide-03.html:16-17` | none | not code-checkable (framing; the decision-fatigue thesis, as 3.2) |
+| 8.3 | "The deciding is already done." plus "Open Rep Today and a full session is already on the screen, sized to the time you have. Nothing to browse, nothing to pick, nothing to plan." | `slide-04.html:16-17` | Session assembled before render (`ViewModels/ReadyViewModel.swift:152` `load()`, `:399-415` `generate()`; as 1.7/1.8/3.3); no catalog, picker, or session editor surface exists (as 1.9/3.7/3.8) | true |
+| 8.4 | "Ten minutes tonight. More when you have it." plus "If ten is wrong, one tap changes it, from 5 minutes up to 60, and the session rebuilds around the new number." | `slide-05.html:16-17` | `Views/Ready/ReadyView.swift:170-183` (one tap, no confirm step); `ViewModels/ReadyViewModel.swift:270` (`selectDuration` regenerates in place); `Services/Programmer/DefaultDurationLearning.swift:37` (`chipValues = [5, 10, 15, 20, 30, 45, 60]`, so "ten" and "5 ... 60" are real chips) - carries the F7/F16 corrected phrasing "from 5 minutes up to 60" | true |
+| 8.5 | "A patch of floor is the whole setup." plus "Bodyweight, so it needs no equipment. Built on the phone, so it needs no signal. No account between you and the first move." | `slide-06.html:16-17` | Bodyweight / no equipment (`Resources/Exercises.json`, every entry `equipment: []`, enforced `Services/Mock/MockExerciseService.swift:143-145`; as 1.20/5.2); built on phone / no signal (`Services/Mock/MockServices.swift:28-50`, engine imports Foundation only; as 1.21/5.6); no account (`ViewModels/OnboardingViewModel.swift:286-292`; as 1.14) | true (caveat: "no signal" is scoped to session generation, see F9) |
+| 8.6 | "You did not need more time." plus "You needed one less decision at the end of a long day. That is the whole idea." | `slide-07.html:15-16` | none | not code-checkable (framing; ties back to 8.2) |
+
+Caption-only claims: none. The caption's scene sentences restate the recognition beats above. No hotel room appears anywhere (carousel 5 owns that image, and pairing a hotel room with a short session would assemble AB-5 leg B), and no minute figure is paired with "counts" (AB-5 leg A), per the folder README's carousel-5 note.
+
+---
+
 ## Findings
+
+### Carousels 6 to 8 (written from code; one deliberate routing-around recorded)
+
+The three new carousels were written against the shipped source from the start, so none carries a corrected claim of its own.
+One positioning-vs-code conflict was routed around rather than published, and it is recorded here with the prominence the folder gives that class of decision.
+
+**F18. Carousel 7 is the mobility post, and positioning pillar 5's "co-primary" / "half the session" framing is false about the shipped engine, so this carousel routes around it exactly as the folder README routes pillar 5 out of carousels 1 to 5.**
+
+`positioning.md` pillar 5 ("Mobility is a pillar, not a warm-up") proofs itself as "mobility is co-primary with strength and primal in the engine's pillar weighting" and carries the hook "Half your session can be the part other apps skip." That hook is also pre-registered as angle P08, which is why quoting it verbatim in a slide or caption is a `claim-audit.py` failure; it is quoted here because `claim-verification.md` is documentation, not publishable copy, and the guard scopes the frozen-hook check to slides and captions only.
+
+The shipped engine contradicts every part of the pillar-5 framing:
+
+- US-M01 removed the Movement Practice mobility middle block and the `PillarBalance` / `PillarWeights` split machinery. `Models/SessionPolicy.swift:37-43` records `pillarWeighting` as inert ("no engine path reads this lever today"), so there is no pillar weighting for mobility to be co-primary in.
+- `Services/Engine/SessionAssembly.swift:11-12,24-26` states mobility "appears only as the warm-up and cooldown bookends, never as a training block ... there is no mobility middle block at any length", and that every session is strength-led. A blend's training minutes are essentially all strength, or strength leading a small primal minority at 41 to 60 minutes. Mobility is nowhere near half.
+
+Publishing "co-primary" or "half" would therefore be a false claim about the product. Rather than publish it or drop the mobility post, carousel 7 argues the true story the engine does support - quality over quantity: the mobility you get is deliberately chosen, matched to the day's lead movement (7.3), biased toward hip and posture relief when you sit all day (7.4), rotated for variety (7.5), and honestly scoped as the frame around a strength-led session rather than half of it (7.6).
+
+This is the same routing-around the README's "Two stale sources this folder had to route around" note already records for pillar 5, which said pillar 5 was "unused in all five carousels because publishing it would be a false claim about the shipped product". Carousel 7 is the first asset to build on the corrected, code-true version of the underlying idea, and it makes none of the claims that note forbids. Recorded prominently because a future editor who reads pillar 5 will be tempted to restore the co-primary / half framing, and it is false.
 
 ### Corrected in this commit
 
