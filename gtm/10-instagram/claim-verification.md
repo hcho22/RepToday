@@ -218,6 +218,60 @@ Caption-only claims: none. The caption's scene sentences restate the recognition
 
 ---
 
+## Carousel 9: "The enemy is friction, not you."
+
+The friction manifesto, at essay register. The show-up idea is carried underneath by the word "showing up"; no slide or caption line leads on the drill-sergeant word, per `../02-brand/positioning.md`'s discipline verdict.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 9.1 | "The enemy is friction, not you." | `slide-01.html:20` | none | not code-checkable (thesis; `positioning.md` §4, "the enemy is friction never character") |
+| 9.2 | The friction stack ("Which app." / "Which plan." / "How many minutes." / "Where you left off.") and "Each one is a small decision ... Not the effort. The deciding." | `slide-02.html:17-22` | none | not code-checkable (the friction thesis) |
+| 9.3 | "Every choice is made in advance." plus "take every decision that sits between opening the app and starting a session, and make it ahead of time." | `slide-03.html:16-17` | `ViewModels/ReadyViewModel.swift:183` (`generate()` runs inside `load()`, before the view renders the workout), `:407-415`; no picker on the path (no catalog surface in `Views/`) | true |
+| 9.4 | "The app opens straight onto a full bodyweight session, built on the phone and sized to the minutes you have, from 5 minutes up to 60. One Start button. No list to scroll, no plan to choose." | `slide-04.html:17` | `ReadyViewModel.swift:183`,`:407-415` and `Services/Mock/MockServices.swift:28-51` (`SessionAssembly.assemble` on device); `Services/Programmer/DefaultDurationLearning.swift:37` (chip vocabulary 5...60) consumed at `ReadyViewModel.swift:166`; `Views/Ready/ReadyView.swift:186`,`:197` (one Start, never gated); no catalog surface; `Resources/Exercises.json` (every `equipment: []`) | true (caveat: see F8) |
+| 9.5 | "A short session is not a compromise." plus "The shortest session the app builds is scored exactly the same as the longest." | `slide-05.html:16-17` | `Services/Consistency/ConsistencyScore.swift:83` (each log adds one to its week, duration never read), `:10-12` (`weeklyAdherence` from the count; a 5-minute session is a full show-up) | true |
+| 9.6 | "Yesterday is not a number the score keeps." plus "built from weeks, not single days ... no streak sitting there to break. A short week dents it a little, and the dent fades" | `slide-06.html:16-17` | `ConsistencyScore.swift:81-83` (bucketed by `weeksAgo`), `:10-12` (adherence from the weekly count only); no streak (as 4.1); `:164-166` (recency weight falls, so the dent fades) | true (caveats: see F11 and F15) |
+| 9.7 | "What is left is the showing up." plus "Every decision that used to stand between you and the session is handled before you arrive." | `slide-07.html:15-16` | `ReadyViewModel.swift:183`,`:407-415` (the deciding completes before render, as 1.7) | true |
+
+Caption-only claims: none. Every caption sentence restates a slide claim above.
+
+---
+
+## Carousel 10: "No account. No login. No card."
+
+The ungated entry. It deliberately does not claim "no questionnaire": there is a short one-time setup, and slide 4 names it. The claims are the absences of the account / login / card / paywall gate, each checked against code.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 10.1 | "No account. No login. No card." | `slide-01.html:20` | Sign in with Apple is optional and never gates the first session (`Views/Onboarding/OnboardingView.swift:195`; `ViewModels/OnboardingViewModel.swift:57`,`:286-291`, local-identifier fallback); the user is created `subscription: .free` (`OnboardingViewModel.swift` `buildUser`); the paywall's only presentation is `Views/Progress/ProgressTabView.swift:63-70`,`:106` | true (caveats: see F6 and F8) |
+| 10.2 | "No form stands between you and Start." plus "No email to hand over. No password to invent. No account to create. Sign in with Apple is offered, and it is optional. Decline it, and the app makes its own local identifier and moves on." | `slide-02.html:16-17` | `OnboardingViewModel.swift:29-35` (the six steps: welcome, basics, fitnessLevel, why, lifestyle, duration - no email or password step), `:57` (`signedInIdentifier` optional), `:286-291` (`resolvedIdentifier` falls back to the local `userIdentifier()`); `OnboardingView.swift:195` | true |
+| 10.3 | "Nothing to buy before you start." plus "The workouts are not behind a paywall ... no trial you have to start to reach one. The optional premium tier lives off on the Progress tab, and it adds depth rather than unlocking the workout." | `slide-03.html:16-17` | `ProgressTabView.swift:16`,`:63-70`,`:106` (the paywall's only presentation, on the Progress tab, `entry_point` `.progressUpsell`); no `PaywallView`/`showPaywall` on the Ready or player path (grep across `Views/`); the user is created `subscription: .free` | true |
+| 10.4 | "It does ask about you. Once." plus "a short setup: your body basics, how fit you are now, and how long you usually have. It asks once, it never asks you to choose a workout, and it does not come back." | `slide-04.html:16-17` | `OnboardingViewModel.swift:29-35` (steps, none a workout choice); `OnboardingView.swift:272` ("First name"), `:565` ("How active are you?"), `:658` ("How long do you usually have?"); setup gated once by `Utilities/AppState.swift` (`isOnboarded`) and `Views/RootView.swift` | true (caveat: see F5) |
+| 10.5 | "iOS asks once about Apple Health." plus "iOS asks for permission to write your finished sessions to Apple Health ... declining it changes nothing about the app." | `slide-05.html:16-17` | `Views/RootView.swift:88-89` (unconditional `.task` `requestAuthorization` on the main tabs); `Services/Health/HealthKitService.swift:31-33`,`:46-48` (share types only, read set empty), `:59-61` (a non-authorized status makes `saveWorkoutLog` a quiet no-op) | true |
+| 10.6 | "A sign-up wall turns a short window into an errand. This one has no wall." plus "the path from a cold open to the first movement holds no account, no card, and no menu, only Start." | `slide-06.html:16-17` | the concrete tail as 10.1/10.2/10.3 and `ReadyView.swift:186`,`:197` (one Start); the opening sentence is a mechanism argument that names no company | true (caveat: argument, as 5.8; the concrete tail is code-settled) |
+| 10.7 | "You show up empty-handed. That is the point." plus "No account, no login, no card. The only thing the app needs from you is that you open it." | `slide-07.html:15-16` | as 10.1/10.2/10.3 | true |
+
+Caption-only claims: none.
+
+---
+
+## Carousel 11: "The workout is decided on your phone."
+
+The under-the-hood explainer. Every mechanic is checked against the shipped Swift engine; the package's no-speed-figure and no-movement-count rules hold on every slide, so it makes no timing claim beyond "the deciding is done before you arrive", which is the same absence-of-a-decision claim carousel 1 verifies.
+
+| # | Claim | Slide | Code | Verdict |
+|---|---|---|---|---|
+| 11.1 | "The workout is decided on your phone." | `slide-01.html:20` | `Services/Mock/MockServices.swift:28-51` (`MockWorkoutEngine.generateWorkout` runs the full pipeline through `SessionAssembly.assemble`); every file under `Services/Engine` imports Foundation only | true |
+| 11.2 | "A fixed engine, not a call to a server." plus "assembled by a deterministic engine that runs entirely on the phone. Give it the same day and the same history and it builds the same session again." | `slide-02.html:16-17` | `MockServices.swift:44-51` (`SessionAssembly.assemble`); the steps are pure functions of their inputs and a caller-supplied `asOf`, so the same inputs reproduce the same session (`Services/Engine/MovementPatternFocus.swift:10-12`, `ProgressionChainSelection.swift:60-61`, `AdaptiveOverload.swift:24-27`); offline (Engine imports Foundation only) | true (caveat: "the same inputs" includes the reference date the engine reads as `asOf`) |
+| 11.3 | "It leads with the pattern you have neglected most." plus "tracks which movement patterns you have worked and how recently ... never repeats the pattern your last session led with." | `slide-03.html:16-17` | `MovementPatternFocus.swift:3-12` (ranked by staleness, stalest first, the most recent lead pattern held back), `:28-55` (`PatternStaleness` from completed, non-skipped exercises) | true |
+| 11.4 | "It moves you up only when you have earned it." plus "the exercise that matches what you have actually done ... the next step up only after you clear the one you are on ... never a heroic number picked to impress you." | `slide-04.html:16-17` | `ProgressionChainSelection.swift:3-18` (frontier is the highest tier actually worked; advancement is exactly one step and only when the `advancementCriteria` are met; never past a tier not cleared); `AdaptiveOverload.swift:6-8` (capacity-relative, never a fixed heroic number; the set count tracks what the user already sustains) | true |
+| 11.5 | "It notices the length you actually finish." plus "watches the sessions you complete, not the ones you request, and drifts the default toward the length you really do." | `slide-05.html:16-17` | `Services/Programmer/DefaultDurationLearning.swift:3-17` (US-D01/D02: an EWMA over completed durations, deliberately reading completed and not requested minutes), `:52-64` and `:81-83` (folds completions into the average and snaps `defaultMinutes` to the nearest chip); consumed by the Ready Screen at `ReadyViewModel.swift:53`,`:166` | true |
+| 11.6 | "Nothing leaves the phone to build a workout." plus "The entire movement library ships inside the app ... the session builds with the phone offline exactly as it does online." | `slide-06.html:16-17` | every file under `Services/Engine`, `Services/Programmer`, `Services/Consistency` imports Foundation only; the library is decoded from the app bundle (`Services/Mock/MockExerciseService.swift:86-97`), never fetched | true (caveat: see F9 - the app as a whole uses the network, but nothing in the generation path does) |
+| 11.7 | "By the time you open it, the choosing is over." plus "A session is already on the screen because the engine built it on the phone first. No menu waits for you, because the deciding already happened." | `slide-07.html:15-16` | `ReadyViewModel.swift:183`,`:407-415` (the engine runs inside `load()`, before the view renders the workout); no catalog/menu on the path (as 1.9) | true |
+
+Caption-only claims: none.
+
+---
+
 ## Carousel 12: "The way back is gentle."
 
 This carousel goes deep on the return-after-a-gap experience, so two precise things are recorded before the table, because both are exactly where the copy could have drifted.
