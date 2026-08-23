@@ -37,3 +37,18 @@ node_modules/
 .DS_Store
 *.swp
 *~
+
+# Python (gtm/ tooling)
+__pycache__/
+*.py[cod]
+
+# widow-check.py measures a copy of each slide beside the original, so the
+# stylesheet link resolves. It removes the copy itself; this is the backstop
+# for a run that is killed before it can.
+.widow-check-*.html
+
+# render.sh captures each slide into a scratch directory under gtm/10-instagram/
+# before renaming it over the committed PNG, so the rename stays on one
+# filesystem. Its EXIT trap removes it; this is the backstop for a run killed
+# before the trap can fire.
+.render-scratch-*/
