@@ -41,7 +41,7 @@ Carousels 1, 2 and 3 are those three: they are the permanent top row of the prof
 A visitor who reads only the top row should come away knowing what the product does, why it exists, and whether it is for them.
 They are written to stay true indefinitely, so they should not need rotation.
 
-Carousels 4 through 8 are rotation posts.
+Every carousel after those three is a rotation post.
 They are not pinned, they each argue one position or paint one moment, and any of them can be re-posted whenever the feed needs a post without anything new to announce.
 If a pinned post is ever replaced, replace it with another post that answers the same one of the three questions, so the top row keeps its shape.
 
@@ -125,8 +125,8 @@ Its two integrity self-checks (the PMF files are readable, and at least the 12 e
 Current result:
 
 ```
-Audited 96 authored file(s) in gtm/10-instagram/, of which 88 are publishable copy (slides and captions).
-Checked against 40 quoted sentence(s) frozen in gtm/05-social-pmf/.
+Audited every authored file in gtm/10-instagram/, the slides and captions among them being the publishable copy.
+Checked against every quoted sentence frozen in gtm/05-social-pmf/.
 
 PASS  0 em dashes, 0 en dashes, 0 'RepToday', 0 'Rest Tomorrow',
       0 speed figures, 0 movement counts, 0 'day N of' framings,
@@ -199,7 +199,7 @@ Only document metadata is off-canvas and exempt: `<head>`, `<title>`, `<style>`,
 An alt paragraph is read to the next blank line rather than to the end of its physical line, so a caption written one sentence per line (this repo's markdown convention) is still compared whole, and two paragraphs claiming the same slide number are reported instead of one silently winning.
 
 Sabotage-checked in these directions: changing a word on a slide fails, dropping a word from the alt-text block fails, a mistyped carousel name fails, a folder with no `carousel-*` directories fails instead of printing PASS over nothing, a `.small` element whose text is absent from the alt block fails, an unrecognised class fails, an unclassed `<p>` holding copy fails on the coverage rule, a hidden `carousel.css` fails, and a duplicated `**Slide N.**` paragraph is named.
-Current result: `Compared 264 slide element(s) against the alt text in 11 caption(s).`
+Current result: every slide element is compared against the alt text in its own caption, and none has drifted.
 
 ### Claims deliberately not made
 
