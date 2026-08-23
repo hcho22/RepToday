@@ -310,10 +310,11 @@ Re-rendering on **the same Chrome build** reproduces them byte for byte, which i
 Chrome's own stderr is captured rather than discarded and is printed with its exit status if a capture fails, so a render that dies says why instead of exiting bare.
 Chrome captures to a scratch file outside the carousel folders and it is renamed over the committed PNG only once that capture is known good, so "the file is there" cannot stand in for "this run produced it": what the guards go on to read is the file this run wrote, never last week's pixels left behind by a capture that failed.
 Because the committed PNG is replaced rather than removed first, a failed render leaves the worktree as it found it instead of deleting the previous build output and making the operator restore it, and no half-written screenshot is ever visible at the committed path.
+`render.sh` does not prune `render/`, so a deleted slide's PNG has to be removed by hand.
 Rendering a carousel that has no slides in it is also a failure rather than a green run over nothing, and each guard carries that floor for itself rather than trusting the caller - in the terms of whatever it is actually handed, which differs per guard.
 `widow-check.py` and `alt-text-check.py` are each handed carousel names, so a mistyped name fails in both, and so does a named folder holding no `slide-*.html`: neither guard passes a name it read nothing out of, even when a populated sibling in the same run gives it plenty to report.
 `alt-text-check.py` also has to find copy to compare the slides against, so it fails a named folder whose `caption.md` is missing, and one whose caption carries no `## Alt text` block.
-`fit-check.py` is handed rendered PNG paths and nothing else, so the one caller mistake it can see is an empty path list.
+`fit-check.py` is handed rendered PNG paths and nothing else. It fails an empty path list, and it fails a path it cannot read.
 `claim-audit.py` is handed no argument at all and scopes itself over the folder, so its floor is finding no authored file, or no `carousel-*/slide-*.html` and `carousel-*/caption.md` to scan.
 Different inputs, one rule: a check with nothing to check must never print PASS.
 

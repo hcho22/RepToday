@@ -100,7 +100,7 @@ Caption-only claims: none.
 | 3.4 | "If the length is wrong, one tap changes it, from 5 minutes up to 60." | `slide-04.html:18` | `Views/Ready/ReadyView.swift:170-183` (one tap, no confirm step); `ViewModels/ReadyViewModel.swift:270-286` (regenerates in place); `Services/Programmer/DefaultDurationLearning.swift:37` | **fixed** (was F7) |
 | 3.5 | "That is a calendar, not a character flaw." | `slide-05.html:16` | none | not code-checkable (framing) |
 | 3.6 | "A patch of floor, a wall, no equipment, no signal required." | `slide-05.html:17` | `Models/Enums.swift:86-90` (Zero-Equipment Floor is "a floor and a wall"); `Models/Exercise.swift:73` (`apartmentFriendly`) | **fixed** (was F2) |
-| 3.7 | "You want a catalog to browse." (listed as *not* for you) | `slide-06.html:17` | No catalog surface exists; `exerciseService.exercises()` has one UI consumer, `ViewModels/ProgressViewModel.swift:115`, and it only computes chain tiers | true |
+| 3.7 | "You want a catalog to browse." (listed as *not* for you) | `slide-06.html:17` | No catalog surface exists; `exerciseService.exercises()` has one UI consumer, `ViewModels/ProgressViewModel.swift:115` | true |
 | 3.8 | "You want to build and edit your own sessions." (listed as *not* for you) | `slide-06.html:18` | No create, edit, or save surface anywhere in `Views/`; the only content levers are the duration chip and the in-session swap and skip | true |
 | 3.9 | "You want a coach, a strength program, or a gym replacement." (listed as *not* for you) | `slide-06.html:19` | as 2.6 | true |
 | 3.10 | "Bodyweight. Offline. 5 to 60 minutes. Nothing to plan." | `slide-07.html:16` | as 1.20, 1.21, 1.4 | true |
@@ -216,7 +216,7 @@ Was: *"Return after a week away and the app opens to a session that is easy and 
 
 The first half is true.
 The second half is not: nothing in the app marks, names, acknowledges, or celebrates a return anywhere the user can see.
-`wasReturn` reaches exactly three places, the log write (`ViewModels/ActiveSessionViewModel.swift:618`, `:815`) and a telemetry property (`:1521`), and no view reads it.
+`wasReturn` reaches the log write (`ViewModels/ActiveSessionViewModel.swift:618`) and a telemetry property (`:1521`), and no view reads it.
 There is no "welcome back" copy, and the Variety Language note only ever produces day-type lines like "Today's a strength day" (`Services/Language/VarietyLanguage.swift:84-96`).
 
 What is real, and is what the sentence was reaching for, is the scoring treatment: the weeks in the gap are excused from the average and the comeback week scores a full 1.0.

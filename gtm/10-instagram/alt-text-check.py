@@ -298,9 +298,9 @@ def main(argv):
             checked += count
             failures.extend(problems)
 
-    # The same floor the other three guards carry: a check with nothing to check
-    # must never print PASS. An empty argument list, a renamed folder, or a set
-    # of slides that yielded no copy all land here rather than in a green run.
+    # A check with nothing to check must never print PASS. An empty argument
+    # list, a renamed folder, or a set of slides that yielded no copy all land
+    # here rather than in a green run.
     if not names:
         failures.append("found no carousel directories at all, so nothing was checked")
     elif checked == 0:
