@@ -22,7 +22,7 @@ open 04-video/launch-video.mp4
 |------|------------|
 | `recap.html` | Single front door - start here |
 | `01-research/` | Sourced research: competitor teardowns, review mining, economics, ASO, creators, name collisions, plus 5 new v2 files (attribution, Meta ad sweep, pain-point frequency, platform signals, creative-carries-targeting) |
-| `02-brand/` | Positioning, naming decision, brand guidelines, v1 tournament, `tournament-v2/` (4 blind pitches + 3 judges), brand-gate round 2 (`gate-test-*-v2.*`) |
+| `02-brand/` | Positioning, naming decision, brand guidelines, the rendered Ready Mark logo assets (`ready-mark*.svg`/`.png` + `ready-mark/README.md`), v1 tournament, `tournament-v2/` (4 blind pitches + 3 judges), brand-gate round 2 (`gate-test-*-v2.*`) |
 | `03-site/` | Landing page in two hero variants (`index.html`, `index-b.html`), the privacy policy (`privacy.html`, served at `/privacy`) + 4 screenshots (a/b x desktop/mobile) + Cloudflare Pages deploy config (`_headers`, `DEPLOY.md`) |
 | `04-video/` | Launch video, VO script, build scripts, ffprobe report, frames, gate report |
 | `05-social-pmf/` | Week-one PMF kit: 16 angles, 6 A/B pairs, 14-day cadence, read-the-results guide, week-1 drafts |
