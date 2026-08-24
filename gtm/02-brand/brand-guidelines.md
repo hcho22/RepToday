@@ -56,6 +56,8 @@ That is the whole logo: the app's promise - open it and the session is waiting -
 </svg>
 ```
 
+**Rendered assets.** This spec is rendered to actual files under [`ready-mark/`](ready-mark/README.md): `ready-mark.svg` (the Moss-on-transparent mark, matching the reference SVG above), `ready-mark-app-icon.svg` plus 1024/512px PNG renders, and `ready-mark-moss-1024.png` (Moss mark on transparent with clear space). Regenerate the PNGs with the `rsvg-convert` commands in that README.
+
 **Wordmark.** The mark sits left of the name set in the brand type (see §5), Bold, Ink (or Bone on dark), with a gap equal to 50% of the mark's width: `[mark] Rep Today`. The name's cap height = 2/3 of the mark's height, optically centered on the mark.
 
 **App icon.** Moss (#2E6B4E) background, the Ready Mark in Bone (#F1EEE8) with the rect stroke and circle both Bone. No gradients, no gloss, no figure silhouettes.
