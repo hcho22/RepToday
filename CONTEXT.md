@@ -43,6 +43,14 @@ This is an engine-only change; the continuous-circuit player renders the reshape
 The decision is recorded as [ADR-0004](docs/adr/0004-round-cap-wide-circuit.md) (which supersedes ADR-0003's 45-minute "8 rounds x 4 stations" consequence); its PRD is `.claude/agent/tasks/prd-round-cap-wide-circuits.md` (`US-RC##`).
 The owning code is `Services/Engine/SessionAssembly.swift` (round rails, reserve generation, depth-first fit, `blockSeconds`) and `Services/Engine/ProgressionChainSelection.swift` (the per-pattern multi-chain frontier via `selectAll`/`selectInChain`).
 
+## Effective Difficulty Cap
+
+The difficulty band the exercise-pool filter actually gates on - the **single source of truth** for the "too hard" filter (`ExercisePoolFilter.effectiveDifficultyCap(for level:phase:)`).
+It is the conservative onboarding `FitnessLevel` band (`difficultyCap`: beginner 1-2, intermediate 1-3, advanced 1-5) while the user is in the **Discipline Phase**, lifted to the full `1...5` catalog range (`strengthPhaseDifficultyCap`) once the user has **earned the Strength Phase** - so demonstrated competence overrides a conservative self-report.
+This resolves the **double-gate trap**: a phase-gated skill must clear *both* the phase gate (`isPhaseAllowed`) and the difficulty cap, and because every shipped `.strength` skill is difficulty 5, a beginner/intermediate who earned the phase used to see nothing. Keying the lift off `user.phase` (the `PhaseEvaluator`'s output) means the difficulty gate can never disagree with the phase gate about who has graduated.
+The level-only `difficultyCap`/`isWithinDifficultyCap` remain the term for callers reasoning about the conservative band directly (e.g. the Wide Circuit depth-mismatch bound above, and cold-start Start-Seed banding, which use the discipline-phase band); the eligible pool consumes only the *effective* cap via `isWithinEffectiveDifficultyCap`. A `.discipline` user's eligible pool is byte-identical to the pre-lift behavior.
+Introduced by US-SP01 (`Services/Engine/ExercisePoolFilter.swift`); its PRD is `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` (`US-SP##`).
+
 ## discipline-first
 
 The product's positioning: the promise is **daily consistency** - showing up - independent of whether a given day's work is strength or mobility.
