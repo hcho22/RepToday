@@ -165,6 +165,10 @@ final class PhaseEvaluatorTests: XCTestCase {
         PhaseEvaluator.evaluate(logs: logs, weeklyGoal: weeklyGoal, library: library, asOf: asOf, calendar: calendar)
     }
 
+    private func progress(_ logs: [WorkoutLog], weeklyGoal: Int = 3) -> PhaseProgress {
+        PhaseEvaluator.progress(logs: logs, weeklyGoal: weeklyGoal, library: library, asOf: asOf, calendar: calendar)
+    }
+
     // MARK: - Fresh user
 
     func testFreshUserIsDiscipline() {
@@ -257,5 +261,74 @@ final class PhaseEvaluatorTests: XCTestCase {
     func testDeterministic() {
         let logs = sustainedHistory(weeks: 8) + competenceLogs()
         XCTAssertEqual(evaluate(logs), evaluate(logs))
+    }
+
+    // MARK: - Component progress (US-SP04)
+
+    /// The gate is *derived from* `progress(...)`: `evaluate == .strength` iff
+    /// `progress().hasEarnedStrength`. This is the whole reason the surface can't disagree with the
+    /// gate, so it is asserted across every scenario the phase decision is tested on above.
+    func testProgressEarnedFlagMatchesGateAcrossScenarios() {
+        let scenarios: [(name: String, logs: [WorkoutLog])] = [
+            ("fresh", []),
+            ("consistency only", sustainedHistory(weeks: 8)),
+            ("competence only", competenceLogs()),
+            ("hot single week", sustainedHistory(weeks: 1) + competenceLogs()),
+            ("both met", sustainedHistory(weeks: 8) + competenceLogs()),
+            ("three of four", sustainedHistory(weeks: 8) + [
+                clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+                clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
+                clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
+            ]),
+        ]
+        for scenario in scenarios {
+            let earned = progress(scenario.logs).hasEarnedStrength
+            let gated = evaluate(scenario.logs) == .strength
+            XCTAssertEqual(earned, gated, "progress.hasEarnedStrength must equal the gate for: \(scenario.name)")
+        }
+    }
+
+    /// The PRD validation shape: 5 sustained weeks with push+squat cleared (hinge/core not) surfaces
+    /// exactly "5 of 8 weeks" and exactly 2 of 4 foundations cleared - and is *not* earned, matching
+    /// what the gate would decide.
+    func testProgressReportsFiveOfEightWeeksAndTwoOfFourFoundations() {
+        let logs = sustainedHistory(weeks: 5) + [
+            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+            clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
+        ]
+        let p = progress(logs)
+
+        XCTAssertEqual(p.weeksSustained, 5, "five active weeks")
+        XCTAssertEqual(p.requiredWeeks, 8, "the window is eight weeks")
+        XCTAssertEqual(p.clearedFoundationCount, 2, "push and squat cleared, hinge and core not")
+        XCTAssertEqual(p.foundationCount, 4)
+
+        // Per-foundation flags, in evaluator order (push / squat / hinge / core).
+        XCTAssertEqual(p.foundations.map(\.pattern), [.push, .squat, .hinge, .core])
+        XCTAssertEqual(p.foundations.map(\.isCleared), [true, true, false, false])
+
+        XCTAssertFalse(p.hasFoundationalCompetence, "two of four is not full competence")
+        XCTAssertFalse(p.hasEarnedStrength, "not earned - and the gate agrees")
+        XCTAssertEqual(evaluate(logs), .discipline)
+    }
+
+    /// `weeksSustained` never over-reports past the window even when the user has been active longer.
+    func testWeeksSustainedCapsAtRequiredWindow() {
+        let logs = sustainedHistory(weeks: 12)
+        XCTAssertEqual(progress(logs).weeksSustained, 8, "twelve active weeks still displays as the eight-week window")
+    }
+
+    /// Both halves of the consistency signal are exposed and combine exactly as the gate's does:
+    /// sustained requires the full span *and* the score at/above the bar.
+    func testConsistencyComponentsMatchGate() {
+        // Eight on-goal weeks: span 8, score 100 -> both halves hold.
+        let strong = progress(sustainedHistory(weeks: 8))
+        XCTAssertEqual(strong.weeksSustained, 8)
+        XCTAssertTrue(strong.meetsScoreThreshold)
+        XCTAssertTrue(strong.hasSustainedConsistency)
+
+        // One week: span short of the window, so not sustained regardless of a perfect score.
+        let short = progress(sustainedHistory(weeks: 1))
+        XCTAssertFalse(short.hasSustainedConsistency, "a single week is not sustained over the window")
     }
 }

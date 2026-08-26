@@ -35,6 +35,16 @@ final class ProgressViewModel {
     /// tier, which sees a clear, non-nagging upsell in its place.
     private(set) var isPremium = false
 
+    /// The phase the user has *earned* (US-H02), read from the persisted profile - drives whether the
+    /// free "visible climb" surface (US-SP04) is shown (only while `.discipline`, i.e. still climbing).
+    private(set) var phase: Phase = .discipline
+
+    /// The component earn signals behind the Strength-Phase gate (US-SP04): weeks-sustained and
+    /// per-foundation cleared flags, computed by the *same* `PhaseEvaluator` logic that gates the
+    /// phase, so the surface can never disagree with the actual decision. `nil` before load, when
+    /// there is no user, or when the library read fails.
+    private(set) var phaseProgress: PhaseProgress?
+
     /// True while the first load is in flight.
     private(set) var isLoading = false
 
@@ -60,6 +70,7 @@ final class ProgressViewModel {
     private let consistencyService: any ConsistencyServiceProtocol
     private let exerciseService: any ExerciseServiceProtocol
     private let subscriptionService: any SubscriptionServiceProtocol
+    private let phaseService: any PhaseServiceProtocol
     private let now: () -> Date
     private let calendar: Calendar
 
@@ -69,6 +80,7 @@ final class ProgressViewModel {
         exerciseService: any ExerciseServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
+        phaseService: (any PhaseServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
@@ -77,6 +89,9 @@ final class ProgressViewModel {
         self.exerciseService = exerciseService
         self.subscriptionService = subscriptionService
         self.consistencyService = consistencyService
+        // Defaulted so existing call sites (previews, tests) that do not thread a phase service still
+        // compile; it reads the same validated library the deterministic gate uses.
+        self.phaseService = phaseService ?? PhaseEvaluatorService(exerciseService: exerciseService, now: now, calendar: calendar)
         self.now = now
         self.calendar = calendar
     }
@@ -122,5 +137,12 @@ final class ProgressViewModel {
             )
         }
         isPremium = (try? await subscriptionService.currentSubscription().tier) == .premium
+
+        // The free "visible climb" surface (US-SP04): the component earn signals from the same
+        // `PhaseEvaluator` logic that gates the phase, over the same full history. Best-effort - a
+        // library read that fails simply omits the card rather than failing the tab. `phase` drives
+        // whether the card is shown at all (only while still climbing, i.e. `.discipline`).
+        phase = user.phase
+        phaseProgress = try? await phaseService.progress(for: user, recentLogs: logs)
     }
 }

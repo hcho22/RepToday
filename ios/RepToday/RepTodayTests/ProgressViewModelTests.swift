@@ -208,6 +208,52 @@ final class ProgressViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isPremium)
         XCTAssertNotNil(vm.analytics?.deep)
     }
+
+    // MARK: - US-SP04: phase-progress ("the visible climb")
+
+    /// A log clearing the entry tier of `exerciseId` in the real catalog - three sets each meeting
+    /// `value`.
+    private func clearingLog(exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
+        let sets = (0..<3).map { _ in
+            CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil)
+        }
+        return WorkoutLog(
+            id: UUID(), workoutId: UUID(), completedAt: date(weeksAgo: 0, dayOffset: 1),
+            requestedMinutes: 20, durationMinutes: 20, wasReturn: false,
+            shape: .singleFocus, focusPillar: .strength, perceivedDifficulty: nil,
+            exercises: [
+                LoggedExercise(id: UUID(), exerciseId: exerciseId, pillar: .strength,
+                               movementPattern: pattern, completedSets: sets, skipped: false)
+            ]
+        )
+    }
+
+    /// `load` computes the phase-progress signals from the same `PhaseEvaluator` logic that gates the
+    /// phase, over the same full history: five sustained weeks with push+squat cleared surfaces five
+    /// of eight weeks and two of four foundations - and, crucially, agrees with the gate that Strength
+    /// is not yet earned.
+    func testLoadPopulatesPhaseProgressMatchingTheGate() async {
+        var logs = (0..<5).flatMap { week(weeksAgo: $0, count: 3) }
+        logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15))
+        logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true, value: 45))
+        let vm = makeViewModel(user: onboardedUser(), logs: logs)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.phase, .discipline)
+        let progress = vm.phaseProgress
+        XCTAssertNotNil(progress)
+        XCTAssertEqual(progress?.weeksSustained, 5)
+        XCTAssertEqual(progress?.clearedFoundationCount, 2)
+        XCTAssertEqual(progress?.foundations.map(\.isCleared), [true, true, false, false])
+        XCTAssertEqual(progress?.hasEarnedStrength, false, "the surface must agree with the gate: not earned")
+
+        // And the gate itself, over the same history, resolves to Discipline - no disagreement.
+        let gate = try? await PhaseEvaluatorService(
+            exerciseService: try! MockExerciseService(), now: { self.asOf }, calendar: calendar
+        ).phase(for: onboardedUser(), recentLogs: logs)
+        XCTAssertEqual(gate, .discipline)
+    }
 }
 
 // MARK: - US-M02 rendered-UI evidence

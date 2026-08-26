@@ -53,6 +53,10 @@ enum PhaseEvaluator {
     /// signals hold; every other case (consistency-only, competence-only, or a fresh user) resolves
     /// to `.discipline`.
     ///
+    /// The decision is *derived from* `progress(...)` rather than computed alongside it, so the gate
+    /// and any surface that shows the climb toward it (US-SP04) provably read one source: a
+    /// `PhaseProgress` whose `hasEarnedStrength` is exactly this `== .strength` outcome.
+    ///
     /// `weeklyGoal` is the user's target sessions per week (defaulting to the Consistency Score's
     /// own default and clamped there); it feeds the consistency computation so the threshold is
     /// measured against the same adherence the user sees.
@@ -63,38 +67,47 @@ enum PhaseEvaluator {
         asOf: Date,
         calendar: Calendar = .current
     ) -> Phase {
-        let consistent = hasSustainedConsistency(
+        progress(
             logs: logs,
             weeklyGoal: weeklyGoal,
+            library: library,
             asOf: asOf,
             calendar: calendar
-        )
-        let competent = hasFoundationalCompetence(logs: logs, library: library)
-        return (consistent && competent) ? .strength : .discipline
+        ).hasEarnedStrength ? .strength : .discipline
     }
 
-    // MARK: - Consistency signal
-
-    /// Whether the Consistency Score has been sustained above `consistencyThreshold` across a full
-    /// `sustainedWeeks` window. Both must hold: the current score clears the bar *and* the user has
-    /// been active across the whole window, so a single perfect week (which the window-starts-at-
-    /// first-activity rule would score at 100) cannot masquerade as sustained consistency.
-    private static func hasSustainedConsistency(
+    /// The component earn signals the gate decides on, exposed as a value type so a read-only
+    /// surface (US-SP04) can show the climb toward the Strength Phase from the *exact same* logic
+    /// that gates it - never a parallel re-derivation that could disagree. `evaluate(...)` above is
+    /// the sole authority for the boolean outcome, and it is literally
+    /// `progress(...).hasEarnedStrength`, so the two can never drift.
+    static func progress(
         logs: [WorkoutLog],
-        weeklyGoal: Int,
+        weeklyGoal: Int = ConsistencyScore.defaultWeeklyGoal,
+        library: [Exercise],
         asOf: Date,
-        calendar: Calendar
-    ) -> Bool {
-        guard activeWeekSpan(logs: logs, asOf: asOf, calendar: calendar) >= sustainedWeeks else {
-            return false
-        }
-        let consistency = ConsistencyScore.evaluate(
+        calendar: Calendar = .current
+    ) -> PhaseProgress {
+        let activeWeeks = activeWeekSpan(logs: logs, asOf: asOf, calendar: calendar)
+        let score = ConsistencyScore.evaluate(
             logs: logs,
             weeklyGoal: weeklyGoal,
             asOf: asOf,
             calendar: calendar
+        ).score
+        let foundations = foundationalPatterns.map { pattern in
+            PhaseProgress.FoundationProgress(
+                pattern: pattern,
+                isCleared: hasClearedEntryTier(of: pattern, logs: logs, library: library)
+            )
+        }
+        return PhaseProgress(
+            activeWeeks: activeWeeks,
+            requiredWeeks: sustainedWeeks,
+            currentScore: score,
+            scoreThreshold: consistencyThreshold,
+            foundations: foundations
         )
-        return consistency.score >= consistencyThreshold
     }
 
     /// The number of whole weeks from the user's first logged activity through `asOf`, inclusive
@@ -113,14 +126,6 @@ enum PhaseEvaluator {
     }
 
     // MARK: - Competence signal
-
-    /// Whether the user has cleared the entry tier of *every* foundational pattern - the AND across
-    /// push / squat / hinge / core that competence requires.
-    private static func hasFoundationalCompetence(logs: [WorkoutLog], library: [Exercise]) -> Bool {
-        foundationalPatterns.allSatisfy { pattern in
-            hasClearedEntryTier(of: pattern, logs: logs, library: library)
-        }
-    }
 
     /// Whether the user has cleared the entry tier of at least one chain in `pattern`. A pattern may
     /// hold several chains (e.g. push has a horizontal and a vertical chain); clearing any one
@@ -174,6 +179,75 @@ enum PhaseEvaluator {
     }
 }
 
+// MARK: - Component progress
+
+/// The two Strength-Phase earn signals broken into their component values, so a read-only surface
+/// (US-SP04, "the visible climb") can show a Discipline-Phase user how close they are *without*
+/// re-deriving anything the gate does not. `PhaseEvaluator.evaluate(...)` is literally
+/// `PhaseEvaluator.progress(...).hasEarnedStrength`, so the number the surface shows and the
+/// decision the gate makes are the same computation - they cannot disagree.
+///
+/// The stored fields are exactly what the evaluator measures; the derived booleans below are the
+/// same combinations the gate is built from (span-and-score for consistency, all-cleared for
+/// competence). Presentation - copy, ordering, rounding - lives entirely in the view; this stays a
+/// pure, `Equatable` value.
+struct PhaseProgress: Equatable {
+
+    /// Per-foundation clear state, one entry per `PhaseEvaluator.foundationalPatterns` in that order.
+    struct FoundationProgress: Equatable, Identifiable {
+        let pattern: MovementPattern
+        /// Whether the user has cleared the entry tier of at least one chain in `pattern` - the exact
+        /// `PhaseEvaluator` competence test, reused rather than recomputed.
+        let isCleared: Bool
+
+        var id: MovementPattern { pattern }
+    }
+
+    /// Whole weeks from the user's first logged activity through now (0 for a user with no history) -
+    /// the evaluator's `activeWeekSpan`.
+    let activeWeeks: Int
+
+    /// The full window the consistency signal must span before it counts as sustained
+    /// (`PhaseEvaluator.sustainedWeeks`, ~8).
+    let requiredWeeks: Int
+
+    /// The current forgiving Consistency Score (0-100) the same `ConsistencyScore.evaluate` feeds the
+    /// gate.
+    let currentScore: Double
+
+    /// The score the current score must clear for the consistency signal (`consistencyThreshold`, 80).
+    let scoreThreshold: Double
+
+    /// The four foundational patterns and whether each entry tier is cleared, in evaluator order.
+    let foundations: [FoundationProgress]
+
+    // MARK: Derived (the gate's own combinations)
+
+    /// Weeks of steady practice to surface, capped at the required window so the display never reads
+    /// "9 of 8". A user past the window shows the full `requiredWeeks`.
+    var weeksSustained: Int { min(activeWeeks, requiredWeeks) }
+
+    /// Whether the current score currently clears the bar (one half of the consistency signal).
+    var meetsScoreThreshold: Bool { currentScore >= scoreThreshold }
+
+    /// The consistency signal exactly as the gate reads it: active across the full window *and* the
+    /// score clears the bar.
+    var hasSustainedConsistency: Bool { activeWeeks >= requiredWeeks && meetsScoreThreshold }
+
+    /// How many foundations are cleared, for the "N of 4" headline.
+    var clearedFoundationCount: Int { foundations.filter(\.isCleared).count }
+
+    /// The total foundations gating competence (four: push / squat / hinge / core).
+    var foundationCount: Int { foundations.count }
+
+    /// The competence signal exactly as the gate reads it: every foundation cleared.
+    var hasFoundationalCompetence: Bool { foundations.allSatisfy(\.isCleared) }
+
+    /// The earned outcome - the sole thing `PhaseEvaluator.evaluate(...)` derives its `.strength`
+    /// return from, so this boolean and the gate's decision are one computation.
+    var hasEarnedStrength: Bool { hasSustainedConsistency && hasFoundationalCompetence }
+}
+
 // MARK: - Service
 
 /// The real `PhaseServiceProtocol` implementation backing the app, replacing `MockPhaseService`
@@ -202,6 +276,17 @@ final class PhaseEvaluatorService: PhaseServiceProtocol {
     func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase {
         let library = try await exerciseService.exercises()
         return PhaseEvaluator.evaluate(
+            logs: recentLogs,
+            weeklyGoal: user.consistency.weeklyGoal,
+            library: library,
+            asOf: now(),
+            calendar: calendar
+        )
+    }
+
+    func progress(for user: User, recentLogs: [WorkoutLog]) async throws -> PhaseProgress {
+        let library = try await exerciseService.exercises()
+        return PhaseEvaluator.progress(
             logs: recentLogs,
             weeklyGoal: user.consistency.weeklyGoal,
             library: library,

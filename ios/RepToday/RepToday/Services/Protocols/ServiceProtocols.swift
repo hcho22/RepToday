@@ -108,6 +108,12 @@ protocol ConsistencyServiceProtocol {
 /// Evaluates which journey phase a user has earned.
 protocol PhaseServiceProtocol {
     func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase
+
+    /// The component earn signals behind that decision (US-SP04): weeks-sustained and per-foundation
+    /// cleared flags, from the *same* `PhaseEvaluator` logic `phase(for:recentLogs:)` gates on, so a
+    /// progress surface shows exactly what the gate decides. `hasEarnedStrength` on the result equals
+    /// `phase(for:recentLogs:) == .strength`.
+    func progress(for user: User, recentLogs: [WorkoutLog]) async throws -> PhaseProgress
 }
 
 /// Reads and writes the current user aggregate.
