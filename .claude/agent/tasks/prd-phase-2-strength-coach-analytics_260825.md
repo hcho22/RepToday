@@ -117,13 +117,13 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] A read-only surface computes and shows, from real logs, the two earn signals: consistency progress (e.g. "sustained 80+ for 5 of 8 weeks") and competence progress ("2 of 4 foundations cleared: push [x], squat [x], hinge [ ], core [ ]").
-- [ ] Values come from the exact same logic `PhaseEvaluator` uses (no re-derivation that could disagree with the actual gate).
-- [ ] Copy is identity-framed, never loss-framed; no gamification (no XP/badges/streak-to-break).
-- [ ] Surface is free (not premium-gated).
-- [ ] Accessibility: VoiceOver labels, Dynamic Type, Reduce Motion respected; uses `Theme` tokens.
-- [ ] Verify on device/simulator with the evidence-capture path (hosted-surface test or XCUITest screenshot). `docs/test-coverage.md` row added.
-- [ ] Build and unit suite pass.
+- [x] A read-only surface computes and shows, from real logs, the two earn signals: consistency progress (e.g. "sustained 80+ for 5 of 8 weeks") and competence progress ("2 of 4 foundations cleared: push [x], squat [x], hinge [ ], core [ ]").
+- [x] Values come from the exact same logic `PhaseEvaluator` uses (no re-derivation that could disagree with the actual gate).
+- [x] Copy is identity-framed, never loss-framed; no gamification (no XP/badges/streak-to-break).
+- [x] Surface is free (not premium-gated).
+- [x] Accessibility: VoiceOver labels, Dynamic Type, Reduce Motion respected; uses `Theme` tokens.
+- [x] Verify on device/simulator with the evidence-capture path (hosted-surface test or XCUITest screenshot). `docs/test-coverage.md` row added.
+- [x] Build and unit suite pass.
 
 **Validation Test:**
 

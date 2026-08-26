@@ -31,7 +31,8 @@ struct ProgressTabView: View {
                 workoutLogService: services.workoutLogService,
                 exerciseService: services.exerciseService,
                 subscriptionService: services.subscriptionService,
-                consistencyService: services.consistencyService
+                consistencyService: services.consistencyService,
+                phaseService: services.phaseService
             )
         )
         self.subscriptionService = services.subscriptionService
@@ -83,6 +84,16 @@ struct ProgressTabView: View {
                     if let consistency = viewModel.consistency {
                         ConsistencyHeadlineCard(consistency: consistency)
                     }
+
+                    // The free "visible climb" toward the Strength Phase (US-SP04). Shown only while
+                    // the user is still earning it (`.discipline`); once earned, US-SP06's graduation
+                    // moment and the strength surfaces take over. Never gated.
+                    if viewModel.phase == .discipline,
+                       let progress = viewModel.phaseProgress,
+                       !progress.hasEarnedStrength {
+                        PhaseProgressCard(progress: progress)
+                    }
+
                     ScoreTrendCard(trend: viewModel.trend)
                     SessionCalendarCard(
                         completedDays: viewModel.completedDays,
@@ -840,6 +851,133 @@ private struct PremiumUpsellCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Go deeper with Premium. Unlock pattern-by-pattern balance, weekly training volume, and how your sessions have felt. Your workouts are always free.")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: - Phase progress (US-SP04, free)
+
+/// The "visible climb" toward the earned Strength Phase (US-SP04) - a free, read-only card that shows
+/// a Discipline-Phase user the two real earn signals so the summit is visible long before it is
+/// reached: **consistency** (weeks of steady practice at the score bar) and **competence** (the four
+/// foundations cleared, one at a time).
+///
+/// Every value comes straight from `PhaseProgress`, which is the *same* computation
+/// `PhaseEvaluator.evaluate` gates on (`evaluate == progress().hasEarnedStrength`), so the card can
+/// never show a number the gate disagrees with. Copy is identity-framed ("you're building real
+/// strength"), never loss-framed, and there is no XP, level, or streak to break - just the honest
+/// state of a habit being built.
+private struct PhaseProgressCard: View {
+    let progress: PhaseProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Your climb to Strength")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text("Strength is earned, not chosen. Keep showing up and keep clearing the foundations - here's where you stand.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            consistencySection
+            competenceSection
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+
+    // MARK: Consistency
+
+    private var consistencySection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Steady practice")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer(minLength: Theme.Spacing.sm)
+                Text("\(progress.weeksSustained) of \(progress.requiredWeeks) weeks")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.accent)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.Colors.accent.opacity(0.12))
+                    Capsule()
+                        .fill(Theme.Colors.accent)
+                        .frame(width: max(0, geo.size.width * CGFloat(weeksFraction)))
+                }
+            }
+            .frame(height: 10)
+
+            Text(consistencyNote)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(consistencyAccessibility)
+    }
+
+    private var weeksFraction: Double {
+        guard progress.requiredWeeks > 0 else { return 0 }
+        return min(1, Double(progress.weeksSustained) / Double(progress.requiredWeeks))
+    }
+
+    /// Ties the weeks bar to the second half of the consistency signal - the score that has to hold
+    /// above the bar - stated as steady facts, never a warning.
+    private var consistencyNote: String {
+        let threshold = Int(progress.scoreThreshold.rounded())
+        let score = Int(progress.currentScore.rounded())
+        if progress.meetsScoreThreshold {
+            return "Consistency \(score), holding above \(threshold). Sustain it across \(progress.requiredWeeks) weeks."
+        }
+        return "Consistency \(score), building toward \(threshold)+. That's the bar to sustain."
+    }
+
+    private var consistencyAccessibility: String {
+        "Steady practice, \(progress.weeksSustained) of \(progress.requiredWeeks) weeks. \(consistencyNote)"
+    }
+
+    // MARK: Competence
+
+    private var competenceSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Foundations")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer(minLength: Theme.Spacing.sm)
+                Text("\(progress.clearedFoundationCount) of \(progress.foundationCount) cleared")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.accent)
+            }
+
+            VStack(spacing: Theme.Spacing.xs) {
+                ForEach(progress.foundations) { foundation in
+                    foundationRow(foundation)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func foundationRow(_ foundation: PhaseProgress.FoundationProgress) -> some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: foundation.isCleared ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(foundation.isCleared ? Theme.Colors.accent : Theme.Colors.textSecondary)
+            Text(PatternLabels.name(for: foundation.pattern))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Spacer(minLength: 0)
+            Text(foundation.isCleared ? "Cleared" : "In progress")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(PatternLabels.name(for: foundation.pattern)), \(foundation.isCleared ? "cleared" : "in progress").")
     }
 }
 
