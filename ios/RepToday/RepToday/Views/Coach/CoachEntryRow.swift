@@ -63,7 +63,9 @@ struct CoachEntryRow: View {
                 subscriptionService: services.subscriptionService,
                 analyticsService: services.analyticsService,
                 entryPoint: .coachUpsell
-            )
+            ) {
+                Task { await viewModel.load() }
+            }
         }
     }
 }
