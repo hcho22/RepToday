@@ -36,7 +36,7 @@ final class ExerciseLibraryTests: XCTestCase {
     /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
     /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 74, "expected the authored 74-movement library")
+        XCTAssertEqual(exercises.count, 76, "expected the authored 76-movement library")
     }
 
     func testIdsAreUnique() {
@@ -50,7 +50,7 @@ final class ExerciseLibraryTests: XCTestCase {
         let counts = Dictionary(grouping: exercises, by: \.movementPattern).mapValues(\.count)
         XCTAssertEqual(counts[.push], 10, "push group")
         XCTAssertEqual(counts[.squat], 9, "squat group")
-        XCTAssertEqual(counts[.hinge], 6, "hinge group")
+        XCTAssertEqual(counts[.hinge], 8, "hinge group")
         XCTAssertEqual(counts[.core], 10, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 26, "mobility group (warm-up + cooldown bookends)")
@@ -61,7 +61,7 @@ final class ExerciseLibraryTests: XCTestCase {
     /// even though strength is the primary pillar of every session (US-006).
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
-        XCTAssertEqual(counts[.strength], 41)
+        XCTAssertEqual(counts[.strength], 43)
         XCTAssertEqual(counts[.mobility], 26)
         XCTAssertEqual(counts[.primal], 7)
     }
@@ -158,13 +158,15 @@ final class ExerciseLibraryTests: XCTestCase {
     /// The Strength-Phase-only skills are tagged `phase: strength`; everything else is
     /// `discipline`. Since US-SP02 each phase-gated chain carries **two** rungs - a mid-tier bridge
     /// (difficulty 4) and the summit (difficulty 5) - so a newly-Strength-Phase user climbs a ladder
-    /// rather than jumping straight to the difficulty-5 skill.
+    /// rather than jumping straight to the difficulty-5 skill. US-SP03 gave hinge its first earned
+    /// ladder (Assisted Nordic Curl -> Nordic Curl), so all four foundations now carry one.
     func testStrengthPhaseSkillsAreTagged() {
         let gated = Set(exercises.filter { $0.phase == .strength }.map(\.id))
         XCTAssertEqual(gated, [
             "push_one_arm_assisted", "push_one_arm",
             "squat_pistol_assisted", "squat_pistol",
             "core_one_leg_l_sit", "core_l_sit",
+            "hinge_nordic_assisted", "hinge_nordic",
         ])
     }
 
