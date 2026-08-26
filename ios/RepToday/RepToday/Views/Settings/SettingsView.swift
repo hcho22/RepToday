@@ -55,6 +55,36 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.Colors.surface)
 
+            // US-AC04: the coach data disclosure, mirrored into Settings so the same facts are
+            // documented where a user looks for privacy choices. It is deliberately its **own** section,
+            // separate from the telemetry opt-out above - it is informational (the consent gesture is
+            // the one-time acknowledgement at first coach use, and using the coach at all is the opt-in),
+            // and it neither reads nor writes the telemetry flag. The footer states the same disclosure
+            // the pre-use modal shows.
+            Section {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text(CoachDataDisclosureCopy.settingsRowTitle)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: Theme.Spacing.minTouchTarget)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(CoachDataDisclosureCopy.settingsRowTitle)
+            } header: {
+                Text("AI Coach")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } footer: {
+                Text(CoachDataDisclosureCopy.settingsFooter)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Theme.Colors.surface)
+
             // US-AD01: the mandatory account-deletion path (App Store Guideline 5.1.1(v)). A
             // destructive, clearly-labelled row in its own section, so it is findable in one tap from
             // the Profile tab's Settings and never mistaken for a benign control.

@@ -53,12 +53,16 @@ final class CoachViewEvidenceTests: XCTestCase {
     private func makeViewModel(transport: StubTransport) -> CoachViewModel {
         var user = MockPersistence.sampleUser
         user.phase = .discipline
-        return CoachViewModel(
+        let viewModel = CoachViewModel(
             client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: transport),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()
         )
+        // These US-AC02 evidence surfaces exercise the answered conversation, so consent to the US-AC04
+        // data disclosure is granted; the disclosure itself has its own evidence in US-AC04.
+        viewModel.grantDataSharingConsent()
+        return viewModel
     }
 
     private func labels() -> [String] {

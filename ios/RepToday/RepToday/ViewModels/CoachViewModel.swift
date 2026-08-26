@@ -69,8 +69,27 @@ final class CoachViewModel {
     /// (`client == nil`); the view shows a clear "coach unavailable" state and disables sending.
     var isAvailable: Bool { client != nil }
 
-    /// Whether the current draft can be sent right now: available, not already sending, and non-empty.
-    var canSend: Bool { isAvailable && !isSending && !trimmedDraft.isEmpty }
+    /// Whether the user has acknowledged the coach data disclosure (US-AC04) and the coach may send.
+    /// This is the **load-bearing send gate**: it is checked in the one send path (`deliver`), not just
+    /// used to enable a button, so no coach request - and therefore no message and no training-context
+    /// summary - can leave the device until the user has read the disclosure and tapped "I understand".
+    /// It starts `false` (consent not yet given) and is flipped only by `grantDataSharingConsent()`.
+    private(set) var isDataSharingAcknowledged = false
+
+    /// Whether the pre-use disclosure still owes an acknowledgement before the coach can be used. Only
+    /// meaningful for a configured coach: an unavailable build has nothing to send, so it needs no
+    /// consent (it shows the calm "unavailable" state instead).
+    var needsDataSharingConsent: Bool { isAvailable && !isDataSharingAcknowledged }
+
+    /// Record the user's explicit acknowledgement of the coach data disclosure (US-AC04), opening the
+    /// send gate for this session. The *persistence* of the one-shot (so the disclosure is not shown
+    /// again next launch) is the caller's job - `CoachView` writes `AppState` - which keeps this view
+    /// model free of `AppState` and hostable in evidence surfaces. Idempotent.
+    func grantDataSharingConsent() { isDataSharingAcknowledged = true }
+
+    /// Whether the current draft can be sent right now: available, consent given, not already sending,
+    /// and non-empty.
+    var canSend: Bool { isAvailable && isDataSharingAcknowledged && !isSending && !trimmedDraft.isEmpty }
 
     /// Whether there is a failed message to retry.
     var canRetry: Bool { isAvailable && !isSending && pendingRetryMessage != nil }
@@ -135,7 +154,10 @@ final class CoachViewModel {
     /// friendly retryable error without ever blocking. A no-op when there is nothing sendable.
     func send() async {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isAvailable, !isSending, !message.isEmpty else { return }
+        // US-AC04: never send before the user has acknowledged the data disclosure. Gated here *and*
+        // in `deliver` so no path - a tapped Send, a suggested prompt, or a retry - can leak content
+        // before consent.
+        guard isAvailable, isDataSharingAcknowledged, !isSending, !message.isEmpty else { return }
         draft = ""
         await deliver(message)
     }
@@ -144,7 +166,7 @@ final class CoachViewModel {
     /// sent), so a transient network blip does not cost the user their question. A no-op when there is
     /// nothing to retry.
     func retryLastMessage() async {
-        guard isAvailable, !isSending, let message = pendingRetryMessage else { return }
+        guard isAvailable, isDataSharingAcknowledged, !isSending, let message = pendingRetryMessage else { return }
         await deliver(message)
     }
 
@@ -152,6 +174,10 @@ final class CoachViewModel {
     /// a `CoachProxyClient` failure becomes `errorMessage`, and `isSending` always returns to `false`.
     private func deliver(_ message: String) async {
         guard let client else { return }
+        // US-AC04, the load-bearing guarantee: the send path itself refuses to run until the user has
+        // acknowledged the disclosure. This is not merely a disabled button - it is the last line that
+        // makes "declining sends nothing" true even if a caller reached here another way.
+        guard isDataSharingAcknowledged else { return }
 
         // Show the user's turn immediately (only the first time - a retry has already appended it),
         // and clear any prior error so the transcript reads cleanly.

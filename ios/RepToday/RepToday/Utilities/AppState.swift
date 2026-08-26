@@ -126,6 +126,35 @@ final class AppState {
         lastCelebratedPhase = .strength
     }
 
+    /// One-shot consent flag for the AI coach's data disclosure (US-AC04): `true` once the user has
+    /// read the pre-use disclosure and tapped "I understand". Persisted so the disclosure is shown at
+    /// most once ever, surviving relaunch (and - like the rest of `AppState` - a backup restore).
+    /// Defaults to *not acknowledged*: a never-written key reads `false`, which is exactly "consent not
+    /// yet given", so no `object(forKey:)` guard is needed.
+    ///
+    /// It is deliberately its **own** state, completely independent of `analyticsEnabled`: the coach
+    /// disclosure and the anonymous-telemetry opt-out are two different things (the coach sends *content*
+    /// - your message plus a training-context summary - in the moment of a call; telemetry is
+    /// anonymous, opt-out, and never carries content). Acknowledging the coach disclosure neither reads
+    /// nor writes the telemetry flag, and vice versa. Unlike the informational one-shots above, this
+    /// gate is flipped only on the user's explicit acknowledgement, never merely on presentation, so a
+    /// force-quit mid-disclosure re-shows it and nothing is ever sent without consent (US-AC04).
+    var hasAcknowledgedCoachDataSharing: Bool {
+        didSet {
+            userDefaults.set(hasAcknowledgedCoachDataSharing, forKey: Keys.hasAcknowledgedCoachDataSharing)
+        }
+    }
+
+    /// Whether the coach data disclosure should be presented before first use - the read side of the
+    /// one-shot flag, so a call site never has to remember to negate it.
+    var shouldShowCoachDataDisclosure: Bool { !hasAcknowledgedCoachDataSharing }
+
+    /// Records that the user acknowledged the coach data disclosure, flipping the one-shot flag so it is
+    /// never presented again. Idempotent: calling it twice is a persisted no-op the second time.
+    func markCoachDataSharingAcknowledged() {
+        hasAcknowledgedCoachDataSharing = true
+    }
+
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
     /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
     /// the id is the half of the identity that gets replaced, while a recorded origin is the half
@@ -294,6 +323,10 @@ final class AppState {
         lastCelebratedPhase = userDefaults.string(forKey: Keys.lastCelebratedPhase)
             .flatMap(Phase.init(rawValue:)) ?? .discipline
 
+        // Not acknowledged by default: a never-written key reads `false`, the honest "consent not yet
+        // given". The coach disclosure is its own state, independent of the telemetry opt-out (US-AC04).
+        hasAcknowledgedCoachDataSharing = userDefaults.bool(forKey: Keys.hasAcknowledgedCoachDataSharing)
+
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date
 
@@ -356,6 +389,7 @@ final class AppState {
         static let lastActiveAt = "AppState.lastActiveAt"
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
+        static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
     }
 }
 

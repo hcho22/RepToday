@@ -123,6 +123,48 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(reloaded.hasCelebratedStrengthGraduation, "a relaunch never resurrects an already-seen reveal")
     }
 
+    // MARK: - Coach data disclosure one-shot (US-AC04)
+
+    func testCoachDisclosureShowsOnAFreshInstall() {
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing, "consent starts un-given")
+        XCTAssertTrue(appState.shouldShowCoachDataDisclosure, "an install that never acknowledged it must be shown the disclosure")
+    }
+
+    func testAcknowledgingTheCoachDisclosureGatesItOff() {
+        let appState = AppState(userDefaults: defaults)
+
+        appState.markCoachDataSharingAcknowledged()
+
+        XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing)
+        XCTAssertFalse(appState.shouldShowCoachDataDisclosure, "once acknowledged it must not be shown again")
+        XCTAssertTrue(defaults.bool(forKey: "AppState.hasAcknowledgedCoachDataSharing"), "the flag persists")
+    }
+
+    func testCoachDisclosureAcknowledgementSurvivesRelaunch() {
+        let original = AppState(userDefaults: defaults)
+        original.markCoachDataSharingAcknowledged()
+
+        let reloaded = AppState(userDefaults: defaults)
+
+        XCTAssertTrue(reloaded.hasAcknowledgedCoachDataSharing)
+        XCTAssertFalse(reloaded.shouldShowCoachDataDisclosure, "the disclosure never reappears on a later session")
+    }
+
+    /// The coach disclosure and the telemetry opt-out are independent: acknowledging one must not touch
+    /// the other. This pins the "separate from, and does not weaken, the telemetry opt-out" requirement.
+    func testCoachDisclosureIsIndependentOfTheTelemetryOptOut() {
+        let appState = AppState(userDefaults: defaults)
+        XCTAssertTrue(appState.analyticsEnabled, "telemetry starts on")
+
+        appState.markCoachDataSharingAcknowledged()
+        XCTAssertTrue(appState.analyticsEnabled, "acknowledging the coach disclosure must not change the telemetry flag")
+
+        appState.analyticsEnabled = false
+        XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing, "turning telemetry off must not touch coach consent")
+    }
+
     // MARK: - Anonymous install identity (US-T05)
 
     func testFirstLaunchMintsInstallIdentityAndStamps() {

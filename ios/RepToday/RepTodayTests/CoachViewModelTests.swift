@@ -47,14 +47,20 @@ final class CoachViewModelTests: XCTestCase {
     private func makeViewModel(
         transport: StubTransport,
         user: User? = nil,
-        logs: [WorkoutLog] = []
+        logs: [WorkoutLog] = [],
+        consented: Bool = true
     ) -> CoachViewModel {
-        CoachViewModel(
+        let viewModel = CoachViewModel(
             client: CoachProxyClient(endpoint: endpoint, transport: transport),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
             exerciseService: try! MockExerciseService()
         )
+        // The US-AC04 data disclosure gates the send path (a fresh coach starts un-consented). These
+        // US-AC02 tests exercise the send flow, so consent is granted by default; the consent-gate
+        // tests below opt out to prove no send happens before acknowledgement.
+        if consented { viewModel.grantDataSharingConsent() }
+        return viewModel
     }
 
     /// A view model with no configured client - the unavailable state.
@@ -228,6 +234,54 @@ final class CoachViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.messages.isEmpty)
         XCTAssertEqual(transport.callCount, 0, "an empty send never reaches the transport")
+    }
+
+    // MARK: - Data-disclosure consent gate (US-AC04)
+
+    /// The safety-critical guarantee: a coach that has not been consented to sends nothing, on any path
+    /// - a direct send, a retry, or an available-and-non-empty draft. No message and no context summary
+    /// reaches the transport before the user acknowledges the disclosure.
+    func testNoSendReachesTheTransportBeforeConsent() async {
+        let transport = StubTransport(.success(reply: "should never be delivered", status: 200))
+        let viewModel = makeViewModel(transport: transport, consented: false)
+
+        XCTAssertTrue(viewModel.needsDataSharingConsent, "a fresh available coach owes the disclosure")
+        XCTAssertFalse(viewModel.canSend, "the send control is disabled until consent is given")
+
+        viewModel.draft = "why squats today?"
+        await viewModel.send()
+
+        XCTAssertEqual(transport.callCount, 0, "no request leaves the device before consent")
+        XCTAssertTrue(viewModel.messages.isEmpty, "nothing is appended before consent")
+        XCTAssertNil(viewModel.errorMessage, "declining is a calm state, not an error")
+
+        // Even a retry path cannot leak: there is nothing pending, and the guard holds regardless.
+        await viewModel.retryLastMessage()
+        XCTAssertEqual(transport.callCount, 0)
+    }
+
+    /// Once consent is granted the very same coach sends normally - consent opens the gate rather than
+    /// permanently disabling the surface.
+    func testConsentOpensTheSendGate() async {
+        let transport = StubTransport(.success(reply: "Because they were your stalest pattern.", status: 200))
+        let viewModel = makeViewModel(transport: transport, consented: false)
+
+        viewModel.grantDataSharingConsent()
+
+        XCTAssertFalse(viewModel.needsDataSharingConsent, "consent clears the owed disclosure")
+        viewModel.draft = "why squats today?"
+        XCTAssertTrue(viewModel.canSend, "the send control is enabled once consent is given")
+        await viewModel.send()
+
+        XCTAssertEqual(transport.callCount, 1, "exactly one Claude call once consented")
+        XCTAssertEqual(viewModel.messages.map(\.author), [.user, .coach])
+    }
+
+    /// An unavailable (unconfigured) coach never owes the disclosure - there is nothing to send, so it
+    /// shows the calm "unavailable" state rather than a consent gate.
+    func testUnavailableCoachNeedsNoConsent() {
+        let viewModel = makeUnavailableViewModel()
+        XCTAssertFalse(viewModel.needsDataSharingConsent, "an unconfigured coach has nothing to disclose")
     }
 
     // MARK: - Unavailable (unconfigured build)
