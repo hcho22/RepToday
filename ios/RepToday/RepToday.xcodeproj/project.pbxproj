@@ -28,6 +28,7 @@
 		18BB492FFC5825F12658B62B /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B022E6DD36A92F51FAAF800 /* ModelsTests.swift */; };
 		1B574EED675070E9832C2943 /* AppleSignInAuthorizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB6722FCE4209E422372601 /* AppleSignInAuthorizing.swift */; };
 		1BFF35CBDC44920B50EFDEE0 /* SessionPolicyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A59FC880465B5C874C0072 /* SessionPolicyServiceTests.swift */; };
+		1C5201B81C85BE2E0925E008 /* CoachDataDisclosureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF04582CE3647C7057EBD186 /* CoachDataDisclosureView.swift */; };
 		1C7B2F8D44A1741AD4AA538C /* MovementPatternFocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF888D00CB3C7612EB72A396 /* MovementPatternFocusTests.swift */; };
 		1E63037E7394416596FD5535 /* CDWorkoutLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B411B1B59BDB1D465C54DE3 /* CDWorkoutLog.swift */; };
 		1EE7189C75693D69CAD3CD03 /* SessionShapeSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D401EEF4CCC38CC610850D8E /* SessionShapeSelection.swift */; };
@@ -97,6 +98,7 @@
 		72BAFDB10DC8C33A783A1C17 /* CoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C91AF18CC7836DD19496F52 /* CoachView.swift */; };
 		72C97E841BE611FE4E1FC150 /* ProgressAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F06B0BC9CE9949F676C2493 /* ProgressAnalytics.swift */; };
 		757E8F0744FDEF5B50C83FDB /* ContinuousCircuitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C54BF4144C9D49A0865E3D0 /* ContinuousCircuitUITests.swift */; };
+		75BE9DD91701370123DA5903 /* CoachDataDisclosureEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1C6930B3FD973B83C85A1F /* CoachDataDisclosureEvidenceTests.swift */; };
 		75EC860E655899772C6179F2 /* ReprogramTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E88FD480D389A5E5048BAD /* ReprogramTrigger.swift */; };
 		7847FC5E0333B48858794DCE /* UniformSessionShapeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606B9B7BB74223A1679C33DD /* UniformSessionShapeTests.swift */; };
 		7975CB09F69A769EC8E7B6D4 /* AccountDeletionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E91D2606BAA6DBCC888A77 /* AccountDeletionUITests.swift */; };
@@ -234,6 +236,7 @@
 		05A59FC880465B5C874C0072 /* SessionPolicyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyServiceTests.swift; sourceTree = "<group>"; };
 		06D30DA3DD69EB58EE599F08 /* USCC08PaceEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USCC08PaceEvidenceTests.swift; sourceTree = "<group>"; };
 		09C1D99612A09900BCA6B373 /* ContinuousCircuitExplainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousCircuitExplainerTests.swift; sourceTree = "<group>"; };
+		0A1C6930B3FD973B83C85A1F /* CoachDataDisclosureEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachDataDisclosureEvidenceTests.swift; sourceTree = "<group>"; };
 		0AA816A1AE4C17D0C91DE563 /* ProxyVarietyLanguageProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProviderTests.swift; sourceTree = "<group>"; };
 		0ACD55BC9F5E016E8DE5D73D /* StrengthGraduationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthGraduationViewModel.swift; sourceTree = "<group>"; };
 		0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
@@ -362,6 +365,7 @@
 		AC62A4AB51606C78E9399516 /* ExercisePoolFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExercisePoolFilter.swift; sourceTree = "<group>"; };
 		AD47F158C26761129300455F /* VisualWorkWindowEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualWorkWindowEvidenceTests.swift; sourceTree = "<group>"; };
 		AEE40F821F1BC087093DEA6F /* AppleAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthServiceTests.swift; sourceTree = "<group>"; };
+		AF04582CE3647C7057EBD186 /* CoachDataDisclosureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachDataDisclosureView.swift; sourceTree = "<group>"; };
 		B0ED4A87CACFFFC4FC60A3E4 /* Exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Exercises.json; sourceTree = "<group>"; };
 		B278FF58865762BBC4650002 /* WeekActiveEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekActiveEventTests.swift; sourceTree = "<group>"; };
 		B2F43A38841C6AED24BF5D34 /* UnitConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnitConversion.swift; sourceTree = "<group>"; };
@@ -557,6 +561,7 @@
 		3E5DE2FE42D9E942389EE406 /* Coach */ = {
 			isa = PBXGroup;
 			children = (
+				AF04582CE3647C7057EBD186 /* CoachDataDisclosureView.swift */,
 				26A74962EA600FDBC50B46D8 /* CoachEntryRow.swift */,
 				7C91AF18CC7836DD19496F52 /* CoachView.swift */,
 			);
@@ -672,6 +677,7 @@
 				9BBD4AACA7A21B0FC479E986 /* AppStateTests.swift */,
 				517F0822799948674E148CF7 /* BookendComplementSelectionTests.swift */,
 				5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */,
+				0A1C6930B3FD973B83C85A1F /* CoachDataDisclosureEvidenceTests.swift */,
 				FFBE13CE4B856A3D3C1B71E2 /* CoachGateViewModelTests.swift */,
 				27AB04CAAA2C6BFB5A4E030C /* CoachGatingEvidenceTests.swift */,
 				04DBFB7EC59AD23C40981B7C /* CoachProxyClientConfiguredTests.swift */,
@@ -1079,6 +1085,7 @@
 				4A902D8BBBA1847B93CE2A6C /* AppleAuthServiceTests.swift in Sources */,
 				FA6678B84E9E3E6DD9533F6C /* BookendComplementSelectionTests.swift in Sources */,
 				7A1837EE29B0F2FE89ECBD7C /* CoachContextBundleTests.swift in Sources */,
+				75BE9DD91701370123DA5903 /* CoachDataDisclosureEvidenceTests.swift in Sources */,
 				3F77D1EDED1F7F3E5C80EF29 /* CoachGateViewModelTests.swift in Sources */,
 				F8692CADAB1FBAD9BCB6153F /* CoachGatingEvidenceTests.swift in Sources */,
 				131634063C1861EC4EF187D8 /* CoachProxyClientConfiguredTests.swift in Sources */,
@@ -1199,6 +1206,7 @@
 				36A49689F88E5CE0C35CCB90 /* CDUser.swift in Sources */,
 				1E63037E7394416596FD5535 /* CDWorkoutLog.swift in Sources */,
 				586E09219474371E47B91A79 /* CoachContextBundle.swift in Sources */,
+				1C5201B81C85BE2E0925E008 /* CoachDataDisclosureView.swift in Sources */,
 				B4FF4EDF5026687EAB25554E /* CoachEntryRow.swift in Sources */,
 				BE077AFD0B58A0E597129980 /* CoachGateViewModel.swift in Sources */,
 				61611FB7A23D89F6F9C470BB /* CoachProxyClient.swift in Sources */,

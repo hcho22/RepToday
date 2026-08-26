@@ -242,12 +242,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] Before first use of the coach, a plain-language disclosure states that messages + a summary of training context are sent to Claude to answer, and are not stored.
-- [ ] The disclosure is honest about the one break in the on-device posture (content leaves the device in the moment of the call) and is not buried in fine print.
-- [ ] A Settings entry documents the same, consistent with the existing Privacy section pattern (`SettingsView`).
-- [ ] The disclosure is separate from, and does not weaken, the existing anonymous product-telemetry opt-out.
-- [ ] Accessibility + `Theme`; verify on device/simulator. `docs/test-coverage.md` row.
-- [ ] Build and suites pass.
+- [x] Before first use of the coach, a plain-language disclosure states that messages + a summary of training context are sent to Claude to answer, and are not stored.
+- [x] The disclosure is honest about the one break in the on-device posture (content leaves the device in the moment of the call) and is not buried in fine print.
+- [x] A Settings entry documents the same, consistent with the existing Privacy section pattern (`SettingsView`).
+- [x] The disclosure is separate from, and does not weaken, the existing anonymous product-telemetry opt-out.
+- [x] Accessibility + `Theme`; verify on device/simulator. `docs/test-coverage.md` row.
+- [x] Build and suites pass.
 
 **Validation Test:**
 

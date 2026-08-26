@@ -139,7 +139,7 @@ final class ProgressionMapEvidenceTests: XCTestCase {
         for label in ["Standard Push-Up, You're here.", "One-Arm Push-Up, Earn the Strength Phase to unlock."] {
             let element = AccessibilityTree.element(labeled: label, in: root)
             XCTAssertNotNil(element, "expected a rung element labeled '\(label)'")
-            XCTAssertFalse((element as? NSObject)?.accessibilityTraits.contains(.button) ?? false,
+            XCTAssertFalse(element?.accessibilityTraits.contains(.button) ?? false,
                            "rung '\(label)' must not be an activatable control - the map is never a menu")
         }
 

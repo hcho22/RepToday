@@ -163,6 +163,30 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
         XCTAssertTrue(labels.contains("Privacy Policy"), "no privacy-policy link in onboarding: \(labels)")
     }
 
+    // MARK: - Coach data disclosure mirror (US-AC04)
+
+    /// Settings mirrors the coach data disclosure in its own AI Coach section: it states the same facts
+    /// (message + training summary to Claude, not stored), it is the shared copy the pre-use modal
+    /// shows, and it is separate from - and does not touch - the telemetry opt-out above it.
+    func testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry() throws {
+        let root = hostSettings(analyticsEnabled: true)
+        let labels = AccessibilityTree.labels(in: root)
+        let spoken = AccessibilityTree.spokenStrings(in: root).joined(separator: " • ")
+
+        // Both privacy entries coexist, distinctly: the telemetry toggle and the coach disclosure row.
+        XCTAssertTrue(labels.contains(SettingsView.toggleTitle), "the telemetry toggle is still present: \(labels)")
+        XCTAssertTrue(labels.contains(CoachDataDisclosureCopy.settingsRowTitle),
+                      "the coach disclosure row is present: \(labels)")
+
+        // The coach footer states the same facts as the pre-use modal.
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Claude"),
+                      "the Settings coach entry names Claude; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("not stored"),
+                      "the Settings coach entry states content is not stored; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("separate from the anonymous usage data"),
+                      "the Settings coach entry declares its separation from telemetry; spoke: \(spoken)")
+    }
+
     // MARK: - The one privacy-policy URL
 
     /// Three surfaces link to the privacy policy for two unrelated reasons - the paywall because App

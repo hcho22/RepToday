@@ -16,8 +16,17 @@ import SwiftUI
 struct CoachView: View {
     @Environment(\.services) private var services
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
+    /// Optional so the hosted evidence surfaces that mount `CoachView` without an `AppState` in the
+    /// environment still render (production, reached from the tab tree, always has one). When present it
+    /// carries the persisted one-shot for the US-AC04 data disclosure.
+    @Environment(AppState.self) private var appState: AppState?
 
     @State private var viewModel: CoachViewModel
+
+    /// Drives the one-time coach data disclosure overlay (US-AC04). Set on first arrival, only when the
+    /// persisted flag says the user has not yet acknowledged it.
+    @State private var showDisclosure = false
 
     /// Production entry: builds the view model from the container's services (and its build-configured
     /// coach client) off the environment.
@@ -40,9 +49,62 @@ struct CoachView: View {
             } else {
                 unavailableState
             }
+
+            // The pre-use data disclosure (US-AC04) rides above the chat as its own layer rather than a
+            // sheet, so the entrance can be stilled under Reduce Motion. The send gate that makes
+            // "declining sends nothing" true lives in the view model, not here: this overlay is how the
+            // user reads the disclosure and chooses, and its presence keeps the input covered until they do.
+            if showDisclosure {
+                CoachDataDisclosureView(onAcknowledge: acknowledgeDisclosure, onDecline: declineDisclosure)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
         }
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: resolveDisclosure)
+    }
+
+    // MARK: - US-AC04 disclosure
+
+    /// On first arrival, decide whether the coach may be used yet. If the user has already acknowledged
+    /// the disclosure (persisted on `AppState`), open the send gate silently. Otherwise present the
+    /// disclosure and leave the gate closed - no message can be sent until they acknowledge.
+    ///
+    /// The gate is *not* opened for an unacknowledged user, and the flag is *not* flipped merely by
+    /// showing the disclosure: acknowledgement is an explicit user act (unlike the informational
+    /// one-shots), so a force-quit mid-disclosure re-shows it next time and nothing was ever sent. A
+    /// hosted surface with no `AppState` (evidence tests) neither opens the gate nor shows the overlay
+    /// here; those tests set consent on the view model directly when they mean to exercise the chat.
+    private func resolveDisclosure() {
+        guard let appState else { return }
+        if appState.hasAcknowledgedCoachDataSharing {
+            viewModel.grantDataSharingConsent()
+        } else if viewModel.isAvailable {
+            if reduceMotion {
+                showDisclosure = true
+            } else {
+                withAnimation(.easeOut(duration: 0.25)) { showDisclosure = true }
+            }
+        }
+    }
+
+    /// The user tapped "I understand": record consent (opening the send gate), persist the one-shot so
+    /// the disclosure is never shown again, and dismiss the overlay.
+    private func acknowledgeDisclosure() {
+        viewModel.grantDataSharingConsent()
+        appState?.markCoachDataSharingAcknowledged()
+        if reduceMotion {
+            showDisclosure = false
+        } else {
+            withAnimation(.easeIn(duration: 0.2)) { showDisclosure = false }
+        }
+    }
+
+    /// The user tapped "Not now": send nothing and leave the coach. The one-shot is deliberately *not*
+    /// flipped, so opening the coach again later shows the disclosure again - consent was never given.
+    private func declineDisclosure() {
+        dismiss()
     }
 
     // MARK: - Available: the conversation
@@ -294,9 +356,10 @@ private struct PreviewCoachTransport: CoachProxyTransport {
 }
 
 extension CoachViewModel {
-    /// An available coach backed by the canned preview transport and the mock services.
+    /// An available coach backed by the canned preview transport and the mock services, with the
+    /// US-AC04 disclosure pre-acknowledged so the chat is interactive in the preview.
     static func preview() -> CoachViewModel {
-        CoachViewModel(
+        let viewModel = CoachViewModel(
             client: CoachProxyClient(
                 endpoint: URL(string: "https://preview.example.com/coach")!,
                 transport: PreviewCoachTransport()
@@ -305,6 +368,8 @@ extension CoachViewModel {
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()
         )
+        viewModel.grantDataSharingConsent()
+        return viewModel
     }
 
     /// An unconfigured coach (no client), which renders the "unavailable" state.
