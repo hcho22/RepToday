@@ -76,6 +76,53 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(reloaded.shouldShowContinuousCircuitExplainer, "the explainer never reappears on a later session")
     }
 
+    // MARK: - Strength-Phase graduation one-shot (US-SP06)
+
+    func testAFreshInstallHasCelebratedNoGraduation() {
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertEqual(appState.lastCelebratedPhase, .discipline, "an install starts having celebrated nothing")
+        XCTAssertFalse(appState.hasCelebratedStrengthGraduation, "a fresh install has not seen the graduation reveal")
+    }
+
+    func testMarkingTheGraduationCelebratedGatesItOff() {
+        let appState = AppState(userDefaults: defaults)
+
+        appState.markStrengthGraduationCelebrated()
+
+        XCTAssertEqual(appState.lastCelebratedPhase, .strength)
+        XCTAssertTrue(appState.hasCelebratedStrengthGraduation, "once celebrated it must never be shown again")
+        XCTAssertEqual(
+            defaults.string(forKey: "AppState.lastCelebratedPhase"), Phase.strength.rawValue,
+            "the celebrated phase persists"
+        )
+    }
+
+    func testGraduationCelebratedFlagSurvivesRelaunch() {
+        let original = AppState(userDefaults: defaults)
+        original.markStrengthGraduationCelebrated()
+
+        let reloaded = AppState(userDefaults: defaults)
+
+        XCTAssertEqual(reloaded.lastCelebratedPhase, .strength)
+        XCTAssertTrue(reloaded.hasCelebratedStrengthGraduation, "the reveal never reappears on a later session")
+    }
+
+    /// The one-shot is a *ratchet*, not a live mirror of the earned phase: once the user has been
+    /// congratulated, an earned phase that later dips back to `.discipline` (the rolling score can
+    /// fall) must not re-arm the reveal. So marking it seen a second time is a persisted no-op and the
+    /// flag never goes backwards on its own.
+    func testCelebratedGraduationIsNeverReArmed() {
+        let appState = AppState(userDefaults: defaults)
+        appState.markStrengthGraduationCelebrated()
+        appState.markStrengthGraduationCelebrated()
+
+        XCTAssertTrue(appState.hasCelebratedStrengthGraduation)
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertTrue(reloaded.hasCelebratedStrengthGraduation, "a relaunch never resurrects an already-seen reveal")
+    }
+
     // MARK: - Anonymous install identity (US-T05)
 
     func testFirstLaunchMintsInstallIdentityAndStamps() {

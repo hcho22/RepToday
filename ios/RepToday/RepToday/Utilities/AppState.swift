@@ -93,6 +93,39 @@ final class AppState {
         hasSeenContinuousCircuitExplainer = true
     }
 
+    /// The highest `Phase` the user has been *congratulated for reaching* (US-SP06, the graduation
+    /// moment). Persisted, and compared against the phase the `PhaseEvaluator` currently reports as
+    /// *earned* so the one-time reveal fires exactly at the crossing into `.strength` and never again.
+    ///
+    /// It is deliberately a **last-celebrated** phase rather than a last-*seen* one: it is only ever
+    /// advanced (ratcheted) when the reveal is actually shown, never rewritten to whatever the current
+    /// earned phase happens to be on a given open. So a user whose earned phase later dips back to
+    /// `.discipline` (the score is a rolling average, and it can fall) is never re-congratulated when it
+    /// climbs again - the milestone is stewardship of a habit, celebrated once, never a reward that can
+    /// be lost and re-won. Defaults to `.discipline` (the phase every user starts in), which is exactly
+    /// what an unwritten key resolves to below, so a fresh install has celebrated nothing.
+    ///
+    /// This never touches the engine: the reveal keys off the *computed* earned phase, not off the
+    /// persisted `user.phase` (which the engine reads and which no production path advances to
+    /// `.strength` today). It gates presentation only - it cohorts nothing and emits nothing.
+    var lastCelebratedPhase: Phase {
+        didSet {
+            userDefaults.set(lastCelebratedPhase.rawValue, forKey: Keys.lastCelebratedPhase)
+        }
+    }
+
+    /// Whether the Strength-Phase graduation reveal has already been shown - the read side of the
+    /// one-shot flag (US-SP06), so a call site never re-derives the comparison. Mirrors
+    /// `hasSeenContinuousCircuitExplainer`.
+    var hasCelebratedStrengthGraduation: Bool { lastCelebratedPhase == .strength }
+
+    /// Records that the Strength-Phase graduation reveal has been shown, ratcheting the celebrated
+    /// phase to `.strength` so it is never presented again. Idempotent: calling it twice is a persisted
+    /// no-op the second time.
+    func markStrengthGraduationCelebrated() {
+        lastCelebratedPhase = .strength
+    }
+
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
     /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
     /// the id is the half of the identity that gets replaced, while a recorded origin is the half
@@ -255,6 +288,12 @@ final class AppState {
         // Unseen by default: a never-written key reads `false`, which is the honest "not yet seen".
         hasSeenContinuousCircuitExplainer = userDefaults.bool(forKey: Keys.hasSeenContinuousCircuitExplainer)
 
+        // Nothing celebrated by default: an absent key resolves to `.discipline`, the phase every user
+        // starts in, so a fresh install has congratulated nothing and the reveal can still fire once
+        // the earned phase first crosses into `.strength` (US-SP06).
+        lastCelebratedPhase = userDefaults.string(forKey: Keys.lastCelebratedPhase)
+            .flatMap(Phase.init(rawValue:)) ?? .discipline
+
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date
 
@@ -316,6 +355,7 @@ final class AppState {
         static let firstLaunchUnknown = "AppState.firstLaunchUnknown"
         static let lastActiveAt = "AppState.lastActiveAt"
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
+        static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
     }
 }
 
