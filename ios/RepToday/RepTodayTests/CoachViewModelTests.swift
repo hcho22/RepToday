@@ -167,6 +167,45 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canRetry)
     }
 
+    // MARK: - Over-length message (recoverable, not a dead-end)
+
+    func testOverLongMessageIsRecoverableAndNotRetryable() async {
+        let transport = StubTransport(.success(reply: "ignored", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        let tooLong = String(repeating: "a", count: CoachProxyClient.defaultMessageCharacterLimit + 1)
+        viewModel.draft = tooLong
+        await viewModel.send()
+
+        // The over-long turn is rejected locally, before any network call.
+        XCTAssertEqual(transport.callCount, 0, "an over-long message never reaches the transport")
+        // The user's text is handed back so they can trim it - the friendly copy is actionable.
+        XCTAssertEqual(viewModel.draft, tooLong, "the draft is restored so the user can shorten it")
+        // No orphan bubble is left behind, and there is nothing to retry (resending would re-fail).
+        XCTAssertTrue(viewModel.messages.isEmpty, "the rejected turn is not orphaned in the transcript")
+        XCTAssertNotNil(viewModel.errorMessage, "a friendly, actionable error is shown")
+        XCTAssertFalse(viewModel.canRetry, "retrying the identical over-long text would just re-fail")
+        XCTAssertFalse(viewModel.isSending, "sending always resolves")
+    }
+
+    func testTrimmedOverLongMessageCanBeShortenedAndResent() async {
+        let transport = StubTransport(.success(reply: "Here's why.", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = String(repeating: "a", count: CoachProxyClient.defaultMessageCharacterLimit + 1)
+        await viewModel.send()
+        XCTAssertFalse(viewModel.canRetry)
+
+        // The user trims the draft and sends again - now it goes through cleanly.
+        viewModel.draft = "why squats?"
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.messages.map(\.author), [.user, .coach])
+        XCTAssertEqual(viewModel.messages[0].text, "why squats?")
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(transport.callCount, 1)
+    }
+
     // MARK: - Send gating
 
     func testCanSendGating() async {

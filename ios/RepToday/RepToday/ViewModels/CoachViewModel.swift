@@ -167,6 +167,18 @@ final class CoachViewModel {
             let reply = try await client.reply(to: message, context: context)
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
+        } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
+            // The one failure the user can fix themselves: give them their text back so they can
+            // trim it, drop the rejected turn rather than orphaning it in the transcript, and do not
+            // offer retry - resending the identical over-long text just re-hits the same local guard.
+            if messages.last?.author == .user, messages.last?.text == message {
+                messages.removeLast()
+            }
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft = message
+            }
+            errorMessage = Self.friendlyMessage(for: error)
+            pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError {
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = message

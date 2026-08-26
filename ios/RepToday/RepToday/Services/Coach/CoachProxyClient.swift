@@ -48,6 +48,13 @@ struct CoachProxyClient {
         case badStatus(Int)
         /// The proxy returned a 2xx with an empty/whitespace reply - treated as no answer.
         case emptyReply
+
+        /// Whether this is the over-long-message case - the one failure the caller can hand back to
+        /// the user to fix (trim and resend) rather than retry verbatim.
+        var isMessageTooLong: Bool {
+            if case .messageTooLong = self { return true }
+            return false
+        }
     }
 
     /// The proxy endpoint (the Worker's `/coach` route that accepts `{ context, message }` and
