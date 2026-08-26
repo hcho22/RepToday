@@ -150,6 +150,22 @@ final class HingeStrengthSkillTests: XCTestCase {
         XCTAssertEqual(fromBridge.exercise.difficulty, summit.difficulty)
     }
 
+    /// The freshly-advanced bridge must not clear itself on first exposure: with no prior history the
+    /// engine doses `hinge_nordic_assisted` off its `defaultReps` (US-CC09 records prescribed=performed),
+    /// so if that seed matched the "3x6 clean reps" threshold the user would leap frontier -> bridge ->
+    /// summit in two sessions with no dwell on the bridge. Pin that the first prescription sits strictly
+    /// below the clearing threshold, so the climb takes multiple sessions ("a rung at a time, no 4->5 jump").
+    func testFreshHingeBridgePrescriptionSitsBelowItsClearingThreshold() async throws {
+        let library = try await library()
+        let bridgeEx = try XCTUnwrap(library.first { $0.id == bridge.id })
+
+        let firstTarget = AdaptiveOverload.target(for: bridgeEx, recentLogs: [])
+        let firstReps = try XCTUnwrap(firstTarget.reps, "the bridge is rep-based, so it has a rep target")
+        XCTAssertLessThan(firstReps, bridge.clear,
+                          "the fresh bridge prescription must sit below its \(bridge.clear)-rep clearing threshold, "
+                          + "so a Strength-Phase user must climb across sessions before reaching the summit")
+    }
+
     /// The mirror: a **discipline**-phase user at the same frontier can reach neither new hinge skill
     /// (both are phase-gated), so they stay on the frontier - which is what makes the Strength-Phase
     /// step above a real unlock rather than a no-op. This is the "and none for a discipline user" half

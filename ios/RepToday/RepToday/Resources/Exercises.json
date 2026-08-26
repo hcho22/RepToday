@@ -472,7 +472,7 @@
     "phase": "strength",
     "equipment": [],
     "isHold": false,
-    "defaultReps": 6,
+    "defaultReps": 4,
     "isPerSide": false,
     "estimatedTimePerSetSeconds": 50,
     "metValue": 6.5,
