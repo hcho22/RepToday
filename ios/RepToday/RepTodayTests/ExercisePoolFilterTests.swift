@@ -386,4 +386,158 @@ final class ExercisePoolFilterTests: XCTestCase {
         }
         XCTAssertEqual(first, ["a", "b", "c"]) // order follows the input library
     }
+
+    // MARK: - Effective difficulty cap (US-SP01: earned Strength Phase lifts the cap)
+
+    /// A `.discipline` user's effective cap is byte-identical to the level-only band at every level,
+    /// so their eligible pool is unchanged (scope-discipline: neutral behavior stays exactly as-is).
+    func testEffectiveCapForDisciplineUserEqualsLevelBand() {
+        for level in FitnessLevel.allCases {
+            XCTAssertEqual(
+                ExercisePoolFilter.effectiveDifficultyCap(for: level, phase: .discipline),
+                ExercisePoolFilter.difficultyCap(for: level),
+                "a discipline user's cap must be the untouched fitness-level band"
+            )
+        }
+    }
+
+    /// An *earned* Strength-Phase user's effective cap is lifted to the full `1...5` catalog range at
+    /// every onboarding level, so a conservative self-report can no longer hide the hardest skills.
+    func testEffectiveCapForStrengthUserIsLiftedToFullRangeAtEveryLevel() {
+        for level in FitnessLevel.allCases {
+            XCTAssertEqual(
+                ExercisePoolFilter.effectiveDifficultyCap(for: level, phase: .strength),
+                1...5,
+                "a strength-phase user's cap must be lifted regardless of onboarding level"
+            )
+        }
+    }
+
+    /// The boundary sits exactly at the phase transition: for one fixed user (intermediate, whose
+    /// level band tops out at difficulty 3) a difficulty-5 exercise is out-of-cap in `.discipline`
+    /// and in-cap in `.strength` - flipping only the phase flips eligibility of the harder skill,
+    /// while an in-band difficulty-3 exercise is eligible in both.
+    func testDifficultyFiveCrossesTheCapExactlyAtThePhaseTransition() {
+        let hard = exercise(id: "hard_d5", pattern: .push, difficulty: 5)
+        let mid = exercise(id: "mid_d3", pattern: .push, difficulty: 3)
+
+        let disciplineUser = user(level: .intermediate, phase: .discipline)
+        XCTAssertFalse(ExercisePoolFilter.isWithinEffectiveDifficultyCap(hard, for: disciplineUser))
+        XCTAssertTrue(ExercisePoolFilter.isWithinEffectiveDifficultyCap(mid, for: disciplineUser))
+
+        let strengthUser = user(level: .intermediate, phase: .strength)
+        XCTAssertTrue(ExercisePoolFilter.isWithinEffectiveDifficultyCap(hard, for: strengthUser))
+        XCTAssertTrue(ExercisePoolFilter.isWithinEffectiveDifficultyCap(mid, for: strengthUser))
+    }
+
+    /// A phase-gated difficulty-5 skill becomes reachable for a Strength-Phase user (it clears both
+    /// the phase gate *and* the lifted difficulty cap), while the same intermediate user in
+    /// `.discipline` never sees it - the double-gate trap resolved, on synthetic exercises.
+    func testPhaseGatedDifficultyFiveSkillBecomesReachableForStrengthUser() {
+        let library = [
+            exercise(id: "push_easy", pattern: .push, difficulty: 1),
+            exercise(id: "push_skill", pattern: .push, difficulty: 5, phase: .strength),
+        ]
+        let disciplinePool = ExercisePoolFilter.eligiblePool(
+            from: library, user: user(level: .intermediate, phase: .discipline), recentLogs: []
+        )
+        XCTAssertEqual(disciplinePool.map(\.id), ["push_easy"], "the gated d5 skill is hidden in discipline")
+
+        let strengthPool = ExercisePoolFilter.eligiblePool(
+            from: library, user: user(level: .intermediate, phase: .strength), recentLogs: []
+        )
+        XCTAssertEqual(strengthPool.map(\.id), ["push_easy", "push_skill"], "the gated d5 skill is reachable in strength")
+    }
+
+    /// PRD US-SP01 validation, end-to-end over the real bundled catalog: a synthetic
+    /// `FitnessLevel.intermediate` user with a log history that *earns* `.strength` (8 fully on-goal
+    /// weeks + all four foundation entry tiers cleared) sees `push_one_arm` (difficulty 5,
+    /// `phase == .strength`) in the eligible push pool; the same user forced to `.discipline` never
+    /// does. Failure indicator: an intermediate Strength-Phase user still cannot reach any
+    /// difficulty-5 skill (the double gate still binds).
+    func testStrengthPhaseIntermediateUserReachesDifficultyFivePushOverRealCatalog() async throws {
+        let library = try await MockExerciseService().exercises()
+
+        // A Sunday-start Gregorian/UTC calendar and a mid-week anchor, matching PhaseEvaluatorTests
+        // so week bucketing is deterministic.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        cal.firstWeekday = 1
+        let anchor = cal.date(from: DateComponents(year: 2026, month: 7, day: 8, hour: 12))!
+        func day(weeksAgo: Int, dayOffset: Int) -> Date {
+            cal.date(byAdding: .day, value: -(weeksAgo * 7 + dayOffset), to: anchor)!
+        }
+
+        // Sustained consistency: 3 show-ups/week for 8 weeks (Consistency Score 100, span 8).
+        func showUp(weeksAgo: Int, dayOffset: Int) -> WorkoutLog {
+            WorkoutLog(
+                id: UUID(), workoutId: UUID(), completedAt: day(weeksAgo: weeksAgo, dayOffset: dayOffset),
+                requestedMinutes: 15, durationMinutes: 15, shape: .singleFocus, focusPillar: .strength,
+                perceivedDifficulty: nil, exercises: []
+            )
+        }
+        // Competence: clear one entry tier of each foundational pattern from the real catalog.
+        func clearing(_ exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
+            let sets = (0..<3).map { _ in CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil) }
+            return WorkoutLog(
+                id: UUID(), workoutId: UUID(), completedAt: day(weeksAgo: 0, dayOffset: 0),
+                requestedMinutes: 20, durationMinutes: 20, shape: .singleFocus, focusPillar: .strength,
+                perceivedDifficulty: nil,
+                exercises: [LoggedExercise(id: UUID(), exerciseId: exerciseId, pillar: .strength,
+                                           movementPattern: pattern, completedSets: sets, skipped: false)]
+            )
+        }
+        let history =
+            (0..<8).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
+            + [
+                clearing("push_wall", pattern: .push, isHold: false, value: 15),        // "3x15 clean reps"
+                clearing("squat_wall_sit", pattern: .squat, isHold: true, value: 45),    // "3x45s hold"
+                clearing("hinge_glute_bridge", pattern: .hinge, isHold: false, value: 20),// "3x20 clean reps"
+                clearing("core_forearm_plank", pattern: .core, isHold: true, value: 45),  // "3x45s hold"
+            ]
+
+        // Step 1: evaluate phase - the earned phase must be Strength.
+        let earned = PhaseEvaluator.evaluate(logs: history, weeklyGoal: 3, library: library, asOf: anchor, calendar: cal)
+        XCTAssertEqual(earned, .strength, "the synthetic intermediate history must earn the Strength Phase")
+
+        // Step 2: the eligible push pool for the earned Strength-Phase intermediate user includes the
+        // phase-gated difficulty-5 one-arm push-up.
+        let strengthUser = user(level: .intermediate, phase: earned)
+        let strengthPush = ExercisePoolFilter
+            .eligiblePool(from: library, user: strengthUser, recentLogs: [])
+            .filter { $0.movementPattern == .push }
+        XCTAssertTrue(strengthPush.contains { $0.id == "push_one_arm" },
+                      "push_one_arm (d5, strength-gated) must be eligible for the earned Strength-Phase user")
+        XCTAssertTrue(strengthPush.contains { $0.difficulty == 5 },
+                      "at least one difficulty-5 push skill must be reachable (failure indicator)")
+
+        // The same user forced to Discipline never sees it (both gates bind).
+        let disciplineUser = user(level: .intermediate, phase: .discipline)
+        let disciplinePush = ExercisePoolFilter
+            .eligiblePool(from: library, user: disciplineUser, recentLogs: [])
+            .filter { $0.movementPattern == .push }
+        XCTAssertFalse(disciplinePush.contains { $0.id == "push_one_arm" },
+                       "push_one_arm must be hidden from a discipline-phase user")
+        XCTAssertFalse(disciplinePush.contains { $0.phase == .strength },
+                       "no strength-gated push survives for a discipline user")
+    }
+
+    /// Scope-discipline pin: a `.discipline` user's eligible pool over the real bundled catalog is
+    /// byte-identical to the pre-US-SP01 behavior (the level-only difficulty cap), so lifting the
+    /// cap for Strength users changed nothing for everyone else.
+    func testDisciplineUserPoolMatchesLevelOnlyCapOverRealCatalog() async throws {
+        let library = try await MockExerciseService().exercises()
+        for level in FitnessLevel.allCases {
+            let disciplineUser = user(level: level, phase: .discipline)
+            let actual = ExercisePoolFilter.eligiblePool(from: library, user: disciplineUser, recentLogs: []).map(\.id)
+            // Recompute the pool using the level-only cap, exactly the pre-change logic.
+            let expected = library.filter { e in
+                ExercisePoolFilter.isBodyweight(e)
+                    && ExercisePoolFilter.isPhaseAllowed(e, for: disciplineUser)
+                    && ExercisePoolFilter.isInjurySafe(e, injuries: disciplineUser.profile.injuries)
+                    && ExercisePoolFilter.isWithinDifficultyCap(e, for: level)
+            }.map(\.id)
+            XCTAssertEqual(actual, expected, "discipline pool at \(level) must be unchanged by US-SP01")
+        }
+    }
 }

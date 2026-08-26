@@ -11,7 +11,8 @@ import Foundation
 ///   and sit within `difficultyBandWidth` of its `difficulty`, so the session keeps the same shape
 ///   and the slot stays "the same kind of work" rather than turning a push slot into a stretch.
 /// - **Safety** - candidates are drawn from `ExercisePoolFilter.eligiblePool`, so every substitute
-///   already respects the user's phase, injuries, fitness-level difficulty cap, recent-skip history,
+///   already respects the user's phase, injuries, effective difficulty cap (the fitness-level band,
+///   lifted to the full catalog once the Strength Phase is earned - US-SP01), recent-skip history,
 ///   and the Zero-Equipment Floor. The swap step never re-derives those rules and never relaxes
 ///   them: if the only same-pattern options are gated, over-cap, or hard on an injury, there is no
 ///   safe substitute and the step says so rather than reaching for an unsafe pick.
@@ -67,7 +68,7 @@ enum ExerciseSwap {
 
     /// How far a substitute's `difficulty` may sit from the swapped exercise's and still count as
     /// "similar" - the difficulty *band* the substitute must fall within. A band of 1 lets a
-    /// difficulty-2 movement swap for a 1, 2, or 3 (still subject to the user's fitness-level cap,
+    /// difficulty-2 movement swap for a 1, 2, or 3 (still subject to the user's effective cap,
     /// which the eligible pool enforces), so the substitute is comparable, never a leap in either
     /// direction. Tunable.
     static let difficultyBandWidth = 1

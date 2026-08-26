@@ -10,8 +10,10 @@ import Foundation
 /// - **phase-gated** movements - `phase == .strength` while the user is still in `.discipline`;
 /// - **injury-contraindicated** movements - whose `movementPattern` is hard on one of the user's
 ///   declared injuries (see `InjuryContraindication`);
-/// - **too-hard** movements - `difficulty` above the user's fitness-level cap (beginner 1-2,
-///   intermediate 1-3, advanced 1-5);
+/// - **too-hard** movements - `difficulty` above the user's *effective* cap: the fitness-level band
+///   (beginner 1-2, intermediate 1-3, advanced 1-5) lifted to the full `1...5` range once the user
+///   has earned the `.strength` phase, so demonstrated competence overrides a conservative
+///   onboarding estimate (US-SP01, `effectiveDifficultyCap(for:phase:)`);
 /// - **repeatedly-skipped** movements - skipped more than `recentSkipThreshold` times across
 ///   `recentLogs`;
 /// and enforces the Zero-Equipment Floor (`equipment == []`) as a final guarantee even though the
@@ -107,11 +109,43 @@ enum ExercisePoolFilter {
 
     /// The difficulty band a fitness level may draw from: beginner 1-2, intermediate 1-3,
     /// advanced 1-5. Anything above the cap is filtered out.
+    ///
+    /// This is the band derived from the self-reported onboarding `FitnessLevel` *alone*. The
+    /// eligible-pool check does not consume it directly - it goes through `effectiveDifficultyCap`,
+    /// which layers the earned phase on top (US-SP01).
     static func difficultyCap(for level: FitnessLevel) -> ClosedRange<Int> {
         switch level {
         case .beginner: return 1...2
         case .intermediate: return 1...3
         case .advanced: return 1...5
+        }
+    }
+
+    /// The full catalog difficulty range an *earned* Strength-Phase user may draw from, lifting the
+    /// conservative onboarding-`FitnessLevel` band so the hardest phase-gated skills become
+    /// reachable. `1...5` is the whole shipped difficulty spectrum (the same ceiling `.advanced`
+    /// already sees), so competence-earned access never depends on how the user self-reported.
+    static let strengthPhaseDifficultyCap: ClosedRange<Int> = 1...5
+
+    /// The **effective** difficulty band - the single source of truth for the eligible-pool cap
+    /// check (US-SP01). For a `.discipline` user it is exactly `difficultyCap(for:)`, the
+    /// conservative band from the onboarding `FitnessLevel`. For a user who has *earned* the
+    /// `.strength` phase, demonstrated competence overrides that estimate: the cap is lifted to the
+    /// full catalog range so a phase-gated difficulty-5 skill is reachable regardless of the
+    /// onboarding level.
+    ///
+    /// This resolves the "double-gate trap": a phase-gated skill must clear *both* `isPhaseAllowed`
+    /// and the difficulty cap, yet the two gates were derived from independent signals (earned phase
+    /// vs. self-reported level), so a beginner/intermediate user who earned Strength still saw
+    /// nothing. Keying the cap lift off `user.phase` - the `PhaseEvaluator`'s own output - means the
+    /// difficulty gate can never disagree with the phase gate about who has graduated.
+    ///
+    /// A `.discipline` user's band is byte-identical to `difficultyCap(for:)`, so their eligible
+    /// pool is entirely unchanged.
+    static func effectiveDifficultyCap(for level: FitnessLevel, phase: Phase) -> ClosedRange<Int> {
+        switch phase {
+        case .discipline: return difficultyCap(for: level)
+        case .strength: return strengthPhaseDifficultyCap
         }
     }
 
@@ -123,9 +157,20 @@ enum ExercisePoolFilter {
         exercise.phase == .discipline || user.phase == .strength
     }
 
-    /// Whether the exercise's difficulty sits within the user's level cap.
+    /// Whether the exercise's difficulty sits within the user's level cap (the onboarding
+    /// `FitnessLevel` band alone, ignoring earned phase). The eligible-pool check uses
+    /// `isWithinEffectiveDifficultyCap` instead; this stays the level-only rule for callers that
+    /// reason about the conservative band directly.
     static func isWithinDifficultyCap(_ exercise: Exercise, for level: FitnessLevel) -> Bool {
         difficultyCap(for: level).contains(exercise.difficulty)
+    }
+
+    /// Whether the exercise's difficulty sits within the user's **effective** cap - the onboarding
+    /// `FitnessLevel` band lifted by the earned phase (US-SP01). This is what the eligible pool
+    /// gates on, so an earned Strength-Phase user reaches the harder catalog their competence unlocked.
+    static func isWithinEffectiveDifficultyCap(_ exercise: Exercise, for user: User) -> Bool {
+        effectiveDifficultyCap(for: user.profile.fitnessLevel, phase: user.phase)
+            .contains(exercise.difficulty)
     }
 
     /// Whether the exercise's pattern is clear of every injury the user declared.
@@ -163,7 +208,7 @@ enum ExercisePoolFilter {
     ) -> [Exercise] {
         library.filter { exercise in
             passesHardSafety(exercise, for: user)
-                && isWithinDifficultyCap(exercise, for: user.profile.fitnessLevel)
+                && isWithinEffectiveDifficultyCap(exercise, for: user)
                 && isWithinSkipLimit(exercise, recentLogs: recentLogs)
         }
     }
