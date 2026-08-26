@@ -99,10 +99,10 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] Add at least one `phase == .strength` hinge skill (e.g. a single-leg / advanced hinge progression) to `Resources/Exercises.json` on a valid hinge `progressionChainId`, zero-equipment, load-validated, with mid-tier and top-tier rungs consistent with US-SP02.
-- [ ] `PhaseEvaluator.foundationalPatterns` still resolves hinge competence correctly (no change needed, but assert it).
-- [ ] Test asserts a hinge skill is reachable by a Strength-Phase user. `docs/test-coverage.md` row added.
-- [ ] Build and unit suite pass.
+- [x] Add at least one `phase == .strength` hinge skill (e.g. a single-leg / advanced hinge progression) to `Resources/Exercises.json` on a valid hinge `progressionChainId`, zero-equipment, load-validated, with mid-tier and top-tier rungs consistent with US-SP02.
+- [x] `PhaseEvaluator.foundationalPatterns` still resolves hinge competence correctly (no change needed, but assert it).
+- [x] Test asserts a hinge skill is reachable by a Strength-Phase user. `docs/test-coverage.md` row added.
+- [x] Build and unit suite pass.
 
 **Validation Test:**
 
