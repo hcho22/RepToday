@@ -69,7 +69,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testRealLibraryLoadsAndCaches() async throws {
         let service = try MockExerciseService()
         let all = try await service.exercises()
-        XCTAssertEqual(all.count, 71, "service should load the full bundled library")
+        XCTAssertEqual(all.count, 74, "service should load the full bundled library")
     }
 
     func testExerciseByIdResolves() async throws {
@@ -92,7 +92,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testExercisesByMovementPattern() async throws {
         let service = try MockExerciseService()
         let push = try await service.exercises(for: .push)
-        XCTAssertEqual(push.count, 9)
+        XCTAssertEqual(push.count, 10)
         XCTAssertTrue(push.allSatisfy { $0.movementPattern == .push })
     }
 
@@ -100,7 +100,11 @@ final class ExerciseServiceTests: XCTestCase {
         let service = try MockExerciseService()
         // `.strength` is a case of both Pillar and Phase; name the type to pick the phase overload.
         let gated = try await service.exercises(for: Phase.strength)
-        XCTAssertEqual(Set(gated.map(\.id)), ["push_one_arm", "squat_pistol", "core_l_sit"])
+        XCTAssertEqual(Set(gated.map(\.id)), [
+            "push_one_arm_assisted", "push_one_arm",
+            "squat_pistol_assisted", "squat_pistol",
+            "core_one_leg_l_sit", "core_l_sit",
+        ])
         let discipline = try await service.exercises(for: Phase.discipline)
         XCTAssertEqual(discipline.count, 68)
     }

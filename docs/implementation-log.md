@@ -1036,6 +1036,24 @@ The single `eligiblePool` call site now routes through the new `isWithinEffectiv
 Deliverables: the three new `ExercisePoolFilter` members plus the rerouted `eligiblePool`; new `ExercisePoolFilterTests` (discipline cap unchanged at every level and its real-catalog pool matching the pre-change level-only logic; strength cap lifted to `1...5` at every level; the boundary exactly at the phase transition; a synthetic gated difficulty-5 skill reachable only in `.strength`; and the PRD end-to-end validation - an intermediate user whose 8-week + four-foundation history `PhaseEvaluator`-earns `.strength` reaches `push_one_arm` in the eligible push pool while the same user forced to `.discipline` never does); a `docs/test-coverage.md` row; and the previously-untracked Phase-2 PRD brought under version control with only US-SP01's acceptance boxes flipped.
 Full `RepToday` unit suite green (1062 tests, 0 failures, 1 skipped benchmark). US-SP01 acceptance boxes flipped in the PRD.
 
+### Phase-2 Strength Coach - fill the cliff with mid-tier phase-gated skills (US-SP02)
+
+The second story of the Phase-2 Strength Coach & analytics PRD, and a **catalog-data + tests** change (no engine, UI, or ADR change) - the "fill the cliff" complement to US-SP01's cap lift.
+US-SP01 made the difficulty-5 phase-gated summits *reachable* once the Strength Phase is earned; US-SP02 fills the gap so a newly-Strength-Phase user climbs a rung at a time rather than jumping straight from the difficulty-4 discipline frontier to the difficulty-5 skill.
+Each of the three phase-gated chains gains exactly one new **mid-tier `difficulty`-4 `phase == "strength"` bridge** in `Resources/Exercises.json`, slotted between its discipline frontier (also d4) and its d5 summit (catalog now 74 movements, six gated skills):
+push `push_horizontal` gets `push_one_arm_assisted` (Assisted One-Arm Push-Up) at order 6, between `push_archer` (order 5) and `push_one_arm` (bumped to order 7);
+squat `squat` gets `squat_pistol_assisted` (Assisted Pistol Squat) at order 5, between `squat_shrimp` (order 4) and `squat_pistol` (bumped to order 6);
+core `core_hollow` gets `core_one_leg_l_sit` (One-Leg L-Sit, a hold) at order 3, between `core_tuck_l_sit` (order 2) and `core_l_sit` (bumped to order 4).
+Each new skill is zero-equipment (`equipment == []`), load-validated, and matches its neighbours' `isHold`/`isPerSide` shape and `advancementCriteria` style ("3x6 clean reps per side" for the per-side push/squat bridges, "3x18s hold" for the core bridge), rewiring its chain into a clean, contiguous, gap-free/duplicate-free doubly-linked ladder (frontier `progressionId` -> bridge -> summit, with matching `regressionId`s).
+Difficulty 4 (not 3) keeps each chain's difficulty monotonic since the discipline frontier is already d4, and ties are already present elsewhere in the catalog.
+No bundled asset ships (all three are `animationName`-less like their neighbours), so no `docs/asset-attribution.md` row is owed.
+Deliberate test decisions a reviewer of the diff would not see:
+the old `ExerciseLibraryTests` invariant "phase-gated == difficulty-5 summit" was intentionally **rescoped** (not a regression - mid-tier gated skills are US-SP02's whole point) to assert a gated chain is a real two-rung d4-then-d5 ladder;
+hard-coded catalog counts across `ExerciseLibraryTests`/`ExerciseServiceTests`/`ExercisePoolFilterTests` were bumped 71 -> 74 (push 9 -> 10, squat 8 -> 9, core 9 -> 10, strength pillar 38 -> 41; the discipline count stays 68 since only strength-phase movements were added);
+and `ExerciseSwapTests`' coverage sweep was converted from a `>75%` ratio guard to explicit per-growth expected swap counts (74/74/73/55 at x1.0/1.25/1.5/2.0, matching its sibling bookend test's convention), because the three new hard phase-gated skills legitimately decline to swap at extreme x2.0 growth, which the ratio guard misread as a collapse.
+Deliverables: the three new `Exercises.json` movements plus the six rewired chain links; the new `MidTierStrengthSkillTests` (catalog validity, chain continuity, and the Validation Test - a `.strength` user advancing each chain surfaces the d4 bridge before the d5 skill, a `.discipline` user never reaches the gated bridge); the rescoped/count-bumped assertions in `ExerciseLibraryTests`/`ExerciseServiceTests`/`ExercisePoolFilterTests`/`ExerciseSwapTests`; and a `docs/test-coverage.md` row.
+Full `RepToday` unit suite green (1066 tests, 0 failures, 1 skipped benchmark). US-SP02 acceptance boxes flipped in the PRD.
+
 ## Owed work
 
 Carried here rather than on a story, because nothing in the funnel or MVP PRDs owns it; it is recorded so the exception cannot quietly become a second sanctioned way of doing things.
