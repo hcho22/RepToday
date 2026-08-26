@@ -2,7 +2,7 @@
 # In production the key is a Wrangler secret: `wrangler secret put ANTHROPIC_API_KEY`.
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 
-# The client shared secret that gates the /variety-language route (abuse protection).
-# When set, requests must send `Authorization: Bearer <this value>`; unset leaves the route open
+# The client shared secret that gates every route (/variety-language and /coach) - abuse protection.
+# When set, requests must send `Authorization: Bearer <this value>`; unset leaves the routes open
 # for local dev. Production deploys MUST set it: `wrangler secret put CLIENT_SHARED_SECRET`.
 CLIENT_SHARED_SECRET=dev-shared-secret-change-me

@@ -180,12 +180,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] Define a **derived context bundle**: a small, non-identifying summary (current chain positions, recent movement patterns, consistency trend, current phase, requested minutes) - NOT raw `WorkoutLog` history, NOT the Keychain/IDFA/Apple ID.
-- [ ] Expand `proxy/` to accept a coach request (context bundle + user message), call Claude, return the response, and **store nothing** (no logging of request/response bodies); enforce a bounded timeout and body size cap as the existing proxy does.
-- [ ] No accounts introduced; requests remain pseudonymous (reuse the existing anonymous transport identity model; do not send `installId` if not required, and never send identity fields).
-- [ ] Conversation memory (if any) lives on-device only; the server is stateless per request.
-- [ ] Proxy tests cover: valid request returns a response; oversized/invalid request rejected; nothing is persisted. Typecheck (`npm run typecheck`) and `npm test` pass for the sink/proxy toolchain.
-- [ ] iOS-side client for the coach transport is fire-and-forget-safe and bounded; the core loop never waits on it.
+- [x] Define a **derived context bundle**: a small, non-identifying summary (current chain positions, recent movement patterns, consistency trend, current phase, requested minutes) - NOT raw `WorkoutLog` history, NOT the Keychain/IDFA/Apple ID.
+- [x] Expand `proxy/` to accept a coach request (context bundle + user message), call Claude, return the response, and **store nothing** (no logging of request/response bodies); enforce a bounded timeout and body size cap as the existing proxy does.
+- [x] No accounts introduced; requests remain pseudonymous (reuse the existing anonymous transport identity model; do not send `installId` if not required, and never send identity fields).
+- [x] Conversation memory (if any) lives on-device only; the server is stateless per request.
+- [x] Proxy tests cover: valid request returns a response; oversized/invalid request rejected; nothing is persisted. Typecheck (`npm run typecheck`) and `npm test` pass for the sink/proxy toolchain.
+- [x] iOS-side client for the coach transport is fire-and-forget-safe and bounded; the core loop never waits on it.
 
 **Validation Test:**
 

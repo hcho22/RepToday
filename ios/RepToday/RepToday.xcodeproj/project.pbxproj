@@ -72,6 +72,7 @@
 		560913F9E0CD8261FDB6E7E0 /* ProgressionMapEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D223F9A07424D41EA2E41DA8 /* ProgressionMapEvidenceTests.swift */; };
 		575215208B032A64231FBF27 /* SessionAssemblyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD1E11A5E5F6BA2587259DF /* SessionAssemblyTests.swift */; };
 		57A9F4535CED7018243135CD /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33E93566AD813FF2960EEEEE /* User.swift */; };
+		586E09219474371E47B91A79 /* CoachContextBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE234365425899D87668506 /* CoachContextBundle.swift */; };
 		596D4E6CEA44810437089F10 /* StoreKitFacade.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27E7EED954A9C476BDFFB951 /* StoreKitFacade.swift */; };
 		59F1A03000C0D4DC459AD793 /* ScaffoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4457921384313AE075631568 /* ScaffoldTests.swift */; };
 		5A508E0BE93662DE9C751C57 /* USE01RangeEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E150DA02651957746C664AF0 /* USE01RangeEvidenceTests.swift */; };
@@ -80,6 +81,7 @@
 		600A5A41CEBB807AD520D3AE /* ActiveSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F54B0E514E7185919510F5 /* ActiveSessionState.swift */; };
 		602F0CFA358412B8EA149866 /* WeekActiveEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B278FF58865762BBC4650002 /* WeekActiveEventTests.swift */; };
 		60D0E2807A7E23E9F6D073D9 /* NoOpAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E907CC03B7B8388152EE6CC0 /* NoOpAnalyticsService.swift */; };
+		61611FB7A23D89F6F9C470BB /* CoachProxyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F691EA34B79FEEBE1A1E1FE /* CoachProxyClient.swift */; };
 		6479D1663C7DCB61190D781E /* AuthCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 617A3A6BD894EFD11DE252C7 /* AuthCredentialStore.swift */; };
 		6481B92FCCB5138E80FCC26E /* ActiveSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304334DF735169FC725E4988 /* ActiveSessionViewModel.swift */; };
 		65D0C3C030F9950B7C9A3DF6 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */; };
@@ -94,6 +96,7 @@
 		75EC860E655899772C6179F2 /* ReprogramTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E88FD480D389A5E5048BAD /* ReprogramTrigger.swift */; };
 		7847FC5E0333B48858794DCE /* UniformSessionShapeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606B9B7BB74223A1679C33DD /* UniformSessionShapeTests.swift */; };
 		7975CB09F69A769EC8E7B6D4 /* AccountDeletionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E91D2606BAA6DBCC888A77 /* AccountDeletionUITests.swift */; };
+		7A1837EE29B0F2FE89ECBD7C /* CoachContextBundleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */; };
 		7A48DCF9726C50E76F0ADEEF /* FirstWeekContrastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D808C6D787C3363FF43205 /* FirstWeekContrastTests.swift */; };
 		7C8C0B894B1A1D586CCDC18D /* SessionAssembly.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD63A0252E76FC38027149B8 /* SessionAssembly.swift */; };
 		7CAEB69CC3054208C7B23CD3 /* ColdStartOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDE2E883FF9262B7EE6D31C7 /* ColdStartOverride.swift */; };
@@ -147,6 +150,7 @@
 		BC926597554ED46DBEBB56EB /* AccountDeletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967ADBB93402792267D353F2 /* AccountDeletionService.swift */; };
 		BE7FD965AC71FB0E4542DBD3 /* SitsLongBookendBiasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83FDE13F73ED982C61B45519 /* SitsLongBookendBiasTests.swift */; };
 		C130C08495D12FC5F98C5B7D /* HealthAccessPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ED5CBC6B6FCC45A3C35542 /* HealthAccessPrompt.swift */; };
+		C249069BA8BB01D7B21E01C8 /* CoachProxyClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 623583620870CFC4115CDD41 /* CoachProxyClientTests.swift */; };
 		C3039CC96FBFBEAB9EA8ED31 /* VarietyLanguageResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CF49ED5905DDFE244635E7 /* VarietyLanguageResolver.swift */; };
 		C3F8C469587B74244EACB9B0 /* RoundCapWideCircuitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D67B74E0EF0CD04106EF4EE /* RoundCapWideCircuitsTests.swift */; };
 		C519FA42C7AEE33C9EE464C1 /* RepTodayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1C83C83DD5D2B72C9F4234 /* RepTodayApp.swift */; };
@@ -282,18 +286,22 @@
 		55D808C6D787C3363FF43205 /* FirstWeekContrastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstWeekContrastTests.swift; sourceTree = "<group>"; };
 		59C738BA5FCD52129CBF4A5E /* ProxyVarietyLanguageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyVarietyLanguageProvider.swift; sourceTree = "<group>"; };
 		5C021A85009B63EDF1B7BD53 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBundleTests.swift; sourceTree = "<group>"; };
 		5D2933C5C50DB6D05383878C /* ProgressAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressAnalyticsTests.swift; sourceTree = "<group>"; };
 		5D67B74E0EF0CD04106EF4EE /* RoundCapWideCircuitsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundCapWideCircuitsTests.swift; sourceTree = "<group>"; };
 		5E9F336C2F02E02793D884CB /* CoreDataWorkoutLogService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataWorkoutLogService.swift; sourceTree = "<group>"; };
 		606B9B7BB74223A1679C33DD /* UniformSessionShapeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniformSessionShapeTests.swift; sourceTree = "<group>"; };
 		617A3A6BD894EFD11DE252C7 /* AuthCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentialStore.swift; sourceTree = "<group>"; };
 		61C19B23E13FCC75F58D0102 /* SubscriptionPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionPlan.swift; sourceTree = "<group>"; };
+		623583620870CFC4115CDD41 /* CoachProxyClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachProxyClientTests.swift; sourceTree = "<group>"; };
 		636B72510391A097052E0DE5 /* AdaptiveOverload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveOverload.swift; sourceTree = "<group>"; };
 		63BD9CFC17194608C1F4C42E /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		6489E7C96E05197D40685001 /* ProgressionChainSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionChainSelection.swift; sourceTree = "<group>"; };
 		653FDB4A7212A136518C2E28 /* ColdStartHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartHandoff.swift; sourceTree = "<group>"; };
+		6BE234365425899D87668506 /* CoachContextBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBundle.swift; sourceTree = "<group>"; };
 		6D7B4D9BBA996389C45338A9 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		6F06B0BC9CE9949F676C2493 /* ProgressAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressAnalytics.swift; sourceTree = "<group>"; };
+		6F691EA34B79FEEBE1A1E1FE /* CoachProxyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachProxyClient.swift; sourceTree = "<group>"; };
 		7127A3BA50BEFDD5D238955D /* SessionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicy.swift; sourceTree = "<group>"; };
 		73A699A6213DBE560CCE43AC /* ActiveSessionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionViewModelTests.swift; sourceTree = "<group>"; };
 		75A099908FB3DCB707D41FB2 /* UnitConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnitConversionTests.swift; sourceTree = "<group>"; };
@@ -483,6 +491,7 @@
 				703FADB631572C570F6170FE /* ActiveSession */,
 				237ECD6285561DF92C272231 /* Analytics */,
 				89F680D02F5046DE809FDBFF /* Auth */,
+				B3E8797A21F471922D93BA7A /* Coach */,
 				4DC3490221AAD9639A43C3D6 /* Consistency */,
 				F32F2ACE7524C5D548B7FF2E /* Engine */,
 				6216857E9AEABF2EDF21C2F0 /* Health */,
@@ -634,6 +643,8 @@
 				AEE40F821F1BC087093DEA6F /* AppleAuthServiceTests.swift */,
 				9BBD4AACA7A21B0FC479E986 /* AppStateTests.swift */,
 				517F0822799948674E148CF7 /* BookendComplementSelectionTests.swift */,
+				5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */,
+				623583620870CFC4115CDD41 /* CoachProxyClientTests.swift */,
 				1467FDF4832D95379E2C6F5E /* ColdStartHandoffTests.swift */,
 				406DE1A1467EFCF0938D1246 /* ColdStartSeedingTests.swift */,
 				C342BE08A5755BD21B034C7D /* ConsistencyScoreTests.swift */,
@@ -752,6 +763,15 @@
 				B2F43A38841C6AED24BF5D34 /* UnitConversion.swift */,
 			);
 			path = Utilities;
+			sourceTree = "<group>";
+		};
+		B3E8797A21F471922D93BA7A /* Coach */ = {
+			isa = PBXGroup;
+			children = (
+				6BE234365425899D87668506 /* CoachContextBundle.swift */,
+				6F691EA34B79FEEBE1A1E1FE /* CoachProxyClient.swift */,
+			);
+			path = Coach;
 			sourceTree = "<group>";
 		};
 		BDED6DC405903E7AF5164081 /* ViewModels */ = {
@@ -1023,6 +1043,8 @@
 				05E3AA230EC7B974E7A8ADB9 /* AppStateTests.swift in Sources */,
 				4A902D8BBBA1847B93CE2A6C /* AppleAuthServiceTests.swift in Sources */,
 				FA6678B84E9E3E6DD9533F6C /* BookendComplementSelectionTests.swift in Sources */,
+				7A1837EE29B0F2FE89ECBD7C /* CoachContextBundleTests.swift in Sources */,
+				C249069BA8BB01D7B21E01C8 /* CoachProxyClientTests.swift in Sources */,
 				6E3F9AF4B4992C3FC4704270 /* ColdStartHandoffTests.swift in Sources */,
 				7F662FA76F8D07213282AE0E /* ColdStartSeedingTests.swift in Sources */,
 				020372D440DD73847A4395CA /* ConsistencyScoreTests.swift in Sources */,
@@ -1136,6 +1158,8 @@
 				7DBD3D73B978C3EB79876BE0 /* CDSessionPolicy.swift in Sources */,
 				36A49689F88E5CE0C35CCB90 /* CDUser.swift in Sources */,
 				1E63037E7394416596FD5535 /* CDWorkoutLog.swift in Sources */,
+				586E09219474371E47B91A79 /* CoachContextBundle.swift in Sources */,
+				61611FB7A23D89F6F9C470BB /* CoachProxyClient.swift in Sources */,
 				123ED2B1EA4BA34B2F71E45C /* ColdStartHandoff.swift in Sources */,
 				7CAEB69CC3054208C7B23CD3 /* ColdStartOverride.swift in Sources */,
 				2E92695475A99C6DDDA0F746 /* ConsistencyScore.swift in Sources */,

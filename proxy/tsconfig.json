@@ -1,0 +1,18 @@
+{
+  // Type-checks the plain-JS Worker and its tests in `checkJs` mode - the proxy ships no TypeScript,
+  // so this is a lightweight correctness gate (`npm run typecheck`) rather than a build step. The DOM
+  // lib supplies the web globals the Worker uses (fetch/Request/Response/URL/TextEncoder/AbortSignal).
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src/**/*.js", "test/**/*.js"]
+}
