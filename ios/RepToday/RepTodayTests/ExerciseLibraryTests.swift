@@ -36,7 +36,7 @@ final class ExerciseLibraryTests: XCTestCase {
     /// deliberately. It grew from the original 42 when the Start Seed band (US-O02) needed harder
     /// Discipline-Phase tiers to rotate over - see `testAdvancedStartBandHasRoomToRotate`.
     func testLibrarySizeIsAuthored() {
-        XCTAssertEqual(exercises.count, 71, "expected the authored 71-movement library")
+        XCTAssertEqual(exercises.count, 74, "expected the authored 74-movement library")
     }
 
     func testIdsAreUnique() {
@@ -48,10 +48,10 @@ final class ExerciseLibraryTests: XCTestCase {
     /// Every movement-pattern group from v5 5.1 is represented with the authored counts.
     func testMovementPatternCounts() {
         let counts = Dictionary(grouping: exercises, by: \.movementPattern).mapValues(\.count)
-        XCTAssertEqual(counts[.push], 9, "push group")
-        XCTAssertEqual(counts[.squat], 8, "squat group")
+        XCTAssertEqual(counts[.push], 10, "push group")
+        XCTAssertEqual(counts[.squat], 9, "squat group")
         XCTAssertEqual(counts[.hinge], 6, "hinge group")
-        XCTAssertEqual(counts[.core], 9, "core group")
+        XCTAssertEqual(counts[.core], 10, "core group")
         XCTAssertEqual(counts[.pull], 6, "pull/postural group")
         XCTAssertEqual(counts[.mobility], 26, "mobility group (warm-up + cooldown bookends)")
         XCTAssertEqual(counts[.locomotion], 7, "primal group")
@@ -61,7 +61,7 @@ final class ExerciseLibraryTests: XCTestCase {
     /// even though strength is the primary pillar of every session (US-006).
     func testPillarCoverage() {
         let counts = Dictionary(grouping: exercises, by: \.pillar).mapValues(\.count)
-        XCTAssertEqual(counts[.strength], 38)
+        XCTAssertEqual(counts[.strength], 41)
         XCTAssertEqual(counts[.mobility], 26)
         XCTAssertEqual(counts[.primal], 7)
     }
@@ -156,27 +156,44 @@ final class ExerciseLibraryTests: XCTestCase {
     // MARK: - Phase gating
 
     /// The Strength-Phase-only skills are tagged `phase: strength`; everything else is
-    /// `discipline`. At MVP launch the phase filter hides the gated skills from every user.
+    /// `discipline`. Since US-SP02 each phase-gated chain carries **two** rungs - a mid-tier bridge
+    /// (difficulty 4) and the summit (difficulty 5) - so a newly-Strength-Phase user climbs a ladder
+    /// rather than jumping straight to the difficulty-5 skill.
     func testStrengthPhaseSkillsAreTagged() {
         let gated = Set(exercises.filter { $0.phase == .strength }.map(\.id))
-        XCTAssertEqual(gated, ["push_one_arm", "squat_pistol", "core_l_sit"])
+        XCTAssertEqual(gated, [
+            "push_one_arm_assisted", "push_one_arm",
+            "squat_pistol_assisted", "squat_pistol",
+            "core_one_leg_l_sit", "core_l_sit",
+        ])
     }
 
-    /// Phase gates *skills*, not tiers: the gated movements are the library's summit (difficulty 5),
-    /// and every tier beneath a summit is reachable in the Discipline Phase. That is what keeps the
-    /// reachable catalog a real 1-4 range rather than topping out at 3 - the Start Seed band
-    /// (US-O02) has nothing to band against otherwise.
+    /// Phase gates *skills*, not tiers, and since US-SP02 a gated chain is a real mid-to-summit ladder:
+    /// every strength-phase skill sits at difficulty 4 (the mid-tier bridge) or 5 (the summit), and
+    /// each of push/squat/core offers **both** so the phase-gated segment never jumps straight from
+    /// difficulty 4 to 5. Every Discipline-Phase movement stays at difficulty <= 4 (reachable without
+    /// earning the phase), and the reachable Discipline catalog is still a real 1-4 range so the Start
+    /// Seed band (US-O02) has tiers to band against.
     func testPhaseMatchesDifficultyIntent() {
         for ex in exercises {
             XCTAssertTrue((1...5).contains(ex.difficulty), "\(ex.id) difficulty out of range")
             if ex.phase == .strength {
-                XCTAssertEqual(ex.difficulty, 5, "\(ex.id) gated skill should be the library's summit")
+                XCTAssertTrue((4...5).contains(ex.difficulty),
+                              "\(ex.id) gated skill should be a mid-tier bridge (4) or the summit (5)")
             } else {
                 XCTAssertLessThanOrEqual(ex.difficulty, 4, "\(ex.id) discipline movement must stay reachable")
             }
         }
         let disciplineTiers = Set(exercises.filter { $0.phase == .discipline }.map(\.difficulty))
         XCTAssertEqual(disciplineTiers, [1, 2, 3, 4], "every non-summit tier must be reachable")
+
+        // Each phase-gated chain is a two-rung ladder: exactly one difficulty-4 bridge below its
+        // difficulty-5 summit, so US-SP02's "no direct 4->5 jump in the gated segment" holds per chain.
+        let gatedByChain = Dictionary(grouping: exercises.filter { $0.phase == .strength }, by: \.progressionChainId)
+        for (chainId, rungs) in gatedByChain {
+            XCTAssertEqual(Set(rungs.map(\.difficulty)), [4, 5],
+                           "gated chain \(chainId) must carry both a difficulty-4 bridge and a difficulty-5 summit")
+        }
     }
 
     // MARK: - Start Seed band coverage (US-O02)

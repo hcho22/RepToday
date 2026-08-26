@@ -16,6 +16,7 @@
 		08B967C35C7CBC2AFDE27D91 /* ProgressViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CC9FD348FAA33C7F657BF1 /* ProgressViewModel.swift */; };
 		0A418723E2FF7D1CC7297736 /* AppleCredentialState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B575D4C7B1C1390142C58297 /* AppleCredentialState.swift */; };
 		0B2820E058A23D74AAE43A9E /* MoreTimeAccessibilityEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438A3ACDF40B93E0C11D4474 /* MoreTimeAccessibilityEvidenceTests.swift */; };
+		0B3F3FAF1BB6A31018F1FA3D /* MidTierStrengthSkillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F154BF4A5E8F3926B71D73CD /* MidTierStrengthSkillTests.swift */; };
 		0C2644C61BB76735762E0F3D /* NoPerSetCompletionTrackingGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58995CF734FD6588A97B994 /* NoPerSetCompletionTrackingGuardTests.swift */; };
 		0ECC3B349D0E42948312BAFE /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA59450267BE04E5A2E7C68 /* Exercise.swift */; };
 		123ED2B1EA4BA34B2F71E45C /* ColdStartHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653FDB4A7212A136518C2E28 /* ColdStartHandoff.swift */; };
@@ -384,6 +385,7 @@
 		F09F0C0644F2443185F7A37A /* DeterministicSessionPolicyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterministicSessionPolicyService.swift; sourceTree = "<group>"; };
 		F0BFF79B936A0EBBEB5FDFBE /* ContinuousCircuitExplainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContinuousCircuitExplainerView.swift; sourceTree = "<group>"; };
 		F0D9E0BEF8C9F70009DCA8F6 /* Enums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Enums.swift; sourceTree = "<group>"; };
+		F154BF4A5E8F3926B71D73CD /* MidTierStrengthSkillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MidTierStrengthSkillTests.swift; sourceTree = "<group>"; };
 		F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataServicesTests.swift; sourceTree = "<group>"; };
 		F4A475E54BF81899FCA16BF7 /* AppleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthService.swift; sourceTree = "<group>"; };
 		F7D6A843D6B4D44830EA09B4 /* WorkoutLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLog.swift; sourceTree = "<group>"; };
@@ -639,6 +641,7 @@
 				BCC8E70A83D9356FBF1653BD /* HealthKitWorkoutSampleTests.swift */,
 				2D4FF883C98D5A4A4C27A4FC /* HostedSurface.swift */,
 				3152E3EB5E4DB4E44CDBA130 /* LiveAnalyticsServiceTests.swift */,
+				F154BF4A5E8F3926B71D73CD /* MidTierStrengthSkillTests.swift */,
 				3B022E6DD36A92F51FAAF800 /* ModelsTests.swift */,
 				438A3ACDF40B93E0C11D4474 /* MoreTimeAccessibilityEvidenceTests.swift */,
 				EF888D00CB3C7612EB72A396 /* MovementPatternFocusTests.swift */,
@@ -1020,6 +1023,7 @@
 				3C2C17482AF00FD9009E5162 /* HealthKitWorkoutSampleTests.swift in Sources */,
 				3C50E0A667886567B16D76A4 /* HostedSurface.swift in Sources */,
 				F3D5D156B6862075D47580B0 /* LiveAnalyticsServiceTests.swift in Sources */,
+				0B3F3FAF1BB6A31018F1FA3D /* MidTierStrengthSkillTests.swift in Sources */,
 				18BB492FFC5825F12658B62B /* ModelsTests.swift in Sources */,
 				0B2820E058A23D74AAE43A9E /* MoreTimeAccessibilityEvidenceTests.swift in Sources */,
 				1C7B2F8D44A1741AD4AA538C /* MovementPatternFocusTests.swift in Sources */,

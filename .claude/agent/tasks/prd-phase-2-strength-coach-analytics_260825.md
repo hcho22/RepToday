@@ -77,12 +77,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] Add mid-tier (`difficulty` 3-4) `phase == .strength` skill movements to `Resources/Exercises.json` for push, squat, and core, slotting between the discipline frontier and the existing difficulty-5 skills, each on the correct `progressionChainId` at the correct `progressionOrder` with valid `advancementCriteria`.
-- [ ] Every new movement is zero-equipment (`equipment == []`) and passes load-time validation.
-- [ ] Each new movement has a `docs/asset-attribution.md` row if it ships any bundled asset (else none owed).
-- [ ] Progression-chain continuity: no gap or duplicate `progressionOrder` in any touched chain; `ProgressionChainSelection` still resolves frontier tiers correctly.
-- [ ] Tests assert catalog validity and that a Strength-Phase user advancing a chain now steps through the new mid-tier rung before the difficulty-5 skill. Adds a `docs/test-coverage.md` row.
-- [ ] Build and unit suite pass.
+- [x] Add mid-tier (`difficulty` 3-4) `phase == .strength` skill movements to `Resources/Exercises.json` for push, squat, and core, slotting between the discipline frontier and the existing difficulty-5 skills, each on the correct `progressionChainId` at the correct `progressionOrder` with valid `advancementCriteria`.
+- [x] Every new movement is zero-equipment (`equipment == []`) and passes load-time validation.
+- [x] Each new movement has a `docs/asset-attribution.md` row if it ships any bundled asset (else none owed). *(None owed - no bundled asset ships; all three are `animationName`-less like their neighbours.)*
+- [x] Progression-chain continuity: no gap or duplicate `progressionOrder` in any touched chain; `ProgressionChainSelection` still resolves frontier tiers correctly.
+- [x] Tests assert catalog validity and that a Strength-Phase user advancing a chain now steps through the new mid-tier rung before the difficulty-5 skill. Adds a `docs/test-coverage.md` row.
+- [x] Build and unit suite pass.
 
 **Validation Test:**
 
