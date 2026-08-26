@@ -88,7 +88,9 @@ struct ProgressTabView: View {
                     // The free "visible climb" toward the Strength Phase (US-SP04). Shown only while
                     // the user is still earning it (`.discipline`); once earned, US-SP06's graduation
                     // moment and the strength surfaces take over. Never gated.
-                    if viewModel.phase == .discipline, let progress = viewModel.phaseProgress {
+                    if viewModel.phase == .discipline,
+                       let progress = viewModel.phaseProgress,
+                       !progress.hasEarnedStrength {
                         PhaseProgressCard(progress: progress)
                     }
 
