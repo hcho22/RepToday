@@ -154,7 +154,16 @@ enum ExercisePoolFilter {
     /// Strength-Phase skills stay hidden until the user has earned the Strength Phase; discipline
     /// movements are always allowed.
     static func isPhaseAllowed(_ exercise: Exercise, for user: User) -> Bool {
-        exercise.phase == .discipline || user.phase == .strength
+        isPhaseAllowed(exercise, phase: user.phase)
+    }
+
+    /// The phase-only core of the gate above, taking the earned `phase` directly. The `for user:`
+    /// overload delegates here, so a read-only surface that must mark a rung "locked until the
+    /// Strength Phase is earned" (the progression map, US-SP05) reads the *same* rule the engine
+    /// filters on rather than a parallel re-derivation - `!isPhaseAllowed(_:phase:)` is exactly
+    /// "this rung is a Strength-Phase skill and the user has not earned it."
+    static func isPhaseAllowed(_ exercise: Exercise, phase: Phase) -> Bool {
+        exercise.phase == .discipline || phase == .strength
     }
 
     /// Whether the exercise's difficulty sits within the user's level cap (the onboarding

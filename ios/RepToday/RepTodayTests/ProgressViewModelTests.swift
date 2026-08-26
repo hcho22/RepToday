@@ -358,7 +358,7 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// nothing while running out of it would clip the bottom of the surface - which is why the measure
     /// throws rather than silently returning a truncated height.
     private enum HostHeight {
-        static let populated: CGFloat = 3200
+        static let populated: CGFloat = 4400
         static let empty: CGFloat = 900
     }
 

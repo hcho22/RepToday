@@ -138,12 +138,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] A visual per-pattern ladder (push/squat/hinge/core) shows the chain from entry tier through the Strength-Phase skill, marking the user's current frontier and what is still locked.
-- [ ] Locked Strength-Phase rungs are shown as "earn the Strength Phase to unlock," previewable but not selectable.
-- [ ] The map never lets the user pick or start a specific movement (thesis preserved: no browsing/choosing the workout).
-- [ ] Current position is derived from real logs via existing chain-position logic (reuse `ProgressAnalytics` chain positions; do not re-derive).
-- [ ] Accessibility + `Theme` tokens; verify visually on device/simulator via the evidence path. `docs/test-coverage.md` row added.
-- [ ] Build and unit suite pass.
+- [x] A visual per-pattern ladder (push/squat/hinge/core) shows the chain from entry tier through the Strength-Phase skill, marking the user's current frontier and what is still locked.
+- [x] Locked Strength-Phase rungs are shown as "earn the Strength Phase to unlock," previewable but not selectable.
+- [x] The map never lets the user pick or start a specific movement (thesis preserved: no browsing/choosing the workout).
+- [x] Current position is derived from real logs via existing chain-position logic (reuse `ProgressAnalytics` chain positions; do not re-derive).
+- [x] Accessibility + `Theme` tokens; verify visually on device/simulator via the evidence path. `docs/test-coverage.md` row added.
+- [x] Build and unit suite pass.
 
 **Validation Test:**
 

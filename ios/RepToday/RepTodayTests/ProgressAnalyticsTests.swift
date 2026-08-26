@@ -178,6 +178,102 @@ final class ProgressAnalyticsTests: XCTestCase {
         XCTAssertEqual(strengthPush?.hasNextTier, true)  // one-arm push-up is in reach
     }
 
+    // MARK: - Progression map (US-SP05)
+
+    private func ladder(_ logs: [WorkoutLog], phase: Phase = .discipline, _ pattern: MovementPattern) -> PatternLadder? {
+        analytics(logs, phase: phase).progressionMap.ladders.first { $0.pattern == pattern }
+    }
+
+    /// The push ladder for a user worked to a mid-chain tier: the full chain is shown entry-first, the
+    /// frontier is the current rung, lower rungs are cleared, higher rungs ahead, and the Strength
+    /// summit is locked with the "earn the Strength Phase" affordance in its state note - previewable,
+    /// never omitted. Mirrors the PRD Validation Test (at a mid tier, harder tiers ahead, gated skill
+    /// locked). No rung carries a start/select handle - the type has no such field.
+    func testPushLadderMarksFrontierClearedAheadAndLockedSummit() {
+        let logs = [log(weeksAgo: 0, [logged("push_c", .strength, .push, reps: [15])])]
+        let push = ladder(logs, .push)
+
+        XCTAssertNotNil(push)
+        XCTAssertTrue(push!.hasStarted)
+        // Entry-first through the summit: all four tiers of the active chain, in order.
+        XCTAssertEqual(push!.rungs.map(\.exerciseId), ["push_a", "push_b", "push_c", "push_d"])
+
+        let byId = Dictionary(uniqueKeysWithValues: push!.rungs.map { ($0.exerciseId, $0) })
+        XCTAssertEqual(byId["push_a"]?.state, .cleared)
+        XCTAssertEqual(byId["push_b"]?.state, .cleared)
+        XCTAssertEqual(byId["push_c"]?.state, .current)
+        XCTAssertEqual(byId["push_d"]?.state, .ahead)
+        XCTAssertEqual(push!.currentRung?.exerciseId, "push_c")
+
+        // The Strength summit is a locked strength skill for a Discipline user; the discipline rungs
+        // are never locked.
+        XCTAssertTrue(byId["push_d"]!.isStrengthSkill)
+        XCTAssertTrue(byId["push_d"]!.isLocked)
+        XCTAssertFalse(byId["push_c"]!.isLocked)
+        XCTAssertFalse(byId["push_a"]!.isLocked)
+    }
+
+    /// The locked marking is the engine's own phase gate, not a parallel re-derivation: the same summit
+    /// that is locked for a Discipline user is unlocked for a user who has earned the Strength Phase,
+    /// exactly as `ExercisePoolFilter.isPhaseAllowed` would decide.
+    func testLockedRungAgreesWithPhaseGate() {
+        let logs = [log(weeksAgo: 0, [logged("push_c", .strength, .push, reps: [15])])]
+
+        let disciplineSummit = ladder(logs, phase: .discipline, .push)?.rungs.first { $0.exerciseId == "push_d" }
+        XCTAssertEqual(disciplineSummit?.isLocked, true)
+
+        let strengthSummit = ladder(logs, phase: .strength, .push)?.rungs.first { $0.exerciseId == "push_d" }
+        XCTAssertEqual(strengthSummit?.isLocked, false)          // earned - no longer locked
+        XCTAssertEqual(strengthSummit?.isStrengthSkill, true)    // still a strength skill
+
+        // Independently confirm the map's `isLocked` matches the gate for every rung.
+        for phase in [Phase.discipline, .strength] {
+            for rung in ladder(logs, phase: phase, .push)!.rungs {
+                let exercise = library.first { $0.id == rung.exerciseId }!
+                XCTAssertEqual(rung.isLocked, !ExercisePoolFilter.isPhaseAllowed(exercise, phase: phase),
+                               "rung \(rung.exerciseId) at phase \(phase) disagreed with the gate")
+            }
+        }
+    }
+
+    /// A pattern the user has never trained still previews its ladder (nothing cleared, no current
+    /// marker) and defaults to the pattern's canonical strength chain so the locked summit is visible
+    /// from day one - the strength journey is visible before it is started.
+    func testUntrainedPatternPreviewsCanonicalLadderWithNoCurrentMarker() {
+        let core = ladder([], .core)   // no logs at all
+
+        XCTAssertNotNil(core)
+        XCTAssertFalse(core!.hasStarted)
+        XCTAssertNil(core!.currentRung)
+        // The only core chain in the fixture carries the strength summit; every rung is ahead.
+        XCTAssertEqual(core!.rungs.map(\.exerciseId), ["plank_a", "plank_b"])
+        XCTAssertTrue(core!.rungs.allSatisfy { $0.state == .ahead })
+        XCTAssertEqual(core!.rungs.first { $0.exerciseId == "plank_b" }?.isLocked, true)
+    }
+
+    /// One ladder per foundational pattern, in `PhaseEvaluator.foundationalPatterns` order, even when
+    /// the catalog has no chain for a pattern (that ladder is simply empty rather than missing).
+    func testProgressionMapHasOneLadderPerFoundationInOrder() {
+        let map = analytics([]).progressionMap
+        XCTAssertEqual(map.ladders.map(\.pattern), [.push, .squat, .hinge, .core])
+        // The fixture has no hinge chain, so its ladder is present but empty.
+        XCTAssertEqual(map.ladders.first { $0.pattern == .hinge }?.rungs.isEmpty, true)
+    }
+
+    /// The map's current-position marking reuses the chain-position frontier - the two surfaces can
+    /// never disagree about where the user stands.
+    func testMapCurrentRungMatchesChainPositionFrontier() {
+        let logs = [
+            log(weeksAgo: 1, [logged("push_c", .strength, .push, reps: [10])]),
+            log(weeksAgo: 0, [logged("push_a", .strength, .push, reps: [20])]),
+        ]
+        let result = analytics(logs)
+        let frontierId = result.chainPositions.first { $0.pattern == .push }?.currentExercise?.id
+        let currentRungId = result.progressionMap.ladders.first { $0.pattern == .push }?.currentRung?.exerciseId
+        XCTAssertEqual(currentRungId, frontierId)
+        XCTAssertEqual(currentRungId, "push_c")
+    }
+
     // MARK: - Personal bests
 
     func testPersonalBests() {
