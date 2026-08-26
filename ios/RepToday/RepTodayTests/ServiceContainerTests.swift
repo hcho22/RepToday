@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            14,
+            15,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -36,6 +36,9 @@ final class ServiceContainerTests: XCTestCase {
         // Resolved but not exercised: running it would tear down the container's stores and mutate an
         // AppState. Its teardown is covered by `AccountDeletionServiceTests`.
         _ = services.accountDeletionService
+        // The premium coach transport (US-AC02): `nil` in the mock container (no proxy configured),
+        // which is the coach's "inert, never fatal" state - the chat surface shows "unavailable".
+        XCTAssertNil(services.coachClient)
     }
 
     /// US-D04 validation test: the container resolves the session-policy service, its

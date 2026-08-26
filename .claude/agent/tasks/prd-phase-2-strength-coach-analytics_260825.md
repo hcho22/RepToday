@@ -203,12 +203,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] A chat surface where the user can ask free-text questions; the coach answers using the derived context bundle + the message via US-AC01's transport.
-- [ ] The coach answers the target intents: "why this workout?", "how do I do <movement>?", "is <movement> safe with <complaint>?" (guidance + route to injury flag, see US-AC08), "I'm bored" (explain variety + offer, see US-AC07 when built).
-- [ ] The coach **never** returns or implies a generated/edited workout in this story (talking only). It may explain the engine's deterministic choices.
-- [ ] Graceful failure: on timeout/offline/error the surface degrades to a clear non-blocking state; the core loop is unaffected.
-- [ ] Copy respects identity-framing and the app's voice.
-- [ ] Accessibility + `Theme`; verify on device/simulator. `docs/test-coverage.md` row added. Build and suites pass.
+- [x] A chat surface where the user can ask free-text questions; the coach answers using the derived context bundle + the message via US-AC01's transport.
+- [x] The coach answers the target intents: "why this workout?", "how do I do <movement>?", "is <movement> safe with <complaint>?" (guidance + route to injury flag, see US-AC08), "I'm bored" (explain variety + offer, see US-AC07 when built).
+- [x] The coach **never** returns or implies a generated/edited workout in this story (talking only). It may explain the engine's deterministic choices.
+- [x] Graceful failure: on timeout/offline/error the surface degrades to a clear non-blocking state; the core loop is unaffected.
+- [x] Copy respects identity-framing and the app's voice.
+- [x] Accessibility + `Theme`; verify on device/simulator. `docs/test-coverage.md` row added. Build and suites pass.
 
 **Validation Test:**
 

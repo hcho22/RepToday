@@ -76,13 +76,27 @@ targets:
       # must match the deployment's `ANALYTICS_SHARED_SECRET` env var (`npx convex env set`). An empty
       # value is inert exactly like an empty endpoint: `LiveAnalyticsService.configured(...)` returns
       # nil and the container falls back to `NoOpAnalyticsService`.
+      # The premium coach proxy's `POST /coach` origin (US-AC02), split per configuration and expanded
+      # into `Info.plist`'s `RepTodayCoachEndpoint` key exactly like the telemetry endpoint above. The
+      # `proxy/` Cloudflare Worker is deploy-ready but not yet deployed, so BOTH configurations carry
+      # nothing today: an empty value is inert (`CoachProxyClient.configured(...)` returns nil and the
+      # container leaves `coachClient` nil), so the chat surface shows a clear "coach unavailable" state
+      # and never points at a wrong destination. Setting this to the deployed `https://<worker>/coach`
+      # origin is a one-line change once the proxy ships (US-AC03 gates the entry point behind premium).
+      # The coach shared secret is split the same way and is *optional* - an open dev Worker with no
+      # secret set matches an empty value here (no `Authorization` header), unlike the telemetry secret
+      # which is required. When the proxy sets `CLIENT_SHARED_SECRET`, put the matching value here.
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
           REPTODAY_ANALYTICS_SECRET: d8f3a1c07b9e4256a1c3e5f7091b2d4e
+          REPTODAY_COACH_ENDPOINT: ""
+          REPTODAY_COACH_SECRET: ""
         Release:
           REPTODAY_ANALYTICS_ENDPOINT: ""
           REPTODAY_ANALYTICS_SECRET: ""
+          REPTODAY_COACH_ENDPOINT: ""
+          REPTODAY_COACH_SECRET: ""
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.

@@ -155,6 +155,8 @@ private struct MainTabsView: View {
 /// The row is a plain, prominent list-style row rather than a toolbar gear, because the one control
 /// behind it - the anonymous-usage-data opt-out - has to be *found* to be worth anything.
 private struct ProfileTabView: View {
+    @Environment(\.services) private var services
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -168,34 +170,62 @@ private struct ProfileTabView: View {
                         subtitle: "Keep your movement basics current."
                     )
 
-                    NavigationLink {
-                        SettingsView()
-                    } label: {
-                        HStack(spacing: Theme.Spacing.md) {
-                            Image(systemName: "gearshape.fill")
-                                .foregroundStyle(Theme.Colors.accent)
-                            Text("Settings")
-                                .font(Theme.Typography.headline)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(Theme.Colors.textSecondary)
+                    VStack(spacing: Theme.Spacing.md) {
+                        // US-AC02: a minimal, reachable, *ungated* entry to the talking coach so the
+                        // surface is navigable and testable now. US-AC03 owns premium gating and the
+                        // upsell entry point - it wraps this row (or replaces it) rather than being
+                        // built here; keep this trivially replaceable.
+                        NavigationLink {
+                            CoachView(services: services)
+                        } label: {
+                            ProfileRowLabel(
+                                icon: "bubble.left.and.bubble.right.fill",
+                                title: "Coach"
+                            )
                         }
-                        .padding(.horizontal, Theme.Spacing.md)
-                        // The standard 56pt control height, which already clears the 44pt target.
-                        .frame(height: Theme.Spacing.buttonHeight)
-                        .background(
-                            Theme.Colors.surface,
-                            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-                        )
+                        .accessibilityLabel("Coach")
+                        .accessibilityHint("Ask the coach about your workouts and form")
+
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            ProfileRowLabel(icon: "gearshape.fill", title: "Settings")
+                        }
+                        .accessibilityLabel("Settings")
+                        .accessibilityHint("Privacy and anonymous usage data")
                     }
-                    .accessibilityLabel("Settings")
-                    .accessibilityHint("Privacy and anonymous usage data")
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.bottom, Theme.Spacing.xl)
                 }
             }
         }
+    }
+}
+
+/// A prominent list-style navigation row on the Profile tab: an icon, a title, and a chevron. Shared
+/// so the Coach and Settings rows stay visually identical.
+private struct ProfileRowLabel: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            Image(systemName: icon)
+                .foregroundStyle(Theme.Colors.accent)
+            Text(title)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        // The standard 56pt control height, which already clears the 44pt target.
+        .frame(height: Theme.Spacing.buttonHeight)
+        .background(
+            Theme.Colors.surface,
+            in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+        )
     }
 }
 
