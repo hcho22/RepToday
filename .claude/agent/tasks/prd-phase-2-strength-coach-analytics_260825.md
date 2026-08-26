@@ -223,11 +223,11 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] The coach surface is reachable only for `SubscriptionTier.premium`; free users see an upsell entry point (reuse the paywall + `paywall_shown` entry-point pattern from US-T12).
-- [ ] The free core loop (generate, play, log, consistency, phase, phase-progress, progression map) is unchanged and never gated.
-- [ ] Entitlement checks reuse existing StoreKit 2 plumbing; no new billing path.
-- [ ] Tests cover: free user blocked with upsell; premium user allowed. `docs/test-coverage.md` row.
-- [ ] Build and suites pass.
+- [x] The coach surface is reachable only for `SubscriptionTier.premium`; free users see an upsell entry point (reuse the paywall + `paywall_shown` entry-point pattern from US-T12).
+- [x] The free core loop (generate, play, log, consistency, phase, phase-progress, progression map) is unchanged and never gated.
+- [x] Entitlement checks reuse existing StoreKit 2 plumbing; no new billing path.
+- [x] Tests cover: free user blocked with upsell; premium user allowed. `docs/test-coverage.md` row.
+- [x] Build and suites pass.
 
 **Validation Test:**
 

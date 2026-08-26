@@ -171,20 +171,11 @@ private struct ProfileTabView: View {
                     )
 
                     VStack(spacing: Theme.Spacing.md) {
-                        // US-AC02: a minimal, reachable, *ungated* entry to the talking coach so the
-                        // surface is navigable and testable now. US-AC03 owns premium gating and the
-                        // upsell entry point - it wraps this row (or replaces it) rather than being
-                        // built here; keep this trivially replaceable.
-                        NavigationLink {
-                            CoachView(services: services)
-                        } label: {
-                            ProfileRowLabel(
-                                icon: "bubble.left.and.bubble.right.fill",
-                                title: "Coach"
-                            )
-                        }
-                        .accessibilityLabel("Coach")
-                        .accessibilityHint("Ask the coach about your workouts and form")
+                        // US-AC03: the premium gate + upsell entry point for the talking coach
+                        // (US-AC02). A Premium subscriber navigates into `CoachView`; a free user's tap
+                        // opens the existing paywall carrying the `coach_upsell` entry point. The gate
+                        // is best-effort and never touches the core loop.
+                        CoachEntryRow(services: services)
 
                         NavigationLink {
                             SettingsView()
@@ -202,11 +193,15 @@ private struct ProfileTabView: View {
     }
 }
 
-/// A prominent list-style navigation row on the Profile tab: an icon, a title, and a chevron. Shared
-/// so the Coach and Settings rows stay visually identical.
-private struct ProfileRowLabel: View {
+/// A prominent list-style navigation row on the Profile tab: an icon, a title, an optional trailing
+/// badge, and a chevron. Shared so the Coach and Settings rows stay visually identical (and so the
+/// US-AC03 gate can reuse it for both the Premium and upsell states). Internal, not private, so the
+/// coach entry row in its own file can render an identical row.
+struct ProfileRowLabel: View {
     let icon: String
     let title: String
+    /// An optional short trailing tag (e.g. "Premium" on the coach upsell row). `nil` renders no badge.
+    var badge: String?
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
@@ -216,6 +211,17 @@ private struct ProfileRowLabel: View {
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)
             Spacer(minLength: 0)
+            if let badge {
+                Text(badge)
+                    .font(Theme.Typography.caption.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.accent)
+                    .padding(.horizontal, Theme.Spacing.sm)
+                    .padding(.vertical, Theme.Spacing.xs)
+                    .background(
+                        Theme.Colors.accent.opacity(0.12),
+                        in: Capsule()
+                    )
+            }
             Image(systemName: "chevron.right")
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
