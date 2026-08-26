@@ -126,6 +126,62 @@ final class SessionPolicyTests: XCTestCase {
         XCTAssertEqual(SessionPolicy.Note.Source.allCases.count, 2)
     }
 
+    // MARK: - Pattern emphasis (US-AC05)
+
+    /// The default carries a neutral pattern emphasis: every `MovementPattern` present, all at `1.0`.
+    func testDefaultPolicyHasNeutralPatternEmphasis() {
+        let emphasis = SessionPolicy.default.patternEmphasis
+        XCTAssertEqual(Set(emphasis.keys), Set(MovementPattern.allCases),
+                       "every movement pattern must be present in the neutral emphasis")
+        XCTAssertEqual(Set(emphasis.values), [1.0], "every neutral emphasis value must be 1.0")
+    }
+
+    /// A non-neutral `[MovementPattern: Double]` emphasis - a non-`String`/`Int`-keyed dictionary -
+    /// survives the round-trip intact with no data loss.
+    func testPatternEmphasisRoundTripsIntact() throws {
+        var policy = SessionPolicy.default
+        policy.patternEmphasis[.push] = 2.0
+        policy.patternEmphasis[.squat] = 0.5
+        let decoded = try decoder.decode(SessionPolicy.self, from: try encoder.encode(policy))
+        XCTAssertEqual(decoded.patternEmphasis, policy.patternEmphasis)
+        assertRoundTrip(policy)
+    }
+
+    /// The additive-field contract: a policy persisted *before* US-AC05 has no `patternEmphasis` key, and
+    /// must still decode - to neutral - rather than failing the whole blob and losing the user's in-force
+    /// policy. Mirrors the Start Seed fields' backward-compat guarantee on `ColdStartContract`.
+    func testPolicyPersistedBeforePatternEmphasisDecodesToNeutral() throws {
+        // Encode a current policy, then strip the new key to simulate a pre-US-AC05 stored blob.
+        let data = try encoder.encode(SessionPolicy.default)
+        var object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertNotNil(object["patternEmphasis"], "sanity: the current policy encodes the key")
+        object.removeValue(forKey: "patternEmphasis")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try decoder.decode(SessionPolicy.self, from: legacyData)
+        XCTAssertEqual(decoded.patternEmphasis, SessionPolicy.neutralPatternEmphasis,
+                       "a policy without the key must decode to neutral emphasis")
+        // And the rest of the policy is intact - the missing key is the only difference.
+        XCTAssertEqual(decoded, SessionPolicy.default)
+    }
+
+    /// The emphasis rails are the single clamp definition (US-AC05): values pin to `[0.5, 2.0]`, so an
+    /// out-of-range coach write (US-AC07) is bounded to the rail rather than ever acting as a filter or
+    /// inverting the staleness ordering (a non-positive multiplier).
+    func testClampedEmphasisPinsOutOfRangeValues() {
+        XCTAssertEqual(SessionPolicy.minEmphasis, 0.5)
+        XCTAssertEqual(SessionPolicy.maxEmphasis, 2.0)
+        XCTAssertEqual(SessionPolicy.neutralEmphasis, 1.0)
+        XCTAssertEqual(SessionPolicy.clampedEmphasis(1.0), 1.0, "neutral is unchanged")
+        XCTAssertEqual(SessionPolicy.clampedEmphasis(5.0), 2.0, "above the rail pins to max")
+        XCTAssertEqual(SessionPolicy.clampedEmphasis(0.1), 0.5, "below the rail pins to min")
+        XCTAssertEqual(SessionPolicy.clampedEmphasis(0.0), 0.5, "a zero never survives as a filter")
+        XCTAssertEqual(SessionPolicy.clampedEmphasis(-3.0), 0.5, "a negative never inverts the ordering")
+        XCTAssertEqual(SessionPolicy.clampedEmphasis(1.5), 1.5, "an in-range value is untouched")
+    }
+
     // MARK: - Round-trip helper
 
     /// Encodes then decodes `value` and asserts the result equals the original.
