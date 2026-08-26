@@ -78,6 +78,70 @@ struct CoachProxyClient {
         self.transport = transport
     }
 
+    // MARK: - Build-configured resolution (US-AC02)
+
+    /// The `Info.plist` key carrying the coach proxy's `POST /coach` origin. Its value is expanded
+    /// from the per-configuration `REPTODAY_COACH_ENDPOINT` build setting in `ios/RepToday/project.yml`,
+    /// exactly like `LiveAnalyticsService`'s analytics endpoint - so which proxy a build talks to (or
+    /// none) is a build choice rather than a source edit.
+    static let endpointInfoPlistKey = "RepTodayCoachEndpoint"
+
+    /// The `Info.plist` key carrying the client shared secret the proxy's abuse gate checks. Expanded
+    /// from the per-configuration `REPTODAY_COACH_SECRET` build setting. Unlike the analytics secret
+    /// this one is **optional**: an open (dev) Worker with no secret set matches a `nil` here, so a
+    /// missing/empty value is not "unconfigured", it just sends no `Authorization` header.
+    static let secretInfoPlistKey = "RepTodayCoachSecret"
+
+    /// Builds the client from the coach proxy origin in the app's `Info.plist`, or returns `nil` when
+    /// that configuration is absent or unusable - the coach is then **inert, never fatal**, exactly
+    /// like an unconfigured `LiveAnalyticsService`: `ServiceContainer.live` leaves `coachClient` nil
+    /// and the chat surface shows a clear "coach unavailable" state rather than trapping or pointing at
+    /// a wrong destination.
+    ///
+    /// No production coach proxy is deployed yet, so both configurations currently expand to an empty
+    /// value and this returns `nil` by design (the surface renders its unavailable state, and the unit
+    /// suite exercises the wired path through the injected transport seam instead). Setting
+    /// `REPTODAY_COACH_ENDPOINT` to a deployed origin is a one-line config change once the proxy ships.
+    ///
+    /// "Unusable" is checked rather than assumed - the value must parse, carry an `https` scheme, and
+    /// have a host - so a mistyped endpoint stays inert rather than firing doomed requests.
+    static func configured(
+        bundle: Bundle = .main,
+        transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
+    ) -> CoachProxyClient? {
+        guard let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)) else {
+            return nil
+        }
+        let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
+        return CoachProxyClient(endpoint: endpoint, sharedSecret: secret, transport: transport)
+    }
+
+    /// Resolves a configured proxy origin into the `POST /coach` URL this client targets, or `nil` if
+    /// the value is missing, empty, not a string, or not a usable HTTPS origin. The configured value is
+    /// the full route origin (e.g. `https://<worker>/coach`); it is used as-is, mirroring how the
+    /// Variety Language provider is wired with its full route URL.
+    static func endpoint(fromOrigin origin: Any?) -> URL? {
+        guard
+            let origin = origin as? String,
+            let url = URL(string: origin.trimmingCharacters(in: .whitespacesAndNewlines)),
+            url.scheme?.lowercased() == "https",
+            let host = url.host,
+            !host.isEmpty
+        else {
+            return nil
+        }
+        return url
+    }
+
+    /// Resolves the configured shared secret, or `nil` if it is missing, not a string, or empty after
+    /// trimming. `nil` is a valid state here (an open dev Worker), so an empty value simply means "send
+    /// no bearer" rather than "unconfigured".
+    static func secret(fromValue value: Any?) -> String? {
+        guard let value = value as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// The single stateless coach call: send the derived `context` plus the user's `message`, return
     /// the trimmed reply. Throws on an empty/oversized message (locally, before any network), and on
     /// any transport failure, timeout, non-2xx, or empty reply so the caller can degrade gracefully.

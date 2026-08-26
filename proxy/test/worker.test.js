@@ -182,6 +182,30 @@ describe("POST /coach", () => {
     expect(response.status).toBe(502);
     expect((await response.json()).error).toBe("empty_reply");
   });
+
+  // US-AC02: the refined persona. The system prompt is where the target intents, the app's voice, and
+  // the never-a-workout safety framing live, so assert the outbound system carries them - the coach's
+  // behavior is steered here, not by app-side post-processing.
+  it("sends a persona that forbids generating a workout and names the target intents and voice", async () => {
+    await worker.fetch(coachRequest({ context: CONTEXT, message: "why squats today?" }), ENV);
+
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const system = upstreamBody.system.toLowerCase();
+
+    // The load-bearing safety invariant (AC3): talking only, never a generated/edited workout.
+    expect(system).toContain("never generate");
+    expect(system).toContain("talking only");
+    // The target intents (AC2): why-this-workout, form, injury-with-flag, and boredom/variety.
+    expect(system).toContain("stalest");
+    expect(system).toContain("form");
+    expect(system).toContain("flag the injury");
+    expect(system).toContain("never diagnose");
+    expect(system).toContain("variety");
+    // Voice/safety framing (AC5): identity-framed, never shaming/gamified.
+    expect(system).toContain("identity-framed");
+    expect(system).toContain("never");
+    expect(system).toContain("shaming");
+  });
 });
 
 describe("abuse gate", () => {

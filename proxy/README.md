@@ -119,10 +119,15 @@ On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
 `upstream_bad_json`, `empty_reply`). Every non-2xx and malformed body is handled identically by the
 client: surface a non-blocking error; never block the app.
 
-The coach persona is intentionally minimal here (transport only). US-AC02 refines the voice and the
-target intents; the invariant this route already enforces is that the coach only ever **talks** -
-it never generates, edits, or prescribes a workout (the deterministic on-device engine owns every
-session and all safety).
+The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02): it covers the
+target intents - "why this workout?" (the engine's stalest-pattern reasoning), "how do I do
+<movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" (general,
+non-diagnostic guidance + suggest flagging the injury in the app), and "I'm bored" (variety is built
+in) - in the app's identity-framed, never-shaming voice. The load-bearing invariant it enforces first
+is that the coach only ever **talks**: it never generates, edits, or prescribes a workout (the
+deterministic on-device engine owns every session and all safety). Changing the persona is covered by
+`test/worker.test.js` ("sends a persona that forbids generating a workout and names the target
+intents and voice").
 
 ## Tests and typecheck
 

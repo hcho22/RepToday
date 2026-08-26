@@ -30,6 +30,14 @@ struct ServiceContainer {
     /// Settings "Delete Account" control. Composes the same user/log/policy/active-session/auth seams
     /// this container already wires, so a delete clears exactly what the rest of the app reads.
     let accountDeletionService: any AccountDeletionServiceProtocol
+    /// The premium AI coach transport (US-AC02), `nil` when no coach proxy is configured for this
+    /// build - which is every build today, because the `proxy/` Worker is deploy-ready but not yet
+    /// deployed. The coach chat surface reads this and, when it is `nil`, shows a clear "coach
+    /// unavailable" state; it never gates or blocks the core loop. `live(...)` resolves it once from
+    /// the build-configured `Info.plist` origin (`CoachProxyClient.configured(...)`), exactly like the
+    /// telemetry sink; `mock()` leaves it `nil`. Unlike the other services this is genuinely optional -
+    /// the coach is a best-effort upgrade, never a dependency - so it carries an initializer default.
+    let coachClient: CoachProxyClient?
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -45,7 +53,8 @@ struct ServiceContainer {
         subscriptionService: any SubscriptionServiceProtocol,
         authService: any AuthServiceProtocol,
         analyticsService: any AnalyticsServiceProtocol,
-        accountDeletionService: any AccountDeletionServiceProtocol
+        accountDeletionService: any AccountDeletionServiceProtocol,
+        coachClient: CoachProxyClient? = nil
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -61,6 +70,7 @@ struct ServiceContainer {
         self.authService = authService
         self.analyticsService = analyticsService
         self.accountDeletionService = accountDeletionService
+        self.coachClient = coachClient
     }
 
     static func mock() -> ServiceContainer {
@@ -240,6 +250,10 @@ struct ServiceContainer {
                 isEnabled: analyticsGate
             )
             ?? NoOpAnalyticsService()
+        // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`
+        // origin exactly like the telemetry sink. `nil` today (no proxy deployed and no origin set), so
+        // the coach surface renders its "unavailable" state; it never gates the core loop.
+        let resolvedCoachClient = CoachProxyClient.configured()
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -291,7 +305,9 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService
-            )
+            ),
+            // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
+            coachClient: resolvedCoachClient
         )
     }
 }

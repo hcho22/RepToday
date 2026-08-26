@@ -1,0 +1,240 @@
+import XCTest
+@testable import RepToday
+
+/// Tests US-AC02: the talking coach view model. It drives the send flow over a stub `CoachProxyClient`
+/// transport so every decision - the happy path, graceful failure mapping, retry, on-device
+/// conversation memory across turns, the send-gating, and the unconfigured "unavailable" state - is
+/// exercised without a live proxy, and proves a failure is always a non-blocking, retryable state
+/// rather than a hang (the "never blocks the core loop" property).
+@MainActor
+final class CoachViewModelTests: XCTestCase {
+
+    // MARK: - Stub transport
+
+    /// A controllable transport that records the outbound request and returns/throws on command.
+    private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
+        enum Outcome {
+            case success(reply: String, status: Int)
+            case failure(Error)
+        }
+        var outcome: Outcome
+        private(set) var callCount = 0
+        private(set) var lastBody: Data?
+
+        init(_ outcome: Outcome) { self.outcome = outcome }
+
+        func post(
+            to url: URL,
+            jsonBody: Data,
+            headers: [String: String],
+            timeoutSeconds: Double
+        ) async throws -> (data: Data, statusCode: Int) {
+            callCount += 1
+            lastBody = jsonBody
+            switch outcome {
+            case let .success(reply, status):
+                return (Data(#"{"reply":"\#(reply)"}"#.utf8), status)
+            case let .failure(error):
+                throw error
+            }
+        }
+    }
+
+    private struct TransportBoom: Error {}
+
+    private let endpoint = URL(string: "https://proxy.example.com/coach")!
+
+    private func makeViewModel(
+        transport: StubTransport,
+        user: User? = nil,
+        logs: [WorkoutLog] = []
+    ) -> CoachViewModel {
+        CoachViewModel(
+            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            userService: MockUserService(user: user),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            exerciseService: try! MockExerciseService()
+        )
+    }
+
+    /// A view model with no configured client - the unavailable state.
+    private func makeUnavailableViewModel() -> CoachViewModel {
+        CoachViewModel(
+            client: nil,
+            userService: MockUserService(),
+            workoutLogService: MockWorkoutLogService(),
+            exerciseService: try! MockExerciseService()
+        )
+    }
+
+    // MARK: - Happy path
+
+    func testSendAppendsUserAndCoachTurnsAndClearsDraft() async {
+        let transport = StubTransport(.success(reply: "Because squats were your stalest pattern.", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "why squats today?"
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.messages.count, 2)
+        XCTAssertEqual(viewModel.messages[0].author, .user)
+        XCTAssertEqual(viewModel.messages[0].text, "why squats today?")
+        XCTAssertEqual(viewModel.messages[1].author, .coach)
+        XCTAssertEqual(viewModel.messages[1].text, "Because squats were your stalest pattern.")
+        XCTAssertEqual(viewModel.draft, "", "the input clears once the question is sent")
+        XCTAssertFalse(viewModel.isSending, "sending always resolves")
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertFalse(viewModel.canRetry)
+        XCTAssertEqual(transport.callCount, 1, "exactly one Claude call per question")
+    }
+
+    func testSendTrimsWhitespaceFromTheQuestion() async {
+        let transport = StubTransport(.success(reply: "ok", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "   how do I do a pistol squat?  "
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.messages.first?.text, "how do I do a pistol squat?")
+    }
+
+    // MARK: - On-device conversation memory across turns
+
+    func testConversationMemoryAccumulatesAcrossTurns() async {
+        let transport = StubTransport(.success(reply: "first answer", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "first question"
+        await viewModel.send()
+
+        transport.outcome = .success(reply: "second answer", status: 200)
+        viewModel.draft = "second question"
+        await viewModel.send()
+
+        // The transcript is the coach's memory - it lives on-device here, since the transport is
+        // stateless per request. Four turns, in order.
+        XCTAssertEqual(viewModel.messages.map(\.text),
+                       ["first question", "first answer", "second question", "second answer"])
+        XCTAssertEqual(transport.callCount, 2)
+    }
+
+    // MARK: - Graceful failure (never blocks the core loop)
+
+    func testTransportFailureBecomesRetryableErrorAndNeverHangs() async {
+        let transport = StubTransport(.failure(TransportBoom()))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "why squats?"
+        await viewModel.send()
+
+        // The user's turn is shown; the coach's is not; a friendly, non-blocking error is set.
+        XCTAssertEqual(viewModel.messages.count, 1)
+        XCTAssertEqual(viewModel.messages.first?.author, .user)
+        XCTAssertFalse(viewModel.isSending, "a failure must resolve isSending, never leave it stuck")
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+        XCTAssertTrue(viewModel.canRetry, "the failed question can be retried")
+    }
+
+    func testBadStatusMapsToTheGenericNonBlockingError() async {
+        let transport = StubTransport(.success(reply: "ignored", status: 500))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "hi"
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+        XCTAssertEqual(viewModel.messages.count, 1)
+        XCTAssertTrue(viewModel.canRetry)
+    }
+
+    func testRetryAfterFailureSendsTheSameQuestionWithoutDuplicatingIt() async {
+        let transport = StubTransport(.failure(TransportBoom()))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "why squats?"
+        await viewModel.send()
+        XCTAssertTrue(viewModel.canRetry)
+
+        // The network recovers; retry resends the same question.
+        transport.outcome = .success(reply: "Because they were stalest.", status: 200)
+        await viewModel.retryLastMessage()
+
+        // The user's turn is not duplicated; the coach's answer lands; the error clears.
+        XCTAssertEqual(viewModel.messages.map(\.author), [.user, .coach])
+        XCTAssertEqual(viewModel.messages[0].text, "why squats?")
+        XCTAssertEqual(viewModel.messages[1].text, "Because they were stalest.")
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertFalse(viewModel.canRetry)
+    }
+
+    // MARK: - Send gating
+
+    func testCanSendGating() async {
+        let transport = StubTransport(.success(reply: "ok", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        XCTAssertFalse(viewModel.canSend, "empty draft is not sendable")
+        viewModel.draft = "   "
+        XCTAssertFalse(viewModel.canSend, "whitespace-only draft is not sendable")
+        viewModel.draft = "real question"
+        XCTAssertTrue(viewModel.canSend)
+    }
+
+    func testEmptyDraftSendIsANoOp() async {
+        let transport = StubTransport(.success(reply: "ok", status: 200))
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "   "
+        await viewModel.send()
+
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(transport.callCount, 0, "an empty send never reaches the transport")
+    }
+
+    // MARK: - Unavailable (unconfigured build)
+
+    func testUnavailableWhenNoClientConfigured() async {
+        let viewModel = makeUnavailableViewModel()
+
+        XCTAssertFalse(viewModel.isAvailable)
+        XCTAssertFalse(viewModel.canSend)
+
+        viewModel.draft = "why squats?"
+        await viewModel.send()
+
+        XCTAssertTrue(viewModel.messages.isEmpty, "an unconfigured coach never sends")
+        XCTAssertNil(viewModel.errorMessage, "unavailable is a calm state, not an error")
+    }
+
+    // MARK: - Context bundle (grounded in real history)
+
+    func testSendCarriesTheDerivedContextBundleFromRealState() async throws {
+        var user = MockPersistence.sampleUser
+        user.phase = .discipline
+        user.duration = .seeded(minutes: 25)
+        let transport = StubTransport(.success(reply: "ok", status: 200))
+        let viewModel = makeViewModel(transport: transport, user: user)
+
+        viewModel.draft = "why this workout?"
+        await viewModel.send()
+
+        // The outbound body is `{ context: CoachContextBundle, message }`. Decode it and confirm the
+        // context reflects the user's real state (phase, the learned Default Duration as requested
+        // minutes) - the coach is grounded, not generic.
+        let body = try XCTUnwrap(transport.lastBody)
+        let decoded = try JSONDecoder().decode(SentRequest.self, from: body)
+        XCTAssertEqual(decoded.message, "why this workout?")
+        XCTAssertEqual(decoded.context.phase, "discipline")
+        XCTAssertEqual(decoded.context.requestedMinutes, 25)
+    }
+
+    /// The minimal shape of what the client sends, for decoding the outbound body in the test above.
+    private struct SentRequest: Decodable {
+        struct Context: Decodable {
+            let phase: String
+            let requestedMinutes: Int
+        }
+        let context: Context
+        let message: String
+    }
+}

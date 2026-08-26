@@ -32,6 +32,20 @@
 	     inside the binary and is extractable by anyone who unpacks the app. See `convex/README.md`. -->
 	<key>RepTodayAnalyticsSecret</key>
 	<string>$(REPTODAY_ANALYTICS_SECRET)</string>
+	<!-- The premium coach proxy's `POST /coach` origin (US-AC02), expanded from the per-configuration
+	     `REPTODAY_COACH_ENDPOINT` build setting exactly like the analytics endpoint above. The `proxy/`
+	     Worker is deploy-ready but not yet deployed, so both configurations carry nothing today: an
+	     empty/missing/mistyped value makes `CoachProxyClient.configured(...)` return nil, leaving the
+	     coach inert (the chat surface shows a clear "coach unavailable" state) rather than pointing at a
+	     wrong destination. Setting the deployed origin here is a one-line change once the proxy ships. -->
+	<key>RepTodayCoachEndpoint</key>
+	<string>$(REPTODAY_COACH_ENDPOINT)</string>
+	<!-- The coach client shared secret (US-AC02), expanded from `REPTODAY_COACH_SECRET`. Unlike the
+	     analytics secret this one is optional: an empty value matches an open dev Worker (no
+	     `Authorization` header sent), not an unconfigured build. Set it when the proxy sets
+	     `CLIENT_SHARED_SECRET`. -->
+	<key>RepTodayCoachSecret</key>
+	<string>$(REPTODAY_COACH_SECRET)</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Rep Today writes your completed sessions to Health so your movement counts where you already track it. It only ever adds workouts and never reads your Health data.</string>
 </dict>
