@@ -106,6 +106,7 @@ struct ProgressTabView: View {
                         // balanced, where they stand in each foundational pattern, and their bests.
                         PillarBalanceCard(shares: analytics.pillarBalance)
                         ChainPositionCard(positions: analytics.chainPositions)
+                        ProgressionMapCard(map: analytics.progressionMap, phase: viewModel.phase)
                         PersonalBestsCard(bests: analytics.personalBests)
 
                         // The deep layer is entitlement-gated (US-N04): premium users see it, free
@@ -587,6 +588,183 @@ private struct ChainPositionCard: View {
             return "\(PatternLabels.name(for: position.pattern)), not started yet."
         }
         return "\(PatternLabels.name(for: position.pattern)), \(exercise.displayName), \(subtitle(for: position))."
+    }
+}
+
+// MARK: - Progression map (US-SP05, free)
+
+/// The progression map (US-SP05): a visual per-pattern ladder the user is climbing, from the entry
+/// tier through the Strength-Phase skill they will earn. It marks the current frontier ("you're
+/// here") and shows the still-locked Strength-Phase rungs with an "earn the Strength Phase to unlock"
+/// affordance - *previewable but never selectable*.
+///
+/// This is the visible strength journey, and it deliberately preserves the thesis: **there is no
+/// start or select control on any rung.** Every value is a pure readout from `ProgressionMap`, whose
+/// current-position marking reuses the same chain-position logic as the card above it, and whose
+/// locked marking is the engine's own phase gate - so the map can never disagree with what the engine
+/// would do. Copy is identity-framed and there is no XP, level, or badge; a rung is just a movement
+/// with a state. Shown to everyone (free), same tier as the visible climb (US-SP04).
+private struct ProgressionMapCard: View {
+    let map: ProgressionMap
+    /// The user's earned phase, so the footer can frame the locked summit honestly ("earn the
+    /// Strength Phase") while a strength user simply sees their summit unlocked.
+    let phase: Phase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("The ladder you're climbing")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text("Each foundation's path - from where you started to the Strength-Phase skill at the top. This is the map, not a menu: the day's work is still chosen for you.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                ForEach(map.ladders) { ladder in
+                    LadderView(ladder: ladder, phase: phase)
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+}
+
+/// One pattern's ladder: the pattern name, then a rung per movement (entry first, summit last).
+private struct LadderView: View {
+    let ladder: PatternLadder
+    let phase: Phase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                Text(PatternLabels.name(for: ladder.pattern))
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer(minLength: 0)
+                Text(headerNote)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+            // The header names the pattern once for VoiceOver; each rung below reads its own state.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(PatternLabels.name(for: ladder.pattern)) ladder. \(headerNote).")
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(ladder.rungs.enumerated()), id: \.element.id) { index, rung in
+                    LadderRungRow(
+                        rung: rung,
+                        isFirst: index == 0,
+                        isLast: index == ladder.rungs.count - 1
+                    )
+                }
+            }
+        }
+    }
+
+    private var headerNote: String {
+        guard ladder.hasStarted, let current = ladder.currentRung else {
+            return "Not started yet"
+        }
+        return "You're on \(current.displayName)"
+    }
+}
+
+/// A single rung: a connector-and-marker rail on the left, the movement name and its state on the
+/// right. No control - the whole row is a static accessibility element, not a button.
+private struct LadderRungRow: View {
+    let rung: LadderRung
+    let isFirst: Bool
+    let isLast: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            rail
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rung.displayName)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(nameColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(stateNote)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(stateNoteColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // No `.accessibilityAddTraits(.isButton)` and no gesture: a rung is a readout, never a control.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// The left rail: the vertical connector line through the marker, so the rungs read as one
+    /// climbing ladder rather than a flat list.
+    private var rail: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(isFirst ? Color.clear : connectorColor)
+                .frame(width: 2, height: 8)
+            marker
+            Rectangle()
+                .fill(isLast ? Color.clear : connectorColor)
+                .frame(width: 2)
+                .frame(maxHeight: .infinity)
+        }
+        .frame(width: 22)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var marker: some View {
+        switch rung.state {
+        case .cleared:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Theme.Colors.accent)
+        case .current:
+            Image(systemName: "location.circle.fill")
+                .foregroundStyle(Theme.Colors.accent)
+        case .ahead:
+            Image(systemName: rung.isLocked ? "lock.circle.fill" : "circle")
+                .foregroundStyle(rung.isLocked ? Theme.Colors.textSecondary : Theme.Colors.textSecondary.opacity(0.6))
+        }
+    }
+
+    private var connectorColor: Color {
+        // Cleared/current rungs sit on the climbed part of the ladder (accent); ahead rungs are dim.
+        switch rung.state {
+        case .cleared, .current: return Theme.Colors.accent.opacity(0.5)
+        case .ahead: return Theme.Colors.textSecondary.opacity(0.25)
+        }
+    }
+
+    private var nameColor: Color {
+        if rung.state == .current { return Theme.Colors.textPrimary }
+        return rung.isLocked ? Theme.Colors.textSecondary : Theme.Colors.textPrimary
+    }
+
+    /// The one-line state note under the movement name - identity-framed, never loss-framed.
+    private var stateNote: String {
+        switch rung.state {
+        case .cleared: return "Cleared"
+        case .current: return "You're here"
+        case .ahead:
+            if rung.isLocked { return "Earn the Strength Phase to unlock" }
+            return rung.isStrengthSkill ? "Strength skill - unlocked" : "Coming up"
+        }
+    }
+
+    private var stateNoteColor: Color {
+        if rung.state == .current { return Theme.Colors.accent }
+        return Theme.Colors.textSecondary
+    }
+
+    /// Spoken as one element: name, then its state (including the locked affordance in words).
+    private var accessibilityLabel: String {
+        "\(rung.displayName), \(stateNote)."
     }
 }
 

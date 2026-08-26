@@ -22,6 +22,12 @@ struct ProgressAnalytics: Equatable {
     /// Where the user stands in each foundational movement pattern's active chain (free layer).
     let chainPositions: [ChainPositionSummary]
 
+    /// The full per-pattern ladder (US-SP05, free layer): every rung from the entry tier through the
+    /// Strength-Phase skill, with the user's current frontier and the still-locked Strength rungs
+    /// marked. Built *from* `chainPositions` (the frontier is the same one derived there), so the
+    /// map's "you are here" can never disagree with the chain-position surface above it.
+    let progressionMap: ProgressionMap
+
     /// Headline personal bests from real history (free layer).
     let personalBests: PersonalBests
 
@@ -51,10 +57,12 @@ struct ProgressAnalytics: Equatable {
     ) -> ProgressAnalytics {
         let exercisesById = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let worked = workedInstances(in: logs)
+        let chainPositions = makeChainPositions(worked: worked, exercisesById: exercisesById, phase: phase)
 
         return ProgressAnalytics(
             pillarBalance: makePillarBalance(worked: worked),
-            chainPositions: makeChainPositions(worked: worked, exercisesById: exercisesById, phase: phase),
+            chainPositions: chainPositions,
+            progressionMap: makeProgressionMap(chainPositions: chainPositions, exercisesById: exercisesById, phase: phase),
             personalBests: makePersonalBests(logs: logs, worked: worked, exercisesById: exercisesById, calendar: calendar),
             deep: DeepAnalytics(
                 patternBalance: makePatternBalance(worked: worked),
@@ -167,6 +175,91 @@ struct ProgressAnalytics: Equatable {
                 hasNextTier: hasNextTier
             )
         }
+    }
+
+    // MARK: - Progression map (free, US-SP05)
+
+    /// The per-pattern ladder: for each foundational pattern, the full chain the user is climbing -
+    /// entry tier through the Strength-Phase summit - with the user's frontier and the locked
+    /// Strength rungs marked.
+    ///
+    /// The ladder shown for a pattern is the **active chain** exactly as `makeChainPositions` already
+    /// derived it (the chain containing the frontier `currentExercise`), so the "you are here" marker
+    /// reuses that logic rather than re-deriving position from the logs. A pattern the user has never
+    /// trained (`currentExercise == nil`) has no frontier to key off, so it defaults to the pattern's
+    /// **canonical strength chain** - the chain that carries the phase-gated summit - so a fresh user
+    /// still previews the climb with its locked top rung; the choice is deterministic (that chain, or
+    /// the lowest chain id when a pattern has no strength summit).
+    ///
+    /// A rung is **locked** iff it is a Strength-Phase skill the user has not earned, read through the
+    /// engine's own `ExercisePoolFilter.isPhaseAllowed(_:phase:)` gate so the map cannot mark a rung
+    /// locked (or free) in a way the engine would filter differently. The map carries no start/select
+    /// affordance: it is a pure readout, and the view renders it without any tappable rung.
+    private static func makeProgressionMap(
+        chainPositions: [ChainPositionSummary],
+        exercisesById: [String: Exercise],
+        phase: Phase
+    ) -> ProgressionMap {
+        let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
+        let positionByPattern = Dictionary(chainPositions.map { ($0.pattern, $0) }, uniquingKeysWith: { first, _ in first })
+
+        let ladders = foundationalPatterns.map { pattern -> PatternLadder in
+            let position = positionByPattern[pattern]
+            let frontier = position?.currentExercise
+
+            // The chain to show: the active one (containing the frontier) when the user has trained
+            // this pattern, else the pattern's canonical strength chain for a preview.
+            let chainId = frontier?.progressionChainId
+                ?? canonicalChainId(for: pattern, tiersByChain: tiersByChain, exercisesById: exercisesById)
+
+            let members = chainId.flatMap { tiersByChain[$0] } ?? []
+            // Entry tier first, up to the summit; id break keeps a stable order if two share an order.
+            let ordered = members.sorted {
+                if $0.progressionOrder != $1.progressionOrder { return $0.progressionOrder < $1.progressionOrder }
+                return $0.id < $1.id
+            }
+
+            let rungs = ordered.map { exercise -> LadderRung in
+                let state: LadderRung.State
+                if let frontier {
+                    if exercise.id == frontier.id { state = .current }
+                    else if exercise.progressionOrder < frontier.progressionOrder { state = .cleared }
+                    else { state = .ahead }
+                } else {
+                    // Never trained this pattern: nothing cleared, nothing current - the whole ladder
+                    // lies ahead.
+                    state = .ahead
+                }
+                return LadderRung(
+                    exerciseId: exercise.id,
+                    displayName: exercise.displayName,
+                    difficulty: exercise.difficulty,
+                    isStrengthSkill: exercise.phase == .strength,
+                    isLocked: !ExercisePoolFilter.isPhaseAllowed(exercise, phase: phase),
+                    state: state
+                )
+            }
+
+            return PatternLadder(pattern: pattern, rungs: rungs, hasStarted: frontier != nil)
+        }
+
+        return ProgressionMap(ladders: ladders)
+    }
+
+    /// The pattern's canonical chain for a fresh-user preview: the chain carrying a Strength-Phase
+    /// summit (deterministically the lowest such chain id), or the lowest chain id overall when the
+    /// pattern has no strength summit. Only used when the user has no frontier in the pattern.
+    private static func canonicalChainId(
+        for pattern: MovementPattern,
+        tiersByChain: [String: [Exercise]],
+        exercisesById: [String: Exercise]
+    ) -> String? {
+        let chainIds = Set(exercisesById.values.filter { $0.movementPattern == pattern }.map(\.progressionChainId))
+        guard !chainIds.isEmpty else { return nil }
+        let withStrengthSummit = chainIds.filter { id in
+            (tiersByChain[id] ?? []).contains { $0.phase == .strength }
+        }
+        return (withStrengthSummit.isEmpty ? chainIds : withStrengthSummit).min()
     }
 
     // MARK: - Personal bests (free)
@@ -320,6 +413,61 @@ struct ChainPositionSummary: Equatable, Identifiable {
 
     /// Whether the user has trained this pattern at all.
     var hasStarted: Bool { currentExercise != nil }
+}
+
+/// The per-pattern progression map (US-SP05, free): one ladder per foundational pattern, in
+/// `PhaseEvaluator.foundationalPatterns` order (push / squat / hinge / core).
+struct ProgressionMap: Equatable {
+    let ladders: [PatternLadder]
+}
+
+/// One foundational pattern's ladder - the chain the user is climbing, entry tier first through the
+/// Strength-Phase summit last.
+struct PatternLadder: Equatable, Identifiable {
+    /// The foundational pattern (push / squat / hinge / core).
+    let pattern: MovementPattern
+    /// The rungs, entry tier first. Empty only if the catalog somehow has no chain for the pattern.
+    let rungs: [LadderRung]
+    /// Whether the user has trained this pattern at all - drives "not started yet" framing without a
+    /// current-position marker.
+    let hasStarted: Bool
+
+    var id: MovementPattern { pattern }
+
+    /// The rung the user is currently on, if any.
+    var currentRung: LadderRung? { rungs.first { $0.state == .current } }
+}
+
+/// A single movement on a ladder, with the user's standing on it and whether it is still locked
+/// behind the Strength Phase. A pure readout - it carries no id the UI could use to *start* it, and
+/// the view renders no tappable control on it (thesis preserved: the map never lets the user choose
+/// or start a workout).
+struct LadderRung: Equatable, Identifiable {
+    /// The catalog id, for stable diffing and evidence only - never a selection handle.
+    let exerciseId: String
+    let displayName: String
+    /// Difficulty band 1...5, for a subtle "gets harder as you climb" read.
+    let difficulty: Int
+    /// Whether this rung is a `phase == .strength` skill (locked or not - a strength user's summit is
+    /// a strength skill that is no longer locked).
+    let isStrengthSkill: Bool
+    /// Locked iff it is a Strength-Phase skill the user has not earned - `!isPhaseAllowed`, the
+    /// engine's own gate, so this can never disagree with what the engine would filter.
+    let isLocked: Bool
+    /// Where this rung sits relative to the user's frontier.
+    let state: State
+
+    var id: String { exerciseId }
+
+    /// A rung's standing relative to the user's current frontier on the chain.
+    enum State: Equatable {
+        /// Below the frontier - a tier the user has already worked past.
+        case cleared
+        /// The user's current frontier - "you are here".
+        case current
+        /// Above the frontier - still to climb (may also be `isLocked`).
+        case ahead
+    }
 }
 
 /// A single-value best naming the movement it was set on.
