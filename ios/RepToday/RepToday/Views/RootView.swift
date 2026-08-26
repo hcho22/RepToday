@@ -5,22 +5,47 @@ import UIKit
 struct RootView: View {
     @Environment(\.services) private var services
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Drives the one-time Strength-Phase graduation reveal (US-SP06). Set once, on app open, and only
+    /// when the user has just earned the Strength Phase and has not yet been congratulated for it.
+    @State private var showGraduation = false
 
     var body: some View {
         @Bindable var appState = appState
 
-        Group {
-            if appState.isOnboarded {
-                MainTabsView(selectedTab: $appState.selectedTab)
-            } else {
-                // The minimal v6 onboarding flow (US-I01). On completion it has already saved the
-                // user and seeded the cold-start policy, so the router only flips into the main app.
-                OnboardingView(services: services) {
-                    appState.isOnboarded = true
-                    appState.selectedTab = .home
+        ZStack {
+            Group {
+                if appState.isOnboarded {
+                    MainTabsView(selectedTab: $appState.selectedTab)
+                } else {
+                    // The minimal v6 onboarding flow (US-I01). On completion it has already saved the
+                    // user and seeded the cold-start policy, so the router only flips into the main app.
+                    OnboardingView(services: services) {
+                        appState.isOnboarded = true
+                        appState.selectedTab = .home
+                    }
                 }
             }
+
+            // The Strength-Phase graduation reveal (US-SP06) rides above the whole app shell as its own
+            // overlay layer rather than a `.sheet`, so the entrance animation can be stilled under
+            // Reduce Motion and the tabs underneath keep running - the reveal is purely celebratory and
+            // never gates the core loop. Hosted here, at the router, because it must fire "on first app
+            // open" regardless of which tab the user lands on, and this is the one surface that survives
+            // tab teardown (the same reason the US-AD05 alert lives here).
+            if showGraduation {
+                StrengthGraduationRevealView(onDismiss: dismissGraduation)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
         }
+        // On app open, ask the deterministic `PhaseEvaluator` whether the user has just crossed into
+        // the earned Strength Phase (computed from real logs, never the persisted `user.phase`), and
+        // reveal the graduation once at the crossing. The persisted, ratcheting `lastCelebratedPhase`
+        // is flipped the moment we decide to show it - not on dismissal - so a force-quit while it is
+        // up can never bring it back on the next open, and it never re-fires after a relaunch.
+        .task { await revealGraduationIfEarned() }
         // Debug-only, and inert unless the US-T06 probe launch argument is set: the HUD an
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
         // nothing here.
@@ -46,6 +71,40 @@ struct RootView: View {
                 + "open Settings, tap your name, then Sign-In & Security \u{2192} Sign in with Apple, "
                 + "and choose Rep Today."
             )
+        }
+    }
+
+    /// Reveal the Strength-Phase graduation (US-SP06) if - and only if - the user has just earned it
+    /// and has not yet been congratulated. Computes the earned phase from real logs through the same
+    /// `PhaseEvaluator` the gate uses, then flips the persisted one-shot flag the moment it decides to
+    /// show, so the reveal fires exactly once at the crossing and never again (a force-quit while it is
+    /// up cannot re-arm it, and it never re-fires on a later launch). A no-op during onboarding and for
+    /// a user who has not earned Strength or has already seen it.
+    @MainActor
+    private func revealGraduationIfEarned() async {
+        guard appState.isOnboarded, !appState.hasCelebratedStrengthGraduation else { return }
+
+        let viewModel = StrengthGraduationViewModel(services: services)
+        await viewModel.evaluate()
+        guard viewModel.earnedStrength else { return }
+
+        // Ratchet the celebrated phase before presenting, so the reveal can never re-fire even if the
+        // user force-quits while it is up.
+        appState.markStrengthGraduationCelebrated()
+        if reduceMotion {
+            showGraduation = true
+        } else {
+            withAnimation(.easeOut(duration: 0.25)) { showGraduation = true }
+        }
+    }
+
+    /// Dismiss the graduation reveal, honoring Reduce Motion the same way the entrance does. The
+    /// one-shot flag is already flipped (at presentation), so this only has to take the overlay down.
+    private func dismissGraduation() {
+        if reduceMotion {
+            showGraduation = false
+        } else {
+            withAnimation(.easeIn(duration: 0.2)) { showGraduation = false }
         }
     }
 }

@@ -158,12 +158,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] On the first app open after `PhaseEvaluator` transitions the user to `.strength`, a one-time reveal is shown (persisted one-shot flag on `AppState`, in the style of `hasSeenContinuousCircuitExplainer`).
-- [ ] Copy is identity-framed ("you're someone who moves - here's what you've earned"), never loss-framed, no "you unlocked a reward" gamification.
-- [ ] The reveal explains what changes (harder work is now available; new skills on the ladder) and points to the progression map.
-- [ ] It never gates the session and never re-fires after being seen (survives relaunch).
-- [ ] Accessibility + `Theme`; overlay-layer presentation (not `.sheet`) so transitions still under Reduce Motion. Verify via evidence path. `docs/test-coverage.md` row added.
-- [ ] Build and unit suite pass.
+- [x] On the first app open after `PhaseEvaluator` transitions the user to `.strength`, a one-time reveal is shown (persisted one-shot flag on `AppState`, in the style of `hasSeenContinuousCircuitExplainer`).
+- [x] Copy is identity-framed ("you're someone who moves - here's what you've earned"), never loss-framed, no "you unlocked a reward" gamification.
+- [x] The reveal explains what changes (harder work is now available; new skills on the ladder) and points to the progression map.
+- [x] It never gates the session and never re-fires after being seen (survives relaunch).
+- [x] Accessibility + `Theme`; overlay-layer presentation (not `.sheet`) so transitions still under Reduce Motion. Verify via evidence path. `docs/test-coverage.md` row added.
+- [x] Build and unit suite pass.
 
 **Validation Test:**
 
