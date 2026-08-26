@@ -92,6 +92,10 @@ enum AbandonPoint: String, Codable, CaseIterable, Identifiable, Hashable {
 /// raw *values* must not change.
 enum EntryPoint: String, Codable, CaseIterable, Identifiable, Hashable {
     case progressUpsell = "progress_upsell"
+    /// The premium gate on the AI coach entry point (US-AC03): a free user tapping the Coach row on
+    /// the Profile tab opens the paywall carrying this, so the funnel can tell a coach upsell apart
+    /// from the Progress-tab one.
+    case coachUpsell = "coach_upsell"
 
     var id: String { rawValue }
 }
