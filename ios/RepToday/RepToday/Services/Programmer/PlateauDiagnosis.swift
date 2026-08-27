@@ -187,13 +187,14 @@ enum PlateauDiagnosis {
     /// engine reads in Steps 6 and 5 (US-E03); these bounds keep them inside their sane operating
     /// range no matter how many times a plateau recurs.
     ///
-    /// The `progressionRate` bounds alias `SessionPolicy`'s centralized rate rail (US-AC06), so the
-    /// deterministic Programmer's easing floor and the coach's easing gate share one definition and can
-    /// never drift apart. (The values are unchanged: `[0.5, 2.0]`.)
+    /// The `progressionRate` and `varietyWindow` bounds alias `SessionPolicy`'s centralized rails (US-AC06,
+    /// US-AC07), so the deterministic Programmer's easing floors/ceilings and the coach's easing gates share
+    /// one definition and can never drift apart. (The values are unchanged: rate `[0.5, 2.0]`, window
+    /// `[1, 6]`.)
     static let maxProgressionRate = SessionPolicy.maxProgressionRate
     static let minProgressionRate = SessionPolicy.minProgressionRate
-    static let maxVarietyWindow = 6
-    static let minVarietyWindow = 1
+    static let maxVarietyWindow = SessionPolicy.maxVarietyWindow
+    static let minVarietyWindow = SessionPolicy.minVarietyWindow
 
     /// A physical stall earns more challenge: progression accelerates by `stallProgressionBoost`
     /// and the variety window widens by `stallVarietyWiden` (fresher movement, less repetition).

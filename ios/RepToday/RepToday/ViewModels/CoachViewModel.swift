@@ -109,6 +109,10 @@ final class CoachViewModel {
     private let userService: any UserServiceProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
     private let exerciseService: any ExerciseServiceProtocol
+    /// The sovereign on-device coach policy-write path (US-AC07). When present and a sent message maps to
+    /// an eligible tuning request, the coach applies a bounded, clamped, preference-only `SessionPolicy`
+    /// nudge and surfaces the honest note as a coach turn. `nil` leaves the coach purely talking (US-AC02).
+    private let policyService: (any CoachPolicyServiceProtocol)?
     private let now: () -> Date
     private let calendar: Calendar
 
@@ -125,6 +129,7 @@ final class CoachViewModel {
         userService: any UserServiceProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
         exerciseService: any ExerciseServiceProtocol,
+        policyService: (any CoachPolicyServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current
     ) {
@@ -132,6 +137,7 @@ final class CoachViewModel {
         self.userService = userService
         self.workoutLogService = workoutLogService
         self.exerciseService = exerciseService
+        self.policyService = policyService
         self.now = now
         self.calendar = calendar
     }
@@ -144,6 +150,7 @@ final class CoachViewModel {
             userService: services.userService,
             workoutLogService: services.workoutLogService,
             exerciseService: services.exerciseService,
+            policyService: services.coachPolicyService,
             now: now,
             calendar: calendar
         )
@@ -191,6 +198,12 @@ final class CoachViewModel {
         let context = await contextBundle()
         do {
             let reply = try await client.reply(to: message, context: context)
+            // US-AC07: an eligible tuning request ("focus my push", "take it easier") applies a bounded,
+            // clamped, preference-only policy nudge on-device and surfaces the honest note as its own coach
+            // turn. It runs only on the successful-reply path, so a message the transport rejected (too
+            // long) or that failed in flight never tunes the program and never orphans a turn in the
+            // transcript; it never touches a safety filter and never blocks.
+            await applyTuningIfRequested(message)
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
@@ -214,6 +227,22 @@ final class CoachViewModel {
             errorMessage = Self.genericFailureMessage
             pendingRetryMessage = message
         }
+    }
+
+    /// Apply a coach policy nudge (US-AC07) when `message` maps to an eligible tuning request. Entirely
+    /// best-effort and non-blocking: it no-ops when there is no policy service, no recognized intent, no
+    /// current user, or the write moves nothing (a clamped no-op). On a real write it appends the honest,
+    /// coach-authored note as a coach turn so the user sees exactly what changed - never a claim of a change
+    /// that did not happen (the note is `nil` unless a lever actually moved, and only a non-`nil` written
+    /// policy reaches here). It can only ever move the three preference levers, so it never blocks the core
+    /// loop and never touches a safety filter.
+    private func applyTuningIfRequested(_ message: String) async {
+        guard let policyService,
+              let proposal = CoachIntentMapper.proposal(for: message),
+              let user = try? await userService.currentUser() else { return }
+        guard let written = try? await policyService.applyProposal(proposal, for: user, asOf: now()),
+              let note = written.note else { return }
+        messages.append(Message(author: .coach, text: note.text))
     }
 
     /// The derived, non-identifying context bundle for the conversation, built once from the user's

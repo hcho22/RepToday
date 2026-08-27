@@ -51,6 +51,13 @@ This resolves the **double-gate trap**: a phase-gated skill must clear *both* th
 The level-only `difficultyCap`/`isWithinDifficultyCap` remain the term for callers reasoning about the conservative band directly (e.g. the Wide Circuit depth-mismatch bound above, and cold-start Start-Seed banding, which use the discipline-phase band); the eligible pool consumes only the *effective* cap via `isWithinEffectiveDifficultyCap`. A `.discipline` user's eligible pool is byte-identical to the pre-lift behavior.
 Introduced by US-SP01 (`Services/Engine/ExercisePoolFilter.swift`); its PRD is `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` (`US-SP##`).
 
+## Two-Writer Policy Safety
+
+`SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).
+**Safety > preference, structurally:** a coach write is a *safety-sovereign overlay* - it re-reads the freshest in-force policy from the shared `SessionPolicyStore` and overlays only its own levers (`SessionPolicy.applyingCoachProposal`), and every coach-touchable lever is either **disjoint** from the safety moves (`patternEmphasis`) or **only-downward** (`progressionRate` eased down only; `varietyWindow` narrowed only), so a coach write can never clobber a de-load / Re-entry / cold-start.
+The change is a closed `CoachPolicyProposal` (no safety field is expressible), clamped to the engine's rails before it is accepted, tagged `updatedBy == .llm`, noted honestly (`PolicyNote.coachTemplated`), applied on the next open, and reversible.
+The decision is recorded as [ADR-0005](docs/adr/0005-two-writer-policy-safety.md); the owning code is `SessionPolicy`, `CoachSessionPolicyService`, `CoachPolicyProposal`, and `CoachIntentMapper`.
+
 ## discipline-first
 
 The product's positioning: the promise is **daily consistency** - showing up - independent of whether a given day's work is strength or mobility.

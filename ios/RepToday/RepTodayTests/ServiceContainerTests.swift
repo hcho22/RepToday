@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            15,
+            16,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -39,6 +39,12 @@ final class ServiceContainerTests: XCTestCase {
         // The premium coach transport (US-AC02): `nil` in the mock container (no proxy configured),
         // which is the coach's "inert, never fatal" state - the chat surface shows "unavailable".
         XCTAssertNil(services.coachClient)
+        // The coach's bounded policy-write path (US-AC07): wired over the same shared policy store as
+        // the deterministic Programmer, so applying a no-op proposal reads the default in force and writes
+        // nothing (returns nil) - resolved and exercised without mutating the container.
+        let coachPolicy = try XCTUnwrap(services.coachPolicyService)
+        let noOp = try await coachPolicy.applyProposal(CoachPolicyProposal(), for: user, asOf: Date())
+        XCTAssertNil(noOp, "an empty proposal moves no lever, so nothing is written")
     }
 
     /// US-D04 validation test: the container resolves the session-policy service, its

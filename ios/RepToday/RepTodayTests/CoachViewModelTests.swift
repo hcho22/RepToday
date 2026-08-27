@@ -321,6 +321,82 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertEqual(decoded.context.requestedMinutes, 25)
     }
 
+    // MARK: - US-AC07: coach tuning wired into the send path
+
+    /// A view model wired with a real `CoachSessionPolicyService` over an explicit store, so a tuning
+    /// send's policy write is observable.
+    private func makeTuningViewModel(
+        transport: StubTransport,
+        store: InMemorySessionPolicyStore,
+        user: User
+    ) -> CoachViewModel {
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            userService: MockUserService(user: user),
+            workoutLogService: MockWorkoutLogService(),
+            exerciseService: try! MockExerciseService(),
+            policyService: CoachSessionPolicyService(store: store)
+        )
+        viewModel.grantDataSharingConsent()
+        return viewModel
+    }
+
+    /// An eligible tuning message applies a bounded, preference-only policy write (visible in the shared
+    /// store) and surfaces the honest coach note as a coach turn - the coach converts the request, not just
+    /// talks about it.
+    func testTuningRequestAppliesPolicyAndSurfacesNote() async throws {
+        var user = MockPersistence.sampleUser
+        user.id = "coach-tune-user"
+        let store = InMemorySessionPolicyStore()
+        let transport = StubTransport(.success(reply: "Push is your focus - here's why it helps.", status: 200))
+        let viewModel = makeTuningViewModel(transport: transport, store: store, user: user)
+
+        viewModel.draft = "Focus my push for a while."
+        await viewModel.send()
+
+        // The policy was written to the shared store: push emphasized, coach-sourced.
+        let storedPolicy = try await store.policy(for: user.id)
+        let policy = try XCTUnwrap(storedPolicy)
+        XCTAssertEqual(policy.updatedBy, .llm)
+        XCTAssertGreaterThan(policy.patternEmphasis[.push] ?? 0, SessionPolicy.neutralEmphasis)
+
+        // The transcript carries the honest note as a coach turn (naming push), alongside the talk reply.
+        let coachTexts = viewModel.messages.filter { $0.author == .coach }.map(\.text)
+        XCTAssertTrue(coachTexts.contains { $0.lowercased().contains("push") && $0.lowercased().contains("focus") },
+            "the honest tuning note is surfaced as a coach turn")
+        XCTAssertTrue(coachTexts.contains("Push is your focus - here's why it helps."),
+            "the coach still talks in addition to tuning")
+    }
+
+    /// A normal (non-tuning) question writes no policy - the coach only tunes on an explicit eligible
+    /// request, never silently on a form or why question.
+    func testNonTuningRequestWritesNoPolicy() async throws {
+        let user = MockPersistence.sampleUser
+        let store = InMemorySessionPolicyStore()
+        let transport = StubTransport(.success(reply: "Because squats were your stalest pattern.", status: 200))
+        let viewModel = makeTuningViewModel(transport: transport, store: store, user: user)
+
+        viewModel.draft = "Why this workout today?"
+        await viewModel.send()
+
+        let stored = try await store.policy(for: user.id)
+        XCTAssertNil(stored, "a non-tuning question never writes a policy")
+        XCTAssertEqual(viewModel.messages.filter { $0.author == .coach }.count, 1, "only the talk reply, no note turn")
+    }
+
+    /// With no policy service wired (the default), a tuning message just talks - the tuning is a
+    /// best-effort upgrade, never a dependency, and its absence never breaks the send.
+    func testTuningWithoutPolicyServiceJustTalks() async {
+        let transport = StubTransport(.success(reply: "Here's why push leads today.", status: 200))
+        let viewModel = makeViewModel(transport: transport, user: MockPersistence.sampleUser)
+
+        viewModel.draft = "Focus my push."
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.messages.filter { $0.author == .coach }.count, 1)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     /// The minimal shape of what the client sends, for decoding the outbound body in the test above.
     private struct SentRequest: Decodable {
         struct Context: Decodable {
