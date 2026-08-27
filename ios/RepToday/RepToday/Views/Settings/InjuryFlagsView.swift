@@ -153,7 +153,11 @@ struct InjuryFlagsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!viewModel.canSave)
-                .listRowInsets(EdgeInsets())
+                // The row draws its own rounded button rather than the section's grouped background,
+                // so it needs the gap the section would otherwise have put there - without it the
+                // button's rounded top corners bite into the square bottom edge of the summary row
+                // directly above.
+                .listRowInsets(EdgeInsets(top: Theme.Spacing.md, leading: 0, bottom: 0, trailing: 0))
                 .listRowBackground(Color.clear)
                 .accessibilityLabel(InjuryFlagsCopy.confirm)
                 .accessibilityHint("Applies the areas you switched on to your future sessions")
@@ -190,7 +194,7 @@ struct InjuryFlagsView: View {
     private func binding(for area: InjuryOption) -> Binding<Bool> {
         Binding(
             get: { viewModel.isSelected(area) },
-            set: { _ in viewModel.toggle(area) }
+            set: { viewModel.set(area, to: $0) }
         )
     }
 

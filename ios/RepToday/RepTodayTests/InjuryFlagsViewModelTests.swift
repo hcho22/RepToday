@@ -5,9 +5,13 @@ import XCTest
 /// onboarding.
 ///
 /// The properties that matter are all about *who* changed the profile and *when*: staging a toggle
-/// writes nothing, confirming writes exactly the staged set, leaving without confirming writes
-/// nothing, and every flag can be switched back off through the same control. The coach's route only
-/// pre-stages an area; it never lands past the confirmation.
+/// writes nothing, confirming writes the staged change, leaving without confirming writes nothing,
+/// and every flag can be switched back off through the same control. The coach's route only pre-stages
+/// an area; it never lands past the confirmation.
+///
+/// What a confirmation actually writes is one rule, pinned by
+/// `testOnlyAnAreaRenderedThenSwitchedOffIsEverRemoved`: the screen may only ever *add or keep* areas
+/// that arrived from elsewhere, and only an area it rendered and the user switched off is removed.
 @MainActor
 final class InjuryFlagsViewModelTests: XCTestCase {
 
@@ -135,6 +139,23 @@ final class InjuryFlagsViewModelTests: XCTestCase {
         XCTAssertTrue(stored.isEmpty, "a toggle alone never reaches the profile")
     }
 
+    /// The toggles are bound value-driven, not edge-driven: a `Toggle` can re-write its *current*
+    /// value (an interrupted or cancelled drag of the switch), and on a safety control that must leave
+    /// the staged state alone rather than flip it the wrong way.
+    func testStagingAnAreaToTheValueItAlreadyHasChangesNothing() async {
+        let service = MockUserService(user: makeUser(injuries: [InjuryOption.knees.tag]))
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+
+        viewModel.set(.knees, to: true)
+        XCTAssertTrue(viewModel.isSelected(.knees), "re-writing the value it already has is not a flip")
+        XCTAssertFalse(viewModel.hasUnsavedChanges)
+
+        viewModel.set(.hips, to: false)
+        XCTAssertFalse(viewModel.isSelected(.hips))
+        XCTAssertFalse(viewModel.hasUnsavedChanges, "and neither is re-writing an off switch as off")
+    }
+
     /// Leaving the screen without confirming is the "declining changes nothing" case at the control's
     /// own level.
     func testDiscardingStagedChangesWritesNothing() async throws {
@@ -228,7 +249,98 @@ final class InjuryFlagsViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.hasUnsavedChanges, "nothing to confirm - it is already flagged")
     }
 
-    // MARK: - Nothing outside the vocabulary is lost
+    // MARK: - The write only ever adds or keeps
+
+    /// The rule itself, stated once: this screen may only ever *add or keep* areas that arrived from
+    /// elsewhere, and the only thing that *removes* one is the user switching off an area that was
+    /// actually rendered to them. Every other case below is a special case of this.
+    func testOnlyAnAreaRenderedThenSwitchedOffIsEverRemoved() async throws {
+        // Rendered at load: knees (on) and hips (on), plus a tag with no toggle for it.
+        let service = MockUserService(user: makeUser(injuries: [InjuryOption.knees.tag, InjuryOption.hips.tag, "neck"]))
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+
+        // The user switches off one rendered area and switches on another.
+        viewModel.toggle(.hips)
+        viewModel.toggle(.wrists)
+
+        // Meanwhile another writer flags two areas this screen never rendered as flagged: one it has a
+        // toggle for, one it does not.
+        let loaded = try await service.currentUser()
+        var moved = try XCTUnwrap(loaded)
+        moved.profile.injuries.append(contentsOf: [InjuryOption.shoulders.tag, "elbow"])
+        try await service.save(moved)
+
+        await viewModel.save()
+
+        let stored = try await storedInjuries(service)
+        XCTAssertFalse(InjuryOption.hips.isFlagged(in: stored),
+                       "rendered, then switched off - the only way an area is ever removed; got \(stored)")
+        XCTAssertTrue(InjuryOption.knees.isFlagged(in: stored), "rendered and left on, so it stays")
+        XCTAssertTrue(InjuryOption.wrists.isFlagged(in: stored), "switched on, so it is added")
+        XCTAssertTrue(InjuryOption.shoulders.isFlagged(in: stored),
+                      "never rendered, so it cannot have been switched off - it is kept")
+        XCTAssertTrue(stored.contains("neck"), "no toggle for it, so it is kept")
+        XCTAssertTrue(stored.contains("elbow"), "no toggle for it and it arrived mid-edit, so it is kept")
+    }
+
+    /// The concrete multi-device shape of the rule: another device flags Shoulders while this screen
+    /// sits open on a Knees edit. Shoulders was never rendered here, so confirming Knees keeps both.
+    func testAnAreaFlaggedElsewhereMidEditSurvivesAConfirmationThatNeverShowedIt() async throws {
+        let service = MockUserService(user: makeUser())
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+
+        viewModel.toggle(.knees)
+
+        let loaded = try await service.currentUser()
+        var moved = try XCTUnwrap(loaded)
+        moved.profile.injuries.append(InjuryOption.shoulders.tag)
+        try await service.save(moved)
+
+        await viewModel.save()
+
+        let stored = try await storedInjuries(service)
+        XCTAssertTrue(InjuryOption.knees.isFlagged(in: stored), "the confirmed change lands")
+        XCTAssertTrue(InjuryOption.shoulders.isFlagged(in: stored),
+                      "and the flag this screen never showed is not silently cleared; got \(stored)")
+        XCTAssertTrue(InjuryContraindication.contraindicatedPatterns(for: stored).contains(.push),
+                      "shoulder protection is still really in force")
+    }
+
+    /// The accepted cost of that rule, ruled on deliberately rather than discovered: an area can end up
+    /// flagged even though it read as switched *off* when the user pressed save, because another device
+    /// flagged it mid-edit. Keeping is the safe direction for a safety filter, and the user can switch
+    /// it back off from this same screen.
+    func testAcceptedCostAnAreaFlaggedElsewhereStaysOnEvenThoughItReadAsOffAtSaveTime() async throws {
+        let service = MockUserService(user: makeUser())
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+        XCTAssertFalse(viewModel.isSelected(.shoulders), "the screen shows shoulders switched off")
+
+        viewModel.toggle(.knees)
+
+        let loaded = try await service.currentUser()
+        var moved = try XCTUnwrap(loaded)
+        moved.profile.injuries.append(InjuryOption.shoulders.tag)
+        try await service.save(moved)
+
+        await viewModel.save()
+
+        let stored = try await storedInjuries(service)
+        XCTAssertTrue(InjuryOption.shoulders.isFlagged(in: stored),
+                      "an off-looking switch is not a removal the user made, so it is kept")
+
+        // And it is reversible the ordinary way: reload, see it on, switch it off, confirm.
+        let reopened = makeViewModel(service)
+        await reopened.load()
+        XCTAssertTrue(reopened.isSelected(.shoulders), "reopening shows it as the flag it now is")
+        reopened.toggle(.shoulders)
+        await reopened.save()
+        let afterReversal = try await storedInjuries(service)
+        XCTAssertFalse(InjuryOption.shoulders.isFlagged(in: afterReversal),
+                       "rendered, then switched off - now it goes")
+    }
 
     func testAnUnrecognizedExistingTagSurvivesASave() async throws {
         let service = MockUserService(user: makeUser(injuries: ["neck", InjuryOption.knees.tag]))
@@ -288,10 +400,9 @@ final class InjuryFlagsViewModelTests: XCTestCase {
                        "and the other writer's progress is not rolled back")
     }
 
-    /// The same hazard read the other way: the preserved set must come off the *fresh* read, so a
-    /// safety flag another device added mid-edit is never silently dropped. Dropping is the unsafe
-    /// direction for a safety filter, which is why this is pinned separately from the field-clobber
-    /// case above.
+    /// The same hazard read the other way, and a special case of the rule above: a tag this screen has
+    /// no toggle for could not have been switched off, so one that arrived mid-edit is kept rather than
+    /// silently dropped.
     func testSavingPreservesAnUnrenderableTagAddedWhileTheScreenWasOpen() async throws {
         let service = MockUserService(user: makeUser(injuries: ["neck"]))
         let viewModel = makeViewModel(service)

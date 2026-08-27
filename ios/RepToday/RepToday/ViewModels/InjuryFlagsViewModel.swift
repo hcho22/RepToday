@@ -13,9 +13,8 @@ import Observation
 /// - **Edits are staged, then confirmed.** Toggling an area changes only `selected`; nothing reaches
 ///   `UserProfile` until the user taps the save control, and `changeSummary` names exactly what that
 ///   tap will start or stop protecting. Leaving without saving writes nothing.
-/// - **Nothing outside the vocabulary is lost.** An injury tag already on the profile that is not one
-///   of the six `InjuryOption` cases is carried through a save verbatim rather than silently dropped -
-///   this screen edits the areas it can show, and never quietly deletes a flag it cannot render.
+/// - **The write only ever adds or keeps** - see `injuriesToWrite(mergingOnto:)`, the single rule that
+///   decides what a save puts on the profile.
 @Observable
 @MainActor
 final class InjuryFlagsViewModel {
@@ -122,12 +121,19 @@ final class InjuryFlagsViewModel {
     /// Stage an area on or off. Purely local until `save()`. A no-op before the profile has been read:
     /// there is nothing to stage a change *against* yet.
     func toggle(_ area: InjuryOption) {
+        set(area, to: !selected.contains(area))
+    }
+
+    /// Stage an area to an explicit value. This, not `toggle`, is what a `Toggle` binding writes
+    /// through: a binding reports the value it wants, and a switch can re-write its *current* value
+    /// (an interrupted or cancelled drag), which an edge-driven setter would flip the wrong way.
+    func set(_ area: InjuryOption, to isOn: Bool) {
         guard canEdit else { return }
         didSave = false
-        if selected.contains(area) {
-            selected.remove(area)
-        } else {
+        if isOn {
             selected.insert(area)
+        } else {
+            selected.remove(area)
         }
     }
 
@@ -143,26 +149,20 @@ final class InjuryFlagsViewModel {
     /// Write the staged selection to `UserProfile.injuries` - the one place this app sets or clears an
     /// injury safety filter after onboarding, and only ever from this explicit user action.
     ///
-    /// Tag order is deterministic (`InjuryOption.allCases` order) after any tags this screen does not
-    /// recognize, which are carried through untouched.
+    /// The write lands on the *freshest* aggregate, not the snapshot this screen opened with. `User`
+    /// carries consistency, cold-start, duration, phase and subscription beside the profile, and the
+    /// user service saves the whole record - so a CloudKit merge or a background policy/duration write
+    /// landing while this screen was open would otherwise be rolled back by an injury save. Same
+    /// re-read `SessionCompletionService` does before its write. What the injuries array itself
+    /// becomes is decided in one place, `injuriesToWrite(mergingOnto:)`.
     func save() async {
         guard canSave, let loaded = user else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
 
-        // Write onto the *freshest* aggregate, not the snapshot this screen opened with. `User` carries
-        // consistency, cold-start, duration, phase and subscription beside the profile, and the user
-        // service saves the whole record - so a CloudKit merge or a background policy/duration write
-        // landing while this screen was open would otherwise be rolled back by an injury save. Same
-        // re-read `SessionCompletionService` does before its write.
         var user = (try? await userService.currentUser()) ?? loaded
-        // The tags this screen cannot render come off that same fresh read, never off the load-time
-        // snapshot: a flag another device added while this screen sat open must survive a save. For a
-        // safety filter, dropping is the unsafe direction, so the preserved set is recomputed here
-        // rather than remembered.
-        let preserved = Self.unrecognizedTags(in: user.profile.injuries)
-        user.profile.injuries = preserved + InjuryOption.allCases.filter { selected.contains($0) }.map(\.tag)
+        user.profile.injuries = injuriesToWrite(mergingOnto: user.profile.injuries)
         do {
             try await userService.save(user)
             self.user = user
@@ -173,17 +173,40 @@ final class InjuryFlagsViewModel {
         }
     }
 
+    /// The one rule deciding what a save puts on the profile:
+    ///
+    /// **This screen may only ever add or keep areas that arrived from elsewhere. The only thing that
+    /// removes an area is the user explicitly switching off one that was rendered to them on screen.**
+    ///
+    /// So the write is never-drop by construction. `fresh` is the injuries array as it stands *now*,
+    /// and a tag only leaves it if it names an area this screen showed switched on (`savedSelection`)
+    /// and the user switched back off (`selected`). Everything else survives: a tag outside the six
+    /// `InjuryOption` cases, which this screen has no toggle for and so could not have been unticked,
+    /// and equally an in-vocabulary flag another device added after this screen loaded, which was
+    /// never rendered and so could not have been unticked either. For a safety filter, dropping is the
+    /// unsafe direction, so the rule refuses to infer a removal it did not watch the user make.
+    ///
+    /// **The accepted cost**, ruled on deliberately: an area can end up flagged even though it read as
+    /// switched off when the user pressed save, because another device flagged it mid-edit. Keeping it
+    /// is the safe direction, and the user can switch it back off from this same screen.
+    ///
+    /// Tags kept from `fresh` hold their existing order and spelling; newly staged areas follow in
+    /// `InjuryOption.allCases` order, and an area already protected under another spelling is not
+    /// appended a second time.
+    private func injuriesToWrite(mergingOnto fresh: [String]) -> [String] {
+        let unticked = savedSelection.subtracting(selected)
+        let kept = fresh.filter { tag in !unticked.contains { $0.isFlagged(in: [tag]) } }
+        let added = InjuryOption.allCases
+            .filter { selected.contains($0) && !$0.isFlagged(in: kept) }
+            .map(\.tag)
+        return kept + added
+    }
+
     /// The areas this screen has a toggle for that the given tags already protect, read the engine's
     /// way (`InjuryOption.isFlagged`, over `InjuryContraindication`'s normalization) so a tag stored
     /// under another spelling is recognized rather than shown as switched off.
     private static func recognizedAreas(in tags: [String]) -> Set<InjuryOption> {
         Set(InjuryOption.allCases.filter { $0.isFlagged(in: tags) })
-    }
-
-    /// The complement: injury tags this screen has no toggle for. The one set a save carries through
-    /// verbatim, so editing the areas it can show never deletes a flag it cannot render.
-    private static func unrecognizedTags(in tags: [String]) -> [String] {
-        tags.filter { tag in !InjuryOption.allCases.contains { $0.isFlagged(in: [tag]) } }
     }
 
     /// Honest and non-alarming: the change did not stick, the previous flags still stand, and trying
