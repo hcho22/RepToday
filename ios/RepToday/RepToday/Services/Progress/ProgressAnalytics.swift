@@ -67,7 +67,14 @@ struct ProgressAnalytics: Equatable {
             deep: DeepAnalytics(
                 patternBalance: makePatternBalance(worked: worked),
                 weeklyVolume: makeWeeklyVolume(logs: logs, worked: worked, asOf: asOf, calendar: calendar),
-                difficultyMix: makeDifficultyMix(logs: logs)
+                difficultyMix: makeDifficultyMix(logs: logs),
+                strengthJourney: makeStrengthJourney(
+                    worked: worked,
+                    exercisesById: exercisesById,
+                    chainPositions: chainPositions,
+                    phase: phase,
+                    calendar: calendar
+                )
             )
         )
     }
@@ -381,6 +388,86 @@ struct ProgressAnalytics: Equatable {
             tooHard: counts[.tooHard] ?? 0
         )
     }
+
+    // MARK: - Deep: strength journey (premium, US-AN01)
+
+    /// The dated climb through each foundational pattern's active chain (US-AN01): per-pattern
+    /// tier-advancement milestones read straight from the real `WorkoutLog` history, so the surface
+    /// tells the "Knee Push-Up -> Standard Push-Up in 6 weeks" story anchored on actual dates rather
+    /// than this week's numbers.
+    ///
+    /// The chain shown for a pattern is the **active** one exactly as `makeChainPositions` already
+    /// derived it (the chain carrying the frontier `currentExercise`), reused rather than re-derived,
+    /// so the journey can never disagree with the chain-position surface or the progression map. A
+    /// milestone is a tier the user has **actually performed** in a real session (its `firstReachedAt`
+    /// is the earliest `completedAt` across every worked instance of that tier); a tier never worked is
+    /// simply absent, so nothing is fabricated.
+    ///
+    /// Only **reachable** tiers can be milestones - the same `exercise.phase == .discipline || phase ==
+    /// .strength` reachability the chain-position surface uses - so a still-locked Strength tier is
+    /// never reported as reached even in the (engine-impossible) case that one appeared in the logs.
+    /// A pattern the user has never trained (`currentExercise == nil`) contributes no journey, so an
+    /// empty `chains` means no strength history yet.
+    private static func makeStrengthJourney(
+        worked: [WorkedInstance],
+        exercisesById: [String: Exercise],
+        chainPositions: [ChainPositionSummary],
+        phase: Phase,
+        calendar: Calendar
+    ) -> StrengthJourney {
+        let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
+
+        func isReachable(_ exercise: Exercise) -> Bool {
+            exercise.phase == .discipline || phase == .strength
+        }
+
+        // Earliest logged completion per exercise id - the honest "first reached" date for a tier.
+        var firstReachedById: [String: Date] = [:]
+        for instance in worked {
+            let id = instance.logged.exerciseId
+            if let existing = firstReachedById[id] {
+                if instance.completedAt < existing { firstReachedById[id] = instance.completedAt }
+            } else {
+                firstReachedById[id] = instance.completedAt
+            }
+        }
+
+        let positionByPattern = Dictionary(chainPositions.map { ($0.pattern, $0) }, uniquingKeysWith: { first, _ in first })
+
+        let chains: [ChainJourney] = foundationalPatterns.compactMap { pattern in
+            // Only patterns the user has actually trained have a frontier to anchor the journey on.
+            guard let frontier = positionByPattern[pattern]?.currentExercise else { return nil }
+            let activeChainId = frontier.progressionChainId
+
+            // The reachable tiers of the active chain, entry-first; a milestone's 1-based tier is its
+            // rank among *these* (matching `ChainPositionSummary.tier`), so a locked tier never shifts
+            // or inflates a reported rank.
+            let reachableTiers = (tiersByChain[activeChainId] ?? [])
+                .filter(isReachable)
+                .sorted {
+                    if $0.progressionOrder != $1.progressionOrder { return $0.progressionOrder < $1.progressionOrder }
+                    return $0.id < $1.id
+                }
+
+            let milestones: [TierMilestone] = reachableTiers.enumerated().compactMap { index, exercise in
+                guard let firstReachedAt = firstReachedById[exercise.id] else { return nil }
+                return TierMilestone(
+                    exerciseId: exercise.id,
+                    displayName: exercise.displayName,
+                    tier: index + 1,
+                    firstReachedAt: firstReachedAt
+                )
+            }
+
+            // The frontier is a worked, reachable tier, so there is always at least one milestone; the
+            // guard defends the (unexpected) empty case rather than emitting a chain with no climb.
+            guard !milestones.isEmpty else { return nil }
+
+            return ChainJourney(pattern: pattern, chainId: activeChainId, milestones: milestones, calendar: calendar)
+        }
+
+        return StrengthJourney(chains: chains)
+    }
 }
 
 // MARK: - Free-layer surfaces
@@ -500,6 +587,89 @@ struct DeepAnalytics: Equatable {
     let weeklyVolume: [WeeklyVolumePoint]
     /// How sessions have felt - the calibration signal behind Adaptive Overload.
     let difficultyMix: DifficultyMix
+    /// The dated strength journey (US-AN01): per-chain tier advancement from real history, anchored on
+    /// progress over time rather than this week's numbers. Phase-earning progress (US-SP04's signals)
+    /// is surfaced alongside it in the view from the view model's own `PhaseProgress`, so it is not
+    /// recomputed here.
+    let strengthJourney: StrengthJourney
+}
+
+/// The premium strength journey (US-AN01): one dated climb per foundational pattern the user has
+/// trained, in `foundationalPatterns` order. A pattern never trained is omitted, so an empty
+/// `chains` means there is no strength history yet.
+struct StrengthJourney: Equatable {
+    let chains: [ChainJourney]
+
+    /// Whether there is any journey to render at all.
+    var isEmpty: Bool { chains.isEmpty }
+}
+
+/// One foundational pattern's dated climb through its active progression chain (US-AN01): the tiers
+/// the user has actually reached, entry-first, each stamped with the date it was first performed. The
+/// span between the first and current milestone is the "in N weeks" story; nothing is fabricated - a
+/// tier the user never worked is simply absent, and a still-locked Strength tier is never a milestone.
+struct ChainJourney: Equatable, Identifiable {
+    /// The foundational pattern (push / squat / hinge / core).
+    let pattern: MovementPattern
+    /// The active chain id (the chain carrying the frontier `ChainPositionSummary.currentExercise`).
+    let chainId: String
+    /// The reached tiers, entry-first (each `tier` is its 1-based rank among the chain's reachable
+    /// tiers). Never empty - a pattern with no reached tier contributes no journey.
+    let milestones: [TierMilestone]
+
+    /// The calendar the duration read-outs bucket weeks in, so a view renders the span the same way
+    /// the analytics were derived rather than reaching for `Calendar.current`.
+    private let calendar: Calendar
+
+    init(pattern: MovementPattern, chainId: String, milestones: [TierMilestone], calendar: Calendar) {
+        self.pattern = pattern
+        self.chainId = chainId
+        self.milestones = milestones
+        self.calendar = calendar
+    }
+
+    var id: MovementPattern { pattern }
+
+    /// The entry tier the climb started from.
+    var startMilestone: TierMilestone? { milestones.first }
+
+    /// The user's current frontier tier on this chain.
+    var currentMilestone: TierMilestone? { milestones.last }
+
+    /// Whether the user has advanced at least one tier on this chain (a real "climb", not a single
+    /// worked tier), which is what makes a from -> to advancement line meaningful.
+    var hasAdvanced: Bool { milestones.count >= 2 }
+
+    /// Whole weeks between the first reached tier and the current frontier, `nil` until there is an
+    /// advancement to measure. Bucketed in the analytics' own calendar so it matches every other
+    /// time-relative surface.
+    var weeksClimbed: Int? {
+        guard let start = startMilestone, let current = currentMilestone, hasAdvanced else { return nil }
+        let weeks = calendar.dateComponents([.weekOfYear], from: start.firstReachedAt, to: current.firstReachedAt).weekOfYear ?? 0
+        return max(0, weeks)
+    }
+
+    // `calendar` is intentionally excluded from `Equatable`: two journeys with the same milestones are
+    // equal regardless of the calendar instance they carry (calendars used here differ only by time
+    // zone/first-weekday, which the milestone dates already encode).
+    static func == (lhs: ChainJourney, rhs: ChainJourney) -> Bool {
+        lhs.pattern == rhs.pattern && lhs.chainId == rhs.chainId && lhs.milestones == rhs.milestones
+    }
+}
+
+/// A single reached tier on a chain journey (US-AN01): the movement, its 1-based tier rank among the
+/// chain's reachable tiers, and the date it was first performed in a real logged session.
+struct TierMilestone: Equatable, Identifiable {
+    /// The catalog id, for stable diffing and evidence only.
+    let exerciseId: String
+    let displayName: String
+    /// 1-based rank among the active chain's reachable tiers (matches `ChainPositionSummary.tier`).
+    let tier: Int
+    /// The earliest `WorkoutLog.completedAt` at which this tier was performed - the honest date the
+    /// user first reached it.
+    let firstReachedAt: Date
+
+    var id: String { exerciseId }
 }
 
 /// One movement pattern's share of training (premium; finer than `PillarShare`). Patterns with no

@@ -358,7 +358,10 @@ final class ProgressTabSnapshotTests: XCTestCase {
     /// nothing while running out of it would clip the bottom of the surface - which is why the measure
     /// throws rather than silently returning a truncated height.
     private enum HostHeight {
-        static let populated: CGFloat = 4400
+        // Headroom for the whole scrolling surface to lay out at once; the capture is cropped back to
+        // the measured content, so a comfortable margin costs nothing. Raised for US-AN01's premium
+        // strength-journey card (the tallest premium surface now).
+        static let populated: CGFloat = 5400
         static let empty: CGFloat = 900
     }
 

@@ -349,6 +349,103 @@ final class ProgressAnalyticsTests: XCTestCase {
         XCTAssertEqual(mix.ratedCount, 3)
     }
 
+    // MARK: - Strength journey (premium, US-AN01)
+
+    /// The tier-advancement timeline is read from real history: each reached tier stamped with the
+    /// earliest date it was performed, entry-first, with the dated span between first and current.
+    func testStrengthJourneyTimelineDatesAndDuration() {
+        let logs = [
+            // Wall reached 6 weeks ago, knee 3 weeks ago, standard this week - a real climb.
+            log(weeksAgo: 6, [logged("push_a", .strength, .push, reps: [15])]),
+            log(weeksAgo: 3, [logged("push_b", .strength, .push, reps: [12])]),
+            log(weeksAgo: 0, [logged("push_c", .strength, .push, reps: [10])]),
+        ]
+        let push = analytics(logs).deep.strengthJourney.chains.first { $0.pattern == .push }
+
+        XCTAssertNotNil(push)
+        XCTAssertEqual(push?.milestones.map(\.exerciseId), ["push_a", "push_b", "push_c"])
+        XCTAssertEqual(push?.milestones.map(\.tier), [1, 2, 3])
+        XCTAssertEqual(push?.startMilestone?.displayName, "Wall Push-up")
+        XCTAssertEqual(push?.currentMilestone?.displayName, "Standard Push-up")
+        XCTAssertEqual(push?.hasAdvanced, true)
+        // First reached at week 6, current at week 0 -> a six-week climb.
+        XCTAssertEqual(push?.weeksClimbed, 6)
+        XCTAssertEqual(push?.startMilestone?.firstReachedAt, date(weeksAgo: 6))
+        XCTAssertEqual(push?.currentMilestone?.firstReachedAt, date(weeksAgo: 0))
+    }
+
+    /// `firstReachedAt` is the *earliest* logged instance of a tier, not the most recent - re-doing a
+    /// tier later never moves its milestone date forward.
+    func testStrengthJourneyUsesEarliestReachedDate() {
+        let logs = [
+            log(weeksAgo: 4, [logged("push_a", .strength, .push, reps: [15])]),
+            log(weeksAgo: 1, [logged("push_a", .strength, .push, reps: [18])]), // same tier, later
+            log(weeksAgo: 0, [logged("push_b", .strength, .push, reps: [12])]),
+        ]
+        let push = analytics(logs).deep.strengthJourney.chains.first { $0.pattern == .push }
+
+        XCTAssertEqual(push?.startMilestone?.exerciseId, "push_a")
+        XCTAssertEqual(push?.startMilestone?.firstReachedAt, date(weeksAgo: 4))
+    }
+
+    /// A locked Strength tier is never reported as reached, even if it somehow appears in the logs -
+    /// the journey only counts reachable tiers, matching the chain-position/progression-map rule.
+    func testStrengthJourneyNeverReportsLockedTierAsReached() {
+        // push_d is a Strength-gated tier; a Discipline user's journey must exclude it.
+        let logs = [
+            log(weeksAgo: 2, [logged("push_c", .strength, .push, reps: [12])]),
+            log(weeksAgo: 0, [logged("push_d", .strength, .push, reps: [5])]),
+        ]
+        let disciplineJourney = analytics(logs, phase: .discipline).deep.strengthJourney.chains.first { $0.pattern == .push }
+        XCTAssertNotNil(disciplineJourney)
+        XCTAssertFalse(disciplineJourney!.milestones.contains { $0.exerciseId == "push_d" },
+                       "a locked Strength tier must never appear as a reached milestone")
+        XCTAssertEqual(disciplineJourney?.currentMilestone?.exerciseId, "push_c")
+
+        // A Strength-phase user, for whom that tier is unlocked, does reach it.
+        let strengthJourney = analytics(logs, phase: .strength).deep.strengthJourney.chains.first { $0.pattern == .push }
+        XCTAssertTrue(strengthJourney!.milestones.contains { $0.exerciseId == "push_d" })
+    }
+
+    /// A single worked tier is a valid journey (current position) but is not an "advancement".
+    func testStrengthJourneySingleTierHasNotAdvanced() {
+        let logs = [log(weeksAgo: 0, [logged("squat_a", .strength, .squat, reps: [15])])]
+        let squat = analytics(logs).deep.strengthJourney.chains.first { $0.pattern == .squat }
+
+        XCTAssertEqual(squat?.milestones.count, 1)
+        XCTAssertEqual(squat?.hasAdvanced, false)
+        XCTAssertNil(squat?.weeksClimbed)
+    }
+
+    /// The journey reuses the same active chain the chain-position surface derives - the frontier's
+    /// chain - so the two can never disagree, and untrained patterns contribute no journey.
+    func testStrengthJourneyMatchesActiveChainAndOmitsUntrained() {
+        let logs = [
+            log(weeksAgo: 1, [logged("push_a", .strength, .push, reps: [15])]),
+            log(weeksAgo: 0, [logged("push_c", .strength, .push, reps: [10])]),
+        ]
+        let result = analytics(logs)
+        let pushPosition = result.chainPositions.first { $0.pattern == .push }
+        let pushJourney = result.deep.strengthJourney.chains.first { $0.pattern == .push }
+
+        XCTAssertEqual(pushJourney?.chainId, pushPosition?.currentExercise?.progressionChainId)
+        XCTAssertEqual(pushJourney?.currentMilestone?.exerciseId, pushPosition?.currentExercise?.id)
+        // Only push was trained: no journey for squat/hinge/core.
+        XCTAssertEqual(result.deep.strengthJourney.chains.map(\.pattern), [.push])
+    }
+
+    /// Skipped or set-less instances never fabricate a milestone.
+    func testStrengthJourneyExcludesSkippedAndSetless() {
+        let logs = [
+            log(weeksAgo: 1, [logged("push_a", .strength, .push, reps: [15])]),
+            log(weeksAgo: 0, [logged("push_c", .strength, .push, skipped: true)]), // skipped
+            log(weeksAgo: 0, [logged("push_b", .strength, .push)]),                // no sets
+        ]
+        let push = analytics(logs).deep.strengthJourney.chains.first { $0.pattern == .push }
+
+        XCTAssertEqual(push?.milestones.map(\.exerciseId), ["push_a"])
+    }
+
     // MARK: - Empty history
 
     func testEmptyHistoryYieldsEmptyAnalytics() {
@@ -361,6 +458,7 @@ final class ProgressAnalyticsTests: XCTestCase {
         XCTAssertTrue(result.deep.patternBalance.isEmpty)
         XCTAssertTrue(result.deep.weeklyVolume.isEmpty)
         XCTAssertEqual(result.deep.difficultyMix.ratedCount, 0)
+        XCTAssertTrue(result.deep.strengthJourney.isEmpty)
     }
 
     // MARK: - Determinism
