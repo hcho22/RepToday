@@ -198,6 +198,29 @@ final class CoachPolicyWriteTests: XCTestCase {
         XCTAssertNil(CoachIntentMapper.proposal(for: "Why this workout today?"))
     }
 
+    func testMapperMatchesPatternsOnWordBoundariesNotSubstrings() {
+        // "score" contains "core", "absolutely" contains "abs", "impression" contains "press" - none
+        // should read as a pattern mention, so a "more"/"less" cue alongside them tunes nothing.
+        XCTAssertNil(CoachIntentMapper.proposal(for: "I scored more reps than ever today."))
+        XCTAssertNil(CoachIntentMapper.proposal(for: "I absolutely want more of this."))
+        XCTAssertNil(CoachIntentMapper.proposal(for: "That workout made less of an impression."))
+    }
+
+    func testMapperMatchesEverydayPlurals() {
+        // Whole-word matching still allows common inflections.
+        XCTAssertLessThan(CoachIntentMapper.proposal(for: "I'm bored of squats.")?.patternEmphasis[.squat] ?? 2,
+                          SessionPolicy.neutralEmphasis)
+        XCTAssertGreaterThan(CoachIntentMapper.proposal(for: "focus more on pressing")?.patternEmphasis[.push] ?? 0,
+                             SessionPolicy.neutralEmphasis)
+    }
+
+    func testMapperScopesDirectionPerNamedPattern() throws {
+        // A mixed request honors each pattern's own nearest cue, not one global more-wins direction.
+        let proposal = try XCTUnwrap(CoachIntentMapper.proposal(for: "more push but less core"))
+        XCTAssertGreaterThan(proposal.patternEmphasis[.push] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertLessThan(proposal.patternEmphasis[.core] ?? 2, SessionPolicy.neutralEmphasis)
+    }
+
     // MARK: - CoachSessionPolicyService orchestration
 
     func testServiceAppliesEmphasisWriteWithProvenanceAndNote() async throws {

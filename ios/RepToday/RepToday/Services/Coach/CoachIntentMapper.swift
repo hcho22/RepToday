@@ -22,13 +22,18 @@ enum CoachIntentMapper {
     static func proposal(for message: String) -> CoachPolicyProposal? {
         let text = message.lowercased()
 
+        // Cue positions are found once and each named pattern takes the *nearest* cue's direction, so a
+        // mixed request ("more push but less core") honors each pattern's own direction rather than
+        // letting one cue win globally.
+        let moreOffsets = cueOffsets(of: emphasizeMoreCues, in: text)
+        let lessOffsets = cueOffsets(of: emphasizeLessCues, in: text)
+
         var emphasis: [MovementPattern: Double] = [:]
         for pattern in foundationalPatterns {
-            guard mentions(pattern, in: text) else { continue }
-            if containsAny(of: emphasizeMoreCues, in: text) {
-                emphasis[pattern] = emphasizeMoreValue
-            } else if containsAny(of: emphasizeLessCues, in: text) {
-                emphasis[pattern] = emphasizeLessValue
+            let mentions = mentionOffsets(for: pattern, in: text)
+            guard !mentions.isEmpty else { continue }
+            if let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets) {
+                emphasis[pattern] = value
             }
         }
 
@@ -51,10 +56,6 @@ enum CoachIntentMapper {
 
     /// The keywords that name each pattern in everyday language. Kept narrow to avoid false positives:
     /// e.g. `squat` deliberately does not claim the ambiguous word "legs".
-    private static func mentions(_ pattern: MovementPattern, in text: String) -> Bool {
-        containsAny(of: keywords(for: pattern), in: text)
-    }
-
     private static func keywords(for pattern: MovementPattern) -> [String] {
         switch pattern {
         case .push: return ["push", "press", "chest", "upper body"]
@@ -90,5 +91,80 @@ enum CoachIntentMapper {
 
     private static func containsAny(of needles: [String], in haystack: String) -> Bool {
         needles.contains { haystack.contains($0) }
+    }
+
+    /// The character offsets at which any of `pattern`'s keywords appear as a whole word, so a keyword
+    /// only matches on word boundaries - `core` matches "core"/"cores" but not "score", `abs` matches
+    /// "abs" but not "absolutely", `press` matches "press"/"pressing" but not "impression". A common
+    /// inflectional suffix (plural/verb ending) is allowed so everyday plurals still match.
+    private static func mentionOffsets(for pattern: MovementPattern, in text: String) -> [Int] {
+        keywords(for: pattern).flatMap { wordMatchOffsets(of: $0, in: text) }
+    }
+
+    /// The character offsets of every occurrence of any needle, substring-based (cues include stems like
+    /// "prioriti" and phrases like "work on", so word-boundary matching would be wrong for them).
+    private static func cueOffsets(of needles: [String], in text: String) -> [Int] {
+        var offsets: [Int] = []
+        for needle in needles {
+            var searchStart = text.startIndex
+            while let range = text.range(of: needle, range: searchStart..<text.endIndex) {
+                offsets.append(text.distance(from: text.startIndex, to: range.lowerBound))
+                searchStart = range.upperBound
+            }
+        }
+        return offsets
+    }
+
+    /// Given a pattern's mention offsets and the more/less cue offsets, pick the direction of the cue
+    /// nearest to any mention. Ties favor "more" (mirrors the prior more-precedence). `nil` when no cue
+    /// exists, so a bare pattern mention ("how do I do a squat?") never tunes.
+    private static func nearestEmphasis(forMentionsAt mentions: [Int], moreAt: [Int], lessAt: [Int]) -> Double? {
+        var best: (distance: Int, value: Double)?
+        for mention in mentions {
+            for offset in moreAt {
+                let distance = abs(offset - mention)
+                if best == nil || distance < best!.distance { best = (distance, emphasizeMoreValue) }
+            }
+            for offset in lessAt {
+                let distance = abs(offset - mention)
+                if best == nil || distance < best!.distance { best = (distance, emphasizeLessValue) }
+            }
+        }
+        return best?.value
+    }
+
+    private static let inflectionSuffixes: Set<String> = ["s", "es", "ed", "ing", "er", "ers"]
+
+    /// The lower-bound character offsets where `needle` appears as a whole word - preceded by a word
+    /// boundary and followed either by a boundary or by an allowed inflectional suffix.
+    private static func wordMatchOffsets(of needle: String, in text: String) -> [Int] {
+        var offsets: [Int] = []
+        var searchStart = text.startIndex
+        while let range = text.range(of: needle, range: searchStart..<text.endIndex) {
+            if isWholeWord(range, in: text) {
+                offsets.append(text.distance(from: text.startIndex, to: range.lowerBound))
+            }
+            searchStart = range.lowerBound < text.endIndex ? text.index(after: range.lowerBound) : text.endIndex
+        }
+        return offsets
+    }
+
+    private static func isWholeWord(_ range: Range<String.Index>, in text: String) -> Bool {
+        if range.lowerBound > text.startIndex, isWordCharacter(text[text.index(before: range.lowerBound)]) {
+            return false
+        }
+        if range.upperBound == text.endIndex { return true }
+        if !isWordCharacter(text[range.upperBound]) { return true }
+        var index = range.upperBound
+        var suffix = ""
+        while index < text.endIndex, isWordCharacter(text[index]) {
+            suffix.append(text[index])
+            index = text.index(after: index)
+        }
+        return inflectionSuffixes.contains(suffix)
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber
     }
 }

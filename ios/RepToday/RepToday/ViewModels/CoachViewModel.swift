@@ -195,16 +195,15 @@ final class CoachViewModel {
         isSending = true
         defer { isSending = false }
 
-        // US-AC07: an eligible tuning request ("focus my push", "take it easier") applies a bounded,
-        // clamped, preference-only policy nudge on-device and surfaces the honest note as its own coach
-        // turn. The write is local and best-effort, so it lands (and the user sees what changed) even if
-        // the talk below fails; it never touches a safety filter and never blocks. Applied *before* the
-        // talk so the note reads ahead of the coach's explanation.
-        await applyTuningIfRequested(message)
-
         let context = await contextBundle()
         do {
             let reply = try await client.reply(to: message, context: context)
+            // US-AC07: an eligible tuning request ("focus my push", "take it easier") applies a bounded,
+            // clamped, preference-only policy nudge on-device and surfaces the honest note as its own coach
+            // turn. It runs only on the successful-reply path, so a message the transport rejected (too
+            // long) or that failed in flight never tunes the program and never orphans a turn in the
+            // transcript; it never touches a safety filter and never blocks.
+            await applyTuningIfRequested(message)
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
