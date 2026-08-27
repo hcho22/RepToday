@@ -988,7 +988,7 @@ private struct MilestoneRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(milestone.displayName)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(isCurrent ? Theme.Colors.textPrimary : Theme.Colors.textPrimary)
+                    .foregroundStyle(Theme.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(isCurrent ? "Reached \(dateText) - you're here" : "Reached \(dateText)")
                     .font(Theme.Typography.caption)
