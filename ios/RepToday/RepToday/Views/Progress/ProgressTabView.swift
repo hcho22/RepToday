@@ -113,7 +113,11 @@ struct ProgressTabView: View {
                         // users see a clear, non-nagging upsell in its place. The core loop and the
                         // basic history above are never gated.
                         if viewModel.isPremium {
-                            DeepAnalyticsSection(deep: analytics.deep)
+                            DeepAnalyticsSection(
+                                deep: analytics.deep,
+                                phaseProgress: viewModel.phaseProgress,
+                                phase: viewModel.phase
+                            )
                         } else {
                             PremiumUpsellCard(action: { showPaywall = true })
                         }
@@ -818,10 +822,18 @@ private struct PersonalBestsCard: View {
 
 // MARK: - Deep analytics (US-M02, premium)
 
-/// The premium-only deep layer: finer pattern balance, weekly training volume, and how sessions have
-/// felt. Rendered only when the user's entitlement unlocks it (US-N04).
+/// The premium-only deep layer: the strength journey (US-AN01), finer pattern balance, weekly
+/// training volume, and how sessions have felt. Rendered only when the user's entitlement unlocks it
+/// (US-N04) - the gate lives at this render boundary, so every strength-journey view below is premium
+/// by construction and a free user never reaches it.
 private struct DeepAnalyticsSection: View {
     let deep: DeepAnalytics
+    /// The phase-earning signals (US-SP04), reused here rather than recomputed so the strength journey
+    /// can show how close the summit is; `nil` when the library read failed.
+    let phaseProgress: PhaseProgress?
+    /// The user's earned phase, so the phase-earning readout frames an earned summit as earned rather
+    /// than as a climb still under way.
+    let phase: Phase
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -833,11 +845,213 @@ private struct DeepAnalyticsSection: View {
                     .foregroundStyle(Theme.Colors.textPrimary)
             }
 
+            StrengthJourneyCard(journey: deep.strengthJourney, phaseProgress: phaseProgress, phase: phase)
             PatternBalanceCard(shares: deep.patternBalance)
             WeeklyVolumeCard(points: deep.weeklyVolume)
             DifficultyMixCard(mix: deep.difficultyMix)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Strength journey (US-AN01, premium)
+
+/// The strength journey (US-AN01): analytics anchored on the user's climb over time rather than this
+/// week's numbers. For each foundational pattern the user has trained it shows the dated tier
+/// advancement ("Knee Push-Up -> Standard Push-Up, over 6 weeks") read straight from real history,
+/// then the current phase-earning progress (US-SP04's signals, reused). Premium-only: it renders only
+/// inside `DeepAnalyticsSection`, which is gated at the render boundary.
+///
+/// Every value is a pure readout from `StrengthJourney`/`PhaseProgress`. No tier the user has not
+/// actually performed appears, and a locked Strength tier is never shown as reached (the data layer
+/// excludes it), so the surface can never over-claim. Copy is identity-framed; there is no XP, level,
+/// or badge - just the honest, dated shape of a habit being built.
+private struct StrengthJourneyCard: View {
+    let journey: StrengthJourney
+    let phaseProgress: PhaseProgress?
+    let phase: Phase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Your strength journey")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Text("Not just this week - how far you've climbed over time, one foundation at a time.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            if journey.isEmpty {
+                Text("Train a foundation and your climb starts here - each tier you reach, with the date you first did it.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } else {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    ForEach(journey.chains) { chain in
+                        ChainJourneyView(chain: chain)
+                    }
+                }
+            }
+
+            if let phaseProgress {
+                Divider().background(Theme.Colors.textSecondary.opacity(0.2))
+                PhaseEarningSummary(progress: phaseProgress, phase: phase)
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+}
+
+/// One pattern's dated climb: a headline advancement line (from -> to, over N weeks) when the user has
+/// advanced a tier, then a per-tier timeline with the date each tier was first reached.
+private struct ChainJourneyView: View {
+    let chain: ChainJourney
+
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                Text(PatternLabels.name(for: chain.pattern))
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer(minLength: 0)
+                Text(headline)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(PatternLabels.name(for: chain.pattern)) journey. \(spokenHeadline)")
+
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(chain.milestones.enumerated()), id: \.element.id) { index, milestone in
+                    MilestoneRow(
+                        milestone: milestone,
+                        dateText: dateFormatter.string(from: milestone.firstReachedAt),
+                        isFirst: index == 0,
+                        isCurrent: milestone.id == chain.currentMilestone?.id
+                    )
+                }
+            }
+        }
+    }
+
+    /// The seen advancement headline: "Knee Push-Up -> Standard Push-Up, 6 weeks" when climbed, else a
+    /// gentle "just started" note keyed off the single reached tier.
+    private var headline: String {
+        guard chain.hasAdvanced, let start = chain.startMilestone, let current = chain.currentMilestone else {
+            return "Getting started"
+        }
+        return "\(start.displayName) -> \(current.displayName)" + durationSuffix
+    }
+
+    private var durationSuffix: String {
+        guard let weeks = chain.weeksClimbed else { return "" }
+        if weeks <= 0 { return ", this week" }
+        return weeks == 1 ? ", 1 week" : ", \(weeks) weeks"
+    }
+
+    private var spokenHeadline: String {
+        guard chain.hasAdvanced, let start = chain.startMilestone, let current = chain.currentMilestone else {
+            return "Getting started at \(chain.currentMilestone?.displayName ?? "your first tier")."
+        }
+        let span: String
+        if let weeks = chain.weeksClimbed {
+            span = weeks <= 0 ? "this week" : (weeks == 1 ? "over 1 week" : "over \(weeks) weeks")
+        } else {
+            span = ""
+        }
+        return "Advanced from \(start.displayName) to \(current.displayName)\(span.isEmpty ? "" : ", \(span)")."
+    }
+}
+
+/// A single milestone: a connector-and-marker rail on the left (current tier accented), the movement
+/// name and the date it was first reached on the right. A static readout, never a control.
+private struct MilestoneRow: View {
+    let milestone: TierMilestone
+    let dateText: String
+    let isFirst: Bool
+    let isCurrent: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            rail
+            VStack(alignment: .leading, spacing: 2) {
+                Text(milestone.displayName)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(isCurrent ? Theme.Colors.textPrimary : Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(isCurrent ? "Reached \(dateText) - you're here" : "Reached \(dateText)")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(isCurrent ? Theme.Colors.accent : Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var rail: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(isFirst ? Color.clear : Theme.Colors.accent.opacity(0.5))
+                .frame(width: 2, height: 8)
+            Image(systemName: isCurrent ? "location.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(Theme.Colors.accent)
+            Rectangle()
+                .fill(isCurrent ? Color.clear : Theme.Colors.accent.opacity(0.5))
+                .frame(width: 2)
+                .frame(maxHeight: .infinity)
+        }
+        .frame(width: 22)
+        .accessibilityHidden(true)
+    }
+
+    private var accessibilityLabel: String {
+        isCurrent
+            ? "\(milestone.displayName), reached \(dateText), you're here."
+            : "\(milestone.displayName), reached \(dateText)."
+    }
+}
+
+/// The current phase-earning progress (US-SP04's signals, reused) inside the strength journey: a
+/// compact readout of the two earn signals for a still-climbing user, or an earned confirmation once
+/// the Strength Phase is unlocked. Never loss-framed.
+private struct PhaseEarningSummary: View {
+    let progress: PhaseProgress
+    let phase: Phase
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text("Earning the Strength Phase")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Colors.textPrimary)
+            Text(note)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Earning the Strength Phase. \(note)")
+    }
+
+    private var note: String {
+        if phase == .strength || progress.hasEarnedStrength {
+            return "Earned - the full catalog is unlocked and harder work is on the menu."
+        }
+        return "\(progress.weeksSustained) of \(progress.requiredWeeks) weeks steady, \(progress.clearedFoundationCount) of \(progress.foundationCount) foundations cleared. Keep climbing."
     }
 }
 
