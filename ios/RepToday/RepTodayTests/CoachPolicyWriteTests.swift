@@ -162,7 +162,7 @@ final class CoachPolicyWriteTests: XCTestCase {
     }
 
     func testCoachNoteNamesLoweredPattern() {
-        var before = SessionPolicy.default
+        let before = SessionPolicy.default
         var after = SessionPolicy.default
         after.patternEmphasis[.squat] = 0.6
         let note = PolicyNote.coachTemplated(policyBefore: before, policyAfter: after)!
