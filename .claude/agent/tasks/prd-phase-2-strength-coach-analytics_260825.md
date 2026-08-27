@@ -268,12 +268,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] Add a `patternEmphasis` lever to `SessionPolicy` (per-`MovementPattern` bias), decoding to neutral for existing persisted policies (round-trip safe, like the Start Seed additive fields).
-- [ ] The lever is a **preference** that reorders/weights pattern selection in the engine (Step 3 stalest-first ordering), **never a filter**: it can never starve a pool, remove a movement, change a block's structure/uniform round count, or reintroduce a mobility middle block. Shaped like the existing `sitsLong` bias.
-- [ ] Neutral value reproduces current behavior exactly.
-- [ ] Deterministic + `asOf`-pure; clamped to a bounded range.
-- [ ] Tests: neutral is a no-op; emphasis reorders but never starves/filters; structure invariants hold across all lengths/levels. `docs/test-coverage.md` row.
-- [ ] Build and suites pass.
+- [x] Add a `patternEmphasis` lever to `SessionPolicy` (per-`MovementPattern` bias), decoding to neutral for existing persisted policies (round-trip safe, like the Start Seed additive fields).
+- [x] The lever is a **preference** that reorders/weights pattern selection in the engine (Step 3 stalest-first ordering), **never a filter**: it can never starve a pool, remove a movement, change a block's structure/uniform round count, or reintroduce a mobility middle block. Shaped like the existing `sitsLong` bias.
+- [x] Neutral value reproduces current behavior exactly.
+- [x] Deterministic + `asOf`-pure; clamped to a bounded range.
+- [x] Tests: neutral is a no-op; emphasis reorders but never starves/filters; structure invariants hold across all lengths/levels. `docs/test-coverage.md` row.
+- [x] Build and suites pass.
 
 **Validation Test:**
 

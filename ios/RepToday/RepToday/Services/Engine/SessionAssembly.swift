@@ -420,6 +420,11 @@ enum SessionAssembly {
             // openers and changes no block's count and no bookend stretch count, so it cannot re-inflate a
             // short session or reintroduce a mobility middle block (see `orderedMobility`/`postureHipLean`).
             sitsLong: user.profile.sitsLong,
+            // US-AC05: the pattern-emphasis lever biases Step 3's stalest-first ordering as a pure
+            // preference. Clamped to the policy rails here so the engine only ever sees an
+            // order-preserving positive multiplier - an out-of-range coach write can never act as a
+            // filter or invert the ordering.
+            patternEmphasis: sessionPolicy.patternEmphasis.mapValues(SessionPolicy.clampedEmphasis),
             asOf: asOf,
             calendar: calendar
         )
@@ -1006,6 +1011,15 @@ private struct Builder {
     /// Movement Practice accessory (the block `sitsLong` used to *size*), this is the only thing `sitsLong`
     /// does in the engine.
     let sitsLong: Bool
+    /// Session Policy pattern-emphasis lever (US-AC05): a per-`MovementPattern` **multiplier on
+    /// staleness** biasing Step 3's stalest-first ordering, already clamped to the policy rails
+    /// (`SessionPolicy.clampedEmphasis`) when the builder is constructed. Threaded into
+    /// `orderedStrengthPatterns` only, where it reorders the strength/primal pattern list as a pure
+    /// preference: it never removes a pattern (a de-emphasized pattern still fills as an accessory when
+    /// the block widens), never makes a block uneven or changes its round count (ADR-0003), and never
+    /// reintroduces a mobility middle block. Neutral (`1.0` for every pattern) reproduces the pre-US-AC05
+    /// ordering exactly. Shaped like `sitsLong`: a reorder layered on the existing ordering, never a filter.
+    let patternEmphasis: [MovementPattern: Double]
     let asOf: Date
     let calendar: Calendar
     /// Movements already claimed by an earlier block (active or reserve), so blocks never collide.
@@ -1286,6 +1300,12 @@ private struct Builder {
     /// most recent session's lead pattern held out of the lead slot (Step 3's no-repeat rule). Primal
     /// `locomotion` patterns are included only when `includePrimal` is set (folded into strength for
     /// every shape but an extended blend, which gives primal its own block instead).
+    ///
+    /// The US-AC05 `patternEmphasis` lever biases both the rank and the lead selection as a per-pattern
+    /// staleness multiplier, but purely as a reorder: the pattern set (and thus the block's structure,
+    /// its uniform round count, and every eligible movement) is untouched, so a de-emphasized pattern is
+    /// still present and still available to the block's breadth-first widening as an accessory. At
+    /// neutral emphasis this is byte-identical to the pre-US-AC05 ordering.
     private func orderedStrengthPatterns(includePrimal: Bool) -> [MovementPattern] {
         let patterns = Array(
             Set(
@@ -1300,14 +1320,16 @@ private struct Builder {
             candidatePatterns: patterns,
             recentLogs: recentLogs,
             asOf: asOf,
-            calendar: calendar
+            calendar: calendar,
+            emphasis: patternEmphasis
         )
         guard
             let lead = PatternFocus.select(
                 candidatePatterns: patterns,
                 recentLogs: recentLogs,
                 asOf: asOf,
-                calendar: calendar
+                calendar: calendar,
+                emphasis: patternEmphasis
             )
         else { return ranked }
         return [lead] + ranked.filter { $0 != lead }

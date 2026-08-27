@@ -88,18 +88,35 @@ enum PatternFocus {
     /// Ties (equal staleness, including several never-worked patterns) break by the canonical
     /// `MovementPattern.allCases` order, so the ranking is fully deterministic and independent
     /// of the order the caller happened to pass `candidatePatterns` in.
+    ///
+    /// `emphasis` (US-AC05) is the per-pattern Session Policy preference, a **multiplier on staleness**
+    /// applied before the sort: a pattern's days-since-worked is scaled by its emphasis, so `> 1.0`
+    /// surfaces it earlier (as if staler) and `< 1.0` later (as if fresher). It is strictly a reorder -
+    /// every candidate stays in the result, so the caller can never be starved of a pattern - and an
+    /// absent pattern (or an empty map) is neutral `1.0`, reproducing the pre-US-AC05 ordering exactly.
+    /// The caller supplies values already clamped to the policy rails (`SessionPolicy.clampedEmphasis`),
+    /// so the multiplier is always a positive, order-preserving scale, never a filter.
     static func rank(
         candidatePatterns: [MovementPattern],
         recentLogs: [WorkoutLog],
         asOf: Date,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        emphasis: [MovementPattern: Double] = [:]
     ) -> [MovementPattern] {
         let staleness = PatternStaleness(recentLogs: recentLogs, asOf: asOf, calendar: calendar)
+        // A never-worked pattern is maximally stale. Give it a base staleness one day-count above the
+        // stalest worked candidate so that, at neutral emphasis, it still ranks ahead of every worked
+        // pattern exactly as the unweighted `isStaler(nil, _)` rule did - keeping neutral byte-identical.
+        let maxWorkedDays = candidatePatterns.compactMap { staleness.days(for: $0) }.max() ?? 0
+        let neverWorkedBase = Double(maxWorkedDays + 1)
+        func priority(_ pattern: MovementPattern) -> Double {
+            let base = staleness.days(for: pattern).map(Double.init) ?? neverWorkedBase
+            return base * (emphasis[pattern] ?? 1.0)
+        }
         return candidatePatterns.sorted { lhs, rhs in
-            let lhsDays = staleness.days(for: lhs)
-            let rhsDays = staleness.days(for: rhs)
-            if PatternStaleness.isStaler(lhsDays, than: rhsDays) { return true }
-            if PatternStaleness.isStaler(rhsDays, than: lhsDays) { return false }
+            let lhsPriority = priority(lhs)
+            let rhsPriority = priority(rhs)
+            if lhsPriority != rhsPriority { return lhsPriority > rhsPriority }
             return canonicalIndex(lhs) < canonicalIndex(rhs)
         }
     }
@@ -114,12 +131,18 @@ enum PatternFocus {
     ///   session is within `noRepeatWindowDays`, so the user does not repeat it back-to-back -
     ///   unless it is the only candidate, in which case it is still returned (variety can't
     ///   trump having a session at all).
+    ///
+    /// `emphasis` (US-AC05) is threaded into the `rank` call so the lead reflects the same per-pattern
+    /// staleness bias, but the no-repeat rule remains a structural safety layered *on top*: the previous
+    /// session's lead pattern is still held out of the lead slot even when emphasis would surface it, so
+    /// emphasis nudges the ordering without ever repeating a pattern back-to-back or starving a pool.
     static func select(
         candidatePatterns: [MovementPattern],
         recentLogs: [WorkoutLog],
         asOf: Date,
         calendar: Calendar = .current,
-        explicitlyRequested: MovementPattern? = nil
+        explicitlyRequested: MovementPattern? = nil,
+        emphasis: [MovementPattern: Double] = [:]
     ) -> MovementPattern? {
         guard !candidatePatterns.isEmpty else { return nil }
 
@@ -131,7 +154,8 @@ enum PatternFocus {
             candidatePatterns: candidatePatterns,
             recentLogs: recentLogs,
             asOf: asOf,
-            calendar: calendar
+            calendar: calendar,
+            emphasis: emphasis
         )
         let blocked = recentLeadPattern(
             among: candidatePatterns,

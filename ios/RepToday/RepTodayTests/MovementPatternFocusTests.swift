@@ -211,4 +211,113 @@ final class MovementPatternFocusTests: XCTestCase {
             XCTAssertEqual(select(strengthPatterns, logs: logs), first)
         }
     }
+
+    // MARK: - Pattern emphasis (US-AC05)
+
+    /// Rank/select overloads that thread the US-AC05 per-pattern emphasis (a staleness multiplier).
+    private func rank(
+        _ candidates: [MovementPattern],
+        logs: [WorkoutLog],
+        emphasis: [MovementPattern: Double]
+    ) -> [MovementPattern] {
+        PatternFocus.rank(
+            candidatePatterns: candidates, recentLogs: logs, asOf: asOf, calendar: calendar, emphasis: emphasis
+        )
+    }
+
+    private func select(
+        _ candidates: [MovementPattern],
+        logs: [WorkoutLog],
+        emphasis: [MovementPattern: Double]
+    ) -> MovementPattern? {
+        PatternFocus.select(
+            candidatePatterns: candidates, recentLogs: logs, asOf: asOf, calendar: calendar, emphasis: emphasis
+        )
+    }
+
+    /// The neutral map (every pattern at `1.0`) is byte-identical to passing no emphasis, which is
+    /// byte-identical to the pre-US-AC05 unweighted rank - across a spread of histories including
+    /// never-worked patterns and staleness ties. This is the "neutral is a no-op" guarantee at the
+    /// algorithm level, the foundation of the byte-for-byte baseline match.
+    func testNeutralEmphasisReproducesUnweightedRankExactly() {
+        let neutral = Dictionary(uniqueKeysWithValues: MovementPattern.allCases.map { ($0, 1.0) })
+        let histories: [[WorkoutLog]] = [
+            [],
+            [log(patterns: [.push], daysAgo: 1), log(patterns: [.squat], daysAgo: 5)],
+            [log(patterns: [.push], daysAgo: 1), log(patterns: [.squat], daysAgo: 5),
+             log(patterns: [.hinge], daysAgo: 3)],
+            [log(patterns: [.core], daysAgo: 2), log(patterns: [.pull], daysAgo: 2)],
+        ]
+        for logs in histories {
+            let baseline = rank(strengthPatterns, logs: logs)
+            XCTAssertEqual(rank(strengthPatterns, logs: logs, emphasis: [:]), baseline)
+            XCTAssertEqual(rank(strengthPatterns, logs: logs, emphasis: neutral), baseline)
+            XCTAssertEqual(select(strengthPatterns, logs: logs, emphasis: neutral),
+                           select(strengthPatterns, logs: logs))
+        }
+    }
+
+    /// Emphasis surfaces an emphasized pattern earlier: push worked more recently than squat (so squat
+    /// leads the neutral rank), but a 2x push emphasis scales its staleness enough to overtake squat.
+    func testEmphasisSurfacesAnEmphasizedPatternEarlier() {
+        // push 3 days, squat 5 days: neutral leads with squat (staler).
+        let logs = [log(patterns: [.push], daysAgo: 3), log(patterns: [.squat], daysAgo: 5)]
+        XCTAssertEqual(rank([.push, .squat], logs: logs), [.squat, .push])
+        // 2x push emphasis (3*2=6) overtakes squat (5*1=5).
+        XCTAssertEqual(rank([.push, .squat], logs: logs, emphasis: [.push: 2.0]), [.push, .squat])
+    }
+
+    /// De-emphasis pushes a pattern later without removing it: a 0.5x squat scales its staleness down so
+    /// a fresher push now leads, but squat still appears in the ranking (a reorder, never a filter).
+    func testDeEmphasisPushesAPatternLaterButNeverRemovesIt() {
+        // squat 4 days (staler), push 3 days: neutral leads with squat.
+        let logs = [log(patterns: [.push], daysAgo: 3), log(patterns: [.squat], daysAgo: 4)]
+        XCTAssertEqual(rank([.push, .squat], logs: logs), [.squat, .push])
+        let ranked = rank([.push, .squat], logs: logs, emphasis: [.squat: 0.5])
+        XCTAssertEqual(ranked, [.push, .squat], "de-emphasized squat (4*0.5=2) now trails push (3)")
+        XCTAssertTrue(ranked.contains(.squat), "de-emphasis must never drop a pattern from the ranking")
+    }
+
+    /// Emphasis is only ever a permutation of the candidate set - every candidate stays present, so a
+    /// pool can never be starved by emphasis - across a range of emphasis values including the rails.
+    func testEmphasisIsAlwaysAPermutationNeverRemovesAPattern() {
+        let logs = [
+            log(patterns: [.push], daysAgo: 1), log(patterns: [.squat], daysAgo: 5),
+            log(patterns: [.hinge], daysAgo: 3),
+        ]
+        let emphases: [[MovementPattern: Double]] = [
+            [.push: 2.0, .squat: 0.5],
+            [.squat: 2.0, .push: 0.5],
+            [.core: 2.0], [.pull: 0.5],
+            [.push: 0.5, .squat: 0.5, .hinge: 0.5, .core: 0.5, .pull: 0.5],
+        ]
+        for emphasis in emphases {
+            let ranked = rank(strengthPatterns, logs: logs, emphasis: emphasis)
+            XCTAssertEqual(Set(ranked), Set(strengthPatterns), "emphasis \(emphasis) removed a pattern")
+            XCTAssertEqual(ranked.count, strengthPatterns.count, "emphasis \(emphasis) duplicated/dropped a pattern")
+        }
+    }
+
+    /// The no-repeat rule is a structural safety that emphasis never overrides: an emphasized pattern
+    /// that led yesterday is still held out of the lead slot, so emphasis nudges ordering without ever
+    /// repeating a pattern back-to-back.
+    func testEmphasisNeverOverridesTheNoRepeatRule() {
+        // Yesterday's session led with push (both push and squat worked yesterday).
+        let logs = [log(patterns: [.push, .squat], daysAgo: 1)]
+        // A strong push emphasis would lead push on staleness alone (push 1*2=2 > squat 1*0.5=0.5)...
+        XCTAssertEqual(rank([.push, .squat], logs: logs, emphasis: [.push: 2.0, .squat: 0.5]),
+                       [.push, .squat])
+        // ...but select still holds yesterday's lead (push) back, so squat leads.
+        XCTAssertEqual(select([.push, .squat], logs: logs, emphasis: [.push: 2.0, .squat: 0.5]), .squat)
+    }
+
+    /// Emphasis ranking stays deterministic: identical inputs yield the identical ordering every time.
+    func testEmphasisRankIsDeterministic() {
+        let logs = [log(patterns: [.push], daysAgo: 3), log(patterns: [.squat], daysAgo: 5)]
+        let emphasis: [MovementPattern: Double] = [.push: 2.0, .squat: 0.5]
+        let first = rank(strengthPatterns, logs: logs, emphasis: emphasis)
+        for _ in 0..<50 {
+            XCTAssertEqual(rank(strengthPatterns, logs: logs, emphasis: emphasis), first)
+        }
+    }
 }

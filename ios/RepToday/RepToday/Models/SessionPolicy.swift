@@ -46,6 +46,40 @@ struct SessionPolicy: Codable, Equatable {
     /// hardcoded `recentSessionWindow = 3` so it is tunable per user.
     var varietyWindow: Int
 
+    /// Per-`MovementPattern` **emphasis** on Step 3's stalest-first ordering (US-AC05): a bounded,
+    /// neutral-by-default preference the coach (US-AC07) can later use to bias the session toward or
+    /// away from a pattern *without ever breaking session structure*.
+    ///
+    /// It is a **multiplier on staleness**, exactly the vocabulary the retired `pillarWeighting` once
+    /// carried (see below), applied one level down at the pattern granularity and actually wired into
+    /// the engine: Step 3 ranks patterns by days-since-worked, and a pattern's emphasis scales that
+    /// staleness before the sort, so `> 1.0` surfaces a pattern earlier (as if staler) and `< 1.0`
+    /// later (as if fresher). `1.0` (neutral) is a no-op, reproducing the pre-US-AC05 ordering exactly.
+    ///
+    /// It is strictly a **preference layered on the existing ordering, never a filter** (shaped like the
+    /// `sitsLong` bias): it only reorders the pattern list, so it can never remove a movement, starve a
+    /// pool, change a block's structure or its uniform round count (ADR-0003), or reintroduce a mobility
+    /// middle block. A de-emphasized pattern still appears in the list (just later) and is still
+    /// available to the block's breadth-first widening as an accessory. The no-repeat rule (never repeat
+    /// the previous session's lead pattern) is a structural safety that emphasis never overrides.
+    ///
+    /// **Bounded and clamped** to `[minEmphasis, maxEmphasis]` = `[0.5, 2.0]` around `neutralEmphasis`
+    /// `1.0` (the engine clamps every value before use via `SessionPolicy.clampedEmphasis`, so an
+    /// out-of-range value is pinned to the rail, never treated as a filter). The range is deliberately
+    /// gentle: at most 2x/0.5x staleness means a genuinely neglected pattern can still out-rank an
+    /// emphasized-but-fresh one, so emphasis *nudges* the lead rather than dictating it - the deliberate
+    /// answer to the PRD's open question ("how strongly before it feels like the user chose").
+    ///
+    /// Additive and round-trip safe like the Start Seed fields: a policy persisted before US-AC05 lacks
+    /// this key and decodes to `neutralPatternEmphasis` (every pattern `1.0`), so it loads without error
+    /// and behaves exactly as it did. Always carries every `MovementPattern`; an absent pattern is read
+    /// as neutral by the engine regardless.
+    ///
+    /// Defaulted to neutral on the memberwise initializer so it is *always* present-and-neutral: a caller
+    /// can never construct a policy with a missing or invalid emphasis, and existing construction sites
+    /// need not restate the neutral map. `SessionPolicy.default` still sets it explicitly for clarity.
+    var patternEmphasis: [MovementPattern: Double] = SessionPolicy.neutralPatternEmphasis
+
     /// The cold-start override contract, present only during the cold-start window (US-E04):
     /// it caps Starting Difficulty and carries the Start Seed (US-O02) - the difficulty floor and
     /// opening volume the self-reported fitness level starts at. (Its pillar-lead override was retired
@@ -165,6 +199,33 @@ extension SessionPolicy {
         Dictionary(uniqueKeysWithValues: Pillar.allCases.map { ($0, 1.0) })
     }
 
+    // MARK: Pattern emphasis rails (US-AC05)
+
+    /// The neutral pattern-emphasis multiplier: a `1.0` staleness scale, a no-op on Step 3's ordering.
+    static let neutralEmphasis: Double = 1.0
+    /// The lower rail of a pattern-emphasis value: a de-emphasized pattern appears at most half as
+    /// stale, so it surfaces later - but is never removed, so this is a preference, never a filter.
+    static let minEmphasis: Double = 0.5
+    /// The upper rail of a pattern-emphasis value: an emphasized pattern appears at most twice as
+    /// stale, so it surfaces earlier. Kept gentle so a neglected pattern can still out-rank a fresh
+    /// emphasized one (emphasis nudges the lead, never dictates it).
+    static let maxEmphasis: Double = 2.0
+
+    /// Clamps a pattern-emphasis multiplier to `[minEmphasis, maxEmphasis]`. The single definition of
+    /// the rail: the engine clamps every value through this before use, so an out-of-range coach write
+    /// (US-AC07) is pinned to the rail rather than ever acting as a filter or inverting the ordering.
+    static func clampedEmphasis(_ value: Double) -> Double {
+        min(maxEmphasis, max(minEmphasis, value))
+    }
+
+    /// The neutral (unbiased) pattern emphasis: an equal `1.0` staleness multiplier for every
+    /// movement pattern. Derived from `MovementPattern.allCases` so it always covers the full set - a
+    /// new pattern would be weighted neutrally rather than silently omitted. This is the value a policy
+    /// persisted before US-AC05 decodes to, reproducing the pre-US-AC05 Step 3 ordering exactly.
+    static var neutralPatternEmphasis: [MovementPattern: Double] {
+        Dictionary(uniqueKeysWithValues: MovementPattern.allCases.map { ($0, neutralEmphasis) })
+    }
+
     /// The always-valid starting policy for a fresh user (US-D03): every lever neutral so the
     /// engine behaves exactly as it did before policies existed. Progression at `1.0`, equal
     /// weighting across all pillars, a 3-session variety window, and no cold-start, re-entry,
@@ -176,10 +237,56 @@ extension SessionPolicy {
         progressionRate: 1.0,
         pillarWeighting: neutralPillarWeighting,
         varietyWindow: 3,
+        patternEmphasis: neutralPatternEmphasis,
         coldStartContract: nil,
         reentry: nil,
         note: nil
     )
+}
+
+// MARK: - Backward-compatible decoding
+
+extension SessionPolicy {
+
+    /// The persisted JSON contract for a `SessionPolicy`. Written out explicitly because the
+    /// hand-rolled `init(from:)` below needs it: US-AC05's `patternEmphasis` is an additive top-level
+    /// field, so a policy persisted before it must still decode (to `neutralPatternEmphasis`) rather
+    /// than failing the whole blob. The raw values are the stored contract, so renaming a case silently
+    /// drops that field from every already-stored policy.
+    enum CodingKeys: String, CodingKey {
+        case version
+        case updatedAt
+        case updatedBy
+        case progressionRate
+        case pillarWeighting
+        case varietyWindow
+        case patternEmphasis
+        case coldStartContract
+        case reentry
+        case note
+    }
+
+    /// Decodes a persisted policy, defaulting the US-AC05 `patternEmphasis` lever to neutral when
+    /// absent. A policy written before US-AC05 therefore still loads and reproduces the previous engine
+    /// behavior exactly (every pattern at a `1.0` staleness multiplier), rather than failing to decode
+    /// and losing the user's in-force policy - the same additive round-trip contract the Start Seed
+    /// fields honor on `ColdStartContract`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.version = try container.decode(Int.self, forKey: .version)
+        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        self.updatedBy = try container.decode(UpdatedBy.self, forKey: .updatedBy)
+        self.progressionRate = try container.decode(Double.self, forKey: .progressionRate)
+        self.pillarWeighting = try container.decode([Pillar: Double].self, forKey: .pillarWeighting)
+        self.varietyWindow = try container.decode(Int.self, forKey: .varietyWindow)
+        self.patternEmphasis =
+            try container.decodeIfPresent([MovementPattern: Double].self, forKey: .patternEmphasis)
+            ?? Self.neutralPatternEmphasis
+        self.coldStartContract =
+            try container.decodeIfPresent(ColdStartContract.self, forKey: .coldStartContract)
+        self.reentry = try container.decodeIfPresent(Reentry.self, forKey: .reentry)
+        self.note = try container.decodeIfPresent(Note.self, forKey: .note)
+    }
 }
 
 // MARK: - Cold-start seeding (US-G01/US-G02)
