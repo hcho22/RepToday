@@ -226,6 +226,28 @@ extension SessionPolicy {
         Dictionary(uniqueKeysWithValues: MovementPattern.allCases.map { ($0, neutralEmphasis) })
     }
 
+    // MARK: Progression-rate rail and coach-easing gate (US-AC06)
+
+    /// The neutral progression rate: a `1.0` multiplier on Step 6's Adaptive Overload bump, a no-op that
+    /// reproduces the pre-policy curve. The same value the engine's `AdaptiveOverload.neutralProgressionRate`
+    /// uses - kept equal by construction (both are the neutral `progressionRate` lever).
+    static let neutralProgressionRate: Double = 1.0
+    /// The lower rail of `progressionRate`: pace eases to at most half the neutral advancing bump. This is
+    /// the deterministic Programmer's long-standing plateau-easing floor (`PlateauDiagnosis` aliases it).
+    static let minProgressionRate: Double = 0.5
+    /// The upper rail of `progressionRate`: pace advances at most twice the neutral bump - the engine's
+    /// long-standing ceiling on how aggressive a policy may get (`PlateauDiagnosis` aliases it).
+    static let maxProgressionRate: Double = 2.0
+
+    /// Clamps a `progressionRate` to `[minProgressionRate, maxProgressionRate]`. The single definition of
+    /// the policy-level rate rail (mirroring `clampedEmphasis`): every writer that sets `progressionRate`
+    /// - the engine or the coach - stays inside the engine's safety band. A **coach** write is *additionally*
+    /// capped at the engine-earned value by `easingProgressionRate(towardCoachProposed:)`, so it can lower
+    /// pace but never raise it.
+    static func clampedProgressionRate(_ value: Double) -> Double {
+        min(maxProgressionRate, max(minProgressionRate, value))
+    }
+
     /// The always-valid starting policy for a fresh user (US-D03): every lever neutral so the
     /// engine behaves exactly as it did before policies existed. Progression at `1.0`, equal
     /// weighting across all pillars, a 3-session variety window, and no cold-start, re-entry,
@@ -242,6 +264,53 @@ extension SessionPolicy {
         reentry: nil,
         note: nil
     )
+}
+
+// MARK: - Asymmetric pace easing: the coach eases down, only the engine advances (US-AC06)
+
+extension SessionPolicy {
+
+    /// **Asymmetric pace easing (US-AC06): a coach may ease `progressionRate` down, never up.**
+    ///
+    /// The single structural seam a coach-sourced (`.llm`) `progressionRate` change must pass through,
+    /// ahead of the live coach policy-write path (US-AC07). It returns a copy of this policy whose
+    /// `progressionRate` is set from the coach's `proposed` value but **can only ever ease down, never
+    /// rise above the pace the deterministic engine already earned**:
+    ///
+    /// ```
+    /// min(clampedProgressionRate(proposed), progressionRate)
+    /// ```
+    ///
+    /// so the result is both inside the rate rail *and* no higher than the rate currently in force. A
+    /// coach *attempt to raise* pace (a `proposed` above the current rate) is silently clamped to no
+    /// increase, not applied; a genuine ease-down (a lower `proposed`) takes effect.
+    ///
+    /// This is *stricter than or equal to* the acceptance criterion ("the coach may not raise pace above
+    /// the engine-earned value"), and never weaker, by a structural invariant: **upward pace is owned
+    /// solely by the engine** (Adaptive Overload / the Asymmetric Ramp; the deterministic Programmer's
+    /// `.deterministic`/`.default` writes), and a coach write only ever lowers - so the in-force rate is
+    /// always ≤ the last engine-earned rate. Capping a coach write at the in-force rate therefore caps it
+    /// at or below the engine-earned rate too, without this type needing to persist a separate
+    /// engine-earned field. (If a later story needs the coach to *restore* pace within `[floor,
+    /// engine-earned]` after a prior ease, that engine-earned ceiling can be threaded in explicitly; the
+    /// no-increase guarantee this method owns holds regardless.)
+    ///
+    /// The clamp is **structural, not conventional**: authoring an `.llm` pace change *is* this call, so
+    /// the coach write path (US-AC07) cannot produce a coach-sourced rate write that increases pace
+    /// without bypassing the one sanctioned producer. It stamps `updatedBy == .llm` (the coach's
+    /// provenance, inseparable from the clamp) and moves only the rate lever, leaving `version`/
+    /// `updatedAt`/`note` to the write orchestration - exactly as `PlateauDiagnosis.reweighted` moves
+    /// only levers and leaves provenance and persistence to its service.
+    ///
+    /// Engine writes (`.deterministic`/`.default`) never call this and are wholly unaffected: they own
+    /// upward pace and set `progressionRate` directly (still inside the shared rail). `asOf`-pure - it
+    /// reads no clock.
+    func easingProgressionRate(towardCoachProposed proposed: Double) -> SessionPolicy {
+        var next = self
+        next.progressionRate = min(Self.clampedProgressionRate(proposed), progressionRate)
+        next.updatedBy = .llm
+        return next
+    }
 }
 
 // MARK: - Backward-compatible decoding
