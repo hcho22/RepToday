@@ -310,8 +310,8 @@ final class InjuryFlagsViewModelTests: XCTestCase {
 
     /// The accepted cost of that rule, ruled on deliberately rather than discovered: an area can end up
     /// flagged even though it read as switched *off* when the user pressed save, because another device
-    /// flagged it mid-edit. Keeping is the safe direction for a safety filter, and the user can switch
-    /// it back off from this same screen.
+    /// flagged it mid-edit. Keeping is the safe direction for a safety filter, and it is reversible
+    /// from this same screen - without reopening it, since the save reads its own result back.
     func testAcceptedCostAnAreaFlaggedElsewhereStaysOnEvenThoughItReadAsOffAtSaveTime() async throws {
         let service = MockUserService(user: makeUser())
         let viewModel = makeViewModel(service)
@@ -331,15 +331,87 @@ final class InjuryFlagsViewModelTests: XCTestCase {
         XCTAssertTrue(InjuryOption.shoulders.isFlagged(in: stored),
                       "an off-looking switch is not a removal the user made, so it is kept")
 
-        // And it is reversible the ordinary way: reload, see it on, switch it off, confirm.
-        let reopened = makeViewModel(service)
-        await reopened.load()
-        XCTAssertTrue(reopened.isSelected(.shoulders), "reopening shows it as the flag it now is")
-        reopened.toggle(.shoulders)
-        await reopened.save()
+        // The screen tells the truth about what it just wrote, rather than showing the kept flag off.
+        XCTAssertTrue(viewModel.isSelected(.shoulders), "the kept flag renders as the flag it now is")
+        XCTAssertFalse(viewModel.hasUnsavedChanges, "and it does not read as a pending removal")
+        XCTAssertTrue(viewModel.didSave)
+
+        // So it is reversible right here, on this same screen: switch it off, confirm.
+        viewModel.toggle(.shoulders)
+        await viewModel.save()
         let afterReversal = try await storedInjuries(service)
         XCTAssertFalse(InjuryOption.shoulders.isFlagged(in: afterReversal),
                        "rendered, then switched off - now it goes")
+        XCTAssertTrue(InjuryOption.knees.isFlagged(in: afterReversal), "and the confirmed change stands")
+    }
+
+    /// A toggle can only land while a save is in flight if the toggles accept input then - they must
+    /// not, because the write has already decided what it is putting on the profile, and a swallowed
+    /// safety flag reported as "Saved." is the worst failure this screen has.
+    func testTogglesDoNotAcceptInputWhileASaveIsInFlight() async throws {
+        let service = GatedUserService(user: makeUser())
+        let viewModel = InjuryFlagsViewModel(userService: service)
+        await viewModel.load()
+
+        viewModel.toggle(.knees)
+
+        let saving = Task { await viewModel.save() }
+        await service.waitUntilSaving()
+
+        // Mid-write: the switches are inert rather than staging an edit this write cannot include.
+        XCTAssertFalse(viewModel.canEdit, "the toggles do not accept input mid-write")
+        viewModel.set(.shoulders, to: true)
+        XCTAssertFalse(viewModel.isSelected(.shoulders), "so a tap lands nowhere instead of being swallowed")
+
+        await service.releaseSave()
+        await saving.value
+
+        let stored = await service.storedInjuries()
+        XCTAssertTrue(InjuryOption.knees.isFlagged(in: stored), "the confirmed change is what was written")
+        XCTAssertFalse(InjuryOption.shoulders.isFlagged(in: stored))
+        XCTAssertFalse(viewModel.isSelected(.shoulders), "and the screen never showed it as saved")
+        XCTAssertTrue(viewModel.canEdit, "the screen is editable again once the write resolves")
+    }
+
+    /// A user service whose write parks until the test releases it, so the window while a save is in
+    /// flight is observable rather than a race.
+    private actor GatedUserService: UserServiceProtocol {
+        private struct Boom: Error {}
+        private var user: User?
+        private var isSaving = false
+        private var released = false
+        private var enteredContinuation: CheckedContinuation<Void, Never>?
+        private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+        init(user: User?) { self.user = user }
+
+        func currentUser() async throws -> User? { user }
+
+        func save(_ user: User) async throws {
+            isSaving = true
+            enteredContinuation?.resume()
+            enteredContinuation = nil
+            if !released {
+                await withCheckedContinuation { releaseContinuation = $0 }
+            }
+            self.user = user
+        }
+
+        func deleteCurrentUser() async throws { throw Boom() }
+
+        /// Returns once `save` has been entered and is parked.
+        func waitUntilSaving() async {
+            if isSaving { return }
+            await withCheckedContinuation { enteredContinuation = $0 }
+        }
+
+        func releaseSave() {
+            released = true
+            releaseContinuation?.resume()
+            releaseContinuation = nil
+        }
+
+        func storedInjuries() -> [String] { user?.profile.injuries ?? [] }
     }
 
     func testAnUnrecognizedExistingTagSurvivesASave() async throws {

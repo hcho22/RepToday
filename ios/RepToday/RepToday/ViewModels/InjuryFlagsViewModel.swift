@@ -13,8 +13,8 @@ import Observation
 /// - **Edits are staged, then confirmed.** Toggling an area changes only `selected`; nothing reaches
 ///   `UserProfile` until the user taps the save control, and `changeSummary` names exactly what that
 ///   tap will start or stop protecting. Leaving without saving writes nothing.
-/// - **The write only ever adds or keeps** - see `injuriesToWrite(mergingOnto:)`, the single rule that
-///   decides what a save puts on the profile.
+/// - **The write only ever adds or keeps** - see `injuriesToWrite(staged:mergingOnto:)`, the single
+///   rule that decides what a save puts on the profile.
 @Observable
 @MainActor
 final class InjuryFlagsViewModel {
@@ -35,8 +35,10 @@ final class InjuryFlagsViewModel {
     private(set) var loadFailed = false
 
     /// Whether the toggles should accept input. A screen that has not read the profile has nothing
-    /// honest to stage against, so it stages nothing.
-    var canEdit: Bool { isLoaded }
+    /// honest to stage against, so it stages nothing; and a save in flight has already decided what it
+    /// is writing, so a tap landing mid-write would be staged against a selection the write cannot
+    /// include and would then read as saved.
+    var canEdit: Bool { isLoaded && !isSaving }
 
     /// True while a save is in flight.
     private(set) var isSaving = false
@@ -154,19 +156,28 @@ final class InjuryFlagsViewModel {
     /// user service saves the whole record - so a CloudKit merge or a background policy/duration write
     /// landing while this screen was open would otherwise be rolled back by an injury save. Same
     /// re-read `SessionCompletionService` does before its write. What the injuries array itself
-    /// becomes is decided in one place, `injuriesToWrite(mergingOnto:)`.
+    /// becomes is decided in one place, `injuriesToWrite(staged:mergingOnto:)`.
+    ///
+    /// The staged selection is captured before either await, so what is written is exactly what the
+    /// user was looking at when they confirmed; and what the screen shows afterwards is read back off
+    /// the array that was actually written, so "Saved." never sits over a state the profile does not
+    /// hold.
     func save() async {
         guard canSave, let loaded = user else { return }
+        let staged = selected
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
 
         var user = (try? await userService.currentUser()) ?? loaded
-        user.profile.injuries = injuriesToWrite(mergingOnto: user.profile.injuries)
+        user.profile.injuries = injuriesToWrite(staged: staged, mergingOnto: user.profile.injuries)
         do {
             try await userService.save(user)
             self.user = user
-            savedSelection = selected
+            savedSelection = Self.recognizedAreas(in: user.profile.injuries)
+            // An edit that landed mid-write is not in this write, so it stays staged and unsaved
+            // rather than being absorbed into the selection this save just confirmed.
+            if selected == staged { selected = savedSelection }
             didSave = true
         } catch {
             errorMessage = Self.saveFailureMessage
@@ -188,16 +199,18 @@ final class InjuryFlagsViewModel {
     ///
     /// **The accepted cost**, ruled on deliberately: an area can end up flagged even though it read as
     /// switched off when the user pressed save, because another device flagged it mid-edit. Keeping it
-    /// is the safe direction, and the user can switch it back off from this same screen.
+    /// is the safe direction, and it is reversible from this same screen without reopening it - the
+    /// save reads its result back, so that area is rendered switched on immediately afterwards and one
+    /// more switch-off-then-confirm removes it under this same rule.
     ///
     /// Tags kept from `fresh` hold their existing order and spelling; newly staged areas follow in
     /// `InjuryOption.allCases` order, and an area already protected under another spelling is not
     /// appended a second time.
-    private func injuriesToWrite(mergingOnto fresh: [String]) -> [String] {
-        let unticked = savedSelection.subtracting(selected)
+    private func injuriesToWrite(staged: Set<InjuryOption>, mergingOnto fresh: [String]) -> [String] {
+        let unticked = savedSelection.subtracting(staged)
         let kept = fresh.filter { tag in !unticked.contains { $0.isFlagged(in: [tag]) } }
         let added = InjuryOption.allCases
-            .filter { selected.contains($0) && !$0.isFlagged(in: kept) }
+            .filter { staged.contains($0) && !$0.isFlagged(in: kept) }
             .map(\.tag)
         return kept + added
     }
