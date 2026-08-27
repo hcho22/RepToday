@@ -248,6 +248,27 @@ extension SessionPolicy {
         min(maxProgressionRate, max(minProgressionRate, value))
     }
 
+    // MARK: Variety-window rail and coach-narrowing gate (US-AC07)
+
+    /// The lower rail of `varietyWindow`: the no-repeat window never narrows past one session (a session
+    /// still never repeats the immediately previous lead pattern). The deterministic Programmer's
+    /// long-standing floor (`PlateauDiagnosis` aliases it), now shared so the coach's narrowing floor and
+    /// the engine's easing floor cannot drift apart.
+    static let minVarietyWindow: Int = 1
+    /// The upper rail of `varietyWindow`: the widest the window ever opens. The deterministic Programmer's
+    /// long-standing ceiling (`PlateauDiagnosis` aliases it).
+    static let maxVarietyWindow: Int = 6
+
+    /// Clamps a `varietyWindow` to `[minVarietyWindow, maxVarietyWindow]`. The single definition of the
+    /// policy-level window rail (mirroring `clampedProgressionRate`): every writer that sets
+    /// `varietyWindow` stays inside the engine's sane operating range. A **coach** write is *additionally*
+    /// capped at the in-force value by `easingVarietyWindow(towardCoachProposed:)`, so it can narrow the
+    /// window (toward familiar movement) but never widen it - widening (fresher, less-repeated movement) is
+    /// added friction the coach is not allowed to impose on a user a safety back-off has eased.
+    static func clampedVarietyWindow(_ value: Int) -> Int {
+        min(maxVarietyWindow, max(minVarietyWindow, value))
+    }
+
     /// The always-valid starting policy for a fresh user (US-D03): every lever neutral so the
     /// engine behaves exactly as it did before policies existed. Progression at `1.0`, equal
     /// weighting across all pillars, a 3-session variety window, and no cold-start, re-entry,
@@ -310,6 +331,72 @@ extension SessionPolicy {
         next.progressionRate = min(Self.clampedProgressionRate(proposed), progressionRate)
         next.updatedBy = .llm
         return next
+    }
+
+    /// **Coach variety narrowing (US-AC07): a coach may narrow `varietyWindow`, never widen it.**
+    ///
+    /// The `varietyWindow` sibling of `easingProgressionRate`, and the second half of what makes every
+    /// coach-touchable lever *disjoint or only-downward*. A coach-sourced (`.llm`) window write is clamped
+    /// to `min(clampedVarietyWindow(proposed), inForceWindow)`, so it can only ever pull the no-repeat
+    /// window **in** (toward more familiar, less-rotated movement - the "reduce friction" direction the
+    /// disengagement de-load itself narrows toward), never push it **out**. Widening the window adds novelty
+    /// and reduces repetition, which is *more* challenge/friction - the same thing US-AC06 forbids the coach
+    /// from doing to `progressionRate` - so it stays the engine's alone.
+    ///
+    /// This is what lets a coach write overlay onto the *current* in-force policy and never clobber a
+    /// deterministic safety back-off: the disengagement de-load narrows `varietyWindow`, and a coach write
+    /// capped at the in-force (already-narrowed) value can only narrow it further, never re-open it. It
+    /// stamps `updatedBy == .llm` and moves only this lever, leaving `version`/`updatedAt`/`note` to the
+    /// write orchestration (`CoachSessionPolicyService`). `asOf`-pure.
+    func easingVarietyWindow(towardCoachProposed proposed: Int) -> SessionPolicy {
+        var next = self
+        next.varietyWindow = min(Self.clampedVarietyWindow(proposed), varietyWindow)
+        next.updatedBy = .llm
+        return next
+    }
+
+    /// **The safety-sovereign coach overlay (US-AC07, ADR-0005).** Apply a bounded `CoachPolicyProposal`
+    /// onto *this* (the current, freshest in-force) policy, moving **only** the three preference levers and
+    /// leaving every safety lever - `coldStartContract`, `reentry`, `pillarWeighting` - and the
+    /// `version`/`updatedAt`/`note` bookkeeping untouched (provenance and persistence are
+    /// `CoachSessionPolicyService`'s job, exactly as `PlateauDiagnosis.reweighted` leaves them to its
+    /// service).
+    ///
+    /// Because it *overlays onto the current policy* rather than replacing it, and because each lever it
+    /// touches is either **disjoint** from every deterministic safety move (`patternEmphasis` - no safety
+    /// move reads or writes it) or **only-downward** (`progressionRate` eased down only via
+    /// `easingProgressionRate`; `varietyWindow` narrowed only via `easingVarietyWindow`), a coach write can
+    /// never undo a deterministic de-load / Re-entry Ramp / cold-start that landed since - *safety >
+    /// preference* holds structurally, not by convention. Every proposed value is clamped to the engine's
+    /// rails first, so even an out-of-range or hostile proposal (a compromised proxy) is pinned to a safe,
+    /// order-preserving value and never acts as a filter. Pure and `asOf`-free.
+    func applyingCoachProposal(_ proposal: CoachPolicyProposal) -> SessionPolicy {
+        var next = self
+        // Emphasis: disjoint from every safety move, so a straight clamped overlay is safe. Absent
+        // patterns keep their current emphasis (this is an overlay, not a replacement).
+        for (pattern, value) in proposal.patternEmphasis {
+            next.patternEmphasis[pattern] = Self.clampedEmphasis(value)
+        }
+        // Progression: ease down only, capped at the in-force (engine-earned) rate (US-AC06 seam).
+        if let proposedRate = proposal.easedProgressionRate {
+            next = next.easingProgressionRate(towardCoachProposed: proposedRate)
+        }
+        // Variety: narrow only, capped at the in-force window (the US-AC07 seam above).
+        if let proposedWindow = proposal.narrowedVarietyWindow {
+            next = next.easingVarietyWindow(towardCoachProposed: proposedWindow)
+        }
+        return next
+    }
+
+    /// Whether a coach overlay actually moved one of the three preference levers relative to `other` -
+    /// the honest "did anything change" gate the write path uses to decide whether to persist a new policy
+    /// (and therefore whether there is a real change to note). Compares only the coach-touchable levers,
+    /// ignoring provenance/version/timestamp, so a no-op proposal (everything clamped away or already at the
+    /// in-force value) writes nothing and leaves the in-force policy - and its note - untouched.
+    func coachLeversDiffer(from other: SessionPolicy) -> Bool {
+        progressionRate != other.progressionRate
+            || varietyWindow != other.varietyWindow
+            || patternEmphasis != other.patternEmphasis
     }
 }
 

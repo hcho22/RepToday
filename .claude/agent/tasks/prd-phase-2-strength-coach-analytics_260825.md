@@ -307,13 +307,13 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] The coach converts eligible requests into a bounded `SessionPolicy` write tagged `updatedBy: .llm`, touching **only** preference levers: `varietyWindow`, `patternEmphasis` (US-AC05), and downward `progressionRate` (US-AC06). It never touches safety filters (injuries, difficulty cap, phase gate, zero-equipment).
-- [ ] Every coach-written policy is validated and clamped to the engine's rails before it is accepted; an out-of-range proposal is clamped or rejected, never applied raw.
-- [ ] **Two-writer safety:** the deterministic Programmer's safety moves (plateau de-load, Re-entry Ramp, cold-start) remain sovereign. Because the coach touches disjoint or only-downward levers, a safety move is never clobbered by a newer coach write; define and test the merge/precedence rule explicitly (safety > preference).
-- [ ] Changes are surfaced honestly in the `SessionPolicy.Note` ("you asked to focus push - more push this week"), reusing the "note may only name a real change" contract, and are reversible.
-- [ ] The change applies on the next session open, never mid-session.
-- [ ] Tests: preference write applies + is noted; safety de-load is never overridden by a later coach write; clamp holds on an out-of-range proposal. `docs/test-coverage.md` row.
-- [ ] Build and suites pass.
+- [x] The coach converts eligible requests into a bounded `SessionPolicy` write tagged `updatedBy: .llm`, touching **only** preference levers: `varietyWindow`, `patternEmphasis` (US-AC05), and downward `progressionRate` (US-AC06). It never touches safety filters (injuries, difficulty cap, phase gate, zero-equipment).
+- [x] Every coach-written policy is validated and clamped to the engine's rails before it is accepted; an out-of-range proposal is clamped or rejected, never applied raw.
+- [x] **Two-writer safety:** the deterministic Programmer's safety moves (plateau de-load, Re-entry Ramp, cold-start) remain sovereign. Because the coach touches disjoint or only-downward levers, a safety move is never clobbered by a newer coach write; define and test the merge/precedence rule explicitly (safety > preference).
+- [x] Changes are surfaced honestly in the `SessionPolicy.Note` ("you asked to focus push - more push this week"), reusing the "note may only name a real change" contract, and are reversible.
+- [x] The change applies on the next session open, never mid-session.
+- [x] Tests: preference write applies + is noted; safety de-load is never overridden by a later coach write; clamp holds on an out-of-range proposal. `docs/test-coverage.md` row.
+- [x] Build and suites pass.
 
 **Validation Test:**
 

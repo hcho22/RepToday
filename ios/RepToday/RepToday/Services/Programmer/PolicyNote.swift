@@ -87,4 +87,104 @@ enum PolicyNote {
     private static func durationSentence(minutes: Int) -> String {
         "Your go-to session is now \(minutes) minutes, matched to what you actually finish."
     }
+
+    // MARK: - Coach-authored note (US-AC07)
+
+    /// The honest note a **coach-sourced** policy write attaches (US-AC07), built from the same real
+    /// before/after diff discipline as `templated(...)` but in the coach's second-person, identity-framed
+    /// voice ("You asked to focus your push - I'm leading with it more this week") rather than the
+    /// deterministic Programmer's first-person one.
+    ///
+    /// It may only name a lever the write actually moved: a per-pattern emphasis that rose or fell, a pace
+    /// the coach eased, or a variety window it narrowed. It never names the levers a coach cannot move
+    /// (upward pace, a widened window - those are impossible by construction) and never claims a change the
+    /// policy does not reflect. Returns `nil` when nothing the coach can move actually moved, so the write
+    /// path can treat "no note" as "no real change" and persist nothing. Always `source == .template`
+    /// (offline-safe; the coach's *reply* is separate LLM text, but the durable policy note is a local,
+    /// honest template).
+    static func coachTemplated(
+        policyBefore before: SessionPolicy,
+        policyAfter after: SessionPolicy
+    ) -> SessionPolicy.Note? {
+        var sentences: [String] = []
+        if let emphasis = emphasisSentence(before: before, after: after) {
+            sentences.append(emphasis)
+        }
+        if let easing = easingSentence(before: before, after: after) {
+            sentences.append(easing)
+        }
+        guard !sentences.isEmpty else { return nil }
+        return SessionPolicy.Note(text: sentences.joined(separator: " "), source: .template)
+    }
+
+    /// The sentence naming which patterns the coach leaned toward or away from, driven by the
+    /// `patternEmphasis` diff. Reads every pattern whose emphasis moved (in the evaluator's stable
+    /// `MovementPattern.allCases` order so the copy is deterministic) and separates the ones that rose
+    /// ("more") from the ones that fell ("less"). Returns `nil` when no pattern's emphasis changed.
+    private static func emphasisSentence(before: SessionPolicy, after: SessionPolicy) -> String? {
+        var raised: [MovementPattern] = []
+        var lowered: [MovementPattern] = []
+        for pattern in MovementPattern.allCases {
+            let old = before.patternEmphasis[pattern] ?? SessionPolicy.neutralEmphasis
+            let new = after.patternEmphasis[pattern] ?? SessionPolicy.neutralEmphasis
+            if new > old { raised.append(pattern) }
+            else if new < old { lowered.append(pattern) }
+        }
+        guard !raised.isEmpty || !lowered.isEmpty else { return nil }
+
+        var clauses: [String] = []
+        if !raised.isEmpty {
+            clauses.append("you asked to focus your \(list(raised)), so I'm leading with \(raised.count == 1 ? "it" : "them") more")
+        }
+        if !lowered.isEmpty {
+            clauses.append("you wanted less \(list(lowered)) for now, so I've eased off")
+        }
+        // Sentence-case the first clause and close it off.
+        let joined = clauses.joined(separator: ", and ")
+        return joined.prefix(1).uppercased() + joined.dropFirst() + " this week."
+    }
+
+    /// The sentence naming a coach easing move - a lowered `progressionRate` and/or a narrowed
+    /// `varietyWindow`. A coach can only ever ease *down* / narrow *in* (US-AC06/AC07), so this never
+    /// reports a step-up or a widened window. Returns `nil` when neither eased.
+    private static func easingSentence(before: SessionPolicy, after: SessionPolicy) -> String? {
+        let easedPace = after.progressionRate < before.progressionRate
+        let narrowedVariety = after.varietyWindow < before.varietyWindow
+        switch (easedPace, narrowedVariety) {
+        case (true, true):
+            return "I eased your pace and kept you closer to moves you know, to keep sessions winnable."
+        case (true, false):
+            return "I eased your pace to keep your sessions winnable."
+        case (false, true):
+            return "I kept your sessions closer to moves you know."
+        case (false, false):
+            return nil
+        }
+    }
+
+    /// Join movement-pattern names into a readable inline list ("push", "push and squat", "push, squat,
+    /// and hinge"), lowercased so the clause reads as running prose.
+    private static func list(_ patterns: [MovementPattern]) -> String {
+        let names = patterns.map(displayName)
+        switch names.count {
+        case 0: return ""
+        case 1: return names[0]
+        case 2: return "\(names[0]) and \(names[1])"
+        default: return names.dropLast().joined(separator: ", ") + ", and " + names.last!
+        }
+    }
+
+    /// The plain, lowercase movement-pattern name used in coach copy. Kept local to the note so a
+    /// user-facing wording tweak never has to touch the wire-stable `MovementPattern.rawValue`.
+    private static func displayName(_ pattern: MovementPattern) -> String {
+        switch pattern {
+        case .push: return "push"
+        case .squat: return "squat"
+        case .hinge: return "hinge"
+        case .core: return "core"
+        case .pull: return "pull"
+        case .mobility: return "mobility"
+        case .locomotion: return "locomotion"
+        }
+    }
 }

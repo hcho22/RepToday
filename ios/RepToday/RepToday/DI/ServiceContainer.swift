@@ -38,6 +38,14 @@ struct ServiceContainer {
     /// telemetry sink; `mock()` leaves it `nil`. Unlike the other services this is genuinely optional -
     /// the coach is a best-effort upgrade, never a dependency - so it carries an initializer default.
     let coachClient: CoachProxyClient?
+    /// The sovereign on-device write path for a coach-sourced `SessionPolicy` nudge (US-AC07). It writes
+    /// through the **same** `SessionPolicyStore` as the deterministic Programmer (`sessionPolicyService`),
+    /// so the two writers share one in-force policy and the coach's bounded, preference-only overlay can
+    /// never clobber a deterministic safety move (ADR-0005). Reachable only from the premium, disclosure-
+    /// gated coach surface; it never gates or blocks the core loop. `mock()`/`live()` wire it from the
+    /// shared store; a container built without one simply cannot tune from the coach (the chat still talks),
+    /// so it carries an initializer default like `coachClient`.
+    let coachPolicyService: (any CoachPolicyServiceProtocol)?
 
     init(
         exerciseService: any ExerciseServiceProtocol,
@@ -54,7 +62,8 @@ struct ServiceContainer {
         authService: any AuthServiceProtocol,
         analyticsService: any AnalyticsServiceProtocol,
         accountDeletionService: any AccountDeletionServiceProtocol,
-        coachClient: CoachProxyClient? = nil
+        coachClient: CoachProxyClient? = nil,
+        coachPolicyService: (any CoachPolicyServiceProtocol)? = nil
     ) {
         self.exerciseService = exerciseService
         self.workoutEngine = workoutEngine
@@ -71,6 +80,7 @@ struct ServiceContainer {
         self.analyticsService = analyticsService
         self.accountDeletionService = accountDeletionService
         self.coachClient = coachClient
+        self.coachPolicyService = coachPolicyService
     }
 
     static func mock() -> ServiceContainer {
@@ -146,7 +156,10 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService
-            )
+            ),
+            // The coach's bounded policy-write path (US-AC07), over the same shared in-memory policy store
+            // as the deterministic Programmer above, so both writers share one in-force policy.
+            coachPolicyService: CoachSessionPolicyService(store: policyStore)
         )
     }
 
@@ -307,7 +320,11 @@ struct ServiceContainer {
                 authService: authService
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
-            coachClient: resolvedCoachClient
+            coachClient: resolvedCoachClient,
+            // The coach's bounded policy-write path (US-AC07), over the same shared `CoreDataSessionPolicyStore`
+            // as the deterministic Programmer, so a coach nudge and a deterministic re-program write one
+            // in-force policy and the engine reads whichever landed last on the next open.
+            coachPolicyService: CoachSessionPolicyService(store: policyStore)
         )
     }
 }
