@@ -71,8 +71,14 @@ enum InjuryContraindication {
 
     /// The patterns a single injury tag contraindicates (empty for an unrecognized tag).
     static func patterns(forInjury injury: String) -> Set<MovementPattern> {
-        patternsByInjury[normalize(injury)] ?? []
+        patternsByInjury[normalizedTag(injury)] ?? []
     }
+
+    /// The canonical form two injury tags are compared in. Exposed because every surface that asks
+    /// "is this area already flagged?" must answer it the way the engine does: a stored `"Knee"`
+    /// already grants knee protection, so a control that compared raw strings would show the area
+    /// switched off and then append a second, canonical tag beside it.
+    static func normalizedTag(_ injury: String) -> String { normalize(injury) }
 
     /// The union of patterns contraindicated by all of the user's injury tags.
     static func contraindicatedPatterns(for injuries: [String]) -> Set<MovementPattern> {

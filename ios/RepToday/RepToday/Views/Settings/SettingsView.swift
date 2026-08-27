@@ -5,8 +5,9 @@ import SwiftUI
 /// It exists because US-T06 needs a reachable, clearly-labelled home for the anonymous-telemetry
 /// opt-out, and burying that control would defeat the point of an opt-out. It is deliberately a real
 /// sectioned Settings surface rather than an inline toggle on the Profile placeholder, so a later,
-/// broader Profile/Settings story **extends** it - another `Section` - rather than replacing it.
-/// Privacy is its only section today; nothing else about Profile changes here.
+/// broader Profile/Settings story **extends** it - another `Section` - rather than replacing it, which
+/// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Training safety (US-AC08), and
+/// Account (US-AD01). Nothing else about Profile changes here.
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.services) private var services
@@ -79,6 +80,38 @@ struct SettingsView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
             } footer: {
                 Text(CoachDataDisclosureCopy.settingsFooter)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Theme.Colors.surface)
+
+            // US-AC08: the injury control - the one place an injury safety filter is set or cleared
+            // after onboarding, and the destination the coach's routing offer navigates to. It is a
+            // real, findable Settings row precisely because the coach must never be the thing that
+            // sets it; the footer says so plainly.
+            Section {
+                NavigationLink {
+                    InjuryFlagsView(services: services)
+                } label: {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Image(systemName: "shield.lefthalf.filled")
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        Text(InjuryFlagsCopy.title)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                }
+                .accessibilityLabel(InjuryFlagsCopy.title)
+                .accessibilityHint("Choose areas Rep Today should work around in future sessions")
+            } header: {
+                Text("Training safety")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } footer: {
+                Text(InjuryFlagsCopy.settingsFooter)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

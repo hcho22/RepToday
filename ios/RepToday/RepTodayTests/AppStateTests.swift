@@ -165,6 +165,25 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing, "turning telemetry off must not touch coach consent")
     }
 
+    // MARK: - Injury-flag revision (US-AC08)
+
+    /// A safety filter has to reach the session already on the Ready screen, so a confirmed injury
+    /// change bumps a revision the Ready tab re-loads on. Unlike the one-shots above it is deliberately
+    /// transient: a relaunch regenerates the session anyway.
+    func testConfirmingAnInjuryChangeBumpsTheRevision() {
+        let appState = AppState(userDefaults: defaults)
+        XCTAssertEqual(appState.injuryFlagsRevision, 0, "nothing has changed yet")
+
+        appState.markInjuryFlagsChanged()
+        XCTAssertEqual(appState.injuryFlagsRevision, 1)
+
+        appState.markInjuryFlagsChanged()
+        XCTAssertEqual(appState.injuryFlagsRevision, 2, "each confirmed change is its own refresh signal")
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertEqual(reloaded.injuryFlagsRevision, 0, "it is a within-run signal, never persisted")
+    }
+
     // MARK: - Anonymous install identity (US-T05)
 
     func testFirstLaunchMintsInstallIdentityAndStamps() {

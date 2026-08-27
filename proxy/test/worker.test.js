@@ -198,13 +198,31 @@ describe("POST /coach", () => {
     // The target intents (AC2): why-this-workout, form, injury-with-flag, and boredom/variety.
     expect(system).toContain("stalest");
     expect(system).toContain("form");
-    expect(system).toContain("flag the injury");
+    expect(system).toContain("flag that area themselves");
     expect(system).toContain("never diagnose");
     expect(system).toContain("variety");
     // Voice/safety framing (AC5): identity-framed, never shaming/gamified.
     expect(system).toContain("identity-framed");
     expect(system).toContain("never");
     expect(system).toContain("shaming");
+  });
+
+  // US-AC08: the model-side half of "the coach's language never implies it has removed movements".
+  // The app-side half - the routing offer's own copy - is pinned in InjuryRoutingEvidenceTests; a
+  // model's free text cannot be pinned, so this asserts the instruction that steers it.
+  it("sends a persona that forbids setting or claiming an injury filter", async () => {
+    await worker.fetch(coachRequest({ context: CONTEXT, message: "my knee hurts on squats" }), ENV);
+
+    // The prompt is authored as wrapped lines joined with a space, so runs of whitespace are collapsed
+    // here to let an assertion span a wrap without pinning where the wrap happens to fall.
+    const system = JSON.parse(fetchSpy.mock.calls[0][1].body).system.toLowerCase().replace(/\s+/g, " ");
+
+    // Only the user sets the flag, and only in the app's injury control.
+    expect(system).toContain("injury settings");
+    expect(system).toContain("cannot set, clear, or read that flag");
+    expect(system).toContain("only the user can");
+    // And it must never narrate a change it did not make.
+    expect(system).toContain("never say or imply that you have flagged it, removed a movement, or changed anything");
   });
 });
 

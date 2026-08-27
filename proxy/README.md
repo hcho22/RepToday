@@ -121,13 +121,18 @@ client: surface a non-blocking error; never block the app.
 
 The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02): it covers the
 target intents - "why this workout?" (the engine's stalest-pattern reasoning), "how do I do
-<movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" (general,
-non-diagnostic guidance + suggest flagging the injury in the app), and "I'm bored" (variety is built
-in) - in the app's identity-framed, never-shaming voice. The load-bearing invariant it enforces first
-is that the coach only ever **talks**: it never generates, edits, or prescribes a workout (the
-deterministic on-device engine owns every session and all safety). Changing the persona is covered by
+<movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" / any mention of
+pain or injury (general, non-diagnostic guidance + invite the user to flag that area themselves in
+the app's injury settings), and "I'm bored" (variety is built in) - in the app's identity-framed,
+never-shaming voice. The load-bearing invariant it enforces first is that the coach only ever
+**talks**: it never generates, edits, or prescribes a workout (the deterministic on-device engine
+owns every session and all safety). US-AC08 hardened the injury half of that boundary: the persona now
+states the coach **cannot set, clear, or read** the injury flag - only the user can, only in that
+screen - and must never say or imply that it has flagged an area, removed a movement, or changed
+anything (it speaks in the future tense about what the user can do), the model-side half of "the
+coach's language never implies it has already removed movements". Changing the persona is covered by
 `test/worker.test.js` ("sends a persona that forbids generating a workout and names the target
-intents and voice").
+intents and voice", and "sends a persona that forbids setting or claiming an injury filter").
 
 ## Tests and typecheck
 

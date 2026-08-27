@@ -10,9 +10,13 @@ import SwiftUI
 /// non-blocking, retryable banner, and when no coach proxy is configured for the build it shows a
 /// calm "unavailable" state - the free core loop is never affected and never waits on it.
 ///
-/// **Not premium-gated here.** This is a minimal, reachable, ungated entry so the surface is navigable
-/// and testable now. US-AC03 owns the entitlement gate and the upsell entry point and will wrap this
-/// surface (or its entry row) rather than replacing it.
+/// The one thing it does beyond talking and the bounded US-AC07 preference nudge is **route**: a
+/// health/injury signal ends the turn with an explicit offer (US-AC08) to open the user's own injury
+/// control, pre-targeted but unsaved. Accepting navigates; declining changes nothing; neither sets a
+/// safety filter.
+///
+/// **Not premium-gated here.** The entitlement gate and the upsell entry point live one level up, in
+/// `CoachEntryRow` (US-AC03), which wraps this surface rather than replacing it.
 struct CoachView: View {
     @Environment(\.services) private var services
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -27,6 +31,11 @@ struct CoachView: View {
     /// Drives the one-time coach data disclosure overlay (US-AC04). Set on first arrival, only when the
     /// persisted flag says the user has not yet acknowledged it.
     @State private var showDisclosure = false
+
+    /// The area the user accepted a routing offer for (US-AC08), which presents the injury control as a
+    /// sheet pre-targeted at it. `nil` whenever no route is in flight; it is a navigation request, never
+    /// a stored setting.
+    @State private var routedInjuryArea: InjuryOption?
 
     /// Production entry: builds the view model from the container's services (and its build-configured
     /// coach client) off the environment.
@@ -63,6 +72,22 @@ struct CoachView: View {
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: resolveDisclosure)
+        // US-AC08: the route the offer's accept control takes. It presents the *same* injury control
+        // Settings navigates to, opened pre-targeted at the area the user mentioned but with nothing
+        // saved - the user still confirms there, and can switch it back off from the same screen.
+        .sheet(item: $routedInjuryArea) { area in
+            NavigationStack {
+                InjuryFlagsView(services: services, preselect: area, dismissesOnSave: true)
+            }
+        }
+    }
+
+    // MARK: - US-AC08 injury routing
+
+    /// The accept control opens the injury control; it does not set anything. The view model hands back
+    /// the area to route to and forgets the offer.
+    private func acceptInjuryRouting() {
+        routedInjuryArea = viewModel.acceptInjuryRoutingOffer()
     }
 
     // MARK: - US-AC04 disclosure
@@ -127,6 +152,18 @@ struct CoachView: View {
                             typingIndicator
                                 .id(Self.typingIndicatorID)
                         }
+
+                        // US-AC08: a health signal ends the turn with an explicit offer to open the
+                        // user's own injury control. Nothing has been set; accepting routes, declining
+                        // dismisses and changes nothing.
+                        if let offer = viewModel.injuryRoutingOffer {
+                            CoachInjuryOfferView(
+                                area: offer.area,
+                                onAccept: acceptInjuryRouting,
+                                onDecline: viewModel.declineInjuryRoutingOffer
+                            )
+                            .id(Self.injuryOfferID)
+                        }
                     }
                     .padding(Theme.Spacing.md)
                 }
@@ -135,6 +172,9 @@ struct CoachView: View {
                     scrollToBottom(proxy)
                 }
                 .onChange(of: viewModel.isSending) { _, _ in
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: viewModel.injuryRoutingOffer) { _, _ in
                     scrollToBottom(proxy)
                 }
             }
@@ -294,10 +334,19 @@ struct CoachView: View {
     /// flight (before the coach's message has been appended).
     private static let typingIndicatorID = "coach.typingIndicator"
 
+    /// A stable id for the injury routing offer card, so it is what the conversation scrolls to when it
+    /// appears - the offer is the end of that turn, below the coach's answer.
+    private static let injuryOfferID = "coach.injuryOffer"
+
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        let target: AnyHashable = viewModel.isSending
-            ? AnyHashable(Self.typingIndicatorID)
-            : (viewModel.messages.last?.id).map(AnyHashable.init) ?? AnyHashable(Self.typingIndicatorID)
+        let target: AnyHashable
+        if viewModel.isSending {
+            target = AnyHashable(Self.typingIndicatorID)
+        } else if viewModel.injuryRoutingOffer != nil {
+            target = AnyHashable(Self.injuryOfferID)
+        } else {
+            target = (viewModel.messages.last?.id).map(AnyHashable.init) ?? AnyHashable(Self.typingIndicatorID)
+        }
         if reduceMotion {
             proxy.scrollTo(target, anchor: .bottom)
         } else {

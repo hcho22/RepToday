@@ -56,6 +56,27 @@ final class AppState {
     /// `false` on every launch. It gates emission of nothing and cohorts nothing.
     var showAppleSignOutGuidance: Bool = false
 
+    /// Bumped every time the user confirms a change in the injury control (US-AC08), from either
+    /// entry point - Settings or the coach's route.
+    ///
+    /// An injury flag is a **safety** filter, so the "applies on the next session open" convention the
+    /// preference levers follow (US-AC07) is not good enough for it: a user who has just said "work
+    /// around my knee" must not find the already-generated session on the Today tab still offering
+    /// squats. The Ready screen re-runs its load when this changes, so the change lands on the session
+    /// on screen rather than on the next cold launch.
+    ///
+    /// Deliberately a transient counter, not persisted (no `didSet`): it names "something changed in
+    /// *this* run", which a relaunch answers by regenerating anyway. It gates presentation only - it
+    /// cohorts nothing and emits nothing, and it is not a general invalidation bus: one writer, one
+    /// reader, one kind of change.
+    var injuryFlagsRevision: Int = 0
+
+    /// Records that the user confirmed an injury-flag change, so the Ready screen regenerates today's
+    /// session against the new safety filter without waiting for a relaunch.
+    func markInjuryFlagsChanged() {
+        injuryFlagsRevision &+= 1
+    }
+
     /// The opt-out consent flag (US-T06): `true` means anonymous usage data may be emitted.
     ///
     /// Telemetry is on by default and turned off from Settings, so this is the *user's* copy of the
