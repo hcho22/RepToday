@@ -18,6 +18,9 @@ import Observation
 /// - **Conversation memory is on-device, in the caller.** The transport is stateless per request; the
 ///   transcript (`messages`) lives here, on the device, and is what "multi-turn context" means for
 ///   this surface. Nothing about the conversation is persisted off-device.
+/// - **It never sets a safety filter.** A health/injury signal raises a routing *offer* (US-AC08) that
+///   points at the user's own injury control; the coach cannot set or clear an injury flag, and the
+///   policy-write path it does have (US-AC07) cannot express one.
 /// - **Inert when unconfigured.** When no coach proxy is configured for the build (`client == nil` -
 ///   which is every build today, since the proxy is deploy-ready but not deployed), the surface is
 ///   `isAvailable == false` and shows a clear "coach unavailable" state instead of failing.
@@ -86,6 +89,28 @@ final class CoachViewModel {
     /// again next launch) is the caller's job - `CoachView` writes `AppState` - which keeps this view
     /// model free of `AppState` and hostable in evidence surfaces. Idempotent.
     func grantDataSharingConsent() { isDataSharingAcknowledged = true }
+
+    /// The pending injury routing offer (US-AC08), set when a sent message read as a health signal for
+    /// an area the user has not already flagged. It is an **offer**, not a change: the coach never sets
+    /// or clears an injury filter, and this value carries no way to - it names the area the surface
+    /// should route to if the user accepts. `nil` whenever there is nothing to offer.
+    private(set) var injuryRoutingOffer: CoachInjuryRoutingProposal?
+
+    /// The user accepted the offer: clear it and hand the caller the area to route to. The write does
+    /// not happen here and cannot - the returned area is the *destination* of a route to the user's own
+    /// injury control, where they still have to confirm.
+    @discardableResult
+    func acceptInjuryRoutingOffer() -> InjuryOption? {
+        let area = injuryRoutingOffer?.area
+        injuryRoutingOffer = nil
+        return area
+    }
+
+    /// The user declined the offer: dismiss it and change nothing. No profile write, no policy write,
+    /// no transcript turn - declining is exactly a no-op plus the card going away.
+    func declineInjuryRoutingOffer() {
+        injuryRoutingOffer = nil
+    }
 
     /// Whether the current draft can be sent right now: available, consent given, not already sending,
     /// and non-empty.
@@ -192,6 +217,10 @@ final class CoachViewModel {
             messages.append(Message(author: .user, text: message))
         }
         errorMessage = nil
+        // A new question supersedes any un-answered routing offer: an offer belongs to the turn that
+        // raised it, and letting one linger under a later answer would read as a standing prompt.
+        // Dropping it changes nothing (it never set anything to begin with).
+        injuryRoutingOffer = nil
         isSending = true
         defer { isSending = false }
 
@@ -204,6 +233,11 @@ final class CoachViewModel {
             // long) or that failed in flight never tunes the program and never orphans a turn in the
             // transcript; it never touches a safety filter and never blocks.
             await applyTuningIfRequested(message)
+            // US-AC08: a health/injury signal produces a *routing offer*, never a filter change. Like
+            // the tuning above it runs only on the successful-reply path, and unlike it, it writes
+            // nothing at all - the flag can only be set by the user in the injury control this offer
+            // routes to.
+            await offerInjuryRoutingIfSignalled(message)
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
@@ -243,6 +277,26 @@ final class CoachViewModel {
         guard let written = try? await policyService.applyProposal(proposal, for: user, asOf: now()),
               let note = written.note else { return }
         messages.append(Message(author: .coach, text: note.text))
+    }
+
+    /// Raise the injury routing offer (US-AC08) when `message` reads as a health signal about an area
+    /// the user has not already flagged.
+    ///
+    /// This is the *entire* injury path on the coach side, and it is deliberately write-free: it reads
+    /// the profile to avoid offering something already done, and then sets `injuryRoutingOffer`. It
+    /// calls no policy service (safety filters are inexpressible on that path by construction, US-AC07)
+    /// and never touches `UserProfile.injuries` - the flag is set only by the user, in the injury
+    /// control the offer routes to. Best-effort and non-blocking throughout: a missing profile or an
+    /// unrecognized message simply means no offer.
+    private func offerInjuryRoutingIfSignalled(_ message: String) async {
+        guard let routing = CoachInjurySignalMapper.routing(for: message) else { return }
+        // Offering to flag something already flagged would be noise, and would invite the user to
+        // "confirm" a change that is not a change.
+        if let user = try? await userService.currentUser(),
+           user.profile.injuries.contains(routing.area.tag) {
+            return
+        }
+        injuryRoutingOffer = routing
     }
 
     /// The derived, non-identifying context bundle for the conversation, built once from the user's

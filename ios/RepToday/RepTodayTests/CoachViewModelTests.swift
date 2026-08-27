@@ -397,6 +397,145 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    // MARK: - US-AC08: injury signals route, never filter
+
+    /// A view model wired with a real policy store *and* an observable user service, so a health signal
+    /// can be checked against both possible silent writes: the policy (US-AC07's path) and the profile's
+    /// injury flags.
+    private func makeInjuryViewModel(
+        transport: StubTransport,
+        userService: MockUserService,
+        store: InMemorySessionPolicyStore = InMemorySessionPolicyStore()
+    ) -> CoachViewModel {
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            userService: userService,
+            workoutLogService: MockWorkoutLogService(),
+            exerciseService: try! MockExerciseService(),
+            policyService: CoachSessionPolicyService(store: store)
+        )
+        viewModel.grantDataSharingConsent()
+        return viewModel
+    }
+
+    private func injuryUser(_ injuries: [String] = []) -> User {
+        var user = MockPersistence.sampleUser
+        user.id = "coach-injury-user"
+        user.profile.injuries = injuries
+        return user
+    }
+
+    /// The story's core guarantee: an injury message produces a **routing offer** and changes nothing -
+    /// not the injury flags, not the policy.
+    func testInjuryMessageOffersRoutingAndChangesNothing() async throws {
+        let userService = MockUserService(user: injuryUser())
+        let store = InMemorySessionPolicyStore()
+        let transport = StubTransport(.success(reply: "Knees don't love deep flexion when they're sore.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService, store: store)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.injuryRoutingOffer?.area, .knees, "the coach offers to route, naming the area")
+        let injuries = try await userService.currentUser()?.profile.injuries
+        XCTAssertEqual(injuries, [], "the coach never sets an injury flag")
+        let stored = try await store.policy(for: "coach-injury-user")
+        XCTAssertNil(stored, "an injury signal is not a policy nudge either - nothing is written")
+        XCTAssertEqual(viewModel.messages.filter { $0.author == .coach }.count, 1,
+                       "the coach still answers; the offer is a control, not a fabricated turn")
+    }
+
+    /// Declining is exactly a no-op: the offer goes away and nothing was, or becomes, changed.
+    func testDecliningTheOfferChangesNothing() async throws {
+        let userService = MockUserService(user: injuryUser())
+        let transport = StubTransport(.success(reply: "Here's some general guidance.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+        XCTAssertNotNil(viewModel.injuryRoutingOffer)
+
+        viewModel.declineInjuryRoutingOffer()
+
+        XCTAssertNil(viewModel.injuryRoutingOffer, "declining dismisses the offer")
+        let injuries = try await userService.currentUser()?.profile.injuries
+        XCTAssertEqual(injuries, [], "declining leaves the profile exactly as it was")
+    }
+
+    /// Accepting *routes*: it hands the caller an area to navigate to and still writes nothing. The flag
+    /// is set in the injury control, by the user, in `InjuryFlagsViewModelTests`.
+    func testAcceptingTheOfferRoutesAndStillWritesNothing() async throws {
+        let userService = MockUserService(user: injuryUser())
+        let transport = StubTransport(.success(reply: "Here's some general guidance.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+
+        let routed = viewModel.acceptInjuryRoutingOffer()
+
+        XCTAssertEqual(routed, .knees, "accepting yields the destination of a route")
+        XCTAssertNil(viewModel.injuryRoutingOffer, "the offer is consumed")
+        let injuries = try await userService.currentUser()?.profile.injuries
+        XCTAssertEqual(injuries, [], "accepting the *offer* is not the confirmation - it only navigates")
+    }
+
+    /// A form question that mentions a body part never raises the offer, so the surface stays quiet
+    /// unless there is something real to flag.
+    func testFormQuestionRaisesNoOffer() async {
+        let userService = MockUserService(user: injuryUser())
+        let transport = StubTransport(.success(reply: "Here's how to do a pistol squat.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "how do I do a pistol squat?"
+        await viewModel.send()
+
+        XCTAssertNil(viewModel.injuryRoutingOffer)
+    }
+
+    /// Offering to flag something already flagged would invite the user to confirm a non-change.
+    func testAlreadyFlaggedAreaRaisesNoOffer() async {
+        let userService = MockUserService(user: injuryUser([InjuryOption.knees.tag]))
+        let transport = StubTransport(.success(reply: "Understood - go easy.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+
+        XCTAssertNil(viewModel.injuryRoutingOffer, "the area is already protected; there is nothing to offer")
+    }
+
+    /// A failed turn raises no offer - the same rule the tuning path follows, so a message that never
+    /// got an answer never leaves a prompt behind.
+    func testFailedSendRaisesNoOffer() async {
+        let userService = MockUserService(user: injuryUser())
+        let transport = StubTransport(.failure(TransportBoom()))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+
+        XCTAssertNil(viewModel.injuryRoutingOffer)
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+    }
+
+    /// A later question supersedes an un-answered offer rather than leaving it standing under a new
+    /// answer. Dropping it changes nothing, since it never set anything.
+    func testANewQuestionClearsAStandingOffer() async {
+        let userService = MockUserService(user: injuryUser())
+        let transport = StubTransport(.success(reply: "General guidance.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+        XCTAssertNotNil(viewModel.injuryRoutingOffer)
+
+        viewModel.draft = "why this workout today?"
+        await viewModel.send()
+
+        XCTAssertNil(viewModel.injuryRoutingOffer)
+    }
+
     /// The minimal shape of what the client sends, for decoding the outbound body in the test above.
     private struct SentRequest: Decodable {
         struct Context: Decodable {
