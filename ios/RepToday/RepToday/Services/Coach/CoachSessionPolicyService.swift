@@ -14,8 +14,10 @@ import Foundation
 /// it only writes policy.
 ///
 /// **Two writers, one policy - safety > preference, structurally (ADR-0005).** The load-bearing move is
-/// that this service *re-reads the current in-force policy from the store* and overlays only the coach's
-/// preference levers onto it, rather than replacing it. Because the deterministic Programmer's safety moves
+/// that this service overlays only the coach's preference levers onto the current in-force policy, rather
+/// than replacing it - and it does so through the store's **atomic** `update(for:transform:)` seam, which
+/// reads, overlays, and saves under the store's own isolation so no deterministic safety write can
+/// interleave between the read and the save. Because the deterministic Programmer's safety moves
 /// touch levers the coach either cannot (a de-load's/Re-entry's lever is disjoint from `patternEmphasis`)
 /// or can only push further in the safe direction (`progressionRate` eased down only, `varietyWindow`
 /// narrowed only), a coach write that lands *after* a deterministic de-load can never undo it - and the
@@ -49,33 +51,36 @@ final class CoachSessionPolicyService: CoachPolicyServiceProtocol {
         for user: User,
         asOf: Date
     ) async throws -> SessionPolicy? {
-        // 1. Re-read the *freshest* in-force policy - the safety-sovereign overlay's foundation. If a
-        //    deterministic de-load / Re-entry Ramp landed since the user last spoke to the coach, it is
-        //    already here, and the overlay below preserves it.
-        let current = try await store.policy(for: user.id) ?? .default
+        // Read-overlay-write **atomically** through the store's own isolation, so a deterministic
+        // de-load / Re-entry Ramp can never land in a window between the coach's read and its save and
+        // get clobbered by an overlay built on a stale base (ADR-0005). The transform runs on the
+        // freshest in-force policy the store hands it, and returns `nil` to write nothing.
+        try await store.update(for: user.id) { current in
+            // Overlay only the preference levers, each clamped to the engine's rails and direction-safe
+            // (emphasis disjoint; rate ease-down-only; window narrow-only). Pure, no clock.
+            let overlaid = current.applyingCoachProposal(proposal)
 
-        // 2. Overlay only the preference levers, each clamped to the engine's rails and direction-safe
-        //    (emphasis disjoint; rate ease-down-only; window narrow-only). Pure, no clock.
-        let overlaid = current.applyingCoachProposal(proposal)
+            // Honest no-op guard: if nothing a coach can move actually moved (everything clamped away, or
+            // already at the in-force value), write nothing and leave the in-force policy - and its note -
+            // exactly as the deterministic Programmer left it.
+            guard overlaid.coachLeversDiffer(from: current) else { return nil }
 
-        // 3. Honest no-op guard: if nothing a coach can move actually moved (everything clamped away, or
-        //    already at the in-force value), write nothing and leave the in-force policy - and its note -
-        //    exactly as the deterministic Programmer left it.
-        guard overlaid.coachLeversDiffer(from: current) else { return nil }
+            // Gate the persist on a real, nameable change: the note is `nil` iff no lever moved in a way
+            // worth telling the user (e.g. a phantom neutral emphasis key added at 1.0). A `nil` note is a
+            // no-op write - version-bumping it would be a phantom write with nothing to show - so skip it.
+            guard let note = PolicyNote.coachTemplated(policyBefore: current, policyAfter: overlaid) else {
+                return nil
+            }
 
-        // 4. Write the honest note from the real before/after diff - guaranteed non-nil here because a
-        //    moved lever always yields a clause (pinned by test).
-        var next = overlaid
-        next.note = PolicyNote.coachTemplated(policyBefore: current, policyAfter: next)
-
-        // 5. Stamp provenance: newest version, coach-sourced, injected time. `updatedBy == .llm` is the
-        //    inseparable mark of a coach write (the easing seams already set it; this makes an
-        //    emphasis-only write carry it too).
-        next.version = current.version + 1
-        next.updatedBy = .llm
-        next.updatedAt = asOf
-
-        try await store.save(next, for: user.id)
-        return next
+            // Stamp provenance: newest version, coach-sourced, injected time. `updatedBy == .llm` is the
+            // inseparable mark of a coach write (the easing seams already set it; this makes an
+            // emphasis-only write carry it too).
+            var next = overlaid
+            next.note = note
+            next.version = current.version + 1
+            next.updatedBy = .llm
+            next.updatedAt = asOf
+            return next
+        }
     }
 }

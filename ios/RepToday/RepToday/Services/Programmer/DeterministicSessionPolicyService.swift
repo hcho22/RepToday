@@ -222,6 +222,16 @@ protocol SessionPolicyStore {
     func policy(for userId: String) async throws -> SessionPolicy?
     /// Overwrite the current policy for `userId` in place (insert or update).
     func save(_ policy: SessionPolicy, for userId: String) async throws
+    /// Read-overlay-write the policy for `userId` **atomically** under the store's own isolation, so no
+    /// other writer can interleave between the read and the save. `transform` receives the freshest
+    /// in-force policy (`.default` when none is stored) and returns the policy to persist, or `nil` to
+    /// write nothing; the persisted policy is returned (`nil` on a no-op). This is the two-writer-safe
+    /// seam the coach's bounded write routes through (ADR-0005): the deterministic Programmer's safety
+    /// moves and a coach preference overlay can never clobber each other through a read-then-save race.
+    func update(
+        for userId: String,
+        transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
+    ) async throws -> SessionPolicy?
     /// Delete every stored policy record, regardless of user id, for account deletion
     /// (US-AD02/US-AD03), then save so the CloudKit mirror propagates the tombstone. Rep Today is
     /// single-user, so this clears the one stored policy without needing a decodable user id - so
@@ -245,6 +255,18 @@ actor InMemorySessionPolicyStore: SessionPolicyStore {
 
     func save(_ policy: SessionPolicy, for userId: String) async throws {
         policies[userId] = policy
+    }
+
+    func update(
+        for userId: String,
+        transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
+    ) async throws -> SessionPolicy? {
+        // Atomic by construction: the actor method has no suspension point between the read and the
+        // write, so no other writer's `save`/`update` can interleave.
+        let current = policies[userId] ?? .default
+        guard let next = transform(current) else { return nil }
+        policies[userId] = next
+        return next
     }
 
     func deleteAll() async throws {

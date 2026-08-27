@@ -26,7 +26,14 @@ enum CoachIntentMapper {
         // mixed request ("more push but less core") honors each pattern's own direction rather than
         // letting one cue win globally.
         let moreOffsets = cueOffsets(of: emphasizeMoreCues, in: text)
-        let lessOffsets = cueOffsets(of: emphasizeLessCues, in: text)
+        // The bare "less " emphasis cue is a substring of the multi-word ease/variety phrases ("less
+        // intense", "less variety"), so first consume those phrase spans and drop any "less " cue that
+        // falls inside one - a request to reduce variety or intensity must never de-emphasize a pattern
+        // it merely mentions nearby ("keep push but less variety" leaves push alone).
+        let phraseSpans = cueSpans(of: easeCues + narrowVarietyCues, in: text)
+        let lessOffsets = cueOffsets(of: emphasizeLessCues, in: text).filter { offset in
+            !phraseSpans.contains { $0.contains(offset) }
+        }
 
         var emphasis: [MovementPattern: Double] = [:]
         for pattern in foundationalPatterns {
@@ -113,6 +120,23 @@ enum CoachIntentMapper {
             }
         }
         return offsets
+    }
+
+    /// The half-open character-offset spans every occurrence of any needle occupies, used to consume a
+    /// multi-word phrase (e.g. "less variety") so a bare cue nested inside it ("less ") is not
+    /// double-counted as its own intent.
+    private static func cueSpans(of needles: [String], in text: String) -> [Range<Int>] {
+        var spans: [Range<Int>] = []
+        for needle in needles {
+            var searchStart = text.startIndex
+            while let range = text.range(of: needle, range: searchStart..<text.endIndex) {
+                let lower = text.distance(from: text.startIndex, to: range.lowerBound)
+                let upper = text.distance(from: text.startIndex, to: range.upperBound)
+                spans.append(lower..<upper)
+                searchStart = range.upperBound
+            }
+        }
+        return spans
     }
 
     /// Given a pattern's mention offsets and the more/less cue offsets, pick the direction of the cue

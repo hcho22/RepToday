@@ -221,6 +221,43 @@ final class CoachPolicyWriteTests: XCTestCase {
         XCTAssertLessThan(proposal.patternEmphasis[.core] ?? 2, SessionPolicy.neutralEmphasis)
     }
 
+    func testMapperMultiWordLessPhrasesDoNotDeemphasizeANearbyPattern() {
+        // The bare "less " emphasis cue is a substring of "less variety" / "less intense"; a request to
+        // reduce variety or intensity must not silently de-emphasize a pattern it merely names nearby.
+        let variety = CoachIntentMapper.proposal(for: "keep push but less variety")
+        XCTAssertNil(variety?.patternEmphasis[.push], "'less variety' never lowers a nearby-named pattern")
+        XCTAssertEqual(variety?.narrowedVarietyWindow, SessionPolicy.minVarietyWindow,
+                       "the request is read as its real intent: narrow the variety window")
+
+        let intense = CoachIntentMapper.proposal(for: "keep push but less intense")
+        XCTAssertNil(intense?.patternEmphasis[.push], "'less intense' never lowers a nearby-named pattern")
+        XCTAssertEqual(intense?.easedProgressionRate, SessionPolicy.minProgressionRate,
+                       "the request is read as its real intent: ease pace")
+
+        // A genuine bare "less <pattern>" still de-emphasizes, so the phrase consumption is not overbroad.
+        XCTAssertLessThan(CoachIntentMapper.proposal(for: "less push please")?.patternEmphasis[.push] ?? 2,
+                          SessionPolicy.neutralEmphasis)
+    }
+
+    func testServiceNeutralEmphasisKeyIsAPhantomWriteAndPersistsNothing() async throws {
+        // A proposal that only adds a neutral (1.0) emphasis key for a pattern the in-force policy did not
+        // carry moves no lever the user would notice: the raw dictionary gains a key (so `coachLeversDiffer`
+        // is true), but the honest note is nil, so the service must write nothing rather than bump the
+        // version on a phantom change.
+        var seed = SessionPolicy.default
+        seed.patternEmphasis = [.squat: 1.2] // push deliberately absent
+        seed.version = 7
+        let (service, store) = service(seed: seed)
+
+        let written = try await service.applyProposal(
+            CoachPolicyProposal(patternEmphasis: [.push: SessionPolicy.neutralEmphasis]),
+            for: user(), asOf: asOf
+        )
+        XCTAssertNil(written, "a neutral no-op emphasis key produces no note, so nothing is written")
+        let stored = try await store.policy(for: "u1")
+        XCTAssertEqual(stored?.version, 7, "no phantom version bump was persisted")
+    }
+
     // MARK: - CoachSessionPolicyService orchestration
 
     func testServiceAppliesEmphasisWriteWithProvenanceAndNote() async throws {
