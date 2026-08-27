@@ -56,7 +56,7 @@ Introduced by US-SP01 (`Services/Engine/ExercisePoolFilter.swift`); its PRD is `
 `SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).
 **Safety > preference, structurally:** a coach write is a *safety-sovereign overlay* - it re-reads the freshest in-force policy from the shared `SessionPolicyStore` and overlays only its own levers (`SessionPolicy.applyingCoachProposal`), and every coach-touchable lever is either **disjoint** from the safety moves (`patternEmphasis`) or **only-downward** (`progressionRate` eased down only; `varietyWindow` narrowed only), so a coach write can never clobber a de-load / Re-entry / cold-start.
 The change is a closed `CoachPolicyProposal` (no safety field is expressible), clamped to the engine's rails before it is accepted, tagged `updatedBy == .llm`, noted honestly (`PolicyNote.coachTemplated`), applied on the next open, and reversible.
-The decision is recorded as [ADR-0005](docs/adr/0005-two-writer-policy-safety.md); the owning code is `SessionPolicy`, `CoachSessionPolicyService`, `CoachPolicyProposal`, and `CoachIntentMapper`.
+The decision is recorded as [ADR-0005](docs/adr/0005-two-writer-policy-safety.md); the owning code is `SessionPolicy`, `CoachSessionPolicyService`, `CoachPolicyProposal`, and the closed proposal producers `CoachIntentMapper` (free-text tuning, US-AC07) and `CoachAnalyticsInsight` (a strength-journey stall offer, US-AN02).
 
 ## discipline-first
 

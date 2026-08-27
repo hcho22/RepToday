@@ -111,7 +111,7 @@ Services/Protocols/ Mock/    Service definitions and mock implementations
 Services/Engine/            Deterministic pipeline (Steps 0-7 + swap)
 Services/Programmer/        Trigger detection, plateau diagnosis, duration learning, policy writer
 Services/Language/          Variety Language template, resolver, proxy client
-Services/Coach/             Premium AI coach: derived context bundle + stateless proxy client (US-AC01), the sovereign coach policy-write path - intent mapper + `CoachSessionPolicyService`, the second `SessionPolicy` writer (US-AC07) - and the write-free injury-signal detector that can only route (US-AC08)
+Services/Coach/             Premium AI coach: derived context bundle + stateless proxy client (US-AC01), the sovereign coach policy-write path - intent mapper + `CoachSessionPolicyService`, the second `SessionPolicy` writer (US-AC07) - the write-free injury-signal detector that can only route (US-AC08), and the strength-journey analytics reader that narrates and offers a bounded emphasis action (US-AN02, `CoachAnalyticsInsight`)
 Services/Consistency/       Consistency Score, PhaseEvaluator, ConsistencyTrend
 Services/Progress/          Progress-tab analytics (free + premium-gated deep layer)
 Services/ActiveSession/     Resume store, completion recorder, session summary

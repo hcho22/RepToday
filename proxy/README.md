@@ -101,7 +101,9 @@ Content-Type: application/json
 - `context` (required) - the **derived context bundle**: the single, auditable, non-identifying
   summary the app is allowed to send (see `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift`,
   which defines this exact shape). It is summarized catalog/aggregate data - phase, per-pattern chain
-  positions, recent movement patterns, a coarse consistency signal, requested minutes - and contains
+  positions, recent movement patterns, a coarse consistency signal, a coarse per-pattern
+  strength-journey trend (US-AN02: pattern, `climbing`/`flat`/`steady`, weeks at the current tier,
+  whether it has advanced - no date, id, or identity field), requested minutes - and contains
   **no raw `WorkoutLog` history and no identity field**. The proxy validates it is present and
   object-shaped but does not otherwise constrain it (the app owns the definition).
 - `message` (required) - the user's free-text question. Non-empty and at most **2000 characters**
@@ -123,16 +125,21 @@ The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02)
 target intents - "why this workout?" (the engine's stalest-pattern reasoning), "how do I do
 <movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" / any mention of
 pain or injury (general, non-diagnostic guidance + invite the user to flag that area themselves in
-the app's injury settings), and "I'm bored" (variety is built in) - in the app's identity-framed,
-never-shaming voice. The load-bearing invariant it enforces first is that the coach only ever
-**talks**: it never generates, edits, or prescribes a workout (the deterministic on-device engine
-owns every session and all safety). US-AC08 hardened the injury half of that boundary: the persona now
-states the coach **cannot set, clear, or read** the injury flag - only the user can, only in that
-screen - and must never say or imply that it has flagged an area, removed a movement, or changed
-anything (it speaks in the future tense about what the user can do), the model-side half of "the
-coach's language never implies it has already removed movements". Changing the persona is covered by
+the app's injury settings), "I'm bored" (variety is built in), and "how am I doing?" - narrate a
+concrete insight from the strength-journey trend now in the context (name what is climbing and what
+has gone flat and for how long) - in the app's identity-framed, never-shaming voice. The load-bearing
+invariant it enforces first is that the coach only ever **talks**: it never generates, edits, or
+prescribes a workout (the deterministic on-device engine owns every session and all safety). US-AC08
+hardened the injury half of that boundary: the persona now states the coach **cannot set, clear, or
+read** the injury flag - only the user can, only in that screen - and must never say or imply that it
+has flagged an area, removed a movement, or changed anything (it speaks in the future tense about what
+the user can do), the model-side half of "the coach's language never implies it has already removed
+movements". US-AN02 extended the same posture to the strength-journey narration: the persona may offer
+to lean the program toward a stalled pattern but must never claim to have already changed anything
+(the app applies the preference). Changing the persona is covered by
 `test/worker.test.js` ("sends a persona that forbids generating a workout and names the target
-intents and voice", and "sends a persona that forbids setting or claiming an injury filter").
+intents and voice", "sends a persona that forbids setting or claiming an injury filter", and "sends a
+persona that narrates the strength journey and offers only a bounded preference").
 
 ## Tests and typecheck
 
