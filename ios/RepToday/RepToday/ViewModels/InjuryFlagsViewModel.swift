@@ -76,9 +76,6 @@ final class InjuryFlagsViewModel {
     /// reconstructed one.
     private var user: User?
 
-    /// Injury tags on the profile that this screen has no toggle for. Preserved verbatim across a save.
-    private var unrecognizedTags: [String] = []
-
     init(userService: any UserServiceProtocol) {
         self.userService = userService
     }
@@ -104,9 +101,7 @@ final class InjuryFlagsViewModel {
             return
         }
         user = loaded
-        let tags = loaded.profile.injuries
-        savedSelection = Set(InjuryOption.allCases.filter { $0.isFlagged(in: tags) })
-        unrecognizedTags = tags.filter { tag in !InjuryOption.allCases.contains { $0.isFlagged(in: [tag]) } }
+        savedSelection = Self.recognizedAreas(in: loaded.profile.injuries)
         selected = savedSelection
         if let area { selected.insert(area) }
         loadFailed = false
@@ -162,8 +157,12 @@ final class InjuryFlagsViewModel {
         // landing while this screen was open would otherwise be rolled back by an injury save. Same
         // re-read `SessionCompletionService` does before its write.
         var user = (try? await userService.currentUser()) ?? loaded
-        let tags = unrecognizedTags + InjuryOption.allCases.filter { selected.contains($0) }.map(\.tag)
-        user.profile.injuries = tags
+        // The tags this screen cannot render come off that same fresh read, never off the load-time
+        // snapshot: a flag another device added while this screen sat open must survive a save. For a
+        // safety filter, dropping is the unsafe direction, so the preserved set is recomputed here
+        // rather than remembered.
+        let preserved = Self.unrecognizedTags(in: user.profile.injuries)
+        user.profile.injuries = preserved + InjuryOption.allCases.filter { selected.contains($0) }.map(\.tag)
         do {
             try await userService.save(user)
             self.user = user
@@ -172,6 +171,19 @@ final class InjuryFlagsViewModel {
         } catch {
             errorMessage = Self.saveFailureMessage
         }
+    }
+
+    /// The areas this screen has a toggle for that the given tags already protect, read the engine's
+    /// way (`InjuryOption.isFlagged`, over `InjuryContraindication`'s normalization) so a tag stored
+    /// under another spelling is recognized rather than shown as switched off.
+    private static func recognizedAreas(in tags: [String]) -> Set<InjuryOption> {
+        Set(InjuryOption.allCases.filter { $0.isFlagged(in: tags) })
+    }
+
+    /// The complement: injury tags this screen has no toggle for. The one set a save carries through
+    /// verbatim, so editing the areas it can show never deletes a flag it cannot render.
+    private static func unrecognizedTags(in tags: [String]) -> [String] {
+        tags.filter { tag in !InjuryOption.allCases.contains { $0.isFlagged(in: [tag]) } }
     }
 
     /// Honest and non-alarming: the change did not stick, the previous flags still stand, and trying

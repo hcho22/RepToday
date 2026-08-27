@@ -21,19 +21,29 @@ struct CoachInjuryRoutingProposal: Equatable {
 
 /// Recognizes a health/injury signal in a free-text coach message, on-device (US-AC08).
 ///
-/// It mirrors `CoachIntentMapper`'s shape and its bar for false positives: a pure, deterministic,
-/// closed function of the message (no clock, no state, no I/O) that returns a routing proposal or
-/// `nil`. A mention of a body part is never enough - the message must carry a **complaint cue**
-/// ("hurts", "sore", "cranky", ...) near a **recognized area**, so "how do I do a pistol squat?" and
-/// "is my form on knee push-ups okay?" route nothing. A cue that is negated ("my knee doesn't hurt
-/// any more") or hypothetical ("how do I avoid knee injury?") is not a complaint either, and each
-/// qualifier is read within its own clause so a real complaint is never swallowed by an unrelated
-/// contraction one clause earlier ("can't squat, knee is sore" *is* a knee signal).
+/// It mirrors `CoachIntentMapper`'s shape: a pure, deterministic, closed function of the message (no
+/// clock, no state, no I/O) that returns a routing proposal or `nil`. A mention of a body part is never
+/// enough - the message must carry a **complaint cue** near a **recognized area**, so "how do I do a
+/// pistol squat?" routes nothing. A cue that is negated ("my knee doesn't hurt any more") is not a live
+/// complaint either, and that negation is read within its own clause so a real complaint is never
+/// swallowed by an unrelated contraction one clause earlier ("can't squat, knee is sore" *is* a knee
+/// signal).
 ///
-/// Being wrong in either direction is bounded and safe: a missed signal just means the coach talks
-/// without offering (the user can always open the control from Settings), and a spurious offer changes
-/// nothing on its own - it is a question with a decline affordance, and the flag is only ever set by
-/// the user in the control itself.
+/// **It is deliberately crude, and only recognizes unambiguous present-tense complaints.** The cue list
+/// holds words that report a complaint on their own ("hurts", "sore", "aching", "cranky"); words that
+/// read identically in a complaint and in a question about staying uninjured - "injury", "injured" -
+/// are deliberately absent, so "how do I avoid knee injury?" raises nothing, and the accepted cost is
+/// that "I injured my knee" raises nothing either. That is a decision, not an oversight: it is pinned
+/// by name in `CoachInjuryRoutingTests`.
+///
+/// Being wrong in either direction is bounded and safe, which is what lets it stay crude: a missed
+/// signal just means the coach talks without offering, and the user can still flag the area from the
+/// control in Settings; a spurious offer changes nothing on its own - it is a question with a decline
+/// affordance, and the flag is only ever set by the user in the control itself. Real sophistication
+/// belongs behind the same seam `CoachIntentMapper` names - the *output type* is the contract, so a
+/// future story can replace this function with a structured signal emitted by the model without
+/// touching a caller - rather than in more cue tuning here, which only ever trades one failure
+/// direction for the other.
 enum CoachInjurySignalMapper {
 
     /// The routing proposal a message maps to, or `nil` when it is not a health/injury signal.
@@ -41,9 +51,8 @@ enum CoachInjurySignalMapper {
         let text = message.lowercased()
 
         // Complaint cues that are negated ("my knee doesn't hurt", "no pain in my shoulder any more")
-        // or hypothetical ("how do I avoid knee injury?") are dropped: neither reports a live
-        // complaint, so there is nothing to offer to flag.
-        let complaints = wordOffsets(of: complaintCues, in: text).filter { !isDisqualified(at: $0, in: text) }
+        // are dropped: a resolved complaint is nothing to offer to flag.
+        let complaints = wordOffsets(of: complaintCues, in: text).filter { !isNegated(at: $0, in: text) }
         guard !complaints.isEmpty else { return nil }
 
         // Phrases where "back" is a direction rather than a body part ("back off", "get back to
@@ -105,10 +114,17 @@ enum CoachInjurySignalMapper {
     /// The complaint cues that turn a body-part mention into a health signal. Matched on word
     /// boundaries (with the usual inflections), so "sore" matches "sore"/"soreness" but "ache" never
     /// matches inside "stomachache", and "pain" never inside "painting".
+    ///
+    /// Every word here reports a complaint *on its own*. The bare nouns "injury"/"injured" are
+    /// deliberately absent: they read identically in "I injured my knee" and in "how do I avoid knee
+    /// injury?", so recognizing them turns every prevention question into an unprompted safety prompt,
+    /// and the only way to keep them is a second heuristic guessing at which sense was meant. Leaving
+    /// them out costs the first phrasing and buys back the whole class of false positives - the trade
+    /// this matcher takes, on purpose.
     private static let complaintCues = [
         "hurt", "hurting", "pain", "painful", "sore", "soreness",
         "ache", "aching", "achy", "cranky", "tweak", "tweaked",
-        "strain", "strained", "sprain", "sprained", "injured", "injury",
+        "strain", "strained", "sprain", "sprained",
         "bother", "bothering", "acting up", "flaring", "flare up", "twinge",
     ]
 
@@ -121,21 +137,13 @@ enum CoachInjurySignalMapper {
     /// The negation cues that disqualify a complaint cue when one appears just before it.
     private static let negationCues = ["no ", "not ", "n't", "never", "no longer", "used to", "without", "isn't"]
 
-    /// The cues that mark a complaint as *hypothetical* rather than reported - a question about
-    /// staying uninjured, not a report of being hurt. Without these, "how do I avoid knee injury?"
-    /// and "what should I do to prevent shoulder injury?" would raise a safety prompt about an area
-    /// the user never complained about, which is exactly the false positive this mapper exists to
-    /// avoid. Matched as substrings so the common inflections ("avoiding", "preventing", "protecting")
-    /// come along.
-    private static let preventionCues = ["avoid", "prevent", "protect", "risk of", "in case"]
-
-    /// How far before a complaint cue a qualifier is still taken to govern it. Short on purpose: long
+    /// How far before a complaint cue a negation is still taken to govern it. Short on purpose: long
     /// enough for "my knee doesn't hurt", short enough that an unrelated "not" earlier in a sentence
     /// does not silently swallow a real complaint.
-    private static let qualifierWindow = 24
+    private static let negationWindow = 24
 
-    /// The punctuation that ends a clause. A qualifier never reaches across one, because a qualifier
-    /// belongs to the clause it was written in: "can't squat, knee is sore" is a live knee complaint
+    /// The punctuation that ends a clause. A negation never reaches across one, because it belongs to
+    /// the clause it was written in: "can't squat, knee is sore" is a live knee complaint
     /// whose "n't" is about the squat, not the soreness. Without this bound the window is a raw
     /// character distance, so whether a real complaint survives depends on how long the *preceding*
     /// clause happens to be - length-sensitive rather than semantic.
@@ -147,18 +155,17 @@ enum CoachInjurySignalMapper {
 
     // MARK: - Helpers
 
-    /// Whether a complaint cue is governed by a qualifier that takes it out of play - either a
-    /// negation ("doesn't hurt") or a prevention sense ("avoid ... injury").
-    private static func isDisqualified(at complaintOffset: Int, in text: String) -> Bool {
-        let window = qualifyingWindow(before: complaintOffset, in: text)
+    /// Whether a complaint cue is negated ("doesn't hurt"), and so reports nothing live to flag.
+    private static func isNegated(at complaintOffset: Int, in text: String) -> Bool {
+        let window = negatingWindow(before: complaintOffset, in: text)
         guard !window.isEmpty else { return false }
-        return (negationCues + preventionCues).contains { window.contains($0) }
+        return negationCues.contains { window.contains($0) }
     }
 
-    /// The text a complaint cue's qualifiers may live in: at most `qualifierWindow` characters back,
-    /// and never across a clause boundary.
-    private static func qualifyingWindow(before offset: Int, in text: String) -> String {
-        let lower = max(0, offset - qualifierWindow)
+    /// The text a complaint cue's negation may live in: at most `negationWindow` characters back, and
+    /// never across a clause boundary.
+    private static func negatingWindow(before offset: Int, in text: String) -> String {
+        let lower = max(0, offset - negationWindow)
         guard lower < offset else { return "" }
         let start = text.index(text.startIndex, offsetBy: lower)
         let end = text.index(text.startIndex, offsetBy: offset)

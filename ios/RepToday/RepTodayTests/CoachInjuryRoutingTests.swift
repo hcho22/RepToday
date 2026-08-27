@@ -93,9 +93,10 @@ final class CoachInjuryRoutingTests: XCTestCase {
         }
     }
 
-    /// A question about *staying* uninjured is not a report of being injured. Without this the bare
-    /// noun cues ("injury"/"injured") turn every prevention question into an unprompted safety prompt
-    /// about an area the user never complained about.
+    /// A question about *staying* uninjured is not a report of being injured, and none of these route -
+    /// not because a prevention sense is detected and excused, but because the words that would have
+    /// fired ("injury"/"injured") are not complaint cues at all. There is no exception layer here to
+    /// mis-fire; the cue list simply holds nothing ambiguous.
     func testPreventionQuestionsDoNotRoute() {
         let messages = [
             "how do I avoid knee injury?",
@@ -107,6 +108,50 @@ final class CoachInjuryRoutingTests: XCTestCase {
         for message in messages {
             XCTAssertNil(CoachInjurySignalMapper.routing(for: message),
                          "\"\(message)\" asks how to stay uninjured - it reports no complaint to flag")
+        }
+    }
+
+    /// A recorded tradeoff, not an oversight: dropping the ambiguous bare nouns costs the past-tense
+    /// "I injured my knee" phrasing, and that miss was accepted rather than bought back with a second
+    /// heuristic guessing at which sense was meant. The failure is safe - the coach still talks, and
+    /// the user can flag the knee from the control in Settings. Change this only by deciding the
+    /// tradeoff differently, not by patching a cue back in.
+    func testAcceptedBlindSpot_pastTenseInjuryReportsDoNotRoute() {
+        let messages = [
+            "I injured my knee last week",
+            "I have a shoulder injury",
+        ]
+        for message in messages {
+            XCTAssertNil(CoachInjurySignalMapper.routing(for: message),
+                         "\"\(message)\" is a deliberate, recorded miss - \"injury\"/\"injured\" are not complaint cues")
+        }
+    }
+
+    /// The complement of that tradeoff, and the reason it is affordable: the same complaints phrased in
+    /// the present tense - which is how a user actually raises a live problem to a coach - still route.
+    func testTheSameComplaintsInThePresentTenseStillRoute() {
+        let cases: [(String, InjuryOption)] = [
+            ("I hurt my knee last week and it's still sore", .knees),
+            ("my shoulder has been painful since Tuesday", .shoulders),
+        ]
+        for (message, expected) in cases {
+            XCTAssertEqual(CoachInjurySignalMapper.routing(for: message)?.area, expected,
+                           "\"\(message)\" is a live \(expected) complaint")
+        }
+    }
+
+    /// The regression this matcher's shape exists to prevent: a live complaint must not be dropped just
+    /// because a prevention-flavoured word happens to sit near it. There is no prevention cue list to
+    /// mis-fire, so these route on the complaint alone.
+    func testAPreventionFlavouredWordNearALiveComplaintDoesNotSuppressIt() {
+        let cases: [(String, InjuryOption)] = [
+            ("how do I protect my sore knee?", .knees),
+            ("what can I do to avoid aggravating my sore knee?", .knees),
+            ("anything to prevent my hip pain getting worse?", .hips),
+        ]
+        for (message, expected) in cases {
+            XCTAssertEqual(CoachInjurySignalMapper.routing(for: message)?.area, expected,
+                           "\"\(message)\" reports a live \(expected) complaint and asks what to do about it")
         }
     }
 

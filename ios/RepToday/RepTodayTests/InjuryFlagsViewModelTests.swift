@@ -270,19 +270,47 @@ final class InjuryFlagsViewModelTests: XCTestCase {
 
         viewModel.toggle(.knees)
 
-        // Another writer advances the aggregate while the edit sits staged.
+        // Another writer advances the aggregate while the edit sits staged - and, in the same merge,
+        // adds an injury tag this screen has no toggle for.
         let loaded = try await service.currentUser()
         var moved = try XCTUnwrap(loaded)
         moved.consistency.longestChain += 7
+        moved.profile.injuries.append("neck")
         try await service.save(moved)
 
         await viewModel.save()
 
         let written = try await service.currentUser()
         let saved = try XCTUnwrap(written)
-        XCTAssertEqual(saved.profile.injuries, [InjuryOption.knees.tag], "the injury change still lands")
+        XCTAssertEqual(saved.profile.injuries, ["neck", InjuryOption.knees.tag],
+                       "the injury change lands, and the tag that arrived while the screen was open survives it")
         XCTAssertEqual(saved.consistency.longestChain, moved.consistency.longestChain,
                        "and the other writer's progress is not rolled back")
+    }
+
+    /// The same hazard read the other way: the preserved set must come off the *fresh* read, so a
+    /// safety flag another device added mid-edit is never silently dropped. Dropping is the unsafe
+    /// direction for a safety filter, which is why this is pinned separately from the field-clobber
+    /// case above.
+    func testSavingPreservesAnUnrenderableTagAddedWhileTheScreenWasOpen() async throws {
+        let service = MockUserService(user: makeUser(injuries: ["neck"]))
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+
+        viewModel.toggle(.knees)
+
+        let loaded = try await service.currentUser()
+        var moved = try XCTUnwrap(loaded)
+        moved.profile.injuries.append("elbow")
+        try await service.save(moved)
+
+        await viewModel.save()
+
+        let stored = try await storedInjuries(service)
+        XCTAssertTrue(stored.contains("neck"), "the tag present at load survives")
+        XCTAssertTrue(stored.contains("elbow"),
+                      "and so does one that arrived after it - the preserved set is recomputed, never remembered")
+        XCTAssertTrue(stored.contains(InjuryOption.knees.tag), "the staged change still lands")
     }
 
     // MARK: - Failure is honest and non-destructive

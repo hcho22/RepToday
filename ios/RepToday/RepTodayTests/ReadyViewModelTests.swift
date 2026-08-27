@@ -448,6 +448,9 @@ final class ReadyViewModelTests: XCTestCase {
         let before = try XCTUnwrap(engine.capturedUser?.profile.injuries)
         XCTAssertFalse(before.contains(InjuryOption.knees.tag), "no knee flag set yet")
         let fetchesAfterLoad = await logs.fetchCount
+        let profileReadsAfterLoad = await users.currentUserCallCount
+        XCTAssertEqual(profileReadsAfterLoad, 1,
+                       "the load path generates from the profile it just read - no second round-trip")
 
         // The user flags a knee from Settings while the Ready tab is alive.
         await users.update { $0.profile.injuries.append(InjuryOption.knees.tag) }
@@ -460,6 +463,9 @@ final class ReadyViewModelTests: XCTestCase {
                        "and the surfaced user - handed to the player - reflects it too")
         let fetchesAfterTap = await logs.fetchCount
         XCTAssertEqual(fetchesAfterTap, fetchesAfterLoad, "the log scan stays cached across a chip tap")
+        let profileReadsAfterTap = await users.currentUserCallCount
+        XCTAssertEqual(profileReadsAfterTap, profileReadsAfterLoad + 1,
+                       "the chip tap re-reads the profile exactly once - the read is the point, doubling it is not")
     }
 
     /// Tapping the already-selected chip is a no-op - no wasted regeneration.
@@ -919,10 +925,9 @@ private final class FlakyWorkoutEngine: WorkoutEngineProtocol {
     }
 }
 
-/// A user service that counts `currentUser()` calls, proving a chip regeneration reuses cached
-/// inputs rather than re-fetching.
 /// A user service whose stored profile can be changed mid-test, so a screen that re-reads the profile
-/// can be told apart from one holding a stale snapshot.
+/// can be told apart from one holding a stale snapshot. It also counts its reads, so the load path can
+/// be pinned to a single fetch.
 private actor MutableUserService: UserServiceProtocol {
     private var user: User?
     private(set) var currentUserCallCount = 0
