@@ -186,8 +186,12 @@ enum PlateauDiagnosis {
     /// but never run a program away. `progressionRate` and `varietyWindow` are the same levers the
     /// engine reads in Steps 6 and 5 (US-E03); these bounds keep them inside their sane operating
     /// range no matter how many times a plateau recurs.
-    static let maxProgressionRate = 2.0
-    static let minProgressionRate = 0.5
+    ///
+    /// The `progressionRate` bounds alias `SessionPolicy`'s centralized rate rail (US-AC06), so the
+    /// deterministic Programmer's easing floor and the coach's easing gate share one definition and can
+    /// never drift apart. (The values are unchanged: `[0.5, 2.0]`.)
+    static let maxProgressionRate = SessionPolicy.maxProgressionRate
+    static let minProgressionRate = SessionPolicy.minProgressionRate
     static let maxVarietyWindow = 6
     static let minVarietyWindow = 1
 

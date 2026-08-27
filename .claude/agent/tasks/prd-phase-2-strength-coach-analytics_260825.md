@@ -288,11 +288,11 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] The coach may lower `progressionRate` (within the existing clamp) as a protective move; it may **not** raise it above the engine-earned value.
-- [ ] Upward pace remains owned solely by the deterministic engine (Adaptive Overload / Asymmetric Ramp).
-- [ ] The constraint is enforced structurally (a coach-sourced policy write cannot increase pace), not by convention.
-- [ ] Tests: coach ease-down applies; coach attempt to raise pace is rejected/clamped to no-increase. `docs/test-coverage.md` row.
-- [ ] Build and suites pass.
+- [x] The coach may lower `progressionRate` (within the existing clamp) as a protective move; it may **not** raise it above the engine-earned value.
+- [x] Upward pace remains owned solely by the deterministic engine (Adaptive Overload / Asymmetric Ramp).
+- [x] The constraint is enforced structurally (a coach-sourced policy write cannot increase pace), not by convention.
+- [x] Tests: coach ease-down applies; coach attempt to raise pace is rejected/clamped to no-increase. `docs/test-coverage.md` row.
+- [x] Build and suites pass.
 
 **Validation Test:**
 

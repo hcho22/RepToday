@@ -184,6 +184,7 @@
 		DE96FD083D446EEA519C8767 /* ReprogramTriggerDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EC6963D9F5A548E6EAD653 /* ReprogramTriggerDetection.swift */; };
 		E01FD24F3C0913BEFE09AC1C /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A17371920799D658D62CAF /* HealthKitService.swift */; };
 		E3E57C3510EE559D1BEF8220 /* Exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = B0ED4A87CACFFFC4FC60A3E4 /* Exercises.json */; };
+		E57BE11F0C8412E5C430A8A1 /* AsymmetricPaceEasingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F3D44E74C75BD4FEB895DD7 /* AsymmetricPaceEasingPolicyTests.swift */; };
 		E6D6462DE67CADEA75BE5D9A /* MockServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81273C5695FD4015EFF69BB9 /* MockServices.swift */; };
 		E7F085AFA371D0F0F056F40F /* MockPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD994E09E340C9DDCC246374 /* MockPersistence.swift */; };
 		EA585A0F882E29C5C97CA1B8 /* HealthKitWorkoutSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFCEEC72CFCE6CDEF6A4CF1 /* HealthKitWorkoutSample.swift */; };
@@ -354,6 +355,7 @@
 		9CA59450267BE04E5A2E7C68 /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
 		9CFA62C1E068FACA79BF9EEC /* AnalyticsServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsServiceTests.swift; sourceTree = "<group>"; };
 		9F38B3E618810E02606F44CE /* PhaseProgressEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseProgressEvidenceTests.swift; sourceTree = "<group>"; };
+		9F3D44E74C75BD4FEB895DD7 /* AsymmetricPaceEasingPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsymmetricPaceEasingPolicyTests.swift; sourceTree = "<group>"; };
 		A015DE1B10D5C213D3474838 /* StrengthGraduationEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthGraduationEvidenceTests.swift; sourceTree = "<group>"; };
 		A0A6859051A8B10CC424CED6 /* ReadyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModel.swift; sourceTree = "<group>"; };
 		A1A5B23D421F3F7367AD71FC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -677,6 +679,7 @@
 				2BAF76F03873A887FDF9F7A0 /* AppInstallEventTests.swift */,
 				AEE40F821F1BC087093DEA6F /* AppleAuthServiceTests.swift */,
 				9BBD4AACA7A21B0FC479E986 /* AppStateTests.swift */,
+				9F3D44E74C75BD4FEB895DD7 /* AsymmetricPaceEasingPolicyTests.swift */,
 				517F0822799948674E148CF7 /* BookendComplementSelectionTests.swift */,
 				5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */,
 				0A1C6930B3FD973B83C85A1F /* CoachDataDisclosureEvidenceTests.swift */,
@@ -1086,6 +1089,7 @@
 				50B9E176403E9EF17CAC88D8 /* AppInstallEventTests.swift in Sources */,
 				05E3AA230EC7B974E7A8ADB9 /* AppStateTests.swift in Sources */,
 				4A902D8BBBA1847B93CE2A6C /* AppleAuthServiceTests.swift in Sources */,
+				E57BE11F0C8412E5C430A8A1 /* AsymmetricPaceEasingPolicyTests.swift in Sources */,
 				FA6678B84E9E3E6DD9533F6C /* BookendComplementSelectionTests.swift in Sources */,
 				7A1837EE29B0F2FE89ECBD7C /* CoachContextBundleTests.swift in Sources */,
 				75BE9DD91701370123DA5903 /* CoachDataDisclosureEvidenceTests.swift in Sources */,
