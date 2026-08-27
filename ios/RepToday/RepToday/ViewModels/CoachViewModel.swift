@@ -291,9 +291,10 @@ final class CoachViewModel {
     private func offerInjuryRoutingIfSignalled(_ message: String) async {
         guard let routing = CoachInjurySignalMapper.routing(for: message) else { return }
         // Offering to flag something already flagged would be noise, and would invite the user to
-        // "confirm" a change that is not a change.
+        // "confirm" a change that is not a change. The "already flagged" question is asked the
+        // engine's way (normalized tags), so an area the filter already protects reads as protected.
         if let user = try? await userService.currentUser(),
-           user.profile.injuries.contains(routing.area.tag) {
+           routing.area.isFlagged(in: user.profile.injuries) {
             return
         }
         injuryRoutingOffer = routing

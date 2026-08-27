@@ -427,25 +427,39 @@ final class ReadyViewModelTests: XCTestCase {
         XCTAssertNil(vm.errorMessage)
     }
 
-    /// Regeneration reuses the cached engine inputs - it never re-fetches the user, so a chip tap
-    /// stays on-device and instant.
-    func testSelectDurationDoesNotRefetchUser() async {
-        let users = CountingUserService(user: onboardedUser())
+    /// Regeneration reuses the cached logs and policy so a chip tap stays on-device and instant - but
+    /// it deliberately re-reads the *profile*, because that is where the injury safety filters live
+    /// (US-AC08) and they are editable from Settings and the coach's route while this screen is alive.
+    /// A chip tap must not hand the engine a profile that still permits what the user just asked to
+    /// work around.
+    func testSelectDurationRegeneratesAgainstTheCurrentProfile() async throws {
+        let users = MutableUserService(user: onboardedUser())
         let engine = CapturingWorkoutEngine()
+        let logs = CountingWorkoutLogService()
         let vm = ReadyViewModel(
             userService: users,
             sessionPolicyService: StubPolicyService(policy: .seeded(forFitnessLevel: .beginner)),
             workoutEngine: engine,
-            workoutLogService: MockWorkoutLogService(),
+            workoutLogService: logs,
             now: { self.fixedDate }
         )
 
         await vm.load()
+        let before = try XCTUnwrap(engine.capturedUser?.profile.injuries)
+        XCTAssertFalse(before.contains(InjuryOption.knees.tag), "no knee flag set yet")
+        let fetchesAfterLoad = await logs.fetchCount
+
+        // The user flags a knee from Settings while the Ready tab is alive.
+        await users.update { $0.profile.injuries.append(InjuryOption.knees.tag) }
         await vm.selectDuration(45)
 
-        let userFetches = await users.currentUserCallCount
-        XCTAssertEqual(userFetches, 1, "the user is fetched once on load, not per chip tap")
         XCTAssertEqual(engine.generateCallCount, 2, "one generation on load, one per chip tap")
+        XCTAssertEqual(engine.capturedUser?.profile.injuries, before + [InjuryOption.knees.tag],
+                       "the regenerated session is built against the safety filter the user just set")
+        XCTAssertEqual(vm.user?.profile.injuries, before + [InjuryOption.knees.tag],
+                       "and the surfaced user - handed to the player - reflects it too")
+        let fetchesAfterTap = await logs.fetchCount
+        XCTAssertEqual(fetchesAfterTap, fetchesAfterLoad, "the log scan stays cached across a chip tap")
     }
 
     /// Tapping the already-selected chip is a no-op - no wasted regeneration.
@@ -828,6 +842,9 @@ final class ReadyViewModelTests: XCTestCase {
 private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
     private(set) var capturedRequestedMinutes: Int?
     private(set) var capturedPolicy: SessionPolicy?
+    /// The profile the most recent generation ran against, so a test can pin that a regeneration sees
+    /// the *current* safety filters rather than the snapshot the screen loaded with (US-AC08).
+    private(set) var capturedUser: User?
     private(set) var generateCallCount = 0
     /// Lets a test give the canned session a lead pillar so the Variety Language line has a real
     /// contrast to name (US-J02); `nil` keeps the pre-J02 warm-up-only behavior.
@@ -843,6 +860,7 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
     ) async throws -> Workout {
         capturedRequestedMinutes = requestedMinutes
         capturedPolicy = sessionPolicy
+        capturedUser = user
         generateCallCount += 1
         return Workout(
             id: UUID(),
@@ -903,8 +921,10 @@ private final class FlakyWorkoutEngine: WorkoutEngineProtocol {
 
 /// A user service that counts `currentUser()` calls, proving a chip regeneration reuses cached
 /// inputs rather than re-fetching.
-private actor CountingUserService: UserServiceProtocol {
-    private let user: User?
+/// A user service whose stored profile can be changed mid-test, so a screen that re-reads the profile
+/// can be told apart from one holding a stale snapshot.
+private actor MutableUserService: UserServiceProtocol {
+    private var user: User?
     private(set) var currentUserCallCount = 0
 
     init(user: User?) { self.user = user }
@@ -914,8 +934,30 @@ private actor CountingUserService: UserServiceProtocol {
         return user
     }
 
-    func save(_ user: User) async throws {}
-    func deleteCurrentUser() async throws {}
+    /// Mutate the stored profile the way another surface (the injury control) would.
+    func update(_ transform: (inout User) -> Void) {
+        guard var user else { return }
+        transform(&user)
+        self.user = user
+    }
+
+    func save(_ user: User) async throws { self.user = user }
+    func deleteCurrentUser() async throws { user = nil }
+}
+
+/// A log service that counts its reads, so a test can pin that the expensive history scan stays
+/// cached across a chip-tap regeneration.
+private actor CountingWorkoutLogService: WorkoutLogServiceProtocol {
+    private(set) var fetchCount = 0
+
+    func workoutLogs(from: Date?, to: Date?) async throws -> [WorkoutLog] {
+        fetchCount += 1
+        return []
+    }
+
+    func save(_ log: WorkoutLog) async throws {}
+    func deleteLog(id: UUID) async throws {}
+    func deleteAllLogs() async throws {}
 }
 
 /// A policy service that returns a fixed policy and no-ops the write paths.

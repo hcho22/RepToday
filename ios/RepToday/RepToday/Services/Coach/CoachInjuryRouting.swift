@@ -25,7 +25,10 @@ struct CoachInjuryRoutingProposal: Equatable {
 /// closed function of the message (no clock, no state, no I/O) that returns a routing proposal or
 /// `nil`. A mention of a body part is never enough - the message must carry a **complaint cue**
 /// ("hurts", "sore", "cranky", ...) near a **recognized area**, so "how do I do a pistol squat?" and
-/// "is my form on knee push-ups okay?" route nothing.
+/// "is my form on knee push-ups okay?" route nothing. A cue that is negated ("my knee doesn't hurt
+/// any more") or hypothetical ("how do I avoid knee injury?") is not a complaint either, and each
+/// qualifier is read within its own clause so a real complaint is never swallowed by an unrelated
+/// contraction one clause earlier ("can't squat, knee is sore" *is* a knee signal).
 ///
 /// Being wrong in either direction is bounded and safe: a missed signal just means the coach talks
 /// without offering (the user can always open the control from Settings), and a spurious offer changes
@@ -37,10 +40,10 @@ enum CoachInjurySignalMapper {
     static func routing(for message: String) -> CoachInjuryRoutingProposal? {
         let text = message.lowercased()
 
-        // Complaint cues that are inside a negation window ("my knee doesn't hurt", "no pain in my
-        // shoulder any more") are dropped: the conservative reading of a negated complaint is that
-        // there is nothing to offer to flag.
-        let complaints = wordOffsets(of: complaintCues, in: text).filter { !isNegated(at: $0, in: text) }
+        // Complaint cues that are negated ("my knee doesn't hurt", "no pain in my shoulder any more")
+        // or hypothetical ("how do I avoid knee injury?") are dropped: neither reports a live
+        // complaint, so there is nothing to offer to flag.
+        let complaints = wordOffsets(of: complaintCues, in: text).filter { !isDisqualified(at: $0, in: text) }
         guard !complaints.isEmpty else { return nil }
 
         // Phrases where "back" is a direction rather than a body part ("back off", "get back to
@@ -118,10 +121,25 @@ enum CoachInjurySignalMapper {
     /// The negation cues that disqualify a complaint cue when one appears just before it.
     private static let negationCues = ["no ", "not ", "n't", "never", "no longer", "used to", "without", "isn't"]
 
-    /// How far before a complaint cue a negation is still taken to govern it. Short on purpose: long
+    /// The cues that mark a complaint as *hypothetical* rather than reported - a question about
+    /// staying uninjured, not a report of being hurt. Without these, "how do I avoid knee injury?"
+    /// and "what should I do to prevent shoulder injury?" would raise a safety prompt about an area
+    /// the user never complained about, which is exactly the false positive this mapper exists to
+    /// avoid. Matched as substrings so the common inflections ("avoiding", "preventing", "protecting")
+    /// come along.
+    private static let preventionCues = ["avoid", "prevent", "protect", "risk of", "in case"]
+
+    /// How far before a complaint cue a qualifier is still taken to govern it. Short on purpose: long
     /// enough for "my knee doesn't hurt", short enough that an unrelated "not" earlier in a sentence
     /// does not silently swallow a real complaint.
-    private static let negationWindow = 24
+    private static let qualifierWindow = 24
+
+    /// The punctuation that ends a clause. A qualifier never reaches across one, because a qualifier
+    /// belongs to the clause it was written in: "can't squat, knee is sore" is a live knee complaint
+    /// whose "n't" is about the squat, not the soreness. Without this bound the window is a raw
+    /// character distance, so whether a real complaint survives depends on how long the *preceding*
+    /// clause happens to be - length-sensitive rather than semantic.
+    private static let clauseBoundaries: Set<Character> = [",", ".", ";", ":", "!", "?", "\n"]
 
     /// How near a complaint cue must sit to an area mention to count as being about that area. This is
     /// what makes "my knee hurts on squats" a knee signal and keeps two unrelated clauses apart.
@@ -129,13 +147,26 @@ enum CoachInjurySignalMapper {
 
     // MARK: - Helpers
 
-    private static func isNegated(at complaintOffset: Int, in text: String) -> Bool {
-        let lower = max(0, complaintOffset - negationWindow)
-        guard lower < complaintOffset else { return false }
+    /// Whether a complaint cue is governed by a qualifier that takes it out of play - either a
+    /// negation ("doesn't hurt") or a prevention sense ("avoid ... injury").
+    private static func isDisqualified(at complaintOffset: Int, in text: String) -> Bool {
+        let window = qualifyingWindow(before: complaintOffset, in: text)
+        guard !window.isEmpty else { return false }
+        return (negationCues + preventionCues).contains { window.contains($0) }
+    }
+
+    /// The text a complaint cue's qualifiers may live in: at most `qualifierWindow` characters back,
+    /// and never across a clause boundary.
+    private static func qualifyingWindow(before offset: Int, in text: String) -> String {
+        let lower = max(0, offset - qualifierWindow)
+        guard lower < offset else { return "" }
         let start = text.index(text.startIndex, offsetBy: lower)
-        let end = text.index(text.startIndex, offsetBy: complaintOffset)
-        let window = String(text[start..<end])
-        return negationCues.contains { window.contains($0) }
+        let end = text.index(text.startIndex, offsetBy: offset)
+        let window = text[start..<end]
+        guard let boundary = window.lastIndex(where: { clauseBoundaries.contains($0) }) else {
+            return String(window)
+        }
+        return String(window[window.index(after: boundary)...])
     }
 
     /// The character offsets where any needle appears as a whole word (allowing a common inflectional

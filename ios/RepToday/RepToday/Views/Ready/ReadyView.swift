@@ -14,6 +14,12 @@ import SwiftUI
 /// the app changed") - all rendered from the existing policy with no spinner ever blocking Start,
 /// while an on-open Re-program runs in the background. The Start action opens the player in US-K01.
 struct ReadyView: View {
+    /// Optional so the hosted evidence surfaces that mount `ReadyView` without an `AppState` still
+    /// render (production, reached from the tab tree, always has one). It is read for exactly one
+    /// thing: the US-AC08 injury-flag revision, so confirming a safety filter regenerates the session
+    /// already on this screen instead of waiting for a relaunch.
+    @Environment(AppState.self) private var appState: AppState?
+
     @State private var viewModel: ReadyViewModel
     /// What the active-session player is presented for (US-K01/US-K04): a fresh session started from
     /// Start, or an abandoned session resumed from the Ready Screen. The `.fullScreenCover` presents
@@ -65,7 +71,10 @@ struct ReadyView: View {
                 emptyState
             }
         }
-        .task { await viewModel.load() }
+        // Re-runs on appear and whenever the user confirms an injury-flag change (US-AC08), so the
+        // session on screen is rebuilt against the safety filter they just set rather than the one in
+        // force when the tab was last opened.
+        .task(id: appState?.injuryFlagsRevision ?? 0) { await viewModel.load() }
         .fullScreenCover(item: $presentedPlayer) { presentation in
             switch presentation {
             case .fresh(let workout):

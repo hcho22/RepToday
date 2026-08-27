@@ -93,6 +93,53 @@ final class CoachInjuryRoutingTests: XCTestCase {
         }
     }
 
+    /// A question about *staying* uninjured is not a report of being injured. Without this the bare
+    /// noun cues ("injury"/"injured") turn every prevention question into an unprompted safety prompt
+    /// about an area the user never complained about.
+    func testPreventionQuestionsDoNotRoute() {
+        let messages = [
+            "how do I avoid knee injury?",
+            "what should I do to prevent shoulder injury?",
+            "any tips to protect my wrists from injury?",
+            "how do I squat without knee pain?",
+            "is there a risk of ankle injury with jumping?",
+        ]
+        for message in messages {
+            XCTAssertNil(CoachInjurySignalMapper.routing(for: message),
+                         "\"\(message)\" asks how to stay uninjured - it reports no complaint to flag")
+        }
+    }
+
+    /// The other direction of the same matcher: a qualifier belongs to the clause it was written in,
+    /// so an unrelated contraction one clause earlier must not swallow a live complaint. "can't squat,
+    /// knee is sore" is the story's own headline shape.
+    func testAQualifierInAnEarlierClauseDoesNotSwallowARealComplaint() {
+        let cases: [(String, InjuryOption)] = [
+            ("can't squat, knee is sore", .knees),
+            ("I don't want to skip today, but my shoulder hurts", .shoulders),
+            ("no equipment here, and my wrist aches", .wrists),
+            ("I avoid running. my knee hurts anyway", .knees),
+        ]
+        for (message, expected) in cases {
+            XCTAssertEqual(CoachInjurySignalMapper.routing(for: message)?.area, expected,
+                           "\"\(message)\" is a live \(expected) complaint")
+        }
+    }
+
+    /// And the negation still binds inside its own clause, at any sentence length - the fix must not
+    /// buy the miss rate down by letting resolved complaints through.
+    func testNegationStillBindsWithinItsOwnClause() {
+        let messages = [
+            "my knee doesn't hurt any more",
+            "honestly, my shoulder is not sore at all today",
+            "quick question - my hip never aches now",
+        ]
+        for message in messages {
+            XCTAssertNil(CoachInjurySignalMapper.routing(for: message),
+                         "\"\(message)\" reports a resolved complaint, not a live one")
+        }
+    }
+
     /// "back" as a direction is not the lower back, even beside a complaint about something else.
     func testDirectionalBackIsNotTheLowerBack() {
         XCTAssertNil(CoachInjurySignalMapper.routing(for: "can you back off the volume? nothing hurts, I'm just tired"),

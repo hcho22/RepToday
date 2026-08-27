@@ -94,9 +94,11 @@ final class ReadyViewModel {
     private var hasComputedConsistency = false
 
     /// Engine inputs cached from `load()` so a chip tap regenerates the session on-device without
-    /// re-fetching the user, logs, or policy - keeping regeneration well inside the sub-100ms budget
-    /// so Start is never left waiting on an answer. Also handed to the active-session player so an
-    /// in-session swap (US-K03) filters and sizes a substitute without a fresh fetch.
+    /// re-fetching the logs or policy - keeping regeneration well inside the sub-100ms budget so Start
+    /// is never left waiting on an answer. (The *profile* is deliberately not cached across a
+    /// regeneration: it carries the injury safety filters, which are editable while this screen is
+    /// alive, so `generate()` re-reads it.) Also handed to the active-session player so an in-session
+    /// swap (US-K03) filters and sizes a substitute without a fresh fetch.
     private(set) var recentLogs: [WorkoutLog] = []
     /// The policy today's session was generated against. Handed to the active-session player so an
     /// in-session swap (US-K03) sizes its substitute with the same Step 6 levers the session was built
@@ -392,12 +394,20 @@ final class ReadyViewModel {
         Int(now().timeIntervalSince1970 * 1000)
     }
 
-    /// Generate today's session at `selectedMinutes` from the cached engine inputs. Shared by the
-    /// initial load and every chip regeneration so both take the identical path. The requested
-    /// minutes are captured before the await so a superseded, slower generation (an older chip tap
-    /// still in flight) can never overwrite the session the latest selection produced.
+    /// Generate today's session at `selectedMinutes` from the cached engine inputs and a freshly-read
+    /// profile. Shared by the initial load and every chip regeneration so both take the identical
+    /// path. The requested minutes are captured before the await so a superseded, slower generation
+    /// (an older chip tap still in flight) can never overwrite the session the latest selection
+    /// produced.
     private func generate() async throws {
-        guard let user else { return }
+        guard let cached = user else { return }
+        // Re-read the profile rather than generating from the snapshot `load()` cached. The safety
+        // filters on it - the injury flags (US-AC08) - are editable from Settings and from the coach's
+        // route while this screen is alive, and a session built against a stale profile would still
+        // offer movements the user has just asked to work around. Best-effort: an unreadable profile
+        // falls back to the snapshot rather than failing the render.
+        let user = (try? await userService.currentUser()) ?? cached
+        self.user = user
         let requested = selectedMinutes
         // Measure the generation call specifically (US-T09) - the injected clock read straddles only
         // the engine await, not the surrounding view work, so `generation_ms` stays planning-honest.

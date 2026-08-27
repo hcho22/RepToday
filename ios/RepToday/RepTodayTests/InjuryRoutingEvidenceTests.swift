@@ -181,6 +181,10 @@ final class InjuryRoutingEvidenceTests: XCTestCase {
                         "the confirmation control is a labeled, hittable element")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("switch any of these back off"),
                       "the screen states the change is reversible; spoke: \(spoken)")
+        // Backing out is the "I changed my mind after accepting the route" path, so on the sheet it is
+        // an explicit control rather than only a swipe-down.
+        XCTAssertNotNil(AccessibilityTree.element(labeled: InjuryFlagsCopy.cancel, in: root),
+                        "the routed sheet offers an explicit way out that writes nothing; spoke: \(spoken)")
         XCTAssertTrue(viewModel.hasUnsavedChanges, "arriving from the coach lands one explicit tap short of the change")
         // Live rather than merely present: the screen re-runs its load task, and a re-run that reset
         // the loaded state would render the confirmation inert while still showing the staged change.

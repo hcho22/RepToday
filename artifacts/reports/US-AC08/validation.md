@@ -7,13 +7,14 @@ Re-generate the committed PNGs with `REPTODAY_WRITE_EVIDENCE=1` (see `AGENTS.md`
 
 | File | Surface | What it evidences |
 | --- | --- | --- |
-| `01-coach-injury-offer.png` | `CoachInjuryOfferView` hosted directly | The offer names the area, asks rather than announces, and states plainly "I haven't changed anything about your workouts". Both affordances are present: **Open injury settings** (a navigation, not a setting) and **Not now**. |
+| `01-coach-injury-offer.png` | `CoachInjuryOfferView` hosted directly | The offer names the area, asks rather than announces, and states plainly "I haven't changed anything about your workouts". Both affordances are present: **Open Areas to protect** (a navigation naming the destination screen, not a setting) and **Not now**. |
 | `02-coach-conversation-offer.png` | The production `CoachView` after "my knee hurts on squats" | The offer appears as its own card at the end of the turn, below the coach's ordinary answer. The coach still talks; nothing was written. |
-| `03-injury-control-routed.png` | The production `InjuryFlagsView`, arrived at from the coach's route | Every protectable area is a switch (so a flag is reversible here), the routed area arrives switched on but **unsaved**, the pending change is named - "Will start working around: Knees." - directly above the live confirmation, and the screen states the change can be switched back off at any time. |
+| `03-injury-control-routed.png` | The production `InjuryFlagsView`, arrived at from the coach's route | Every protectable area is a switch (so a flag is reversible here), the routed area arrives switched on but **unsaved**, the pending change is named - "Will start working around: Knees." - directly above the live confirmation, and the screen states the change can be switched back off at any time. **Cancel** is the explicit way back out of the routed sheet, so "I changed my mind after accepting the route" is a labelled control rather than only a swipe-down. |
 
 ## What these images do *not* prove
 
-- That declining or accepting writes nothing. That is behavioural and is proved in `CoachViewModelTests` (US-AC08 block) and `InjuryFlagsViewModelTests`.
+- That declining or accepting writes nothing, or that **Cancel** discards the staged edit without writing. Those are behavioural and are proved in `CoachViewModelTests` (US-AC08 block) and `InjuryFlagsViewModelTests`.
+- That a confirmed change reaches the Ready screen without a relaunch. That is behavioural: the injury save bumps `AppState.injuryFlagsRevision` (pinned in `AppStateTests`), the Ready tab re-loads on it, and `ReadyViewModelTests.testSelectDurationRegeneratesAgainstTheCurrentProfile` pins that a regeneration reads the *current* profile rather than the snapshot the screen loaded with.
 - That the *model's* replies never claim a change was made. A model's free text cannot be pinned; what is pinned is the persona instruction that steers it, in `proxy/test/worker.test.js`. The coach proxy is not deployed, so no live reply has been observed.
 
 ## Captain-verifiable manual QA

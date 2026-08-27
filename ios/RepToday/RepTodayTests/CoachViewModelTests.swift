@@ -505,6 +505,21 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.injuryRoutingOffer, "the area is already protected; there is nothing to offer")
     }
 
+    /// "Already flagged" is asked the *engine's* way. A stored `"Knee"` already contraindicates squats,
+    /// so offering to flag it would invite the user to confirm a protection they already have.
+    func testAnAreaProtectedUnderADifferentSpellingRaisesNoOffer() async {
+        let userService = MockUserService(user: injuryUser(["Knee"]))
+        let transport = StubTransport(.success(reply: "Understood - go easy.", status: 200))
+        let viewModel = makeInjuryViewModel(transport: transport, userService: userService)
+
+        viewModel.draft = "my knee hurts on squats"
+        await viewModel.send()
+
+        XCTAssertTrue(InjuryContraindication.contraindicatedPatterns(for: ["Knee"]).contains(.squat),
+                      "precondition: the engine already protects this area")
+        XCTAssertNil(viewModel.injuryRoutingOffer, "so the coach does not offer to flag it again")
+    }
+
     /// A failed turn raises no offer - the same rule the tuning path follows, so a message that never
     /// got an answer never leaves a prompt behind.
     func testFailedSendRaisesNoOffer() async {

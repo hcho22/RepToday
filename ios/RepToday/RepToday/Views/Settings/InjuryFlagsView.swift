@@ -25,6 +25,13 @@ enum InjuryFlagsCopy {
 
     /// Shown after a save lands, so the user sees that their action - not the coach's - is what changed.
     static let saved = "Saved. Your next session will use this."
+
+    /// The explicit way out of the coach-routed sheet: back out having changed nothing. Named for what
+    /// it does, so it can never read as confirming the staged area.
+    static let cancel = "Cancel"
+
+    /// The retry control on a failed read, so a screen that could not load is never a dead end.
+    static let retry = "Try again"
 }
 
 /// The injury control: the one place an injury safety filter is set or cleared after onboarding
@@ -39,6 +46,10 @@ enum InjuryFlagsCopy {
 /// confirming writes nothing. Every flag is reversible from this same screen.
 struct InjuryFlagsView: View {
     @Environment(\.dismiss) private var dismiss
+    /// Optional so the hosted evidence surfaces that mount this screen without an `AppState` still
+    /// render. When present, a confirmed change bumps its US-AC08 revision so the Ready screen
+    /// regenerates today's session against the new safety filter without a relaunch.
+    @Environment(AppState.self) private var appState: AppState?
 
     @State private var viewModel: InjuryFlagsViewModel
 
@@ -74,6 +85,9 @@ struct InjuryFlagsView: View {
                     }
                     .tint(Theme.Colors.accent)
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    // A screen that could not read the profile has nothing to stage against, so its
+                    // toggles do not pretend otherwise while the confirmation sits inert below them.
+                    .disabled(!viewModel.canEdit)
                     .accessibilityLabel(area.label)
                     .accessibilityHint("Stages \(area.label.lowercased()) as an area to work around. Nothing changes until you save.")
                 }
@@ -112,6 +126,17 @@ struct InjuryFlagsView: View {
                         .accessibilityLabel(error)
                 }
 
+                if viewModel.loadFailed {
+                    Button(InjuryFlagsCopy.retry) {
+                        Task { await viewModel.retryLoad(preselecting: preselect) }
+                    }
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(Theme.Colors.accent)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .accessibilityLabel(InjuryFlagsCopy.retry)
+                    .accessibilityHint("Reads your saved areas again")
+                }
+
                 // Styled from `Theme` rather than `.borderedProminent` so the enabled and disabled
                 // appearances are both design-system colours rather than a system material tinted over
                 // this row's own background.
@@ -145,6 +170,20 @@ struct InjuryFlagsView: View {
         .background(Theme.Colors.background)
         .navigationTitle(InjuryFlagsCopy.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Presented as a sheet from the coach's route, backing out is the "I changed my mind"
+            // path, and a swipe-down is the least discoverable control on the screen. So it is an
+            // explicit affordance that drops the staged edits and leaves without writing anything.
+            // In Settings the screen is pushed and the back button already says this, so no item.
+            if dismissesOnSave {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(InjuryFlagsCopy.cancel, action: cancel)
+                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .accessibilityLabel(InjuryFlagsCopy.cancel)
+                        .accessibilityHint("Closes without changing any of your areas")
+                }
+            }
+        }
         .task { await viewModel.load(preselecting: preselect) }
     }
 
@@ -158,8 +197,19 @@ struct InjuryFlagsView: View {
     private func confirm() {
         Task {
             await viewModel.save()
-            if dismissesOnSave, viewModel.didSave { dismiss() }
+            guard viewModel.didSave else { return }
+            // A safety filter has to reach the session the user is about to start, not the one after
+            // the next relaunch, so tell the Ready screen to rebuild today's session.
+            appState?.markInjuryFlagsChanged()
+            if dismissesOnSave { dismiss() }
         }
+    }
+
+    /// Leave without confirming: drop every staged edit, then dismiss. Nothing was written, so this
+    /// changes nothing on the profile - it is the control's own "declining changes nothing" path.
+    private func cancel() {
+        viewModel.discardChanges()
+        dismiss()
     }
 }
 

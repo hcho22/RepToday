@@ -388,4 +388,16 @@ enum InjuryOption: String, CaseIterable, Identifiable, Hashable {
         case .hips: return "Hips"
         }
     }
+
+    /// Whether this area is already flagged in a profile's stored injury tags.
+    ///
+    /// The comparison is the *engine's* (`InjuryContraindication.normalizedTag`), not raw string
+    /// equality: a stored `"Knee"` already contraindicates squats, so a surface that read it as
+    /// unflagged would offer to flag an area that is already protected and then append a duplicate
+    /// canonical tag beside it. Every "is this area already on?" question in the app - the coach's
+    /// routing offer and the injury control's toggles - goes through here, so there is one answer.
+    func isFlagged(in injuries: [String]) -> Bool {
+        let key = InjuryContraindication.normalizedTag(tag)
+        return injuries.contains { InjuryContraindication.normalizedTag($0) == key }
+    }
 }

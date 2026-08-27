@@ -31,6 +31,14 @@ final class InjuryFlagsViewModel {
     /// were the user's real (empty) answer.
     private(set) var isLoaded = false
 
+    /// True when the profile could not be read, so the surface says so and offers a retry instead of
+    /// presenting live-looking toggles over a confirmation that can never act.
+    private(set) var loadFailed = false
+
+    /// Whether the toggles should accept input. A screen that has not read the profile has nothing
+    /// honest to stage against, so it stages nothing.
+    var canEdit: Bool { isLoaded }
+
     /// True while a save is in flight.
     private(set) var isSaving = false
 
@@ -88,21 +96,38 @@ final class InjuryFlagsViewModel {
     func load(preselecting area: InjuryOption? = nil) async {
         guard !isLoaded else { return }
         guard let loaded = try? await userService.currentUser() else {
-            // No profile to edit (should not happen on this surface). Stay unloaded rather than
-            // presenting an empty selection that a save would write over a profile we never read.
+            // No profile to edit. Stay unloaded rather than presenting an empty selection that a save
+            // would write over a profile we never read - but say so and stay retryable, so the screen
+            // is never a dead end with live-looking toggles above an inert confirmation.
+            loadFailed = true
+            errorMessage = Self.loadFailureMessage
             return
         }
         user = loaded
         let tags = loaded.profile.injuries
-        savedSelection = Set(InjuryOption.allCases.filter { option in tags.contains(option.tag) })
-        unrecognizedTags = tags.filter { tag in !InjuryOption.allCases.contains { $0.tag == tag } }
+        savedSelection = Set(InjuryOption.allCases.filter { $0.isFlagged(in: tags) })
+        unrecognizedTags = tags.filter { tag in !InjuryOption.allCases.contains { $0.isFlagged(in: [tag]) } }
         selected = savedSelection
         if let area { selected.insert(area) }
+        loadFailed = false
+        errorMessage = nil
         isLoaded = true
     }
 
-    /// Stage an area on or off. Purely local until `save()`.
+    /// Retry a failed load, from the surface's own "Try again" control. The screen's `.task` does not
+    /// re-run for the same view identity, so without this a single failed read would leave the control
+    /// unusable for the life of the screen.
+    func retryLoad(preselecting area: InjuryOption? = nil) async {
+        guard !isLoaded else { return }
+        loadFailed = false
+        errorMessage = nil
+        await load(preselecting: area)
+    }
+
+    /// Stage an area on or off. Purely local until `save()`. A no-op before the profile has been read:
+    /// there is nothing to stage a change *against* yet.
     func toggle(_ area: InjuryOption) {
+        guard canEdit else { return }
         didSave = false
         if selected.contains(area) {
             selected.remove(area)
@@ -126,11 +151,17 @@ final class InjuryFlagsViewModel {
     /// Tag order is deterministic (`InjuryOption.allCases` order) after any tags this screen does not
     /// recognize, which are carried through untouched.
     func save() async {
-        guard canSave, var user else { return }
+        guard canSave, let loaded = user else { return }
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil
 
+        // Write onto the *freshest* aggregate, not the snapshot this screen opened with. `User` carries
+        // consistency, cold-start, duration, phase and subscription beside the profile, and the user
+        // service saves the whole record - so a CloudKit merge or a background policy/duration write
+        // landing while this screen was open would otherwise be rolled back by an injury save. Same
+        // re-read `SessionCompletionService` does before its write.
+        var user = (try? await userService.currentUser()) ?? loaded
         let tags = unrecognizedTags + InjuryOption.allCases.filter { selected.contains($0) }.map(\.tag)
         user.profile.injuries = tags
         do {
@@ -146,4 +177,7 @@ final class InjuryFlagsViewModel {
     /// Honest and non-alarming: the change did not stick, the previous flags still stand, and trying
     /// again is safe.
     static let saveFailureMessage = "Couldn't save that just now. Your areas are unchanged - try again."
+
+    /// The same honesty on the read side: nothing was shown, so nothing can be trusted or changed yet.
+    static let loadFailureMessage = "Couldn't load your areas just now. Nothing has changed - try again."
 }

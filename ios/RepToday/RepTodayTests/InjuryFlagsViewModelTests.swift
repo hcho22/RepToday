@@ -49,6 +49,58 @@ final class InjuryFlagsViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canSave, "an unread profile is never savable over")
     }
 
+    /// A failed read must not be a silent dead end: the screen says so, refuses to stage edits it
+    /// could never confirm, and stays retryable (its `.task` will not re-run for the same screen).
+    func testAFailedLoadSaysSoAndStagesNothing() async {
+        let viewModel = makeViewModel(MockUserService(user: nil))
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.loadFailed)
+        XCTAssertEqual(viewModel.errorMessage, InjuryFlagsViewModel.loadFailureMessage)
+        XCTAssertFalse(viewModel.canEdit, "toggles do not accept input over a profile we never read")
+
+        viewModel.toggle(.knees)
+        XCTAssertFalse(viewModel.isSelected(.knees), "a toggle cannot stage against nothing")
+        XCTAssertFalse(viewModel.canSave)
+    }
+
+    func testRetryingAFailedLoadRecoversTheScreen() async throws {
+        let service = MockUserService(user: nil)
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+        XCTAssertTrue(viewModel.loadFailed)
+
+        try await service.save(makeUser(injuries: [InjuryOption.hips.tag]))
+        await viewModel.retryLoad()
+
+        XCTAssertFalse(viewModel.loadFailed)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertTrue(viewModel.isLoaded)
+        XCTAssertTrue(viewModel.canEdit)
+        XCTAssertTrue(viewModel.isSelected(.hips))
+    }
+
+    /// The engine already treats `"Knee"` as a flagged knee (it normalizes tags before lookup), so the
+    /// control must show it switched on rather than offering to "add" a protection already in force -
+    /// which would then write a duplicate canonical tag beside it.
+    func testAnAlreadyProtectedAreaReadsAsFlaggedWhateverTheTagsSpelling() async throws {
+        let service = MockUserService(user: makeUser(injuries: ["Knee"]))
+        let viewModel = makeViewModel(service)
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.isSelected(.knees), "the engine already protects this area")
+        XCTAssertFalse(viewModel.hasUnsavedChanges, "so there is no change to confirm")
+
+        viewModel.toggle(.hips)
+        await viewModel.save()
+
+        let stored = try await storedInjuries(service)
+        XCTAssertEqual(stored.filter { InjuryContraindication.normalizedTag($0) == "knee" }.count, 1,
+                       "no duplicate knee tag is appended; got \(stored)")
+    }
+
     /// SwiftUI can run a screen's load task more than once. A second load must not wipe what the user
     /// has staged, re-stage an area they just switched back off, or - as it once did - leave the screen
     /// reading as un-loaded so its confirmation renders inert.
@@ -205,6 +257,32 @@ final class InjuryFlagsViewModelTests: XCTestCase {
 
         let stored = try await storedInjuries(service)
         XCTAssertEqual(stored, InjuryOption.allCases.filter { [.knees, .hips].contains($0) }.map(\.tag))
+    }
+
+    /// The write must land on the *freshest* aggregate, not the snapshot the screen opened with.
+    /// `User` carries consistency, cold-start, duration, phase and subscription beside the profile and
+    /// the service saves the whole record, so a completed session (or a CloudKit merge) landing while
+    /// this screen is open must not be rolled back by an injury save.
+    func testSavingDoesNotClobberAnotherWritersChanges() async throws {
+        let service = MockUserService(user: makeUser())
+        let viewModel = makeViewModel(service)
+        await viewModel.load()
+
+        viewModel.toggle(.knees)
+
+        // Another writer advances the aggregate while the edit sits staged.
+        let loaded = try await service.currentUser()
+        var moved = try XCTUnwrap(loaded)
+        moved.consistency.longestChain += 7
+        try await service.save(moved)
+
+        await viewModel.save()
+
+        let written = try await service.currentUser()
+        let saved = try XCTUnwrap(written)
+        XCTAssertEqual(saved.profile.injuries, [InjuryOption.knees.tag], "the injury change still lands")
+        XCTAssertEqual(saved.consistency.longestChain, moved.consistency.longestChain,
+                       "and the other writer's progress is not rolled back")
     }
 
     // MARK: - Failure is honest and non-destructive
