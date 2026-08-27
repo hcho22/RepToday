@@ -41,6 +41,24 @@ struct CoachContextBundle: Encodable, Equatable {
         let hasNextTier: Bool
     }
 
+    /// One foundational pattern's coarse strength-journey trend (US-AN02), so the coach can narrate a
+    /// concrete "your push is climbing, your hinge has been flat about 3 weeks" insight. Derived from
+    /// the same dated milestones the premium strength-journey analytics (US-AN01) show the user, via
+    /// `CoachStrengthJourneyReader`, so the coach's read can never disagree with the Progress tab.
+    ///
+    /// Deliberately coarse and non-identifying: a pattern, a direction, and a whole-week count - never
+    /// a date, an exercise id, or a raw milestone (which, paired, would edge back toward history).
+    struct JourneySummary: Encodable, Equatable {
+        /// The foundational pattern (push / squat / hinge / core).
+        let pattern: String
+        /// Its coarse trajectory: `climbing`, `flat`, or `steady`.
+        let trend: String
+        /// Whole weeks sat at the current frontier tier - the "flat about N weeks" number.
+        let weeksAtCurrentTier: Int
+        /// Whether the user has advanced at least one tier on this chain, ever.
+        let hasAdvanced: Bool
+    }
+
     /// The consistency signal, summarized to a coarse current level plus a direction - never the
     /// per-week series (which, paired with dates, edges toward a behavioral fingerprint).
     struct ConsistencySummary: Encodable, Equatable {
@@ -72,6 +90,10 @@ struct CoachContextBundle: Encodable, Equatable {
     let recentPatterns: [String]
     /// The coarse consistency summary.
     let consistency: ConsistencySummary
+    /// Per-foundation strength-journey trend (US-AN02), in `foundationalPatterns` order - so the coach
+    /// can narrate a concrete "your push is climbing, your hinge has been flat" insight. Empty when
+    /// there is no strength history to read yet.
+    let strengthJourney: [JourneySummary]
 
     /// Builds the bundle from values the app has **already computed** for its own surfaces, rather
     /// than re-deriving anything from raw history - so the coach's view and the user's view are one
@@ -86,6 +108,13 @@ struct CoachContextBundle: Encodable, Equatable {
     ///   - recentLogs: recent `WorkoutLog`s, used only to extract the distinct recent movement
     ///     patterns. Nothing from a log other than its patterns and completion order leaves this
     ///     function.
+    ///   - strengthJourney: the premium strength-journey analytics (US-AN01,
+    ///     `ProgressAnalytics.deep.strengthJourney`) - the same dated climb the Progress tab shows -
+    ///     summarized here to a coarse per-pattern trend (US-AN02). Defaults to empty so callers that
+    ///     do not narrate the journey (and every persisted-before-US-AN02 shape) are unaffected.
+    ///   - asOf: the vantage the journey's "flat for N weeks" is measured from, injected for
+    ///     determinism (never a wall-clock read).
+    ///   - calendar: the calendar the week counts bucket in, matching the analytics' own.
     ///   - recentPatternLimit: how many distinct recent patterns to keep (default 6).
     static func make(
         phase: Phase,
@@ -93,6 +122,9 @@ struct CoachContextBundle: Encodable, Equatable {
         chainPositions: [ChainPositionSummary],
         consistencyTrend: [ConsistencyTrendPoint],
         recentLogs: [WorkoutLog],
+        strengthJourney: StrengthJourney = StrengthJourney(chains: []),
+        asOf: Date = Date(),
+        calendar: Calendar = .current,
         recentPatternLimit: Int = 6
     ) -> CoachContextBundle {
         CoachContextBundle(
@@ -108,7 +140,17 @@ struct CoachContextBundle: Encodable, Equatable {
                 )
             },
             recentPatterns: distinctRecentPatterns(from: recentLogs, limit: recentPatternLimit),
-            consistency: summarize(trend: consistencyTrend)
+            consistency: summarize(trend: consistencyTrend),
+            strengthJourney: CoachStrengthJourneyReader
+                .trends(from: strengthJourney, asOf: asOf, calendar: calendar)
+                .map { trend in
+                    JourneySummary(
+                        pattern: trend.pattern.rawValue,
+                        trend: trend.trend.rawValue,
+                        weeksAtCurrentTier: trend.weeksAtCurrentTier,
+                        hasAdvanced: trend.hasAdvanced
+                    )
+                }
         )
     }
 

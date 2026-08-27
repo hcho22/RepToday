@@ -112,6 +112,35 @@ final class CoachViewModel {
         injuryRoutingOffer = nil
     }
 
+    /// The pending analytics-driven action offer (US-AN02), set when a "how am I doing?" progress
+    /// inquiry landed on a strength journey that shows a real stall. It is an **offer**, not a change:
+    /// accepting applies a bounded, preference-only `patternEmphasis` nudge through the *same* US-AC07
+    /// write path (never a workout edit); it can express nothing else. `nil` whenever there is nothing
+    /// to offer.
+    private(set) var analyticsOffer: CoachAnalyticsInsightOffer?
+
+    /// The user accepted the analytics offer: clear it and apply the bounded, clamped, preference-only
+    /// nudge that emphasizes the stalled pattern - through `CoachPolicyServiceProtocol`, exactly like
+    /// the US-AC07 tuning path - surfacing the honest coach note as a coach turn. A no-op (beyond
+    /// dismissing the card) when there is no policy service, no current user, or the clamped write
+    /// moves nothing. It only ever touches the one preference lever, so it never blocks the core loop
+    /// and never touches a safety filter.
+    func acceptAnalyticsOffer() async {
+        guard let offer = analyticsOffer else { return }
+        analyticsOffer = nil
+        guard let policyService,
+              let user = try? await userService.currentUser() else { return }
+        guard let written = try? await policyService.applyProposal(offer.proposal, for: user, asOf: now()),
+              let note = written.note else { return }
+        messages.append(Message(author: .coach, text: note.text))
+    }
+
+    /// The user declined the analytics offer: dismiss it and change nothing. Like declining the injury
+    /// offer, it is exactly a no-op plus the card going away - nothing was ever written.
+    func declineAnalyticsOffer() {
+        analyticsOffer = nil
+    }
+
     /// Whether the current draft can be sent right now: available, consent given, not already sending,
     /// and non-empty.
     var canSend: Bool { isAvailable && isDataSharingAcknowledged && !isSending && !trimmedDraft.isEmpty }
@@ -148,6 +177,11 @@ final class CoachViewModel {
     /// The derived context, built once from the user's real state and reused across the conversation
     /// (it is a snapshot of "where they are today", which does not change mid-chat). Rebuilt lazily.
     private var cachedContext: CoachContextBundle?
+
+    /// The typed strength-journey trends behind `cachedContext.strengthJourney` (US-AN02), cached
+    /// alongside it so the analytics offer reads the *same* classification the bundle sent - never a
+    /// second derivation that could disagree. Set whenever `cachedContext` is.
+    private var cachedStrengthTrends: [StrengthPatternTrend]?
 
     init(
         client: CoachProxyClient?,
@@ -217,10 +251,11 @@ final class CoachViewModel {
             messages.append(Message(author: .user, text: message))
         }
         errorMessage = nil
-        // A new question supersedes any un-answered routing offer: an offer belongs to the turn that
-        // raised it, and letting one linger under a later answer would read as a standing prompt.
-        // Dropping it changes nothing (it never set anything to begin with).
+        // A new question supersedes any un-answered offer: an offer belongs to the turn that raised
+        // it, and letting one linger under a later answer would read as a standing prompt. Dropping
+        // either changes nothing (neither ever set anything to begin with).
         injuryRoutingOffer = nil
+        analyticsOffer = nil
         isSending = true
         defer { isSending = false }
 
@@ -238,6 +273,11 @@ final class CoachViewModel {
             // nothing at all - the flag can only be set by the user in the injury control this offer
             // routes to.
             await offerInjuryRoutingIfSignalled(message)
+            // US-AN02: a "how am I doing?" progress inquiry, on a journey that shows a real stall,
+            // ends the turn with a bounded emphasis *offer*. Like the two above it runs only on the
+            // successful-reply path and writes nothing until the user accepts - and accepting routes
+            // through the US-AC07 policy path, so it can never be a workout edit.
+            await offerAnalyticsInsightIfRequested(message)
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
@@ -300,6 +340,25 @@ final class CoachViewModel {
         injuryRoutingOffer = routing
     }
 
+    /// Raise the analytics-driven action offer (US-AN02) when `message` is a progress inquiry and the
+    /// user's strength journey shows a real stall.
+    ///
+    /// The stall read is the *same* `CoachStrengthJourneyReader` classification the context bundle
+    /// carries (cached when the bundle was built at the top of this send), so the offer and the
+    /// narration cannot disagree. It only offers when there is a policy service to apply the nudge
+    /// through - offering an action the surface cannot take would be noise - and the offer's accept
+    /// routes through that same bounded US-AC07 path, so it can never be a workout edit. Best-effort
+    /// and non-blocking: no policy service, no progress inquiry, or no stall simply means no offer.
+    private func offerAnalyticsInsightIfRequested(_ message: String) async {
+        guard policyService != nil,
+              CoachAnalyticsInsight.isProgressInquiry(message) else { return }
+        // The trends were cached when `contextBundle()` ran earlier in this send; recompute defensively
+        // if a cache miss ever leaves them nil (e.g. a neutral default bundle).
+        let trends = cachedStrengthTrends ?? []
+        guard let offer = CoachAnalyticsInsight.offer(from: trends) else { return }
+        analyticsOffer = offer
+    }
+
     /// The derived, non-identifying context bundle for the conversation, built once from the user's
     /// real on-device state and cached. Best-effort throughout: a missing user or a failed library
     /// read yields a neutral default bundle so the coach can still give general form guidance rather
@@ -308,6 +367,7 @@ final class CoachViewModel {
         if let cachedContext { return cachedContext }
 
         let bundle: CoachContextBundle
+        var trends: [StrengthPatternTrend] = []
         if let user = try? await userService.currentUser() {
             let logs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? []
             let trend = ConsistencyTrend.trend(
@@ -317,17 +377,24 @@ final class CoachViewModel {
                 calendar: calendar
             )
             let chainPositions: [ChainPositionSummary]
+            let strengthJourney: StrengthJourney
             if let library = try? await exerciseService.exercises() {
-                chainPositions = ProgressAnalytics.from(
+                // One analytics pass gives both the chain positions and the strength journey the coach
+                // narrates, so both read the *same* frontier the Progress tab shows.
+                let analytics = ProgressAnalytics.from(
                     logs: logs,
                     library: library,
                     phase: user.phase,
                     asOf: now(),
                     calendar: calendar
-                ).chainPositions
+                )
+                chainPositions = analytics.chainPositions
+                strengthJourney = analytics.deep.strengthJourney
             } else {
                 chainPositions = []
+                strengthJourney = StrengthJourney(chains: [])
             }
+            trends = CoachStrengthJourneyReader.trends(from: strengthJourney, asOf: now(), calendar: calendar)
             bundle = CoachContextBundle.make(
                 phase: user.phase,
                 // The user's learned Default Duration (US-F04) stands in for "the minutes they'd
@@ -336,7 +403,10 @@ final class CoachViewModel {
                 requestedMinutes: user.duration.defaultMinutes,
                 chainPositions: chainPositions,
                 consistencyTrend: trend,
-                recentLogs: logs
+                recentLogs: logs,
+                strengthJourney: strengthJourney,
+                asOf: now(),
+                calendar: calendar
             )
         } else {
             // No profile (should not happen on this surface): a neutral, non-identifying default so the
@@ -350,6 +420,7 @@ final class CoachViewModel {
             )
         }
         cachedContext = bundle
+        cachedStrengthTrends = trends
         return bundle
     }
 
