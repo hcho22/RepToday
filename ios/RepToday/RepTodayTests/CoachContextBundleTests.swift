@@ -192,7 +192,7 @@ final class CoachContextBundleTests: XCTestCase {
 
         XCTAssertEqual(
             Set(object.keys),
-            ["phase", "requestedMinutes", "chainPositions", "recentPatterns", "consistency"]
+            ["phase", "requestedMinutes", "chainPositions", "recentPatterns", "consistency", "strengthJourney"]
         )
 
         let chain = try XCTUnwrap((object["chainPositions"] as? [[String: Any]])?.first)
@@ -203,10 +203,66 @@ final class CoachContextBundleTests: XCTestCase {
         let consistency = try XCTUnwrap(object["consistency"] as? [String: Any])
         XCTAssertEqual(Set(consistency.keys), ["currentScore", "direction"])
 
+        // The US-AN02 strength-journey summary carries only coarse, non-identifying fields - a
+        // pattern, a trend, a whole-week count, and an advancement flag; never a date or an id.
+        XCTAssertNotNil(object["strengthJourney"] as? [[String: Any]])
+
         // No identity field can appear anywhere in the serialized bundle.
         let wire = String(decoding: data, as: UTF8.self).lowercased()
         for forbidden in ["installid", "idfa", "identifierforvendor", "appleid", "email", "keychain", "uuid", "\"id\""] {
             XCTAssertFalse(wire.contains(forbidden), "bundle wire must not contain \(forbidden): \(wire)")
         }
+    }
+
+    // MARK: - Strength-journey summary (US-AN02)
+
+    /// The bundle carries the coarse per-pattern strength-journey trend so the coach can narrate a
+    /// concrete insight: a recently-advanced pattern reads `climbing`, one stuck at its frontier reads
+    /// `flat` with the weeks it has been stuck - the flat-hinge signal the validation test turns on.
+    func testCarriesTheStrengthJourneyTrend() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.firstWeekday = 1
+        let asOf = calendar.date(from: DateComponents(year: 2026, month: 7, day: 8, hour: 12))!
+        func date(weeksAgo: Int) -> Date { calendar.date(byAdding: .day, value: -weeksAgo * 7, to: asOf)! }
+        func milestone(_ id: String, tier: Int, weeksAgo: Int) -> TierMilestone {
+            TierMilestone(exerciseId: id, displayName: id, tier: tier, firstReachedAt: date(weeksAgo: weeksAgo))
+        }
+
+        let journey = StrengthJourney(chains: [
+            ChainJourney(pattern: .push, chainId: "push_c", milestones: [
+                milestone("push_a", tier: 1, weeksAgo: 5),
+                milestone("push_c", tier: 3, weeksAgo: 0),
+            ], calendar: calendar),
+            ChainJourney(pattern: .hinge, chainId: "hinge_c", milestones: [
+                milestone("hinge_b", tier: 2, weeksAgo: 4),
+            ], calendar: calendar),
+        ])
+
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 15,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: [],
+            strengthJourney: journey,
+            asOf: asOf,
+            calendar: calendar
+        )
+
+        let push = bundle.strengthJourney.first { $0.pattern == "push" }
+        let hinge = bundle.strengthJourney.first { $0.pattern == "hinge" }
+        XCTAssertEqual(push?.trend, "climbing")
+        XCTAssertEqual(hinge?.trend, "flat")
+        XCTAssertEqual(hinge?.weeksAtCurrentTier, 4)
+    }
+
+    /// With no strength history the journey summary is simply empty - never a fabricated trend.
+    func testStrengthJourneySummaryEmptyWithoutHistory() {
+        let bundle = CoachContextBundle.make(
+            phase: .discipline, requestedMinutes: 15, chainPositions: [],
+            consistencyTrend: [], recentLogs: []
+        )
+        XCTAssertTrue(bundle.strengthJourney.isEmpty)
     }
 }

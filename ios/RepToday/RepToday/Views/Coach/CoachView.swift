@@ -164,6 +164,18 @@ struct CoachView: View {
                             )
                             .id(Self.injuryOfferID)
                         }
+
+                        // US-AN02: a progress inquiry on a stalled journey ends the turn with a bounded
+                        // emphasis offer. Nothing has changed; accepting applies a preference nudge via
+                        // the US-AC07 policy path, declining dismisses and changes nothing.
+                        if let offer = viewModel.analyticsOffer {
+                            CoachAnalyticsInsightView(
+                                offer: offer,
+                                onAccept: { Task { await viewModel.acceptAnalyticsOffer() } },
+                                onDecline: viewModel.declineAnalyticsOffer
+                            )
+                            .id(Self.analyticsOfferID)
+                        }
                     }
                     .padding(Theme.Spacing.md)
                 }
@@ -175,6 +187,9 @@ struct CoachView: View {
                     scrollToBottom(proxy)
                 }
                 .onChange(of: viewModel.injuryRoutingOffer) { _, _ in
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: viewModel.analyticsOffer) { _, _ in
                     scrollToBottom(proxy)
                 }
             }
@@ -338,12 +353,18 @@ struct CoachView: View {
     /// appears - the offer is the end of that turn, below the coach's answer.
     private static let injuryOfferID = "coach.injuryOffer"
 
+    /// A stable id for the analytics insight offer card, so it is what the conversation scrolls to when
+    /// it appears - the offer is the end of that turn, below the coach's answer.
+    private static let analyticsOfferID = "coach.analyticsOffer"
+
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         let target: AnyHashable
         if viewModel.isSending {
             target = AnyHashable(Self.typingIndicatorID)
         } else if viewModel.injuryRoutingOffer != nil {
             target = AnyHashable(Self.injuryOfferID)
+        } else if viewModel.analyticsOffer != nil {
+            target = AnyHashable(Self.analyticsOfferID)
         } else {
             target = (viewModel.messages.last?.id).map(AnyHashable.init) ?? AnyHashable(Self.typingIndicatorID)
         }

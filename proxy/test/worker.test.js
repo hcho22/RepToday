@@ -224,6 +224,22 @@ describe("POST /coach", () => {
     // And it must never narrate a change it did not make.
     expect(system).toContain("never say or imply that you have flagged it, removed a movement, or changed anything");
   });
+
+  // US-AN02: the coach narrates the strength-journey analytics and may offer a bounded preference
+  // nudge, but never edits the workout or claims to have changed anything itself.
+  it("sends a persona that narrates the strength journey and offers only a bounded preference", async () => {
+    await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
+
+    const system = JSON.parse(fetchSpy.mock.calls[0][1].body).system.toLowerCase().replace(/\s+/g, " ");
+
+    // It is told the strength-journey trend is in the context, and to narrate a concrete insight.
+    expect(system).toContain("strength-journey trend");
+    expect(system).toContain("how am i doing");
+    expect(system).toContain("has gone flat");
+    // The action it may offer is a preference the app applies - never a workout edit, never a claim.
+    expect(system).toContain("leaning the program toward");
+    expect(system).toContain("never say you have already changed anything");
+  });
 });
 
 describe("abuse gate", () => {

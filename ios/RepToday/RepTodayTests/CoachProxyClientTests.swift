@@ -62,7 +62,10 @@ final class CoachProxyClientTests: XCTestCase {
                 ),
             ],
             recentPatterns: ["push", "core"],
-            consistency: CoachContextBundle.ConsistencySummary(currentScore: 72, direction: .rising)
+            consistency: CoachContextBundle.ConsistencySummary(currentScore: 72, direction: .rising),
+            strengthJourney: [
+                CoachContextBundle.JourneySummary(pattern: "push", trend: "climbing", weeksAtCurrentTier: 0, hasAdvanced: true),
+            ]
         )
     }
 

@@ -370,11 +370,11 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [ ] The coach can read the strength-journey analytics (US-AN01) as part of its derived context and narrate a concrete insight ("your push is climbing, your hinge has been flat 3 weeks").
-- [ ] When the insight maps to a preference change, the coach offers an action that routes through US-AC07 (bounded policy write), never a direct workout edit.
-- [ ] No new data leaves the device beyond the derived context bundle defined in US-AC01 (still stateless, still no raw history).
-- [ ] Tests: given a flat-hinge history, the coach surfaces the hinge insight and offers the US-AC07 emphasis action. `docs/test-coverage.md` row.
-- [ ] Build and suites pass.
+- [x] The coach can read the strength-journey analytics (US-AN01) as part of its derived context and narrate a concrete insight ("your push is climbing, your hinge has been flat 3 weeks").
+- [x] When the insight maps to a preference change, the coach offers an action that routes through US-AC07 (bounded policy write), never a direct workout edit.
+- [x] No new data leaves the device beyond the derived context bundle defined in US-AC01 (still stateless, still no raw history).
+- [x] Tests: given a flat-hinge history, the coach surfaces the hinge insight and offers the US-AC07 emphasis action. `docs/test-coverage.md` row.
+- [x] Build and suites pass.
 
 **Validation Test:**
 

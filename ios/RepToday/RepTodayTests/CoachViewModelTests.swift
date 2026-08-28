@@ -560,4 +560,159 @@ final class CoachViewModelTests: XCTestCase {
         let context: Context
         let message: String
     }
+
+    // MARK: - US-AN02: coach narrates the analytics and offers a bounded emphasis action
+
+    /// A fixed calendar/vantage so the dated history classifies deterministically (matches
+    /// `ProgressAnalyticsTests`).
+    private var an02Calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.firstWeekday = 1
+        return calendar
+    }
+
+    private var an02AsOf: Date {
+        an02Calendar.date(from: DateComponents(year: 2026, month: 7, day: 8, hour: 12))!
+    }
+
+    private func an02Log(_ exerciseId: String, _ pattern: MovementPattern, weeksAgo: Int) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: an02Calendar.date(byAdding: .day, value: -weeksAgo * 7, to: an02AsOf)!,
+            requestedMinutes: 15,
+            durationMinutes: 15,
+            wasReturn: false,
+            shape: .singleFocus,
+            focusPillar: nil,
+            perceivedDifficulty: nil,
+            exercises: [
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: exerciseId,
+                    pillar: .strength,
+                    movementPattern: pattern,
+                    completedSets: [CompletedSet(reps: 10, durationSeconds: nil)],
+                    skipped: false
+                )
+            ]
+        )
+    }
+
+    /// The validation test. A premium user whose push has climbed while hinge stalled asks "how am I
+    /// doing?" - the coach raises a bounded emphasis offer toward the stalled hinge (naming push as the
+    /// climb), and *accepting* applies a clamped, coach-sourced (`.llm`) policy write that emphasizes
+    /// hinge, with the honest note surfaced as a coach turn. The offered action routes through the
+    /// US-AC07 path, never a workout edit.
+    func testProgressInquiryOffersEmphasisTowardTheStalledPatternAndAcceptWrites() async throws {
+        var user = MockPersistence.sampleUser
+        user.id = "coach-an02-user"
+        let store = InMemorySessionPolicyStore()
+        // push climbing: three tiers, current reached this week. hinge flat: stuck at its frontier 4 weeks.
+        let logs = [
+            an02Log("push_wall", .push, weeksAgo: 5),
+            an02Log("push_incline", .push, weeksAgo: 4),
+            an02Log("push_knee", .push, weeksAgo: 0),
+            an02Log("hinge_glute_bridge", .hinge, weeksAgo: 5),
+            an02Log("hinge_single_leg_bridge", .hinge, weeksAgo: 4),
+        ]
+        let transport = StubTransport(.success(reply: "Your push is climbing and hinge has stalled - here's the picture.", status: 200))
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            userService: MockUserService(user: user),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            exerciseService: try! MockExerciseService(),
+            policyService: CoachSessionPolicyService(store: store),
+            now: { self.an02AsOf },
+            calendar: an02Calendar
+        )
+        viewModel.grantDataSharingConsent()
+
+        viewModel.draft = "How am I doing?"
+        await viewModel.send()
+
+        // The coach offers to lean toward the stalled hinge, naming the climbing push - a concrete
+        // insight, not a generic summary.
+        let offer = try XCTUnwrap(viewModel.analyticsOffer, "a stalled journey raises an emphasis offer")
+        XCTAssertEqual(offer.stalledPattern, .hinge)
+        XCTAssertEqual(offer.climbingPattern, .push)
+        // Nothing is written until the user accepts.
+        let beforeAccept = try await store.policy(for: user.id)
+        XCTAssertNil(beforeAccept, "the offer alone writes nothing")
+
+        await viewModel.acceptAnalyticsOffer()
+
+        // Accepting applies a bounded, coach-sourced policy write emphasizing hinge...
+        let storedPolicy = try await store.policy(for: user.id)
+        let policy = try XCTUnwrap(storedPolicy)
+        XCTAssertEqual(policy.updatedBy, .llm)
+        XCTAssertGreaterThan(policy.patternEmphasis[.hinge] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertLessThanOrEqual(policy.patternEmphasis[.hinge] ?? 0, SessionPolicy.maxEmphasis, "clamped to the rail")
+        // ...and surfaces the honest note (naming hinge) as a coach turn.
+        let coachTexts = viewModel.messages.filter { $0.author == .coach }.map(\.text)
+        XCTAssertTrue(coachTexts.contains { $0.lowercased().contains("hinge") },
+                      "the honest note naming hinge is surfaced as a coach turn")
+        XCTAssertNil(viewModel.analyticsOffer, "accepting consumes the offer")
+    }
+
+    /// A non-inquiry question never raises the analytics offer, so the surface stays quiet unless the
+    /// user actually asks how they are doing.
+    func testNonInquiryRaisesNoAnalyticsOffer() async {
+        var user = MockPersistence.sampleUser
+        user.id = "coach-an02-quiet"
+        let store = InMemorySessionPolicyStore()
+        let logs = [
+            an02Log("hinge_glute_bridge", .hinge, weeksAgo: 5),
+            an02Log("hinge_single_leg_bridge", .hinge, weeksAgo: 4),
+        ]
+        let transport = StubTransport(.success(reply: "Here's how to do a good morning.", status: 200))
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            userService: MockUserService(user: user),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            exerciseService: try! MockExerciseService(),
+            policyService: CoachSessionPolicyService(store: store),
+            now: { self.an02AsOf },
+            calendar: an02Calendar
+        )
+        viewModel.grantDataSharingConsent()
+
+        viewModel.draft = "how do I do a good morning?"
+        await viewModel.send()
+
+        XCTAssertNil(viewModel.analyticsOffer)
+    }
+
+    /// Declining the analytics offer is exactly a no-op: the card goes away and nothing is written.
+    func testDecliningAnalyticsOfferChangesNothing() async throws {
+        var user = MockPersistence.sampleUser
+        user.id = "coach-an02-decline"
+        let store = InMemorySessionPolicyStore()
+        let logs = [
+            an02Log("hinge_glute_bridge", .hinge, weeksAgo: 5),
+            an02Log("hinge_single_leg_bridge", .hinge, weeksAgo: 4),
+        ]
+        let transport = StubTransport(.success(reply: "Here's the picture.", status: 200))
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            userService: MockUserService(user: user),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            exerciseService: try! MockExerciseService(),
+            policyService: CoachSessionPolicyService(store: store),
+            now: { self.an02AsOf },
+            calendar: an02Calendar
+        )
+        viewModel.grantDataSharingConsent()
+
+        viewModel.draft = "how am I doing?"
+        await viewModel.send()
+        XCTAssertNotNil(viewModel.analyticsOffer)
+
+        viewModel.declineAnalyticsOffer()
+
+        XCTAssertNil(viewModel.analyticsOffer)
+        let stored = try await store.policy(for: user.id)
+        XCTAssertNil(stored, "declining writes nothing")
+    }
 }
