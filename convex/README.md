@@ -2,7 +2,7 @@
 
 The whole analytics backend: **one append-only evidence table, one mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
 
-It exists so the anonymous funnel events defined in `gtm/06-channels/event-metric-schema.md` have
+It exists so the anonymous funnel events defined in the event-metric schema have
 somewhere to land during the 90-day PMF test.
 The client that fills it is `LiveAnalyticsService` (US-T04, landed), which reaches this deployment
 with a plain `URLSession` POST and **no Convex SDK** - the US-T01 spike returned a no-go on

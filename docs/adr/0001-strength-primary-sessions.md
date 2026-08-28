@@ -50,4 +50,4 @@ Accepted trade-offs (the sharpest, captain-accepted):
 
 These trade-offs were surfaced in the PRD and **accepted by the captain**; this ADR records them so a future contributor does not re-add a mobility safety valve believing it to be a missing feature rather than a deliberately removed one.
 
-Scope note: **GTM/marketing positioning is out of scope of this decision.** The `gtm/**` package still carries co-primary framing and is captain-owned, tracked under a separate task; this ADR governs the product/engine vocabulary and behavior only.
+Scope note: **GTM/marketing positioning is out of scope of this decision.** The GTM/marketing package (formerly the top-level `gtm` directory, now maintained in a private tracker) still carries co-primary framing and is captain-owned, tracked under a separate task; this ADR governs the product/engine vocabulary and behavior only.

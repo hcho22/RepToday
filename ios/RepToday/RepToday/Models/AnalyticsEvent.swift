@@ -19,7 +19,7 @@ import Foundation
 /// key names. `AnalyticsWireBody` owns that second encoding; encoding this type with a
 /// `JSONEncoder` and POSTing the result would send a body the sink stores wrong.
 ///
-/// The names and property lists are pre-registered in `gtm/06-channels/event-metric-schema.md`
+/// The names and property lists are pre-registered in the event-metric schema
 /// and must not be edited to move a threshold. Like the domain enums in `Enums.swift`, the raw
 /// values here are a wire contract: they are the exact strings the Convex `events` table stores,
 /// so the case *names* may be refactored freely but the raw *values* must not change.

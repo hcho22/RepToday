@@ -17,7 +17,7 @@ import Foundation
 /// and it keeps emit-once meaning "attempted at most once" rather than "retried every launch in the
 /// window until it lands".
 ///
-/// **The three events and their exact rules** (`gtm/06-channels/event-metric-schema.md`, US-T07):
+/// **The three events and their exact rules** (event-metric schema, US-T07):
 /// - `app_install`: exactly once, iff `isFirstLaunch` - the one launch that stamped the origin itself
 ///   (`AppState.isFirstLaunch`). Both US-T05 edge cases fall out of that single rule: an unknown-origin
 ///   pre-existing install (`isFirstLaunch == false`, no origin) emits nothing, so the upgrade date

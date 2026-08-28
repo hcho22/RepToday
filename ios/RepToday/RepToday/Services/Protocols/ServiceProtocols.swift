@@ -178,7 +178,7 @@ extension SubscriptionServiceProtocol {
 /// Records anonymous product-telemetry events (US-T02).
 ///
 /// The single emission method is the funnel-instrumentation seam: every later story emits the 13
-/// pre-registered events (`gtm/06-channels/event-metric-schema.md`) through this one interface, and
+/// pre-registered events (the event-metric schema) through this one interface, and
 /// tests assert on `MockAnalyticsService`'s in-memory record with no network. `record(_:)` is
 /// `async` but **not** `throws` - unlike the rest of this file's `async throws` house style - because
 /// emission is strictly fire-and-forget: a call site reads `await analytics.record(event)` with no
