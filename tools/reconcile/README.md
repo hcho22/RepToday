@@ -9,7 +9,7 @@ US-T13's deliverable is a reconciliation *report* that diffs, line by line, what
 That report cannot exist yet, because none of its inputs do:
 
 - no moderated TestFlight cohort has run, so Convex holds no real cohort events (a shipping build still points at no sink);
-- the named non-founder coder is still `[FOUNDER TO FILL]` in `gtm/07-thesis/investment-thesis.md`;
+- the named non-founder coder is still `[FOUNDER TO FILL]` in the investment thesis;
 - the coding rubric is not frozen.
 
 The captain's decision was to pre-build the tooling now, so that the moment the recordings and the coder's log exist, the reconciliation is **run-and-diff** rather than build-from-scratch.
@@ -26,7 +26,7 @@ So this directory is the harness only.
 2. **Pure tabulator** - `tabulate.js` (+ `funnel-schema.js`).
    A pure function with no network or deployment dependency that turns event rows into the per-install funnel table.
    Unit-tested against fixture arrays in `convex/reconcile/tabulate.test.ts` (run by `npm test`), mirroring how `AppEntryTelemetry` is a pure decision unit the iOS suite exercises without a live app.
-   The funnel's event set and order come from `funnel-schema.js`, whose names the test asserts are exactly `EVENT_NAMES` in `convex/events.ts` - itself pinned verbatim to `gtm/06-channels/event-metric-schema.md` and the Swift `AnalyticsEventName`.
+   The funnel's event set and order come from `funnel-schema.js`, whose names the test asserts are exactly `EVENT_NAMES` in `convex/events.ts` - itself pinned verbatim to the event-metric schema and the Swift `AnalyticsEventName`.
    So the funnel is driven by the authoritative schema, not a hand-kept guess: a drift in either list fails the suite.
 
 The tabulator source lives under `tools/` (not `convex/`) so it is never bundled into the deployed telemetry sink; its test lives under `convex/reconcile/` so the repo's existing `npm test` / `npm run typecheck` gates reach it with no config change.

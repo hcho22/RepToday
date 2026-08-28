@@ -3,7 +3,7 @@ import XCTest
 
 /// Re-runnable latency benchmark for the on-device session-generation claim ("every session is
 /// assembled offline in under 100ms", FR-12), the substantiation harness behind
-/// `gtm/01-research/session-generation-benchmark-2026-08-10.md`.
+/// the session-generation benchmark record (2026-08-10).
 ///
 /// **What it measures.** The exact call the marketing/telemetry number straddles:
 /// `WorkoutEngineProtocol.generateWorkout(requestedMinutes:user:recentLogs:sessionPolicy:)` on the

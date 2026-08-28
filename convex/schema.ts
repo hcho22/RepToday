@@ -5,7 +5,7 @@ import { v } from "convex/values";
  * The whole telemetry backend: one append-only table.
  *
  * There is deliberately no funnel, cohort, or aggregate structure here and no index beyond
- * Convex's defaults. Every metric in `gtm/06-channels/event-metric-schema.md` is derivable from
+ * Convex's defaults. Every metric in the anonymous funnel event-metric schema is derivable from
  * raw rows by a query written later, so the sink stays dumb and the analysis stays revisable.
  *
  * Numeric convention (pinned by US-T03): both timestamps are `v.number()` - Convex float64 - and a

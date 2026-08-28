@@ -110,7 +110,7 @@ both halves of the oversized-bag cap this story pins.
 
 ### Unknown event name
 
-`landing_page_view` is a real event in `gtm/06-channels/event-metric-schema.md`, but it is web-side
+`landing_page_view` is a real event in the event-metric schema, but it is web-side
 and deliberately outside the app's 13, which makes it the sharpest possible probe of the union.
 
 ```

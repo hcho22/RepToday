@@ -236,7 +236,7 @@ final class AnalyticsServiceTests: XCTestCase {
     // MARK: - The journey
 
     /// One anonymous install's whole funnel, in the order the app would emit it, using the property
-    /// names `gtm/06-channels/event-metric-schema.md` pre-registers for each event. Timestamps are
+    /// names the event-metric schema pre-registers for each event. Timestamps are
     /// fixed offsets from a pinned install moment so the fixture is byte-reproducible run to run.
     private static let funnelJourney: [AnalyticsEvent] = {
         // 2026-08-03T00:00:00Z, pinned rather than read from the clock.

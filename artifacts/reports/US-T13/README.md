@@ -7,7 +7,7 @@ reconciliation report will live.
 **It is intentionally empty of data.** No cohort data is committed here, because none exists yet:
 
 - no moderated TestFlight cohort has run, so Convex holds no real cohort events;
-- the non-founder coder is still `[FOUNDER TO FILL]` in `gtm/07-thesis/investment-thesis.md`;
+- the non-founder coder is still `[FOUNDER TO FILL]` in the investment thesis;
 - the coding rubric is not frozen.
 
 The re-runnable harness that will populate this directory is built and tested under

@@ -2,7 +2,7 @@
 
 /**
  * The funnel's event set, ordering, and salient properties - the reconciliation's view of the
- * authoritative schema in `gtm/06-channels/event-metric-schema.md`.
+ * authoritative event-metric schema.
  *
  * The 13 in-app event names and their order are the wire contract. This file mirrors that contract
  * so the pure tabulator has no network or Convex-runtime dependency, and
