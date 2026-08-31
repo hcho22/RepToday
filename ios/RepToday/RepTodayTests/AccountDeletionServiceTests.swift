@@ -86,6 +86,7 @@ final class AccountDeletionServiceTests: XCTestCase {
         let sessions = InMemoryActiveSessionStore(sessions: ["preview-user": resumableState()])
         let auth = MockAuthService(userIdentifier: "apple-user-123")
         let appState = makeAppState(isOnboarded: true, selectedTab: .progress)
+        let preDeletionInstallId = appState.installId
 
         let service = AccountDeletionService(
             userService: userService,
@@ -112,6 +113,10 @@ final class AccountDeletionServiceTests: XCTestCase {
 
         // Routing reset back to onboarding.
         await MainActor.run {
+            XCTAssertNotEqual(
+                appState.installId, preDeletionInstallId,
+                "post-deletion telemetry would remain linked to the prior install identity"
+            )
             XCTAssertFalse(appState.isOnboarded, "the app did not route back to onboarding")
             XCTAssertEqual(appState.selectedTab, .home, "the selected tab was not reset")
         }
@@ -160,6 +165,7 @@ final class AccountDeletionServiceTests: XCTestCase {
             sessionPolicyStore: policies, activeSessionStore: sessions, authService: auth
         )
         try await service.deleteAccount(appState: appState)
+        let identityAfterFirstDeletion = appState.installId
         // Second call: nothing left to clear, must not throw.
         try await service.deleteAccount(appState: appState)
 
@@ -167,7 +173,13 @@ final class AccountDeletionServiceTests: XCTestCase {
         XCTAssertNil(user)
         let remainingLogs = try await logs.workoutLogs(from: nil, to: nil)
         XCTAssertTrue(remainingLogs.isEmpty)
-        await MainActor.run { XCTAssertFalse(appState.isOnboarded) }
+        await MainActor.run {
+            XCTAssertFalse(appState.isOnboarded)
+            XCTAssertEqual(
+                appState.installId, identityAfterFirstDeletion,
+                "an idempotent second deletion rotated the already-separated identity again"
+            )
+        }
     }
 
     /// The teardown does not depend on there being a user aggregate at all (a never-fully-onboarded

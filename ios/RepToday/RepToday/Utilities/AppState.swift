@@ -83,9 +83,9 @@ final class AppState {
     /// gate `LiveAnalyticsService` reads on every emission. Writing it persists immediately, and the
     /// transport re-reads `UserDefaults` per event, so a toggle takes effect with no app restart.
     ///
-    /// Nothing here clears `installId`: this flag gates emission only. Adding a "reset telemetry
-    /// identity" control would put an install into the re-minted-identity state US-T07 has to decide
-    /// about first, and that story's criteria forbid pre-empting it.
+    /// Nothing here clears `installId`: this flag gates emission only. Account deletion is the one
+    /// deliberately separate path that rotates the identifier, so events after a deletion cannot be
+    /// linked to the account's earlier anonymous telemetry history.
     var analyticsEnabled: Bool {
         didSet {
             userDefaults.set(analyticsEnabled, forKey: AppState.analyticsEnabledKey)
@@ -180,7 +180,34 @@ final class AppState {
     /// by every relaunch that still finds it on disk. A missing or empty stored id is re-minted -
     /// the id is the half of the identity that gets replaced, while a recorded origin is the half
     /// that survives. Never an identity, never a device id.
-    let installId: String
+    private(set) var installId: String
+
+    /// A per-emission reader for the anonymous identifier, bound to the same `UserDefaults` store this
+    /// `AppState` writes. The live telemetry service holds this reader instead of freezing the launch
+    /// value, so an account deletion can rotate the identifier immediately without rebuilding the
+    /// app-wide service container or waiting for a relaunch.
+    var analyticsInstallId: @Sendable () -> String {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        let launchValue = installId
+        return {
+            guard let current = store.wrapped.string(forKey: Keys.installId), !current.isEmpty else {
+                return launchValue
+            }
+            return current
+        }
+    }
+
+    /// Rotates the anonymous identifier after a successful account deletion. The install origin and
+    /// consent choice deliberately survive: the privacy boundary needed here is unlinkability across
+    /// the deletion, not pretending the already-installed app was installed again or changing the
+    /// user's telemetry preference. The live transport reads `analyticsInstallId` for every event,
+    /// so the new value takes effect before onboarding resumes in the same process.
+    func rotateAnalyticsInstallId(newInstallId: () -> String = { UUID().uuidString }) {
+        let replacement = newInstallId()
+        precondition(!replacement.isEmpty, "an analytics install identifier cannot be empty")
+        installId = replacement
+        userDefaults.set(replacement, forKey: Keys.installId)
+    }
 
     /// When this install was first opened, or `nil` when that moment is genuinely unrecoverable.
     /// Written once and never moved again, so it is the stable origin the install cohort is
@@ -373,10 +400,11 @@ final class AppState {
             // accepted rather than chased: someone who installed an earlier build and never
             // finished onboarding still reads as a fresh install here.
             let isPreExistingInstall = wasOnboarded
-            installId = newInstallId()
+            let mintedInstallId = newInstallId()
+            installId = mintedInstallId
             firstLaunchAt = storedFirstLaunch ?? (isPreExistingInstall ? nil : openedAt)
             isFirstLaunch = storedFirstLaunch == nil && !isPreExistingInstall
-            userDefaults.set(installId, forKey: Keys.installId)
+            userDefaults.set(mintedInstallId, forKey: Keys.installId)
             if let firstLaunchAt {
                 userDefaults.set(firstLaunchAt, forKey: Keys.firstLaunchAt)
                 userDefaults.removeObject(forKey: Keys.firstLaunchUnknown)

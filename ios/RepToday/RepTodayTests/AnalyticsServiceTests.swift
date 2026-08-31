@@ -203,8 +203,8 @@ final class AnalyticsServiceTests: XCTestCase {
             "the production container must wire the live Convex transport when an endpoint is configured"
         )
         #else
-        // Release carries no endpoint until a production deployment is chosen, so the default must
-        // resolve to the inert sink - the same fallback a mistyped endpoint takes, not a second one.
+        // A raw Release test build carries the production endpoint but not the privately-injected
+        // archive token, so the same inert fallback applies.
         XCTAssertTrue(
             live.analyticsService is NoOpAnalyticsService,
             "an unconfigured build must fall back to the inert sink rather than wiring a transport"

@@ -16,8 +16,10 @@ protocol AccountDeletionServiceProtocol {
     /// 2. Clear the Keychain-held Sign in with Apple identifier (`AuthServiceProtocol.signOut()`).
     ///    Non-optional: the Keychain item survives reinstall, so skipping it would resurrect an
     ///    identity the user believed they deleted.
-    /// 3. Reset `AppState` (`isOnboarded` -> false, `selectedTab` -> `.home`), which routes the app
-    ///    back to onboarding with no residual profile.
+    /// 3. Rotate `AppState`'s anonymous analytics install identifier, then reset routing
+    ///    (`isOnboarded` -> false, `selectedTab` -> `.home`). The already-running telemetry service
+    ///    reads the identifier per emission, so post-deletion onboarding events cannot be linked to
+    ///    the prior install identity.
     ///
     /// Idempotent and safe for the local-UUID user who never signed in with Apple: a second call
     /// finds nothing to delete and the Keychain clear is a no-op.
@@ -70,6 +72,11 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         //    back to onboarding. Done last, so a throw in an earlier step leaves the user in place to
         //    retry against an idempotent teardown rather than stranded on a torn-down screen.
         await MainActor.run {
+            // `isOnboarded` is also the idempotence marker for the in-memory identity: a second
+            // teardown after the app already routed away must not keep minting fresh identifiers.
+            if appState.isOnboarded {
+                appState.rotateAnalyticsInstallId()
+            }
             appState.selectedTab = .home
             appState.isOnboarded = false
         }

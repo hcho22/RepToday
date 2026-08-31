@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as rateLimit from "../rateLimit.js";
@@ -20,6 +21,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   events: typeof events;
   http: typeof http;
   rateLimit: typeof rateLimit;

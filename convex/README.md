@@ -17,8 +17,8 @@ and US-T10 added the next three - the active-session player's `session_started`,
 and US-T11 added the weekly rollup's `week_active`, emitted once per active week from `SessionCompletionService`,
 and US-T12 added the last three - the monetization funnel's `paywall_shown`, `trial_started`, and `subscribe` on the paywall (`PaywallViewModel`).
 That is **all 13 of the 13 emission sites**. So `record(_:)` is now
-called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, and on the paywall - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
-`NoOpAnalyticsService` and the events go nowhere until a production deployment is chosen (below),
+called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, and on the paywall. Release archives now target production deployment `sensible-spider-810`; the matching abuse-deterrence token is injected from the captain-owned macOS Keychain by `tools/archive-release.sh`, never committed. A missing endpoint or token still resolves
+`NoOpAnalyticsService`,
 while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process
 interceptor in front of it; pointed at a real deployment deliberately, as the US-T06 validation run
@@ -29,11 +29,10 @@ It also has a consent gate in front of it (US-T06, landed): the transport re-rea
 receives rows from installs that have not opted out. That is a **client-side** gate and this sink
 knows nothing about it - it has no notion of consent, and no way to tell an install that opted out
 from one that never ran. An install is simply absent, and this table cannot say which it was.
-Nor is there a production deployment. Which one the app talks to is a per-configuration build
-setting (`REPTODAY_ANALYTICS_ENDPOINT` in `ios/RepToday/project.yml`): a Debug build points at the
-dev deployment, and a **Release build points nowhere at all** and is inert, because none has been
-chosen. Choosing and deploying one is a precondition for shipping any build that emits, recorded on
-US-T07's own acceptance criteria.
+Which deployment the app talks to is a per-configuration build setting
+(`REPTODAY_ANALYTICS_ENDPOINT` in `ios/RepToday/project.yml`): Debug points at the dev deployment and
+Release at production deployment `sensible-spider-810`. Release's token remains private and is
+injected only by the archive path above.
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
 It is now the *sink's* only entry point too, which this file previously claimed before it was true:
@@ -240,9 +239,10 @@ npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; neve
 
 The client sources the same value from a per-configuration build setting
 (`REPTODAY_ANALYTICS_SECRET` in `ios/RepToday/project.yml`, expanded into `Info.plist`), exactly the
-way it sources the endpoint: Debug carries the dev deployment's secret, Release carries nothing (no
-production deployment chosen yet), so a Release build is inert. The Debug build setting's value and
-the deployment's env var must match.
+way it sources the endpoint: Debug carries the dev deployment's secret; Release source carries an
+empty default and `tools/archive-release.sh` injects the production-only value from the captain-owned
+macOS Keychain through a temporary mode-600 xcconfig. The build setting and the target deployment's
+environment variable must match. Missing either endpoint or token remains inert and nonfatal.
 
 - A **missing or wrong** secret is a caller fault: **`401`**, no insert. Never `5xx`, so it never
   looks like a sink outage on the `4xx`/`5xx` signal a human watches during the PMF test.
