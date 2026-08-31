@@ -230,6 +230,16 @@ final class CoachProxyClientTests: XCTestCase {
         }
     }
 
+    func testMapsSafetyRefusalOutcomeToTypedError() async {
+        let data = Data(#"{"outcome":"safety_refusal"}"#.utf8)
+        let transport = StubTransport(.success(data: data, status: 200))
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
+
+        await XCTAssertThrowsErrorAsync(try await client.reply(to: "unsafe request", context: bundle())) { error in
+            XCTAssertEqual(error as? CoachProxyClient.CoachError, .safetyRefusal)
+        }
+    }
+
     func testThrowsOnUndecodableBody() async {
         let transport = StubTransport(.success(data: Data("not json".utf8), status: 200))
         let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)

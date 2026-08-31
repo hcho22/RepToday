@@ -15,6 +15,7 @@ final class CoachViewModelTests: XCTestCase {
     private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
         enum Outcome {
             case success(reply: String, status: Int)
+            case safetyRefusal
             case failure(Error)
         }
         var outcome: Outcome
@@ -34,6 +35,8 @@ final class CoachViewModelTests: XCTestCase {
             switch outcome {
             case let .success(reply, status):
                 return (Data(#"{"reply":"\#(reply)"}"#.utf8), status)
+            case .safetyRefusal:
+                return (Data(#"{"outcome":"safety_refusal"}"#.utf8), 200)
             case let .failure(error):
                 throw error
             }
@@ -155,6 +158,19 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
         XCTAssertEqual(viewModel.messages.count, 1)
         XCTAssertTrue(viewModel.canRetry)
+    }
+
+    func testSafetyRefusalShowsOwnedMessageWithoutRetry() async {
+        let transport = StubTransport(.safetyRefusal)
+        let viewModel = makeViewModel(transport: transport)
+
+        viewModel.draft = "unsafe request"
+        await viewModel.send()
+
+        XCTAssertEqual(viewModel.messages.map(\.text), ["unsafe request"])
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.safetyRefusalMessage)
+        XCTAssertFalse(viewModel.canRetry)
+        XCTAssertFalse(viewModel.isSending)
     }
 
     func testRetryAfterFailureSendsTheSameQuestionWithoutDuplicatingIt() async {

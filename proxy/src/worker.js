@@ -51,6 +51,7 @@ const COACH_UPSTREAM_TIMEOUT_MS = 30000;
 // A coach question is a sentence or two; cap the free-text so one turn stays small and cheap. The iOS
 // client caps the same value, so this is defense in depth, not the only gate.
 const COACH_MAX_MESSAGE_CHARS = 2000;
+const COACH_SAFETY_REFUSAL_OUTCOME = "safety_refusal";
 const COACH_SAFETY_IDENTIFIER_PATTERN =
   /^coach-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -255,11 +256,14 @@ async function handleCoach(request, env) {
     return json({ error: upstream.error, ...(upstream.status ? { status: upstream.status } : {}) }, 502);
   }
 
-  const reply = extractOpenAIText(upstream.body);
-  if (!reply) {
+  const outcome = extractOpenAIOutcome(upstream.body);
+  if (outcome.kind === "refusal") {
+    return json({ outcome: COACH_SAFETY_REFUSAL_OUTCOME }, 200);
+  }
+  if (outcome.kind === "empty") {
     return json({ error: "empty_reply" }, 502);
   }
-  return json({ reply }, 200);
+  return json({ reply: outcome.reply }, 200);
 }
 
 // MARK: - Shared machinery
@@ -434,15 +438,21 @@ function extractText(message) {
     .trim();
 }
 
-/** Join and trim the output-text blocks of an OpenAI Responses API response. */
-function extractOpenAIText(response) {
+/**
+ * @returns {{ kind: "refusal" } | { kind: "reply", reply: string } | { kind: "empty" }}
+ */
+function extractOpenAIOutcome(response) {
   const output = Array.isArray(response?.output) ? response.output : [];
-  return output
-    .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+  const blocks = output.flatMap((item) => (Array.isArray(item?.content) ? item.content : []));
+  if (blocks.some((block) => block?.type === "refusal")) {
+    return { kind: "refusal" };
+  }
+  const reply = blocks
     .filter((block) => block?.type === "output_text" && typeof block.text === "string")
     .map((block) => block.text)
     .join("")
     .trim();
+  return reply ? { kind: "reply", reply } : { kind: "empty" };
 }
 
 /** JSON response helper. */

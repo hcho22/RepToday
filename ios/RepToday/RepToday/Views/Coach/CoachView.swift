@@ -6,9 +6,9 @@ import SwiftUI
 /// the audited `CoachContextBundle` and the stateless `CoachProxyClient` transport.
 ///
 /// It only ever *talks*: it never generates or changes a workout (the deterministic engine owns every
-/// session; the persona enforces this in the proxy). On any transport failure it degrades to a clear,
-/// non-blocking, retryable banner, and when no coach proxy is configured for the build it shows a
-/// calm "unavailable" state - the free core loop is never affected and never waits on it.
+/// session; the persona enforces this in the proxy). Transport failures degrade to a clear retryable
+/// banner; safety refusals use a stable non-retryable message. When no coach proxy is configured for
+/// the build it shows a calm "unavailable" state - the free core loop is never affected.
 ///
 /// The one thing it does beyond talking and the bounded US-AC07 preference nudge is **route**: a
 /// health/injury signal ends the turn with an explicit offer (US-AC08) to open the user's own injury

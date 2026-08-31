@@ -25,17 +25,17 @@ struct CoachSafetyIdentifier: RawRepresentable, Equatable, Sendable {
 
 /// The stateless coach transport client (US-AC01): it POSTs a `CoachContextBundle` plus the user's
 /// message to the key-holding proxy (the same Cloudflare Worker as the Variety Language slice, at its
-/// `POST /coach` route - see `proxy/README.md`) and returns OpenAI's reply. The OpenAI API key
-/// never lives in the app; the client only ever talks to the proxy.
+/// `POST /coach` route - see `proxy/README.md`) and classifies OpenAI's reply or safety refusal. The
+/// OpenAI API key never lives in the app; the client only ever talks to the proxy.
 ///
 /// It mirrors `ProxyVarietyLanguageProvider`'s contract so the coach is safe to `await` from a UI
 /// without ever blocking the core loop:
 ///
 /// - **Bounded.** Every call carries a `timeoutSeconds` (default `defaultTimeoutSeconds`), enforced
 ///   by the transport, so the caller's `await` always returns in bounded time.
-/// - **Throws on anything unusual.** A non-2xx status, an undecodable body, or an empty reply all
-///   throw, so the chat surface (US-AC02) can degrade to a clear non-blocking state. The core loop
-///   (generate / play / log) never depends on this client and never waits on it.
+/// - **Classifies every outcome.** A non-2xx status, an undecodable body, or an empty reply throws as
+///   a transport failure. A provider safety refusal throws its own non-retryable case without carrying
+///   the provider's wording. The core loop (generate / play / log) never depends on this client.
 /// - **Nothing identifying on the wire.** The request body is `{ context, message, safetyIdentifier }`,
 ///   where `context` is the audited, non-identifying `CoachContextBundle` and `safetyIdentifier` is a
 ///   separate random pseudonym used only for provider abuse prevention. No `installId`, IDFA, Apple ID,
@@ -73,11 +73,18 @@ struct CoachProxyClient {
         case badStatus(Int)
         /// The proxy returned a 2xx with an empty/whitespace reply - treated as no answer.
         case emptyReply
+        /// OpenAI returned a safety refusal, represented by the proxy without provider-authored text.
+        case safetyRefusal
 
         /// Whether this is the over-long-message case - the one failure the caller can hand back to
         /// the user to fix (trim and resend) rather than retry verbatim.
         var isMessageTooLong: Bool {
             if case .messageTooLong = self { return true }
+            return false
+        }
+
+        var isSafetyRefusal: Bool {
+            if case .safetyRefusal = self { return true }
             return false
         }
     }
@@ -200,8 +207,8 @@ struct CoachProxyClient {
     }
 
     /// The single stateless coach call: send the derived `context` plus the user's `message`, return
-    /// the trimmed reply. Throws on an empty/oversized message (locally, before any network), and on
-    /// any transport failure, timeout, non-2xx, or empty reply so the caller can degrade gracefully.
+    /// the trimmed reply. Throws on an empty/oversized message (locally, before any network), any
+    /// transport failure, timeout, non-2xx, empty reply, or a typed provider safety refusal.
     func reply(to message: String, context: CoachContextBundle) async throws -> String {
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty else { throw CoachError.emptyMessage }
@@ -233,7 +240,8 @@ struct CoachProxyClient {
         guard (200..<300).contains(statusCode) else { throw CoachError.badStatus(statusCode) }
 
         let response = try JSONDecoder().decode(CoachResponse.self, from: data)
-        let reply = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        if response.outcome == .safetyRefusal { throw CoachError.safetyRefusal }
+        let reply = response.reply?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !reply.isEmpty else { throw CoachError.emptyReply }
         return reply
     }
@@ -249,9 +257,14 @@ private struct CoachRequest: Encodable {
     let safetyIdentifier: String
 }
 
-/// The proxy response - just the coach's reply text.
+/// The proxy response is either reply text or a provider-independent safety outcome.
 private struct CoachResponse: Decodable {
-    let reply: String
+    enum Outcome: String, Decodable {
+        case safetyRefusal = "safety_refusal"
+    }
+
+    let reply: String?
+    let outcome: Outcome?
 }
 
 // MARK: - Transport seam

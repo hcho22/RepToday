@@ -82,8 +82,8 @@ the template. A failing or absent proxy never blocks the app.
 ## Wire contract: `POST /coach` (US-AC01)
 
 The coach client (`CoachProxyClient`) POSTs the derived context bundle plus the user's message and
-returns the reply. It throws on any non-2xx, timeout, or malformed body so the (US-AC02) chat surface
-degrades to a clear, non-blocking state - the free core loop never depends on or waits for it.
+classifies the reply or safety outcome. It throws on any non-2xx, timeout, or malformed body so the
+(US-AC02) chat surface degrades to a clear, non-blocking state - the free core loop never depends on it.
 
 ### Request
 
@@ -129,6 +129,15 @@ Content-Type: application/json
 { "reply": "You got squats because squat was your stalest pattern this week..." }
 ```
 
+A provider safety refusal is a successful, non-retryable outcome with no provider-authored text:
+
+```json
+{ "outcome": "safety_refusal" }
+```
+
+The Worker discards OpenAI's raw refusal wording. The iOS client maps this outcome to Rep Today's
+stable safety message and does not offer to retry the same request.
+
 On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
 (`method_not_allowed`, `unauthorized`, `payload_too_large`, `invalid_json`, `invalid_context`,
 `invalid_message`, `message_too_long`, `invalid_safety_identifier`, `not_configured`,
@@ -165,9 +174,9 @@ npm test            # vitest: drives worker.fetch(request, env) in Node, stubbin
 ```
 
 The test suite (`test/worker.test.js`) proves the boundary without a network or a deployment: a valid
-request makes exactly one route-appropriate upstream call and returns a reply; an oversized / invalid /
-unauthorized request is rejected **before** that call; and nothing is logged (the Worker never touches
-the console) or persisted (there are no storage bindings).
+request makes exactly one route-appropriate upstream call and returns a reply or typed safety outcome;
+an oversized / invalid / unauthorized request is rejected **before** that call; provider refusal text
+never crosses the Worker boundary; and nothing is logged or persisted.
 
 ## Abuse protection
 

@@ -13,8 +13,8 @@ import Observation
 ///
 /// - **It never blocks the core loop.** The core loop (generate / play / log) never calls the coach,
 ///   and the coach never calls the core loop. Every send goes through the bounded, throwing
-///   `CoachProxyClient`, so an `await` here always returns and a failure becomes a non-blocking,
-///   retryable UI state rather than a hang.
+///   `CoachProxyClient`, so an `await` here always returns. Transport failures become a non-blocking,
+///   retryable UI state; safety refusals become a stable non-retryable state.
 /// - **Conversation memory is on-device, in the caller.** The transport is stateless per request; the
 ///   transcript (`messages`) lives here, on the device, and is what "multi-turn context" means for
 ///   this surface. Nothing about the conversation is persisted off-device.
@@ -63,9 +63,8 @@ final class CoachViewModel {
     /// always returns to `false`, success or failure, so the surface never gets stuck.
     private(set) var isSending = false
 
-    /// A friendly, non-blocking error when a send fails (timeout, offline, non-2xx, empty reply). It
-    /// is retryable via `retryLastMessage()` and is cleared the moment a new send starts. `nil` in the
-    /// happy path.
+    /// A friendly, non-blocking error when a send fails. Transport errors are retryable via
+    /// `retryLastMessage()`; a safety refusal is not. Cleared the moment a new send starts.
     private(set) var errorMessage: String?
 
     /// Whether the coach is configured for this build. `false` when no proxy origin is set
@@ -216,8 +215,8 @@ final class CoachViewModel {
     }
 
     /// Send the current draft. Appends it to the transcript, clears the input, awaits the coach's
-    /// reply through the bounded transport, and appends the reply - or, on any failure, surfaces a
-    /// friendly retryable error without ever blocking. A no-op when there is nothing sendable.
+    /// reply through the bounded transport, and appends the reply - or surfaces the matching bounded
+    /// failure state without ever blocking. A no-op when there is nothing sendable.
     func send() async {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // US-AC04: never send before the user has acknowledged the data disclosure. Gated here *and*
@@ -279,6 +278,9 @@ final class CoachViewModel {
             // through the US-AC07 policy path, so it can never be a workout edit.
             await offerAnalyticsInsightIfRequested(message)
             messages.append(Message(author: .coach, text: reply))
+            pendingRetryMessage = nil
+        } catch let error as CoachProxyClient.CoachError where error.isSafetyRefusal {
+            errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
             // The one failure the user can fix themselves: give them their text back so they can
@@ -424,12 +426,14 @@ final class CoachViewModel {
         return bundle
     }
 
-    /// The friendly, retryable copy for each `CoachError`. All transport-ish failures collapse to one
-    /// non-blocking message; an over-long message is the one the user can fix themselves.
+    /// The friendly copy for each `CoachError`. Transport failures collapse to one retryable message;
+    /// user-correctable and safety outcomes stay non-retryable.
     private static func friendlyMessage(for error: CoachProxyClient.CoachError) -> String {
         switch error {
         case .messageTooLong:
             return "That question is a little long - try shortening it and asking again."
+        case .safetyRefusal:
+            return safetyRefusalMessage
         case .emptyMessage, .invalidSafetyIdentifier, .notHTTP, .badStatus, .emptyReply:
             return genericFailureMessage
         }
@@ -438,4 +442,6 @@ final class CoachViewModel {
     /// The one non-blocking failure line, identity-framed and never alarming: the coach is a nicety,
     /// not a dependency, so a failure reads as "not right now" rather than "something is broken".
     static let genericFailureMessage = "The coach couldn't answer just now. Your workout isn't affected - tap to try again."
+
+    static let safetyRefusalMessage = "The coach can't help with that request. Try asking about your training, form, or consistency."
 }

@@ -47,6 +47,19 @@ function openAIReply(text) {
   };
 }
 
+function openAIRefusal(refusal, text) {
+  const content = [
+    ...(text ? [{ type: "output_text", text }] : []),
+    { type: "refusal", refusal },
+  ];
+  return {
+    ok: true,
+    async json() {
+      return { output: [{ type: "message", content }] };
+    },
+  };
+}
+
 /** A stub that stands in for `globalThis.fetch` and records every call. */
 let fetchSpy;
 let consoleLogSpy;
@@ -233,6 +246,27 @@ describe("POST /coach", () => {
     const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
     expect(response.status).toBe(502);
     expect((await response.json()).error).toBe("empty_reply");
+  });
+
+  it("maps a refusal to the dedicated safety outcome without exposing provider text", async () => {
+    const providerRefusal = "Provider-authored refusal that must stay behind the proxy.";
+    fetchSpy.mockResolvedValueOnce(openAIRefusal(providerRefusal));
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "unsafe request" }), ENV);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ outcome: "safety_refusal" });
+    expect(JSON.stringify(body)).not.toContain(providerRefusal);
+  });
+
+  it("treats a refusal as authoritative when output text is also present", async () => {
+    fetchSpy.mockResolvedValueOnce(openAIRefusal("Provider refusal", "Text that must not escape"));
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "unsafe request" }), ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ outcome: "safety_refusal" });
   });
 
   // US-AC02: the refined persona. The system prompt is where the target intents, the app's voice, and
