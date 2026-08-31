@@ -186,6 +186,9 @@ final class AppState {
         }
     }
 
+    /// A request-time reader for the persisted Coach pseudonym. Production injects this closure into
+    /// its long-lived `CoachProxyClient`, so account deletion rotates the identifier for the next
+    /// request without rebuilding the service container.
     var coachSafetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier? {
         let store = SendableUserDefaults(wrapped: userDefaults)
         return {
@@ -194,6 +197,8 @@ final class AppState {
         }
     }
 
+    /// Replaces the Coach pseudonym at the account-deletion boundary so a later account cannot
+    /// inherit the deleted account's provider safety history.
     func rotateCoachSafetyIdentifier() {
         coachSafetyIdentifier = coachSafetyIdentifierGenerator()
     }

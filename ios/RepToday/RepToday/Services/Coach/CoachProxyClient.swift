@@ -1,5 +1,8 @@
 import Foundation
 
+/// A constrained, random Coach-only pseudonym used for provider abuse prevention. `AppState`
+/// persists it across launches and rotates it on account deletion; it is never derived from
+/// `installId` or an account value.
 struct CoachSafetyIdentifier: RawRepresentable, Equatable, Sendable {
     static let prefix = "coach-"
 
@@ -83,6 +86,8 @@ struct CoachProxyClient {
             return false
         }
 
+        /// Whether the provider declined the request for safety reasons. The caller must not retry
+        /// the identical request or surface provider-authored refusal text.
         var isSafetyRefusal: Bool {
             if case .safetyRefusal = self { return true }
             return false
@@ -90,7 +95,8 @@ struct CoachProxyClient {
     }
 
     /// The proxy endpoint (the Worker's `/coach` route that accepts
-    /// `{ context, message, safetyIdentifier }` and returns `{ "reply": ... }`).
+    /// `{ context, message, safetyIdentifier }` and returns either `{ "reply": ... }` or the typed
+    /// `{ "outcome": "safety_refusal" }` result).
     let endpoint: URL
     /// The per-request timeout handed to the transport.
     let timeoutSeconds: Double

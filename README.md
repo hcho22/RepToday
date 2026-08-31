@@ -85,10 +85,16 @@ There is no XP, no levels, and no badges in the MVP.
 - **Progress tab** - the reflection surface: a calendar marking every completed day, a Consistency Score trend chart (each point the real forgiving score sampled at an earlier week's vantage, so the chart's right edge always equals the headline number), the longest chain surfaced as pride, a free "visible climb" toward the earned Strength Phase (the two real earn signals - weeks of steady practice and foundations cleared - shown to a Discipline-Phase user from the same logic that gates the phase), a free per-pattern progression map (a read-only ladder for push/squat/hinge/core marking where you stand and which Strength-Phase rungs are still locked, previewable but never selectable), and a legibility layer (pillar balance, progression-chain position, personal bests) with deeper analytics gated behind premium - all reading real workout history.
 - **Identity-framed copy** - "you're someone who moves," never loss-framed.
 
+### Premium AI Coach
+
+- **Talks, never programs** - the premium Coach explains the deterministic engine's choices, gives concise bodyweight form guidance, narrates strength-journey trends, and can offer bounded preference nudges; it never generates or directly edits a workout or safety filter.
+- **Best-effort and bounded** - Coach turns use the stateless Cloudflare proxy's `POST /coach` route and a source-pinned OpenAI `gpt-5.6-luna` Responses API call. The request has a 30-second timeout and 1024-token output ceiling, and any failure leaves the free core loop untouched. The production endpoint is currently empty, so shipped builds show the Coach as unavailable until a deployment is chosen.
+
 ### Privacy
 
 - **Anonymous usage data, disclosed and optional** - the first onboarding screen says in one sentence what is collected and where the off switch is, and Profile -> Settings -> Privacy carries a "Share anonymous usage data" toggle that takes effect on the next event rather than the next launch. It is on by default (opt-out, not opt-in), counted against a random per-install number that is never a name, an email, or a device identifier. Turning it off leaves that number untouched; deleting the account rotates it so later events cannot be linked to the pre-deletion install identity.
 - **Emitting the whole funnel** - the pipeline is complete, consented, and gated, and every call site now feeds it: app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`). All 13 events now have their emission sites, and every emission is read against the opt-out flag afresh, so an opted-out build sends nothing either way.
+- **Coach data is disclosed before first use** - a Coach turn sends the user's message, the audited non-identifying training summary, and a separate random Coach abuse-prevention pseudonym to Rep Today's proxy, which forwards the pseudonym as OpenAI's `safety_identifier`. The proxy stores no request or response content and sets `store: false`; under standard retention, OpenAI may still retain the prompt and reply in abuse-monitoring logs for up to 30 days. The pseudonym is not the telemetry `installId` or an account value, remains stable across launches, and rotates on account deletion.
 
 ---
 
@@ -103,9 +109,10 @@ There is no XP, no levels, and no badges in the MVP.
 | **Engine** | Pure Swift, on-device, deterministic (no network, no LLM, <100ms) |
 | **Apple integrations** | Sign in with Apple, CloudKit (private DB sync), HealthKit, StoreKit 2 |
 | **Backend** | None behind the core loop; `convex/` is the anonymous-telemetry sink only (US-T03), reached by a plain `URLSession` POST (US-T04) that the user's opt-out flag gates (US-T06) and a shared-secret + per-caller rate-limit abuse guard fronts (US-T14) |
+| **LLM proxy** | `proxy/` is a stateless Cloudflare Worker: Anthropic `claude-opus-4-8` remains independently configurable for deferred Variety Language, while the premium Coach is source-pinned to OpenAI `gpt-5.6-luna`; neither route is behind the deterministic core loop |
 | **Bundle ID** | `com.reptoday.app` |
 
-AI/LLM features are deferred to Phase 2 and, when they arrive, do language only (summaries, weekly narratives) - they never generate or adapt a workout.
+The Phase-2 premium Coach is implemented but its production endpoint is not deployed or configured. It does language plus bounded preference offers only; the deterministic on-device engine remains sovereign over every workout and safety filter.
 
 ---
 
@@ -181,14 +188,14 @@ RepToday/
 │   ├── DI/                  # ServiceContainer + environment injection
 │   ├── ViewModels/          # @Observable view models
 │   ├── Views/               # SwiftUI screens (Onboarding, Ready, ActiveSession, Progress, Paywall, Settings, plus RootView)
-│   ├── Utilities/           # AppState (routing, the anonymous per-install telemetry identity from US-T05, and the telemetry opt-out flag from US-T06), LegalLinks (the one privacy-policy / Terms URL every surface links to), and shared helpers
+│   ├── Utilities/           # AppState (routing, telemetry identity/consent, and the separate Coach safety pseudonym), LegalLinks, and shared helpers
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
 ├── ios/RepToday/RepTodayTests/     # The default suite (XCTestCase + @testable import), plus the shared seams every suite is expected to use instead of its own copy: EvidenceOutput, HostedSurface/AccessibilityTree, DefaultsSnapshot
 ├── ios/RepToday/RepTodayUITests/   # The out-of-process XCUITest bundle under its own scheme, for the few things only a real touch can exercise; HealthAccessPrompt is its shared helper
 ├── convex/                  # Anonymous-telemetry sink only (append-only events table, US-T14's ephemeral rateLimits helper, internal indexed reconciliation read); no core-loop backend
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── tools/                   # Release archive + production-telemetry validators, and the offline US-T13 reconciliation harness
-├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
+├── proxy/                   # Stateless key-holding Worker: deferred Anthropic Variety Language + the OpenAI gpt-5.6-luna Coach route; no production Coach endpoint is configured
 ├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
 ├── AGENTS.md                # Repo guidance and architecture reference - the real file
@@ -205,7 +212,8 @@ RepToday/
 | `.claude/agent/tasks/prd-fitsnack-mvp-v6_0702.md` | Implementation PRD and live progress tracker - the v6 MVP as ~51 user stories (US-A01 … US-N05) with acceptance criteria. Supersedes `prd-fitsnack-mvp_0626.md` (v5, kept for reference). |
 | `.claude/agent/tasks/prd-funnel-instrumentation_260803.md` | A second, in-progress PRD - anonymous product telemetry for the 90-day PMF test, as `US-T##` stories. The analytics seam (US-T02), Convex sink (US-T03), anonymous install identity (US-T05), fire-and-forget transport (US-T04), opt-out/disclosure (US-T06), and all 13 emission sites (US-T07...T12) have landed. US-T14 abuse-hardened `POST /logEvent`; Release now targets the production deployment with a private Keychain-backed token injection. US-T13 (ground-truth reconciliation) remains the one open story. |
 | `.claude/agent/tasks/prd-continuous-circuit-sessions_260814.md` | A third PRD, now complete - the hands-free follow-along player (`US-CC##`) that replaced the manual tap-to-advance active-session player: auto-advancing work windows, circuit rounds ("Round N of M"), non-verbal audio cues, a first-run explainer, and full accessibility acceptance, plus the even-round engine timing model (ADR-0003) every training block now runs on. |
-| `.claude/agent/tasks/prd-round-cap-wide-circuits.md` | A fourth, in-progress PRD - caps every training-block exercise at **2-4 rounds** (`US-RC##`) and fills a longer session by adding distinct movements (a strength pattern's further progression chains, as accessories) instead of more rounds. US-RC01 (the engine core), US-RC02 (the standing "2-4 rounds, always" regression guard), US-RC03 (accessory progression parity), and US-RC04 (pinning the accepted second-chain depth mismatch) have landed; US-RC05 (ADR-0004 + the `CONTEXT.md` "Wide Circuit" term) remains open. |
+| `.claude/agent/tasks/prd-round-cap-wide-circuits.md` | A fourth, complete PRD - caps every training-block exercise at **2-4 rounds** (`US-RC##`) and fills longer sessions by adding distinct movements instead of more rounds; ADR-0004 and the `CONTEXT.md` "Wide Circuit" term record the settled design. |
+| `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` | A fifth, complete PRD - makes the earned Strength Phase real and visible, adds the premium Coach and its two-writer safety boundary (ADR-0005), and adds premium strength-journey analytics. The Coach transport is implemented and tested against OpenAI `gpt-5.6-luna` without live paid calls, but remains inert until its production proxy endpoint is deployed and configured. |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. It is a symlink to `AGENTS.md`, which is the file to edit. |
 | `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, the US-T14 abuse guard (shared secret + rate limiting), its boundary suite, the deliberate non-goals, and the residual it still carries. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |

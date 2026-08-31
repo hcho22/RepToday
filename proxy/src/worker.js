@@ -8,7 +8,8 @@
  *   POST /variety-language  (US-N05) - turns the engine's genuine day-to-day contrast into one short
  *                           plain-language line ("Today leans into mobility - yesterday was strength").
  *   POST /coach             (US-AC01) - the premium AI coach transport: a derived, non-identifying
- *                           context bundle + the user's message in, an OpenAI reply out.
+ *                           context bundle + the user's message + a Coach-only pseudonym in; an
+ *                           OpenAI reply or provider-independent safety outcome out.
  *
  * Privacy by construction (both routes):
  *   - The request carries no Rep Today identity: no account, `installId`, IDFA, Apple ID, email,

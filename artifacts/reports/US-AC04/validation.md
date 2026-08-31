@@ -1,7 +1,7 @@
 # US-AC04 - Consent and disclosure for coach data
 
 FR-8, and the last story of Slice 2 (the monetization test).
-Before first use of the premium AI coach, a plain, unavoidable, one-time disclosure states that a coach message **plus a short summary of training context** is sent to Claude to answer and is **not stored** - the one honest break in Rep Today's on-device privacy posture (content leaves the device in the moment of a call).
+Before first use of the premium AI Coach, a plain, unavoidable, one-time disclosure states that a message **plus a short summary of training context** is sent to OpenAI to answer; Rep Today's proxy stores no content; OpenAI may retain prompt and reply content in abuse-monitoring logs for up to 30 days under standard retention; and a separate random Coach code is sent for abuse prevention instead of a Rep Today identity and rotates on account deletion. This is the one honest break in Rep Today's on-device privacy posture.
 It is a consent gesture: the user taps **I understand** for the coach to become usable, or **Not now** to back out sending nothing.
 
 ## What shipped
@@ -16,9 +16,9 @@ It is a consent gesture: the user taps **I understand** for the coach to become 
 
 | # | Criterion | Evidence |
 |---|-----------|----------|
-| 1 | Before first use, a plain disclosure states message + training-context summary are sent to Claude to answer and are not stored | `CoachDataDisclosureEvidenceTests.testDisclosureStatesHonestFactsAndOffersBothControls` (names Claude, the training-context summary, and "not stored" on the live a11y tree) + `testRealCoachViewPresentsTheDisclosureBeforeFirstUse` (it presents on the real `CoachView` before any send) - `01-coach-data-disclosure.png` |
+| 1 | Before first use, a plain disclosure names the content sent to OpenAI, the proxy's zero content storage, OpenAI's standard abuse-monitoring retention of up to 30 days, and the separate rotating abuse-prevention code | `CoachDataDisclosureEvidenceTests.testDisclosureStatesHonestFactsAndOffersBothControls` asserts each fact on the live a11y tree; `testRealCoachViewPresentsTheDisclosureBeforeFirstUse` proves it presents before any send - `01-coach-data-disclosure.png` |
 | 2 | Honest about the one break in the on-device posture (content leaves the device), not buried in fine print | The disclosure names it plainly ("This is the one moment Rep Today sends your content off your phone"); the evidence asserts "off your" present. It is a full-screen modal, not fine print |
-| 3 | A Settings entry documents the same, consistent with the Privacy-section pattern | `TelemetryConsentSurfaceTests.testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry` - the coach disclosure row + footer coexist with the telemetry toggle, naming Claude / "not stored" via the shared `CoachDataDisclosureCopy` |
+| 3 | A Settings entry documents the same, consistent with the Privacy-section pattern | `TelemetryConsentSurfaceTests.testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry` - the Coach disclosure row + footer coexist with the telemetry toggle and name OpenAI, proxy storage, provider retention, and the separate rotating code via the shared `CoachDataDisclosureCopy` |
 | 4 | Separate from, and does not weaken, the telemetry opt-out | `AppStateTests.testCoachDisclosureIsIndependentOfTheTelemetryOptOut` - acknowledging the coach disclosure never touches `analyticsEnabled`, and turning telemetry off never touches coach consent; the Settings footer declares the separation |
 | 5 | Accessibility + `Theme`; `docs/test-coverage.md` row | `Theme` tokens only, `.isModal`, 60pt controls, `ScrollView` for Dynamic Type; a11y asserted on the hosted tree; test-coverage row added |
 | 6 | Build and suites pass | `xcodebuild ... build` -> BUILD SUCCEEDED; the full `RepToday` unit suite green |
@@ -27,20 +27,20 @@ It is a consent gesture: the user taps **I understand** for the coach to become 
 
 - **Setup:** a Premium user opening the coach for the first time (modeled as the real `CoachView` over a fresh, un-acknowledged `AppState`).
 - **Open the coach** -> the disclosure presents before first use, and the send gate is closed behind it: `testRealCoachViewPresentsTheDisclosureBeforeFirstUse` asserts the disclosure copy on the real surface, the transport uncalled, `needsDataSharingConsent == true`, `canSend == false`.
-- **Read the disclosure** -> it states the facts honestly: `testDisclosureStatesHonestFactsAndOffersBothControls` (message + training summary to Claude, leaves the device, not stored; both "I understand" / "Not now" controls) - `01-coach-data-disclosure.png`.
+- **Read the disclosure** -> it states the facts honestly: `testDisclosureStatesHonestFactsAndOffersBothControls` (message + training summary to OpenAI, no proxy content storage, standard OpenAI retention, separate rotating code; both "I understand" / "Not now" controls) - `01-coach-data-disclosure.png`.
 - **Check Settings** -> Settings mirrors it, separately from telemetry: `testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry`.
 - **Declining sends nothing** -> `testDecliningSendsNothing` (a send attempt while un-acknowledged reaches the transport zero times and records no consent).
 - **Failure indicator (none observed):** no disclosure, misleading wording, or a message sent before consent - all excluded by the tests above.
 
 ## Screens
 
-- `01-coach-data-disclosure.png` - the pre-use disclosure: "How the coach uses your messages", what's sent (message + training summary to Claude), that it leaves the device just for this and isn't stored, with the prominent "I understand" and the "Not now" back-out. (The third point scrolls into view on-device; the whole disclosure is a Dynamic-Type `ScrollView`.)
+- `01-coach-data-disclosure.png` - the pre-use disclosure: "How the coach uses your messages", what's sent to OpenAI, that the content leaves the device, how Rep Today's proxy and OpenAI handle it, and the prominent "I understand" / "Not now" controls. The whole disclosure is a Dynamic-Type `ScrollView`; the final handling point scrolls into view on-device.
 
 ## Notes / scope
 
 - The consent gesture is **disclosure-then-acknowledge** (an explicit one-time "I understand" before the first request, "Not now" to back out sending nothing) - the honest reading of the AC's "declining does not send anything", implemented within the accepted story per the established one-shot-flag pattern (`AppState.hasSeenContinuousCircuitExplainer`, the US-SP06 ratcheting one-shot).
 - The **send gate**, not the view's appearance, is the guarantee: even a caller that reached `deliver` another way sends nothing until consent (unit-pinned in `CoachViewModelTests`).
-- iOS-only: **no** proxy/Convex change, **no** new emission site, **no** wire change. The coach itself stays inert until the proxy is deployed (US-AC02), independent of this disclosure.
+- The disclosure surface remains iOS-only and adds no emission site. Its facts now mirror the separately hardened Coach wire; the Coach itself stays inert until the proxy is deployed (US-AC02).
 - The PNG is captured by hosting `CoachDataDisclosureView` directly (the `ContinuousCircuitExplainerTests` precedent), because `layer.render(in:)` composites a transitioned SwiftUI overlay unreliably; the real-`CoachView` integration proof is a separate a11y-tree assertion in the same suite.
 - Captain-verifiable manual QA: the overlay's Reduce-Motion entrance stilling (the `accessibilityReduceMotion` env is read-only, so not hostable - enforced by the animation gate) and live on-device VoiceOver modal focus-trapping.
 

@@ -14,7 +14,7 @@ import Foundation
 /// Every field here is either catalog data (movement names/tiers, which are the same for every user)
 /// or a coarse aggregate (a rounded score, a pattern list, a phase), none of which can single out a
 /// person. The bundle is `Encodable` so the wire body it produces is exactly this shape - the proxy's
-/// `/coach` request schema mirrors it field-for-field (see `proxy/src/worker.js`).
+/// `/coach` `context` field mirrors it field-for-field (see `proxy/src/worker.js`).
 ///
 /// It is built by `make(...)` from the **same** already-computed values the Progress tab and the
 /// `PhaseEvaluator` use (`ProgressAnalytics.chainPositions`, `ConsistencyTrend.trend`, the earned
