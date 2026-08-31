@@ -442,6 +442,9 @@ function extractText(message) {
  * @returns {{ kind: "refusal" } | { kind: "reply", reply: string } | { kind: "empty" }}
  */
 function extractOpenAIOutcome(response) {
+  if (response?.incomplete_details?.reason === "content_filter") {
+    return { kind: "refusal" };
+  }
   const output = Array.isArray(response?.output) ? response.output : [];
   const blocks = output.flatMap((item) => (Array.isArray(item?.content) ? item.content : []));
   if (blocks.some((block) => block?.type === "refusal")) {

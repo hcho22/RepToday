@@ -269,6 +269,27 @@ describe("POST /coach", () => {
     expect(await response.json()).toEqual({ outcome: "safety_refusal" });
   });
 
+  it("treats content-filtered incomplete output as a safety outcome before exposing text", async () => {
+    const providerText = "Partial provider text that must not escape";
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      async json() {
+        return {
+          status: "incomplete",
+          incomplete_details: { reason: "content_filter" },
+          output: [{ type: "message", content: [{ type: "output_text", text: providerText }] }],
+        };
+      },
+    });
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "unsafe request" }), ENV);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ outcome: "safety_refusal" });
+    expect(JSON.stringify(body)).not.toContain(providerText);
+  });
+
   // US-AC02: the refined persona. The system prompt is where the target intents, the app's voice, and
   // the never-a-workout safety framing live, so assert the outbound system carries them - the coach's
   // behavior is steered here, not by app-side post-processing.
