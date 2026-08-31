@@ -4,8 +4,8 @@ import XCTest
 /// Tests US-AC02: the talking coach view model. It drives the send flow over a stub `CoachProxyClient`
 /// transport so every decision - the happy path, graceful failure mapping, retry, on-device
 /// conversation memory across turns, the send-gating, and the unconfigured "unavailable" state - is
-/// exercised without a live proxy, and proves a failure is always a non-blocking, retryable state
-/// rather than a hang (the "never blocks the core loop" property).
+/// exercised without a live proxy, and proves transport failures are non-blocking and retryable,
+/// while safety refusals are non-blocking and non-retryable (the "never blocks the core loop" property).
 @MainActor
 final class CoachViewModelTests: XCTestCase {
 
