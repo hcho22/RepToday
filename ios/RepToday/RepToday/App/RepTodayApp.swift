@@ -55,6 +55,7 @@ struct RepTodayApp: App {
             context: PersistenceController.shared.viewContext,
             installId: appState.installId,
             analyticsInstallId: appState.analyticsInstallId,
+            coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
             analyticsGate: appState.analyticsGate
         )
         self.services = services

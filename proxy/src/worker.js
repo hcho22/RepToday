@@ -11,10 +11,10 @@
  *                           context bundle + the user's message in, an OpenAI reply out.
  *
  * Privacy by construction (both routes):
- *   - The request carries no user identity: no account, no `installId`, no IDFA, no Apple ID, no
- *     email, no name, no profile. `/variety-language` carries only two pillar values; `/coach`
- *     carries only the app-audited `CoachContextBundle` (summarized catalog/aggregate signals - see
- *     ios `Services/Coach/CoachContextBundle.swift`) plus the free-text the user typed.
+ *   - The request carries no Rep Today identity: no account, `installId`, IDFA, Apple ID, email,
+ *     name, or profile. `/variety-language` carries only two pillar values; `/coach` carries the
+ *     app-audited `CoachContextBundle`, the free-text the user typed, and a separately generated
+ *     random pseudonym used only as OpenAI's abuse-prevention `safety_identifier`.
  *   - Nothing is persisted: no KV, no D1, no cache, no scheduler, and **no request/response body
  *     logging**. History is read transiently from the request and discarded when the response is
  *     sent. Conversation memory, if any, lives on the device in the client - never here.
@@ -51,6 +51,8 @@ const COACH_UPSTREAM_TIMEOUT_MS = 30000;
 // A coach question is a sentence or two; cap the free-text so one turn stays small and cheap. The iOS
 // client caps the same value, so this is defense in depth, not the only gate.
 const COACH_MAX_MESSAGE_CHARS = 2000;
+const COACH_SAFETY_IDENTIFIER_PATTERN =
+  /^coach-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // The maximum request body accepted on any route, checked BEFORE parsing so an oversized payload can
 // never reach JSON parsing (or bill a model call). The coach bundle + a capped message is small;
@@ -229,6 +231,13 @@ async function handleCoach(request, env) {
   if (message.length > COACH_MAX_MESSAGE_CHARS) {
     return json({ error: "message_too_long" }, 413);
   }
+  const safetyIdentifier = payload?.safetyIdentifier;
+  if (
+    typeof safetyIdentifier !== "string" ||
+    !COACH_SAFETY_IDENTIFIER_PATTERN.test(safetyIdentifier)
+  ) {
+    return json({ error: "invalid_safety_identifier" }, 400);
+  }
   if (!env.OPENAI_API_KEY) {
     return json({ error: "not_configured" }, 500);
   }
@@ -238,6 +247,7 @@ async function handleCoach(request, env) {
   const upstream = await callCoachModel(env, {
     system: COACH_SYSTEM_PROMPT,
     userPrompt,
+    safetyIdentifier,
     maxTokens: COACH_MAX_TOKENS,
     timeoutMs: COACH_UPSTREAM_TIMEOUT_MS,
   });
@@ -324,10 +334,11 @@ async function callClaude(env, opts) {
 /**
  * Make the Coach's single bounded OpenAI Responses API call. The request is stateless (`store:
  * false`) and uses no tools. `reasoning.effort: "none"` preserves the previous no-extended-thinking
- * latency posture, while `max_output_tokens` preserves the existing output ceiling.
+ * latency posture, while `max_output_tokens` preserves the existing output ceiling. The dedicated
+ * app pseudonym is forwarded as `safety_identifier`, never included in the model prompt.
  *
  * @param {{ OPENAI_API_KEY?: string }} env
- * @param {{ system: string, userPrompt: string, maxTokens: number, timeoutMs: number }} opts
+ * @param {{ system: string, userPrompt: string, safetyIdentifier: string, maxTokens: number, timeoutMs: number }} opts
  */
 async function callCoachModel(env, opts) {
   let upstream;
@@ -345,6 +356,7 @@ async function callCoachModel(env, opts) {
         max_output_tokens: opts.maxTokens,
         reasoning: { effort: "none" },
         store: false,
+        safety_identifier: opts.safetyIdentifier,
       }),
       signal: AbortSignal.timeout(opts.timeoutMs),
     });

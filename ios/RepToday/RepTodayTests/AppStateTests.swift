@@ -165,6 +165,44 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing, "turning telemetry off must not touch coach consent")
     }
 
+    // MARK: - Coach abuse-prevention pseudonym
+
+    func testCoachSafetyIdentifierIsStableAndSeparateFromInstallIdentity() {
+        let original = AppState(userDefaults: defaults)
+        let identifier = original.coachSafetyIdentifier
+
+        XCTAssertTrue(identifier.rawValue.hasPrefix(CoachSafetyIdentifier.prefix))
+        XCTAssertNotEqual(identifier.rawValue, original.installId)
+        XCTAssertEqual(original.coachSafetyIdentifierProvider(), identifier)
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertEqual(reloaded.coachSafetyIdentifier, identifier)
+        XCTAssertEqual(reloaded.installId, original.installId)
+    }
+
+    func testRotatingCoachSafetyIdentifierUpdatesExistingProviderAndPersists() {
+        let appState = AppState(userDefaults: defaults)
+        let provider = appState.coachSafetyIdentifierProvider
+        let original = appState.coachSafetyIdentifier
+        let installId = appState.installId
+
+        appState.rotateCoachSafetyIdentifier()
+
+        XCTAssertNotEqual(appState.coachSafetyIdentifier, original)
+        XCTAssertEqual(appState.installId, installId)
+        XCTAssertEqual(provider(), appState.coachSafetyIdentifier)
+        XCTAssertEqual(AppState(userDefaults: defaults).coachSafetyIdentifier, appState.coachSafetyIdentifier)
+    }
+
+    func testInvalidStoredCoachSafetyIdentifierIsReminted() {
+        defaults.set("person@example.com", forKey: "AppState.coachSafetyIdentifier")
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertNotEqual(appState.coachSafetyIdentifier.rawValue, "person@example.com")
+        XCTAssertEqual(appState.coachSafetyIdentifierProvider(), appState.coachSafetyIdentifier)
+    }
+
     // MARK: - Injury-flag revision (US-AC08)
 
     /// A safety filter has to reach the session already on the Ready screen, so a confirmed injury

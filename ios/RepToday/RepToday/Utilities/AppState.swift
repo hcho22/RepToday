@@ -10,7 +10,8 @@ enum AppTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Small, persisted app state for routing, anonymous install identity, and telemetry consent.
+/// Small, persisted app state for routing, anonymous install identity, telemetry consent, and the
+/// separate AI Coach abuse-prevention pseudonym.
 ///
 /// `isOnboarded` chooses between onboarding and the main tabs. `selectedTab` restores the
 /// user's last main-tab context. This uses the Observation framework (`@Observable`).
@@ -31,9 +32,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// with a new id. A successful account deletion also replaces the id before onboarding resumes,
 /// while preserving the original install date and the user's telemetry preference.
 ///
-/// The clock, the calendar, and the id generator are injected (`now`, `calendar`,
-/// `newInstallId`), so cohorting behaviour is pinnable in tests without reading the wall clock
-/// or the device's locale inline.
+/// The clock, calendar, and identifier generators are injected, so cohorting and pseudonym lifecycle
+/// behavior are pinnable in tests without reading the wall clock or device locale inline.
 @Observable
 final class AppState {
     var isOnboarded: Bool {
@@ -175,6 +175,27 @@ final class AppState {
     /// never presented again. Idempotent: calling it twice is a persisted no-op the second time.
     func markCoachDataSharingAcknowledged() {
         hasAcknowledgedCoachDataSharing = true
+    }
+
+    /// The stable, random pseudonym sent with Coach requests for provider abuse prevention. It is
+    /// generated independently from `installId`, contains no account value, and is rotated at the
+    /// account-deletion boundary.
+    private(set) var coachSafetyIdentifier: CoachSafetyIdentifier {
+        didSet {
+            userDefaults.set(coachSafetyIdentifier.rawValue, forKey: Keys.coachSafetyIdentifier)
+        }
+    }
+
+    var coachSafetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier? {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return {
+            store.wrapped.string(forKey: Keys.coachSafetyIdentifier)
+                .flatMap(CoachSafetyIdentifier.init(rawValue:))
+        }
+    }
+
+    func rotateCoachSafetyIdentifier() {
+        coachSafetyIdentifier = coachSafetyIdentifierGenerator()
     }
 
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
@@ -336,6 +357,7 @@ final class AppState {
 
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
+    @ObservationIgnored private let coachSafetyIdentifierGenerator: @Sendable () -> CoachSafetyIdentifier
 
     /// - Parameter userDefaults: The store this state reads and writes, and - through
     ///   `analyticsGate` - the store the telemetry gate reads. Production leaves it at `.standard`,
@@ -349,10 +371,12 @@ final class AppState {
         userDefaults: UserDefaults = .standard,
         now: () -> Date = Date.init,
         calendar: Calendar = AppState.cohortCalendar,
-        newInstallId: () -> String = { UUID().uuidString }
+        newInstallId: () -> String = { UUID().uuidString },
+        newCoachSafetyIdentifier: @escaping @Sendable () -> CoachSafetyIdentifier = { .random() }
     ) {
         self.userDefaults = userDefaults
         self.calendar = calendar
+        self.coachSafetyIdentifierGenerator = newCoachSafetyIdentifier
         let wasOnboarded = userDefaults.bool(forKey: Keys.isOnboarded)
         isOnboarded = wasOnboarded
 
@@ -415,6 +439,16 @@ final class AppState {
             }
         }
 
+        if let storedSafetyIdentifier = userDefaults.string(forKey: Keys.coachSafetyIdentifier)
+            .flatMap(CoachSafetyIdentifier.init(rawValue:)),
+           storedSafetyIdentifier.rawValue != installId {
+            coachSafetyIdentifier = storedSafetyIdentifier
+        } else {
+            let generatedSafetyIdentifier = newCoachSafetyIdentifier()
+            coachSafetyIdentifier = generatedSafetyIdentifier
+            userDefaults.set(generatedSafetyIdentifier.rawValue, forKey: Keys.coachSafetyIdentifier)
+        }
+
         // `didSet` does not fire during `init`, so this launch's open time is written through.
         lastActiveAt = openedAt
         userDefaults.set(openedAt, forKey: Keys.lastActiveAt)
@@ -440,6 +474,7 @@ final class AppState {
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
+        static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"
     }
 }
 

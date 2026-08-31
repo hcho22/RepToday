@@ -432,6 +432,7 @@ extension CoachViewModel {
         let viewModel = CoachViewModel(
             client: CoachProxyClient(
                 endpoint: URL(string: "https://preview.example.com/coach")!,
+                safetyIdentifier: .random(),
                 transport: PreviewCoachTransport()
             ),
             userService: MockUserService(),

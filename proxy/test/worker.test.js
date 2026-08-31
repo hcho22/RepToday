@@ -13,6 +13,7 @@ import worker from "../src/worker.js";
 
 const COACH_URL = "https://proxy.example.com/coach";
 const VARIETY_URL = "https://proxy.example.com/variety-language";
+const COACH_SAFETY_IDENTIFIER = "coach-00000000-0000-4000-8000-000000000001";
 
 /** A well-formed, non-identifying context bundle (mirrors the iOS `CoachContextBundle`). */
 const CONTEXT = {
@@ -68,13 +69,21 @@ afterEach(() => {
 
 /**
  * @param {object|string} body
- * @param {{ headers?: Record<string, string> }} [opts]
+ * @param {{ headers?: Record<string, string>, includeSafetyIdentifier?: boolean }} [opts]
  */
-function coachRequest(body, { headers } = {}) {
+function coachRequest(body, { headers, includeSafetyIdentifier = true } = {}) {
+  const requestBody =
+    includeSafetyIdentifier &&
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    !("safetyIdentifier" in body)
+      ? { ...body, safetyIdentifier: COACH_SAFETY_IDENTIFIER }
+      : body;
   return new Request(COACH_URL, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
-    body: typeof body === "string" ? body : JSON.stringify(body),
+    body: typeof requestBody === "string" ? requestBody : JSON.stringify(requestBody),
   });
 }
 
@@ -96,12 +105,13 @@ describe("POST /coach", () => {
     expect(upstreamBody.reasoning).toEqual({ effort: "none" });
     expect(upstreamBody.max_output_tokens).toBe(1024);
     expect(upstreamBody.store).toBe(false);
+    expect(upstreamBody.safety_identifier).toBe(COACH_SAFETY_IDENTIFIER);
     expect(consoleLogSpy).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("forwards the context and message to the Coach model but nothing else - no identity fields", async () => {
+  it("forwards Coach content and its pseudonym but no Rep Today identity fields", async () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "how do I do a pistol squat?" }), ENV);
 
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
@@ -138,6 +148,33 @@ describe("POST /coach", () => {
     const wrongType = await worker.fetch(coachRequest({ context: "nope", message: "hi" }), ENV);
     expect(wrongType.status).toBe(400);
     expect((await wrongType.json()).error).toBe("invalid_context");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing or non-pseudonymous safety identifier before any upstream call", async () => {
+    const missing = await worker.fetch(
+      coachRequest(
+        { context: CONTEXT, message: "hi" },
+        { includeSafetyIdentifier: false }
+      ),
+      ENV
+    );
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).error).toBe("invalid_safety_identifier");
+
+    for (const safetyIdentifier of [
+      "00000000-0000-4000-8000-000000000001",
+      "person@example.com",
+      "coach-not-a-uuid",
+    ]) {
+      const invalid = await worker.fetch(
+        coachRequest({ context: CONTEXT, message: "hi", safetyIdentifier }),
+        ENV
+      );
+      expect(invalid.status).toBe(400);
+      expect((await invalid.json()).error).toBe("invalid_safety_identifier");
+    }
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });

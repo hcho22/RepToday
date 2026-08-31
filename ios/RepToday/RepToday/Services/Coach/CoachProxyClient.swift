@@ -1,5 +1,28 @@
 import Foundation
 
+struct CoachSafetyIdentifier: RawRepresentable, Equatable, Sendable {
+    static let prefix = "coach-"
+
+    let rawValue: String
+
+    init?(rawValue: String) {
+        guard rawValue.hasPrefix(Self.prefix) else { return nil }
+        let uuidString = String(rawValue.dropFirst(Self.prefix.count))
+        let characters = Array(uuidString.lowercased())
+        guard
+            characters.count == 36,
+            UUID(uuidString: uuidString) != nil,
+            characters[14] == "4",
+            "89ab".contains(characters[19])
+        else { return nil }
+        self.rawValue = rawValue
+    }
+
+    static func random() -> CoachSafetyIdentifier {
+        CoachSafetyIdentifier(rawValue: "\(prefix)\(UUID().uuidString)")!
+    }
+}
+
 /// The stateless coach transport client (US-AC01): it POSTs a `CoachContextBundle` plus the user's
 /// message to the key-holding proxy (the same Cloudflare Worker as the Variety Language slice, at its
 /// `POST /coach` route - see `proxy/README.md`) and returns OpenAI's reply. The OpenAI API key
@@ -13,9 +36,10 @@ import Foundation
 /// - **Throws on anything unusual.** A non-2xx status, an undecodable body, or an empty reply all
 ///   throw, so the chat surface (US-AC02) can degrade to a clear non-blocking state. The core loop
 ///   (generate / play / log) never depends on this client and never waits on it.
-/// - **Nothing identifying on the wire.** The request body is exactly `{ context, message }`, where
-///   `context` is the audited, non-identifying `CoachContextBundle`. No `installId`, no IDFA, no
-///   Apple ID, no account - the transport stays pseudonymous, exactly as the Variety Language slice.
+/// - **Nothing identifying on the wire.** The request body is `{ context, message, safetyIdentifier }`,
+///   where `context` is the audited, non-identifying `CoachContextBundle` and `safetyIdentifier` is a
+///   separate random pseudonym used only for provider abuse prevention. No `installId`, IDFA, Apple ID,
+///   or account value is sent.
 /// - **Conversation memory is the caller's, on-device.** This client is stateless per request; it
 ///   holds no history. Any multi-turn memory lives on the device in the caller (US-AC02).
 ///
@@ -23,8 +47,7 @@ import Foundation
 /// oversized turn is rejected locally and never bills a model call - the proxy enforces the same cap
 /// as defense in depth.
 ///
-/// US-AC01 ships the transport only; the chat surface that wires this in is US-AC02, so - like
-/// `VarietyLanguageResolver.provider` in the MVP - there is no production call site yet.
+/// The US-AC02 chat surface is the production caller; a missing endpoint leaves that surface inert.
 struct CoachProxyClient {
 
     /// The default per-request timeout. Longer than the Variety Language line (a coach answer is a
@@ -42,6 +65,8 @@ struct CoachProxyClient {
         case emptyMessage
         /// The message exceeded `messageCharacterLimit`; rejected locally before any network call.
         case messageTooLong(limit: Int)
+        /// The app's persisted abuse-prevention pseudonym was unavailable or malformed.
+        case invalidSafetyIdentifier
         /// The response was not an HTTP response (should not happen over HTTPS).
         case notHTTP
         /// The proxy returned a non-2xx status.
@@ -57,8 +82,8 @@ struct CoachProxyClient {
         }
     }
 
-    /// The proxy endpoint (the Worker's `/coach` route that accepts `{ context, message }` and
-    /// returns `{ "reply": ... }`).
+    /// The proxy endpoint (the Worker's `/coach` route that accepts
+    /// `{ context, message, safetyIdentifier }` and returns `{ "reply": ... }`).
     let endpoint: URL
     /// The per-request timeout handed to the transport.
     let timeoutSeconds: Double
@@ -68,6 +93,7 @@ struct CoachProxyClient {
     /// every request sends `Authorization: Bearer <secret>` so the Worker can reject unauthenticated
     /// traffic before it bills a model call; `nil` matches an open (dev) Worker. See `proxy/README.md`.
     let sharedSecret: String?
+    private let safetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier?
     /// The HTTP seam, injected so tests exercise the request/response contract without a live network.
     let transport: any CoachProxyTransport
 
@@ -76,12 +102,30 @@ struct CoachProxyClient {
         timeoutSeconds: Double = CoachProxyClient.defaultTimeoutSeconds,
         messageCharacterLimit: Int = CoachProxyClient.defaultMessageCharacterLimit,
         sharedSecret: String? = nil,
+        safetyIdentifier: CoachSafetyIdentifier,
         transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
     ) {
         self.endpoint = endpoint
         self.timeoutSeconds = timeoutSeconds
         self.messageCharacterLimit = messageCharacterLimit
         self.sharedSecret = sharedSecret
+        self.safetyIdentifierProvider = { safetyIdentifier }
+        self.transport = transport
+    }
+
+    init(
+        endpoint: URL,
+        timeoutSeconds: Double = CoachProxyClient.defaultTimeoutSeconds,
+        messageCharacterLimit: Int = CoachProxyClient.defaultMessageCharacterLimit,
+        sharedSecret: String? = nil,
+        safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
+        transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
+    ) {
+        self.endpoint = endpoint
+        self.timeoutSeconds = timeoutSeconds
+        self.messageCharacterLimit = messageCharacterLimit
+        self.sharedSecret = sharedSecret
+        self.safetyIdentifierProvider = safetyIdentifierProvider
         self.transport = transport
     }
 
@@ -113,6 +157,7 @@ struct CoachProxyClient {
     /// "Unusable" is checked rather than assumed - the value must parse, carry an `https` scheme, and
     /// have a host - so a mistyped endpoint stays inert rather than firing doomed requests.
     static func configured(
+        safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
         bundle: Bundle = .main,
         transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
     ) -> CoachProxyClient? {
@@ -120,7 +165,12 @@ struct CoachProxyClient {
             return nil
         }
         let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
-        return CoachProxyClient(endpoint: endpoint, sharedSecret: secret, transport: transport)
+        return CoachProxyClient(
+            endpoint: endpoint,
+            sharedSecret: secret,
+            safetyIdentifierProvider: safetyIdentifierProvider,
+            transport: transport
+        )
     }
 
     /// Resolves a configured proxy origin into the `POST /coach` URL this client targets, or `nil` if
@@ -158,8 +208,17 @@ struct CoachProxyClient {
         guard trimmedMessage.count <= messageCharacterLimit else {
             throw CoachError.messageTooLong(limit: messageCharacterLimit)
         }
+        guard let safetyIdentifier = safetyIdentifierProvider() else {
+            throw CoachError.invalidSafetyIdentifier
+        }
 
-        let requestBody = try JSONEncoder().encode(CoachRequest(context: context, message: trimmedMessage))
+        let requestBody = try JSONEncoder().encode(
+            CoachRequest(
+                context: context,
+                message: trimmedMessage,
+                safetyIdentifier: safetyIdentifier.rawValue
+            )
+        )
         var headers: [String: String] = [:]
         if let sharedSecret, !sharedSecret.isEmpty {
             headers["Authorization"] = "Bearer \(sharedSecret)"
@@ -182,11 +241,12 @@ struct CoachProxyClient {
 
 // MARK: - Wire contract
 
-/// The request body sent to the proxy: the audited non-identifying context bundle plus the user's
-/// message, and nothing else. This is the only shape that leaves the device for the coach.
+/// The request body sent to the proxy: the audited non-identifying context bundle, the user's message,
+/// and the dedicated abuse-prevention pseudonym.
 private struct CoachRequest: Encodable {
     let context: CoachContextBundle
     let message: String
+    let safetyIdentifier: String
 }
 
 /// The proxy response - just the coach's reply text.

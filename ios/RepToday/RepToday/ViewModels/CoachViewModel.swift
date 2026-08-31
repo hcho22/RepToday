@@ -430,7 +430,7 @@ final class CoachViewModel {
         switch error {
         case .messageTooLong:
             return "That question is a little long - try shortening it and asking again."
-        case .emptyMessage, .notHTTP, .badStatus, .emptyReply:
+        case .emptyMessage, .invalidSafetyIdentifier, .notHTTP, .badStatus, .emptyReply:
             return genericFailureMessage
         }
     }

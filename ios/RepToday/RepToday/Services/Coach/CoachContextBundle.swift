@@ -2,8 +2,8 @@ import Foundation
 
 /// The **derived context bundle** (US-AC01): the one small, non-identifying summary of the user's
 /// on-device state that the premium AI coach is allowed to send off the device. It is the single
-/// auditable definition of *what leaves the phone* for the coach - so privacy review has exactly one
-/// place to look.
+/// auditable definition of the *training state* that leaves the phone; the wire adds only the user's
+/// message and the separately generated abuse-prevention pseudonym.
 ///
 /// **What it deliberately does NOT contain (privacy by construction):**
 /// - No raw `WorkoutLog` history - only summarized, aggregate signals derived from it.

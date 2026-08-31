@@ -54,7 +54,11 @@ final class CoachViewEvidenceTests: XCTestCase {
         var user = MockPersistence.sampleUser
         user.phase = .discipline
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: transport),
+            client: CoachProxyClient(
+                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()

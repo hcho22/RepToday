@@ -189,7 +189,10 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
                       && spoken.localizedCaseInsensitiveContains("up to 30 days"),
                       "the Settings coach entry discloses OpenAI's standard retention; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Rep Today identity"),
-                      "the Settings coach entry states that no Rep Today identity is sent; spoke: \(spoken)")
+                      "the Settings coach entry separates the safety code from Rep Today identity; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("abuse prevention")
+                      && spoken.localizedCaseInsensitiveContains("delete your account"),
+                      "the Settings coach entry explains the safety code and its rotation; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("separate from the anonymous usage data"),
                       "the Settings coach entry declares its separation from telemetry; spoke: \(spoken)")
     }

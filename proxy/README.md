@@ -11,8 +11,8 @@ Two routes live here, both stateless and storing nothing:
   the shipping MVP; the client (`ProxyVarietyLanguageProvider`) falls back to the deterministic
   on-device template on any failure.
 - **`POST /coach`** (US-AC01) - the premium AI coach transport. A derived, non-identifying context
-  bundle + the user's message in, an OpenAI reply out. The chat surface that drives it is US-AC02;
-  US-AC01 ships the transport only.
+  bundle + the user's message + a dedicated abuse-prevention pseudonym in, an OpenAI reply out. The
+  chat surface that drives it is US-AC02; US-AC01 ships the transport only.
 
 ## What it does
 
@@ -22,10 +22,11 @@ Two routes live here, both stateless and storing nothing:
   scheduler, and **no request/response body logging**. History is read transiently from the request
   and discarded when the response is sent. The coach's conversation memory, if any, lives on the
   device in the client - never here.
-- Carries **no identity on the wire**: no account, no `installId`, no IDFA, no Apple ID, no email, no
-  name, no profile. `/variety-language` carries only two pillar values; `/coach` carries only the
-  app-audited context bundle (summarized catalog/aggregate signals) plus the free-text the user
-  typed.
+- Carries **no Rep Today identity on the wire**: no account, `installId`, IDFA, Apple ID, email, name,
+  or profile. `/variety-language` carries only two pillar values; `/coach` carries the app-audited
+  context bundle, the free-text the user typed, and a separately generated random Coach identifier
+  used only for OpenAI abuse prevention. That pseudonym is stable across launches and rotates when
+  the user deletes their account.
 - Bounds every upstream call with `AbortSignal.timeout` and caps the request body at **32 KiB**
   (checked before parsing, so an oversized payload never reaches JSON parsing or a paid model call).
 
@@ -34,7 +35,8 @@ Two routes live here, both stateless and storing nothing:
 does not disable OpenAI's standard abuse-monitoring logs. OpenAI may retain the Coach prompt (message
 and training summary) and reply in those logs for up to 30 days. This deployment does not require Zero
 Data Retention or Modified Abuse Monitoring; the user disclosure assumes standard retention. The
-Coach request still carries no Rep Today identity field.
+Coach request still carries no Rep Today identity field. Its `safety_identifier` is a separate,
+locally generated pseudonym, never the raw installation identifier or an account value.
 
 ## Wire contract: `POST /variety-language` (US-N05)
 
@@ -101,7 +103,8 @@ Content-Type: application/json
     "recentPatterns": ["push", "core", "squat"],
     "consistency": { "currentScore": 72, "direction": "rising" }
   },
-  "message": "why did I get squats today?"
+  "message": "why did I get squats today?",
+  "safetyIdentifier": "coach-00000000-0000-4000-8000-000000000001"
 }
 ```
 
@@ -115,6 +118,10 @@ Content-Type: application/json
   object-shaped but does not otherwise constrain it (the app owns the definition).
 - `message` (required) - the user's free-text question. Non-empty and at most **2000 characters**
   (the iOS client caps the same value; the proxy re-checks as defense in depth).
+- `safetyIdentifier` (required) - a random, app-generated `coach-<UUIDv4>` pseudonym. It is distinct
+  from `installId` and every account value, remains stable across launches, and rotates on account
+  deletion. The proxy validates this constrained shape, then sends it to OpenAI as
+  `safety_identifier`; it is not included in the model prompt.
 
 ### Response
 
@@ -124,9 +131,9 @@ Content-Type: application/json
 
 On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
 (`method_not_allowed`, `unauthorized`, `payload_too_large`, `invalid_json`, `invalid_context`,
-`invalid_message`, `message_too_long`, `not_configured`, `upstream_unreachable`, `upstream_error`,
-`upstream_bad_json`, `empty_reply`). Every non-2xx and malformed body is handled identically by the
-client: surface a non-blocking error; never block the app.
+`invalid_message`, `message_too_long`, `invalid_safety_identifier`, `not_configured`,
+`upstream_unreachable`, `upstream_error`, `upstream_bad_json`, `empty_reply`). Every non-2xx and
+malformed body is handled identically by the client: surface a non-blocking error; never block the app.
 
 The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02): it covers the
 target intents - "why this workout?" (the engine's stalest-pattern reasoning), "how do I do
@@ -183,9 +190,9 @@ identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Befo
 ## Model
 
 The premium AI Coach is source-pinned to the exact model identifier `gpt-5.6-luna` and calls the
-OpenAI Responses API with `reasoning.effort: "none"`, `store: false`, and the existing 1024-token
-output ceiling. `store: false` prevents response application-state storage, not the standard
-abuse-monitoring retention documented above. It is intentionally not configurable through
+OpenAI Responses API with `reasoning.effort: "none"`, `store: false`, `safety_identifier`, and the
+existing 1024-token output ceiling. `store: false` prevents response application-state storage, not
+the standard abuse-monitoring retention documented above. It is intentionally not configurable through
 `ANTHROPIC_MODEL`, so Variety Language and Coach model selections cannot drift together.
 
 Variety Language remains on `claude-opus-4-8` by default. Override only that route with the
@@ -240,7 +247,8 @@ US-AC02):
 ```swift
 let coach = CoachProxyClient(
     endpoint: URL(string: "https://<worker-subdomain>/coach")!,
-    sharedSecret: "<CLIENT_SHARED_SECRET>"  // must match the Worker's abuse gate
+    sharedSecret: "<CLIENT_SHARED_SECRET>",  // must match the Worker's abuse gate
+    safetyIdentifier: appState.coachSafetyIdentifier
 )
 let bundle = CoachContextBundle.make(
     phase: user.phase,
@@ -253,5 +261,7 @@ let reply = try await coach.reply(to: userMessage, context: bundle)
 ```
 
 `CoachProxyClient` is bounded (per-request timeout) and throws on any failure, so the coach never
-blocks the free core loop. The bundle is the single audited definition of what leaves the device -
-see `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
+blocks the free core loop. Production uses `appState.coachSafetyIdentifierProvider` through
+`ServiceContainer.live`, so an account deletion updates the already-built client in the same process.
+The bundle remains the single audited definition of training context - see
+`ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.

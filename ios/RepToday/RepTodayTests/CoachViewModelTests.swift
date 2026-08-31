@@ -51,7 +51,11 @@ final class CoachViewModelTests: XCTestCase {
         consented: Bool = true
     ) -> CoachViewModel {
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
             exerciseService: try! MockExerciseService()
@@ -331,7 +335,11 @@ final class CoachViewModelTests: XCTestCase {
         user: User
     ) -> CoachViewModel {
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService(),
@@ -408,7 +416,11 @@ final class CoachViewModelTests: XCTestCase {
         store: InMemorySessionPolicyStore = InMemorySessionPolicyStore()
     ) -> CoachViewModel {
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: userService,
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService(),
@@ -619,7 +631,11 @@ final class CoachViewModelTests: XCTestCase {
         ]
         let transport = StubTransport(.success(reply: "Your push is climbing and hinge has stalled - here's the picture.", status: 200))
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
             exerciseService: try! MockExerciseService(),
@@ -668,7 +684,11 @@ final class CoachViewModelTests: XCTestCase {
         ]
         let transport = StubTransport(.success(reply: "Here's how to do a good morning.", status: 200))
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
             exerciseService: try! MockExerciseService(),
@@ -695,7 +715,11 @@ final class CoachViewModelTests: XCTestCase {
         ]
         let transport = StubTransport(.success(reply: "Here's the picture.", status: 200))
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: endpoint, transport: transport),
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
             exerciseService: try! MockExerciseService(),

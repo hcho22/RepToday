@@ -59,6 +59,10 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
         // The proxy is deploy-ready but not deployed, so both configurations expand to empty and the
         // app is inert by design. This pins that "inert, never fatal" state for the shipped build:
         // `configured()` returns nil rather than trapping.
-        XCTAssertNil(CoachProxyClient.configured())
+        XCTAssertNil(
+            CoachProxyClient.configured(
+                safetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") }
+            )
+        )
     }
 }

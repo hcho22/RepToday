@@ -219,10 +219,13 @@ struct ServiceContainer {
     ///     to the store its own `AppState` writes rather than letting this side re-derive which
     ///     store to read. The default reads `.standard`, which is where production's `AppState`
     ///     lives, so a test that only wants the CoreData services keeps its existing call.
+    ///   - coachSafetyIdentifierProvider: Reads the persisted, dedicated Coach abuse-prevention
+    ///     pseudonym at request time so account deletion rotates an already-configured client.
     static func live(
         context: NSManagedObjectContext,
         installId: String,
         analyticsInstallId: (@Sendable () -> String)? = nil,
+        coachSafetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) -> ServiceContainer {
@@ -271,7 +274,9 @@ struct ServiceContainer {
         // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`
         // origin exactly like the telemetry sink. `nil` today (no proxy deployed and no origin set), so
         // the coach surface renders its "unavailable" state; it never gates the core loop.
-        let resolvedCoachClient = CoachProxyClient.configured()
+        let resolvedCoachClient = CoachProxyClient.configured(
+            safetyIdentifierProvider: coachSafetyIdentifierProvider
+        )
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),

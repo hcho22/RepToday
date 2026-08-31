@@ -31,7 +31,9 @@ enum CoachDataDisclosureCopy {
     static let notStoredTitle = "How it's handled"
     static let notStored = "Rep Today's proxy doesn't store your message, training summary, or reply. Under "
         + "its standard retention, OpenAI may keep that content in abuse-monitoring logs for up to 30 days. "
-        + "Rep Today doesn't send your name, email, or account identity with it."
+        + "To help prevent abuse, Rep Today also sends a random Coach code that stays the same between app "
+        + "launches and changes if you delete your account. It is not your installation ID, name, email, or "
+        + "Rep Today identity."
 
     /// The primary control: an explicit acknowledgement. Tapping it is what opens the coach.
     static let acknowledge = "I understand"
@@ -46,8 +48,9 @@ enum CoachDataDisclosureCopy {
     static let settingsRowTitle = "How the coach uses your data"
     static let settingsFooter = "When you chat with the AI coach, your message and a short training summary "
         + "are sent to OpenAI to answer. Rep Today's proxy doesn't store them. OpenAI may retain them and the "
-        + "reply in abuse-monitoring logs for up to 30 days under standard retention. No Rep Today identity is "
-        + "sent. This is separate from the anonymous usage data above."
+        + "reply in abuse-monitoring logs for up to 30 days under standard retention. A random Coach code is also "
+        + "sent for abuse prevention; it is not your installation ID or Rep Today identity and changes when you "
+        + "delete your account. This is separate from the anonymous usage data above."
 }
 
 /// The one-time, pre-use consent disclosure for the AI coach (US-AC04).
