@@ -5,7 +5,7 @@ import UIKit
 
 /// Reviewer-visible evidence for US-AC04, the coach data disclosure: before first use, a plain,
 /// unavoidable disclosure states that a coach message plus a training-context summary are sent to
-/// Claude to answer and are not stored, and declining sends nothing.
+/// OpenAI to answer and are not stored, and declining sends nothing.
 ///
 /// This drives the *production* `CoachView` in a real key window with a fresh (un-acknowledged)
 /// `AppState` in the environment, so the disclosure overlay presents exactly as it does on a first
@@ -96,9 +96,9 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         let root = host.view!
         let spoken = spoken(in: root)
 
-        // It names what leaves the device: the message *and* a training-context summary, sent to Claude.
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Claude"),
-                      "the disclosure must name Claude as the recipient; spoke: \(spoken)")
+        // It names what leaves the device: the message *and* a training-context summary, sent to OpenAI.
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
+                      "the disclosure must name OpenAI as the recipient; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("summary of your training"),
                       "it must disclose the training-context summary, not just the message; spoke: \(spoken)")
         // It is honest about the one break in the on-device posture.
@@ -132,8 +132,8 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         let root = hostCoach(viewModel, appState: appState)
         let spoken = spoken(in: root)
 
-        // The disclosure copy is present on the real surface's tree (only the disclosure names Claude).
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Claude"),
+        // The disclosure copy is present on the real surface's tree (only the disclosure names OpenAI).
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
                       "the disclosure must present on the real CoachView before first use; spoke: \(spoken)")
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachDataDisclosureCopy.acknowledge, in: root),
                         "the acknowledge control is reachable on the real surface")
@@ -153,7 +153,7 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         let appState = freshAppState()
         _ = hostCoach(viewModel, appState: appState)
 
-        // The user never acknowledged; a send attempt (e.g. an errant tap) must not reach Claude.
+        // The user never acknowledged; a send attempt (e.g. an errant tap) must not reach OpenAI.
         viewModel.draft = "why squats today?"
         await viewModel.send()
 

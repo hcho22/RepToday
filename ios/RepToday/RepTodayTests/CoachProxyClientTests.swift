@@ -2,7 +2,7 @@ import XCTest
 @testable import RepToday
 
 /// Tests US-AC01: the stateless coach transport client. It POSTs the audited `CoachContextBundle`
-/// plus the user's message to the key-holding proxy and returns Claude's reply, throwing on any
+/// plus the user's message to the key-holding proxy and returns the Coach model's reply, throwing on any
 /// failure so the (later, US-AC02) chat surface can degrade without ever blocking the core loop.
 /// These drive it over a stub transport so the request/response contract and every failure path are
 /// exercised without a live network - and prove an oversized/empty message is rejected *locally*,
@@ -78,7 +78,7 @@ final class CoachProxyClientTests: XCTestCase {
         let reply = try await client.reply(to: "why squats today?", context: bundle())
 
         XCTAssertEqual(reply, "Because squats were stalest")
-        XCTAssertEqual(transport.callCount, 1, "exactly one Claude call per request")
+        XCTAssertEqual(transport.callCount, 1, "exactly one Coach model call per request")
         XCTAssertEqual(transport.lastURL, endpoint)
         XCTAssertEqual(transport.lastTimeout, CoachProxyClient.defaultTimeoutSeconds)
     }
@@ -141,7 +141,7 @@ final class CoachProxyClientTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "   ", context: bundle())) { error in
             XCTAssertEqual(error as? CoachProxyClient.CoachError, .emptyMessage)
         }
-        XCTAssertEqual(transport.callCount, 0, "an empty message must never bill a Claude call")
+        XCTAssertEqual(transport.callCount, 0, "an empty message must never bill a model call")
     }
 
     func testRejectsOverLengthMessageBeforeAnyCall() async {
@@ -151,7 +151,7 @@ final class CoachProxyClientTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "way too long a message", context: bundle())) { error in
             XCTAssertEqual(error as? CoachProxyClient.CoachError, .messageTooLong(limit: 10))
         }
-        XCTAssertEqual(transport.callCount, 0, "an oversized message must never bill a Claude call")
+        XCTAssertEqual(transport.callCount, 0, "an oversized message must never bill a model call")
     }
 
     // MARK: - Failure paths (all throw so the caller degrades)

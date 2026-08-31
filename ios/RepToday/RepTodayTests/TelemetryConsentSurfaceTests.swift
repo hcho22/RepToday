@@ -166,7 +166,7 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
     // MARK: - Coach data disclosure mirror (US-AC04)
 
     /// Settings mirrors the coach data disclosure in its own AI Coach section: it states the same facts
-    /// (message + training summary to Claude, not stored), it is the shared copy the pre-use modal
+    /// (message + training summary to OpenAI, not stored), it is the shared copy the pre-use modal
     /// shows, and it is separate from - and does not touch - the telemetry opt-out above it.
     func testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry() throws {
         let root = hostSettings(analyticsEnabled: true)
@@ -179,8 +179,8 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
                       "the coach disclosure row is present: \(labels)")
 
         // The coach footer states the same facts as the pre-use modal.
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Claude"),
-                      "the Settings coach entry names Claude; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
+                      "the Settings coach entry names OpenAI; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("not stored"),
                       "the Settings coach entry states content is not stored; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("separate from the anonymous usage data"),

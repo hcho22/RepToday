@@ -3,12 +3,12 @@ import Foundation
 /// The on-device, deterministic half of "the coach narrates the analytics and offers to act"
 /// (US-AN02). It turns the premium **strength-journey analytics** (US-AN01) into two things the coach
 /// surface can use without any model in the loop: a per-pattern *trend* read (climbing / flat /
-/// steady) the context bundle carries so Claude can narrate a concrete insight, and a bounded
+/// steady) the context bundle carries so the Coach model can narrate a concrete insight, and a bounded
 /// **preference-only** offer that, when accepted, routes through the exact US-AC07 policy-write path.
 ///
 /// It is the deliberate sibling of `CoachIntentMapper` (tuning) and `CoachInjurySignalMapper`
 /// (injury routing): a pure, closed, testable function of already-computed values, whose *output
-/// type* is the contract. The narration (the exact prose) is Claude's and is captain-verifiable
+/// type* is the contract. The narration (the exact prose) is model-authored and captain-verifiable
 /// manual QA; the classification and the offered action are what the unit suite pins.
 ///
 /// **Why an offer, not an edit.** The only action the coach can take from an insight is a

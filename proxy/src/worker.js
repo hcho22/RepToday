@@ -1,14 +1,14 @@
 /**
  * Rep Today LLM proxy.
  *
- * A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It holds the Anthropic API
- * key (so the key never ships in the app) and makes **exactly one** Claude call per request. Two
+ * A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It holds upstream API
+ * keys (so they never ship in the app) and makes **exactly one** model call per request. Two
  * routes live here, and both are stateless and store nothing:
  *
  *   POST /variety-language  (US-N05) - turns the engine's genuine day-to-day contrast into one short
  *                           plain-language line ("Today leans into mobility - yesterday was strength").
  *   POST /coach             (US-AC01) - the premium AI coach transport: a derived, non-identifying
- *                           context bundle + the user's message in, a Claude reply out.
+ *                           context bundle + the user's message in, an OpenAI reply out.
  *
  * Privacy by construction (both routes):
  *   - The request carries no user identity: no account, no `installId`, no IDFA, no Apple ID, no
@@ -32,6 +32,11 @@ const ANTHROPIC_VERSION = "2023-06-01";
 // (e.g. a Haiku tier) when latency or cost matters more than prose quality.
 const DEFAULT_MODEL = "claude-opus-4-8";
 
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+// The Coach model is intentionally route-specific. Variety Language remains on its independent
+// Claude configuration and cannot be moved by a Coach model change.
+const COACH_MODEL = "gpt-5.6-luna";
+
 // --- Variety Language route tuning ---
 // A short single line never needs many tokens.
 const VARIETY_MAX_TOKENS = 64;
@@ -48,7 +53,7 @@ const COACH_UPSTREAM_TIMEOUT_MS = 30000;
 const COACH_MAX_MESSAGE_CHARS = 2000;
 
 // The maximum request body accepted on any route, checked BEFORE parsing so an oversized payload can
-// never reach JSON parsing (or bill a Claude call). The coach bundle + a capped message is small;
+// never reach JSON parsing (or bill a model call). The coach bundle + a capped message is small;
 // this leaves generous headroom while refusing anything abusive.
 const MAX_BODY_BYTES = 32 * 1024;
 
@@ -125,7 +130,7 @@ const COACH_SYSTEM_PROMPT = [
 export default {
   /**
    * @param {Request} request
-   * @param {{ ANTHROPIC_API_KEY?: string, ANTHROPIC_MODEL?: string, CLIENT_SHARED_SECRET?: string }} env
+   * @param {{ ANTHROPIC_API_KEY?: string, ANTHROPIC_MODEL?: string, OPENAI_API_KEY?: string, CLIENT_SHARED_SECRET?: string }} env
    */
   async fetch(request, env) {
     if (request.method !== "POST") {
@@ -133,8 +138,8 @@ export default {
     }
 
     // Abuse gate: when a client shared secret is configured, reject any request whose
-    // `Authorization: Bearer <secret>` header does not match BEFORE calling (billing) Anthropic, so
-    // an unauthorized caller can never drive a paid Claude call. Left open only when the secret is
+    // `Authorization: Bearer <secret>` header does not match BEFORE calling a billed provider, so
+    // an unauthorized caller can never drive a paid model call. Left open only when the secret is
     // unset (local dev); production deploys MUST set it (see ../README.md, "Abuse protection").
     if (env.CLIENT_SHARED_SECRET && !isAuthorized(request, env.CLIENT_SHARED_SECRET)) {
       return json({ error: "unauthorized" }, 401);
@@ -211,7 +216,7 @@ async function handleCoach(request, env) {
   const payload = parsed.value;
 
   // Validate the request shape BEFORE any upstream call so a malformed or oversized turn never bills
-  // a Claude call. The context bundle is app-authored; validate it is present and object-shaped
+  // a model call. The context bundle is app-authored; validate it is present and object-shaped
   // (not a deep schema check - the app owns the audited `CoachContextBundle` definition).
   const context = payload?.context;
   if (typeof context !== "object" || context === null || Array.isArray(context)) {
@@ -224,13 +229,13 @@ async function handleCoach(request, env) {
   if (message.length > COACH_MAX_MESSAGE_CHARS) {
     return json({ error: "message_too_long" }, 413);
   }
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!env.OPENAI_API_KEY) {
     return json({ error: "not_configured" }, 500);
   }
 
   const userPrompt = buildCoachPrompt(context, message.trim());
 
-  const upstream = await callClaude(env, {
+  const upstream = await callCoachModel(env, {
     system: COACH_SYSTEM_PROMPT,
     userPrompt,
     maxTokens: COACH_MAX_TOKENS,
@@ -240,7 +245,7 @@ async function handleCoach(request, env) {
     return json({ error: upstream.error, ...(upstream.status ? { status: upstream.status } : {}) }, 502);
   }
 
-  const reply = extractText(upstream.body);
+  const reply = extractOpenAIText(upstream.body);
   if (!reply) {
     return json({ error: "empty_reply" }, 502);
   }
@@ -275,7 +280,7 @@ async function parseCappedJson(request, maxBytes) {
 }
 
 /**
- * Make the single bounded Claude call shared by both routes. Returns `{ body }` on success or
+ * Make the Variety Language route's single bounded Claude call. Returns `{ body }` on success or
  * `{ error, status? }` on any misconfiguration/upstream failure (the caller maps these to a 502/500).
  * Extended thinking is intentionally not requested (fast generation on both routes).
  *
@@ -302,6 +307,48 @@ async function callClaude(env, opts) {
     });
   } catch {
     // Timeout or network error reaching Anthropic.
+    return { error: "upstream_unreachable" };
+  }
+
+  if (!upstream.ok) {
+    return { error: "upstream_error", status: upstream.status };
+  }
+
+  try {
+    return { body: await upstream.json() };
+  } catch {
+    return { error: "upstream_bad_json" };
+  }
+}
+
+/**
+ * Make the Coach's single bounded OpenAI Responses API call. The request is stateless (`store:
+ * false`) and uses no tools. `reasoning.effort: "none"` preserves the previous no-extended-thinking
+ * latency posture, while `max_output_tokens` preserves the existing output ceiling.
+ *
+ * @param {{ OPENAI_API_KEY?: string }} env
+ * @param {{ system: string, userPrompt: string, maxTokens: number, timeoutMs: number }} opts
+ */
+async function callCoachModel(env, opts) {
+  let upstream;
+  try {
+    upstream = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: COACH_MODEL,
+        instructions: opts.system,
+        input: opts.userPrompt,
+        max_output_tokens: opts.maxTokens,
+        reasoning: { effort: "none" },
+        store: false,
+      }),
+      signal: AbortSignal.timeout(opts.timeoutMs),
+    });
+  } catch {
     return { error: "upstream_unreachable" };
   }
 
@@ -370,6 +417,17 @@ function extractText(message) {
   const blocks = Array.isArray(message?.content) ? message.content : [];
   return blocks
     .filter((block) => block?.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+}
+
+/** Join and trim the output-text blocks of an OpenAI Responses API response. */
+function extractOpenAIText(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output
+    .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+    .filter((block) => block?.type === "output_text" && typeof block.text === "string")
     .map((block) => block.text)
     .join("")
     .trim();

@@ -91,7 +91,7 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isSending, "sending always resolves")
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertFalse(viewModel.canRetry)
-        XCTAssertEqual(transport.callCount, 1, "exactly one Claude call per question")
+        XCTAssertEqual(transport.callCount, 1, "exactly one Coach model call per question")
     }
 
     func testSendTrimsWhitespaceFromTheQuestion() async {
@@ -273,7 +273,7 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.canSend, "the send control is enabled once consent is given")
         await viewModel.send()
 
-        XCTAssertEqual(transport.callCount, 1, "exactly one Claude call once consented")
+        XCTAssertEqual(transport.callCount, 1, "exactly one Coach model call once consented")
         XCTAssertEqual(viewModel.messages.map(\.author), [.user, .coach])
     }
 

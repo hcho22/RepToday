@@ -3,7 +3,7 @@ import XCTest
 
 /// Tests US-AN02's on-device decision half: the pure classification that reads the premium
 /// strength-journey analytics (US-AN01) into per-pattern trends, and the bounded, preference-only
-/// offer it produces. The narration prose is Claude's (captain-verifiable manual QA); what is pinned
+/// offer it produces. The narration prose is model-authored (captain-verifiable manual QA); what is pinned
 /// here is that a flat pattern is recognized as a stall and that the offer it maps to emphasizes that
 /// pattern through the US-AC07 proposal shape - never a workout edit.
 final class CoachAnalyticsInsightTests: XCTestCase {

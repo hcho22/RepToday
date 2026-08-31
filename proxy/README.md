@@ -1,7 +1,7 @@
 # Rep Today LLM Proxy
 
-A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It exists so every Claude
-call runs **without shipping an API key in the app**, and so the app never has to trust it: each
+A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It exists so every upstream
+model call runs **without shipping an API key in the app**, and so the app never has to trust it: each
 client enforces its own short timeout and degrades cleanly on any failure, timeout, or absence of
 this proxy.
 
@@ -11,13 +11,13 @@ Two routes live here, both stateless and storing nothing:
   the shipping MVP; the client (`ProxyVarietyLanguageProvider`) falls back to the deterministic
   on-device template on any failure.
 - **`POST /coach`** (US-AC01) - the premium AI coach transport. A derived, non-identifying context
-  bundle + the user's message in, a Claude reply out. The chat surface that drives it is US-AC02;
+  bundle + the user's message in, an OpenAI reply out. The chat surface that drives it is US-AC02;
   US-AC01 ships the transport only.
 
 ## What it does
 
-- Holds the Anthropic API key (a Wrangler secret) and proxies **exactly one** Claude call per
-  request, on either route.
+- Holds provider API keys (Wrangler secrets) and proxies **exactly one** model call per request.
+  Variety Language uses Anthropic; the premium Coach uses OpenAI.
 - **Stores no user data at rest, on either route.** Nothing is persisted: no KV, no D1, no cache, no
   scheduler, and **no request/response body logging**. History is read transiently from the request
   and discarded when the response is sent. The coach's conversation memory, if any, lives on the
@@ -27,7 +27,7 @@ Two routes live here, both stateless and storing nothing:
   app-audited context bundle (summarized catalog/aggregate signals) plus the free-text the user
   typed.
 - Bounds every upstream call with `AbortSignal.timeout` and caps the request body at **32 KiB**
-  (checked before parsing, so an oversized payload never reaches JSON parsing or a Claude call).
+  (checked before parsing, so an oversized payload never reaches JSON parsing or a paid model call).
 
 ## Wire contract: `POST /variety-language` (US-N05)
 
@@ -151,14 +151,14 @@ npm test            # vitest: drives worker.fetch(request, env) in Node, stubbin
 ```
 
 The test suite (`test/worker.test.js`) proves the boundary without a network or a deployment: a valid
-request makes exactly one upstream Anthropic call and returns a reply; an oversized / invalid /
+request makes exactly one route-appropriate upstream call and returns a reply; an oversized / invalid /
 unauthorized request is rejected **before** that call; and nothing is logged (the Worker never touches
 the console) or persisted (there are no storage bindings).
 
 ## Abuse protection
 
-Without a gate, **every** route is an **open relay to the billed Anthropic Messages API**: anyone
-who discovers the URL can drive unbounded, paid Claude calls (financial abuse / quota exhaustion).
+Without a gate, **every** route is an **open relay to a billed model API**: anyone
+who discovers the URL can drive unbounded, paid model calls (financial abuse / quota exhaustion).
 The shared-secret gate runs **once, before routing**, so it protects `/variety-language` and `/coach`
 identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Before deploying you
 **MUST**:
@@ -166,7 +166,7 @@ identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Befo
 1. **Set a client shared secret.** `wrangler secret put CLIENT_SHARED_SECRET`, and have the client
    send it. When the secret is set, the Worker rejects any request whose
    `Authorization: Bearer <secret>` header does not match with `401 { "error": "unauthorized" }`
-   **before** it calls Anthropic, so unauthorized traffic never bills. (The secret is compared in
+   **before** it calls an upstream provider, so unauthorized traffic never bills. (The secret is compared in
    constant time.) When the env var is unset the route stays open - convenient for local `wrangler
    dev`, but never acceptable in production. Point the client at it by passing `sharedSecret:` to
    `ProxyVarietyLanguageProvider` / `CoachProxyClient` (see the wiring examples below).
@@ -175,10 +175,13 @@ identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Befo
 
 ## Model
 
-Defaults to `claude-opus-4-8` (Anthropic's most capable model).
-Override with the `ANTHROPIC_MODEL` var in `wrangler.toml` - e.g. a Haiku tier - when latency or cost
-matter more than prose quality. The one model var applies to both routes.
-Extended thinking is intentionally not requested (fast generation on both routes).
+The premium AI Coach is source-pinned to the exact model identifier `gpt-5.6-luna` and calls the
+OpenAI Responses API with `reasoning.effort: "none"`, `store: false`, and the existing 1024-token
+output ceiling. It is intentionally not configurable through `ANTHROPIC_MODEL`, so Variety Language
+and Coach model selections cannot drift together.
+
+Variety Language remains on `claude-opus-4-8` by default. Override only that route with the
+`ANTHROPIC_MODEL` var in `wrangler.toml` when latency or cost matters more than prose quality.
 
 ## Deploy
 
@@ -190,6 +193,7 @@ npm install
 
 # Set the API key as a secret (never committed):
 wrangler secret put ANTHROPIC_API_KEY
+wrangler secret put OPENAI_API_KEY
 
 # Local run:
 cp .dev.vars.example .dev.vars   # put your key in .dev.vars

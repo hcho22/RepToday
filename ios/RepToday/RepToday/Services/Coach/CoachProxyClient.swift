@@ -2,7 +2,7 @@ import Foundation
 
 /// The stateless coach transport client (US-AC01): it POSTs a `CoachContextBundle` plus the user's
 /// message to the key-holding proxy (the same Cloudflare Worker as the Variety Language slice, at its
-/// `POST /coach` route - see `proxy/README.md`) and returns Claude's reply. The Anthropic API key
+/// `POST /coach` route - see `proxy/README.md`) and returns OpenAI's reply. The OpenAI API key
 /// never lives in the app; the client only ever talks to the proxy.
 ///
 /// It mirrors `ProxyVarietyLanguageProvider`'s contract so the coach is safe to `await` from a UI
@@ -20,7 +20,7 @@ import Foundation
 ///   holds no history. Any multi-turn memory lives on the device in the caller (US-AC02).
 ///
 /// The message is length-capped **client-side** before sending (`messageCharacterLimit`) so an
-/// oversized turn is rejected locally and never bills a Claude call - the proxy enforces the same cap
+/// oversized turn is rejected locally and never bills a model call - the proxy enforces the same cap
 /// as defense in depth.
 ///
 /// US-AC01 ships the transport only; the chat surface that wires this in is US-AC02, so - like
@@ -66,7 +66,7 @@ struct CoachProxyClient {
     let messageCharacterLimit: Int
     /// The optional client shared secret that gates the Worker's route (abuse protection). When set,
     /// every request sends `Authorization: Bearer <secret>` so the Worker can reject unauthenticated
-    /// traffic before it bills a Claude call; `nil` matches an open (dev) Worker. See `proxy/README.md`.
+    /// traffic before it bills a model call; `nil` matches an open (dev) Worker. See `proxy/README.md`.
     let sharedSecret: String?
     /// The HTTP seam, injected so tests exercise the request/response contract without a live network.
     let transport: any CoachProxyTransport

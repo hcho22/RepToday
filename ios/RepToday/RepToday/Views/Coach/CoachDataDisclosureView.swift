@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// The disclosure exists because the AI coach is the one honest break in Rep Today's on-device privacy
 /// posture: everything else - your history, your sessions, the engine that builds them - stays on the
-/// device, but a coach answer is written by Claude, so in the moment of a call your message *and* a
+/// device, but a coach answer is written by OpenAI, so in the moment of a call your message *and* a
 /// short summary of your training context leave the device. The copy names that plainly and up front,
 /// never buried in fine print, and never dark-patterned into pretending it does not happen.
 enum CoachDataDisclosureCopy {
@@ -21,7 +21,7 @@ enum CoachDataDisclosureCopy {
     /// The three disclosure points, each a concrete fact about what happens to your content.
     static let whatIsSentTitle = "What's sent"
     static let whatIsSent = "When you send a question, your message and a short summary of your training - "
-        + "your current movements, how consistent you've been, and your phase - go to Claude, the AI that "
+        + "your current movements, how consistent you've been, and your phase - go to OpenAI, the AI service that "
         + "writes the reply."
 
     static let leavesDeviceTitle = "It leaves your device - just for this"
@@ -44,7 +44,7 @@ enum CoachDataDisclosureCopy {
     /// privacy choices are never confused for one.
     static let settingsRowTitle = "How the coach uses your data"
     static let settingsFooter = "When you chat with the AI coach, your message and a short summary of your "
-        + "training context are sent to Claude to answer, then not stored - the one time Rep Today sends "
+        + "training context are sent to OpenAI to answer, then not stored - the one time Rep Today sends "
         + "your content off the device. This is separate from the anonymous usage data above."
 }
 
@@ -172,7 +172,7 @@ struct CoachDataDisclosureView: View {
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(CoachDataDisclosureCopy.acknowledge)
-            .accessibilityHint("Agrees to send your messages to Claude and opens the coach")
+            .accessibilityHint("Agrees to send your messages to OpenAI and opens the coach")
 
             Button(action: onDecline) {
                 Text(CoachDataDisclosureCopy.decline)
