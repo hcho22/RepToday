@@ -166,8 +166,9 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
     // MARK: - Coach data disclosure mirror (US-AC04)
 
     /// Settings mirrors the coach data disclosure in its own AI Coach section: it states the same facts
-    /// (message + training summary to OpenAI, not stored), it is the shared copy the pre-use modal
-    /// shows, and it is separate from - and does not touch - the telemetry opt-out above it.
+    /// (message + training summary to OpenAI, no proxy storage, standard OpenAI retention disclosed),
+    /// it is the shared copy the pre-use modal shows, and it is separate from - and does not touch -
+    /// the telemetry opt-out above it.
     func testSettingsMirrorsTheCoachDataDisclosureSeparatelyFromTelemetry() throws {
         let root = hostSettings(analyticsEnabled: true)
         let labels = AccessibilityTree.labels(in: root)
@@ -181,8 +182,14 @@ final class TelemetryConsentSurfaceTests: XCTestCase {
         // The coach footer states the same facts as the pre-use modal.
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
                       "the Settings coach entry names OpenAI; spoke: \(spoken)")
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("not stored"),
-                      "the Settings coach entry states content is not stored; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("proxy")
+                      && spoken.localizedCaseInsensitiveContains("doesn't store"),
+                      "the Settings coach entry states that Rep Today's proxy does not store content; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("abuse-monitoring")
+                      && spoken.localizedCaseInsensitiveContains("up to 30 days"),
+                      "the Settings coach entry discloses OpenAI's standard retention; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Rep Today identity"),
+                      "the Settings coach entry states that no Rep Today identity is sent; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("separate from the anonymous usage data"),
                       "the Settings coach entry declares its separation from telemetry; spoke: \(spoken)")
     }

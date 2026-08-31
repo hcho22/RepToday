@@ -29,6 +29,13 @@ Two routes live here, both stateless and storing nothing:
 - Bounds every upstream call with `AbortSignal.timeout` and caps the request body at **32 KiB**
   (checked before parsing, so an oversized payload never reaches JSON parsing or a paid model call).
 
+"Stateless" and "stores nothing" above describe the Rep Today Worker. The Coach request sets
+`store: false`, so the OpenAI Responses API does not retain response application state, but that flag
+does not disable OpenAI's standard abuse-monitoring logs. OpenAI may retain the Coach prompt (message
+and training summary) and reply in those logs for up to 30 days. This deployment does not require Zero
+Data Retention or Modified Abuse Monitoring; the user disclosure assumes standard retention. The
+Coach request still carries no Rep Today identity field.
+
 ## Wire contract: `POST /variety-language` (US-N05)
 
 The client calls this route **only** for the Variety Language slice, and always falls back to the
@@ -177,8 +184,9 @@ identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Befo
 
 The premium AI Coach is source-pinned to the exact model identifier `gpt-5.6-luna` and calls the
 OpenAI Responses API with `reasoning.effort: "none"`, `store: false`, and the existing 1024-token
-output ceiling. It is intentionally not configurable through `ANTHROPIC_MODEL`, so Variety Language
-and Coach model selections cannot drift together.
+output ceiling. `store: false` prevents response application-state storage, not the standard
+abuse-monitoring retention documented above. It is intentionally not configurable through
+`ANTHROPIC_MODEL`, so Variety Language and Coach model selections cannot drift together.
 
 Variety Language remains on `claude-opus-4-8` by default. Override only that route with the
 `ANTHROPIC_MODEL` var in `wrangler.toml` when latency or cost matters more than prose quality.

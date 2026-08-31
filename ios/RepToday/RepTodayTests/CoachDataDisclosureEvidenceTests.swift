@@ -5,7 +5,8 @@ import UIKit
 
 /// Reviewer-visible evidence for US-AC04, the coach data disclosure: before first use, a plain,
 /// unavoidable disclosure states that a coach message plus a training-context summary are sent to
-/// OpenAI to answer and are not stored, and declining sends nothing.
+/// OpenAI to answer, Rep Today's proxy stores no content, OpenAI may retain content in abuse-monitoring
+/// logs for up to 30 days, no Rep Today identity is sent, and declining sends nothing.
 ///
 /// This drives the *production* `CoachView` in a real key window with a fresh (un-acknowledged)
 /// `AppState` in the environment, so the disclosure overlay presents exactly as it does on a first
@@ -104,9 +105,17 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         // It is honest about the one break in the on-device posture.
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("off your"),
                       "it must state that content leaves the device; spoke: \(spoken)")
-        // It states the content is not stored.
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("aren't saved") || spoken.localizedCaseInsensitiveContains("not stored"),
-                      "it must state the content is not stored; spoke: \(spoken)")
+        // It distinguishes Rep Today's stateless proxy from OpenAI's standard abuse-monitoring retention.
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("proxy")
+                      && spoken.localizedCaseInsensitiveContains("doesn't store"),
+                      "it must state that Rep Today's proxy does not store the content; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("abuse-monitoring")
+                      && spoken.localizedCaseInsensitiveContains("up to 30 days"),
+                      "it must disclose OpenAI's standard abuse-monitoring retention; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("name")
+                      && spoken.localizedCaseInsensitiveContains("email")
+                      && spoken.localizedCaseInsensitiveContains("account"),
+                      "it must state that Rep Today identity is not sent; spoke: \(spoken)")
 
         // Both consent controls are reachable, labeled VoiceOver elements.
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachDataDisclosureCopy.acknowledge, in: root),

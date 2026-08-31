@@ -17,7 +17,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - **Strength Phase machinery is complete but empty.** `PhaseEvaluator` (`Services/Consistency/PhaseEvaluator.swift`) earns `.strength` on sustained consistency (score >= 80 over ~8 weeks) AND cleared entry tiers of push/squat/hinge/core. `ExercisePoolFilter.isPhaseAllowed` gates `phase == .strength` exercises behind it. But only **3** gated skills exist (`push_one_arm`, `squat_pistol`, `core_l_sit`), all difficulty 5, no hinge skill.
 - **The double-gate trap.** A phase-gated skill must pass `isPhaseAllowed` AND `isWithinDifficultyCap` (`difficultyCap`: beginner 1-2, intermediate 1-3, advanced 1-5). All 3 skills are difficulty 5, so today only an "advanced" user who earns the phase sees anything. Beginners/intermediates earn it and see nothing.
 - **The policy seam for the coach already exists.** `SessionPolicy` (`Models/SessionPolicy.swift`) is the single seam between the programmer and the engine; `SessionPolicy.UpdatedBy` already has a reserved `.llm` case. Live levers: `progressionRate` (clamped), `varietyWindow`. `pillarWeighting` is **inert** since US-M01. There is **no** pattern-emphasis lever today.
-- **The LLM transport exists but is unwired.** `proxy/` is a deploy-ready Cloudflare Worker holding the Anthropic key that today "stores nothing, receives only two pillar values"; `Services/Language/` composes an optional LLM slice over a deterministic template (`VarietyLanguageResolver`, provider `nil` in MVP).
+- **The LLM transport exists but is unwired.** `proxy/` is a deploy-ready Cloudflare Worker with route-specific provider keys: Variety Language remains on Anthropic, while the premium Coach uses OpenAI `gpt-5.6-luna`; the Worker stores no request or response content. `Services/Language/` composes an optional LLM slice over a deterministic template (`VarietyLanguageResolver`, provider `nil` in MVP).
 - **Analytics split exists.** `Services/Progress/ProgressAnalytics.swift` renders free layers (pillar balance, chain positions, personal bests) for everyone and gates `DeepAnalytics` (per-pattern balance, weekly volume, difficulty mix) behind premium at the render boundary.
 - **Monetization plumbing exists.** StoreKit 2, `SubscriptionTier { free, premium }` ("premium unlocks the depth layer (full analytics, later Strength Phase / AI)"), paywall + funnel telemetry (US-T12).
 
@@ -33,7 +33,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 ## Architectural decisions (ADR-worthy - land as ADRs alongside this PRD)
 
 1. **The LLM may advise bounded policy, never generate a workout.** Reframes the prior "LLM is language-only" wall. The coach writes a validated, clamped `SessionPolicy` tagged `.llm`; the deterministic engine still generates every session and owns all safety. (Supersedes the strict "language only" framing; option "C - LLM generates/adapts workouts" is rejected.)
-2. **The coach stays stateless and device-anchored.** No server-side per-user memory, no accounts, still pseudonymous. Each turn sends a minimal *derived* context bundle plus the user's message; the proxy calls Claude and stores nothing. Chosen over richer server memory to preserve the privacy posture and avoid a security/compliance burden before the PMF decision.
+2. **The coach stays stateless and device-anchored.** No server-side per-user memory, no accounts, still pseudonymous. Each turn sends a minimal *derived* context bundle plus the user's message; the proxy calls OpenAI `gpt-5.6-luna` with `store: false` and stores no content itself. Under standard OpenAI retention, prompt and response content may remain in abuse-monitoring logs for up to 30 days; deployment does not require Zero Data Retention or Modified Abuse Monitoring. Chosen over richer Rep Today server memory while disclosing the provider boundary honestly.
 3. **The Strength Phase is earned, free, and lifts the difficulty cap.** Demonstrated competence (8 weeks + cleared foundations) overrides the conservative onboarding fitness-level estimate. Never paywalled - honors `PhaseEvaluator`'s "never a reward withheld" principle.
 
 ## Cut line and sequencing (retention-first)
@@ -176,12 +176,12 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 ### US-AC01: Stateless coach data boundary (Slice 2)
 
-**Description:** As a privacy-conscious user, I want the coach to work without my training data being stored on a server or tied to an account, so that Rep Today's on-device privacy posture is preserved.
+**Description:** As a privacy-conscious user, I want Rep Today not to persist my coach content or send my Rep Today identity, and I want the provider's standard retention disclosed, so that I can understand the coach's deliberate break from the on-device privacy posture.
 
 **Acceptance Criteria:**
 
 - [x] Define a **derived context bundle**: a small, non-identifying summary (current chain positions, recent movement patterns, consistency trend, current phase, requested minutes) - NOT raw `WorkoutLog` history, NOT the Keychain/IDFA/Apple ID.
-- [x] Expand `proxy/` to accept a coach request (context bundle + user message), call Claude, return the response, and **store nothing** (no logging of request/response bodies); enforce a bounded timeout and body size cap as the existing proxy does.
+- [x] Expand `proxy/` to accept a coach request (context bundle + user message), call OpenAI `gpt-5.6-luna` through the Responses API with `store: false`, return the response, and **store nothing in the Rep Today proxy** (no logging of request/response bodies); enforce a bounded timeout and body size cap as the existing proxy does. Standard OpenAI abuse-monitoring retention of up to 30 days remains and must be disclosed.
 - [x] No accounts introduced; requests remain pseudonymous (reuse the existing anonymous transport identity model; do not send `installId` if not required, and never send identity fields).
 - [x] Conversation memory (if any) lives on-device only; the server is stateless per request.
 - [x] Proxy tests cover: valid request returns a response; oversized/invalid request rejected; nothing is persisted. Typecheck (`npm run typecheck`) and `npm test` pass for the sink/proxy toolchain.
@@ -194,8 +194,8 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
   1. Send a coach request.
   2. Inspect the proxy for any stored request/response.
   3. Send an oversized body.
-- **Expected Result:** A Claude-sourced answer returns; no request/response is stored anywhere; the oversized body is rejected before processing.
-- **Failure Indicator:** Any persistence of user content, an unbounded call, or identity fields on the wire.
+- **Expected Result:** An OpenAI `gpt-5.6-luna` answer returns; the Rep Today proxy stores no request/response content; standard OpenAI retention is disclosed; the oversized body is rejected before processing.
+- **Failure Indicator:** Any Rep Today proxy persistence of user content, an undisclosed provider-retention promise, an unbounded call, or identity fields on the wire.
 
 ### US-AC02: The talking coach (A) - history-aware, science-grounded
 
@@ -238,11 +238,11 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 ### US-AC04: Consent and disclosure for coach data
 
-**Description:** As a user, I want a plain, upfront disclosure that my coach messages are sent to Claude and not stored, so that I can consent knowingly.
+**Description:** As a user, I want a plain, upfront disclosure that my coach content is sent to OpenAI, that Rep Today's proxy stores none of it, and that OpenAI may retain prompts and replies in abuse-monitoring logs for up to 30 days, so that I can consent knowingly.
 
 **Acceptance Criteria:**
 
-- [x] Before first use of the coach, a plain-language disclosure states that messages + a summary of training context are sent to Claude to answer, and are not stored.
+- [x] Before first use of the coach, a plain-language disclosure states that messages + a summary of training context are sent to OpenAI to answer, the Rep Today proxy stores no content, OpenAI may retain prompt and response content in abuse-monitoring logs for up to 30 days under standard retention, and no Rep Today identity is sent.
 - [x] The disclosure is honest about the one break in the on-device posture (content leaves the device in the moment of the call) and is not buried in fine print.
 - [x] A Settings entry documents the same, consistent with the existing Privacy section pattern (`SettingsView`).
 - [x] The disclosure is separate from, and does not weaken, the existing anonymous product-telemetry opt-out.
@@ -392,9 +392,9 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - **FR-3:** A free phase-progress surface MUST show consistency and competence progress computed by the same logic as `PhaseEvaluator`. (US-SP04)
 - **FR-4:** A progression map MUST visualize each pattern's ladder, mark current position and locked Strength-Phase rungs, and MUST NOT allow selecting/starting a movement. (US-SP05)
 - **FR-5:** A one-time, identity-framed graduation reveal MUST fire once on transition to `.strength`, persisted and non-repeating. (US-SP06)
-- **FR-6:** `proxy/` MUST support a stateless coach request (derived context bundle + message -> Claude -> response), storing nothing, bounded and size-capped, with no identity fields and no accounts. (US-AC01)
+- **FR-6:** `proxy/` MUST support a stateless coach request (derived context bundle + message -> OpenAI `gpt-5.6-luna` -> response), with `store: false`, no Rep Today proxy persistence, bounded and size-capped, with no identity fields and no accounts. Standard OpenAI abuse-monitoring retention remains permitted and disclosed. (US-AC01)
 - **FR-7:** A premium-gated chat coach MUST answer history-aware, science-grounded questions and MUST NOT generate or edit a workout in the talking story. (US-AC02, US-AC03)
-- **FR-8:** A plain, pre-use disclosure MUST state that coach content is sent to Claude and not stored, separate from the telemetry opt-out. (US-AC04)
+- **FR-8:** A plain, pre-use disclosure MUST state that coach content is sent to OpenAI, the Rep Today proxy stores none of it, OpenAI may retain prompt and response content in abuse-monitoring logs for up to 30 days under standard retention, and no Rep Today identity is sent; it remains separate from the telemetry opt-out. (US-AC04)
 - **FR-9:** `SessionPolicy` MUST gain a bounded, neutral-by-default `patternEmphasis` preference lever that reorders but never filters or restructures. (US-AC05)
 - **FR-10:** A coach-sourced policy write MUST be able to lower `progressionRate` but MUST NOT raise it above the engine-earned value. (US-AC06)
 - **FR-11:** The coach MUST write only preference levers, tagged `.llm`, validated and clamped; the deterministic Programmer's safety moves MUST remain sovereign under an explicit merge/precedence rule; changes MUST be noted honestly and apply next-session. (US-AC07)
@@ -405,7 +405,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 ## Non-Goals (Out of Scope)
 
 - **No LLM-generated or LLM-edited workouts (option C).** The deterministic engine remains the sole generator; the LLM only talks and writes bounded policy.
-- **No server-side per-user memory, no accounts, no persisted coach content.** Stateless coach only.
+- **No Rep Today server-side per-user memory, accounts, or persisted coach content.** The stateless proxy stores no content; standard OpenAI abuse-monitoring retention is allowed and disclosed.
 - **No content/discovery library** (no exercise encyclopedia, no articles). Only the progression map, tied to the Strength Phase.
 - **No paywalling of the Strength Phase or the core loop.** Strength Phase is earned and free; the core loop is free forever.
 - **No coach control over safety filters** (injuries, difficulty cap, phase gate, zero-equipment) beyond routing.
@@ -427,7 +427,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - **Engine safety:** all new levers must be `asOf`-pure, clamped, neutral-by-default, and round-trip-safe for persisted `SessionPolicy` (follow the Start Seed additive-field precedent). The `.llm` `UpdatedBy` case already exists.
 - **Two writers, one policy:** `SessionPolicy` is versioned last-writer-wins today; US-AC07 must add an explicit safety-sovereign merge rule so a coach write cannot clobber a deterministic de-load/re-entry.
 - **Privacy:** the derived context bundle must be specified precisely and reviewed to ensure it is non-identifying; the proxy must not log bodies; no `installId`/IDFA/Apple ID on the coach wire.
-- **Provider:** Claude via the existing `proxy/` Anthropic key; enforce bounded timeout + body cap as the current proxy does.
+- **Provider:** OpenAI Responses API, source-pinned to exact model `gpt-5.6-luna`, with `store: false`, bounded timeout, output ceiling, and body cap. Deployment does not require Zero Data Retention or Modified Abuse Monitoring; standard OpenAI abuse-monitoring retention of up to 30 days is the disclosed baseline. Variety Language remains independently configured on Anthropic.
 - **Testing seams:** reuse `HostedSurface`/`AccessibilityTree`/`EvidenceOutput` for new UI evidence; add `docs/test-coverage.md` rows per story; keep the `RepToday` unit suite green as the gate; convex/proxy toolchain via `npm run typecheck` + `npm test`.
 - **Catalog:** new skills must keep progression chains gap-free and pass load-time validation; asset-attribution rows for any bundled asset.
 

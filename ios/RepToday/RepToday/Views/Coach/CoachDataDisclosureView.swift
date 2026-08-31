@@ -28,9 +28,10 @@ enum CoachDataDisclosureCopy {
     static let leavesDevice = "This is the one moment Rep Today sends your content off your phone. Your full "
         + "workout history and everything else stay on the device, as they always have."
 
-    static let notStoredTitle = "It isn't stored"
-    static let notStored = "Your message and that summary are used only to answer you. They aren't saved "
-        + "afterward, and they're never tied to your name, your email, or your account."
+    static let notStoredTitle = "How it's handled"
+    static let notStored = "Rep Today's proxy doesn't store your message, training summary, or reply. Under "
+        + "its standard retention, OpenAI may keep that content in abuse-monitoring logs for up to 30 days. "
+        + "Rep Today doesn't send your name, email, or account identity with it."
 
     /// The primary control: an explicit acknowledgement. Tapping it is what opens the coach.
     static let acknowledge = "I understand"
@@ -43,9 +44,10 @@ enum CoachDataDisclosureCopy {
     /// facts and makes the separation from the anonymous-telemetry control above it explicit, so the two
     /// privacy choices are never confused for one.
     static let settingsRowTitle = "How the coach uses your data"
-    static let settingsFooter = "When you chat with the AI coach, your message and a short summary of your "
-        + "training context are sent to OpenAI to answer, then not stored - the one time Rep Today sends "
-        + "your content off the device. This is separate from the anonymous usage data above."
+    static let settingsFooter = "When you chat with the AI coach, your message and a short training summary "
+        + "are sent to OpenAI to answer. Rep Today's proxy doesn't store them. OpenAI may retain them and the "
+        + "reply in abuse-monitoring logs for up to 30 days under standard retention. No Rep Today identity is "
+        + "sent. This is separate from the anonymous usage data above."
 }
 
 /// The one-time, pre-use consent disclosure for the AI coach (US-AC04).
