@@ -13,6 +13,9 @@ readonly EXPECTED_ENDPOINT='https://sensible-spider-810.convex.site'
 readonly KEYCHAIN_SERVICE='com.reptoday.analytics.production'
 readonly KEYCHAIN_ACCOUNT='release-archive'
 readonly BUNDLE_ID='com.reptoday.app'
+readonly INSTALL_ID_DEADLINE_SECONDS=10
+readonly DELIVERY_DEADLINE_SECONDS=15
+readonly DELIVERY_POLL_SECONDS=1
 
 repo_root=$(git rev-parse --show-toplevel)
 simulator_id=${1:-$(xcrun simctl list devices available | awk '/iPhone 16 \(/ { gsub(/[()]/, "", $3); print $3; exit }')}
@@ -60,8 +63,68 @@ if [[ "$built_endpoint" != "$EXPECTED_ENDPOINT" || "$built_secret" != "$secret" 
 fi
 unset secret built_secret
 
+read_install_id() {
+    local deadline=$((SECONDS + INSTALL_ID_DEADLINE_SECONDS))
+    local container
+    local install_id
+    local plist_path
+
+    while (( SECONDS < deadline )); do
+        container=$(xcrun simctl get_app_container "$simulator_id" "$BUNDLE_ID" data 2>/dev/null || true)
+        plist_path="$container/Library/Preferences/$BUNDLE_ID.plist"
+        if [[ -n "$container" && -f "$plist_path" ]]; then
+            install_id=$(/usr/libexec/PlistBuddy -c 'Print :AppState.installId' "$plist_path" 2>/dev/null || true)
+            if [[ -n "$install_id" ]]; then
+                printf '%s\n' "$install_id"
+                return 0
+            fi
+        fi
+        sleep 0.25
+    done
+
+    echo 'error: launched Release app did not persist an install identifier' >&2
+    return 1
+}
+
+await_delivery_state() {
+    local install_id=$1
+    local expected=$2
+    local deadline=$((SECONDS + DELIVERY_DEADLINE_SECONDS))
+    local poll_path="$private_dir/delivery-$expected.json"
+    local last_query_succeeded=false
+
+    while (( SECONDS < deadline )); do
+        last_query_succeeded=false
+        if npx convex run reconcile:eventsForInstalls \
+            "{\"installIds\":[\"$install_id\"]}" \
+            --deployment "$DEPLOYMENT" \
+            --typecheck disable \
+            --codegen disable > "$poll_path"
+        then
+            last_query_succeeded=true
+            if INSTALL_ID="$install_id" ROWS_PATH="$poll_path" node <<'NODE'
+const fs = require("fs");
+const rows = JSON.parse(fs.readFileSync(process.env.ROWS_PATH, "utf8"));
+const found = rows.some(
+  (row) => row.installId === process.env.INSTALL_ID && row.name === "app_install",
+);
+process.exit(found ? 0 : 1);
+NODE
+            then
+                [[ "$expected" == present ]]
+                return
+            fi
+        fi
+        sleep "$DELIVERY_POLL_SECONDS"
+    done
+
+    [[ "$expected" == absent && "$last_query_succeeded" == true ]]
+}
+
 launch_and_read_id() {
     local consent=$1
+    local install_id
+    local delivery_ok=true
     xcrun simctl uninstall "$simulator_id" "$BUNDLE_ID" >/dev/null 2>&1 || true
     xcrun simctl install "$simulator_id" "$app_path" >/dev/null
     if [[ "$consent" == 'off' ]]; then
@@ -70,12 +133,18 @@ launch_and_read_id() {
     else
         xcrun simctl launch --terminate-running-process "$simulator_id" "$BUNDLE_ID" >/dev/null
     fi
-    sleep 8
-    local container
-    container=$(xcrun simctl get_app_container "$simulator_id" "$BUNDLE_ID" data)
-    /usr/libexec/PlistBuddy -c 'Print :AppState.installId' \
-        "$container/Library/Preferences/$BUNDLE_ID.plist"
+    install_id=$(read_install_id)
+    if [[ "$consent" == 'off' ]]; then
+        await_delivery_state "$install_id" absent || delivery_ok=false
+    else
+        await_delivery_state "$install_id" present || delivery_ok=false
+    fi
     xcrun simctl terminate "$simulator_id" "$BUNDLE_ID" >/dev/null 2>&1 || true
+    if [[ "$delivery_ok" != true ]]; then
+        echo "error: Release telemetry delivery did not reach the expected $consent state within ${DELIVERY_DEADLINE_SECONDS}s" >&2
+        return 1
+    fi
+    printf '%s\n' "$install_id"
 }
 
 opted_in_id=$(launch_and_read_id on)
@@ -83,7 +152,9 @@ opted_out_id=$(launch_and_read_id off)
 
 npx convex run reconcile:eventsForInstalls \
     "{\"installIds\":[\"$opted_in_id\",\"$opted_out_id\"]}" \
-    --deployment "$DEPLOYMENT" > "$private_dir/rows.json"
+    --deployment "$DEPLOYMENT" \
+    --typecheck disable \
+    --codegen disable > "$private_dir/rows.json"
 
 OPTED_IN_ID="$opted_in_id" \
 OPTED_OUT_ID="$opted_out_id" \

@@ -12,12 +12,15 @@ readonly DEPLOYMENT='hcho22:reptoday-telemetry:prod'
 readonly ENDPOINT='https://sensible-spider-810.convex.site/logEvent'
 readonly KEYCHAIN_SERVICE='com.reptoday.analytics.production'
 readonly KEYCHAIN_ACCOUNT='release-archive'
+readonly CURL_CONNECT_TIMEOUT_SECONDS=3
+readonly CURL_MAX_TIME_SECONDS=5
+readonly MAX_RATE_WINDOW_ATTEMPTS=3
 
 run_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 smoke_id="prod-smoke-$run_stamp"
 missing_id="prod-missing-$run_stamp"
 wrong_id="prod-wrong-$run_stamp"
-rate_id="prod-rate-$run_stamp"
+rate_id=''
 client_ts=$(($(date +%s) * 1000))
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/reptoday-production-validation.XXXXXX")
 trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
@@ -34,36 +37,78 @@ unset secret
 smoke_body=$(printf '{"name":"app_install","installId":"%s","clientTs":%s,"props":{"install_week":"production-validation","validation_marker":"%s"}}' "$smoke_id" "$client_ts" "$run_stamp")
 missing_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{}}' "$missing_id" "$client_ts")
 wrong_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{}}' "$wrong_id" "$client_ts")
-# `$invalid` below is the intentional literal invalid Convex field name.
-# shellcheck disable=SC2016
-rate_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{"$invalid":"rate-validation"}}' "$rate_id" "$client_ts")
-
 post() {
     local response_file=$1
     local body=$2
     shift 2
-    curl -sS -o "$response_file" -w '%{http_code}' -X POST "$ENDPOINT" \
-        -H 'Content-Type: application/json' "$@" --data "$body"
+    curl -sS \
+        --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
+        --max-time "$CURL_MAX_TIME_SECONDS" \
+        -o "$response_file" \
+        -w '%{http_code}' \
+        -X POST "$ENDPOINT" \
+        -H 'Content-Type: application/json' \
+        "$@" \
+        --data "$body" || true
+}
+
+wait_for_fresh_rate_window() {
+    local second
+    second=$((10#$(date -u '+%S')))
+    if (( second > 2 )); then
+        sleep $((61 - second))
+    fi
+}
+
+rate_window() {
+    echo "$(($(date +%s) / 60))"
+}
+
+run_rate_attempt() {
+    local started_window
+    local status
+    started_window=$(rate_window)
+    rate_400=0
+    rate_429=0
+    rate_other=0
+
+    for _ in $(seq 1 61); do
+        if [[ "$(rate_window)" != "$started_window" ]]; then
+            return 1
+        fi
+        status=$(post "$temp_dir/rate" "$rate_body" --config "$secret_header_config")
+        case "$status" in
+            400) rate_400=$((rate_400 + 1)) ;;
+            429) rate_429=$((rate_429 + 1)) ;;
+            *) rate_other=$((rate_other + 1)) ;;
+        esac
+        if [[ "$(rate_window)" != "$started_window" ]]; then
+            return 1
+        fi
+    done
 }
 
 smoke_status=$(post "$temp_dir/smoke" "$smoke_body" --config "$secret_header_config")
 missing_status=$(post "$temp_dir/missing" "$missing_body")
 wrong_status=$(post "$temp_dir/wrong" "$wrong_body" -H 'X-RepToday-Analytics-Secret: wrong-production-validation-token')
 
-# Keep all 61 attempts in one server-minute window. At most 20 seconds of bounded waiting.
-while (( 10#$(date -u '+%S') > 39 )); do sleep 1; done
-
-rate_400=0
-rate_429=0
-rate_other=0
-for _ in $(seq 1 61); do
-    status=$(post "$temp_dir/rate" "$rate_body" --config "$secret_header_config")
-    case "$status" in
-        400) rate_400=$((rate_400 + 1)) ;;
-        429) rate_429=$((rate_429 + 1)) ;;
-        *) rate_other=$((rate_other + 1)) ;;
-    esac
+rate_attempt_complete=false
+for rate_attempt in $(seq 1 "$MAX_RATE_WINDOW_ATTEMPTS"); do
+    wait_for_fresh_rate_window
+    rate_id="prod-rate-$run_stamp-$rate_attempt"
+    # `$invalid` below is the intentional literal invalid Convex field name.
+    # shellcheck disable=SC2016
+    rate_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{"$invalid":"rate-validation"}}' "$rate_id" "$client_ts")
+    if run_rate_attempt; then
+        rate_attempt_complete=true
+        break
+    fi
 done
+
+if [[ "$rate_attempt_complete" != true ]]; then
+    echo "error: rate-limit validation crossed $MAX_RATE_WINDOW_ATTEMPTS consecutive server-minute windows" >&2
+    exit 1
+fi
 unset smoke_body missing_body wrong_body rate_body
 
 npx convex run reconcile:eventsForInstalls \
