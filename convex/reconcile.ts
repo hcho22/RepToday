@@ -18,27 +18,28 @@ import { v } from "convex/values";
  * `_id`/`_creationTime` are deliberately dropped - the reconciliation reasons about `clientTs`
  * (what the device stamped) and `serverTs` (what the sink stamped), not Convex's internal doc id.
  *
- * Scale note: the `events` table has no index beyond Convex's defaults (schema.ts keeps the sink
- * dumb), so this does a full table scan and filters in memory. That is intentional and adequate:
- * US-T13 reconciles the ~25-install moderated TestFlight cohort, a one-off offline QA read, not a
- * hot path. If a much larger cohort ever needs this, add a `by_installId` index in `schema.ts` and
- * switch to `withIndex` - a schema change made deliberately, not smuggled in under a QA tool.
+ * The `events.by_installId` index keeps both the ~25-install US-T13 cohort read and recurring
+ * production validation proportional to the requested installs instead of the lifetime table.
  */
 export const eventsForInstalls = internalQuery({
   args: {
     installIds: v.array(v.string()),
   },
   handler: async (ctx, { installIds }) => {
-    const wanted = new Set(installIds);
-    const all = await ctx.db.query("events").collect();
-    return all
-      .filter((row) => wanted.has(row.installId))
-      .map((row) => ({
-        name: row.name,
-        installId: row.installId,
-        clientTs: row.clientTs,
-        serverTs: row.serverTs,
-        props: row.props,
-      }));
+    const rows = await Promise.all(
+      Array.from(new Set(installIds)).map((installId) =>
+        ctx.db
+          .query("events")
+          .withIndex("by_installId", (q) => q.eq("installId", installId))
+          .collect(),
+      ),
+    );
+    return rows.flat().map((row) => ({
+      name: row.name,
+      installId: row.installId,
+      clientTs: row.clientTs,
+      serverTs: row.serverTs,
+      props: row.props,
+    }));
   },
 });

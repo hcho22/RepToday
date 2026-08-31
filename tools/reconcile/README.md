@@ -8,7 +8,7 @@ It is **not** the completed US-T13 report, and running it does **not** check off
 US-T13's deliverable is a reconciliation *report* that diffs, line by line, what the pipeline recorded against what a non-founder coder actually observed in ~25 moderated TestFlight first runs.
 That report cannot exist yet, because none of its inputs do:
 
-- no moderated TestFlight cohort has run, so Convex holds no real cohort events (a shipping build still points at no sink);
+- no moderated TestFlight cohort has run, so Convex holds production-validation rows but no real cohort events;
 - the named non-founder coder is still `[FOUNDER TO FILL]` in the investment thesis;
 - the coding rubric is not frozen.
 
@@ -20,6 +20,7 @@ So this directory is the harness only.
 
 1. **Read path** - `convex/reconcile.ts`'s `eventsForInstalls` `internalQuery`.
    It selects the `events` rows for a supplied set of install ids and returns the five wire columns (`name`, `installId`, `clientTs`, `serverTs`, `props`).
+   It uses the evidence table's `by_installId` selection index, so the read scales with the requested installs rather than all production history.
    It is **internal-only**, exactly like `logEvent` is an `internalMutation`: no public Convex function and no HTTP route is added, and US-T14's hardening of the public `POST /logEvent` surface is untouched.
    It is reached with a deploy/admin key through `npx convex run`.
 

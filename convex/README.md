@@ -43,15 +43,17 @@ action performs. It is an `internalMutation` now - see below.
 ## Non-goal: no analysis in the backend
 
 **The sink is dumb by design.**
-There is no funnel modelling, no aggregation, no dedup, no cohort math, and no index beyond
-Convex's defaults.
+There is no funnel modelling, no aggregation, no dedup, and no cohort math. The evidence table has
+one operational selection index on `installId`; it does not encode or precompute any metric.
 Every kill-criterion metric (K1-K8) is derivable from raw rows by a query written later, so keeping
 the backend dumb keeps the analysis revisable - a funnel baked into the write path would be a
 threshold decision made before there is any data to make it against.
 
 ## Table: `events`
 
-`convex/schema.ts`. The evidence table: five fields, no indexes. (`schema.ts` also defines the ephemeral `rateLimits` helper US-T14 added - a throttle counter store, not an evidence surface, and the one place indexes are carried; see "Abuse guard" below.)
+`convex/schema.ts`. The evidence table: five fields plus the `by_installId` selection index used by
+reconciliation and production validation. (`schema.ts` also defines the ephemeral `rateLimits`
+helper US-T14 added - a throttle counter store, not an evidence surface; see "Abuse guard" below.)
 
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|
@@ -392,9 +394,9 @@ It is an `internalQuery` for the same reason `logEvent` is an `internalMutation`
 single, internal-only way in. It adds **no** public Convex function and **no** HTTP route, so it does
 not widen the surface US-T14 will harden. It is read-only, adds no field to the row shape, selects
 the rows whose `installId` is in the supplied set, and returns the five wire columns
-(`name`/`installId`/`clientTs`/`serverTs`/`props`). With no index on the table (the sink stays dumb),
-it does a full scan and filters in memory - adequate for the one-off ~25-install cohort read, not a
-hot path; a larger cohort would justify a deliberate `by_installId` index in `schema.ts`.
+(`name`/`installId`/`clientTs`/`serverTs`/`props`). It performs one `by_installId` lookup per distinct
+requested id, keeping the ~25-install cohort read and recurring production validators proportional
+to those installs instead of the lifetime event table.
 
 This does not break "no analysis in the backend": the query only *selects* rows. All funnel
 tabulation and anomaly detection is a **pure, offline** function in `tools/reconcile/` (unit-tested
