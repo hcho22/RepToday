@@ -95,7 +95,7 @@ There is no XP, no levels, and no badges in the MVP.
 - **Anonymous usage data, disclosed and optional** - the first onboarding screen says in one sentence what is collected and where the off switch is, and Profile -> Settings -> Privacy carries a "Share anonymous usage data" toggle that takes effect on the next event rather than the next launch. It is on by default (opt-out, not opt-in), counted against a random per-install number that is never a name, an email, or a device identifier. Turning it off leaves that number untouched; deleting the account rotates it so later events cannot be linked to the pre-deletion install identity.
 - **Emitting the whole funnel** - the pipeline is complete, consented, and gated, and every call site now feeds it: app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`). All 13 events now have their emission sites, and every emission is read against the opt-out flag afresh, so an opted-out build sends nothing either way.
 - **Coach data is disclosed before first use** - a Coach turn sends the user's message, the audited non-identifying training summary, and a separate random Coach abuse-prevention pseudonym to Rep Today's proxy, which forwards the pseudonym as OpenAI's `safety_identifier`. The proxy stores no request or response content and sets `store: false`; under standard retention, OpenAI may still retain the prompt and reply in abuse-monitoring logs for up to 30 days. The pseudonym is not the telemetry `installId` or an account value, remains stable across launches, and rotates on account deletion.
-- **The hosted policy is maintained separately** - the canonical source for `https://reptoday.app/privacy` lives in the private Mandu repository at `projects/RepToday/gtm/03-site/privacy.html`, not in this public app repository. The live policy mirrors the Coach disclosure; publication remains a separately authorized site operation.
+- **The hosted policy source lives here** - `gtm/03-site/privacy.html` is the canonical source for the hosted policy and deploys with the static `reptoday.app` site. It remains visibly marked as an engineering draft that needs qualified legal review; editing the source does not authorize or perform a production deployment.
 
 ---
 
@@ -197,6 +197,7 @@ RepToday/
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── tools/                   # Release archive + production-telemetry validators, and the offline US-T13 reconciliation harness
 ├── proxy/                   # Stateless key-holding Worker: deferred Anthropic Variety Language + the OpenAI gpt-5.6-luna Coach route; no production Coach endpoint is configured
+├── gtm/03-site/             # Canonical reptoday.app static source: root variants, hosted privacy policy, shared headers, A/B screenshots, and deploy guide
 ├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
 ├── AGENTS.md                # Repo guidance and architecture reference - the real file
@@ -217,6 +218,7 @@ RepToday/
 | `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` | A fifth, complete PRD - makes the earned Strength Phase real and visible, adds the premium Coach and its two-writer safety boundary (ADR-0005), and adds premium strength-journey analytics. The Coach transport is implemented and tested against OpenAI `gpt-5.6-luna` without live paid calls, but remains inert until its production proxy endpoint is deployed and configured. |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - kept deliberately short, with the detail split into `docs/`. It is a symlink to `AGENTS.md`, which is the file to edit. |
 | `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, the US-T14 abuse guard (shared secret + rate limiting), its boundary suite, the deliberate non-goals, and the residual it still carries. |
+| `gtm/03-site/DEPLOY.md` | The canonical Cloudflare Pages workflow for the public static site, including the source inventory and the production publication/credential gate. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
 | `docs/test-coverage.md` | The test-coverage map: one row per suite, added as the owning story lands. |
 | `docs/asset-attribution.md` | The source/license ledger every third-party asset must have a cleared row in before it ships. |

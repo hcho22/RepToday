@@ -232,10 +232,9 @@ npm run dev
 npm run deploy
 ```
 
-Then point each enabled client at its deployed route (`https://<worker-subdomain>/variety-language`
-or `https://<worker-subdomain>/coach`).
+Then point the client at the deployed route (`https://<worker-subdomain>/variety-language`).
 
-## Wiring the clients
+## Wiring the client (deferred - not shipped in the MVP)
 
 `VarietyLanguageResolver.provider` is `nil` in the MVP, so every note is template-sourced.
 To enable the LLM upgrade once this proxy is deployed:
@@ -256,8 +255,8 @@ online; on any failure it falls back to the template.
 See `ios/RepToday/RepToday/Services/Language/ProxyVarietyLanguageProvider.swift` and
 `VarietyLanguageResolver.swift`.
 
-The Coach client and chat surface are shipped, but the configured endpoint is currently empty, so
-production builds remain inert until a deployment is chosen:
+The coach client is analogous (US-AC01 ships the transport; the chat surface that drives it is
+US-AC02):
 
 ```swift
 let coach = CoachProxyClient(
