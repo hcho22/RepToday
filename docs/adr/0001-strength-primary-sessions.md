@@ -50,4 +50,4 @@ Accepted trade-offs (the sharpest, captain-accepted):
 
 These trade-offs were surfaced in the PRD and **accepted by the captain**; this ADR records them so a future contributor does not re-add a mobility safety valve believing it to be a missing feature rather than a deliberately removed one.
 
-Historical scope note: **GTM/marketing positioning was out of scope when this decision landed.** That location decision was later superseded: the canonical public-site source is tracked under `gtm/03-site/`, and its current landing copy follows this ADR's strength-primary vocabulary. This ADR continues to govern the product/engine behavior; `gtm/03-site/DEPLOY.md` governs publication.
+Historical scope note: **GTM/marketing positioning was out of scope when this decision landed.** The canonical public-site source remains outside this repository in the private Mandu repository, and its current landing copy follows this ADR's strength-primary vocabulary. This ADR continues to govern the product/engine behavior; the external site's deployment instructions govern publication.
