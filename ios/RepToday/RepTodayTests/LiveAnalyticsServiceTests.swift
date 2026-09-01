@@ -284,6 +284,40 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.captured.count, 1)
     }
 
+    /// Account deletion rotates the identifier without rebuilding the app-wide container. The
+    /// transport therefore has to read its provider for each event, just as it reads consent for
+    /// each event; freezing the initializer's value would link post-deletion onboarding to the old
+    /// install identity even though `AppState` had persisted the replacement.
+    func testInstallIdentifierIsReReadOnEveryEmission() async throws {
+        let installId = UncheckedBox("before-deletion")
+        let firstSent = expectation(description: "pre-deletion request intercepted")
+        let secondSent = expectation(description: "post-deletion request intercepted")
+        var requestCount = 0
+        StubURLProtocol.onRequest = { _ in
+            requestCount += 1
+            (requestCount == 1 ? firstSent : secondSent).fulfill()
+        }
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { installId.value },
+            secret: Self.testSecret,
+            session: StubURLProtocol.makeSession()
+        )
+
+        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        await fulfillment(of: [firstSent], timeout: 5)
+        installId.value = "after-deletion"
+        await service.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: Self.installMs))
+        await fulfillment(of: [secondSent], timeout: 5)
+
+        let ids = try StubURLProtocol.captured.map { request in
+            let body = try XCTUnwrap(request.capturedBody)
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return try XCTUnwrap(json["installId"] as? String)
+        }
+        XCTAssertEqual(ids, ["before-deletion", "after-deletion"])
+    }
+
     // MARK: - The gate, backed by US-T06's persisted flag
 
     /// The gate the app actually holds is `AppState.isAnalyticsEnabled(in:)` over `UserDefaults`, so
@@ -331,8 +365,8 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// stub. Asserted by reading the built service's own gate, so nothing is emitted to find out -
     /// and so a future edit that drops `isEnabled:` from the `configured(...)` call fails here.
     ///
-    /// Debug-only because a Release build has no configured endpoint and therefore wires
-    /// `NoOpAnalyticsService`, which has no gate to read (`AnalyticsServiceTests` asserts that half).
+    /// Debug-only because a raw Release test build has no privately-injected token and therefore
+    /// wires `NoOpAnalyticsService`, which has no gate to read (`AnalyticsServiceTests` asserts that half).
     #if DEBUG
     func testTheProductionContainersGateIsThePersistedOptOutFlag() throws {
         let standard = UserDefaults.standard
@@ -442,7 +476,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// The secret is split per build configuration (`REPTODAY_ANALYTICS_SECRET` in
     /// `ios/RepToday/project.yml`, expanded into `Info.plist`) exactly as the endpoint is, and the
     /// split is read out of the **running app bundle** rather than asserted in prose: Debug carries
-    /// the dev deployment's secret, Release carries nothing.
+    /// the dev deployment's secret, while raw Release test builds carry no privately-injected token.
     ///
     /// Only the Debug half runs, for the same `ENABLE_TESTABILITY`-is-Debug-only reason
     /// `testTheAppBundlesEndpointFollowsTheBuildConfiguration` documents; the Release half is
@@ -478,7 +512,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// The endpoint is split per build configuration (`REPTODAY_ANALYTICS_ENDPOINT` in
     /// `ios/RepToday/project.yml`, expanded into `Info.plist`), and the split is read out of the
     /// **running app bundle** rather than asserted in prose: Debug carries the dev deployment,
-    /// Release carries nothing, because no production deployment has been chosen.
+    /// Release carries the production endpoint; without the private archive token it remains inert.
     ///
     /// **Only the Debug half actually runs, and that limit is stated rather than glossed.** This
     /// project sets `ENABLE_TESTABILITY` on the Debug configuration only, so `@testable import
@@ -486,8 +520,8 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// execute the `#else` branch - a pre-existing property of the project, not of this test, and
     /// not worth de-optimising the shipping binary to change. The Release half is verified instead
     /// by reading `RepTodayAnalyticsEndpoint` out of the **built Release app bundle** (recorded in
-    /// `artifacts/reports/US-T04/validation.md`), where it is the empty string that
-    /// `endpoint(fromOrigin:)` already rejects under `testUnusableEndpointConfigurationResolvesToNil`.
+    /// the production-validation artifact): the origin is production, but the raw build's empty
+    /// token keeps the combined configuration inert.
     /// The branch is kept because it is the assertion that becomes runnable the moment a Release
     /// test run is - it is not a claim that one happens today.
     func testTheAppBundlesEndpointFollowsTheBuildConfiguration() throws {
@@ -504,12 +538,9 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(endpoint.path, "/logEvent")
         XCTAssertNotNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
         #else
-        // Nothing to point at, so nothing to send to. A Release build stays inert until someone
-        // deliberately configures a deployment: the worst case is silently no data rather than
-        // silently the wrong destination. It resolves through the one existing notion of
-        // "unconfigured" - `endpoint(fromOrigin:)` rejects an empty or absent value - rather than a
-        // second, parallel one, whether the build setting expands to "" or drops the key entirely.
-        XCTAssertNil(LiveAnalyticsService.endpoint(fromOrigin: configured))
+        // The endpoint is production, but the raw test build has no privately-injected token, so the
+        // combined configuration is inert rather than firing unauthenticated requests.
+        XCTAssertNotNil(LiveAnalyticsService.endpoint(fromOrigin: configured))
         XCTAssertNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
         #endif
     }
@@ -517,7 +548,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// A configured bundle builds a service that posts to that deployment's `/logEvent`. The
     /// expected host is read back out of the same `Info.plist` rather than hard-coded, so moving the
     /// deployment does not turn this into a failing test. It is a Debug-only assertion because a
-    /// Release build has no endpoint to build a service from - that half is asserted above.
+    /// A raw Release build has no injected token to build a service from - that half is asserted above.
     #if DEBUG
     func testConfiguredReadsTheAppBundlesEndpointAndPostsToItsRoute() async throws {
         let configured = try XCTUnwrap(

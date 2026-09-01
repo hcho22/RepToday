@@ -155,7 +155,8 @@ final class AnalyticsServiceTests: XCTestCase {
     /// stub in `LiveAnalyticsServiceTests`.
     ///
     /// FR-13 is not left resting on that reading, though:
-    /// `live(context:installId:analyticsGate:analyticsService:)` takes a sink as its last parameter,
+    /// `live(context:installId:analyticsInstallId:analyticsGate:analyticsService:)` takes a sink as
+    /// its last parameter,
     /// so any test that builds the production container for reasons unrelated to
     /// telemetry substitutes an inert one and is structurally unable to reach the network even now that
     /// US-T07 through US-T12 have added the emission call sites (`CoreDataServicesTests` does exactly that).
@@ -203,8 +204,8 @@ final class AnalyticsServiceTests: XCTestCase {
             "the production container must wire the live Convex transport when an endpoint is configured"
         )
         #else
-        // Release carries no endpoint until a production deployment is chosen, so the default must
-        // resolve to the inert sink - the same fallback a mistyped endpoint takes, not a second one.
+        // A raw Release test build carries the production endpoint but not the privately-injected
+        // archive token, so the same inert fallback applies.
         XCTAssertTrue(
             live.analyticsService is NoOpAnalyticsService,
             "an unconfigured build must fall back to the inert sink rather than wiring a transport"

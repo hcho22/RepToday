@@ -10,8 +10,10 @@ reconciliation report will live.
 - the non-founder coder is still `[FOUNDER TO FILL]` in the investment thesis;
 - the coding rubric is not frozen.
 
-The re-runnable harness that will populate this directory is built and tested under
-`tools/reconcile/` (see its README) with the internal read path in `convex/reconcile.ts`.
+The re-runnable harness that will populate this directory lives under `tools/reconcile/` (see its
+README) with the indexed internal read path in `convex/reconcile.ts`. The real query is pinned by
+`convex/reconcile.query.test.ts`; the offline tabulator is pinned by
+`convex/reconcile/tabulate.test.ts`.
 Running the harness against a real deployment writes the files above here.
 
 **US-T13's PRD acceptance boxes remain unchecked** until the moderated cohort has run, the coder is

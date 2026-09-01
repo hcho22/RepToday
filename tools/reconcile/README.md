@@ -8,9 +8,16 @@ It is **not** the completed US-T13 report, and running it does **not** check off
 US-T13's deliverable is a reconciliation *report* that diffs, line by line, what the pipeline recorded against what a non-founder coder actually observed in ~25 moderated TestFlight first runs.
 That report cannot exist yet, because none of its inputs do:
 
-- no moderated TestFlight cohort has run, so Convex holds no real cohort events (a shipping build still points at no sink);
+- no moderated TestFlight cohort has run, so Convex holds production-validation rows but no real cohort events;
 - the named non-founder coder is still `[FOUNDER TO FILL]` in the investment thesis;
 - the coding rubric is not frozen.
+
+Production-validation rows are synthetic and never belong in K1/K2/K4 or other product metrics.
+New validation runs use install ids beginning `prod-validation-`; metric extraction must exclude that
+prefix. The one legacy smoke row uses install id `prod-smoke-20260831T214131Z` and is separately
+recognizable by its `props.validation_marker` field and `install_week == "production-validation"`.
+The pre-convention Release validation's two rows use install id
+`9A60C338-86C8-4454-ADE9-ABA3AB70E3B4`; metric extraction must exclude that exact id too.
 
 The captain's decision was to pre-build the tooling now, so that the moment the recordings and the coder's log exist, the reconciliation is **run-and-diff** rather than build-from-scratch.
 So this directory is the harness only.
@@ -20,6 +27,8 @@ So this directory is the harness only.
 
 1. **Read path** - `convex/reconcile.ts`'s `eventsForInstalls` `internalQuery`.
    It selects the `events` rows for a supplied set of install ids and returns the five wire columns (`name`, `installId`, `clientTs`, `serverTs`, `props`).
+   It uses the evidence table's `by_installId` selection index, so the read scales with the requested installs rather than all production history.
+   `convex/reconcile.query.test.ts` drives that real internal query through `convex-test`, pinning duplicate-id deduplication, exact wire fields, and exclusion of unrelated or absent installs.
    It is **internal-only**, exactly like `logEvent` is an `internalMutation`: no public Convex function and no HTTP route is added, and US-T14's hardening of the public `POST /logEvent` surface is untouched.
    It is reached with a deploy/admin key through `npx convex run`.
 
@@ -29,7 +38,7 @@ So this directory is the harness only.
    The funnel's event set and order come from `funnel-schema.js`, whose names the test asserts are exactly `EVENT_NAMES` in `convex/events.ts` - itself pinned verbatim to the event-metric schema and the Swift `AnalyticsEventName`.
    So the funnel is driven by the authoritative schema, not a hand-kept guess: a drift in either list fails the suite.
 
-The tabulator source lives under `tools/` (not `convex/`) so it is never bundled into the deployed telemetry sink; its test lives under `convex/reconcile/` so the repo's existing `npm test` / `npm run typecheck` gates reach it with no config change.
+The tabulator source lives under `tools/` (not `convex/`) so it is never bundled into the deployed telemetry sink; both reconciliation tests live under `convex/` so the repo's existing `npm test` / `npm run typecheck` gates reach them with no config change.
 
 ## Running it
 

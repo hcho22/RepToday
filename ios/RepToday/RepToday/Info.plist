@@ -14,9 +14,8 @@
 	     expanded from the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in
 	     `ios/RepToday/project.yml` rather than written here, so the destination is a build choice
 	     rather than a source edit. Debug carries the *development* deployment
-	     `courteous-dogfish-560`; Release carries nothing, because no production deployment has been
-	     chosen - which account and plan host the production sink is an open question in
-	     `.claude/agent/tasks/prd-funnel-instrumentation_260803.md`. An empty, missing, or mistyped
+	     `courteous-dogfish-560`; Release carries production deployment `sensible-spider-810`. An
+	     empty, missing, or mistyped
 	     value makes the build simply inert: `LiveAnalyticsService.configured(...)` returns nil and
 	     the container falls back to `NoOpAnalyticsService`, emitting nothing and failing nothing. -->
 	<key>RepTodayAnalyticsEndpoint</key>
@@ -24,8 +23,9 @@
 	<!-- The anonymous-telemetry shared secret (US-T14), sent on every `POST /logEvent` so a stranger
 	     who finds the endpoint URL cannot flood the `events` table. Like the endpoint above, it is
 	     expanded from the per-configuration `REPTODAY_ANALYTICS_SECRET` build setting rather than
-	     written here: Debug carries the *development* deployment's secret; Release carries nothing,
-	     because no production deployment has been chosen. An empty or missing value is the same inert
+	     written here: Debug carries the *development* deployment's secret; Release receives its
+	     production-only value from the captain-owned macOS Keychain via `tools/archive-release.sh`.
+	     The source default remains empty, and an empty or missing value is the same inert
 	     state as a missing endpoint - `LiveAnalyticsService.configured(...)` returns nil and the
 	     container falls back to `NoOpAnalyticsService` - so an unconfigured build sends nothing rather
 	     than a stream of rejected requests. This secret is a *cost-raiser*, not a guarantee: it ships

@@ -362,6 +362,21 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotEqual(other.installId, appState.installId)
     }
 
+    func testAccountDeletionRotationPersistsAndTheLiveReaderSeesItImmediately() {
+        let appState = AppState(userDefaults: defaults)
+        let original = appState.installId
+        let liveReader = appState.analyticsInstallId
+        let replacement = "7F34EA03-1A2D-43CA-A3DD-C9087CB77D8A"
+
+        appState.rotateAnalyticsInstallId(newInstallId: { replacement })
+
+        XCTAssertNotEqual(appState.installId, original)
+        XCTAssertEqual(appState.installId, replacement)
+        XCTAssertEqual(liveReader(), replacement, "the already-built transport kept the pre-deletion identifier")
+        XCTAssertEqual(defaults.string(forKey: "AppState.installId"), replacement)
+        XCTAssertEqual(AppState(userDefaults: defaults).installId, replacement, "the rotation did not survive relaunch")
+    }
+
     // MARK: - Opt-out consent flag (US-T06)
 
     /// The trap this flag is most likely to fall into: `bool(forKey:)` answers `false` for a key

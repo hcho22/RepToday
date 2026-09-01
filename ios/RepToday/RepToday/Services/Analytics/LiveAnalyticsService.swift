@@ -20,18 +20,18 @@ import Foundation
 /// **Every emission call site now feeds this service in a Debug build.** US-T04 shipped the
 /// transport; US-T07 through US-T12 added the emission call sites, so all 13 events now reach
 /// `record(_:)` - app entry, onboarding, the Ready Screen, the session lifecycle, the weekly
-/// rollup, and the monetization funnel. A **Release build still reaches no live sink**: its
-/// `REPTODAY_ANALYTICS_ENDPOINT` is empty, so `ServiceContainer.live` resolves
-/// `NoOpAnalyticsService` and this service is never constructed until a production deployment is
-/// chosen. The other caller is US-T06's Debug-only, launch-argument-gated `TelemetryUITestHarness`,
+/// rollup, and the monetization funnel. Release archives target the production deployment and inject
+/// its token through `tools/archive-release.sh`; a raw Release build without that private injection
+/// remains inert. The other caller is US-T06's Debug-only, launch-argument-gated
+/// `TelemetryUITestHarness`,
 /// which emits one probe event at app entry - and there `ServiceContainer.live` hands this service
 /// a `session` whose only protocol is that harness's counting interceptor, so the attempt is
 /// dispatched and counted without leaving the process.
 ///
-/// **Identity comes from exactly one place.** `installId` is passed in from `AppState` (US-T05),
-/// which is the only thing that mints it or resolves which of the three launch states an install
-/// is in. This service never reads, re-mints, or re-derives it - a second resolution path could
-/// disagree with the first about what an install is.
+/// **Identity comes from exactly one place.** An install-id reader is passed in from `AppState`
+/// (US-T05), which is the only thing that mints or rotates it. The reader is evaluated per emission
+/// so account deletion can sever the link to the prior identifier without rebuilding this service;
+/// this service never reads `UserDefaults`, re-mints, or re-derives an identity itself.
 final class LiveAnalyticsService: AnalyticsServiceProtocol {
 
     /// The sink's single route, appended to the configured deployment origin. The path lives here
@@ -46,9 +46,9 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
 
     /// The `Info.plist` key carrying the shared secret US-T14 sends on every POST. Like the
     /// endpoint, it is expanded from a per-configuration build setting (`REPTODAY_ANALYTICS_SECRET`)
-    /// rather than written in source: Debug carries the dev deployment's secret, Release carries
-    /// nothing (no production deployment chosen yet), so an unconfigured build is inert exactly as it
-    /// already is for the endpoint. See `configured(...)`.
+    /// rather than written in source: Debug carries the dev deployment's secret, while Release
+    /// receives the production token from the captain-owned Keychain. The committed Release default
+    /// stays empty, so an archive that skips that path is inert. See `configured(...)`.
     static let secretInfoPlistKey = "RepTodayAnalyticsSecret"
 
     /// The header the shared secret rides on. Matches `ANALYTICS_SECRET_HEADER` in `convex/http.ts`.
@@ -62,14 +62,15 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     static let requestTimeoutSeconds: TimeInterval = 10
 
     private let endpoint: URL
-    private let installId: String
+    private let installId: @Sendable () -> String
     private let secret: String
     private let session: URLSession
     private let isEnabled: @Sendable () -> Bool
 
     /// - Parameters:
     ///   - endpoint: The fully-resolved `POST /logEvent` URL.
-    ///   - installId: The anonymous per-install identifier from `AppState` (US-T05).
+    ///   - installId: Reads the anonymous per-install identifier from `AppState` (US-T05) for each
+    ///     emission, so account deletion's rotation takes effect in the already-running service.
     ///   - session: The session the POST goes out on; injected so tests can intercept it in
     ///     process with a `URLProtocol` stub and never touch the network (FR-13).
     ///   - isEnabled: The opt-out gate, read fresh on every emission. It defaults to enabled, and
@@ -84,11 +85,11 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     ///     process never built, which is how FR-13's out-of-process half is held.
     ///   - secret: The shared secret sent on every POST (US-T14), sourced the same way the endpoint
     ///     is - a per-configuration build setting. `configured(...)` refuses to build a service
-    ///     without one, so a live build always carries a non-empty secret; a Release build has none
-    ///     and resolves to `NoOpAnalyticsService` before it ever gets here.
+    ///     without one, so a live build always carries a non-empty secret; an un-injected Release
+    ///     build resolves to `NoOpAnalyticsService` before it ever gets here.
     init(
         endpoint: URL,
-        installId: String,
+        installId: @escaping @Sendable () -> String,
         secret: String,
         session: URLSession = LiveAnalyticsService.makeSession(),
         isEnabled: @escaping @Sendable () -> Bool = { true }
@@ -98,6 +99,24 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
         self.secret = secret
         self.session = session
         self.isEnabled = isEnabled
+    }
+
+    /// Convenience for tests and callers whose identity is intentionally fixed. Production passes
+    /// `AppState.analyticsInstallId` through `configured(...)` instead.
+    convenience init(
+        endpoint: URL,
+        installId: String,
+        secret: String,
+        session: URLSession = LiveAnalyticsService.makeSession(),
+        isEnabled: @escaping @Sendable () -> Bool = { true }
+    ) {
+        self.init(
+            endpoint: endpoint,
+            installId: { installId },
+            secret: secret,
+            session: session,
+            isEnabled: isEnabled
+        )
     }
 
     /// Builds the service from the deployment origin in the app's `Info.plist`, or returns `nil`
@@ -110,12 +129,10 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     /// `NoOpAnalyticsService` - a sink that already means exactly "emit nothing, keep nothing" -
     /// rather than by growing a second, invisible do-nothing branch in here.
     ///
-    /// That path is not only the misconfiguration path. `REPTODAY_ANALYTICS_ENDPOINT` is set for
-    /// Debug (the dev deployment) and deliberately **empty for Release**, because no production
-    /// deployment has been chosen; a Release build therefore returns `nil` here by design and stays
-    /// silent until someone configures one. Choosing that deployment is a precondition for shipping
-    /// any build that emits (US-T07 onward), and the worst case until then is no data rather than
-    /// data at the wrong destination.
+    /// That path is also the safe failure posture for Release. Its production endpoint is committed,
+    /// but its token is not: only `tools/archive-release.sh` injects the Keychain-held value. A raw
+    /// Release build therefore returns `nil` and stays silent, making a missed secret injection lose
+    /// data rather than send unauthenticated traffic or fail the core loop.
     ///
     /// "Unusable" is checked rather than assumed, because `URL(string:)` accepts almost any string
     /// as a relative URL: the value must parse, carry an `https` scheme, and have a host. A
@@ -124,7 +141,7 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
     ///   usable, so an unconfigured build creates no session at all rather than one it discards.
     static func configured(
         bundle: Bundle = .main,
-        installId: String,
+        installId: @escaping @Sendable () -> String,
         session: URLSession? = nil,
         isEnabled: @escaping @Sendable () -> Bool = { true }
     ) -> LiveAnalyticsService? {
@@ -136,7 +153,7 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
             // to the same inert `nil`. A build with an endpoint but no secret would only ever earn
             // `401`s from the guarded sink, so treating a blank secret as unconfigured keeps the
             // "inert, never spam" discipline the endpoint already follows rather than firing doomed
-            // requests. Release carries neither, so it was already inert.
+            // requests. A raw Release build has an endpoint but no injected token and is inert.
             return nil
         }
         return LiveAnalyticsService(
@@ -146,6 +163,16 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
             session: session ?? makeSession(),
             isEnabled: isEnabled
         )
+    }
+
+    /// Convenience for fixed identities used by tests and isolated container construction.
+    static func configured(
+        bundle: Bundle = .main,
+        installId: String,
+        session: URLSession? = nil,
+        isEnabled: @escaping @Sendable () -> Bool = { true }
+    ) -> LiveAnalyticsService? {
+        configured(bundle: bundle, installId: { installId }, session: session, isEnabled: isEnabled)
     }
 
     /// Resolves a configured deployment origin into the route this service POSTs to, or `nil` if
@@ -210,7 +237,7 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
         guard isEnabled() else { return }
 
         let endpoint = self.endpoint
-        let installId = self.installId
+        let installId = self.installId()
         let secret = self.secret
         let session = self.session
 

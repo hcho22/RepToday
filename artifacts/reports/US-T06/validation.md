@@ -8,6 +8,10 @@ The `events` table was read with `npx convex data events` against that same depl
 
 **Outcome: run, PASS - and re-framed, the same way US-T04 re-framed its own.**
 
+> **Historical configuration:** statements below about an inert Release build and absent emission
+> sites describe this dated US-T06 run. Release now targets production through a private token
+> injection and all 13 sites have landed; see `artifacts/reports/production-telemetry/validation.md`.
+
 ## Why the test as written cannot be run, and what stood in for it
 
 Steps 2 and 4 say "start a session and confirm events land in Convex".
@@ -168,7 +172,7 @@ So the honest statement of what this guard covers is: it catches a bypass that p
 **What this guard still does not do, and why it is not being patched again:** it *detects* a bypass rather than *preventing* one - a raw launch written into a future test still compiles. Three corrections have now each closed one shape and revealed another, which is the signature of an approach that leaks by nature rather than one patch short, so a fourth patch was deliberately declined. The structural answer is a wrapper making a raw `XCUIApplication` unreachable from tests. **A bypass is already known and documented, so that wrapper is a precondition on US-T07 rather than a contingency: it must land before the first emission call site does.** The dependency is recorded on `docs/test-coverage.md` and on US-T07's own criteria, and is additionally enforced as a blocking item in firstmate's work queue, so the sequencing does not rest on prose alone.
 
 **What that re-runnable suite does not prove:** it counts at the `URLProtocol` boundary inside the app, so an attempt means the transport built and dispatched a request, not that bytes reached Convex - that half is what the live legs above are for, and they do not re-run.
-It also says nothing about a Release build, which compiles none of the harness and today has no configured endpoint at all.
+It also said nothing about the Release build at this 2026-08-05 run: that configuration compiled none of the harness and then had no endpoint configured at all.
 
 ## Documentation sweep
 

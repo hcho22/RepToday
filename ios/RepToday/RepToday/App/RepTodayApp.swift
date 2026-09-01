@@ -26,8 +26,8 @@ struct RepTodayApp: App {
     /// `app_install` emission hangs off exactly this point rather than re-deriving it later.
     ///
     /// It is built in `init()` rather than as a property default because the telemetry transport
-    /// (US-T04) needs its `installId`, and the identity must be resolved exactly once: `AppState`
-    /// is constructed first, and the services are built from the id it settled on.
+    /// (US-T04) needs the identity owner: `AppState` is constructed first, and the services receive
+    /// both its launch value and its per-emission reader so account deletion can rotate it in place.
     @State private var appState: AppState
 
     init() {
@@ -41,8 +41,8 @@ struct RepTodayApp: App {
 
         // First, because the container is built from its install id (US-T04/US-T05). `AppState` is
         // the sole resolver of that identity - it mints the id, stamps the origin, and decides
-        // which of the three launch states this launch is - so the id travels *from* here rather
-        // than being read again anywhere downstream.
+        // which of the three launch states this launch is - so both the id and the reader that can
+        // observe its deletion rotation travel *from* here rather than being re-derived downstream.
         let appState = AppState()
         _appState = State(initialValue: appState)
 
@@ -54,6 +54,7 @@ struct RepTodayApp: App {
         let services = ServiceContainer.live(
             context: PersistenceController.shared.viewContext,
             installId: appState.installId,
+            analyticsInstallId: appState.analyticsInstallId,
             analyticsGate: appState.analyticsGate
         )
         self.services = services

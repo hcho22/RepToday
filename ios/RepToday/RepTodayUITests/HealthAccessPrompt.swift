@@ -33,14 +33,25 @@ extension XCTestCase {
         let byLabel = app.buttons["Don't Allow"]
         let anyTab = app.tabBars.buttons.firstMatch
         let deadline = Date().addingTimeInterval(20)
+        var tabsBecameHittableAt: Date?
         var dontAllow: XCUIElement?
         while Date() < deadline {
             if byIdentifier.exists { dontAllow = byIdentifier; break }
             if byLabel.exists { dontAllow = byLabel; break }
-            // No sheet, and the tabs underneath are already hittable: nothing is presented, so there is
-            // nothing to answer. (A sheet standing over the tabs makes them non-hittable, so this only
-            // fires once the coast is genuinely clear.)
-            if anyTab.isHittable { return }
+            // A tab can become hittable just before MainTabsView's asynchronous Health request
+            // presents its remote sheet. Require a short clear interval instead of returning on that
+            // first frame; otherwise the helper can leave the prompt to race the test's first tap.
+            // A sheet standing over the tabs resets the interval by making them non-hittable.
+            if anyTab.isHittable {
+                let now = Date()
+                if let tabsBecameHittableAt,
+                   now.timeIntervalSince(tabsBecameHittableAt) >= 2 {
+                    return
+                }
+                tabsBecameHittableAt = tabsBecameHittableAt ?? now
+            } else {
+                tabsBecameHittableAt = nil
+            }
             usleep(300_000)
         }
         guard let dontAllow else { return }

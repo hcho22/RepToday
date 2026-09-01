@@ -17,8 +17,8 @@ and US-T10 added the next three - the active-session player's `session_started`,
 and US-T11 added the weekly rollup's `week_active`, emitted once per active week from `SessionCompletionService`,
 and US-T12 added the last three - the monetization funnel's `paywall_shown`, `trial_started`, and `subscribe` on the paywall (`PaywallViewModel`).
 That is **all 13 of the 13 emission sites**. So `record(_:)` is now
-called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, and on the paywall - but a **Release build still reaches no sink**: its `REPTODAY_ANALYTICS_ENDPOINT` is empty, so the caller resolves
-`NoOpAnalyticsService` and the events go nowhere until a production deployment is chosen (below),
+called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, and on the paywall. Release archives now target production deployment `sensible-spider-810`; the matching abuse-deterrence token is injected from the captain-owned macOS Keychain by `tools/archive-release.sh`, never committed. A missing endpoint or token still resolves
+`NoOpAnalyticsService`,
 while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process
 interceptor in front of it; pointed at a real deployment deliberately, as the US-T06 validation run
@@ -29,11 +29,10 @@ It also has a consent gate in front of it (US-T06, landed): the transport re-rea
 receives rows from installs that have not opted out. That is a **client-side** gate and this sink
 knows nothing about it - it has no notion of consent, and no way to tell an install that opted out
 from one that never ran. An install is simply absent, and this table cannot say which it was.
-Nor is there a production deployment. Which one the app talks to is a per-configuration build
-setting (`REPTODAY_ANALYTICS_ENDPOINT` in `ios/RepToday/project.yml`): a Debug build points at the
-dev deployment, and a **Release build points nowhere at all** and is inert, because none has been
-chosen. Choosing and deploying one is a precondition for shipping any build that emits, recorded on
-US-T07's own acceptance criteria.
+Which deployment the app talks to is a per-configuration build setting
+(`REPTODAY_ANALYTICS_ENDPOINT` in `ios/RepToday/project.yml`): Debug points at the dev deployment and
+Release at production deployment `sensible-spider-810`. Release's token remains private and is
+injected only by the archive path above.
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
 It is now the *sink's* only entry point too, which this file previously claimed before it was true:
@@ -44,15 +43,17 @@ action performs. It is an `internalMutation` now - see below.
 ## Non-goal: no analysis in the backend
 
 **The sink is dumb by design.**
-There is no funnel modelling, no aggregation, no dedup, no cohort math, and no index beyond
-Convex's defaults.
+There is no funnel modelling, no aggregation, no dedup, and no cohort math. The evidence table has
+one operational selection index on `installId`; it does not encode or precompute any metric.
 Every kill-criterion metric (K1-K8) is derivable from raw rows by a query written later, so keeping
 the backend dumb keeps the analysis revisable - a funnel baked into the write path would be a
 threshold decision made before there is any data to make it against.
 
 ## Table: `events`
 
-`convex/schema.ts`. The evidence table: five fields, no indexes. (`schema.ts` also defines the ephemeral `rateLimits` helper US-T14 added - a throttle counter store, not an evidence surface, and the one place indexes are carried; see "Abuse guard" below.)
+`convex/schema.ts`. The evidence table: five fields plus the `by_installId` selection index used by
+reconciliation and production validation. (`schema.ts` also defines the ephemeral `rateLimits`
+helper US-T14 added - a throttle counter store, not an evidence surface; see "Abuse guard" below.)
 
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|
@@ -240,9 +241,10 @@ npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; neve
 
 The client sources the same value from a per-configuration build setting
 (`REPTODAY_ANALYTICS_SECRET` in `ios/RepToday/project.yml`, expanded into `Info.plist`), exactly the
-way it sources the endpoint: Debug carries the dev deployment's secret, Release carries nothing (no
-production deployment chosen yet), so a Release build is inert. The Debug build setting's value and
-the deployment's env var must match.
+way it sources the endpoint: Debug carries the dev deployment's secret; Release source carries an
+empty default and `tools/archive-release.sh` injects the production-only value from the captain-owned
+macOS Keychain through a temporary mode-600 xcconfig. The build setting and the target deployment's
+environment variable must match. Missing either endpoint or token remains inert and nonfatal.
 
 - A **missing or wrong** secret is a caller fault: **`401`**, no insert. Never `5xx`, so it never
   looks like a sink outage on the `4xx`/`5xx` signal a human watches during the PMF test.
@@ -308,10 +310,12 @@ flood can still transiently outpace one tick and let this table grow for the dur
 draining once it stops. That is an accepted residual, not a hole: these rows are tiny and never an
 evidence surface, the `events` table's own rate limit is unaffected regardless, and a sustained or
 massively-distributed flood is the determined-attacker case this guard explicitly does not defend
-against - the same cost-raiser framing that governs the secret and the client-rotatable install id. Unlike `events`, this table carries indexes (by key and by window) - "the
-sink stays dumb" is a rule about the *evidence* table, not about a throttle whose job is to be fast
-and forgetful. The `events` table itself is untouched: same single, append-only shape, same five columns
-(`name`, `installId`, `clientTs`, `serverTs`, `props`), no identity added anywhere.
+against - the same cost-raiser framing that governs the secret and the client-rotatable install id.
+Its two indexes (by key and by window) support those operational point lookups and sweeps; the
+evidence table's one `by_installId` index similarly supports reconciliation and production validation.
+"The sink stays dumb" means neither table performs analysis. The `events` row shape remains the same
+single, append-only five columns (`name`, `installId`, `clientTs`, `serverTs`, `props`), with no
+identity added anywhere.
 
 ## HTTP action: `POST /logEvent` -> `204`
 
@@ -390,11 +394,11 @@ through untouched and the schema stores as-is, so it is not reached by that coer
 `convex/reconcile.ts`. The one function the offline US-T13 reconciliation harness reads through.
 It is an `internalQuery` for the same reason `logEvent` is an `internalMutation`: the sink keeps a
 single, internal-only way in. It adds **no** public Convex function and **no** HTTP route, so it does
-not widen the surface US-T14 will harden. It is read-only, adds no field to the row shape, selects
+not widen the surface US-T14 hardened. It is read-only, adds no field to the row shape, selects
 the rows whose `installId` is in the supplied set, and returns the five wire columns
-(`name`/`installId`/`clientTs`/`serverTs`/`props`). With no index on the table (the sink stays dumb),
-it does a full scan and filters in memory - adequate for the one-off ~25-install cohort read, not a
-hot path; a larger cohort would justify a deliberate `by_installId` index in `schema.ts`.
+(`name`/`installId`/`clientTs`/`serverTs`/`props`). It performs one `by_installId` lookup per distinct
+requested id, keeping the ~25-install cohort read and recurring production validators proportional
+to those installs instead of the lifetime event table.
 
 This does not break "no analysis in the backend": the query only *selects* rows. All funnel
 tabulation and anomaly detection is a **pure, offline** function in `tools/reconcile/` (unit-tested
@@ -404,6 +408,10 @@ query with a deploy/admin key:
 `tools/reconcile/README.md` for the runner and the standing caveat that this is the US-T13 *harness*,
 with the reconciliation report against real observed sessions still pending the moderated cohort, the
 named non-founder coder, and a frozen rubric - so US-T13's PRD acceptance boxes remain unchecked.
+
+`convex/reconcile.query.test.ts` drives the real internal query through `convex-test`, asserting
+duplicate requested ids are deduplicated, matching rows retain exactly the five wire fields, and
+unrelated or absent installs are excluded.
 
 ## Layout and deployment
 
@@ -417,7 +425,7 @@ npm install
 npx convex dev --once     # deploy schema + functions to the dev deployment
 npx convex data events    # read rows back from the deployment
 npm run typecheck         # tsc --noEmit over both configs below
-npm test                  # vitest + convex-test: the boundary suite, in process, no deployment
+npm test                  # vitest + convex-test: boundary, indexed-query, and tabulator suites
 ```
 
 There are **two** tsconfigs here, and the split is load-bearing rather than tidiness.

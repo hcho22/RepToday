@@ -12,12 +12,12 @@ import XCTest
 /// passing once US-T07 started POSTing on every launch.
 ///
 /// So the app carries a Debug-only, launch-argument-gated harness (`TelemetryUITestHarness`) that
-/// supplies the two things the shipping build does not: an emission attempt for the gate to block,
-/// and somewhere another process can count attempts from. Under `-RepTodayTelemetryProbe YES` the
+/// supplies a deterministic attempt on every probe launch and somewhere another process can count
+/// attempts from. Under `-RepTodayTelemetryProbe YES` the
 /// app clears its persisted consent flag, replaces the telemetry transport's `URLSession` with an
 /// in-process counting interceptor, emits one `app_install` from `RepTodayApp.init()` - the exact
-/// name and the exact place US-T07's first real emission will use - and renders the running count in
-/// a HUD this suite reads.
+/// name and place US-T07's real app-entry emission uses, but on every probe launch so the proof does
+/// not depend on first-launch state - and renders the running count in a HUD this suite reads.
 ///
 /// **What these tests prove.** That the gate, in the real app, decides whether the transport
 /// dispatches a request at all: with the flag off nothing is dispatched, with it on something is
@@ -28,9 +28,10 @@ import XCTest
 /// **What they do not prove.** The count is taken at the `URLProtocol` boundary - the same boundary
 /// `LiveAnalyticsServiceTests` treats as authoritative in process - so an attempt means the transport
 /// built and dispatched a request, not that bytes reached Convex. That is deliberate: a run that let
-/// real bytes out would break FR-13, which forbids any test performing a real network call. Nor do
-/// they prove anything about a Release build, which compiles none of the harness and today has no
-/// configured endpoint at all.
+/// real bytes out would break FR-13, which forbids any test performing a real network call. This
+/// suite also proves nothing about Release, which compiles none of the harness; the separate
+/// `tools/validate-release-telemetry-client.sh` live check covers the privately configured Release
+/// artifact's opted-in and opted-out paths against production.
 ///
 /// **How a launch stays off the wire, structurally.** Every launch here goes through `TestApp`
 /// (`TestApp.swift`), the bundle's sole `XCUIApplication`, named with a `TelemetryPosture` that has no

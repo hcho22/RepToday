@@ -4,9 +4,10 @@ import { v } from "convex/values";
 /**
  * The whole telemetry backend: one append-only table.
  *
- * There is deliberately no funnel, cohort, or aggregate structure here and no index beyond
- * Convex's defaults. Every metric in the anonymous funnel event-metric schema is derivable from
- * raw rows by a query written later, so the sink stays dumb and the analysis stays revisable.
+ * There is deliberately no funnel, cohort, or aggregate structure here. The only evidence-table
+ * index selects rows by install id for reconciliation and production validation; every metric in
+ * the anonymous funnel event-metric schema remains derived offline from raw rows, so the sink stays
+ * dumb and the analysis stays revisable.
  *
  * Numeric convention (pinned by US-T03): both timestamps are `v.number()` - Convex float64 - and a
  * plain JSON number already *is* float64, so a client sending one never meets the `int64` vs
@@ -27,7 +28,7 @@ export default defineSchema({
     serverTs: v.number(),
     /** The event's non-identifying property bag, stored exactly as it arrived. */
     props: v.any(),
-  }),
+  }).index("by_installId", ["installId"]),
 
   /**
    * US-T14's rate-limit counter store, and nothing else.
@@ -39,11 +40,10 @@ export default defineSchema({
    * the throttle check in `rateLimit.ts`, and is **not** part of the evidence base for K1/K2/K4.
    * It exists solely to answer "has this key exceeded its window", and its contents are transient.
    *
-   * Unlike `events`, this table carries indexes: the throttle check looks a bucket up by key on
-   * every request (`by_bucketKey`), and the `reclaimExpired` cron sweeps expired buckets by window
-   * (`by_windowStart`), and a full scan of a hot counter table would be the opposite of cheap. "The
-   * sink stays dumb" is a rule about the *evidence* table, not about a throttle whose whole job is
-   * to be fast and forgetful.
+   * The throttle check looks a bucket up by key on every request (`by_bucketKey`), and the
+   * `reclaimExpired` cron sweeps expired buckets by window (`by_windowStart`); a full scan of a hot
+   * counter table would be the opposite of cheap. "The sink stays dumb" means it performs no
+   * analysis, not that operational selectors must scan their entire tables.
    */
   rateLimits: defineTable({
     /**

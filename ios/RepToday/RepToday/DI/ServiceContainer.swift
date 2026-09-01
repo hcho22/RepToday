@@ -177,12 +177,16 @@ struct ServiceContainer {
     /// integration (US-N03), and auth is the real Keychain-backed Sign in with Apple (US-N01).
     ///
     /// - Parameters:
-    ///   - installId: The anonymous per-install identifier (US-T05), which the telemetry
-    ///     transport puts on every event. It is passed in rather than resolved here because
+    ///   - installId: The launch-time anonymous per-install identifier (US-T05), used as the fixed
+    ///     fallback by tests and callers that do not pass `analyticsInstallId`. It is passed in
+    ///     rather than resolved here because
     ///     `AppState.init` is the *only* thing that mints it and decides which of the three launch
     ///     states an install is in; a second resolution path could disagree with the first about
     ///     whether an install is new. `RepTodayApp.init()` therefore builds `AppState` first and
     ///     hands its id down. Callers other than the app (tests) pass a fixed id.
+    ///   - analyticsInstallId: The production per-emission reader from `AppState`. Account deletion
+    ///     rotates the persisted value while this container stays alive, so the transport must read
+    ///     it again for the next event instead of freezing `installId` at launch.
     ///   - analyticsService: The telemetry sink, `nil` (the default, and what the app passes by
     ///     omitting it) meaning "resolve production's own". The seam exists so that a test building
     ///     this container for reasons unrelated to telemetry - it is the only way to get the
@@ -218,6 +222,7 @@ struct ServiceContainer {
     static func live(
         context: NSManagedObjectContext,
         installId: String,
+        analyticsInstallId: (@Sendable () -> String)? = nil,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) -> ServiceContainer {
@@ -254,11 +259,11 @@ struct ServiceContainer {
         // Resolve the telemetry sink once, so the completion recorder's `week_active` emission (US-T11)
         // and the container's own sink are the same instance and share the consent gate. An explicit
         // `analyticsService` overrides the build-configured resolution; otherwise it is the live
-        // transport when an endpoint is configured (Debug) and the inert no-op when it is not (Release
-        // today), so a Release build's completion path stays silent exactly like every other site.
+        // transport when the endpoint and shared token are configured (Debug and a privately-injected
+        // Release archive), or the inert no-op when either value is missing.
         let resolvedAnalyticsService: any AnalyticsServiceProtocol = analyticsService
             ?? LiveAnalyticsService.configured(
-                installId: installId,
+                installId: analyticsInstallId ?? { installId },
                 session: analyticsSession,
                 isEnabled: analyticsGate
             )
@@ -303,8 +308,8 @@ struct ServiceContainer {
             // The same telemetry sink resolved above (`resolvedAnalyticsService`), so the container and
             // the completion recorder's `week_active` emission (US-T11) share one instance and one
             // consent gate. It is the live Convex-backed transport (US-T04) when an endpoint is
-            // configured (Debug), the inert no-op when it is not (Release today, with an empty
-            // `REPTODAY_ANALYTICS_ENDPOINT`), or an explicit override a test passed. All emission
+            // fully configured (Debug and a privately-injected Release archive), the inert no-op when
+            // either value is missing, or an explicit override a test passed. All emission
             // sites US-T07 through US-T12 have landed (app entry, onboarding, Ready Screen, session
             // lifecycle, weekly rollup, and the paywall funnel), so all 13 events now emit.
             analyticsService: resolvedAnalyticsService,
