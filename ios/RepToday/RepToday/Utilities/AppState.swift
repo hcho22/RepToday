@@ -433,8 +433,10 @@ final class AppState {
         let storedId = userDefaults.string(forKey: Keys.installId)
         let storedFirstLaunch = userDefaults.object(forKey: Keys.firstLaunchAt) as? Date
         let storedFirstLaunchUnknown = userDefaults.bool(forKey: Keys.firstLaunchUnknown)
+        let resolvedInstallId: String
         if let storedId, !storedId.isEmpty, storedFirstLaunch != nil || storedFirstLaunchUnknown {
-            installId = storedId
+            resolvedInstallId = storedId
+            installId = resolvedInstallId
             firstLaunchAt = storedFirstLaunch
             isFirstLaunch = false
         } else {
@@ -445,7 +447,8 @@ final class AppState {
             // finished onboarding still reads as a fresh install here.
             let isPreExistingInstall = wasOnboarded
             let mintedInstallId = newInstallId()
-            installId = mintedInstallId
+            resolvedInstallId = mintedInstallId
+            installId = resolvedInstallId
             firstLaunchAt = storedFirstLaunch ?? (isPreExistingInstall ? nil : openedAt)
             isFirstLaunch = storedFirstLaunch == nil && !isPreExistingInstall
             userDefaults.set(mintedInstallId, forKey: Keys.installId)
@@ -460,7 +463,7 @@ final class AppState {
 
         if let storedSafetyIdentifier = userDefaults.string(forKey: Keys.coachSafetyIdentifier)
             .flatMap(CoachSafetyIdentifier.init(rawValue:)),
-           storedSafetyIdentifier.rawValue != installId {
+           storedSafetyIdentifier.rawValue != resolvedInstallId {
             coachSafetyIdentifier = storedSafetyIdentifier
         } else {
             let generatedSafetyIdentifier = newCoachSafetyIdentifier()
