@@ -28,6 +28,7 @@ So this directory is the harness only.
 1. **Read path** - `convex/reconcile.ts`'s `eventsForInstalls` `internalQuery`.
    It selects the `events` rows for a supplied set of install ids and returns the five wire columns (`name`, `installId`, `clientTs`, `serverTs`, `props`).
    It uses the evidence table's `by_installId` selection index, so the read scales with the requested installs rather than all production history.
+   `convex/reconcile.query.test.ts` drives that real internal query through `convex-test`, pinning duplicate-id deduplication, exact wire fields, and exclusion of unrelated or absent installs.
    It is **internal-only**, exactly like `logEvent` is an `internalMutation`: no public Convex function and no HTTP route is added, and US-T14's hardening of the public `POST /logEvent` surface is untouched.
    It is reached with a deploy/admin key through `npx convex run`.
 
@@ -37,7 +38,7 @@ So this directory is the harness only.
    The funnel's event set and order come from `funnel-schema.js`, whose names the test asserts are exactly `EVENT_NAMES` in `convex/events.ts` - itself pinned verbatim to the event-metric schema and the Swift `AnalyticsEventName`.
    So the funnel is driven by the authoritative schema, not a hand-kept guess: a drift in either list fails the suite.
 
-The tabulator source lives under `tools/` (not `convex/`) so it is never bundled into the deployed telemetry sink; its test lives under `convex/reconcile/` so the repo's existing `npm test` / `npm run typecheck` gates reach it with no config change.
+The tabulator source lives under `tools/` (not `convex/`) so it is never bundled into the deployed telemetry sink; both reconciliation tests live under `convex/` so the repo's existing `npm test` / `npm run typecheck` gates reach them with no config change.
 
 ## Running it
 

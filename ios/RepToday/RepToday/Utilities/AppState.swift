@@ -28,7 +28,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// `Library/Preferences` is included in iCloud and iTunes backups and in device-to-device
 /// transfer, so the guarantee is that the id dies with the app *absent a backup restore*, and
 /// one id can end up live on two devices after a migration. A plain reinstall is a new install
-/// with a new id.
+/// with a new id. A successful account deletion also replaces the id before onboarding resumes,
+/// while preserving the original install date and the user's telemetry preference.
 ///
 /// The clock, the calendar, and the id generator are injected (`now`, `calendar`,
 /// `newInstallId`), so cohorting behaviour is pinnable in tests without reading the wall clock

@@ -185,8 +185,9 @@ RepToday/
 │   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
 ├── ios/RepToday/RepTodayTests/     # The default suite (XCTestCase + @testable import), plus the shared seams every suite is expected to use instead of its own copy: EvidenceOutput, HostedSurface/AccessibilityTree, DefaultsSnapshot
 ├── ios/RepToday/RepTodayUITests/   # The out-of-process XCUITest bundle under its own scheme, for the few things only a real touch can exercise; HealthAccessPrompt is its shared helper
-├── convex/                  # Anonymous-telemetry sink only (append-only events table, plus US-T14's ephemeral rateLimits throttle helper); no backend behind the core loop
+├── convex/                  # Anonymous-telemetry sink only (append-only events table, US-T14's ephemeral rateLimits helper, internal indexed reconciliation read); no core-loop backend
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
+├── tools/                   # Release archive + production-telemetry validators, and the offline US-T13 reconciliation harness
 ├── proxy/                   # Thin, stateless key-holding Cloudflare Worker for the deferred Variety Language LLM slice (US-N05); not wired into the shipping MVP
 ├── docs/                    # Implementation log (story-by-story narrative), test-coverage map, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
@@ -265,7 +266,7 @@ If xcodebuild cannot resolve the destination, list installed simulators with `xc
 
 Only needed when working on `convex/` - the iOS app builds, runs, and tests without any of it. The app's transport to this sink exists (US-T04's `LiveAnalyticsService`), and every emission site now calls it - app entry (US-T07), the onboarding funnel (US-T08), the Ready Screen (US-T09), the session lifecycle (US-T10), the weekly rollup (US-T11's `week_active`), and the monetization funnel (US-T12's `paywall_shown`/`trial_started`/`subscribe`). Debug uses the dev sink; a Release archive uses production only when the private token injection succeeds. The other caller is US-T06's Debug-only, launch-argument-gated XCUITest probe.
 Which deployment a build talks to is the per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`: Debug points at dev deployment `courteous-dogfish-560`, and Release at production deployment `sensible-spider-810`. US-T14's companion `REPTODAY_ANALYTICS_SECRET` remains empty in Release source and is injected from the captain-owned macOS Keychain by `tools/archive-release.sh`; it is sent on every POST and checked against the production deployment's `ANALYTICS_SHARED_SECRET`. This shipped value is an extractable cost-raiser, not strong authentication; the per-install/per-IP limiter remains the authoritative abuse bound. Missing endpoint or token stays inert and nonfatal. Provisioning, rotation, rollback, and secret-free validation evidence live in `artifacts/reports/production-telemetry/validation.md`.
-Whether it talks at all is the user's call once the emission sites land: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` posts nothing to any deployment - the one mechanism that reaches an app the test process launched but never built.
+Whether it talks at all is the user's call: US-T06's opt-out flag is read fresh on every emission, so a launch carrying `-AppState.analyticsEnabled NO` posts nothing to any deployment - the one mechanism that reaches an app the test process launched but never built.
 Read that as one of two guards rather than as passed by every launch: `OnboardingImperialUITests` passes it always, and `TelemetryOptOutUITests` passes it only where being opted out is the assertion, holding its opted-in legs off the wire by interception instead - the probe harness swaps the transport's `URLSession` for an in-process counting `URLProtocol`, which is what lets those legs run with the gate genuinely open.
 So every launch in that suite carries consent-off **or** the probe, and neither is not representable: the postures are a `TelemetryPosture` enum with no case meaning neither, and every launch goes through `TestApp` (`RepTodayUITests/TestApp.swift`), the bundle's sole `XCUIApplication`, whose only launch entry point takes a posture by value - so a test cannot hold a raw launchable app.
 `XCUIApplication` is a framework type any file can still construct, so the guarantee is "cannot ship a bypass" rather than "cannot type one": `UITestLaunchGuardTests` (`RepTodayTests/UITestLaunchGuardTests.swift`, in the unit bundle so it runs on the routinely-run `-scheme RepToday test` gate) scans every `RepTodayUITests` source and fails that run if `XCUIApplication(` is constructed anywhere but `TestApp.swift`.
@@ -276,14 +277,14 @@ It needs **Node.js 20+** and npm (vitest ^4 requires Node 20+, which is what CI 
 ```bash
 npm install
 npm run typecheck         # tsc --noEmit over convex/ - the deploy config and the test one
-npm test                  # vitest + convex-test: the POST /logEvent boundary suite, in process
+npm test                  # vitest + convex-test: the POST boundary and reconciliation suites, in process
 npx convex dev --once     # deploy the schema + functions to your own dev deployment
 npx convex env set ANALYTICS_SHARED_SECRET <secret>   # US-T14: without it the route fails closed (500)
 npx convex data events    # read rows back
 ```
 
 `convex/_generated/` is committed, so `npm run typecheck` and `npm test` both work in a fresh clone with no deployment configured (the two `npx convex` commands do need one).
-US-T04 added the behavioural suite (`convex/http.test.ts`), which drives the real functions in process against no deployment; `.github/workflows/ci.yml` runs it (with `npm run typecheck`) on every PR into `main`, and it runs locally on demand - see `convex/README.md` and `docs/test-coverage.md` for what it covers and the one residual it cannot.
+US-T04 added the behavioural boundary suite (`convex/http.test.ts`), and the US-T13 harness now also tests its indexed internal read (`convex/reconcile.query.test.ts`) and pure tabulator (`convex/reconcile/tabulate.test.ts`). All run in process against no deployment; `.github/workflows/ci.yml` runs them (with `npm run typecheck`) on every PR into `main`. Production operators use `tools/validate-production-telemetry.sh` for the authenticated sink boundary and `tools/validate-release-telemetry-client.sh` for the real Release client; prerequisites and sanitized results are in `artifacts/reports/production-telemetry/validation.md`.
 
 ### Continuous integration
 

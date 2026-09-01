@@ -520,7 +520,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// execute the `#else` branch - a pre-existing property of the project, not of this test, and
     /// not worth de-optimising the shipping binary to change. The Release half is verified instead
     /// by reading `RepTodayAnalyticsEndpoint` out of the **built Release app bundle** (recorded in
-    /// the production-validation artifact, where the origin is production but the raw build's empty
+    /// the production-validation artifact): the origin is production, but the raw build's empty
     /// token keeps the combined configuration inert.
     /// The branch is kept because it is the assertion that becomes runnable the moment a Release
     /// test run is - it is not a claim that one happens today.

@@ -310,10 +310,12 @@ flood can still transiently outpace one tick and let this table grow for the dur
 draining once it stops. That is an accepted residual, not a hole: these rows are tiny and never an
 evidence surface, the `events` table's own rate limit is unaffected regardless, and a sustained or
 massively-distributed flood is the determined-attacker case this guard explicitly does not defend
-against - the same cost-raiser framing that governs the secret and the client-rotatable install id. Unlike `events`, this table carries indexes (by key and by window) - "the
-sink stays dumb" is a rule about the *evidence* table, not about a throttle whose job is to be fast
-and forgetful. The `events` table itself is untouched: same single, append-only shape, same five columns
-(`name`, `installId`, `clientTs`, `serverTs`, `props`), no identity added anywhere.
+against - the same cost-raiser framing that governs the secret and the client-rotatable install id.
+Its two indexes (by key and by window) support those operational point lookups and sweeps; the
+evidence table's one `by_installId` index similarly supports reconciliation and production validation.
+"The sink stays dumb" means neither table performs analysis. The `events` row shape remains the same
+single, append-only five columns (`name`, `installId`, `clientTs`, `serverTs`, `props`), with no
+identity added anywhere.
 
 ## HTTP action: `POST /logEvent` -> `204`
 
@@ -392,7 +394,7 @@ through untouched and the schema stores as-is, so it is not reached by that coer
 `convex/reconcile.ts`. The one function the offline US-T13 reconciliation harness reads through.
 It is an `internalQuery` for the same reason `logEvent` is an `internalMutation`: the sink keeps a
 single, internal-only way in. It adds **no** public Convex function and **no** HTTP route, so it does
-not widen the surface US-T14 will harden. It is read-only, adds no field to the row shape, selects
+not widen the surface US-T14 hardened. It is read-only, adds no field to the row shape, selects
 the rows whose `installId` is in the supplied set, and returns the five wire columns
 (`name`/`installId`/`clientTs`/`serverTs`/`props`). It performs one `by_installId` lookup per distinct
 requested id, keeping the ~25-install cohort read and recurring production validators proportional
@@ -407,6 +409,10 @@ query with a deploy/admin key:
 with the reconciliation report against real observed sessions still pending the moderated cohort, the
 named non-founder coder, and a frozen rubric - so US-T13's PRD acceptance boxes remain unchecked.
 
+`convex/reconcile.query.test.ts` drives the real internal query through `convex-test`, asserting
+duplicate requested ids are deduplicated, matching rows retain exactly the five wire fields, and
+unrelated or absent installs are excluded.
+
 ## Layout and deployment
 
 Standard Convex layout: the npm project lives at the repo root (`package.json`, `package-lock.json`)
@@ -419,7 +425,7 @@ npm install
 npx convex dev --once     # deploy schema + functions to the dev deployment
 npx convex data events    # read rows back from the deployment
 npm run typecheck         # tsc --noEmit over both configs below
-npm test                  # vitest + convex-test: the boundary suite, in process, no deployment
+npm test                  # vitest + convex-test: boundary, indexed-query, and tabulator suites
 ```
 
 There are **two** tsconfigs here, and the split is load-bearing rather than tidiness.

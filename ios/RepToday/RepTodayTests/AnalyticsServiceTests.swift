@@ -155,7 +155,8 @@ final class AnalyticsServiceTests: XCTestCase {
     /// stub in `LiveAnalyticsServiceTests`.
     ///
     /// FR-13 is not left resting on that reading, though:
-    /// `live(context:installId:analyticsGate:analyticsService:)` takes a sink as its last parameter,
+    /// `live(context:installId:analyticsInstallId:analyticsGate:analyticsService:)` takes a sink as
+    /// its last parameter,
     /// so any test that builds the production container for reasons unrelated to
     /// telemetry substitutes an inert one and is structurally unable to reach the network even now that
     /// US-T07 through US-T12 have added the emission call sites (`CoreDataServicesTests` does exactly that).

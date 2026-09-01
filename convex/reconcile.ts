@@ -10,8 +10,8 @@ import { v } from "convex/values";
  * A public query would be callable directly on the deployment's `.convex.cloud/api/query` endpoint
  * by anyone who learns the slug; an internal one is reachable only with a deploy/admin key, which is
  * what `npx convex run reconcile:eventsForInstalls '{"installIds": [...]}' --deployment <name>`
- * carries. It adds **no** public Convex function and **no** HTTP route, and US-T14's future
- * hardening of the *public* `POST /logEvent` surface is untouched by it.
+ * carries. It adds **no** public Convex function and **no** HTTP route, and US-T14's hardening of
+ * the *public* `POST /logEvent` surface is untouched by it.
  *
  * It is read-only and adds no field to the `events` row shape: it selects the rows whose `installId`
  * is in the supplied set and returns exactly the five wire columns the pure tabulator consumes.

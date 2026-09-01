@@ -16,13 +16,14 @@ protocol AccountDeletionServiceProtocol {
     /// 2. Clear the Keychain-held Sign in with Apple identifier (`AuthServiceProtocol.signOut()`).
     ///    Non-optional: the Keychain item survives reinstall, so skipping it would resurrect an
     ///    identity the user believed they deleted.
-    /// 3. Rotate `AppState`'s anonymous analytics install identifier, then reset routing
-    ///    (`isOnboarded` -> false, `selectedTab` -> `.home`). The already-running telemetry service
-    ///    reads the identifier per emission, so post-deletion onboarding events cannot be linked to
-    ///    the prior install identity.
+    /// 3. On the first successful onboarded teardown, rotate `AppState`'s anonymous analytics
+    ///    install identifier, then reset routing (`isOnboarded` -> false, `selectedTab` -> `.home`).
+    ///    The already-running telemetry service reads the identifier per emission, so post-deletion
+    ///    onboarding events cannot be linked to the prior install identity.
     ///
     /// Idempotent and safe for the local-UUID user who never signed in with Apple: a second call
-    /// finds nothing to delete and the Keychain clear is a no-op.
+    /// finds nothing to delete, the Keychain clear is a no-op, and the already-rotated identifier
+    /// stays stable because routing marked the install as no longer onboarded.
     func deleteAccount(appState: AppState) async throws
 }
 

@@ -201,7 +201,7 @@ fi
 
 OPTED_IN_ID="$opted_in_id" \
 OPTED_OUT_ID="$opted_out_id" \
-VALIDATION_ID_PREFIX="$VALIDATION_ID_PREFIX" \
+REPORT_VALIDATION_ID_PREFIX="$VALIDATION_ID_PREFIX" \
 ROWS_PATH="$private_dir/rows.json" \
 node <<'NODE'
 const fs = require("fs");
@@ -211,7 +211,7 @@ const optedOut = rows.filter((row) => row.installId === process.env.OPTED_OUT_ID
 const result = {
   release_endpoint: "https://sensible-spider-810.convex.site",
   release_token_injected: true,
-  validation_identity_prefix: process.env.VALIDATION_ID_PREFIX,
+  validation_identity_prefix: process.env.REPORT_VALIDATION_ID_PREFIX,
   opted_in_install_id: process.env.OPTED_IN_ID,
   opted_out_install_id: process.env.OPTED_OUT_ID,
   opted_in_rows: optedIn.length,

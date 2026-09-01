@@ -5,6 +5,10 @@
 **Deployment:** dev `courteous-dogfish-560` (`https://courteous-dogfish-560.convex.site`), the same one US-T01 and US-T03 used.
 **Verdict:** PASS, with the PRD's Validation Test **re-framed rather than run as written** - see the next section, which is the most important thing in this file.
 
+> **Historical configuration:** statements below about an inert Release build and absent emission
+> sites describe this dated US-T04 run. Release now targets production through a private token
+> injection and all 13 sites have landed; see `artifacts/reports/production-telemetry/validation.md`.
+
 > **Read this first, twice.**
 >
 > **1. The shipped diff contains no emission call site.** Nothing in the app calls `record(_:)`. US-T04 ships the transport and leaves it uncalled, exactly as US-T02 shipped the seam uncalled and US-T05 shipped the identity unread; the 13 emissions are US-T07 through US-T12. So the PRD's Validation Test - "complete onboarding, start a session, confirm events land in the Convex dashboard" - **cannot be run as written against the shipped build**, because the shipped build emits nothing when you do that. It was not made runnable by adding emission sites; that would be another story's scope landing here.
