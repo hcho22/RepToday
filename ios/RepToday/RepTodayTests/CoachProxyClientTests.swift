@@ -1,8 +1,12 @@
 import XCTest
 @testable import RepToday
 
+let testCoachSafetyIdentifier = CoachSafetyIdentifier(
+    rawValue: "coach-00000000-0000-4000-8000-000000000001"
+)!
+
 /// Tests US-AC01: the stateless coach transport client. It POSTs the audited `CoachContextBundle`
-/// plus the user's message to the key-holding proxy and returns Claude's reply, throwing on any
+/// plus the user's message to the key-holding proxy and returns the Coach model's reply, throwing on any
 /// failure so the (later, US-AC02) chat surface can degrade without ever blocking the core loop.
 /// These drive it over a stub transport so the request/response contract and every failure path are
 /// exercised without a live network - and prove an oversized/empty message is rejected *locally*,
@@ -71,30 +75,41 @@ final class CoachProxyClientTests: XCTestCase {
 
     // MARK: - Happy path
 
+    func testSafetyIdentifierAcceptsOnlyNamespacedUUIDv4Values() {
+        XCTAssertEqual(
+            CoachSafetyIdentifier(rawValue: testCoachSafetyIdentifier.rawValue),
+            testCoachSafetyIdentifier
+        )
+        XCTAssertNil(CoachSafetyIdentifier(rawValue: "00000000-0000-4000-8000-000000000001"))
+        XCTAssertNil(CoachSafetyIdentifier(rawValue: "person@example.com"))
+        XCTAssertNil(CoachSafetyIdentifier(rawValue: "coach-00000000-0000-1000-8000-000000000001"))
+    }
+
     func testReturnsTrimmedReplyOnSuccess() async throws {
         let transport = StubTransport(.success(data: okData(reply: "  Because squats were stalest  "), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         let reply = try await client.reply(to: "why squats today?", context: bundle())
 
         XCTAssertEqual(reply, "Because squats were stalest")
-        XCTAssertEqual(transport.callCount, 1, "exactly one Claude call per request")
+        XCTAssertEqual(transport.callCount, 1, "exactly one Coach model call per request")
         XCTAssertEqual(transport.lastURL, endpoint)
         XCTAssertEqual(transport.lastTimeout, CoachProxyClient.defaultTimeoutSeconds)
     }
 
-    /// The request body carries the context bundle and the (trimmed) message, and nothing else - no
-    /// identity fields.
-    func testRequestBodyCarriesContextAndMessageOnly() async throws {
+    /// The request body carries the context bundle, the (trimmed) message, and the dedicated
+    /// pseudonymous safety identifier - never the installation or account identity.
+    func testRequestBodyCarriesContextMessageAndSafetyIdentifierOnly() async throws {
         let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         _ = try await client.reply(to: "  how do I do a pistol squat?  ", context: bundle())
 
         let body = try XCTUnwrap(transport.lastBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-        XCTAssertEqual(Set(json.keys), ["context", "message"])
+        XCTAssertEqual(Set(json.keys), ["context", "message", "safetyIdentifier"])
         XCTAssertEqual(json["message"] as? String, "how do I do a pistol squat?")
+        XCTAssertEqual(json["safetyIdentifier"] as? String, "coach-00000000-0000-4000-8000-000000000001")
         let context = try XCTUnwrap(json["context"] as? [String: Any])
         XCTAssertEqual(context["phase"] as? String, "discipline")
 
@@ -105,9 +120,40 @@ final class CoachProxyClientTests: XCTestCase {
         }
     }
 
+    func testRequestReadsRotatedSafetyIdentifierFromProvider() async throws {
+        let suiteName = "CoachProxyClientTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(userDefaults: defaults)
+        let original = appState.coachSafetyIdentifier
+        let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
+        let client = CoachProxyClient(
+            endpoint: endpoint,
+            safetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
+            transport: transport
+        )
+
+        _ = try await client.reply(to: "first", context: bundle())
+        let firstBody = try XCTUnwrap(transport.lastBody)
+        let firstJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: firstBody) as? [String: Any])
+        XCTAssertEqual(firstJSON["safetyIdentifier"] as? String, original.rawValue)
+
+        appState.rotateCoachSafetyIdentifier()
+        _ = try await client.reply(to: "second", context: bundle())
+        let secondBody = try XCTUnwrap(transport.lastBody)
+        let secondJSON = try XCTUnwrap(try JSONSerialization.jsonObject(with: secondBody) as? [String: Any])
+        XCTAssertEqual(secondJSON["safetyIdentifier"] as? String, appState.coachSafetyIdentifier.rawValue)
+        XCTAssertNotEqual(secondJSON["safetyIdentifier"] as? String, original.rawValue)
+    }
+
     func testSendsAuthorizationHeaderWhenSharedSecretConfigured() async throws {
         let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, sharedSecret: "s3cret", transport: transport)
+        let client = CoachProxyClient(
+            endpoint: endpoint,
+            sharedSecret: "s3cret",
+            safetyIdentifier: testCoachSafetyIdentifier,
+            transport: transport
+        )
 
         _ = try await client.reply(to: "hi", context: bundle())
 
@@ -116,7 +162,7 @@ final class CoachProxyClientTests: XCTestCase {
 
     func testOmitsAuthorizationHeaderWhenNoSharedSecret() async throws {
         let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         _ = try await client.reply(to: "hi", context: bundle())
 
@@ -125,7 +171,12 @@ final class CoachProxyClientTests: XCTestCase {
 
     func testHonorsInjectedTimeout() async throws {
         let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, timeoutSeconds: 12, transport: transport)
+        let client = CoachProxyClient(
+            endpoint: endpoint,
+            timeoutSeconds: 12,
+            safetyIdentifier: testCoachSafetyIdentifier,
+            transport: transport
+        )
 
         _ = try await client.reply(to: "hi", context: bundle())
 
@@ -136,29 +187,34 @@ final class CoachProxyClientTests: XCTestCase {
 
     func testRejectsEmptyMessageBeforeAnyCall() async {
         let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "   ", context: bundle())) { error in
             XCTAssertEqual(error as? CoachProxyClient.CoachError, .emptyMessage)
         }
-        XCTAssertEqual(transport.callCount, 0, "an empty message must never bill a Claude call")
+        XCTAssertEqual(transport.callCount, 0, "an empty message must never bill a model call")
     }
 
     func testRejectsOverLengthMessageBeforeAnyCall() async {
         let transport = StubTransport(.success(data: okData(reply: "ok"), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, messageCharacterLimit: 10, transport: transport)
+        let client = CoachProxyClient(
+            endpoint: endpoint,
+            messageCharacterLimit: 10,
+            safetyIdentifier: testCoachSafetyIdentifier,
+            transport: transport
+        )
 
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "way too long a message", context: bundle())) { error in
             XCTAssertEqual(error as? CoachProxyClient.CoachError, .messageTooLong(limit: 10))
         }
-        XCTAssertEqual(transport.callCount, 0, "an oversized message must never bill a Claude call")
+        XCTAssertEqual(transport.callCount, 0, "an oversized message must never bill a model call")
     }
 
     // MARK: - Failure paths (all throw so the caller degrades)
 
     func testThrowsOnNon2xxStatus() async {
         let transport = StubTransport(.success(data: Data(#"{"error":"upstream_error"}"#.utf8), status: 502))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "hi", context: bundle())) { error in
             XCTAssertEqual(error as? CoachProxyClient.CoachError, .badStatus(502))
@@ -167,23 +223,33 @@ final class CoachProxyClientTests: XCTestCase {
 
     func testThrowsOnEmptyReply() async {
         let transport = StubTransport(.success(data: okData(reply: "   "), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "hi", context: bundle())) { error in
             XCTAssertEqual(error as? CoachProxyClient.CoachError, .emptyReply)
         }
     }
 
+    func testMapsSafetyRefusalOutcomeToTypedError() async {
+        let data = Data(#"{"outcome":"safety_refusal"}"#.utf8)
+        let transport = StubTransport(.success(data: data, status: 200))
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
+
+        await XCTAssertThrowsErrorAsync(try await client.reply(to: "unsafe request", context: bundle())) { error in
+            XCTAssertEqual(error as? CoachProxyClient.CoachError, .safetyRefusal)
+        }
+    }
+
     func testThrowsOnUndecodableBody() async {
         let transport = StubTransport(.success(data: Data("not json".utf8), status: 200))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "hi", context: bundle()))
     }
 
     func testPropagatesTransportFailure() async {
         let transport = StubTransport(.failure(TransportBoom()))
-        let client = CoachProxyClient(endpoint: endpoint, transport: transport)
+        let client = CoachProxyClient(endpoint: endpoint, safetyIdentifier: testCoachSafetyIdentifier, transport: transport)
 
         await XCTAssertThrowsErrorAsync(try await client.reply(to: "hi", context: bundle())) { error in
             XCTAssertTrue(error is TransportBoom)

@@ -2,6 +2,10 @@
 # In production the key is a Wrangler secret: `wrangler secret put ANTHROPIC_API_KEY`.
 ANTHROPIC_API_KEY=sk-ant-your-key-here
 
+# Powers only the premium AI Coach (`POST /coach`). In production this is a Wrangler secret:
+# `wrangler secret put OPENAI_API_KEY`.
+OPENAI_API_KEY=sk-your-openai-key-here
+
 # The client shared secret that gates every route (/variety-language and /coach) - abuse protection.
 # When set, requests must send `Authorization: Bearer <this value>`; unset leaves the routes open
 # for local dev. Production deploys MUST set it: `wrangler secret put CLIENT_SHARED_SECRET`.

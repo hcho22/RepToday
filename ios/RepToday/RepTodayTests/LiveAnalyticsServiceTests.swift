@@ -373,7 +373,11 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         restoreAfterTest(AppState.analyticsEnabledKey, in: standard)
 
         let controller = MockPersistence.controller()
-        let container = ServiceContainer.live(context: controller.viewContext, installId: "container-install")
+        let container = ServiceContainer.live(
+            context: controller.viewContext,
+            installId: "container-install",
+            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") }
+        )
         let service = try XCTUnwrap(
             container.analyticsService as? LiveAnalyticsService,
             "the Debug container must wire the live transport"
@@ -406,6 +410,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let container = ServiceContainer.live(
             context: controller.viewContext,
             installId: "container-install",
+            coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
             analyticsGate: appState.analyticsGate
         )
         let service = try XCTUnwrap(

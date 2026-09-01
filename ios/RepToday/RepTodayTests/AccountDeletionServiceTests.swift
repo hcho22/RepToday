@@ -87,6 +87,9 @@ final class AccountDeletionServiceTests: XCTestCase {
         let auth = MockAuthService(userIdentifier: "apple-user-123")
         let appState = makeAppState(isOnboarded: true, selectedTab: .progress)
         let preDeletionInstallId = appState.installId
+        appState.markCoachDataSharingAcknowledged()
+        let originalCoachSafetyIdentifier = appState.coachSafetyIdentifier
+        let coachSafetyIdentifierProvider = appState.coachSafetyIdentifierProvider
 
         let service = AccountDeletionService(
             userService: userService,
@@ -117,9 +120,33 @@ final class AccountDeletionServiceTests: XCTestCase {
                 appState.installId, preDeletionInstallId,
                 "post-deletion telemetry would remain linked to the prior install identity"
             )
+            XCTAssertNotEqual(appState.coachSafetyIdentifier, originalCoachSafetyIdentifier)
+            XCTAssertEqual(coachSafetyIdentifierProvider(), appState.coachSafetyIdentifier)
+            XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
+            XCTAssertTrue(appState.shouldShowCoachDataDisclosure)
             XCTAssertFalse(appState.isOnboarded, "the app did not route back to onboarding")
             XCTAssertEqual(appState.selectedTab, .home, "the selected tab was not reset")
         }
+    }
+
+    func testLaterUserCannotInheritCoachDataSharingAcknowledgement() async throws {
+        let appState = makeAppState(isOnboarded: true, selectedTab: .home)
+        appState.markCoachDataSharingAcknowledged()
+        let installId = appState.installId
+        let service = AccountDeletionService(
+            userService: MockUserService(user: MockPersistence.sampleUser),
+            workoutLogService: MockWorkoutLogService(),
+            sessionPolicyStore: InMemorySessionPolicyStore(),
+            activeSessionStore: InMemoryActiveSessionStore(),
+            authService: MockAuthService(userIdentifier: "apple-user-123")
+        )
+
+        try await service.deleteAccount(appState: appState)
+        let laterUserState = AppState(userDefaults: defaults)
+
+        XCTAssertNotEqual(laterUserState.installId, installId)
+        XCTAssertFalse(laterUserState.hasAcknowledgedCoachDataSharing)
+        XCTAssertTrue(laterUserState.shouldShowCoachDataDisclosure)
     }
 
     /// The local-UUID user who never signed in with Apple: no credential to clear, and the teardown
@@ -166,6 +193,7 @@ final class AccountDeletionServiceTests: XCTestCase {
         )
         try await service.deleteAccount(appState: appState)
         let identityAfterFirstDeletion = appState.installId
+        let coachIdentityAfterFirstDeletion = appState.coachSafetyIdentifier
         // Second call: nothing left to clear, must not throw.
         try await service.deleteAccount(appState: appState)
 
@@ -178,6 +206,10 @@ final class AccountDeletionServiceTests: XCTestCase {
             XCTAssertEqual(
                 appState.installId, identityAfterFirstDeletion,
                 "an idempotent second deletion rotated the already-separated identity again"
+            )
+            XCTAssertEqual(
+                appState.coachSafetyIdentifier, coachIdentityAfterFirstDeletion,
+                "an idempotent second deletion rotated the Coach safety identifier again"
             )
         }
     }

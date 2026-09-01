@@ -142,7 +142,11 @@ final class CoachAnalyticsInsightEvidenceTests: XCTestCase {
             log("hinge_single_leg_bridge", .hinge, weeksAgo: 4),
         ]
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: StubTransport()),
+            client: CoachProxyClient(
+                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: StubTransport()
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(logs: logs),
             exerciseService: try! MockExerciseService(),

@@ -1,7 +1,7 @@
 # Rep Today LLM Proxy
 
-A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It exists so every Claude
-call runs **without shipping an API key in the app**, and so the app never has to trust it: each
+A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It exists so every upstream
+model call runs **without shipping an API key in the app**, and so the app never has to trust it: each
 client enforces its own short timeout and degrades cleanly on any failure, timeout, or absence of
 this proxy.
 
@@ -11,23 +11,32 @@ Two routes live here, both stateless and storing nothing:
   the shipping MVP; the client (`ProxyVarietyLanguageProvider`) falls back to the deterministic
   on-device template on any failure.
 - **`POST /coach`** (US-AC01) - the premium AI coach transport. A derived, non-identifying context
-  bundle + the user's message in, a Claude reply out. The chat surface that drives it is US-AC02;
-  US-AC01 ships the transport only.
+  bundle + the user's message + a dedicated abuse-prevention pseudonym in, an OpenAI reply out. The
+  chat surface that drives it is US-AC02; US-AC01 ships the transport only.
 
 ## What it does
 
-- Holds the Anthropic API key (a Wrangler secret) and proxies **exactly one** Claude call per
-  request, on either route.
+- Holds provider API keys (Wrangler secrets) and proxies **exactly one** model call per request.
+  Variety Language uses Anthropic; the premium Coach uses OpenAI.
 - **Stores no user data at rest, on either route.** Nothing is persisted: no KV, no D1, no cache, no
   scheduler, and **no request/response body logging**. History is read transiently from the request
   and discarded when the response is sent. The coach's conversation memory, if any, lives on the
   device in the client - never here.
-- Carries **no identity on the wire**: no account, no `installId`, no IDFA, no Apple ID, no email, no
-  name, no profile. `/variety-language` carries only two pillar values; `/coach` carries only the
-  app-audited context bundle (summarized catalog/aggregate signals) plus the free-text the user
-  typed.
+- Carries **no Rep Today identity on the wire**: no account, `installId`, IDFA, Apple ID, email, name,
+  or profile. `/variety-language` carries only two pillar values; `/coach` carries the app-audited
+  context bundle, the free-text the user typed, and a separately generated random Coach identifier
+  used only for OpenAI abuse prevention. That pseudonym is stable across launches and rotates when
+  the user deletes their account.
 - Bounds every upstream call with `AbortSignal.timeout` and caps the request body at **32 KiB**
-  (checked before parsing, so an oversized payload never reaches JSON parsing or a Claude call).
+  (checked before parsing, so an oversized payload never reaches JSON parsing or a paid model call).
+
+"Stateless" and "stores nothing" above describe the Rep Today Worker. The Coach request sets
+`store: false`, so the OpenAI Responses API does not retain response application state, but that flag
+does not disable OpenAI's standard abuse-monitoring logs. OpenAI may retain the Coach prompt (message
+and training summary) and reply in those logs for up to 30 days. This deployment does not require Zero
+Data Retention or Modified Abuse Monitoring; the user disclosure assumes standard retention. The
+Coach request still carries no Rep Today identity field. Its `safety_identifier` is a separate,
+locally generated pseudonym, never the raw installation identifier or an account value.
 
 ## Wire contract: `POST /variety-language` (US-N05)
 
@@ -73,8 +82,8 @@ the template. A failing or absent proxy never blocks the app.
 ## Wire contract: `POST /coach` (US-AC01)
 
 The coach client (`CoachProxyClient`) POSTs the derived context bundle plus the user's message and
-returns the reply. It throws on any non-2xx, timeout, or malformed body so the (US-AC02) chat surface
-degrades to a clear, non-blocking state - the free core loop never depends on or waits for it.
+classifies the reply or safety outcome. It throws on any non-2xx, timeout, or malformed body so the
+(US-AC02) chat surface degrades to a clear, non-blocking state - the free core loop never depends on it.
 
 ### Request
 
@@ -94,7 +103,8 @@ Content-Type: application/json
     "recentPatterns": ["push", "core", "squat"],
     "consistency": { "currentScore": 72, "direction": "rising" }
   },
-  "message": "why did I get squats today?"
+  "message": "why did I get squats today?",
+  "safetyIdentifier": "coach-00000000-0000-4000-8000-000000000001"
 }
 ```
 
@@ -108,6 +118,10 @@ Content-Type: application/json
   object-shaped but does not otherwise constrain it (the app owns the definition).
 - `message` (required) - the user's free-text question. Non-empty and at most **2000 characters**
   (the iOS client caps the same value; the proxy re-checks as defense in depth).
+- `safetyIdentifier` (required) - a random, app-generated `coach-<UUIDv4>` pseudonym. It is distinct
+  from `installId` and every account value, remains stable across launches, and rotates on account
+  deletion. The proxy validates this constrained shape, then sends it to OpenAI as
+  `safety_identifier`; it is not included in the model prompt.
 
 ### Response
 
@@ -115,11 +129,25 @@ Content-Type: application/json
 { "reply": "You got squats because squat was your stalest pattern this week..." }
 ```
 
+A provider safety refusal is a successful, non-retryable outcome with no provider-authored text:
+
+```json
+{ "outcome": "safety_refusal" }
+```
+
+The Worker discards OpenAI's raw refusal wording. The iOS client maps this outcome to Rep Today's
+stable safety message and does not offer to retry the same request.
+
+The Worker accepts text only from a `completed` response or an `incomplete` response whose reason is
+`max_output_tokens`. Content-filtered incomplete output becomes `safety_refusal`; a response error or
+`failed`, `cancelled`, `queued`, or `in_progress` status becomes an upstream failure at the proxy
+boundary, and any accompanying partial provider text is discarded.
+
 On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
 (`method_not_allowed`, `unauthorized`, `payload_too_large`, `invalid_json`, `invalid_context`,
-`invalid_message`, `message_too_long`, `not_configured`, `upstream_unreachable`, `upstream_error`,
-`upstream_bad_json`, `empty_reply`). Every non-2xx and malformed body is handled identically by the
-client: surface a non-blocking error; never block the app.
+`invalid_message`, `message_too_long`, `invalid_safety_identifier`, `not_configured`,
+`upstream_unreachable`, `upstream_error`, `upstream_bad_json`, `empty_reply`). Every non-2xx and
+malformed body is handled identically by the client: surface a non-blocking error; never block the app.
 
 The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02): it covers the
 target intents - "why this workout?" (the engine's stalest-pattern reasoning), "how do I do
@@ -151,14 +179,14 @@ npm test            # vitest: drives worker.fetch(request, env) in Node, stubbin
 ```
 
 The test suite (`test/worker.test.js`) proves the boundary without a network or a deployment: a valid
-request makes exactly one upstream Anthropic call and returns a reply; an oversized / invalid /
-unauthorized request is rejected **before** that call; and nothing is logged (the Worker never touches
-the console) or persisted (there are no storage bindings).
+request makes exactly one route-appropriate upstream call and returns a reply or typed safety outcome;
+an oversized / invalid / unauthorized request is rejected **before** that call; provider refusal text
+never crosses the Worker boundary; and nothing is logged or persisted.
 
 ## Abuse protection
 
-Without a gate, **every** route is an **open relay to the billed Anthropic Messages API**: anyone
-who discovers the URL can drive unbounded, paid Claude calls (financial abuse / quota exhaustion).
+Without a gate, **every** route is an **open relay to a billed model API**: anyone
+who discovers the URL can drive unbounded, paid model calls (financial abuse / quota exhaustion).
 The shared-secret gate runs **once, before routing**, so it protects `/variety-language` and `/coach`
 identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Before deploying you
 **MUST**:
@@ -166,7 +194,7 @@ identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Befo
 1. **Set a client shared secret.** `wrangler secret put CLIENT_SHARED_SECRET`, and have the client
    send it. When the secret is set, the Worker rejects any request whose
    `Authorization: Bearer <secret>` header does not match with `401 { "error": "unauthorized" }`
-   **before** it calls Anthropic, so unauthorized traffic never bills. (The secret is compared in
+   **before** it calls an upstream provider, so unauthorized traffic never bills. (The secret is compared in
    constant time.) When the env var is unset the route stays open - convenient for local `wrangler
    dev`, but never acceptable in production. Point the client at it by passing `sharedSecret:` to
    `ProxyVarietyLanguageProvider` / `CoachProxyClient` (see the wiring examples below).
@@ -175,10 +203,14 @@ identically. The Worker is stateless (no KV), so it cannot self-rate-limit. Befo
 
 ## Model
 
-Defaults to `claude-opus-4-8` (Anthropic's most capable model).
-Override with the `ANTHROPIC_MODEL` var in `wrangler.toml` - e.g. a Haiku tier - when latency or cost
-matter more than prose quality. The one model var applies to both routes.
-Extended thinking is intentionally not requested (fast generation on both routes).
+The premium AI Coach is source-pinned to the exact model identifier `gpt-5.6-luna` and calls the
+OpenAI Responses API with `reasoning.effort: "none"`, `store: false`, `safety_identifier`, and the
+existing 1024-token output ceiling. `store: false` prevents response application-state storage, not
+the standard abuse-monitoring retention documented above. It is intentionally not configurable through
+`ANTHROPIC_MODEL`, so Variety Language and Coach model selections cannot drift together.
+
+Variety Language remains on `claude-opus-4-8` by default. Override only that route with the
+`ANTHROPIC_MODEL` var in `wrangler.toml` when latency or cost matters more than prose quality.
 
 ## Deploy
 
@@ -190,6 +222,7 @@ npm install
 
 # Set the API key as a secret (never committed):
 wrangler secret put ANTHROPIC_API_KEY
+wrangler secret put OPENAI_API_KEY
 
 # Local run:
 cp .dev.vars.example .dev.vars   # put your key in .dev.vars
@@ -228,7 +261,8 @@ US-AC02):
 ```swift
 let coach = CoachProxyClient(
     endpoint: URL(string: "https://<worker-subdomain>/coach")!,
-    sharedSecret: "<CLIENT_SHARED_SECRET>"  // must match the Worker's abuse gate
+    sharedSecret: "<CLIENT_SHARED_SECRET>",  // must match the Worker's abuse gate
+    safetyIdentifier: appState.coachSafetyIdentifier
 )
 let bundle = CoachContextBundle.make(
     phase: user.phase,
@@ -241,5 +275,7 @@ let reply = try await coach.reply(to: userMessage, context: bundle)
 ```
 
 `CoachProxyClient` is bounded (per-request timeout) and throws on any failure, so the coach never
-blocks the free core loop. The bundle is the single audited definition of what leaves the device -
-see `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
+blocks the free core loop. Production uses `appState.coachSafetyIdentifierProvider` through
+`ServiceContainer.live`, so an account deletion updates the already-built client in the same process.
+The bundle remains the single audited definition of training context - see
+`ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.

@@ -4,7 +4,7 @@ import worker from "../src/worker.js";
 /**
  * Boundary tests for the stateless LLM proxy (US-AC01, plus a Variety Language regression).
  *
- * The single upstream Anthropic call is the only network egress the Worker makes, so stubbing
+ * A single upstream model call is the only network egress each request makes, so stubbing
  * `globalThis.fetch` lets each test assert exactly what the privacy contract requires:
  *   - a valid request returns a reply and makes **exactly one** upstream call;
  *   - an oversized / invalid / unauthorized request is rejected **before** any upstream call;
@@ -13,6 +13,7 @@ import worker from "../src/worker.js";
 
 const COACH_URL = "https://proxy.example.com/coach";
 const VARIETY_URL = "https://proxy.example.com/variety-language";
+const COACH_SAFETY_IDENTIFIER = "coach-00000000-0000-4000-8000-000000000001";
 
 /** A well-formed, non-identifying context bundle (mirrors the iOS `CoachContextBundle`). */
 const CONTEXT = {
@@ -36,6 +37,33 @@ function anthropicReply(text) {
   };
 }
 
+/** Build an OpenAI Responses API-shaped response body. */
+function openAIReply(text) {
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: "completed",
+        error: null,
+        output: [{ type: "message", content: [{ type: "output_text", text }] }],
+      };
+    },
+  };
+}
+
+function openAIRefusal(refusal, text) {
+  const content = [
+    ...(text ? [{ type: "output_text", text }] : []),
+    { type: "refusal", refusal },
+  ];
+  return {
+    ok: true,
+    async json() {
+      return { status: "completed", error: null, output: [{ type: "message", content }] };
+    },
+  };
+}
+
 /** A stub that stands in for `globalThis.fetch` and records every call. */
 let fetchSpy;
 let consoleLogSpy;
@@ -43,7 +71,7 @@ let consoleErrorSpy;
 let consoleWarnSpy;
 
 beforeEach(() => {
-  fetchSpy = vi.fn(async () => anthropicReply("Because squats were your stalest pattern this week."));
+  fetchSpy = vi.fn(async () => openAIReply("Because squats were your stalest pattern this week."));
   vi.stubGlobal("fetch", fetchSpy);
   // Prove "no request/response body logging": the Worker must never touch the console.
   consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -58,39 +86,53 @@ afterEach(() => {
 
 /**
  * @param {object|string} body
- * @param {{ headers?: Record<string, string> }} [opts]
+ * @param {{ headers?: Record<string, string>, includeSafetyIdentifier?: boolean }} [opts]
  */
-function coachRequest(body, { headers } = {}) {
+function coachRequest(body, { headers, includeSafetyIdentifier = true } = {}) {
+  const requestBody =
+    includeSafetyIdentifier &&
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body) &&
+    !("safetyIdentifier" in body)
+      ? { ...body, safetyIdentifier: COACH_SAFETY_IDENTIFIER }
+      : body;
   return new Request(COACH_URL, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
-    body: typeof body === "string" ? body : JSON.stringify(body),
+    body: typeof requestBody === "string" ? requestBody : JSON.stringify(requestBody),
   });
 }
 
-const ENV = { ANTHROPIC_API_KEY: "sk-ant-test" };
+const ENV = { ANTHROPIC_API_KEY: "sk-ant-test", OPENAI_API_KEY: "sk-openai-test" };
 
 describe("POST /coach", () => {
-  it("returns a Claude-sourced reply for a valid request and makes exactly one upstream call", async () => {
+  it("uses gpt-5.6-luna through the Responses API for a valid Coach request", async () => {
     const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "why squats today?" }), ENV);
 
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json).toEqual({ reply: "Because squats were your stalest pattern this week." });
 
-    // Exactly one upstream call, and it is the Anthropic Messages API - no other egress, no logging.
+    // Exactly one upstream call, and it is the OpenAI Responses API - no other egress or logging.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0][0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://api.openai.com/v1/responses");
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    expect(upstreamBody.model).toBe("gpt-5.6-luna");
+    expect(upstreamBody.reasoning).toEqual({ effort: "none" });
+    expect(upstreamBody.max_output_tokens).toBe(1024);
+    expect(upstreamBody.store).toBe(false);
+    expect(upstreamBody.safety_identifier).toBe(COACH_SAFETY_IDENTIFIER);
     expect(consoleLogSpy).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
-  it("forwards the context and message to Claude but nothing else - no identity fields", async () => {
+  it("forwards Coach content and its pseudonym but no Rep Today identity fields", async () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "how do I do a pistol squat?" }), ENV);
 
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    const sentPrompt = upstreamBody.messages[0].content;
+    const sentPrompt = upstreamBody.input;
     // The user's message and the audited context reach the model...
     expect(sentPrompt).toContain("how do I do a pistol squat?");
     expect(sentPrompt).toContain('"phase":"discipline"');
@@ -123,6 +165,33 @@ describe("POST /coach", () => {
     const wrongType = await worker.fetch(coachRequest({ context: "nope", message: "hi" }), ENV);
     expect(wrongType.status).toBe(400);
     expect((await wrongType.json()).error).toBe("invalid_context");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing or non-pseudonymous safety identifier before any upstream call", async () => {
+    const missing = await worker.fetch(
+      coachRequest(
+        { context: CONTEXT, message: "hi" },
+        { includeSafetyIdentifier: false }
+      ),
+      ENV
+    );
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).error).toBe("invalid_safety_identifier");
+
+    for (const safetyIdentifier of [
+      "00000000-0000-4000-8000-000000000001",
+      "person@example.com",
+      "coach-not-a-uuid",
+    ]) {
+      const invalid = await worker.fetch(
+        coachRequest({ context: CONTEXT, message: "hi", safetyIdentifier }),
+        ENV
+      );
+      expect(invalid.status).toBe(400);
+      expect((await invalid.json()).error).toBe("invalid_safety_identifier");
+    }
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -176,11 +245,118 @@ describe("POST /coach", () => {
     expect((await response.json()).error).toBe("upstream_error");
   });
 
-  it("returns empty_reply when Claude returns no text", async () => {
-    fetchSpy.mockResolvedValueOnce(anthropicReply("   "));
+  it("returns empty_reply when the Coach model returns no text", async () => {
+    fetchSpy.mockResolvedValueOnce(openAIReply("   "));
     const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
     expect(response.status).toBe(502);
     expect((await response.json()).error).toBe("empty_reply");
+  });
+
+  it("maps a refusal to the dedicated safety outcome without exposing provider text", async () => {
+    const providerRefusal = "Provider-authored refusal that must stay behind the proxy.";
+    fetchSpy.mockResolvedValueOnce(openAIRefusal(providerRefusal));
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "unsafe request" }), ENV);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ outcome: "safety_refusal" });
+    expect(JSON.stringify(body)).not.toContain(providerRefusal);
+  });
+
+  it("treats a refusal as authoritative when output text is also present", async () => {
+    fetchSpy.mockResolvedValueOnce(openAIRefusal("Provider refusal", "Text that must not escape"));
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "unsafe request" }), ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ outcome: "safety_refusal" });
+  });
+
+  it("treats content-filtered incomplete output as a safety outcome before exposing text", async () => {
+    const providerText = "Partial provider text that must not escape";
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      async json() {
+        return {
+          status: "incomplete",
+          incomplete_details: { reason: "content_filter" },
+          output: [{ type: "message", content: [{ type: "output_text", text: providerText }] }],
+        };
+      },
+    });
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "unsafe request" }), ENV);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ outcome: "safety_refusal" });
+    expect(JSON.stringify(body)).not.toContain(providerText);
+  });
+
+  it.each(["failed", "cancelled", "queued", "in_progress"])(
+    "rejects a %s response before exposing partial output",
+    async (status) => {
+      const providerText = `Partial output from ${status}`;
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        async json() {
+          return {
+            status,
+            error: null,
+            output: [{ type: "message", content: [{ type: "output_text", text: providerText }] }],
+          };
+        },
+      });
+
+      const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
+      const body = await response.json();
+
+      expect(response.status).toBe(502);
+      expect(body).toEqual({ error: "upstream_error" });
+      expect(JSON.stringify(body)).not.toContain(providerText);
+    }
+  );
+
+  it("rejects a response error before exposing output", async () => {
+    const providerText = "Output paired with an error";
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      async json() {
+        return {
+          status: "completed",
+          error: { code: "server_error", message: "Provider detail" },
+          output: [{ type: "message", content: [{ type: "output_text", text: providerText }] }],
+        };
+      },
+    });
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toEqual({ error: "upstream_error" });
+    expect(JSON.stringify(body)).not.toContain(providerText);
+    expect(JSON.stringify(body)).not.toContain("Provider detail");
+  });
+
+  it("returns partial output when generation reaches the output-token limit", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      async json() {
+        return {
+          status: "incomplete",
+          error: null,
+          incomplete_details: { reason: "max_output_tokens" },
+          output: [{ type: "message", content: [{ type: "output_text", text: "Useful partial reply" }] }],
+        };
+      },
+    });
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ reply: "Useful partial reply" });
   });
 
   // US-AC02: the refined persona. The system prompt is where the target intents, the app's voice, and
@@ -190,7 +366,7 @@ describe("POST /coach", () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "why squats today?" }), ENV);
 
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    const system = upstreamBody.system.toLowerCase();
+    const system = upstreamBody.instructions.toLowerCase();
 
     // The load-bearing safety invariant (AC3): talking only, never a generated/edited workout.
     expect(system).toContain("never generate");
@@ -215,7 +391,7 @@ describe("POST /coach", () => {
 
     // The prompt is authored as wrapped lines joined with a space, so runs of whitespace are collapsed
     // here to let an assertion span a wrap without pinning where the wrap happens to fall.
-    const system = JSON.parse(fetchSpy.mock.calls[0][1].body).system.toLowerCase().replace(/\s+/g, " ");
+    const system = JSON.parse(fetchSpy.mock.calls[0][1].body).instructions.toLowerCase().replace(/\s+/g, " ");
 
     // Only the user sets the flag, and only in the app's injury control.
     expect(system).toContain("injury settings");
@@ -230,7 +406,7 @@ describe("POST /coach", () => {
   it("sends a persona that narrates the strength journey and offers only a bounded preference", async () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
 
-    const system = JSON.parse(fetchSpy.mock.calls[0][1].body).system.toLowerCase().replace(/\s+/g, " ");
+    const system = JSON.parse(fetchSpy.mock.calls[0][1].body).instructions.toLowerCase().replace(/\s+/g, " ");
 
     // It is told the strength-journey trend is in the context, and to narrate a concrete insight.
     expect(system).toContain("strength-journey trend");
@@ -243,7 +419,7 @@ describe("POST /coach", () => {
 });
 
 describe("abuse gate", () => {
-  const GATED_ENV = { ANTHROPIC_API_KEY: "sk-ant-test", CLIENT_SHARED_SECRET: "s3cret" };
+  const GATED_ENV = { OPENAI_API_KEY: "sk-openai-test", CLIENT_SHARED_SECRET: "s3cret" };
 
   it("rejects a wrong bearer with 401 before any upstream call", async () => {
     const response = await worker.fetch(

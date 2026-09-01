@@ -2,7 +2,7 @@
 
 **Story:** As a premium user, I want the coach to interpret my analytics and offer to act, so the data changes my behavior instead of being a chart I ignore.
 
-The deterministic, testable half of this story is proved by the unit suites; the narration prose itself is Claude's and is captain-verifiable manual QA (the coach proxy is not deployed, so every shipped build is inert). These PNGs are reviewer-visible evidence that the offer surface narrates a concrete insight and routes an action through the bounded US-AC07 policy path - never a workout edit.
+The deterministic, testable half of this story is proved by the unit suites; the OpenAI `gpt-5.6-luna` narration prose itself is captain-verifiable manual QA (the Coach proxy is not deployed, so every shipped build is inert). These PNGs are reviewer-visible evidence that the offer surface narrates a concrete insight and routes an action through the bounded US-AC07 policy path - never a workout edit.
 
 ## What the evidence shows
 
@@ -21,5 +21,5 @@ The offer on the **real** `CoachView`, after a premium user whose push has climb
 
 ## Manual QA (captain-verifiable, not unit-coverable)
 
-- A real end-to-end Claude reply that names the climb and the stall in the app's voice (the proxy is not deployed).
+- A real end-to-end OpenAI `gpt-5.6-luna` reply that names the climb and the stall in the app's voice (the proxy is not deployed).
 - Live on-device VoiceOver focus/announcement of the offer card.

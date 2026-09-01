@@ -10,8 +10,8 @@ import UIKit
 /// This drives the *production* `CoachView` in a real key window, over a view model backed by a stub
 /// transport (no live proxy), and asserts the load-bearing surface on the live accessibility tree -
 /// the user's question and the coach's grounded answer both rendered as distinct turns, the input
-/// control present, and (in a second pass) the graceful, retryable failure banner. Then it captures
-/// each screen to a PNG under `artifacts/reports/US-AC02/`.
+/// control present, the graceful retryable failure banner, and the non-retryable safety outcome.
+/// The story's evidence screens are captured under `artifacts/reports/US-AC02/`.
 @MainActor
 final class CoachViewEvidenceTests: XCTestCase {
 
@@ -28,6 +28,7 @@ final class CoachViewEvidenceTests: XCTestCase {
     private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
         enum Outcome {
             case success(reply: String)
+            case safetyRefusal
             case failure
         }
         var outcome: Outcome
@@ -44,6 +45,8 @@ final class CoachViewEvidenceTests: XCTestCase {
             switch outcome {
             case let .success(reply):
                 return (Data(#"{"reply":"\#(reply)"}"#.utf8), 200)
+            case .safetyRefusal:
+                return (Data(#"{"outcome":"safety_refusal"}"#.utf8), 200)
             case .failure:
                 throw Boom()
             }
@@ -54,7 +57,11 @@ final class CoachViewEvidenceTests: XCTestCase {
         var user = MockPersistence.sampleUser
         user.phase = .discipline
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: transport),
+            client: CoachProxyClient(
+                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()
@@ -134,6 +141,23 @@ final class CoachViewEvidenceTests: XCTestCase {
         XCTAssertTrue(labelsContain("Try again"), "the failure is retryable; tree reads \(labels())")
 
         try capture(named: "02-coach-graceful-failure.png", size: size)
+        _ = host
+    }
+
+    func testSafetyRefusalShowsOwnedMessageWithoutRetryControl() async {
+        let viewModel = makeViewModel(transport: StubTransport(.safetyRefusal))
+
+        viewModel.draft = "Unsafe request"
+        await viewModel.send()
+
+        let size = CGSize(width: 393, height: 852)
+        let (host, hostedWindow) = HostedSurface.host(NavigationStack { CoachView(viewModel: viewModel) }, size: size)
+        window = hostedWindow
+
+        XCTAssertTrue(labelsContain(CoachViewModel.safetyRefusalMessage),
+                      "the app shows only its stable safety message; tree reads \(labels())")
+        XCTAssertFalse(labelsContain("Try again"),
+                       "the refusal must not offer to resend the same request; tree reads \(labels())")
         _ = host
     }
 

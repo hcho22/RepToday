@@ -75,7 +75,11 @@ final class CoachTuningEvidenceTests: XCTestCase {
         let store = InMemorySessionPolicyStore()
         let transport = StubTransport(reply: "Push it is - I'll lead with it and here's the why.")
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: transport),
+            client: CoachProxyClient(
+                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService(),

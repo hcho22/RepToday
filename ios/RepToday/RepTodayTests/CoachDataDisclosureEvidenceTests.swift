@@ -5,7 +5,9 @@ import UIKit
 
 /// Reviewer-visible evidence for US-AC04, the coach data disclosure: before first use, a plain,
 /// unavoidable disclosure states that a coach message plus a training-context summary are sent to
-/// Claude to answer and are not stored, and declining sends nothing.
+/// OpenAI to answer, Rep Today's proxy stores no content, OpenAI may retain content in abuse-monitoring
+/// logs for up to 30 days, a separate random abuse-prevention code is sent instead of Rep Today
+/// identity and rotates on account deletion, and declining sends nothing.
 ///
 /// This drives the *production* `CoachView` in a real key window with a fresh (un-acknowledged)
 /// `AppState` in the environment, so the disclosure overlay presents exactly as it does on a first
@@ -14,9 +16,10 @@ import UIKit
 /// already-acknowledged install skips straight to the chat. Then it captures the disclosure to a PNG
 /// under `artifacts/reports/US-AC04/`.
 ///
-/// The one-shot *gating* (unseen -> shows, acknowledged -> never again, survives relaunch, independent
-/// of telemetry) is proved in `AppStateTests`; the send-path gate (no request before consent) in
-/// `CoachViewModelTests`. This suite proves the presented surface reads correctly and behaves.
+/// The versioned gating (unacknowledged/current/mismatched, relaunch survival, account-deletion reset,
+/// and independence from telemetry) is proved in `AppStateTests` and `AccountDeletionServiceTests`;
+/// the send-path gate (no request before consent) in `CoachViewModelTests`. This suite proves the
+/// presented surface reads correctly and behaves.
 @MainActor
 final class CoachDataDisclosureEvidenceTests: XCTestCase {
 
@@ -56,7 +59,11 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         var user = MockPersistence.sampleUser
         user.phase = .discipline
         return CoachViewModel(
-            client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: transport),
+            client: CoachProxyClient(
+                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()
@@ -96,17 +103,30 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         let root = host.view!
         let spoken = spoken(in: root)
 
-        // It names what leaves the device: the message *and* a training-context summary, sent to Claude.
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Claude"),
-                      "the disclosure must name Claude as the recipient; spoke: \(spoken)")
+        // It names what leaves the device: the message *and* a training-context summary, sent to OpenAI.
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
+                      "the disclosure must name OpenAI as the recipient; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("summary of your training"),
                       "it must disclose the training-context summary, not just the message; spoke: \(spoken)")
         // It is honest about the one break in the on-device posture.
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("off your"),
                       "it must state that content leaves the device; spoke: \(spoken)")
-        // It states the content is not stored.
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("aren't saved") || spoken.localizedCaseInsensitiveContains("not stored"),
-                      "it must state the content is not stored; spoke: \(spoken)")
+        // It distinguishes Rep Today's stateless proxy from OpenAI's standard abuse-monitoring retention.
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("proxy")
+                      && spoken.localizedCaseInsensitiveContains("doesn't store"),
+                      "it must state that Rep Today's proxy does not store the content; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("abuse-monitoring")
+                      && spoken.localizedCaseInsensitiveContains("up to 30 days"),
+                      "it must disclose OpenAI's standard abuse-monitoring retention; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("name")
+                      && spoken.localizedCaseInsensitiveContains("email")
+                      && spoken.localizedCaseInsensitiveContains("Rep Today identity"),
+                      "it must separate the safety code from Rep Today identity; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("prevent abuse")
+                      && spoken.localizedCaseInsensitiveContains("random Coach code"),
+                      "it must explain the pseudonym's abuse-prevention purpose; spoke: \(spoken)")
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("delete your account"),
+                      "it must disclose identifier rotation on account deletion; spoke: \(spoken)")
 
         // Both consent controls are reachable, labeled VoiceOver elements.
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachDataDisclosureCopy.acknowledge, in: root),
@@ -132,8 +152,8 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         let root = hostCoach(viewModel, appState: appState)
         let spoken = spoken(in: root)
 
-        // The disclosure copy is present on the real surface's tree (only the disclosure names Claude).
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("Claude"),
+        // The disclosure copy is present on the real surface's tree (only the disclosure names OpenAI).
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("OpenAI"),
                       "the disclosure must present on the real CoachView before first use; spoke: \(spoken)")
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachDataDisclosureCopy.acknowledge, in: root),
                         "the acknowledge control is reachable on the real surface")
@@ -153,7 +173,7 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
         let appState = freshAppState()
         _ = hostCoach(viewModel, appState: appState)
 
-        // The user never acknowledged; a send attempt (e.g. an errant tap) must not reach Claude.
+        // The user never acknowledged; a send attempt (e.g. an errant tap) must not reach OpenAI.
         viewModel.draft = "why squats today?"
         await viewModel.send()
 

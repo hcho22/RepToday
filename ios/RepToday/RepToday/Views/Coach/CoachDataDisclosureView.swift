@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// The disclosure exists because the AI coach is the one honest break in Rep Today's on-device privacy
 /// posture: everything else - your history, your sessions, the engine that builds them - stays on the
-/// device, but a coach answer is written by Claude, so in the moment of a call your message *and* a
+/// device, but a coach answer is written by OpenAI, so in the moment of a call your message *and* a
 /// short summary of your training context leave the device. The copy names that plainly and up front,
 /// never buried in fine print, and never dark-patterned into pretending it does not happen.
 enum CoachDataDisclosureCopy {
@@ -21,16 +21,19 @@ enum CoachDataDisclosureCopy {
     /// The three disclosure points, each a concrete fact about what happens to your content.
     static let whatIsSentTitle = "What's sent"
     static let whatIsSent = "When you send a question, your message and a short summary of your training - "
-        + "your current movements, how consistent you've been, and your phase - go to Claude, the AI that "
+        + "your current movements, how consistent you've been, and your phase - go to OpenAI, the AI service that "
         + "writes the reply."
 
     static let leavesDeviceTitle = "It leaves your device - just for this"
     static let leavesDevice = "This is the one moment Rep Today sends your content off your phone. Your full "
         + "workout history and everything else stay on the device, as they always have."
 
-    static let notStoredTitle = "It isn't stored"
-    static let notStored = "Your message and that summary are used only to answer you. They aren't saved "
-        + "afterward, and they're never tied to your name, your email, or your account."
+    static let notStoredTitle = "How it's handled"
+    static let notStored = "Rep Today's proxy doesn't store your message, training summary, or reply. Under "
+        + "its standard retention, OpenAI may keep that content in abuse-monitoring logs for up to 30 days. "
+        + "To help prevent abuse, Rep Today also sends a random Coach code that stays the same between app "
+        + "launches and changes if you delete your account. It is not your installation ID, name, email, or "
+        + "Rep Today identity."
 
     /// The primary control: an explicit acknowledgement. Tapping it is what opens the coach.
     static let acknowledge = "I understand"
@@ -43,26 +46,28 @@ enum CoachDataDisclosureCopy {
     /// facts and makes the separation from the anonymous-telemetry control above it explicit, so the two
     /// privacy choices are never confused for one.
     static let settingsRowTitle = "How the coach uses your data"
-    static let settingsFooter = "When you chat with the AI coach, your message and a short summary of your "
-        + "training context are sent to Claude to answer, then not stored - the one time Rep Today sends "
-        + "your content off the device. This is separate from the anonymous usage data above."
+    static let settingsFooter = "When you chat with the AI coach, your message and a short training summary "
+        + "are sent to OpenAI to answer. Rep Today's proxy doesn't store them. OpenAI may retain them and the "
+        + "reply in abuse-monitoring logs for up to 30 days under standard retention. A random Coach code is also "
+        + "sent for abuse prevention; it is not your installation ID or Rep Today identity and changes when you "
+        + "delete your account. This is separate from the anonymous usage data above."
 }
 
-/// The one-time, pre-use consent disclosure for the AI coach (US-AC04).
+/// The versioned, pre-use consent disclosure for the AI coach (US-AC04).
 ///
-/// Shown the first time a Premium user opens the coach, before any message can be sent. It is a
-/// *consent* gesture, not just an FYI: the user must tap **I understand** for the coach to become
-/// usable, and **Not now** backs out without sending anything. The actual send gate lives in
-/// `CoachViewModel` (the send path refuses to run until consent is granted); this surface is how the
-/// user reads the disclosure and makes that choice.
+/// Shown whenever a Premium user has not acknowledged the current contract, before any message can
+/// be sent. It is a *consent* gesture, not just an FYI: the user must tap **I understand** for the
+/// coach to become usable, and **Not now** backs out without sending anything. The actual send gate
+/// lives in `CoachViewModel` (the send path refuses to run until consent is granted); this surface is
+/// how the user reads the disclosure and makes that choice.
 ///
 /// Presentation is owned by `CoachView`, which layers this over the (idle) chat surface and, on
-/// acknowledgement, persists the one-shot flag on `AppState` so it is shown at most once. Every color,
-/// font, and dimension comes from `Theme`; the controls meet the 60pt active-surface touch target; the
-/// card is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under Reduce
-/// Motion.
+/// acknowledgement, persists the current disclosure version on `AppState`. The same version survives
+/// relaunch; account deletion or a changed contract requires acknowledgement again. Every color, font,
+/// and dimension comes from `Theme`; the controls meet the 60pt active-surface touch target; the card
+/// is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under Reduce Motion.
 struct CoachDataDisclosureView: View {
-    /// Records acknowledgement (opens the coach and persists the one-shot).
+    /// Records acknowledgement of the current disclosure contract and opens the coach.
     let onAcknowledge: () -> Void
 
     /// Backs out without sending anything (dismisses the coach; the disclosure returns on a later open).
@@ -172,7 +177,7 @@ struct CoachDataDisclosureView: View {
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(CoachDataDisclosureCopy.acknowledge)
-            .accessibilityHint("Agrees to send your messages to Claude and opens the coach")
+            .accessibilityHint("Agrees to send your messages to OpenAI and opens the coach")
 
             Button(action: onDecline) {
                 Text(CoachDataDisclosureCopy.decline)

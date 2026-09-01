@@ -10,7 +10,8 @@ enum AppTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Small, persisted app state for routing, anonymous install identity, and telemetry consent.
+/// Small, persisted app state for routing, anonymous install identity, telemetry consent, and the
+/// separate AI Coach abuse-prevention pseudonym.
 ///
 /// `isOnboarded` chooses between onboarding and the main tabs. `selectedTab` restores the
 /// user's last main-tab context. This uses the Observation framework (`@Observable`).
@@ -31,9 +32,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// with a new id. A successful account deletion also replaces the id before onboarding resumes,
 /// while preserving the original install date and the user's telemetry preference.
 ///
-/// The clock, the calendar, and the id generator are injected (`now`, `calendar`,
-/// `newInstallId`), so cohorting behaviour is pinnable in tests without reading the wall clock
-/// or the device's locale inline.
+/// The clock, calendar, and identifier generators are injected, so cohorting and pseudonym lifecycle
+/// behavior are pinnable in tests without reading the wall clock or device locale inline.
 @Observable
 final class AppState {
     var isOnboarded: Bool {
@@ -148,11 +148,23 @@ final class AppState {
         lastCelebratedPhase = .strength
     }
 
-    /// One-shot consent flag for the AI coach's data disclosure (US-AC04): `true` once the user has
-    /// read the pre-use disclosure and tapped "I understand". Persisted so the disclosure is shown at
-    /// most once ever, surviving relaunch (and - like the rest of `AppState` - a backup restore).
-    /// Defaults to *not acknowledged*: a never-written key reads `false`, which is exactly "consent not
-    /// yet given", so no `object(forKey:)` guard is needed.
+    static let coachDataSharingDisclosureVersion = 2
+
+    private(set) var acknowledgedCoachDataSharingDisclosureVersion: Int? {
+        didSet {
+            if let acknowledgedCoachDataSharingDisclosureVersion {
+                userDefaults.set(
+                    acknowledgedCoachDataSharingDisclosureVersion,
+                    forKey: Keys.hasAcknowledgedCoachDataSharing
+                )
+            } else {
+                userDefaults.removeObject(forKey: Keys.hasAcknowledgedCoachDataSharing)
+            }
+        }
+    }
+
+    /// Account-scoped consent for the current AI coach data-disclosure contract (US-AC04). A prior
+    /// disclosure version does not authorize the current contract.
     ///
     /// It is deliberately its **own** state, completely independent of `analyticsEnabled`: the coach
     /// disclosure and the anonymous-telemetry opt-out are two different things (the coach sends *content*
@@ -162,19 +174,48 @@ final class AppState {
     /// gate is flipped only on the user's explicit acknowledgement, never merely on presentation, so a
     /// force-quit mid-disclosure re-shows it and nothing is ever sent without consent (US-AC04).
     var hasAcknowledgedCoachDataSharing: Bool {
+        acknowledgedCoachDataSharingDisclosureVersion == Self.coachDataSharingDisclosureVersion
+    }
+
+    /// Whether the coach data disclosure should be presented before use under the current contract.
+    var shouldShowCoachDataDisclosure: Bool { !hasAcknowledgedCoachDataSharing }
+
+    /// Records acknowledgement of the current disclosure version.
+    func markCoachDataSharingAcknowledged() {
+        acknowledgedCoachDataSharingDisclosureVersion = Self.coachDataSharingDisclosureVersion
+    }
+
+    /// The stable, random pseudonym sent with Coach requests for provider abuse prevention. It is
+    /// generated independently from `installId`, contains no account value, and is rotated at the
+    /// account-deletion boundary.
+    private(set) var coachSafetyIdentifier: CoachSafetyIdentifier {
         didSet {
-            userDefaults.set(hasAcknowledgedCoachDataSharing, forKey: Keys.hasAcknowledgedCoachDataSharing)
+            userDefaults.set(coachSafetyIdentifier.rawValue, forKey: Keys.coachSafetyIdentifier)
         }
     }
 
-    /// Whether the coach data disclosure should be presented before first use - the read side of the
-    /// one-shot flag, so a call site never has to remember to negate it.
-    var shouldShowCoachDataDisclosure: Bool { !hasAcknowledgedCoachDataSharing }
+    /// A request-time reader for the persisted Coach pseudonym. Production injects this closure into
+    /// its long-lived `CoachProxyClient`, so account deletion rotates the identifier for the next
+    /// request without rebuilding the service container.
+    var coachSafetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier? {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return {
+            store.wrapped.string(forKey: Keys.coachSafetyIdentifier)
+                .flatMap(CoachSafetyIdentifier.init(rawValue:))
+        }
+    }
 
-    /// Records that the user acknowledged the coach data disclosure, flipping the one-shot flag so it is
-    /// never presented again. Idempotent: calling it twice is a persisted no-op the second time.
-    func markCoachDataSharingAcknowledged() {
-        hasAcknowledgedCoachDataSharing = true
+    /// Replaces the Coach pseudonym at the account-deletion boundary so a later account cannot
+    /// inherit the deleted account's provider safety history.
+    func rotateCoachSafetyIdentifier() {
+        coachSafetyIdentifier = coachSafetyIdentifierGenerator()
+    }
+
+    /// Clears the account-scoped Coach disclosure acknowledgement and rotates the separate provider
+    /// safety pseudonym. Called only after successful account deletion, before onboarding resumes.
+    func resetCoachAccountState() {
+        acknowledgedCoachDataSharingDisclosureVersion = nil
+        rotateCoachSafetyIdentifier()
     }
 
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
@@ -336,6 +377,7 @@ final class AppState {
 
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
+    @ObservationIgnored private let coachSafetyIdentifierGenerator: @Sendable () -> CoachSafetyIdentifier
 
     /// - Parameter userDefaults: The store this state reads and writes, and - through
     ///   `analyticsGate` - the store the telemetry gate reads. Production leaves it at `.standard`,
@@ -349,10 +391,12 @@ final class AppState {
         userDefaults: UserDefaults = .standard,
         now: () -> Date = Date.init,
         calendar: Calendar = AppState.cohortCalendar,
-        newInstallId: () -> String = { UUID().uuidString }
+        newInstallId: () -> String = { UUID().uuidString },
+        newCoachSafetyIdentifier: @escaping @Sendable () -> CoachSafetyIdentifier = { .random() }
     ) {
         self.userDefaults = userDefaults
         self.calendar = calendar
+        self.coachSafetyIdentifierGenerator = newCoachSafetyIdentifier
         let wasOnboarded = userDefaults.bool(forKey: Keys.isOnboarded)
         isOnboarded = wasOnboarded
 
@@ -372,9 +416,10 @@ final class AppState {
         lastCelebratedPhase = userDefaults.string(forKey: Keys.lastCelebratedPhase)
             .flatMap(Phase.init(rawValue:)) ?? .discipline
 
-        // Not acknowledged by default: a never-written key reads `false`, the honest "consent not yet
-        // given". The coach disclosure is its own state, independent of the telemetry opt-out (US-AC04).
-        hasAcknowledgedCoachDataSharing = userDefaults.bool(forKey: Keys.hasAcknowledgedCoachDataSharing)
+        acknowledgedCoachDataSharingDisclosureVersion =
+            userDefaults.object(forKey: Keys.hasAcknowledgedCoachDataSharing) == nil
+            ? nil
+            : userDefaults.integer(forKey: Keys.hasAcknowledgedCoachDataSharing)
 
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date
@@ -390,8 +435,10 @@ final class AppState {
         let storedId = userDefaults.string(forKey: Keys.installId)
         let storedFirstLaunch = userDefaults.object(forKey: Keys.firstLaunchAt) as? Date
         let storedFirstLaunchUnknown = userDefaults.bool(forKey: Keys.firstLaunchUnknown)
+        let resolvedInstallId: String
         if let storedId, !storedId.isEmpty, storedFirstLaunch != nil || storedFirstLaunchUnknown {
-            installId = storedId
+            resolvedInstallId = storedId
+            installId = resolvedInstallId
             firstLaunchAt = storedFirstLaunch
             isFirstLaunch = false
         } else {
@@ -402,7 +449,8 @@ final class AppState {
             // finished onboarding still reads as a fresh install here.
             let isPreExistingInstall = wasOnboarded
             let mintedInstallId = newInstallId()
-            installId = mintedInstallId
+            resolvedInstallId = mintedInstallId
+            installId = resolvedInstallId
             firstLaunchAt = storedFirstLaunch ?? (isPreExistingInstall ? nil : openedAt)
             isFirstLaunch = storedFirstLaunch == nil && !isPreExistingInstall
             userDefaults.set(mintedInstallId, forKey: Keys.installId)
@@ -413,6 +461,16 @@ final class AppState {
                 userDefaults.removeObject(forKey: Keys.firstLaunchAt)
                 userDefaults.set(true, forKey: Keys.firstLaunchUnknown)
             }
+        }
+
+        if let storedSafetyIdentifier = userDefaults.string(forKey: Keys.coachSafetyIdentifier)
+            .flatMap(CoachSafetyIdentifier.init(rawValue:)),
+           storedSafetyIdentifier.rawValue != resolvedInstallId {
+            coachSafetyIdentifier = storedSafetyIdentifier
+        } else {
+            let generatedSafetyIdentifier = newCoachSafetyIdentifier()
+            coachSafetyIdentifier = generatedSafetyIdentifier
+            userDefaults.set(generatedSafetyIdentifier.rawValue, forKey: Keys.coachSafetyIdentifier)
         }
 
         // `didSet` does not fire during `init`, so this launch's open time is written through.
@@ -440,6 +498,7 @@ final class AppState {
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
+        static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"
     }
 }
 

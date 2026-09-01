@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rep Today - Privacy Policy</title>
+<meta name="description" content="How Rep Today handles your data: an on-device core, optional AI Coach processing through OpenAI, optional private iCloud sync, and opt-out anonymous usage measurement.">
+<meta name="robots" content="index, follow">
+
+<!--
+  ============================================================================
+  NOT LEGAL ADVICE - ENGINEERING DRAFT, NEEDS A LEGAL PASS BEFORE GO-LIVE.
+  ============================================================================
+  This page is an engineering draft authored from Rep Today's documented data
+  practices (see AGENTS.md and convex/README.md). It has NOT been reviewed by a
+  lawyer. It MUST get a qualified legal review before it is published live at
+  reptoday.app/privacy. Do not present it as vetted legal copy.
+
+  Placeholders the captain must resolve before publish:
+    - Governing entity / legal name and address: none is asserted here (the site
+      footer states "Rep Today has not been trademark-searched or registered").
+    - Areas explicitly flagged for a lawyer, marked in the body with the class
+      "legal-flag": children's privacy / age of use, and jurisdiction-specific
+      rights (GDPR / UK GDPR / CCPA-CPRA and similar). No compliance claim is
+      made for any of these.
+  ============================================================================
+-->
+
+<style>
+  /* Rep Today privacy policy. Reuses the landing page's Paper theme tokens and
+     type scale (gtm/03-site/index.html) so it reads as part of the site.
+     Self-contained: system rounded stack, inline SVG only, no external resources. */
+
+  :root {
+    --paper: #FAF7F2;
+    --ink: #1B2228;
+    --slate: #525E66;
+    --moss: #2E6B4E;
+    --night: #14181C;
+    --night-surface: #1E242A;
+    --bone: #F1EEE8;
+    --mist: #A7B0B8;
+    --fern: #5FA981;
+    --hairline: rgba(27, 34, 40, 0.14);
+    --card-shadow: 0 1px 3px rgba(27, 34, 40, 0.08);
+    --amber-bg: rgba(180, 120, 20, 0.10);
+    --amber-border: rgba(150, 100, 20, 0.45);
+    --amber-ink: #6B4E12;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+  html { background: #FAF7F2; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 17px;
+    line-height: 26px;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  a { color: var(--moss); }
+
+  /* ---------- Type scale (marketing scale, matched to index.html) ---------- */
+
+  .display {
+    font-size: clamp(32px, 2.4vw + 22px, 44px);
+    line-height: 1.1;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .h2 {
+    font-size: clamp(22px, 1vw + 18px, 26px);
+    line-height: 32px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .h3 { font-size: 19px; line-height: 26px; font-weight: 600; margin: 0; }
+  .small { font-size: 14px; line-height: 20px; font-weight: 400; }
+  .overline {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--moss);
+    margin: 0 0 16px;
+  }
+  .muted { color: var(--slate); }
+
+  /* ---------- Header ---------- */
+
+  header.site { padding: 28px 0; }
+  .wordmark { display: flex; align-items: center; gap: 18px; }
+  .wordmark svg { display: block; }
+  .wordmark .name { font-size: 24px; line-height: 1; font-weight: 700; color: var(--ink); }
+  .wordmark a { color: inherit; text-decoration: none; }
+
+  /* ---------- Document layout ---------- */
+
+  main { padding: clamp(16px, 3vw, 40px) 0 clamp(48px, 6vw, 96px); }
+
+  .doc-head { margin-bottom: 32px; }
+  .doc-head .updated { margin: 16px 0 0; color: var(--slate); }
+  .doc-head p.lede { margin: 20px 0 0; color: var(--slate); font-size: 19px; line-height: 29px; }
+
+  section.policy { padding: 0; margin-top: 44px; }
+  section.policy > .h2 { margin-bottom: 14px; }
+  section.policy p { margin: 0 0 16px; max-width: 40em; }
+  section.policy p:last-child { margin-bottom: 0; }
+  section.policy .h3 { margin: 24px 0 8px; }
+
+  ul.plain {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    max-width: 40em;
+  }
+  ul.plain li {
+    position: relative;
+    padding-left: 26px;
+    margin-top: 10px;
+    color: var(--ink);
+  }
+  ul.plain li:first-child { margin-top: 0; }
+  ul.plain li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--moss);
+  }
+
+  strong { font-weight: 700; }
+
+  /* ---------- Draft / not-legal-advice banner ---------- */
+
+  .banner {
+    margin: 8px 0 0;
+    padding: 18px 20px;
+    border: 1px solid var(--amber-border);
+    border-left-width: 4px;
+    border-radius: 12px;
+    background: var(--amber-bg);
+    color: var(--amber-ink);
+  }
+  .banner .banner-title {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .banner p { margin: 0; max-width: 44em; font-size: 15px; line-height: 23px; }
+
+  /* ---------- Inline "consult a lawyer" flag ---------- */
+
+  .legal-flag {
+    margin: 12px 0 0;
+    padding: 12px 16px;
+    border-left: 3px solid var(--amber-border);
+    background: var(--amber-bg);
+    border-radius: 0 8px 8px 0;
+    font-size: 15px;
+    line-height: 23px;
+    color: var(--amber-ink);
+    max-width: 44em;
+  }
+  .legal-flag strong { color: var(--amber-ink); }
+
+  /* ---------- Table of contents ---------- */
+
+  nav.toc {
+    margin: 36px 0 0;
+    padding: 20px 24px;
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+    background: var(--paper);
+    box-shadow: var(--card-shadow);
+  }
+  nav.toc p { margin: 0 0 10px; font-weight: 600; font-size: 15px; }
+  nav.toc ol { margin: 0; padding-left: 20px; color: var(--slate); }
+  nav.toc li { margin-top: 6px; line-height: 24px; }
+
+  /* ---------- Footer ---------- */
+
+  footer.site {
+    border-top: 1px solid var(--hairline);
+    padding: 48px 0 64px;
+  }
+  footer.site .wordmark { gap: 14px; }
+  footer.site .wordmark .name { font-size: 18px; }
+  footer.site .foot-links { margin: 20px 0 0; }
+  footer.site .foot-links a { margin-right: 18px; }
+  footer.site .legal { margin: 20px 0 0; color: var(--slate); }
+  footer.site .legal p { margin: 0 0 6px; }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="container">
+    <div class="wordmark">
+      <a href="/" aria-label="Rep Today home">
+        <!-- Ready Mark: reference SVG from brand guidelines section 3, Moss on transparent -->
+        <svg width="36" height="36" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rep Today Ready Mark">
+          <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
+          <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
+        </svg>
+      </a>
+      <a href="/"><span class="name">Rep Today</span></a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <div class="doc-head">
+      <p class="overline">Privacy</p>
+      <h1 class="display">Privacy Policy</h1>
+      <p class="updated small"><strong>Last updated:</strong> September 1, 2026</p>
+
+      <!-- Visible, prominent NOT-LEGAL-ADVICE notice. Keep in sync with the HTML
+           comment at the top of the file. -->
+      <div class="banner" role="note">
+        <p class="banner-title">Draft - not legal advice</p>
+        <p>This document is an engineering draft written from how the Rep Today app actually handles data. It has not yet been reviewed by a lawyer and must get a legal review before it is relied on. It describes practices plainly and does not make legal compliance claims.</p>
+      </div>
+
+      <p class="lede">Rep Today is a bodyweight micro-workout app whose core workout generator and history work on your device. It needs no account and no network to generate and run a workout. Its optional AI Coach uses a network service when you choose to use it. Rep Today does not sell your data or show ads. This page explains what the app and this website collect and process, why, and how you stay in control.</p>
+    </div>
+
+    <nav class="toc" aria-label="Contents">
+      <p>On this page</p>
+      <ol>
+        <li><a href="#summary">The short version</a></li>
+        <li><a href="#on-device">Your workout data lives on your device</a></li>
+        <li><a href="#icloud">Private iCloud sync when available</a></li>
+        <li><a href="#apple-signin">Sign in with Apple</a></li>
+        <li><a href="#health">Apple Health (write-only, optional)</a></li>
+        <li><a href="#ai-coach">AI Coach (optional network feature)</a></li>
+        <li><a href="#telemetry">Anonymous usage measurement</a></li>
+        <li><a href="#not-do">What we do not do</a></li>
+        <li><a href="#deletion">Deleting your data</a></li>
+        <li><a href="#website">This website and the waitlist</a></li>
+        <li><a href="#children">Children's privacy</a></li>
+        <li><a href="#rights">Your privacy rights</a></li>
+        <li><a href="#changes">Changes to this policy</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ol>
+    </nav>
+
+    <section class="policy" id="summary">
+      <h2 class="h2">1. The short version</h2>
+      <ul class="plain">
+        <li>The core workout generator and history work <strong>fully offline</strong> and need <strong>no account</strong>. Your workout history is stored on your device.</li>
+        <li>The optional <strong>AI Coach is a network feature</strong>. When you use it, your prompt and necessary workout context go through Rep Today's service to OpenAI to generate a response.</li>
+        <li>When iCloud is available for Rep Today, your profile, completed workout history, and in-force session policy sync automatically through Apple's CloudKit to your private iCloud database, which Rep Today cannot read; you can manage this through your device's iCloud settings.</li>
+        <li>The app collects <strong>anonymous, opt-out usage measurement</strong> tied to a random per-install identifier - never your name, email, or an advertising ID.</li>
+        <li>There are <strong>no ads, no third-party trackers, no advertising identifier, and no cross-app tracking</strong>. We do not sell your data.</li>
+        <li>You can turn usage measurement off in Settings, and you can delete your account and data from within the app.</li>
+      </ul>
+    </section>
+
+    <section class="policy" id="on-device">
+      <h2 class="h2">2. Your workout data lives on your device</h2>
+      <p>Rep Today generates every workout on your phone, with no network call. Your profile and your workout history are stored locally on your device. The core workout experience does not send this information to Rep Today's service.</p>
+      <p>The AI Coach described in section 6 is separate and optional. It sends only the prompt and workout context needed for the Coach response when you choose to use it. Apart from private CloudKit synchronization when iCloud is available, optional Apple Health writes, and the optional AI Coach, the only information that leaves your device is the anonymous usage measurement described in section 7 (unless you turn that off).</p>
+    </section>
+
+    <section class="policy" id="icloud">
+      <h2 class="h2">3. Private iCloud sync when available</h2>
+      <p>When iCloud is available for Rep Today, the app automatically syncs your profile, completed workout history, and in-force session policy through Apple's CloudKit to your private iCloud database so they can appear on your Apple devices. Your active or in-progress session remains device-local and is not synced. Rep Today cannot read your private CloudKit database.</p>
+      <p>If iCloud is unavailable or disabled for Rep Today in your device's iCloud settings, the app falls back to on-device storage and the core workout experience continues to work offline. You can manage Rep Today's iCloud access and stored app data through your device's iCloud settings. Apple's iCloud terms and privacy policy govern that service.</p>
+    </section>
+
+    <section class="policy" id="apple-signin">
+      <h2 class="h2">4. Sign in with Apple</h2>
+      <p>Sign in with Apple is <strong>optional</strong> and separate from the private CloudKit sync described in section 3. The app does not require it to generate or run a workout.</p>
+      <p>When you use it, the app stores an Apple-provided user identifier in your device's <strong>Keychain</strong>. The app does not collect your name or email address through this flow, and it does not use this identifier for advertising or tracking. When you delete your account (section 9), this stored identifier is removed from the device.</p>
+    </section>
+
+    <section class="policy" id="health">
+      <h2 class="h2">5. Apple Health (write-only, optional)</h2>
+      <p>If you grant permission, Rep Today writes completed-workout and energy samples to <strong>Apple Health</strong> on your device. This is <strong>write-only</strong>: the app records your sessions into Health and does not read your Health data back out. These samples stay within Apple's HealthKit on your device and are governed by your Health privacy settings.</p>
+      <p>iOS asks for this permission separately, and the app functions normally if you decline.</p>
+    </section>
+
+    <section class="policy" id="ai-coach">
+      <h2 class="h2">6. AI Coach (optional network feature)</h2>
+      <p>The AI Coach is optional. The core workout generator and workout history continue to work on your device if you never use it.</p>
+      <p>When you use the AI Coach, Rep Today sends <strong>your Coach prompt and the workout context necessary to answer it</strong> through Rep Today's service to <strong>OpenAI</strong> for response generation. Rep Today's service keeps the OpenAI API credential off your device and passes the response back to the app.</p>
+      <p class="h3">OpenAI storage and retention</p>
+      <p>Rep Today sends Coach requests with <code>store: false</code>. This means the response is not stored as OpenAI Responses API application state. It does <strong>not</strong> mean that no copy can be retained: under OpenAI's standard API data controls, prompts and responses may still appear in abuse-monitoring logs retained for <strong>up to 30 days</strong>.</p>
+      <p>OpenAI does not use API data to train its models by default unless the customer opts in.</p>
+      <p class="h3">Privacy-preserving safety identifier</p>
+      <p>For abuse detection, Rep Today sends OpenAI a stable, privacy-preserving Coach safety pseudonym. It is generated independently from the anonymous usage-measurement installation identifier and does not contain your name, email address, Apple ID, advertising identifier, or another direct identifier. If you successfully delete your account, Rep Today independently rotates the anonymous usage-measurement installation identifier, rotates the separate Coach safety pseudonym, and resets your versioned Coach data-sharing acknowledgement. This prevents a later account on the same installation from inheriting the deleted account's usage-measurement linkage or provider safety history and requires the later account to acknowledge Coach data sharing separately. Deleting the app also removes the installation identifier from local storage, subject to the backup note in section 7.</p>
+      <p class="h3">Safety refusals</p>
+      <p>If OpenAI refuses a request for safety reasons, Rep Today shows a stable safety message written by Rep Today. The app does not expose OpenAI's raw refusal text.</p>
+    </section>
+
+    <section class="policy" id="telemetry">
+      <h2 class="h2">7. Anonymous usage measurement</h2>
+      <p>To understand how the app is used and improve it, Rep Today collects a small amount of <strong>anonymous product usage data</strong>. This is sent to Rep Today's own usage-data endpoint. It is designed not to identify you.</p>
+      <p class="h3">What is collected</p>
+      <ul class="plain">
+        <li>A <strong>random per-install identifier</strong> - a UUID generated on the device the first time the app runs and stored in the app's local settings. It is <strong>not</strong> your Apple ID, <strong>not</strong> the iOS advertising identifier (IDFA), <strong>not</strong> the identifier-for-vendor, and <strong>not</strong> an email address. It is not linked to your identity, and deleting the app removes it (subject to the note below).</li>
+        <li><strong>Event names and timestamps</strong> for a fixed, pre-defined set of product events - for example that the app was installed, that onboarding started or completed, that a session started, completed, or was abandoned, and monetization steps such as a paywall being shown or a subscription starting.</li>
+        <li><strong>Non-identifying properties</strong> attached to those events, such as a requested session length in minutes or a generation time in milliseconds. These do not describe who you are.</li>
+      </ul>
+      <p class="h3">What is not collected here</p>
+      <p>This measurement carries no name, no email, no advertising identifier, no precise location, and no free-text you enter. It is not used to build an advertising profile and is not shared with advertising networks.</p>
+      <p class="h3">You can turn it off</p>
+      <p>Anonymous usage measurement is <strong>on by default and can be turned off at any time</strong> in the app under <strong>Profile &rarr; Settings &rarr; Privacy</strong>. This is also disclosed on the first onboarding screen. When it is off, the app stops sending these events. Turning it off takes effect on the next event, not on the next launch.</p>
+      <p class="muted small">A note on the random identifier: it is stored in the app's local settings rather than a durable system store, so it is meant to be gone when you delete the app. Because iOS device backups and device-to-device transfer can include app settings, a restore from such a backup could carry the same identifier forward.</p>
+    </section>
+
+    <section class="policy" id="not-do">
+      <h2 class="h2">8. What we do not do</h2>
+      <ul class="plain">
+        <li>We do <strong>not sell</strong> your personal data.</li>
+        <li>We show <strong>no ads</strong> and include <strong>no advertising SDKs</strong>.</li>
+        <li>We use <strong>no third-party analytics or tracking SDKs</strong> - the anonymous measurement above goes only to Rep Today's own endpoint. OpenAI processes optional AI Coach requests as described in section 6; it is not an analytics or tracking provider.</li>
+        <li>We do <strong>not</strong> use the iOS advertising identifier (IDFA), and the app presents <strong>no App Tracking Transparency prompt</strong> because it does not track you across other companies' apps or websites.</li>
+        <li>We do <strong>not</strong> run a server that holds your workout history; sync uses your own private iCloud.</li>
+      </ul>
+    </section>
+
+    <section class="policy" id="deletion">
+      <h2 class="h2">9. Deleting your data</h2>
+      <p>You are in control of your data:</p>
+      <ul class="plain">
+        <li><strong>Delete your account and data in the app.</strong> Rep Today provides an in-app account-deletion flow that removes your profile and workout history, clears the Sign in with Apple identifier stored in the device Keychain, independently rotates the anonymous usage-measurement installation identifier and the separate Coach safety pseudonym, and resets the versioned Coach data-sharing acknowledgement.</li>
+        <li><strong>Delete the app.</strong> Removing the app from your device removes its local storage, including the random per-install identifier described in section 7 (subject to the backup note there).</li>
+        <li><strong>iCloud data</strong> lives in your own private iCloud account; you can also manage or remove app data through your device's iCloud settings.</li>
+        <li><strong>Turn off usage measurement</strong> at any time in Settings to stop sending anonymous events.</li>
+      </ul>
+    </section>
+
+    <section class="policy" id="website">
+      <h2 class="h2">10. This website and the waitlist</h2>
+      <p>This section covers <strong>this website</strong> (reptoday.app), which is separate from the app.</p>
+      <p>If you join the pre-launch <strong>waitlist</strong>, the email address you enter is collected and stored by our email provider (Kit) so we can email you when the app launches. We use it for that purpose. This is distinct from the app, which never asks for your email.</p>
+      <p class="muted small">This website is static. Any additional processing performed by the hosting or email provider is governed by that provider's own privacy terms.</p>
+    </section>
+
+    <section class="policy" id="children">
+      <h2 class="h2">11. Children's privacy</h2>
+      <p>Rep Today is a general-audience fitness app and is not directed at children.</p>
+      <div class="legal-flag" role="note">
+        <strong>Flagged for legal review.</strong> A minimum age of use and any children's-privacy commitments (for example under COPPA or the App Store age rating) have not been set here and should be determined with counsel before publish.
+      </div>
+    </section>
+
+    <section class="policy" id="rights">
+      <h2 class="h2">12. Your privacy rights</h2>
+      <p>Depending on where you live, you may have rights over personal data, such as the right to access or delete it. Rep Today keeps your workout history on your device and in your own iCloud, provides controls for anonymous usage measurement, and provides the deletion controls described in section 9. Optional AI Coach processing is described separately in section 6.</p>
+      <div class="legal-flag" role="note">
+        <strong>Flagged for legal review.</strong> This policy does <strong>not</strong> assert compliance with GDPR, UK GDPR, CCPA/CPRA, or any other specific regime, and does not describe a formal rights-request process, legal bases, data-processing agreements, or a data-retention schedule. Whether any of these apply, and the exact rights and processes to publish, should be determined with counsel for the app's intended markets.
+      </div>
+    </section>
+
+    <section class="policy" id="changes">
+      <h2 class="h2">13. Changes to this policy</h2>
+      <p>If our data practices change, we will update this page and revise the "Last updated" date above. Because Rep Today is pre-launch, this policy will be reviewed and finalized before the app is distributed on the App Store.</p>
+    </section>
+
+    <section class="policy" id="contact">
+      <h2 class="h2">14. Contact</h2>
+      <p>Questions about privacy or this policy? Contact us at <a href="mailto:reptoday.app@gmail.com">reptoday.app@gmail.com</a>.</p>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site">
+  <div class="container">
+    <div class="wordmark">
+      <svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="10" y="10" width="80" height="80" rx="17.6" fill="none" stroke="#2E6B4E" stroke-width="5.6"/>
+        <circle cx="50" cy="66" r="12" fill="#2E6B4E"/>
+      </svg>
+      <span class="name">Rep Today</span>
+    </div>
+    <div class="foot-links small">
+      <a href="/">Home</a>
+      <a href="/privacy">Privacy Policy</a>
+    </div>
+    <div class="legal small">
+      <p>Screen images simulated. App is pre-release. Pre-launch. 'Rep Today' has not been trademark-searched or registered, and the App Store name has not been reserved.</p>
+      <p>Built for iOS 17+.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

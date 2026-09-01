@@ -123,12 +123,13 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(reloaded.hasCelebratedStrengthGraduation, "a relaunch never resurrects an already-seen reveal")
     }
 
-    // MARK: - Coach data disclosure one-shot (US-AC04)
+    // MARK: - Coach data disclosure versioning (US-AC04)
 
     func testCoachDisclosureShowsOnAFreshInstall() {
         let appState = AppState(userDefaults: defaults)
 
         XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing, "consent starts un-given")
+        XCTAssertNil(appState.acknowledgedCoachDataSharingDisclosureVersion)
         XCTAssertTrue(appState.shouldShowCoachDataDisclosure, "an install that never acknowledged it must be shown the disclosure")
     }
 
@@ -139,17 +140,46 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing)
         XCTAssertFalse(appState.shouldShowCoachDataDisclosure, "once acknowledged it must not be shown again")
-        XCTAssertTrue(defaults.bool(forKey: "AppState.hasAcknowledgedCoachDataSharing"), "the flag persists")
+        XCTAssertEqual(
+            defaults.integer(forKey: "AppState.hasAcknowledgedCoachDataSharing"),
+            AppState.coachDataSharingDisclosureVersion,
+            "the acknowledged contract version persists"
+        )
     }
 
-    func testCoachDisclosureAcknowledgementSurvivesRelaunch() {
+    func testCoachDisclosureAcknowledgementPersistsWhenVersionIsUnchanged() {
         let original = AppState(userDefaults: defaults)
         original.markCoachDataSharingAcknowledged()
 
         let reloaded = AppState(userDefaults: defaults)
 
+        XCTAssertEqual(
+            reloaded.acknowledgedCoachDataSharingDisclosureVersion,
+            AppState.coachDataSharingDisclosureVersion
+        )
         XCTAssertTrue(reloaded.hasAcknowledgedCoachDataSharing)
-        XCTAssertFalse(reloaded.shouldShowCoachDataDisclosure, "the disclosure never reappears on a later session")
+        XCTAssertFalse(reloaded.shouldShowCoachDataDisclosure)
+    }
+
+    func testCoachDisclosureVersionMismatchRequiresAcknowledgementAgain() {
+        defaults.set(
+            AppState.coachDataSharingDisclosureVersion - 1,
+            forKey: "AppState.hasAcknowledgedCoachDataSharing"
+        )
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
+        XCTAssertTrue(appState.shouldShowCoachDataDisclosure)
+    }
+
+    func testLegacyUnversionedCoachDisclosureRequiresAcknowledgementAgain() {
+        defaults.set(true, forKey: "AppState.hasAcknowledgedCoachDataSharing")
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
+        XCTAssertTrue(appState.shouldShowCoachDataDisclosure)
     }
 
     /// The coach disclosure and the telemetry opt-out are independent: acknowledging one must not touch
@@ -163,6 +193,44 @@ final class AppStateTests: XCTestCase {
 
         appState.analyticsEnabled = false
         XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing, "turning telemetry off must not touch coach consent")
+    }
+
+    // MARK: - Coach abuse-prevention pseudonym
+
+    func testCoachSafetyIdentifierIsStableAndSeparateFromInstallIdentity() {
+        let original = AppState(userDefaults: defaults)
+        let identifier = original.coachSafetyIdentifier
+
+        XCTAssertTrue(identifier.rawValue.hasPrefix(CoachSafetyIdentifier.prefix))
+        XCTAssertNotEqual(identifier.rawValue, original.installId)
+        XCTAssertEqual(original.coachSafetyIdentifierProvider(), identifier)
+
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertEqual(reloaded.coachSafetyIdentifier, identifier)
+        XCTAssertEqual(reloaded.installId, original.installId)
+    }
+
+    func testRotatingCoachSafetyIdentifierUpdatesExistingProviderAndPersists() {
+        let appState = AppState(userDefaults: defaults)
+        let provider = appState.coachSafetyIdentifierProvider
+        let original = appState.coachSafetyIdentifier
+        let installId = appState.installId
+
+        appState.rotateCoachSafetyIdentifier()
+
+        XCTAssertNotEqual(appState.coachSafetyIdentifier, original)
+        XCTAssertEqual(appState.installId, installId)
+        XCTAssertEqual(provider(), appState.coachSafetyIdentifier)
+        XCTAssertEqual(AppState(userDefaults: defaults).coachSafetyIdentifier, appState.coachSafetyIdentifier)
+    }
+
+    func testInvalidStoredCoachSafetyIdentifierIsReminted() {
+        defaults.set("person@example.com", forKey: "AppState.coachSafetyIdentifier")
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertNotEqual(appState.coachSafetyIdentifier.rawValue, "person@example.com")
+        XCTAssertEqual(appState.coachSafetyIdentifierProvider(), appState.coachSafetyIdentifier)
     }
 
     // MARK: - Injury-flag revision (US-AC08)

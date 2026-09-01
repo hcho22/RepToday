@@ -35,7 +35,7 @@ The free core loop is never gated.
 
 - The gate is at the **entry point**, not inside `CoachView` - a free user never reaches the coach surface (which itself stays inert until the proxy is deployed, per US-AC02). The paywall sheet presentation and the navigation push are the standard SwiftUI transitions; the hosted evidence asserts the branch (which row renders) rather than driving the transition, which is captain-verifiable manual QA.
 - **No new emission site:** `paywall_shown` already fires from the paywall; this story only adds the `coach_upsell` entry-point value it can carry.
-- **Out of scope (separate stories):** the "sent to Claude, not stored" disclosure (US-AC04), coach-sourced policy writes (US-AC05/06/07), the injury-flag routing UI (US-AC08), premium analytics narration (US-AN01/02).
+- **Later stories now landed:** the OpenAI/provider-retention disclosure (US-AC04), Coach-sourced policy writes (US-AC05/06/07), the injury-flag routing UI (US-AC08), and premium analytics narration (US-AN01/02).
 
 ## How to regenerate
 

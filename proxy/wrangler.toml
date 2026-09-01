@@ -5,7 +5,8 @@ compatibility_date = "2026-01-01"
 
 # Non-secret config. The API key is a secret, set out-of-band (never committed):
 #   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put OPENAI_API_KEY
 [vars]
-# The Claude model the proxy calls. Default is the most capable per Anthropic guidance; override to
-# a Haiku tier here if latency/cost on this best-effort line matter more than prose quality.
+# The Claude model used only by Variety Language. The Coach has a route-specific, source-pinned
+# OpenAI model so changing this variable cannot move the premium Coach.
 ANTHROPIC_MODEL = "claude-opus-4-8"

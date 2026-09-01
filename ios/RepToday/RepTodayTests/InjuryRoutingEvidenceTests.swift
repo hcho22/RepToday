@@ -120,7 +120,11 @@ final class InjuryRoutingEvidenceTests: XCTestCase {
         var user = MockPersistence.sampleUser
         user.profile.injuries = []
         let viewModel = CoachViewModel(
-            client: CoachProxyClient(endpoint: URL(string: "https://proxy.example.com/coach")!, transport: StubTransport()),
+            client: CoachProxyClient(
+                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: StubTransport()
+            ),
             userService: MockUserService(user: user),
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()
