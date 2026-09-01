@@ -67,7 +67,7 @@ enum CoachDataDisclosureCopy {
 /// card is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under Reduce
 /// Motion.
 struct CoachDataDisclosureView: View {
-    /// Records acknowledgement (opens the coach and persists the one-shot).
+    /// Records acknowledgement of the current disclosure contract and opens the coach.
     let onAcknowledge: () -> Void
 
     /// Backs out without sending anything (dismisses the coach; the disclosure returns on a later open).

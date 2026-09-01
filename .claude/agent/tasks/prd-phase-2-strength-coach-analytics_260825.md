@@ -183,6 +183,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - [x] Define a **derived context bundle**: a small, non-identifying summary (current chain positions, recent movement patterns, consistency trend, current phase, requested minutes) - NOT raw `WorkoutLog` history, NOT the Keychain/IDFA/Apple ID.
 - [x] Expand `proxy/` to accept a coach request (context bundle + user message + constrained safety pseudonym), call OpenAI `gpt-5.6-luna` through the Responses API with `store: false` and `safety_identifier`, return the response, and **store nothing in the Rep Today proxy** (no logging of request/response bodies); enforce a bounded timeout and body size cap as the existing proxy does. Standard OpenAI abuse-monitoring retention of up to 30 days remains and must be disclosed.
 - [x] Map an OpenAI refusal to a provider-independent `safety_refusal` outcome, discard the provider-authored refusal text, and show a stable Rep Today safety message without retrying the same request.
+- [x] Validate the Responses envelope before reading output: reject response errors plus `failed`, `cancelled`, `queued`, and `in_progress` states; map content-filtered incomplete output to `safety_refusal`; and allow useful partial text only for `incomplete_details.reason == "max_output_tokens"`.
 - [x] No accounts introduced; requests remain pseudonymous. The safety identifier is a separately generated random `coach-<UUIDv4>`, never raw `installId` or an identity/account field, persists across launches, and rotates when the user deletes their account.
 - [x] Conversation memory (if any) lives on-device only; the server is stateless per request.
 - [x] Proxy tests cover: valid request returns a response; oversized/invalid request rejected; nothing is persisted. Typecheck (`npm run typecheck`) and `npm test` pass for the sink/proxy toolchain.
@@ -247,6 +248,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - [x] The disclosure is honest about the one break in the on-device posture (content leaves the device in the moment of the call) and is not buried in fine print.
 - [x] A Settings entry documents the same, consistent with the existing Privacy section pattern (`SettingsView`).
 - [x] The disclosure is separate from, and does not weaken, the existing anonymous product-telemetry opt-out.
+- [x] The acknowledgement is account-scoped and versioned: successful account deletion clears it, a later user on the installation must acknowledge independently, and a materially changed disclosure version requires acknowledgement again while the unchanged version survives relaunch.
 - [x] Accessibility + `Theme`; verify on device/simulator. `docs/test-coverage.md` row.
 - [x] Build and suites pass.
 

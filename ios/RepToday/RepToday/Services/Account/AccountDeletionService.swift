@@ -17,9 +17,10 @@ protocol AccountDeletionServiceProtocol {
     ///    Non-optional: the Keychain item survives reinstall, so skipping it would resurrect an
     ///    identity the user believed they deleted.
     /// 3. On the first successful onboarded teardown, rotate `AppState`'s anonymous analytics
-    ///    install identifier and the Coach abuse-prevention pseudonym, then reset routing
+    ///    install identifier, reset account-scoped Coach state, then reset routing
     ///    (`isOnboarded` -> false, `selectedTab` -> `.home`). The already-running clients read both
-    ///    identifiers per request, so a later account inherits neither linkage nor safety history.
+    ///    identifiers per request, so a later account inherits neither linkage, provider safety
+    ///    history, nor data-sharing acknowledgement.
     ///
     /// Idempotent and safe for the local-UUID user who never signed in with Apple: a second call
     /// finds nothing to delete, the Keychain clear is a no-op, and the already-rotated identifier
@@ -77,7 +78,7 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
             // teardown after the app already routed away must not keep minting fresh identifiers.
             if appState.isOnboarded {
                 appState.rotateAnalyticsInstallId()
-                appState.rotateCoachSafetyIdentifier()
+                appState.resetCoachAccountState()
             }
             appState.selectedTab = .home
             appState.isOnboarded = false

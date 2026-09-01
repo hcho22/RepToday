@@ -42,7 +42,11 @@ function openAIReply(text) {
   return {
     ok: true,
     async json() {
-      return { output: [{ type: "message", content: [{ type: "output_text", text }] }] };
+      return {
+        status: "completed",
+        error: null,
+        output: [{ type: "message", content: [{ type: "output_text", text }] }],
+      };
     },
   };
 }
@@ -55,7 +59,7 @@ function openAIRefusal(refusal, text) {
   return {
     ok: true,
     async json() {
-      return { output: [{ type: "message", content }] };
+      return { status: "completed", error: null, output: [{ type: "message", content }] };
     },
   };
 }
@@ -288,6 +292,71 @@ describe("POST /coach", () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({ outcome: "safety_refusal" });
     expect(JSON.stringify(body)).not.toContain(providerText);
+  });
+
+  it.each(["failed", "cancelled", "queued", "in_progress"])(
+    "rejects a %s response before exposing partial output",
+    async (status) => {
+      const providerText = `Partial output from ${status}`;
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        async json() {
+          return {
+            status,
+            error: null,
+            output: [{ type: "message", content: [{ type: "output_text", text: providerText }] }],
+          };
+        },
+      });
+
+      const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
+      const body = await response.json();
+
+      expect(response.status).toBe(502);
+      expect(body).toEqual({ error: "upstream_error" });
+      expect(JSON.stringify(body)).not.toContain(providerText);
+    }
+  );
+
+  it("rejects a response error before exposing output", async () => {
+    const providerText = "Output paired with an error";
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      async json() {
+        return {
+          status: "completed",
+          error: { code: "server_error", message: "Provider detail" },
+          output: [{ type: "message", content: [{ type: "output_text", text: providerText }] }],
+        };
+      },
+    });
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toEqual({ error: "upstream_error" });
+    expect(JSON.stringify(body)).not.toContain(providerText);
+    expect(JSON.stringify(body)).not.toContain("Provider detail");
+  });
+
+  it("returns partial output when generation reaches the output-token limit", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      async json() {
+        return {
+          status: "incomplete",
+          error: null,
+          incomplete_details: { reason: "max_output_tokens" },
+          output: [{ type: "message", content: [{ type: "output_text", text: "Useful partial reply" }] }],
+        };
+      },
+    });
+
+    const response = await worker.fetch(coachRequest({ context: CONTEXT, message: "hi" }), ENV);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ reply: "Useful partial reply" });
   });
 
   // US-AC02: the refined persona. The system prompt is where the target intents, the app's voice, and

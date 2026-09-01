@@ -138,6 +138,11 @@ A provider safety refusal is a successful, non-retryable outcome with no provide
 The Worker discards OpenAI's raw refusal wording. The iOS client maps this outcome to Rep Today's
 stable safety message and does not offer to retry the same request.
 
+The Worker accepts text only from a `completed` response or an `incomplete` response whose reason is
+`max_output_tokens`. Content-filtered incomplete output becomes `safety_refusal`; a response error or
+`failed`, `cancelled`, `queued`, or `in_progress` status becomes an upstream failure at the proxy
+boundary, and any accompanying partial provider text is discarded.
+
 On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
 (`method_not_allowed`, `unauthorized`, `payload_too_large`, `invalid_json`, `invalid_context`,
 `invalid_message`, `message_too_long`, `invalid_safety_identifier`, `not_configured`,

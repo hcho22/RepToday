@@ -148,11 +148,23 @@ final class AppState {
         lastCelebratedPhase = .strength
     }
 
-    /// One-shot consent flag for the AI coach's data disclosure (US-AC04): `true` once the user has
-    /// read the pre-use disclosure and tapped "I understand". Persisted so the disclosure is shown at
-    /// most once ever, surviving relaunch (and - like the rest of `AppState` - a backup restore).
-    /// Defaults to *not acknowledged*: a never-written key reads `false`, which is exactly "consent not
-    /// yet given", so no `object(forKey:)` guard is needed.
+    static let coachDataSharingDisclosureVersion = 2
+
+    private(set) var acknowledgedCoachDataSharingDisclosureVersion: Int? {
+        didSet {
+            if let acknowledgedCoachDataSharingDisclosureVersion {
+                userDefaults.set(
+                    acknowledgedCoachDataSharingDisclosureVersion,
+                    forKey: Keys.hasAcknowledgedCoachDataSharing
+                )
+            } else {
+                userDefaults.removeObject(forKey: Keys.hasAcknowledgedCoachDataSharing)
+            }
+        }
+    }
+
+    /// Account-scoped consent for the current AI coach data-disclosure contract (US-AC04). A prior
+    /// disclosure version does not authorize the current contract.
     ///
     /// It is deliberately its **own** state, completely independent of `analyticsEnabled`: the coach
     /// disclosure and the anonymous-telemetry opt-out are two different things (the coach sends *content*
@@ -162,19 +174,15 @@ final class AppState {
     /// gate is flipped only on the user's explicit acknowledgement, never merely on presentation, so a
     /// force-quit mid-disclosure re-shows it and nothing is ever sent without consent (US-AC04).
     var hasAcknowledgedCoachDataSharing: Bool {
-        didSet {
-            userDefaults.set(hasAcknowledgedCoachDataSharing, forKey: Keys.hasAcknowledgedCoachDataSharing)
-        }
+        acknowledgedCoachDataSharingDisclosureVersion == Self.coachDataSharingDisclosureVersion
     }
 
-    /// Whether the coach data disclosure should be presented before first use - the read side of the
-    /// one-shot flag, so a call site never has to remember to negate it.
+    /// Whether the coach data disclosure should be presented before use under the current contract.
     var shouldShowCoachDataDisclosure: Bool { !hasAcknowledgedCoachDataSharing }
 
-    /// Records that the user acknowledged the coach data disclosure, flipping the one-shot flag so it is
-    /// never presented again. Idempotent: calling it twice is a persisted no-op the second time.
+    /// Records acknowledgement of the current disclosure version.
     func markCoachDataSharingAcknowledged() {
-        hasAcknowledgedCoachDataSharing = true
+        acknowledgedCoachDataSharingDisclosureVersion = Self.coachDataSharingDisclosureVersion
     }
 
     /// The stable, random pseudonym sent with Coach requests for provider abuse prevention. It is
@@ -201,6 +209,11 @@ final class AppState {
     /// inherit the deleted account's provider safety history.
     func rotateCoachSafetyIdentifier() {
         coachSafetyIdentifier = coachSafetyIdentifierGenerator()
+    }
+
+    func resetCoachAccountState() {
+        acknowledgedCoachDataSharingDisclosureVersion = nil
+        rotateCoachSafetyIdentifier()
     }
 
     /// The anonymous per-install identifier: a random UUIDv4, minted on first launch and preserved
@@ -401,9 +414,10 @@ final class AppState {
         lastCelebratedPhase = userDefaults.string(forKey: Keys.lastCelebratedPhase)
             .flatMap(Phase.init(rawValue:)) ?? .discipline
 
-        // Not acknowledged by default: a never-written key reads `false`, the honest "consent not yet
-        // given". The coach disclosure is its own state, independent of the telemetry opt-out (US-AC04).
-        hasAcknowledgedCoachDataSharing = userDefaults.bool(forKey: Keys.hasAcknowledgedCoachDataSharing)
+        acknowledgedCoachDataSharingDisclosureVersion =
+            userDefaults.object(forKey: Keys.hasAcknowledgedCoachDataSharing) == nil
+            ? nil
+            : userDefaults.integer(forKey: Keys.hasAcknowledgedCoachDataSharing)
 
         let openedAt = now()
         previousActiveAt = userDefaults.object(forKey: Keys.lastActiveAt) as? Date

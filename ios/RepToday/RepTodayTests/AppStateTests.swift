@@ -129,6 +129,7 @@ final class AppStateTests: XCTestCase {
         let appState = AppState(userDefaults: defaults)
 
         XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing, "consent starts un-given")
+        XCTAssertNil(appState.acknowledgedCoachDataSharingDisclosureVersion)
         XCTAssertTrue(appState.shouldShowCoachDataDisclosure, "an install that never acknowledged it must be shown the disclosure")
     }
 
@@ -139,17 +140,46 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertTrue(appState.hasAcknowledgedCoachDataSharing)
         XCTAssertFalse(appState.shouldShowCoachDataDisclosure, "once acknowledged it must not be shown again")
-        XCTAssertTrue(defaults.bool(forKey: "AppState.hasAcknowledgedCoachDataSharing"), "the flag persists")
+        XCTAssertEqual(
+            defaults.integer(forKey: "AppState.hasAcknowledgedCoachDataSharing"),
+            AppState.coachDataSharingDisclosureVersion,
+            "the acknowledged contract version persists"
+        )
     }
 
-    func testCoachDisclosureAcknowledgementSurvivesRelaunch() {
+    func testCoachDisclosureAcknowledgementPersistsWhenVersionIsUnchanged() {
         let original = AppState(userDefaults: defaults)
         original.markCoachDataSharingAcknowledged()
 
         let reloaded = AppState(userDefaults: defaults)
 
+        XCTAssertEqual(
+            reloaded.acknowledgedCoachDataSharingDisclosureVersion,
+            AppState.coachDataSharingDisclosureVersion
+        )
         XCTAssertTrue(reloaded.hasAcknowledgedCoachDataSharing)
-        XCTAssertFalse(reloaded.shouldShowCoachDataDisclosure, "the disclosure never reappears on a later session")
+        XCTAssertFalse(reloaded.shouldShowCoachDataDisclosure)
+    }
+
+    func testCoachDisclosureVersionMismatchRequiresAcknowledgementAgain() {
+        defaults.set(
+            AppState.coachDataSharingDisclosureVersion - 1,
+            forKey: "AppState.hasAcknowledgedCoachDataSharing"
+        )
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
+        XCTAssertTrue(appState.shouldShowCoachDataDisclosure)
+    }
+
+    func testLegacyUnversionedCoachDisclosureRequiresAcknowledgementAgain() {
+        defaults.set(true, forKey: "AppState.hasAcknowledgedCoachDataSharing")
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasAcknowledgedCoachDataSharing)
+        XCTAssertTrue(appState.shouldShowCoachDataDisclosure)
     }
 
     /// The coach disclosure and the telemetry opt-out are independent: acknowledging one must not touch

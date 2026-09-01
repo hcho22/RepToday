@@ -258,6 +258,9 @@ async function handleCoach(request, env) {
   }
 
   const outcome = extractOpenAIOutcome(upstream.body);
+  if (outcome.kind === "error") {
+    return json({ error: "upstream_error" }, 502);
+  }
   if (outcome.kind === "refusal") {
     return json({ outcome: COACH_SAFETY_REFUSAL_OUTCOME }, 200);
   }
@@ -440,12 +443,35 @@ function extractText(message) {
 }
 
 /**
- * @returns {{ kind: "refusal" } | { kind: "reply", reply: string } | { kind: "empty" }}
+ * @returns {{ kind: "error" } | { kind: "refusal" } | { kind: "reply", reply: string } | { kind: "empty" }}
  */
 function extractOpenAIOutcome(response) {
-  if (response?.incomplete_details?.reason === "content_filter") {
-    return { kind: "refusal" };
+  if (response?.error != null) {
+    return { kind: "error" };
   }
+
+  switch (response?.status) {
+    case "completed":
+      if (response?.incomplete_details?.reason === "content_filter") {
+        return { kind: "refusal" };
+      }
+      break;
+    case "incomplete":
+      if (response?.incomplete_details?.reason === "content_filter") {
+        return { kind: "refusal" };
+      }
+      if (response?.incomplete_details?.reason !== "max_output_tokens") {
+        return { kind: "error" };
+      }
+      break;
+    case "failed":
+    case "cancelled":
+    case "queued":
+    case "in_progress":
+    default:
+      return { kind: "error" };
+  }
+
   const output = Array.isArray(response?.output) ? response.output : [];
   const blocks = output.flatMap((item) => (Array.isArray(item?.content) ? item.content : []));
   if (blocks.some((block) => block?.type === "refusal")) {
