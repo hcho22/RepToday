@@ -14,9 +14,12 @@ readonly KEYCHAIN_SERVICE='com.reptoday.analytics.production'
 readonly KEYCHAIN_ACCOUNT='release-archive'
 readonly CURL_CONNECT_TIMEOUT_SECONDS=3
 readonly CURL_MAX_TIME_SECONDS=5
+readonly CONVEX_QUERY_TIMEOUT_SECONDS=15
 readonly MAX_RATE_WINDOW_ATTEMPTS=3
 readonly VALIDATION_ID_PREFIX='prod-validation-'
 
+repo_root=$(git rev-parse --show-toplevel)
+convex_bin="$repo_root/node_modules/.bin/convex"
 run_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 smoke_id="${VALIDATION_ID_PREFIX}smoke-$run_stamp"
 missing_id="prod-missing-$run_stamp"
@@ -26,6 +29,11 @@ client_ts=$(($(date +%s) * 1000))
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/reptoday-production-validation.XXXXXX")
 trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
 umask 077
+
+if [[ ! -x "$convex_bin" ]]; then
+    echo 'error: Convex CLI is unavailable; run npm ci first' >&2
+    exit 69
+fi
 
 secret=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null) || {
     echo 'error: production telemetry token is unavailable in the macOS Keychain' >&2
@@ -51,6 +59,13 @@ post() {
         -H 'Content-Type: application/json' \
         "$@" \
         --data "$body" || true
+}
+
+run_with_timeout() {
+    local timeout_seconds=$1
+    shift
+    /usr/bin/perl -e 'my $timeout = shift @ARGV; alarm $timeout; exec @ARGV or die "exec failed: $!\n";' \
+        "$timeout_seconds" "$@"
 }
 
 wait_for_fresh_rate_window() {
@@ -114,9 +129,15 @@ if [[ "$rate_attempt_complete" != true ]]; then
 fi
 unset smoke_body missing_body wrong_body rate_body
 
-npx convex run reconcile:eventsForInstalls \
+if ! run_with_timeout "$CONVEX_QUERY_TIMEOUT_SECONDS" "$convex_bin" run reconcile:eventsForInstalls \
     "{\"installIds\":[\"$smoke_id\",\"$missing_id\",\"$wrong_id\",\"$rate_id\"]}" \
-    --deployment "$DEPLOYMENT" > "$temp_dir/rows.json"
+    --deployment "$DEPLOYMENT" \
+    --typecheck disable \
+    --codegen disable > "$temp_dir/rows.json" 2>> "$temp_dir/convex-query.log"
+then
+    echo "error: production telemetry reconciliation did not complete within ${CONVEX_QUERY_TIMEOUT_SECONDS}s" >&2
+    exit 1
+fi
 
 SMOKE_STATUS="$smoke_status" \
 MISSING_STATUS="$missing_status" \

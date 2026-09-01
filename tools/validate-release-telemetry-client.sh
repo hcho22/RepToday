@@ -110,11 +110,10 @@ await_delivery_state() {
     local event_name=$3
     local deadline=$((SECONDS + DELIVERY_DEADLINE_SECONDS))
     local poll_path="$private_dir/delivery-$expected.json"
-    local last_query_succeeded=false
+    local any_query_succeeded=false
     local remaining
 
     while (( SECONDS < deadline )); do
-        last_query_succeeded=false
         remaining=$((deadline - SECONDS))
         if run_with_timeout "$remaining" "$convex_bin" run reconcile:eventsForInstalls \
             "{\"installIds\":[\"$install_id\"]}" \
@@ -122,7 +121,7 @@ await_delivery_state() {
             --typecheck disable \
             --codegen disable > "$poll_path" 2>> "$private_dir/convex-query.log"
         then
-            last_query_succeeded=true
+            any_query_succeeded=true
             if INSTALL_ID="$install_id" EXPECTED_EVENT="$event_name" ROWS_PATH="$poll_path" node <<'NODE'
 const fs = require("fs");
 const rows = JSON.parse(fs.readFileSync(process.env.ROWS_PATH, "utf8"));
@@ -139,7 +138,7 @@ NODE
         sleep "$DELIVERY_POLL_SECONDS"
     done
 
-    [[ "$expected" == absent && "$last_query_succeeded" == true ]]
+    [[ "$expected" == absent && "$any_query_succeeded" == true ]]
 }
 
 seed_validation_identity() {
