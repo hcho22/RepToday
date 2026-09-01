@@ -16,9 +16,10 @@ import UIKit
 /// already-acknowledged install skips straight to the chat. Then it captures the disclosure to a PNG
 /// under `artifacts/reports/US-AC04/`.
 ///
-/// The one-shot *gating* (unseen -> shows, acknowledged -> never again, survives relaunch, independent
-/// of telemetry) is proved in `AppStateTests`; the send-path gate (no request before consent) in
-/// `CoachViewModelTests`. This suite proves the presented surface reads correctly and behaves.
+/// The versioned gating (unacknowledged/current/mismatched, relaunch survival, account-deletion reset,
+/// and independence from telemetry) is proved in `AppStateTests` and `AccountDeletionServiceTests`;
+/// the send-path gate (no request before consent) in `CoachViewModelTests`. This suite proves the
+/// presented surface reads correctly and behaves.
 @MainActor
 final class CoachDataDisclosureEvidenceTests: XCTestCase {
 

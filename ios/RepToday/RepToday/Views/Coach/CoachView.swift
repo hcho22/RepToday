@@ -23,13 +23,13 @@ struct CoachView: View {
     @Environment(\.dismiss) private var dismiss
     /// Optional so the hosted evidence surfaces that mount `CoachView` without an `AppState` in the
     /// environment still render (production, reached from the tab tree, always has one). When present it
-    /// carries the persisted one-shot for the US-AC04 data disclosure.
+    /// carries the persisted acknowledgement version for the US-AC04 data disclosure.
     @Environment(AppState.self) private var appState: AppState?
 
     @State private var viewModel: CoachViewModel
 
-    /// Drives the one-time coach data disclosure overlay (US-AC04). Set on first arrival, only when the
-    /// persisted flag says the user has not yet acknowledged it.
+    /// Drives the coach data disclosure overlay (US-AC04). Set on arrival only when the persisted
+    /// acknowledgement does not match the current disclosure contract.
     @State private var showDisclosure = false
 
     /// The area the user accepted a routing offer for (US-AC08), which presents the injury control as a
@@ -114,8 +114,8 @@ struct CoachView: View {
         }
     }
 
-    /// The user tapped "I understand": record consent (opening the send gate), persist the one-shot so
-    /// the disclosure is never shown again, and dismiss the overlay.
+    /// The user tapped "I understand": record consent (opening the send gate), persist the current
+    /// disclosure version, and dismiss the overlay.
     private func acknowledgeDisclosure() {
         viewModel.grantDataSharingConsent()
         appState?.markCoachDataSharingAcknowledged()
@@ -126,8 +126,8 @@ struct CoachView: View {
         }
     }
 
-    /// The user tapped "Not now": send nothing and leave the coach. The one-shot is deliberately *not*
-    /// flipped, so opening the coach again later shows the disclosure again - consent was never given.
+    /// The user tapped "Not now": send nothing and leave the coach. No acknowledgement is persisted,
+    /// so opening the coach again later shows the disclosure again - consent was never given.
     private func declineDisclosure() {
         dismiss()
     }

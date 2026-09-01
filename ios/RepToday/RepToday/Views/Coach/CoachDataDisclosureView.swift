@@ -53,19 +53,19 @@ enum CoachDataDisclosureCopy {
         + "delete your account. This is separate from the anonymous usage data above."
 }
 
-/// The one-time, pre-use consent disclosure for the AI coach (US-AC04).
+/// The versioned, pre-use consent disclosure for the AI coach (US-AC04).
 ///
-/// Shown the first time a Premium user opens the coach, before any message can be sent. It is a
-/// *consent* gesture, not just an FYI: the user must tap **I understand** for the coach to become
-/// usable, and **Not now** backs out without sending anything. The actual send gate lives in
-/// `CoachViewModel` (the send path refuses to run until consent is granted); this surface is how the
-/// user reads the disclosure and makes that choice.
+/// Shown whenever a Premium user has not acknowledged the current contract, before any message can
+/// be sent. It is a *consent* gesture, not just an FYI: the user must tap **I understand** for the
+/// coach to become usable, and **Not now** backs out without sending anything. The actual send gate
+/// lives in `CoachViewModel` (the send path refuses to run until consent is granted); this surface is
+/// how the user reads the disclosure and makes that choice.
 ///
 /// Presentation is owned by `CoachView`, which layers this over the (idle) chat surface and, on
-/// acknowledgement, persists the one-shot flag on `AppState` so it is shown at most once. Every color,
-/// font, and dimension comes from `Theme`; the controls meet the 60pt active-surface touch target; the
-/// card is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under Reduce
-/// Motion.
+/// acknowledgement, persists the current disclosure version on `AppState`. The same version survives
+/// relaunch; account deletion or a changed contract requires acknowledgement again. Every color, font,
+/// and dimension comes from `Theme`; the controls meet the 60pt active-surface touch target; the card
+/// is VoiceOver-modal and Dynamic-Type friendly, and the caller stills the entrance under Reduce Motion.
 struct CoachDataDisclosureView: View {
     /// Records acknowledgement of the current disclosure contract and opens the coach.
     let onAcknowledge: () -> Void

@@ -123,7 +123,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(reloaded.hasCelebratedStrengthGraduation, "a relaunch never resurrects an already-seen reveal")
     }
 
-    // MARK: - Coach data disclosure one-shot (US-AC04)
+    // MARK: - Coach data disclosure versioning (US-AC04)
 
     func testCoachDisclosureShowsOnAFreshInstall() {
         let appState = AppState(userDefaults: defaults)

@@ -211,6 +211,8 @@ final class AppState {
         coachSafetyIdentifier = coachSafetyIdentifierGenerator()
     }
 
+    /// Clears the account-scoped Coach disclosure acknowledgement and rotates the separate provider
+    /// safety pseudonym. Called only after successful account deletion, before onboarding resumes.
     func resetCoachAccountState() {
         acknowledgedCoachDataSharingDisclosureVersion = nil
         rotateCoachSafetyIdentifier()

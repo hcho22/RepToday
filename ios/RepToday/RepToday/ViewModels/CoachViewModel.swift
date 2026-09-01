@@ -84,9 +84,9 @@ final class CoachViewModel {
     var needsDataSharingConsent: Bool { isAvailable && !isDataSharingAcknowledged }
 
     /// Record the user's explicit acknowledgement of the coach data disclosure (US-AC04), opening the
-    /// send gate for this session. The *persistence* of the one-shot (so the disclosure is not shown
-    /// again next launch) is the caller's job - `CoachView` writes `AppState` - which keeps this view
-    /// model free of `AppState` and hostable in evidence surfaces. Idempotent.
+    /// send gate for this session. Persisting acknowledgement of the current disclosure version is
+    /// the caller's job - `CoachView` writes `AppState` - which keeps this view model free of
+    /// `AppState` and hostable in evidence surfaces. Idempotent.
     func grantDataSharingConsent() { isDataSharingAcknowledged = true }
 
     /// The pending injury routing offer (US-AC08), set when a sent message read as a health signal for
