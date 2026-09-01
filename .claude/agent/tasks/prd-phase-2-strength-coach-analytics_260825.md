@@ -252,6 +252,8 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - [x] Accessibility + `Theme`; verify on device/simulator. `docs/test-coverage.md` row.
 - [x] Build and suites pass.
 
+**Hosted-policy follow-through (2026-09-01):** the canonical source for `https://reptoday.app/privacy` is tracked at `gtm/03-site/privacy.html`, alongside the complete static Pages source and its publication-gated `DEPLOY.md`. The policy mirrors the in-app disclosure's OpenAI transfer, standard abuse-monitoring retention of up to 30 days, and separate rotating Coach safety pseudonym while preserving the visible engineering-draft/legal-review warning. Source changes do not deploy production; publication still requires captain approval and authenticated access to the existing Cloudflare Pages project.
+
 **Validation Test:**
 
 - **Setup:** Premium user opening the coach for the first time.
