@@ -22,8 +22,8 @@ repo_root=$(git rev-parse --show-toplevel)
 convex_bin="$repo_root/node_modules/.bin/convex"
 run_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 smoke_id="${VALIDATION_ID_PREFIX}smoke-$run_stamp"
-missing_id="prod-missing-$run_stamp"
-wrong_id="prod-wrong-$run_stamp"
+missing_id="${VALIDATION_ID_PREFIX}missing-$run_stamp"
+wrong_id="${VALIDATION_ID_PREFIX}wrong-$run_stamp"
 rate_id=''
 client_ts=$(($(date +%s) * 1000))
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/reptoday-production-validation.XXXXXX")
@@ -113,7 +113,7 @@ wrong_status=$(post "$temp_dir/wrong" "$wrong_body" -H 'X-RepToday-Analytics-Sec
 rate_attempt_complete=false
 for rate_attempt in $(seq 1 "$MAX_RATE_WINDOW_ATTEMPTS"); do
     wait_for_fresh_rate_window
-    rate_id="prod-rate-$run_stamp-$rate_attempt"
+    rate_id="${VALIDATION_ID_PREFIX}rate-$run_stamp-$rate_attempt"
     # `$invalid` below is the intentional literal invalid Convex field name.
     # shellcheck disable=SC2016
     rate_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{"$invalid":"rate-validation"}}' "$rate_id" "$client_ts")

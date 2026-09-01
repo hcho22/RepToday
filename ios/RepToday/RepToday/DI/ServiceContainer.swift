@@ -259,8 +259,8 @@ struct ServiceContainer {
         // Resolve the telemetry sink once, so the completion recorder's `week_active` emission (US-T11)
         // and the container's own sink are the same instance and share the consent gate. An explicit
         // `analyticsService` overrides the build-configured resolution; otherwise it is the live
-        // transport when an endpoint is configured (Debug) and the inert no-op when it is not (Release
-        // today), so a Release build's completion path stays silent exactly like every other site.
+        // transport when the endpoint and shared token are configured (Debug and a privately-injected
+        // Release archive), or the inert no-op when either value is missing.
         let resolvedAnalyticsService: any AnalyticsServiceProtocol = analyticsService
             ?? LiveAnalyticsService.configured(
                 installId: analyticsInstallId ?? { installId },
