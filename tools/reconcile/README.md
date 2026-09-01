@@ -12,6 +12,13 @@ That report cannot exist yet, because none of its inputs do:
 - the named non-founder coder is still `[FOUNDER TO FILL]` in the investment thesis;
 - the coding rubric is not frozen.
 
+Production-validation rows are synthetic and never belong in K1/K2/K4 or other product metrics.
+New validation runs use install ids beginning `prod-validation-`; metric extraction must exclude that
+prefix. The one legacy smoke row uses install id `prod-smoke-20260831T214131Z` and is separately
+recognizable by its `props.validation_marker` field and `install_week == "production-validation"`.
+The pre-convention Release validation's two rows use install id
+`9A60C338-86C8-4454-ADE9-ABA3AB70E3B4`; metric extraction must exclude that exact id too.
+
 The captain's decision was to pre-build the tooling now, so that the moment the recordings and the coder's log exist, the reconciliation is **run-and-diff** rather than build-from-scratch.
 So this directory is the harness only.
 **US-T13's PRD acceptance boxes stay unchecked until the moderated cohort, the named coder, and the frozen rubric exist and the report in `artifacts/reports/US-T13/` is written against real observed sessions.**

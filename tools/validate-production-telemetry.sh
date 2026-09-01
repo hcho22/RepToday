@@ -15,9 +15,10 @@ readonly KEYCHAIN_ACCOUNT='release-archive'
 readonly CURL_CONNECT_TIMEOUT_SECONDS=3
 readonly CURL_MAX_TIME_SECONDS=5
 readonly MAX_RATE_WINDOW_ATTEMPTS=3
+readonly VALIDATION_ID_PREFIX='prod-validation-'
 
 run_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-smoke_id="prod-smoke-$run_stamp"
+smoke_id="${VALIDATION_ID_PREFIX}smoke-$run_stamp"
 missing_id="prod-missing-$run_stamp"
 wrong_id="prod-wrong-$run_stamp"
 rate_id=''
@@ -86,6 +87,8 @@ run_rate_attempt() {
             return 1
         fi
     done
+
+    [[ "$rate_400" -eq 60 && "$rate_429" -eq 1 && "$rate_other" -eq 0 ]]
 }
 
 smoke_status=$(post "$temp_dir/smoke" "$smoke_body" --config "$secret_header_config")
@@ -106,7 +109,7 @@ for rate_attempt in $(seq 1 "$MAX_RATE_WINDOW_ATTEMPTS"); do
 done
 
 if [[ "$rate_attempt_complete" != true ]]; then
-    echo "error: rate-limit validation crossed $MAX_RATE_WINDOW_ATTEMPTS consecutive server-minute windows" >&2
+    echo "error: rate-limit validation did not observe 60 rejected requests followed by one 429 after $MAX_RATE_WINDOW_ATTEMPTS attempts" >&2
     exit 1
 fi
 unset smoke_body missing_body wrong_body rate_body

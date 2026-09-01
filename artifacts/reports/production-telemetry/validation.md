@@ -35,7 +35,7 @@ npx convex env set ANALYTICS_SHARED_SECRET '<redacted>' \
 npx convex env list --names-only --deployment hcho22:reptoday-telemetry:prod
 ```
 
-Result: the current repository schema/functions deployed to production; `rateLimits.by_bucketKey` and `rateLimits.by_windowStart` were created; the names-only environment read returned `ANALYTICS_SHARED_SECRET`.
+Result: the initial production-wiring schema/functions deployed to production; `rateLimits.by_bucketKey` and `rateLimits.by_windowStart` were created; the names-only environment read returned `ANALYTICS_SHARED_SECRET`. The later `events.by_installId` reconciliation index was not part of this deployment; its follow-up deployment is recorded below.
 
 ```text
 tools/validate-production-telemetry.sh
@@ -67,6 +67,61 @@ Result: a clean optimized Release simulator build contained the production origi
 - launch with `-AppState.analyticsEnabled NO`: zero production rows.
 
 The live positive control proves this Release artifact's endpoint/token can persist. The paired production-code `LiveAnalyticsServiceTests.testDisabledGateEmitsNothing` intercepts below the gate and proves the opted-out branch creates no request at all, rather than merely no row.
+
+This first Release validation predated the reserved identity convention. Its two synthetic rows use
+install id `9A60C338-86C8-4454-ADE9-ABA3AB70E3B4`; exclude that exact id from every product metric.
+
+## Indexed-query deployment and validation follow-up — 2026-09-01
+
+```text
+CONVEX_DEPLOYMENT='dev:courteous-dogfish-560' \
+  npx convex deploy --yes --typecheck enable --dry-run \
+  --message 'Deploy indexed production reconciliation'
+```
+
+Result: the production dry run reported that it would add
+`events.by_installId (installId, _creationTime)`, proving the initial production deployment did not
+yet contain the follow-up index.
+
+```text
+CONVEX_DEPLOYMENT='dev:courteous-dogfish-560' \
+  npx convex deploy --yes --typecheck enable \
+  --message 'Deploy indexed production reconciliation'
+```
+
+Result: Convex reported `Added table indexes: events.by_installId` and deployed the current functions
+to `sensible-spider-810`. The recurring reconciliation read is now proportional to requested install
+ids in production, matching `convex/reconcile.ts` and `convex/schema.ts`. A repeat production dry run
+after validation proposed no index addition or deletion.
+
+```text
+tools/validate-production-telemetry.sh
+```
+
+Result against production after the indexed deploy:
+
+- correct token: `204`; exactly one marked row for
+  `prod-validation-smoke-20260901T165747Z`;
+- missing and wrong tokens: `401`, zero rows;
+- rate ceiling: exactly 60 post-limit validation rejections (`400`), then one `429`, with zero rate
+  test rows and zero unexpected statuses.
+
+```text
+tools/validate-release-telemetry-client.sh
+```
+
+Result: the Release artifact again matched the production endpoint and private Keychain token. The
+opted-in launch persisted exactly one `onboarding_started` row under
+`prod-validation-release-20260901T170131Z-on`; the opted-out launch used
+`prod-validation-release-20260901T170131Z-off` and persisted zero rows. Each future run prints both
+ids. These launches seed the `prod-validation-` identity before app start, so they exercise the real
+Release transport without creating another apparent install.
+
+All production-validation rows are synthetic. Every K1/K2/K4 or other product-metric extraction must
+exclude install ids beginning `prod-validation-`, the legacy marked smoke row
+`prod-smoke-20260831T214131Z`, and the legacy Release id
+`9A60C338-86C8-4454-ADE9-ABA3AB70E3B4`. A full production-table inspection after this validation
+confirmed that all six rows then present are covered by those exclusions; no real cohort has run yet.
 
 ## Rotation
 
