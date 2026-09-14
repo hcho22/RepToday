@@ -41,7 +41,7 @@ The product builds the habit of moving; strength is *earned*, never the launch h
 - **Strength Phase** - earned over time by sustaining the habit *and* progressing the foundational movement chains.
 
 The `PhaseEvaluator` is deterministic and never user-selectable.
-At launch no user has earned the Strength Phase, so the MVP ships the Discipline-Phase experience with the evaluator already in place.
+After each completed session, Rep Today persists a newly earned Strength Phase and keeps it earned. On app open, it also reconciles pre-existing histories that currently qualify before loading phase-dependent screens.
 
 ---
 

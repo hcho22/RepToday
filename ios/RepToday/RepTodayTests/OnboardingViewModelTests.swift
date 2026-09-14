@@ -509,6 +509,7 @@ private struct FailingUserService: UserServiceProtocol {
     struct SaveError: Error {}
     func currentUser() async throws -> User? { nil }
     func save(_ user: User) async throws { throw SaveError() }
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { throw SaveError() }
     func deleteCurrentUser() async throws {}
 }
 

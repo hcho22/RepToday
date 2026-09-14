@@ -116,20 +116,19 @@ final class AppState {
     }
 
     /// The highest `Phase` the user has been *congratulated for reaching* (US-SP06, the graduation
-    /// moment). Persisted, and compared against the phase the `PhaseEvaluator` currently reports as
-    /// *earned* so the one-time reveal fires exactly at the crossing into `.strength` and never again.
+    /// moment). Persisted, and compared against the app-open reconciliation result so the one-time
+    /// reveal fires when `.strength` is durable and never again.
     ///
     /// It is deliberately a **last-celebrated** phase rather than a last-*seen* one: it is only ever
-    /// advanced (ratcheted) when the reveal is actually shown, never rewritten to whatever the current
-    /// earned phase happens to be on a given open. So a user whose earned phase later dips back to
-    /// `.discipline` (the score is a rolling average, and it can fall) is never re-congratulated when it
-    /// climbs again - the milestone is stewardship of a habit, celebrated once, never a reward that can
-    /// be lost and re-won. Defaults to `.discipline` (the phase every user starts in), which is exactly
-    /// what an unwritten key resolves to below, so a fresh install has celebrated nothing.
+    /// advanced (ratcheted) when the reveal is actually shown, never copied into `User.phase` or treated
+    /// as evidence that Strength was earned. The durable phase transition has its own persistence path;
+    /// this marker only prevents the milestone from being celebrated twice. Defaults to `.discipline`
+    /// (the phase every user starts in), which is exactly what an unwritten key resolves to below, so a
+    /// fresh install has celebrated nothing.
     ///
-    /// This never touches the engine: the reveal keys off the *computed* earned phase, not off the
-    /// persisted `user.phase` (which the engine reads and which no production path advances to
-    /// `.strength` today). It gates presentation only - it cohorts nothing and emits nothing.
+    /// This never touches the engine: the reveal's app-open lifecycle first reconciles the computed
+    /// earned phase onto the persisted `user.phase`, while this separate flag gates presentation only -
+    /// it cohorts nothing and emits nothing.
     var lastCelebratedPhase: Phase {
         didSet {
             userDefaults.set(lastCelebratedPhase.rawValue, forKey: Keys.lastCelebratedPhase)

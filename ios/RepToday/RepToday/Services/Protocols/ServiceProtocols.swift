@@ -119,7 +119,11 @@ protocol PhaseServiceProtocol {
 /// Reads and writes the current user aggregate.
 protocol UserServiceProtocol {
     func currentUser() async throws -> User?
+    /// Upserts the whole aggregate while preserving any higher phase already persisted for this user.
     func save(_ user: User) async throws
+    /// Atomically advances only the matching user's phase. Never downgrades or overwrites other fields.
+    @discardableResult
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User?
     func deleteCurrentUser() async throws
 }
 

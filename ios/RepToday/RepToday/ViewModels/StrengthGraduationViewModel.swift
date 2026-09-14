@@ -5,16 +5,14 @@ import Observation
 /// open - the "just crossed into `.strength`" detector behind the reveal `RootView` hosts.
 ///
 /// The acceptance criterion is "on the first app open after `PhaseEvaluator` transitions the user to
-/// `.strength`." That transition is a property of the user's *logs*, computed fresh by the same
-/// deterministic `PhaseEvaluator` logic that gates the phase (`phaseService.phase(for:recentLogs:)`) -
-/// **not** a read of the persisted `user.phase`, which the engine reads and which no production path
-/// advances to `.strength` today. So this asks the evaluator what the user has *earned* and reports
-/// whether that is the Strength Phase; `RootView` combines that with the persisted, ratcheting
-/// `AppState.lastCelebratedPhase` so the reveal fires exactly at the crossing and never again.
+/// `.strength`." Session completion normally persists that transition. This app-open path also
+/// reconciles a still-Discipline persisted user against their full history when that history currently
+/// qualifies, covering users who reached the threshold before production persistence was wired.
+/// `RootView` combines the resulting persisted phase with `AppState.lastCelebratedPhase` so the reveal
+/// fires once and never again.
 ///
-/// It is read-only and presentation-only: it never writes `user.phase`, never persists anything, and
-/// never gates the core loop. Like the other view models it is `@Observable`, takes its services as
-/// protocols, and does all of its work off the main-actor-hop-free `async` service calls.
+/// Reconciliation is an idempotent ratchet: it writes only on `.discipline -> .strength`, never
+/// downgrades, and skips both the log/evaluator work and the write once Strength is current.
 @Observable
 @MainActor
 final class StrengthGraduationViewModel {
@@ -48,19 +46,36 @@ final class StrengthGraduationViewModel {
         )
     }
 
-    /// Compute the earned phase over the user's full history and record whether it is `.strength`.
+    /// Reconcile the earned phase over the user's full history and record whether the persisted result
+    /// is `.strength`.
     ///
-    /// Best-effort throughout: a missing user or a failed read simply leaves `earnedStrength` false, so
-    /// the reveal never fires on an error rather than firing spuriously. It reads the *full* history
-    /// (like the Progress tab) rather than the engine's bounded recent window, because the earn signals
-    /// span ~8 weeks and a bounded window could understate the sustained-consistency span.
+    /// Best-effort throughout: a missing user or a failed read/write leaves `earnedStrength` false, so
+    /// the reveal never fires before the durable transition exists. It reads the *full* history (like
+    /// the Progress tab) because the earn signals span ~8 weeks. A user already persisted at Strength
+    /// returns immediately, preserving the earned milestone without a redundant evaluation or write.
     func evaluate() async {
         guard let user = try? await userService.currentUser() else {
             earnedStrength = false
             return
         }
+
+        guard user.phase == .discipline else {
+            earnedStrength = true
+            return
+        }
+
         let logs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? []
         let earned = (try? await phaseService.phase(for: user, recentLogs: logs)) ?? .discipline
-        earnedStrength = (earned == .strength)
+        guard earned == .strength else {
+            earnedStrength = false
+            return
+        }
+
+        do {
+            let persisted = try await userService.advancePhase(to: earned, for: user.id)
+            earnedStrength = persisted?.phase == .strength
+        } catch {
+            earnedStrength = false
+        }
     }
 }

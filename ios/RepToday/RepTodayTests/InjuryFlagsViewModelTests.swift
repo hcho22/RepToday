@@ -397,6 +397,13 @@ final class InjuryFlagsViewModelTests: XCTestCase {
             self.user = user
         }
 
+        func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? {
+            guard let user, user.id == userId else { return nil }
+            let advanced = user.advancingPhase(to: earnedPhase)
+            self.user = advanced
+            return advanced
+        }
+
         func deleteCurrentUser() async throws { throw Boom() }
 
         /// Returns once `save` has been entered and is parked.
@@ -521,6 +528,7 @@ final class InjuryFlagsViewModelTests: XCTestCase {
 
         func currentUser() async throws -> User? { user }
         func save(_ user: User) async throws { throw Boom() }
+        func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { throw Boom() }
         func deleteCurrentUser() async throws { throw Boom() }
     }
 }

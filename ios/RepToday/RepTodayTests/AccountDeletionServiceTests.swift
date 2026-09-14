@@ -316,5 +316,6 @@ private final class ThrowingUserService: UserServiceProtocol, @unchecked Sendabl
 
     func currentUser() async throws -> User? { throw Unreadable() }
     func save(_ user: User) async throws {}
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { throw Unreadable() }
     func deleteCurrentUser() async throws { didDelete = true }
 }

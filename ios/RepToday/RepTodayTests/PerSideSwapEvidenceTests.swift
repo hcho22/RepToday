@@ -685,7 +685,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             activeSessionStore: activeSessionStore,
             sessionCompletionService: SessionCompletionService(
                 workoutLogService: workoutLogService, userService: userService,
-                consistencyService: consistencyService, policyStore: policyStore
+                consistencyService: consistencyService,
+                phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
+                policyStore: policyStore
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
