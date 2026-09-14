@@ -123,7 +123,7 @@ struct ProgressAnalytics: Equatable {
     /// pattern. A pattern the user has never trained reports "not started" (`currentExercise == nil`).
     ///
     /// The reported tier/length/next-tier are counted only over the tiers this `phase` can actually
-    /// reach: a Discipline user (all MVP users) reaches only `.discipline` tiers, so a chain that tops
+    /// reach: a Discipline user reaches only `.discipline` tiers, so a chain that tops
     /// out in a still-locked Strength movement (push_one_arm, pistol, the L-sit) is never reported as
     /// "next tier in reach" and its length never counts the unreachable tier, mirroring the
     /// `PhaseEvaluator` principle that Strength movements never surface until earned (US-H02).

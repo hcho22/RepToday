@@ -9,6 +9,9 @@ import Foundation
 /// - **Consistency Score refresh (US-H01).** The forgiving score is recomputed over the full
 ///   persisted history (including the just-saved log) and stored back on the user aggregate, so the
 ///   all-time `longestChain` stays honest and is never understated by a bounded log window.
+/// - **Earned-phase transition.** The existing `PhaseEvaluatorService` runs over that same full
+///   history after each completion. A newly earned Strength Phase is persisted on the user aggregate
+///   in the same write as the other bookkeeping; an earned phase is never downgraded.
 /// - **Cold-start handoff (US-G04).** This is the single caller of `ColdStartHandoff`: it advances
 ///   `user.coldStart.sessionsLogged` and retires cold-start once the threshold is reached, recording
 ///   the Start Seed floor the week actually ran at, then reconciles the policy (clearing the now-inert
@@ -65,6 +68,9 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     private let workoutLogService: any WorkoutLogServiceProtocol
     private let userService: any UserServiceProtocol
     private let consistencyService: any ConsistencyServiceProtocol
+    /// The deterministic earned-phase evaluator. Completion is the authoritative incremental seam:
+    /// it has the just-written log plus the full history and already persists the user aggregate.
+    private let phaseService: any PhaseServiceProtocol
     /// The same policy store the deterministic Programmer writes through (US-F03), shared so the
     /// cold-start handoff's reconciled policy lands where the engine reads it on the next open.
     private let policyStore: any SessionPolicyStore
@@ -94,6 +100,7 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         workoutLogService: any WorkoutLogServiceProtocol,
         userService: any UserServiceProtocol,
         consistencyService: any ConsistencyServiceProtocol,
+        phaseService: any PhaseServiceProtocol,
         policyStore: any SessionPolicyStore,
         healthKitService: (any HealthKitServiceProtocol)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
@@ -103,6 +110,7 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         self.workoutLogService = workoutLogService
         self.userService = userService
         self.consistencyService = consistencyService
+        self.phaseService = phaseService
         self.policyStore = policyStore
         self.healthKitService = healthKitService
         self.analytics = analytics
@@ -122,10 +130,10 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
         let latest = (try? await userService.currentUser()) ?? user
 
         // 3. Read the *full* persisted history (which now includes the just-saved `log`), not the
-        //    caller's bounded `recentLogs`. Both of the steps below need it and neither tolerates a
-        //    window: `longestChain` is an all-time historical maximum (US-H01: "a later break never
-        //    lowers it"), and the cold-start handoff records the Start Seed floor the week ran at,
-        //    which is resolved from every down-signal the window produced.
+        //    caller's bounded `recentLogs`. The steps below need it and do not tolerate a window:
+        //    `longestChain` is an all-time historical maximum (US-H01: "a later break never lowers
+        //    it"), the phase gate spans ~8 weeks, and the cold-start handoff records the Start Seed
+        //    floor from every down-signal the window produced.
         let allLogs = try await workoutLogService.workoutLogs(from: nil, to: nil)
 
         // 4. Advance cold-start and reconcile the policy against the just-completed session (US-G04).
@@ -145,22 +153,31 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
             weeklyGoal: latest.consistency.weeklyGoal
         )
 
-        // 6. Persist the user (advanced cold-start + refreshed consistency), then the reconciled policy
-        //    only when the handoff actually changed it (i.e. cold-start just retired and cleared the
-        //    contract). The two aggregates are saved separately, matching US-F03.
+        // 6. Evaluate a still-Discipline user's earned phase over the same full history. The guard is
+        //    both the no-downgrade rule and the no-op fast path: once Strength is persisted, no catalog
+        //    read or phase-specific mutation is needed on later completions. The transition piggybacks
+        //    on the bookkeeping save below rather than adding a second user write.
+        if updatedUser.phase == .discipline {
+            let earnedPhase = try await phaseService.phase(for: updatedUser, recentLogs: allLogs)
+            updatedUser = updatedUser.advancingPhase(to: earnedPhase)
+        }
+
+        // 7. Persist the user (advanced cold-start + refreshed consistency + any newly earned phase),
+        //    then the reconciled policy only when the handoff actually changed it (i.e. cold-start just
+        //    retired and cleared the contract). The two aggregates are saved separately, matching US-F03.
         try await userService.save(updatedUser)
         if handoff.sessionPolicy != currentPolicy {
             try await policyStore.save(handoff.sessionPolicy, for: latest.id)
         }
 
-        // 7. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
+        // 8. Mirror the completed session into Health (US-N03), best-effort and fully isolated: a denied
         //    authorization or any HealthKit failure must never disrupt the bookkeeping above or block the
         //    completion. The service enforces idempotency by the log id, so a re-record never duplicates.
         if let healthKitService {
             try? await healthKitService.saveWorkoutLog(log, user: latest)
         }
 
-        // 8. Emit `week_active` at most once per distinct active week (US-T11). This is last and fully
+        // 9. Emit `week_active` at most once per distinct active week (US-T11). This is last and fully
         //    isolated from the throwing bookkeeping above - a telemetry emission must never affect
         //    whether the completion the user earned is recorded.
         await emitWeekActive(for: log)

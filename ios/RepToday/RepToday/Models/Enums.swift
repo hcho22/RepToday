@@ -40,7 +40,7 @@ enum Pillar: String, Codable, CaseIterable, Identifiable, Hashable {
 /// The two-phase journey. Computed by the `PhaseEvaluator`, never user-selectable.
 ///
 /// Every user starts in `discipline` (consistency is the only goal) and earns
-/// `strength` over time. At MVP launch all users resolve to `discipline`.
+/// `strength` over time; once earned, the persisted phase never downgrades.
 enum Phase: String, Codable, CaseIterable, Identifiable, Hashable {
     case discipline
     case strength

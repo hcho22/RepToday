@@ -15,8 +15,9 @@ final class StrengthGraduationViewModelTests: XCTestCase {
     // MARK: - Crossing decision (controllable phase service)
 
     func testEarnedStrengthTriggersTheReveal() async {
+        let userService = CountingUserService(user: MockPersistence.sampleUser)
         let viewModel = StrengthGraduationViewModel(
-            userService: MockUserService(user: MockPersistence.sampleUser),
+            userService: userService,
             workoutLogService: MockWorkoutLogService(logs: []),
             phaseService: StubPhaseService(earned: .strength)
         )
@@ -24,11 +25,16 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         await viewModel.evaluate()
 
         XCTAssertTrue(viewModel.earnedStrength, "a user the evaluator resolves to .strength should trigger the reveal")
+        let persistedPhase = await userService.user?.phase
+        let saveCount = await userService.saveCount
+        XCTAssertEqual(persistedPhase, .strength, "the app-open lifecycle persists the transition")
+        XCTAssertEqual(saveCount, 1)
     }
 
     func testStillDisciplineDoesNotTriggerTheReveal() async {
+        let userService = CountingUserService(user: MockPersistence.sampleUser)
         let viewModel = StrengthGraduationViewModel(
-            userService: MockUserService(user: MockPersistence.sampleUser),
+            userService: userService,
             workoutLogService: MockWorkoutLogService(logs: []),
             phaseService: StubPhaseService(earned: .discipline)
         )
@@ -36,6 +42,30 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         await viewModel.evaluate()
 
         XCTAssertFalse(viewModel.earnedStrength, "a user still earning Strength must not trigger the reveal")
+        let saveCount = await userService.saveCount
+        XCTAssertEqual(saveCount, 0, "an unchanged phase must not produce a user write")
+    }
+
+    func testPersistedStrengthIsNeverReevaluatedDowngradedOrRewritten() async {
+        var user = MockPersistence.sampleUser
+        user.phase = .strength
+        let userService = CountingUserService(user: user)
+        let phaseService = StubPhaseService(earned: .discipline)
+        let viewModel = StrengthGraduationViewModel(
+            userService: userService,
+            workoutLogService: MockWorkoutLogService(logs: []),
+            phaseService: phaseService
+        )
+
+        await viewModel.evaluate()
+
+        XCTAssertTrue(viewModel.earnedStrength, "persisted Strength remains the effective earned phase")
+        let persistedPhase = await userService.user?.phase
+        let saveCount = await userService.saveCount
+        let phaseCallCount = await phaseService.phaseCallCount
+        XCTAssertEqual(persistedPhase, .strength)
+        XCTAssertEqual(saveCount, 0, "a current phase must not be rewritten")
+        XCTAssertEqual(phaseCallCount, 0, "a current phase needs no reevaluation")
     }
 
     func testNoUserDoesNotTriggerTheReveal() async {
@@ -60,9 +90,10 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         let exerciseService = try MockExerciseService()
         let library = try await exerciseService.exercises()
         let logs = Self.sustainedHistory(weeks: 10) + Self.competenceLogs(library: library)
+        let userService = CountingUserService(user: MockPersistence.sampleUser)
 
         let viewModel = StrengthGraduationViewModel(
-            userService: MockUserService(user: MockPersistence.sampleUser),
+            userService: userService,
             workoutLogService: MockWorkoutLogService(logs: logs),
             phaseService: PhaseEvaluatorService(exerciseService: exerciseService, now: { Self.asOf }, calendar: Self.calendar)
         )
@@ -70,6 +101,8 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         await viewModel.evaluate()
 
         XCTAssertTrue(viewModel.earnedStrength, "real earn-threshold logs should resolve to .strength and fire the reveal")
+        let persistedPhase = await userService.user?.phase
+        XCTAssertEqual(persistedPhase, .strength, "the real evaluator's result is persisted")
     }
 
     /// The negative end-to-end control: a fresh user with no history stays Discipline through the real
@@ -153,15 +186,43 @@ final class StrengthGraduationViewModelTests: XCTestCase {
 
 /// A `PhaseServiceProtocol` that reports a fixed earned phase, so the crossing decision can be tested
 /// without standing up the real evaluator and its earn-threshold fixture.
-private struct StubPhaseService: PhaseServiceProtocol {
+private actor StubPhaseService: PhaseServiceProtocol {
     let earned: Phase
+    private(set) var phaseCallCount = 0
 
-    func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase { earned }
+    init(earned: Phase) {
+        self.earned = earned
+    }
+
+    func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase {
+        phaseCallCount += 1
+        return earned
+    }
 
     func progress(for user: User, recentLogs: [WorkoutLog]) async throws -> PhaseProgress {
         PhaseProgress(
             activeWeeks: 0, requiredWeeks: PhaseEvaluator.sustainedWeeks,
             currentScore: 0, scoreThreshold: PhaseEvaluator.consistencyThreshold, foundations: []
         )
+    }
+}
+
+private actor CountingUserService: UserServiceProtocol {
+    private(set) var user: User?
+    private(set) var saveCount = 0
+
+    init(user: User?) {
+        self.user = user
+    }
+
+    func currentUser() async throws -> User? { user }
+
+    func save(_ user: User) async throws {
+        saveCount += 1
+        self.user = user
+    }
+
+    func deleteCurrentUser() async throws {
+        user = nil
     }
 }

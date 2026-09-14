@@ -48,12 +48,14 @@ final class SessionCompletionServiceTests: XCTestCase {
         logService: MockWorkoutLogService,
         userService: MockUserService,
         store: InMemorySessionPolicyStore,
+        phaseService: any PhaseServiceProtocol = StubPhaseService(earned: .discipline),
         healthKitService: (any HealthKitServiceProtocol)? = nil
     ) -> SessionCompletionService {
         SessionCompletionService(
             workoutLogService: logService,
             userService: userService,
             consistencyService: ConsistencyScoreService(now: { self.now }),
+            phaseService: phaseService,
             policyStore: store,
             healthKitService: healthKitService
         )
@@ -102,6 +104,54 @@ final class SessionCompletionServiceTests: XCTestCase {
         let saved = try await userService.currentUser()
         XCTAssertEqual(saved?.consistency.totalWorkoutsCompleted, 1, "the new session counts exactly once")
         XCTAssertGreaterThan(saved?.consistency.score ?? 0, 0, "showing up moves the score off zero")
+    }
+
+    // MARK: - Earned-phase transition
+
+    /// The real completion lifecycle hands the evaluator the durable history including the session it
+    /// just wrote, then persists the newly earned phase on the same user aggregate downstream session
+    /// generation reads.
+    func testRecordEvaluatesFullHistoryAndPersistsNewlyEarnedStrengthPhase() async throws {
+        let priorLog = makeLog()
+        let completedLog = makeLog()
+        let logService = MockWorkoutLogService(logs: [priorLog])
+        let userService = MockUserService(user: makeUser())
+        let phaseService = RecordingPhaseService(earned: .strength)
+        let service = makeService(
+            logService: logService,
+            userService: userService,
+            store: InMemorySessionPolicyStore(),
+            phaseService: phaseService
+        )
+
+        try await service.recordCompletedSession(completedLog, user: makeUser(), recentLogs: [])
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.phase, .strength, "the earned phase is durable on the user aggregate")
+        let evaluatedLogs = await phaseService.evaluatedLogs
+        XCTAssertEqual(Set(evaluatedLogs.map(\.id)), Set([priorLog.id, completedLog.id]))
+    }
+
+    /// Strength is an earned milestone, not a rolling label: later completion processing skips phase
+    /// evaluation once it is current and can never overwrite it with Discipline.
+    func testRecordNeverReevaluatesOrDowngradesPersistedStrength() async throws {
+        var strengthUser = makeUser()
+        strengthUser.phase = .strength
+        let userService = MockUserService(user: strengthUser)
+        let phaseService = RecordingPhaseService(earned: .discipline)
+        let service = makeService(
+            logService: MockWorkoutLogService(),
+            userService: userService,
+            store: InMemorySessionPolicyStore(),
+            phaseService: phaseService
+        )
+
+        try await service.recordCompletedSession(makeLog(), user: strengthUser, recentLogs: [])
+
+        let saved = try await userService.currentUser()
+        XCTAssertEqual(saved?.phase, .strength)
+        let phaseCallCount = await phaseService.phaseCallCount
+        XCTAssertEqual(phaseCallCount, 0, "a current earned phase needs no reevaluation")
     }
 
     // MARK: - Cold-start handoff (US-G04)
@@ -325,5 +375,47 @@ final class SessionCompletionServiceTests: XCTestCase {
 
         let saved = try await logService.workoutLogs(from: nil, to: nil)
         XCTAssertEqual(saved.count, 1)
+    }
+}
+
+private actor RecordingPhaseService: PhaseServiceProtocol {
+    let earned: Phase
+    private(set) var evaluatedLogs: [WorkoutLog] = []
+    private(set) var phaseCallCount = 0
+
+    init(earned: Phase) {
+        self.earned = earned
+    }
+
+    func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase {
+        phaseCallCount += 1
+        evaluatedLogs = recentLogs
+        return earned
+    }
+
+    func progress(for user: User, recentLogs: [WorkoutLog]) async throws -> PhaseProgress {
+        PhaseProgress(
+            activeWeeks: 0,
+            requiredWeeks: PhaseEvaluator.sustainedWeeks,
+            currentScore: 0,
+            scoreThreshold: PhaseEvaluator.consistencyThreshold,
+            foundations: []
+        )
+    }
+}
+
+private struct StubPhaseService: PhaseServiceProtocol {
+    let earned: Phase
+
+    func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase { earned }
+
+    func progress(for user: User, recentLogs: [WorkoutLog]) async throws -> PhaseProgress {
+        PhaseProgress(
+            activeWeeks: 0,
+            requiredWeeks: PhaseEvaluator.sustainedWeeks,
+            currentScore: 0,
+            scoreThreshold: PhaseEvaluator.consistencyThreshold,
+            foundations: []
+        )
     }
 }

@@ -99,6 +99,9 @@ struct ServiceContainer {
         // The real forgiving, Return-protected Consistency Score (US-H01) in place of the mock; a pure
         // evaluator over the log history, shared by the Ready Screen and the completion recorder.
         let consistencyService = ConsistencyScoreService()
+        // Shared by read-only phase surfaces and the completion recorder so both resolve the same
+        // deterministic earned phase from the same validated catalog.
+        let phaseService = PhaseEvaluatorService(exerciseService: exerciseService)
         // A single log service so a session written by the completion recorder (US-L01) is the same
         // history the Ready Screen and the Programmer read back.
         let workoutLogService = MockWorkoutLogService()
@@ -120,11 +123,8 @@ struct ServiceContainer {
                 userService: userService
             ),
             consistencyService: consistencyService,
-            // The real deterministic `PhaseEvaluator` (US-H02) in place of `MockPhaseService`; it
-            // reads the validated library from the exercise service to gate competence and stays
-            // deterministic given a fixed clock. All MVP users resolve to `.discipline` until they
-            // earn Strength (sustained consistency + cleared foundational entry tiers).
-            phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
+            // The real deterministic `PhaseEvaluator` (US-H02) in place of `MockPhaseService`.
+            phaseService: phaseService,
             userService: userService,
             workoutLogService: workoutLogService,
             // In-memory active-session store (US-K04), consistent with the other in-memory stores in
@@ -140,6 +140,7 @@ struct ServiceContainer {
                 workoutLogService: workoutLogService,
                 userService: userService,
                 consistencyService: consistencyService,
+                phaseService: phaseService,
                 policyStore: policyStore
             ),
             healthKitService: MockHealthKitService(),
@@ -238,6 +239,8 @@ struct ServiceContainer {
         // (the cold-start handoff's reconciled policy, US-G04).
         let policyStore = CoreDataSessionPolicyStore(context: context)
         let consistencyService = ConsistencyScoreService()
+        // One real phase evaluator shared by the app-open surfaces and completion bookkeeping.
+        let phaseService = PhaseEvaluatorService(exerciseService: exerciseService)
         // The real write-only HealthKit integration (US-N03): mirrors each completed session into
         // Health, resolving MET values from the exercise catalog for the energy estimate. Shared so the
         // completion recorder writes through the same instance exposed on the container.
@@ -286,7 +289,7 @@ struct ServiceContainer {
                 userService: userService
             ),
             consistencyService: consistencyService,
-            phaseService: PhaseEvaluatorService(exerciseService: exerciseService),
+            phaseService: phaseService,
             userService: userService,
             workoutLogService: workoutLogService,
             // The CoreData active-session store: an abandoned session now survives a full
@@ -296,6 +299,7 @@ struct ServiceContainer {
                 workoutLogService: workoutLogService,
                 userService: userService,
                 consistencyService: consistencyService,
+                phaseService: phaseService,
                 policyStore: policyStore,
                 healthKitService: healthKitService,
                 // The `week_active` emission site (US-T11): the same resolved sink the container exposes,

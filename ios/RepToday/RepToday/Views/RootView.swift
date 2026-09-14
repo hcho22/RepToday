@@ -40,11 +40,10 @@ struct RootView: View {
                     .zIndex(1)
             }
         }
-        // On app open, ask the deterministic `PhaseEvaluator` whether the user has just crossed into
-        // the earned Strength Phase (computed from real logs, never the persisted `user.phase`), and
-        // reveal the graduation once at the crossing. The persisted, ratcheting `lastCelebratedPhase`
-        // is flipped the moment we decide to show it - not on dismissal - so a force-quit while it is
-        // up can never bring it back on the next open, and it never re-fires after a relaunch.
+        // On app open, reconcile any earned-but-not-yet-persisted Strength transition, then reveal the
+        // graduation once at the crossing. The persisted, ratcheting `lastCelebratedPhase` is flipped
+        // the moment we decide to show it - not on dismissal - so a force-quit while it is up can never
+        // bring it back on the next open, and it never re-fires after a relaunch.
         .task { await revealGraduationIfEarned() }
         // Debug-only, and inert unless the US-T06 probe launch argument is set: the HUD an
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
@@ -82,11 +81,11 @@ struct RootView: View {
     /// a user who has not earned Strength or has already seen it.
     @MainActor
     private func revealGraduationIfEarned() async {
-        guard appState.isOnboarded, !appState.hasCelebratedStrengthGraduation else { return }
+        guard appState.isOnboarded else { return }
 
         let viewModel = StrengthGraduationViewModel(services: services)
         await viewModel.evaluate()
-        guard viewModel.earnedStrength else { return }
+        guard !appState.hasCelebratedStrengthGraduation, viewModel.earnedStrength else { return }
 
         // Ratchet the celebrated phase before presenting, so the reveal can never re-fire even if the
         // user force-quits while it is up.

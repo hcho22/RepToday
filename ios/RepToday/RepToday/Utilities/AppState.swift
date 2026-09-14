@@ -127,9 +127,9 @@ final class AppState {
     /// be lost and re-won. Defaults to `.discipline` (the phase every user starts in), which is exactly
     /// what an unwritten key resolves to below, so a fresh install has celebrated nothing.
     ///
-    /// This never touches the engine: the reveal keys off the *computed* earned phase, not off the
-    /// persisted `user.phase` (which the engine reads and which no production path advances to
-    /// `.strength` today). It gates presentation only - it cohorts nothing and emits nothing.
+    /// This never touches the engine: the reveal's app-open lifecycle first reconciles the computed
+    /// earned phase onto the persisted `user.phase`, while this separate flag gates presentation only -
+    /// it cohorts nothing and emits nothing.
     var lastCelebratedPhase: Phase {
         didSet {
             userDefaults.set(lastCelebratedPhase.rawValue, forKey: Keys.lastCelebratedPhase)

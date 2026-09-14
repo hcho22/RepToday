@@ -19,7 +19,7 @@ struct User: Codable, Equatable, Identifiable {
     var displayName: String
     var createdAt: Date
     var profile: UserProfile
-    /// Earned, deterministic phase. All MVP users resolve to `.discipline`.
+    /// Earned, deterministic phase. Starts at `.discipline` and ratchets to `.strength` once earned.
     var phase: Phase
     var subscription: Subscription
     var consistency: Consistency
@@ -31,6 +31,17 @@ struct User: Codable, Equatable, Identifiable {
     /// Cold-start state driving the cold-start strength lead and gentleness rails (US-D01). Fresh
     /// users start cold; the engine retires it after ~5 logged sessions (US-G04).
     var coldStart: ColdStart = .fresh
+}
+
+extension User {
+    /// Returns this aggregate advanced to `earnedPhase` when that represents newly earned progress.
+    /// Strength is a durable milestone: a later evaluator result of `.discipline` can never revoke it.
+    func advancingPhase(to earnedPhase: Phase) -> User {
+        guard phase == .discipline, earnedPhase == .strength else { return self }
+        var advanced = self
+        advanced.phase = .strength
+        return advanced
+    }
 }
 
 // MARK: - User.Why / Duration / ColdStart (v6, US-D01)

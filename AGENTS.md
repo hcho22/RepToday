@@ -7,7 +7,7 @@ Guidance for Claude Code when working in this repository.
 
 Rep Today is a discipline-first micro-workout iOS app (5-60 min sessions) for busy, desk-bound adults.
 The user says how many minutes they have, and a deterministic on-device engine generates a complete zero-equipment session blending bodyweight strength and mobility - no browsing, no choosing, no thinking.
-Strength is earned, not the entry promise: every user starts in the **Discipline Phase** and earns the **Strength Phase** through sustained consistency plus demonstrated competence, so all MVP users resolve to Discipline with the `PhaseEvaluator` already in place.
+Strength is earned, not the entry promise: every user starts in the **Discipline Phase** and earns the **Strength Phase** through sustained consistency plus demonstrated competence; completion processing persists that earned transition, with app-open reconciliation for pre-existing qualifying histories.
 The MVP is Apple-native with no custom backend behind the core loop (the `convex/` telemetry sink is beside it, not under it); AI/LLM features are deferred to Phase 2, do language only, and never generate or adapt a workout.
 
 ## Source of Truth
@@ -91,7 +91,7 @@ In-session **swap** substitutes within the same pillar, pattern, difficulty band
 No XP, no levels, no badges, no streak to break.
 
 - **Consistency Score** - `weeklyAdherence = min(1, workoutsCompleted / weeklyGoal)`, a recency-weighted rolling average x 100. A 5-min session is a full show-up; a miss dents but never zeroes; a Return excuses the gap weeks it closed. `longestChain` is an all-time maximum surfaced as earned pride.
-- **PhaseEvaluator** - deterministic, never user-selectable; Strength requires both sustained consistency and cleared entry tiers across push/squat/hinge/core. Earning Strength lifts the engine's effective difficulty cap to the full catalog (US-SP01, `ExercisePoolFilter.effectiveDifficultyCap`), so competence overrides the conservative onboarding fitness-level estimate.
+- **PhaseEvaluator** - deterministic, never user-selectable; Strength requires both sustained consistency and cleared entry tiers across push/squat/hinge/core. `SessionCompletionService` persists a newly earned phase in its normal user save, while `StrengthGraduationViewModel` reconciles qualifying legacy histories on app open; both use `User.advancingPhase(to:)`, so Strength never downgrades and unchanged phases add no write. Earning Strength lifts the engine's effective difficulty cap to the full catalog (US-SP01, `ExercisePoolFilter.effectiveDifficultyCap`), so competence overrides the conservative onboarding fitness-level estimate.
 - All copy is identity-framed ("you're someone who moves"), never loss-framed.
 
 ## Key Conventions

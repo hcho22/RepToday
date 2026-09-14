@@ -81,6 +81,7 @@ final class WeekActiveEventTests: XCTestCase {
             workoutLogService: logService,
             userService: userService,
             consistencyService: ConsistencyScoreService(now: { self.clock }, calendar: self.calendar),
+            phaseService: StubPhaseService(earned: .discipline),
             policyStore: InMemorySessionPolicyStore(),
             healthKitService: nil,
             analytics: analytics,
@@ -192,5 +193,21 @@ final class WeekActiveEventTests: XCTestCase {
             "one `week_active` per distinct active week the rollup buckets"
         )
         XCTAssertEqual(rollupWeekStarts.count, 2, "sanity: the fixture spans exactly two active weeks")
+    }
+}
+
+private struct StubPhaseService: PhaseServiceProtocol {
+    let earned: Phase
+
+    func phase(for user: User, recentLogs: [WorkoutLog]) async throws -> Phase { earned }
+
+    func progress(for user: User, recentLogs: [WorkoutLog]) async throws -> PhaseProgress {
+        PhaseProgress(
+            activeWeeks: 0,
+            requiredWeeks: PhaseEvaluator.sustainedWeeks,
+            currentScore: 0,
+            scoreThreshold: PhaseEvaluator.consistencyThreshold,
+            foundations: []
+        )
     }
 }
