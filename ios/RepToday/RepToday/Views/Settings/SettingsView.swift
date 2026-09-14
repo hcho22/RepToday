@@ -219,7 +219,8 @@ struct SettingsView: View {
     /// the Apple link among what is destroyed.
     static let confirmMessageApple = """
         This permanently deletes your profile, your workout history, and your Sign in with Apple \
-        link on this device. This can't be undone.
+        link on this device. This can't be undone. Deleting your account does not cancel your App \
+        Store subscription.
         """
 
     /// The failure body shown when the teardown throws. Honest about what happened - the teardown
@@ -234,7 +235,7 @@ struct SettingsView: View {
     /// the Apple link it does not have.
     static let confirmMessageLocal = """
         This permanently deletes your profile and your workout history on this device. This can't \
-        be undone.
+        be undone. Deleting your account does not cancel your App Store subscription.
         """
 
     /// The one label the toggle is known by - to a reader, to VoiceOver, and to the XCUITest suite

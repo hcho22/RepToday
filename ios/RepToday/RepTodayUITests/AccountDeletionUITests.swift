@@ -52,6 +52,16 @@ final class AccountDeletionUITests: XCTestCase {
             app.alerts.buttons["Cancel"].exists,
             "the confirmation has no non-destructive Cancel"
         )
+        let subscriptionWarning = app.alerts.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@",
+                "Deleting your account does not cancel your App Store subscription."
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            subscriptionWarning.exists,
+            "the confirmation does not warn that account deletion leaves App Store billing active"
+        )
         attachScreenshot(named: "02-delete-account-confirmation-alert")
         confirm.tap()
 
