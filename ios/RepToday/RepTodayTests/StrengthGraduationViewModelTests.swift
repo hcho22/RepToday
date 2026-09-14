@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import RepToday
 
 /// The "just crossed into `.strength`" detector behind the US-SP06 graduation reveal.
@@ -26,9 +28,11 @@ final class StrengthGraduationViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.earnedStrength, "a user the evaluator resolves to .strength should trigger the reveal")
         let persistedPhase = await userService.user?.phase
+        let phaseAdvanceCount = await userService.phaseAdvanceCount
         let saveCount = await userService.saveCount
         XCTAssertEqual(persistedPhase, .strength, "the app-open lifecycle persists the transition")
-        XCTAssertEqual(saveCount, 1)
+        XCTAssertEqual(phaseAdvanceCount, 1)
+        XCTAssertEqual(saveCount, 0, "app-open reconciliation uses the phase-only persistence path")
     }
 
     func testStillDisciplineDoesNotTriggerTheReveal() async {
@@ -42,8 +46,8 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         await viewModel.evaluate()
 
         XCTAssertFalse(viewModel.earnedStrength, "a user still earning Strength must not trigger the reveal")
-        let saveCount = await userService.saveCount
-        XCTAssertEqual(saveCount, 0, "an unchanged phase must not produce a user write")
+        let phaseAdvanceCount = await userService.phaseAdvanceCount
+        XCTAssertEqual(phaseAdvanceCount, 0, "an unchanged phase must not produce a user write")
     }
 
     func testPersistedStrengthIsNeverReevaluatedDowngradedOrRewritten() async {
@@ -61,10 +65,10 @@ final class StrengthGraduationViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.earnedStrength, "persisted Strength remains the effective earned phase")
         let persistedPhase = await userService.user?.phase
-        let saveCount = await userService.saveCount
+        let phaseAdvanceCount = await userService.phaseAdvanceCount
         let phaseCallCount = await phaseService.phaseCallCount
         XCTAssertEqual(persistedPhase, .strength)
-        XCTAssertEqual(saveCount, 0, "a current phase must not be rewritten")
+        XCTAssertEqual(phaseAdvanceCount, 0, "a current phase must not be rewritten")
         XCTAssertEqual(phaseCallCount, 0, "a current phase needs no reevaluation")
     }
 
@@ -78,6 +82,95 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         await viewModel.evaluate()
 
         XCTAssertFalse(viewModel.earnedStrength, "with no profile there is nothing to congratulate; the reveal must stay closed")
+    }
+
+    func testRootWaitsForReconciliationBeforeGeneratingPhaseDependentTabs() async {
+        let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(userDefaults: defaults)
+        appState.isOnboarded = true
+        let userService = GatedPhaseUserService(user: MockPersistence.sampleUser)
+        let phaseService = StubPhaseService(earned: .strength)
+        let base = ServiceContainer.mock()
+        let services = ServiceContainer(
+            exerciseService: base.exerciseService,
+            workoutEngine: base.workoutEngine,
+            sessionPolicyService: base.sessionPolicyService,
+            consistencyService: base.consistencyService,
+            phaseService: phaseService,
+            userService: userService,
+            workoutLogService: base.workoutLogService,
+            activeSessionStore: base.activeSessionStore,
+            sessionCompletionService: base.sessionCompletionService,
+            healthKitService: base.healthKitService,
+            subscriptionService: base.subscriptionService,
+            authService: base.authService,
+            analyticsService: base.analyticsService,
+            accountDeletionService: base.accountDeletionService
+        )
+
+        let (host, window) = HostedSurface.host(
+            RootView()
+                .environment(\.services, services)
+                .environment(appState),
+            size: CGSize(width: 393, height: 852),
+            settleFor: HostedSurface.settleInterval
+        )
+        defer {
+            window.isHidden = true
+            _ = host
+        }
+
+        await userService.waitUntilPhaseAdvanceStarts()
+        let labelsBeforeRelease = AccessibilityTree.labels(in: host.view)
+        XCTAssertTrue(labelsBeforeRelease.contains("Preparing today’s session"))
+        XCTAssertFalse(labelsBeforeRelease.contains("Today"))
+
+        await userService.releasePhaseAdvance()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        HostedSurface.pump(for: 0.2)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        HostedSurface.pump(for: 0.1)
+
+        let labelsAfterRelease = AccessibilityTree.labels(in: host.view)
+        let persistedPhase = await userService.user?.phase
+        XCTAssertTrue(labelsAfterRelease.contains("Today"), "tabs never appeared: \(labelsAfterRelease)")
+        XCTAssertFalse(
+            labelsAfterRelease.contains("Preparing today’s session"),
+            "preparation remained after reconciliation: \(labelsAfterRelease)"
+        )
+        XCTAssertEqual(persistedPhase, .strength)
+    }
+
+    func testPastCelebrationDoesNotPromoteAUserWhoNoLongerQualifies() async {
+        let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(userDefaults: defaults)
+        appState.isOnboarded = true
+        appState.markStrengthGraduationCelebrated()
+        let userService = CountingUserService(user: MockPersistence.sampleUser)
+        let phaseService = StubPhaseService(earned: .discipline)
+        let viewModel = StrengthGraduationViewModel(
+            userService: userService,
+            workoutLogService: MockWorkoutLogService(logs: []),
+            phaseService: phaseService
+        )
+
+        await viewModel.evaluate()
+
+        let persistedPhase = await userService.user?.phase
+        let phaseAdvanceCount = await userService.phaseAdvanceCount
+        let phaseCallCount = await phaseService.phaseCallCount
+        XCTAssertTrue(appState.hasCelebratedStrengthGraduation)
+        XCTAssertFalse(viewModel.earnedStrength)
+        XCTAssertEqual(persistedPhase, .discipline)
+        XCTAssertEqual(phaseAdvanceCount, 0)
+        XCTAssertEqual(phaseCallCount, 1)
     }
 
     // MARK: - End to end over the real evaluator + real catalog (the PRD Validation setup)
@@ -210,6 +303,7 @@ private actor StubPhaseService: PhaseServiceProtocol {
 private actor CountingUserService: UserServiceProtocol {
     private(set) var user: User?
     private(set) var saveCount = 0
+    private(set) var phaseAdvanceCount = 0
 
     init(user: User?) {
         self.user = user
@@ -219,10 +313,64 @@ private actor CountingUserService: UserServiceProtocol {
 
     func save(_ user: User) async throws {
         saveCount += 1
-        self.user = user
+        let persistedPhase = self.user?.phase
+        self.user = persistedPhase.map { user.advancingPhase(to: $0) } ?? user
+    }
+
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? {
+        phaseAdvanceCount += 1
+        guard let user, user.id == userId else { return nil }
+        let advanced = user.advancingPhase(to: earnedPhase)
+        self.user = advanced
+        return advanced
     }
 
     func deleteCurrentUser() async throws {
         user = nil
+    }
+}
+
+private actor GatedPhaseUserService: UserServiceProtocol {
+    private(set) var user: User?
+    private var phaseAdvanceStarted = false
+    private var phaseAdvanceReleased = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(user: User?) {
+        self.user = user
+    }
+
+    func currentUser() async throws -> User? { user }
+
+    func save(_ user: User) async throws {
+        let persistedPhase = self.user?.phase
+        self.user = persistedPhase.map { user.advancingPhase(to: $0) } ?? user
+    }
+
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? {
+        phaseAdvanceStarted = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        if !phaseAdvanceReleased {
+            await withCheckedContinuation { releaseContinuation = $0 }
+        }
+        guard let user, user.id == userId else { return nil }
+        let advanced = user.advancingPhase(to: earnedPhase)
+        self.user = advanced
+        return advanced
+    }
+
+    func deleteCurrentUser() async throws { user = nil }
+
+    func waitUntilPhaseAdvanceStarts() async {
+        if phaseAdvanceStarted { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func releasePhaseAdvance() {
+        phaseAdvanceReleased = true
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 }

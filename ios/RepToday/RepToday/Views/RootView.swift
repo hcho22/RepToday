@@ -10,6 +10,7 @@ struct RootView: View {
     /// Drives the one-time Strength-Phase graduation reveal (US-SP06). Set once, on app open, and only
     /// when the user has just earned the Strength Phase and has not yet been congratulated for it.
     @State private var showGraduation = false
+    @State private var appOpenReconciliationComplete = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -17,11 +18,18 @@ struct RootView: View {
         ZStack {
             Group {
                 if appState.isOnboarded {
-                    MainTabsView(selectedTab: $appState.selectedTab)
+                    if appOpenReconciliationComplete {
+                        MainTabsView(selectedTab: $appState.selectedTab)
+                    } else {
+                        ProgressView()
+                            .controlSize(.large)
+                            .accessibilityLabel("Preparing today’s session")
+                    }
                 } else {
                     // The minimal v6 onboarding flow (US-I01). On completion it has already saved the
                     // user and seeded the cold-start policy, so the router only flips into the main app.
                     OnboardingView(services: services) {
+                        appOpenReconciliationComplete = false
                         appState.isOnboarded = true
                         appState.selectedTab = .home
                     }
@@ -44,7 +52,7 @@ struct RootView: View {
         // graduation once at the crossing. The persisted, ratcheting `lastCelebratedPhase` is flipped
         // the moment we decide to show it - not on dismissal - so a force-quit while it is up can never
         // bring it back on the next open, and it never re-fires after a relaunch.
-        .task { await revealGraduationIfEarned() }
+        .task(id: appState.isOnboarded) { await prepareAppOpen() }
         // Debug-only, and inert unless the US-T06 probe launch argument is set: the HUD an
         // out-of-process XCUITest reads the telemetry-attempt count from. A Release build compiles
         // nothing here.
@@ -80,11 +88,16 @@ struct RootView: View {
     /// up cannot re-arm it, and it never re-fires on a later launch). A no-op during onboarding and for
     /// a user who has not earned Strength or has already seen it.
     @MainActor
-    private func revealGraduationIfEarned() async {
-        guard appState.isOnboarded else { return }
+    private func prepareAppOpen() async {
+        guard appState.isOnboarded else {
+            appOpenReconciliationComplete = true
+            return
+        }
 
         let viewModel = StrengthGraduationViewModel(services: services)
         await viewModel.evaluate()
+        guard appState.isOnboarded, !Task.isCancelled else { return }
+        appOpenReconciliationComplete = true
         guard !appState.hasCelebratedStrengthGraduation, viewModel.earnedStrength else { return }
 
         // Ratchet the celebrated phase before presenting, so the reveal can never re-fire even if the

@@ -65,6 +65,40 @@ final class CoreDataServicesTests: XCTestCase {
         XCTAssertEqual(reloaded, updated)
     }
 
+    func testUserServicePhaseRatchetPreservesConcurrentAggregateChangesInEitherOrder() async throws {
+        let service = CoreDataUserService(context: context)
+        let first = makeUser(id: "apple-user-1", score: 70)
+        try await service.save(first)
+
+        var staleDisciplineWriter = first
+        staleDisciplineWriter.duration = .seeded(minutes: 30)
+        try await service.advancePhase(to: .strength, for: first.id)
+        try await service.save(staleDisciplineWriter)
+
+        let firstReload = try await service.currentUser()
+        var reloaded = try XCTUnwrap(firstReload)
+        XCTAssertEqual(reloaded.phase, .strength)
+        XCTAssertEqual(reloaded.duration.defaultMinutes, 30)
+
+        try await service.deleteCurrentUser()
+        let second = makeUser(id: "apple-user-2", score: 70)
+        try await service.save(second)
+
+        var aggregateWriter = second
+        aggregateWriter.duration = .seeded(minutes: 45)
+        try await service.save(aggregateWriter)
+        try await service.advancePhase(to: .strength, for: second.id)
+
+        let secondReload = try await service.currentUser()
+        reloaded = try XCTUnwrap(secondReload)
+        XCTAssertEqual(reloaded.phase, .strength)
+        XCTAssertEqual(reloaded.duration.defaultMinutes, 45)
+
+        let unchanged = try await service.advancePhase(to: .discipline, for: second.id)
+        XCTAssertEqual(unchanged, reloaded)
+        XCTAssertFalse(context.hasChanges)
+    }
+
     func testUserServiceDeleteClearsUser() async throws {
         let service = CoreDataUserService(context: context)
         try await service.save(makeUser(id: "apple-user-1", score: 70))

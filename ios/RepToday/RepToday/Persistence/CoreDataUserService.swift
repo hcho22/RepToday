@@ -34,10 +34,30 @@ final class CoreDataUserService: UserServiceProtocol, @unchecked Sendable {
             request.predicate = NSPredicate(format: "id == %@", user.id)
             request.fetchLimit = 1
             let record = try self.context.fetch(request).first ?? CDUser(context: self.context)
-            try record.update(from: user)
+            let persistedPhase = record.phaseRaw.flatMap(Phase.init(rawValue:))
+            let ratchetedUser = persistedPhase.map { user.advancingPhase(to: $0) } ?? user
+            try record.update(from: ratchetedUser)
             if self.context.hasChanges {
                 try self.context.save()
             }
+        }
+    }
+
+    @discardableResult
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? {
+        try await context.perform {
+            let request = CDUser.fetchRequest()
+            request.predicate = NSPredicate(format: "id == %@", userId)
+            request.fetchLimit = 1
+            guard let record = try self.context.fetch(request).first else { return nil }
+
+            let current = try record.toUser()
+            let advanced = current.advancingPhase(to: earnedPhase)
+            guard advanced != current else { return current }
+
+            record.phaseRaw = advanced.phase.rawValue
+            try self.context.save()
+            return advanced
         }
     }
 

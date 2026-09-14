@@ -133,7 +133,16 @@ actor MockUserService: UserServiceProtocol {
     }
 
     func save(_ user: User) async throws {
-        self.user = user
+        let persistedPhase = self.user?.phase
+        self.user = persistedPhase.map { user.advancingPhase(to: $0) } ?? user
+    }
+
+    @discardableResult
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? {
+        guard let user, user.id == userId else { return nil }
+        let advanced = user.advancingPhase(to: earnedPhase)
+        self.user = advanced
+        return advanced
     }
 
     func deleteCurrentUser() async throws {

@@ -6,9 +6,10 @@ import Observation
 ///
 /// The acceptance criterion is "on the first app open after `PhaseEvaluator` transitions the user to
 /// `.strength`." Session completion normally persists that transition. This app-open path also
-/// reconciles a still-Discipline persisted user against their full history, covering users who had
-/// already earned Strength before production persistence was wired. `RootView` combines the resulting
-/// persisted phase with `AppState.lastCelebratedPhase` so the reveal fires once and never again.
+/// reconciles a still-Discipline persisted user against their full history when that history currently
+/// qualifies, covering users who reached the threshold before production persistence was wired.
+/// `RootView` combines the resulting persisted phase with `AppState.lastCelebratedPhase` so the reveal
+/// fires once and never again.
 ///
 /// Reconciliation is an idempotent ratchet: it writes only on `.discipline -> .strength`, never
 /// downgrades, and skips both the log/evaluator work and the write once Strength is current.
@@ -65,15 +66,14 @@ final class StrengthGraduationViewModel {
 
         let logs = (try? await workoutLogService.workoutLogs(from: nil, to: nil)) ?? []
         let earned = (try? await phaseService.phase(for: user, recentLogs: logs)) ?? .discipline
-        let reconciled = user.advancingPhase(to: earned)
-        guard reconciled != user else {
+        guard earned == .strength else {
             earnedStrength = false
             return
         }
 
         do {
-            try await userService.save(reconciled)
-            earnedStrength = true
+            let persisted = try await userService.advancePhase(to: earned, for: user.id)
+            earnedStrength = persisted?.phase == .strength
         } catch {
             earnedStrength = false
         }

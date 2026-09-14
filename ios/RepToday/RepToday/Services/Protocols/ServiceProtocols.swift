@@ -120,6 +120,8 @@ protocol PhaseServiceProtocol {
 protocol UserServiceProtocol {
     func currentUser() async throws -> User?
     func save(_ user: User) async throws
+    @discardableResult
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User?
     func deleteCurrentUser() async throws
 }
 
