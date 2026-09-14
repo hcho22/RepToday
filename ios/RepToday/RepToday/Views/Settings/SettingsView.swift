@@ -16,6 +16,13 @@ struct SettingsView: View {
     /// from the environment (services + `AppState`), which a `@State` default cannot capture at init.
     @State private var deletion: AccountDeletionViewModel?
 
+    /// Production creates the deletion model lazily from the environment. Focused hosted-surface
+    /// coverage can inject the same model directly so both confirmation variants are renderable
+    /// without reaching a live Sign in with Apple service.
+    init(deletion: AccountDeletionViewModel? = nil) {
+        _deletion = State(initialValue: deletion)
+    }
+
     var body: some View {
         @Bindable var appState = appState
 
@@ -154,10 +161,11 @@ struct SettingsView: View {
         .background(Theme.Colors.background)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        // US-AD04: the confirmation naming exactly what is destroyed. The destructive button carries
+        // US-AD04: the confirmation names exactly what is destroyed and warns that deleting the
+        // account does not cancel an App Store subscription. The destructive button carries
         // `role: .destructive` so it renders red and is *not* the default; `.cancel` is. The message
         // names the Apple sign-in link only when this account used it (US-AD05), resolved before the
-        // alert is presented.
+        // alert is presented. The warning is disclosure only: this path never mutates StoreKit state.
         .alert(
             "Delete your account?",
             isPresented: Binding(
@@ -216,10 +224,11 @@ struct SettingsView: View {
         """
 
     /// The confirmation body for an account that used Sign in with Apple (US-AD04/US-AD05): it names
-    /// the Apple link among what is destroyed.
+    /// the Apple link among what is destroyed, then preserves the shared subscription warning.
     static let confirmMessageApple = """
         This permanently deletes your profile, your workout history, and your Sign in with Apple \
-        link on this device. This can't be undone.
+        link on this device. This can't be undone. Deleting your account does not cancel your App \
+        Store subscription.
         """
 
     /// The failure body shown when the teardown throws. Honest about what happened - the teardown
@@ -230,11 +239,11 @@ struct SettingsView: View {
         Something went wrong and your account may not be fully deleted. Please try again.
         """
 
-    /// The confirmation body for the local-only account (never signed in with Apple): identical, minus
-    /// the Apple link it does not have.
+    /// The confirmation body for the local-only account (never signed in with Apple): it omits the
+    /// Apple link the account does not have while preserving the shared subscription warning.
     static let confirmMessageLocal = """
         This permanently deletes your profile and your workout history on this device. This can't \
-        be undone.
+        be undone. Deleting your account does not cancel your App Store subscription.
         """
 
     /// The one label the toggle is known by - to a reader, to VoiceOver, and to the XCUITest suite
