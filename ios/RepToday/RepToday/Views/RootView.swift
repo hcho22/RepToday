@@ -81,12 +81,12 @@ struct RootView: View {
         }
     }
 
-    /// Reveal the Strength-Phase graduation (US-SP06) if - and only if - the user has just earned it
-    /// and has not yet been congratulated. Computes the earned phase from real logs through the same
-    /// `PhaseEvaluator` the gate uses, then flips the persisted one-shot flag the moment it decides to
-    /// show, so the reveal fires exactly once at the crossing and never again (a force-quit while it is
-    /// up cannot re-arm it, and it never re-fires on a later launch). A no-op during onboarding and for
-    /// a user who has not earned Strength or has already seen it.
+    /// Reconcile the persisted earned phase before phase-dependent tabs are constructed, then reveal
+    /// the Strength-Phase graduation (US-SP06) if the user has earned it and has not been congratulated.
+    /// Reconciliation still runs after a past celebration because that presentation marker is never
+    /// phase authority. The marker flips the moment the reveal is shown, so force-quitting cannot re-arm
+    /// it. During onboarding there is no reconciliation, and an unearned or already-celebrated user sees
+    /// no reveal.
     @MainActor
     private func prepareAppOpen() async {
         guard appState.isOnboarded else {

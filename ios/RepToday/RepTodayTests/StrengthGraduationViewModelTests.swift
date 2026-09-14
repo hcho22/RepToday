@@ -173,6 +173,128 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         XCTAssertEqual(phaseCallCount, 1)
     }
 
+    /// Product-level evidence for the production reconciliation path: a persisted Discipline user
+    /// with qualifying durable history opens the real app shell, waits behind the preparation state,
+    /// is ratcheted to Strength through the real evaluator, and sees the graduation reveal. The same
+    /// reloaded aggregate then reaches the difficulty-five catalog skill that US-SP01 gates on phase.
+    func testRealAppOpenPersistsStrengthPresentsGraduationAndUnlocksHarderWork() async throws {
+        let suiteName = "StrengthGraduationViewModelTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(userDefaults: defaults)
+        appState.isOnboarded = true
+
+        let persistence = MockPersistence.controller()
+        let userService = CoreDataUserService(context: persistence.viewContext)
+        let workoutLogService = CoreDataWorkoutLogService(context: persistence.viewContext)
+        let disciplineUser = MockPersistence.sampleUser
+        try await userService.save(disciplineUser)
+
+        let exerciseService = try MockExerciseService()
+        let library = try await exerciseService.exercises()
+        let logs = Self.sustainedHistory(weeks: 10) + Self.competenceLogs(library: library)
+        for log in logs {
+            try await workoutLogService.save(log)
+        }
+
+        let phaseService = PhaseEvaluatorService(
+            exerciseService: exerciseService,
+            now: { Self.asOf },
+            calendar: Self.calendar
+        )
+        let base = ServiceContainer.mock()
+        let services = ServiceContainer(
+            exerciseService: exerciseService,
+            workoutEngine: base.workoutEngine,
+            sessionPolicyService: base.sessionPolicyService,
+            consistencyService: base.consistencyService,
+            phaseService: phaseService,
+            userService: userService,
+            workoutLogService: workoutLogService,
+            activeSessionStore: base.activeSessionStore,
+            sessionCompletionService: base.sessionCompletionService,
+            healthKitService: base.healthKitService,
+            subscriptionService: base.subscriptionService,
+            authService: base.authService,
+            analyticsService: base.analyticsService,
+            accountDeletionService: base.accountDeletionService
+        )
+
+        let (host, window) = HostedSurface.host(
+            RootView()
+                .environment(\.services, services)
+                .environment(appState),
+            size: CGSize(width: 393, height: 852),
+            settleFor: HostedSurface.settleInterval
+        )
+        defer {
+            window.isHidden = true
+            _ = host
+        }
+
+        var spoken: [String] = []
+        var persisted = disciplineUser
+        for _ in 0..<30 {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            HostedSurface.pump(for: 0.05)
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+
+            let reloaded = try await userService.currentUser()
+            persisted = try XCTUnwrap(reloaded)
+            spoken = AccessibilityTree.spokenStrings(in: host.view)
+            if persisted.phase == .strength,
+               spoken.contains(where: { $0.localizedCaseInsensitiveContains("You've earned the Strength Phase") }) {
+                break
+            }
+        }
+
+        XCTAssertEqual(persisted.phase, .strength, "app-open reconciliation must persist the earned phase")
+        XCTAssertTrue(
+            spoken.contains(where: { $0.localizedCaseInsensitiveContains("You've earned the Strength Phase") }),
+            "the user must see the graduation after reconciliation; spoke: \(spoken)"
+        )
+        XCTAssertTrue(appState.hasCelebratedStrengthGraduation, "the reveal must be one-shot before presentation")
+
+        let eligibleIds = ExercisePoolFilter
+            .eligiblePool(from: library, user: persisted, recentLogs: logs)
+            .map(\.id)
+        XCTAssertTrue(
+            eligibleIds.contains("push_one_arm"),
+            "the persisted Strength phase must engage US-SP01's real difficulty-five skill"
+        )
+
+        HostedSurface.pump(for: 0.2)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        let image = HostedSurface.capture(host.view, size: CGSize(width: 393, height: 852))
+        let imagePath = try EvidenceOutput.write(
+            image,
+            named: "01-real-app-open-strength-graduation.png",
+            for: "persist-earned-phase-transition"
+        )
+        let transcript = """
+        # Earned-phase production lifecycle
+
+        - Entry surface: `RootView` for an onboarded account
+        - Persistence: in-memory `CoreDataUserService` and `CoreDataWorkoutLogService`
+        - Evaluator: real `PhaseEvaluatorService` over the bundled exercise catalog
+        - Durable qualifying history: \(logs.count) workout logs
+        - Phase before app open: \(disciplineUser.phase.rawValue)
+        - Phase reloaded after reconciliation: \(persisted.phase.rawValue)
+        - One-shot graduation marked before presentation: \(appState.hasCelebratedStrengthGraduation)
+        - Downstream real catalog skill `push_one_arm` eligible: \(eligibleIds.contains("push_one_arm"))
+        - User-visible VoiceOver surface: \(spoken.joined(separator: " | "))
+        - Screenshot: \(imagePath)
+        """
+        _ = try EvidenceOutput.write(
+            transcript + "\n",
+            named: "02-lifecycle-and-unlock-transcript.md",
+            for: "persist-earned-phase-transition"
+        )
+    }
+
     // MARK: - End to end over the real evaluator + real catalog (the PRD Validation setup)
 
     /// Logs that have just crossed the real earn threshold - sustained consistency over the full window
