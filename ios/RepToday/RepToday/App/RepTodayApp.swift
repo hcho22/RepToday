@@ -17,7 +17,8 @@ struct RepTodayApp: App {
     private let persistenceController = PersistenceController.shared
     private let services: ServiceContainer
     /// Retained for the app's lifetime: finishes out-of-band StoreKit transactions (renewals,
-    /// refunds, cross-device purchases, Ask-to-Buy approvals) so none linger unfinished (US-N04).
+    /// refunds, cross-device purchases, Ask-to-Buy approvals) so none linger unfinished (US-N04),
+    /// and gives the injected analytics boundary the verified trial-to-paid conversion update.
     /// A no-op for a StoreKit-free container; never gates the core loop.
     private let transactionListener: Task<Void, Never>
 

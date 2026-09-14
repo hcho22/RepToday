@@ -78,15 +78,33 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
-    func listenForTransactions() -> Task<Void, Never> {
+    func transactionHistory() async -> [StoreSubscriptionTransaction] {
+        var result: [StoreSubscriptionTransaction] = []
+        for await verification in Transaction.all {
+            guard case .verified(let transaction) = verification else { continue }
+            result.append(Self.subscriptionTransaction(from: transaction))
+        }
+        return result
+    }
+
+    func listenForTransactions(
+        onUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> Void
+    ) -> Task<Void, Never> {
         // StoreKit 2 delivers transactions that happen outside a direct `purchase()` - auto-renewals,
         // refunds, cross-device purchases, and deferred Ask-to-Buy approvals - only through
-        // `Transaction.updates`. Finish each verified update so it is acknowledged and never lingers
-        // unfinished; the entitlement-gated surfaces re-read `currentEntitlements()` on their next open.
-        Task.detached {
+        // `Transaction.updates`. Project and finish every verified update immediately, exactly as
+        // before, then let the service inspect the plain value: analytics can never delay transaction
+        // acknowledgement. The task remains the app-owned lifetime handle; cancelling it stops this
+        // sequence and no extra observer is spawned.
+        Task.detached(priority: .background) {
             for await verification in Transaction.updates {
-                guard case .verified(let transaction) = verification else { continue }
+                guard case .verified(let transaction) = verification else {
+                    await onUpdate(.unverified)
+                    continue
+                }
+                let update = StoreTransactionUpdate.verified(Self.subscriptionTransaction(from: transaction))
                 await transaction.finish()
+                await onUpdate(update)
             }
         }
     }
@@ -105,6 +123,30 @@ final class LiveStoreKitFacade: StoreKitFacade {
             productID: transaction.productID,
             expiresAt: transaction.expirationDate,
             isInTrialPeriod: isInTrial(transaction)
+        )
+    }
+
+    private static func subscriptionTransaction(from transaction: Transaction) -> StoreSubscriptionTransaction {
+        let reason: StoreSubscriptionTransaction.Reason
+        if transaction.reason == .purchase {
+            reason = .purchase
+        } else if transaction.reason == .renewal {
+            reason = .renewal
+        } else {
+            reason = .other
+        }
+
+        return StoreSubscriptionTransaction(
+            id: transaction.id,
+            originalID: transaction.originalID,
+            productID: transaction.productID,
+            purchaseDate: transaction.purchaseDate,
+            reason: reason,
+            payment: payment(for: transaction),
+            isAutoRenewable: transaction.productType == .autoRenewable,
+            isPurchased: transaction.ownershipType == .purchased,
+            isRevoked: transaction.revocationDate != nil,
+            isUpgraded: transaction.isUpgraded
         )
     }
 
@@ -151,12 +193,31 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
-    /// Whether a transaction is currently inside its introductory free-trial window.
+    /// Whether a transaction is an introductory **free-trial** period. Introductory pay-as-you-go
+    /// and pay-up-front offers are paid periods and must not emit `trial_started` or seed a later
+    /// trial-conversion event.
     private static func isInTrial(_ transaction: Transaction) -> Bool {
+        payment(for: transaction) == .introductoryFreeTrial
+    }
+
+    private static func payment(for transaction: Transaction) -> StoreSubscriptionTransaction.Payment {
         if #available(iOS 17.2, *) {
-            return transaction.offer?.type == .introductory
+            if transaction.offer?.type == .introductory,
+               transaction.offer?.paymentMode == .freeTrial {
+                return .introductoryFreeTrial
+            }
         } else {
-            return transaction.offerType == .introductory
+            // `Transaction.Offer` arrived in iOS 17.2. On 17.0/17.1 the deprecated offer API exposes
+            // the introductory type but not a typed payment mode; StoreKit's signed price separates a
+            // genuinely free period (zero) from pay-as-you-go/pay-up-front introductory offers.
+            if transaction.offerType == .introductory, transaction.price == 0 {
+                return .introductoryFreeTrial
+            }
         }
+
+        if let price = transaction.price, price > 0 {
+            return .paid
+        }
+        return .unknown
     }
 }

@@ -165,9 +165,11 @@ protocol SubscriptionServiceProtocol {
     func restorePurchases() async throws -> Subscription
     /// Begin observing StoreKit's out-of-band transaction updates (auto-renewals, refunds,
     /// cross-device purchases, deferred Ask-to-Buy approvals), finishing each so it never lingers
-    /// in the queue; the entitlement-gated surfaces pick up the change on their next read. Called
-    /// once at launch, retained for the app's lifetime. Never gates the core loop; the mock and
-    /// any StoreKit-free implementation default to an immediately-completing no-op.
+    /// in the queue; the entitlement-gated surfaces pick up the change on their next read. The real
+    /// implementation also observes the verified first paid renewal after an introductory free trial
+    /// and records `subscribe` through its injected analytics boundary. Called once at launch, retained
+    /// for the app's lifetime. Never gates the core loop; the mock and any StoreKit-free implementation
+    /// default to an immediately-completing no-op.
     @discardableResult
     func startObservingTransactions() -> Task<Void, Never>
 }
