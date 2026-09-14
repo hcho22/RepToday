@@ -1,3 +1,5 @@
+import SwiftUI
+import UIKit
 import XCTest
 @testable import RepToday
 
@@ -10,6 +12,9 @@ final class AccountDeletionViewModelTests: XCTestCase {
 
     private var defaults: UserDefaults!
     private var suiteName: String!
+    private var renderWindows: [UIWindow] = []
+    private let confirmationSize = CGSize(width: 393, height: 852)
+    private let evidenceStory = "account-deletion-subscription-warning"
 
     override func setUp() {
         super.setUp()
@@ -18,10 +23,39 @@ final class AccountDeletionViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
+        renderWindows.forEach { $0.isHidden = true }
+        renderWindows = []
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         suiteName = nil
         super.tearDown()
+    }
+
+    // MARK: - App Store subscription warning on the shipped confirmation
+
+    /// The local-only confirmation renders the billing warning before the destructive action. This
+    /// reads the production alert's live accessibility output and captures its pixels; it does not
+    /// inspect SettingsView source or invoke the teardown.
+    func testLocalConfirmationWarnsBeforeDestructiveAction() async throws {
+        try await assertConfirmationSurface(
+            auth: MockAuthService(userIdentifier: nil),
+            credentialStatus: .authorized,
+            expectedMessage: SettingsView.confirmMessageLocal,
+            excludesAppleLink: true,
+            evidenceName: "01-local-account-confirmation.png"
+        )
+    }
+
+    /// The Apple-linked confirmation preserves its narrower Sign in with Apple disclosure and adds
+    /// the same billing warning before the destructive action.
+    func testAppleLinkedConfirmationWarnsBeforeDestructiveAction() async throws {
+        try await assertConfirmationSurface(
+            auth: MockAuthService(userIdentifier: "apple-user-123"),
+            credentialStatus: .authorized,
+            expectedMessage: SettingsView.confirmMessageApple,
+            excludesAppleLink: false,
+            evidenceName: "02-apple-linked-confirmation.png"
+        )
     }
 
     // MARK: - US-AD05: guidance shows only in the Apple-credential case
@@ -141,6 +175,102 @@ final class AccountDeletionViewModelTests: XCTestCase {
 
     private func makeAppState() -> AppState {
         AppState(userDefaults: defaults)
+    }
+
+    private func assertConfirmationSurface(
+        auth: MockAuthService,
+        credentialStatus: AppleCredentialStatus,
+        expectedMessage: String,
+        excludesAppleLink: Bool,
+        evidenceName: String
+    ) async throws {
+        let deletionService = SpyAccountDeletionService()
+        let appState = makeAppState()
+        let model = makeModel(
+            service: deletionService,
+            appState: appState,
+            auth: auth,
+            credentialStatus: credentialStatus
+        )
+        await model.deleteAccountTapped()
+
+        let surface = hostConfirmationSurface(
+            NavigationStack { SettingsView(deletion: model) }
+                .environment(\.services, ServiceContainer.mock())
+                .environment(appState)
+        )
+        renderWindows.append(surface.window)
+
+        let spoken = AccessibilityTree.spokenStrings(in: surface.window)
+        let warning = "Deleting your account does not cancel your App Store subscription."
+        XCTAssertTrue(
+            spoken.contains(expectedMessage),
+            "the shipped confirmation did not speak its complete variant: \(spoken)"
+        )
+        XCTAssertTrue(
+            spoken.contains { $0.contains(warning) },
+            "the shipped confirmation did not plainly warn that App Store billing continues: \(spoken)"
+        )
+        XCTAssertEqual(
+            spoken.contains { $0.contains("Sign in with Apple link") },
+            !excludesAppleLink,
+            "the confirmation drifted between the Apple-linked and local-only variants: \(spoken)"
+        )
+        XCTAssertNotNil(
+            AccessibilityTree.element(labeled: "Delete Account", in: surface.window),
+            "the warning did not appear alongside the destructive confirmation"
+        )
+        XCTAssertNotNil(
+            AccessibilityTree.element(labeled: "Cancel", in: surface.window),
+            "the confirmation lost its non-destructive escape"
+        )
+        XCTAssertEqual(
+            deletionService.callCount,
+            0,
+            "presenting the warning invoked account deletion before confirmation"
+        )
+
+        let image = captureDisplayedSurface(surface.window)
+        let path = try EvidenceOutput.write(image, named: evidenceName, for: evidenceStory)
+        print("ACCOUNT DELETION SUBSCRIPTION WARNING EVIDENCE: \(path)")
+    }
+
+    /// `UIAlertController` uses visual-effect views. The shared offscreen `layer.render` path is the
+    /// right default for tall SwiftUI evidence, but it omits that material; this surface fits on one
+    /// screen, so hierarchy drawing captures the alert exactly as UIKit displays it.
+    private func captureDisplayedSurface(_ window: UIWindow) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = HostedSurface.captureScale
+        return UIGraphicsImageRenderer(size: confirmationSize, format: format).image { _ in
+            window.drawHierarchy(in: CGRect(origin: .zero, size: confirmationSize), afterScreenUpdates: true)
+        }
+    }
+
+    /// Unlike the shared long-surface host, this one-screen UIKit alert must belong to the test
+    /// application's live scene. That lets `drawHierarchy` composite the system material as it is
+    /// actually displayed instead of asking an unattached offscreen window for a blank snapshot.
+    private func hostConfirmationSurface<V: View>(
+        _ view: V
+    ) -> (host: UIHostingController<V>, window: UIWindow) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first
+        else {
+            preconditionFailure("the hosted confirmation needs the test application's live window scene")
+        }
+
+        let host = UIHostingController(rootView: view)
+        host.overrideUserInterfaceStyle = .dark
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(origin: .zero, size: confirmationSize)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        HostedSurface.pump(for: HostedSurface.settleInterval)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        return (host, window)
     }
 
     private func makeModel(

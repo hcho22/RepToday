@@ -683,6 +683,7 @@ The `AccountDeletionViewModel` is built lazily from `@Environment` (services + `
 
 **US-AD04 - the confirmation.**
 A `.alert` naming exactly what is destroyed - profile, workout history, and the Sign in with Apple link only when this account used it - with the destructive button carrying `role: .destructive` (rendered red, **not** the default; `.cancel` is).
+Later App Store review polish added the subscription-separation warning documented in [README Privacy](../README.md#privacy) to both the Apple-linked and local-only confirmation variants before the destructive action; the deletion service and StoreKit state remain untouched, and no cancellation flow was added.
 The teardown runs **exactly once even on double-tap** via an `isDeleting` re-entrancy guard on the view model (the guard is set before the first suspension, so a second confirm arriving mid-teardown sees it and returns).
 When the teardown **throws**, the view model arms a second, honest failure alert (`isFailureAlertPresented`) instead of silently dismissing the confirmation: a late-step throw may already have deleted some records, so the copy tells the user deletion did not fully complete and that they can retry (the teardown is idempotent). A failure never routes to onboarding and never arms the Apple-ID guidance.
 
@@ -694,7 +695,9 @@ No token revoke, no revoke endpoint stood up; the "Open Settings" button uses th
 
 **Verification.** iPhone 16 Simulator: `-scheme RepToday test` = 949 tests, 0 failures (the `ServiceContainerTests` service-count guard bumped 13 -> 14).
 Unit coverage: `AccountDeletionServiceTests` (AD02 doubles + AD03 orchestration incl. the local-UUID, no-user, unreadable-user, and idempotency paths; successful deletion rotates and persists the analytics identifier, and a second deletion does not rotate again), `AppStateTests` (direct rotation persistence), `LiveAnalyticsServiceTests` (an already-built transport reads the replacement on its next event), `AccountDeletionViewModelTests` (AD04 re-entrancy + failure-alert-on-throw + AD05 guidance decision), and AD02 CoreData deletes in `CoreDataServicesTests`.
-`RepTodayUITests/AccountDeletionUITests` drives the whole flow out of process through the shared `TestApp` wrapper (Profile -> Settings -> Delete Account -> confirm -> onboarding; and cancel leaves the user in place) - both cases green locally; CI compile-checks the UITests scheme and runs the unit gate.
+`RepTodayUITests/AccountDeletionUITests` drives the whole flow out of process through the shared `TestApp` wrapper (Profile -> Settings -> Delete Account -> confirm -> onboarding; and cancel leaves the user in place) - both cases were green locally at the original US-AD landing; CI compile-checks the UITests scheme and runs the unit gate.
+
+**Later subscription-warning verification.** The normal iOS unit/build gate passed locally with 1,319 tests, one expected benchmark skip, and zero failures. Two focused XCUITest attempts stopped before reaching the new observable warning assertion: the first on a transient non-hittable result for the existing Delete Account row, the second on a runner timeout/crash. Per Firstmate direction, the same UI test was not retried a third time. The XCUITest assertion remains in place, and hosted `AccountDeletionViewModelTests` cover both shipped confirmation variants without invoking deletion.
 
 ### A hold is not a rest, and modelling it as one cost three review rounds
 
