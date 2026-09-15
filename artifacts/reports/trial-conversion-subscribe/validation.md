@@ -64,7 +64,8 @@ delivery boundary; consent, queueing, and retries belong to that implementation.
 provide a positive transaction price, the observer intentionally emits nothing rather than claiming a
 paid conversion it cannot prove.
 
-Deduplication persists only qualifying conversion transaction ids as decimal strings—never a receipt,
-product, price, date, or transaction history. It retains the newest 32 and replaces the oldest on the
-33rd distinct conversion. This makes ordinary StoreKit redelivery and relaunch at-most-once while an
-id remains inside the documented bound; it is not a claim of server-side exactly-once delivery.
+Deduplication persists qualifying conversion transaction ids as decimal strings plus their signed
+purchase timestamps solely as bounded ordering metadata—never a receipt, product, price, or transaction
+history. It retains the newest 32 and replaces the oldest on the 33rd distinct conversion. This makes
+ordinary StoreKit redelivery and relaunch at-most-once while an id remains inside the documented bound;
+it is not a claim of server-side exactly-once delivery.

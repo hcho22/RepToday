@@ -92,22 +92,24 @@ final class LiveStoreKitFacade: StoreKitFacade {
     ) -> Task<Void, Never> {
         // StoreKit 2 delivers transactions that happen outside a direct `purchase()` - auto-renewals,
         // refunds, cross-device purchases, and deferred Ask-to-Buy approvals - only through
-        // `Transaction.updates`. Project and finish every verified update immediately, exactly as
-        // before, then let the service capture delivery order and queue its inspection: analytics can
-        // never delay transaction acknowledgement. The task remains the app-owned lifetime handle;
-        // cancelling it stops the sequence and its owned processing worker.
+        // `Transaction.updates`. Project every result and let the service capture its delivery order,
+        // then finish every verified update before queueing its inspection: analytics can never delay
+        // transaction acknowledgement. The task remains the app-owned lifetime handle; cancelling it
+        // stops the sequence and its owned processing worker.
         Task.detached(priority: .background) {
             await Self.processUpdates(
                 Transaction.updates,
-                projectAndFinish: { verification in
+                project: { verification in
                     guard case .verified(let transaction) = verification else {
                         return .unverified
                     }
-                    let update = StoreTransactionUpdate.verified(
+                    return StoreTransactionUpdate.verified(
                         Self.subscriptionTransaction(from: transaction)
                     )
+                },
+                acknowledge: { verification in
+                    guard case .verified(let transaction) = verification else { return }
                     await transaction.finish()
-                    return update
                 },
                 prepareUpdate: prepareUpdate
             )
@@ -116,7 +118,8 @@ final class LiveStoreKitFacade: StoreKitFacade {
 
     static func processUpdates<Updates: AsyncSequence>(
         _ updates: Updates,
-        projectAndFinish: (Updates.Element) async -> StoreTransactionUpdate,
+        project: (Updates.Element) -> StoreTransactionUpdate,
+        acknowledge: (Updates.Element) async -> Void,
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) async {
         let (processingStream, processingContinuation) = AsyncStream<StoreTransactionProcessing>.makeStream()
@@ -132,9 +135,11 @@ final class LiveStoreKitFacade: StoreKitFacade {
             do {
                 for try await element in updates {
                     guard !Task.isCancelled else { break }
-                    let update = await projectAndFinish(element)
+                    let update = project(element)
+                    let process = await prepareUpdate(update)
+                    await acknowledge(element)
                     guard !Task.isCancelled else { break }
-                    if let process = await prepareUpdate(update) {
+                    if let process {
                         processingContinuation.yield(process)
                     }
                 }

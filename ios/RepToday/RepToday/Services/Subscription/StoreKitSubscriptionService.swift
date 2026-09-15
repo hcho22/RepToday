@@ -160,12 +160,13 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
 /// purchase, later renewal, pending purchase, revoked transaction, or unverified result cannot satisfy
 /// that predicate.
 ///
-/// Dedup is durable and minimal: only qualifying conversion transaction ids are persisted, never a
-/// receipt, product, price, date, or transaction history. The newest 32 ids are retained and the oldest
-/// is replaced on the 33rd distinct conversion, keeping state bounded while allowing distinct trial
-/// conversions to be counted independently (for example after the App Store account changes).
+/// Dedup is durable and minimal: qualifying conversion transaction ids and their signed purchase
+/// instants are persisted, never a receipt, product, price, or transaction history. The timestamps are
+/// bounded ordering metadata for retaining the newest 32 ids across relaunches and App Store account
+/// changes; the oldest is replaced on the 33rd distinct conversion.
 actor TrialConversionObserver {
     static let emittedTransactionIDsKey = "telemetry.trialConversionTransactionIDs"
+    static let emittedTransactionPurchaseDatesKey = "telemetry.trialConversionTransactionPurchaseDates"
     static let retentionLimit = 32
 
     struct TransactionObservation: Sendable {
@@ -189,7 +190,7 @@ actor TrialConversionObserver {
     private var restoreOutcomes: [UInt64: RestoreOutcome] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
     private var conversionsPendingDuringRestore: [StoreSubscriptionTransaction] = []
-    private var retainedPurchaseDates: [String: Date] = [:]
+    private var retainedPurchaseDates: [String: Date]
 
     init(
         productIDs: [String],
@@ -199,6 +200,7 @@ actor TrialConversionObserver {
         self.productIDs = Set(productIDs)
         self.analytics = analytics
         self.userDefaults = userDefaults
+        self.retainedPurchaseDates = Self.persistedPurchaseDates(in: userDefaults)
     }
 
     func capture(_ update: StoreTransactionUpdate) -> TransactionObservation? {
@@ -388,9 +390,31 @@ actor TrialConversionObserver {
         }
 
         let retainedIDs = Array(candidateIDs.suffix(Self.retentionLimit))
-        userDefaults.set(retainedIDs, forKey: Self.emittedTransactionIDsKey)
         let retainedIDSet = Set(retainedIDs)
         retainedPurchaseDates = retainedPurchaseDates.filter { retainedIDSet.contains($0.key) }
+        userDefaults.set(
+            retainedPurchaseDates.mapValues(\.timeIntervalSince1970),
+            forKey: Self.emittedTransactionPurchaseDatesKey
+        )
+        userDefaults.set(retainedIDs, forKey: Self.emittedTransactionIDsKey)
+    }
+
+    private static func persistedPurchaseDates(in userDefaults: UserDefaults) -> [String: Date] {
+        let retainedIDs = Set(
+            userDefaults.stringArray(forKey: Self.emittedTransactionIDsKey) ?? []
+        )
+        guard let storedDates = userDefaults.dictionary(
+            forKey: Self.emittedTransactionPurchaseDatesKey
+        ) else { return [:] }
+
+        var result: [String: Date] = [:]
+        for (id, value) in storedDates {
+            guard retainedIDs.contains(id),
+                  let seconds = (value as? NSNumber)?.doubleValue,
+                  seconds.isFinite else { continue }
+            result[id] = Date(timeIntervalSince1970: seconds)
+        }
+        return result
     }
 
     private func rememberPurchaseDates(

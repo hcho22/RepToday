@@ -174,6 +174,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
     private actor TransactionListenerProbe {
         enum Event: Equatable, Hashable {
+            case acknowledgementStarted(UInt64)
             case acknowledged(UInt64)
             case prepared(UInt64)
             case processingStarted(UInt64)
@@ -557,9 +558,11 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let listener = Task {
             await LiveStoreKitFacade.processUpdates(
                 updates,
-                projectAndFinish: { id in
+                project: { id in
+                    projectedUpdates[id] ?? .unverified
+                },
+                acknowledge: { id in
                     await probe.record(.acknowledged(id))
-                    return projectedUpdates[id] ?? .unverified
                 },
                 prepareUpdate: { update in
                     guard case .verified(let transaction) = update else { return nil }
@@ -581,7 +584,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         await probe.waitUntilRecorded(.processingStarted(first.id))
         continuation.yield(second.id)
         continuation.finish()
-        await probe.waitUntilRecorded(.prepared(second.id))
+        await probe.waitUntilRecorded(.acknowledged(second.id))
 
         var events = await probe.recordedEvents()
         XCTAssertTrue(events.contains(.acknowledged(second.id)))
@@ -595,16 +598,71 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(
             events,
             [
-                .acknowledged(first.id),
                 .prepared(first.id),
+                .acknowledged(first.id),
                 .processingStarted(first.id),
-                .acknowledged(second.id),
                 .prepared(second.id),
+                .acknowledged(second.id),
                 .processingFinished(first.id),
                 .processingStarted(second.id),
                 .processingFinished(second.id),
                 .listenerFinished
             ]
+        )
+    }
+
+    func testUpdateCapturedBeforeSuspendedAcknowledgementRemainsIndependentOfRestore() async {
+        let trial = storeTransaction(
+            id: 350, originalID: 350, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 351, originalID: 350, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let (updates, continuation) = AsyncStream<UInt64>.makeStream()
+        let probe = TransactionListenerProbe()
+        let gate = ProcessingGate()
+
+        let listener = Task {
+            await LiveStoreKitFacade.processUpdates(
+                updates,
+                project: { _ in .verified(conversion) },
+                acknowledge: { id in
+                    await probe.record(.acknowledgementStarted(id))
+                    await gate.wait()
+                    await probe.record(.acknowledged(id))
+                },
+                prepareUpdate: { update in
+                    guard let observation = await observer.capture(update) else { return nil }
+                    return {
+                        await observer.observe(observation, history: [trial, conversion])
+                    }
+                }
+            )
+        }
+
+        continuation.yield(conversion.id)
+        await probe.waitUntilRecorded(.acknowledgementStarted(conversion.id))
+
+        await observer.beginRestore()
+        await observer.completeRestore(history: [trial, conversion])
+
+        continuation.finish()
+        await gate.open()
+        await listener.value
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(conversion.id)]
         )
     }
 
@@ -984,6 +1042,107 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
         events = await analytics.recordedEvents
         XCTAssertEqual(events.map(\.name), [.subscribe])
+    }
+
+    func testAccountSwitchCannotEvictANewerRetainedConversionOrMakeItEmitAgain() async {
+        var newerHistory: [StoreSubscriptionTransaction] = []
+        var newerConversions: [StoreSubscriptionTransaction] = []
+        for offset in 0..<TrialConversionObserver.retentionLimit {
+            let originalID = UInt64(1_400 + offset * 2)
+            let trial = storeTransaction(
+                id: originalID, originalID: originalID, day: TimeInterval(offset * 20 + 201),
+                reason: .purchase, payment: .introductoryFreeTrial
+            )
+            let conversion = storeTransaction(
+                id: originalID + 1, originalID: originalID, day: TimeInterval(offset * 20 + 215),
+                reason: .renewal, payment: .paid
+            )
+            newerHistory.append(contentsOf: [trial, conversion])
+            newerConversions.append(conversion)
+        }
+
+        let baselineObserver = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: MockAnalyticsService(),
+            userDefaults: observerDefaults
+        )
+        await baselineObserver.beginRestore()
+        await baselineObserver.completeRestore(history: newerHistory)
+
+        let olderTrial = storeTransaction(
+            id: 1_300, originalID: 1_300, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let olderConversion = storeTransaction(
+            id: 1_301, originalID: 1_300, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let relaunchedObserver = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await relaunchedObserver.observe(
+            .verified(olderConversion),
+            history: [olderTrial, olderConversion]
+        )
+
+        var events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        let retainedIDs = Set(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey) ?? []
+        )
+        XCTAssertEqual(retainedIDs, Set(newerConversions.map { String($0.id) }))
+        XCTAssertFalse(retainedIDs.contains(String(olderConversion.id)))
+
+        await relaunchedObserver.observe(
+            .verified(newerConversions[0]),
+            history: newerHistory
+        )
+
+        events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        let storedDates = observerDefaults.dictionary(
+            forKey: TrialConversionObserver.emittedTransactionPurchaseDatesKey
+        )
+        XCTAssertEqual(storedDates?.count, TrialConversionObserver.retentionLimit)
+    }
+
+    func testLegacyIDOnlyStateMigratesOrderingMetadataWithoutRedelivery() async {
+        let trial = storeTransaction(
+            id: 1_500, originalID: 1_500, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 1_501, originalID: 1_500, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        observerDefaults.set(
+            [String(conversion.id)],
+            forKey: TrialConversionObserver.emittedTransactionIDsKey
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await observer.observe(.verified(conversion), history: [trial, conversion])
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(conversion.id)]
+        )
+        let storedDates = observerDefaults.dictionary(
+            forKey: TrialConversionObserver.emittedTransactionPurchaseDatesKey
+        )
+        let storedTimestamp = (storedDates?[String(conversion.id)] as? NSNumber)?.doubleValue
+        XCTAssertEqual(storedTimestamp, conversion.purchaseDate.timeIntervalSince1970)
     }
 
     func testUnverifiedAndRevokedUpdatesDoNotEmit() async {

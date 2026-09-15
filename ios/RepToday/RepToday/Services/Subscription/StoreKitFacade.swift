@@ -112,11 +112,12 @@ protocol StoreKitFacade: Sendable {
     /// from signed StoreKit facts rather than from an entitlement read or a guessed trial-end date.
     func transactionHistory() async -> [StoreSubscriptionTransaction]
     /// Begin observing StoreKit's out-of-band `Transaction.updates` (auto-renewals, refunds,
-    /// cross-device purchases, deferred Ask-to-Buy approvals), acknowledging each verified update with
-    /// `finish()` before asking `prepareUpdate` to capture its delivery state in order. The returned
-    /// processing work runs under the listener's ownership without delaying acknowledgement of the next
-    /// update. Returns the listener task for the caller to retain for the app's lifetime; cancelling that
-    /// task cancels the sequence and its processing. A StoreKit-free implementation returns a no-op task.
+    /// cross-device purchases, deferred Ask-to-Buy approvals), asking `prepareUpdate` to capture each
+    /// delivery in order before acknowledging verified updates with `finish()`. The returned processing
+    /// work begins after acknowledgement and runs under the listener's ownership without delaying the
+    /// next update. Returns the listener task for the caller to retain for the app's lifetime; cancelling
+    /// that task cancels the sequence and its processing. A StoreKit-free implementation returns a no-op
+    /// task.
     func listenForTransactions(
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) -> Task<Void, Never>
