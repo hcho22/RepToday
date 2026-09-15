@@ -113,9 +113,11 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         return facade.listenForTransactions { update in
             // No history read for an unverified update: it can neither grant access nor prove a
             // conversion. Verified updates are processed off the core loop by the app-owned listener.
-            guard let observation = await observer.capture(update) else { return }
-            let history = await facade.transactionHistory()
-            await observer.observe(observation, history: history)
+            guard let observation = await observer.capture(update) else { return nil }
+            return {
+                let history = await facade.transactionHistory()
+                await observer.observe(observation, history: history)
+            }
         }
     }
 
@@ -476,12 +478,16 @@ actor TrialConversionObserver {
         }
         guard hasFreeTrialOrigin else { return false }
 
-        let paidTransactions = chain.filter { $0.payment == .paid }
-        let firstPaidTransaction = paidTransactions.min {
+        let possiblePaidBoundaryTransactions = chain.filter {
+            if $0.payment == .paid { return true }
+            return $0.payment == .unknown
+                && ($0.reason == .purchase || $0.reason == .renewal)
+        }
+        let firstPossiblePaidBoundaryTransaction = possiblePaidBoundaryTransactions.min {
             if $0.purchaseDate != $1.purchaseDate { return $0.purchaseDate < $1.purchaseDate }
             return $0.id < $1.id
         }
-        return firstPaidTransaction?.id == transaction.id
+        return firstPossiblePaidBoundaryTransaction?.id == transaction.id
     }
 }
 

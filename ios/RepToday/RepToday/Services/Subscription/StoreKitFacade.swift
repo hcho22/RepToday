@@ -77,6 +77,8 @@ enum StoreTransactionUpdate: Equatable, Sendable {
     case unverified
 }
 
+typealias StoreTransactionProcessing = @Sendable () async -> Void
+
 /// The outcome of a purchase attempt, independent of StoreKit's `Product.PurchaseResult`.
 enum StorePurchaseResult: Equatable {
     /// The purchase completed and was verified; carries the resulting current entitlements.
@@ -111,11 +113,11 @@ protocol StoreKitFacade: Sendable {
     func transactionHistory() async -> [StoreSubscriptionTransaction]
     /// Begin observing StoreKit's out-of-band `Transaction.updates` (auto-renewals, refunds,
     /// cross-device purchases, deferred Ask-to-Buy approvals), acknowledging each verified update with
-    /// `finish()` before handing the plain projected value to `onUpdate`, preserving prompt transaction
-    /// acknowledgement even if analytics is slow or cancelled. Returns the listener task for the caller
-    /// to retain for the app's lifetime; cancelling that task cancels the sequence. A StoreKit-free
-    /// implementation returns a no-op task.
+    /// `finish()` before asking `prepareUpdate` to capture its delivery state in order. The returned
+    /// processing work runs under the listener's ownership without delaying acknowledgement of the next
+    /// update. Returns the listener task for the caller to retain for the app's lifetime; cancelling that
+    /// task cancels the sequence and its processing. A StoreKit-free implementation returns a no-op task.
     func listenForTransactions(
-        onUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> Void
+        prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) -> Task<Void, Never>
 }

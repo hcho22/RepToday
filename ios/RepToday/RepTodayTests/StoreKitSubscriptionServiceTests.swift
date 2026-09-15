@@ -61,7 +61,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         func transactionHistory() async -> [StoreSubscriptionTransaction] { [] }
 
         func listenForTransactions(
-            onUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> Void
+            prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
         ) -> Task<Void, Never> { Task {} }
     }
 
@@ -103,13 +103,15 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         func transactionHistory() async -> [StoreSubscriptionTransaction] { history }
 
         func listenForTransactions(
-            onUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> Void
+            prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
         ) -> Task<Void, Never> {
             let updates = updates
             return Task {
                 for update in updates {
                     guard !Task.isCancelled else { return }
-                    await onUpdate(update)
+                    if let process = await prepareUpdate(update) {
+                        await process()
+                    }
                 }
             }
         }
@@ -159,10 +161,57 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         func transactionHistory() async -> [StoreSubscriptionTransaction] { await historyGate.read() }
 
         func listenForTransactions(
-            onUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> Void
+            prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
         ) -> Task<Void, Never> {
             let update = update
-            return Task { await onUpdate(.verified(update)) }
+            return Task {
+                if let process = await prepareUpdate(.verified(update)) {
+                    await process()
+                }
+            }
+        }
+    }
+
+    private actor TransactionListenerProbe {
+        enum Event: Equatable, Hashable {
+            case acknowledged(UInt64)
+            case prepared(UInt64)
+            case processingStarted(UInt64)
+            case processingFinished(UInt64)
+            case listenerFinished
+        }
+
+        private var events: [Event] = []
+        private var waiters: [Event: [CheckedContinuation<Void, Never>]] = [:]
+
+        func record(_ event: Event) {
+            events.append(event)
+            let continuations = waiters.removeValue(forKey: event) ?? []
+            continuations.forEach { $0.resume() }
+        }
+
+        func waitUntilRecorded(_ event: Event) async {
+            guard !events.contains(event) else { return }
+            await withCheckedContinuation { waiters[event, default: []].append($0) }
+        }
+
+        func recordedEvents() -> [Event] { events }
+    }
+
+    private actor ProcessingGate {
+        private var isOpen = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func wait() async {
+            guard !isOpen else { return }
+            await withCheckedContinuation { waiters.append($0) }
+        }
+
+        func open() {
+            isOpen = true
+            let continuations = waiters
+            waiters = []
+            continuations.forEach { $0.resume() }
         }
     }
 
@@ -462,6 +511,101 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
         XCTAssertEqual(events.map(\.name), [.subscribe])
         XCTAssertEqual(events.first?.properties, ["plan": .string(SubscriptionPlan.ProductID.monthly)])
+    }
+
+    func testLaterPaidRenewalDoesNotEmitWhenAnEarlierRenewalHasUnknownPayment() async {
+        let trial = storeTransaction(
+            id: 330, originalID: 330, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let unknownFirstRenewal = storeTransaction(
+            id: 331, originalID: 330, day: 15,
+            reason: .renewal, payment: .unknown
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 332, originalID: 330, day: 45,
+            reason: .renewal, payment: .paid
+        )
+
+        let events = await observedEvents(
+            facade: ObservingFacade(
+                history: [trial, unknownFirstRenewal, laterPaidRenewal],
+                updates: [.verified(laterPaidRenewal)]
+            )
+        )
+
+        XCTAssertTrue(events.isEmpty, "unknown payment leaves the first paid boundary unprovable")
+    }
+
+    func testListenerAcknowledgesNextUpdateWhilePriorConversionProcessingIsSuspended() async {
+        let first = storeTransaction(
+            id: 340, originalID: 340, day: 1,
+            reason: .renewal, payment: .paid
+        )
+        let second = storeTransaction(
+            id: 341, originalID: 341, day: 2,
+            reason: .renewal, payment: .paid
+        )
+        let projectedUpdates: [UInt64: StoreTransactionUpdate] = [
+            first.id: .verified(first),
+            second.id: .verified(second)
+        ]
+        let (updates, continuation) = AsyncStream<UInt64>.makeStream()
+        let probe = TransactionListenerProbe()
+        let gate = ProcessingGate()
+
+        let listener = Task {
+            await LiveStoreKitFacade.processUpdates(
+                updates,
+                projectAndFinish: { id in
+                    await probe.record(.acknowledged(id))
+                    return projectedUpdates[id] ?? .unverified
+                },
+                prepareUpdate: { update in
+                    guard case .verified(let transaction) = update else { return nil }
+                    let id = transaction.id
+                    await probe.record(.prepared(id))
+                    return {
+                        await probe.record(.processingStarted(id))
+                        if id == first.id {
+                            await gate.wait()
+                        }
+                        await probe.record(.processingFinished(id))
+                    }
+                }
+            )
+            await probe.record(.listenerFinished)
+        }
+
+        continuation.yield(first.id)
+        await probe.waitUntilRecorded(.processingStarted(first.id))
+        continuation.yield(second.id)
+        continuation.finish()
+        await probe.waitUntilRecorded(.prepared(second.id))
+
+        var events = await probe.recordedEvents()
+        XCTAssertTrue(events.contains(.acknowledged(second.id)))
+        XCTAssertFalse(events.contains(.processingStarted(second.id)))
+        XCTAssertFalse(events.contains(.listenerFinished), "the listener owns unfinished conversion work")
+
+        await gate.open()
+        await listener.value
+
+        events = await probe.recordedEvents()
+        XCTAssertEqual(
+            events,
+            [
+                .acknowledged(first.id),
+                .prepared(first.id),
+                .processingStarted(first.id),
+                .acknowledged(second.id),
+                .prepared(second.id),
+                .processingFinished(first.id),
+                .processingStarted(second.id),
+                .processingFinished(second.id),
+                .listenerFinished
+            ]
+        )
     }
 
     func testRepeatedConversionUpdateEmitsExactlyOnce() async {
