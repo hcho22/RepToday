@@ -78,13 +78,21 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
-    func transactionHistory() async -> [StoreSubscriptionTransaction] {
+    func transactionHistory() async -> StoreTransactionHistory {
         var result: [StoreSubscriptionTransaction] = []
+        var containsUnverifiedTransactions = false
         for await verification in Transaction.all {
-            guard case .verified(let transaction) = verification else { continue }
-            result.append(Self.subscriptionTransaction(from: transaction))
+            switch verification {
+            case .verified(let transaction):
+                result.append(Self.subscriptionTransaction(from: transaction))
+            case .unverified:
+                containsUnverifiedTransactions = true
+            }
         }
-        return result
+        return StoreTransactionHistory(
+            transactions: result,
+            containsUnverifiedTransactions: containsUnverifiedTransactions
+        )
     }
 
     func listenForTransactions(
@@ -257,8 +265,9 @@ final class LiveStoreKitFacade: StoreKitFacade {
             }
         }
 
-        if let price = transaction.price, price > 0 {
-            return .paid
+        if let price = transaction.price {
+            if price > 0 { return .paid }
+            if price == 0 { return .nonPaid }
         }
         return .unknown
     }

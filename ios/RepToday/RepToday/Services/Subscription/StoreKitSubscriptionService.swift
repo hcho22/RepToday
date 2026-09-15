@@ -21,6 +21,7 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     private let facade: any StoreKitFacade
     private let productIDs: [String]
     private let trialConversionObserver: TrialConversionObserver
+    private let restoreGate: RestoreOperationGate
 
     init(
         facade: any StoreKitFacade,
@@ -35,6 +36,7 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             analytics: analytics,
             userDefaults: userDefaults
         )
+        self.restoreGate = RestoreOperationGate()
     }
 
     // MARK: - Entitlement
@@ -89,6 +91,18 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     }
 
     func restorePurchases() async throws -> Subscription {
+        await restoreGate.acquire()
+        do {
+            let subscription = try await performRestore()
+            await restoreGate.release()
+            return subscription
+        } catch {
+            await restoreGate.release()
+            throw error
+        }
+    }
+
+    private func performRestore() async throws -> Subscription {
         await trialConversionObserver.beginRestore()
         do {
             try await facade.sync()
@@ -149,6 +163,27 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             period: product.period,
             trialDescription: product.trialDescription
         )
+    }
+}
+
+private actor RestoreOperationGate {
+    private var isAcquired = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard isAcquired else {
+            isAcquired = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        guard !waiters.isEmpty else {
+            isAcquired = false
+            return
+        }
+        waiters.removeFirst().resume()
     }
 }
 
@@ -218,6 +253,10 @@ actor TrialConversionObserver {
     }
 
     func observe(_ update: StoreTransactionUpdate, history: [StoreSubscriptionTransaction]) async {
+        await observe(update, history: .verified(history))
+    }
+
+    func observe(_ update: StoreTransactionUpdate, history: StoreTransactionHistory) async {
         guard let observation = capture(update) else { return }
         await observe(observation, history: history)
     }
@@ -225,6 +264,13 @@ actor TrialConversionObserver {
     func observe(
         _ observation: TransactionObservation,
         history: [StoreSubscriptionTransaction]
+    ) async {
+        await observe(observation, history: .verified(history))
+    }
+
+    func observe(
+        _ observation: TransactionObservation,
+        history: StoreTransactionHistory
     ) async {
         guard inFlightObservations.removeValue(forKey: observation.sequence) != nil else { return }
         guard let analytics else { return }
@@ -243,7 +289,10 @@ actor TrialConversionObserver {
 
         guard qualifies else {
             if let deferredBaseline {
-                retainAsEmitted([deferredBaseline], referenceTransactions: history)
+                retainAsEmitted(
+                    [deferredBaseline],
+                    referenceTransactions: history.transactions
+                )
             }
             return
         }
@@ -253,7 +302,7 @@ actor TrialConversionObserver {
             // the restore outcome is known: successful restore baselines it without telemetry; failed
             // restore releases it through the ordinary live-update path.
             rememberPurchaseDates(
-                from: history,
+                from: history.transactions,
                 for: Set(emittedTransactionIDs)
             )
             if !conversionsPendingDuringRestore.contains(where: { $0.id == transaction.id }) {
@@ -263,11 +312,15 @@ actor TrialConversionObserver {
         }
 
         if completedRestoreOutcome == .succeeded {
-            retainAsEmitted([transaction], referenceTransactions: history)
+            retainAsEmitted([transaction], referenceTransactions: history.transactions)
             return
         }
 
-        await emitIfNeeded([transaction], referenceTransactions: history, analytics: analytics)
+        await emitIfNeeded(
+            [transaction],
+            referenceTransactions: history.transactions,
+            analytics: analytics
+        )
     }
 
     func beginRestore() {
@@ -277,8 +330,12 @@ actor TrialConversionObserver {
     }
 
     func completeRestore(history: [StoreSubscriptionTransaction]) {
+        completeRestore(history: .verified(history))
+    }
+
+    func completeRestore(history: StoreTransactionHistory) {
         guard let restoreEpoch = activeRestoreEpoch else { return }
-        let historicalConversions = history.filter {
+        let historicalConversions = history.transactions.filter {
             Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
         }
         let independentInFlightTransactionIDs = Set(
@@ -296,7 +353,7 @@ actor TrialConversionObserver {
         let pendingTransactions = conversionsPendingDuringRestore
         retainAsEmitted(
             conversionsToBaseline + pendingTransactions,
-            referenceTransactions: history + pendingTransactions
+            referenceTransactions: history.transactions + pendingTransactions
         )
         concludeRestore(restoreEpoch, outcome: .succeeded)
     }
@@ -472,7 +529,7 @@ actor TrialConversionObserver {
 
     static func isQualifyingConversion(
         _ transaction: StoreSubscriptionTransaction,
-        history: [StoreSubscriptionTransaction],
+        history: StoreTransactionHistory,
         productIDs: Set<String>
     ) -> Bool {
         guard productIDs.contains(transaction.productID),
@@ -484,13 +541,20 @@ actor TrialConversionObserver {
               transaction.id != transaction.originalID else {
             return false
         }
+        guard !history.containsUnverifiedTransactions else { return false }
 
-        // Include the update itself because `Transaction.all` is a point-in-time snapshot and the
-        // update may have arrived just after that snapshot began. Dedup by transaction id before
-        // determining the first paid transaction.
-        let chain = (history + [transaction]).reduce(into: [UInt64: StoreSubscriptionTransaction]()) {
-            $0[$1.id] = $1
-        }.values.filter {
+        var historyByID: [UInt64: StoreSubscriptionTransaction] = [:]
+        for historicalTransaction in history.transactions {
+            if historyByID[historicalTransaction.id]?.isRevoked == true {
+                continue
+            }
+            historyByID[historicalTransaction.id] = historicalTransaction
+        }
+        if historyByID[transaction.id] == nil {
+            historyByID[transaction.id] = transaction
+        }
+        guard historyByID[transaction.id]?.isRevoked == false else { return false }
+        let chain = historyByID.values.filter {
             $0.originalID == transaction.originalID && $0.isAutoRenewable && $0.isPurchased
         }
 

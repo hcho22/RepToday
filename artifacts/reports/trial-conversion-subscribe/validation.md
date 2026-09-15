@@ -22,7 +22,8 @@ The tests use an isolated `UserDefaults` suite and `MockAnalyticsService`; they 
 They cover the qualifying conversion, canonical `plan`, exact StoreKit purchase timestamp, direct
 purchase, initial trial, repeat delivery, later paid renewal, ordinary paid chain, pending purchase,
 current-entitlement and restore reads (including an update delivered during restore),
-unverified/revoked updates, relaunch dedup, and the bounded 32-id replacement rule.
+unverified/revoked updates and history, a known-zero promotional period, overlapping restores,
+relaunch dedup, and the bounded 32-id replacement rule.
 
 ## Local StoreKit Configuration recipe
 
@@ -61,8 +62,9 @@ original id, transaction id, and update timing the classifier consumes, and that
 listener remains active through renewal. It does not prove production App Store delivery, financial
 reporting, or server-side exactly-once receipt. `AnalyticsServiceProtocol.record(_:)` remains the
 delivery boundary; consent, queueing, and retries belong to that implementation. If StoreKit does not
-provide a positive transaction price, the observer intentionally emits nothing rather than claiming a
-paid conversion it cannot prove.
+provide the transaction price or an earlier history row cannot be verified, the observer intentionally
+emits nothing rather than claiming a paid boundary it cannot prove. A signed zero price is known
+nonpaid and therefore does not block a later first positive-price renewal.
 
 Deduplication persists qualifying conversion transaction ids as decimal strings plus their signed
 purchase timestamps solely as bounded ordering metadata—never a receipt, product, price, or transaction

@@ -58,7 +58,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             if let syncError { throw syncError }
         }
 
-        func transactionHistory() async -> [StoreSubscriptionTransaction] { [] }
+        func transactionHistory() async -> StoreTransactionHistory { .verified([]) }
 
         func listenForTransactions(
             prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
@@ -93,6 +93,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
     private struct ObservingFacade: StoreKitFacade {
         var entitlements: [StoreEntitlement] = []
         var history: [StoreSubscriptionTransaction] = []
+        var historyContainsUnverifiedTransactions = false
         var updates: [StoreTransactionUpdate] = []
         var purchaseResult: StorePurchaseResult = .userCancelled
 
@@ -100,7 +101,12 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         func currentEntitlements() async -> [StoreEntitlement] { entitlements }
         func purchase(productID: String) async throws -> StorePurchaseResult { purchaseResult }
         func sync() async throws {}
-        func transactionHistory() async -> [StoreSubscriptionTransaction] { history }
+        func transactionHistory() async -> StoreTransactionHistory {
+            StoreTransactionHistory(
+                transactions: history,
+                containsUnverifiedTransactions: historyContainsUnverifiedTransactions
+            )
+        }
 
         func listenForTransactions(
             prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
@@ -158,7 +164,9 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         func currentEntitlements() async -> [StoreEntitlement] { [] }
         func purchase(productID: String) async throws -> StorePurchaseResult { .userCancelled }
         func sync() async throws {}
-        func transactionHistory() async -> [StoreSubscriptionTransaction] { await historyGate.read() }
+        func transactionHistory() async -> StoreTransactionHistory {
+            .verified(await historyGate.read())
+        }
 
         func listenForTransactions(
             prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
@@ -213,6 +221,92 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             let continuations = waiters
             waiters = []
             continuations.forEach { $0.resume() }
+        }
+    }
+
+    private actor OverlappingRestoreState {
+        private let history: [StoreSubscriptionTransaction]
+        private let update: StoreSubscriptionTransaction
+        private var prepareUpdate: (@Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?)?
+        private var syncCallCount = 0
+        private var startedWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+        private var releaseContinuations: [Int: CheckedContinuation<Void, Never>] = [:]
+        private var releasedCalls = Set<Int>()
+        private var updateDelivered = false
+        private var updateWaiters: [CheckedContinuation<Void, Never>] = []
+
+        init(history: [StoreSubscriptionTransaction], update: StoreSubscriptionTransaction) {
+            self.history = history
+            self.update = update
+        }
+
+        func install(
+            prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
+        ) {
+            self.prepareUpdate = prepareUpdate
+        }
+
+        func sync() async throws {
+            syncCallCount += 1
+            let call = syncCallCount
+            let waiters = startedWaiters.removeValue(forKey: call) ?? []
+            waiters.forEach { $0.resume() }
+
+            if call == 2, let prepareUpdate,
+               let process = await prepareUpdate(.verified(update)) {
+                await process()
+                updateDelivered = true
+                let updateWaiters = self.updateWaiters
+                self.updateWaiters = []
+                updateWaiters.forEach { $0.resume() }
+            }
+
+            if releasedCalls.remove(call) == nil {
+                await withCheckedContinuation { releaseContinuations[call] = $0 }
+            }
+            if call == 1 {
+                throw SubscriptionError.failed("first restore failed")
+            }
+        }
+
+        func transactionHistory() -> StoreTransactionHistory { .verified(history) }
+
+        func waitUntilSyncStarts(_ call: Int) async {
+            guard syncCallCount < call else { return }
+            await withCheckedContinuation { startedWaiters[call, default: []].append($0) }
+        }
+
+        func releaseSync(_ call: Int) {
+            guard let continuation = releaseContinuations.removeValue(forKey: call) else {
+                releasedCalls.insert(call)
+                return
+            }
+            continuation.resume()
+        }
+
+        func startedSyncCount() -> Int { syncCallCount }
+
+        func waitUntilUpdateDelivered() async {
+            guard !updateDelivered else { return }
+            await withCheckedContinuation { updateWaiters.append($0) }
+        }
+    }
+
+    private struct OverlappingRestoreFacade: StoreKitFacade {
+        let state: OverlappingRestoreState
+
+        func loadProducts(ids: [String]) async throws -> [StoreProduct] { [] }
+        func currentEntitlements() async -> [StoreEntitlement] { [] }
+        func purchase(productID: String) async throws -> StorePurchaseResult { .userCancelled }
+        func sync() async throws { try await state.sync() }
+        func transactionHistory() async -> StoreTransactionHistory {
+            await state.transactionHistory()
+        }
+
+        func listenForTransactions(
+            prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
+        ) -> Task<Void, Never> {
+            Task { await state.install(prepareUpdate: prepareUpdate) }
         }
     }
 
@@ -538,6 +632,76 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertTrue(events.isEmpty, "unknown payment leaves the first paid boundary unprovable")
     }
 
+    func testLaterPaidRenewalDoesNotEmitWhenHistoryContainsAnUnverifiedTransaction() async {
+        let trial = storeTransaction(
+            id: 333, originalID: 333, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 335, originalID: 333, day: 45,
+            reason: .renewal, payment: .paid
+        )
+
+        let events = await observedEvents(
+            facade: ObservingFacade(
+                history: [trial, laterPaidRenewal],
+                historyContainsUnverifiedTransactions: true,
+                updates: [.verified(laterPaidRenewal)]
+            )
+        )
+
+        XCTAssertTrue(events.isEmpty, "partial verified history cannot prove the first paid boundary")
+    }
+
+    func testFirstPaidRenewalAfterAFreePromotionalPeriodEmitsSubscribe() async {
+        let trial = storeTransaction(
+            id: 336, originalID: 336, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let freePromotionalRenewal = storeTransaction(
+            id: 337, originalID: 336, day: 15,
+            reason: .renewal, payment: .nonPaid
+        )
+        let firstPaidRenewal = storeTransaction(
+            id: 338, originalID: 336, day: 45,
+            reason: .renewal, payment: .paid
+        )
+
+        let events = await observedEvents(
+            facade: ObservingFacade(
+                history: [trial, freePromotionalRenewal, firstPaidRenewal],
+                updates: [.verified(firstPaidRenewal)]
+            )
+        )
+
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        XCTAssertEqual(events.first?.properties, ["plan": .string(SubscriptionPlan.ProductID.monthly)])
+    }
+
+    func testCurrentRevokedHistoryOverridesAnEarlierCapturedUpdate() async {
+        let trial = storeTransaction(
+            id: 360, originalID: 360, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let capturedConversion = storeTransaction(
+            id: 361, originalID: 360, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let refundedConversion = storeTransaction(
+            id: 361, originalID: 360, day: 15,
+            reason: .renewal, payment: .paid, isRevoked: true
+        )
+
+        let events = await observedEvents(
+            facade: ObservingFacade(
+                history: [trial, refundedConversion],
+                updates: [.verified(capturedConversion)]
+            )
+        )
+
+        XCTAssertTrue(events.isEmpty, "current signed revocation remains authoritative")
+    }
+
     func testListenerAcknowledgesNextUpdateWhilePriorConversionProcessingIsSuspended() async {
         let first = storeTransaction(
             id: 340, originalID: 340, day: 1,
@@ -822,6 +986,68 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let events = await analytics.recordedEvents
         XCTAssertTrue(events.isEmpty, "a restore-delivered historical transaction is not a new conversion")
         XCTAssertEqual(observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey), ["611"])
+    }
+
+    func testOverlappingFailedAndSuccessfulRestoresRemainSerialized() async throws {
+        let trial = storeTransaction(
+            id: 614, originalID: 614, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 615, originalID: 614, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let state = OverlappingRestoreState(
+            history: [trial, conversion],
+            update: conversion
+        )
+        let service = StoreKitSubscriptionService(
+            facade: OverlappingRestoreFacade(state: state),
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let listenerTask = service.startObservingTransactions()
+        await listenerTask.value
+
+        let firstRestore = Task { () -> SubscriptionError? in
+            do {
+                _ = try await service.restorePurchases()
+                return nil
+            } catch {
+                return error as? SubscriptionError
+            }
+        }
+        await state.waitUntilSyncStarts(1)
+
+        let secondEntered = ProcessingGate()
+        let secondRestore = Task {
+            await secondEntered.open()
+            return try await service.restorePurchases()
+        }
+        await secondEntered.wait()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let startedBeforeFirstFinished = await state.startedSyncCount()
+        XCTAssertEqual(startedBeforeFirstFinished, 1)
+
+        await state.releaseSync(1)
+        let firstError = await firstRestore.value
+        XCTAssertEqual(firstError, .failed("first restore failed"))
+
+        await state.waitUntilSyncStarts(2)
+        await state.waitUntilUpdateDelivered()
+        var events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+
+        await state.releaseSync(2)
+        _ = try await secondRestore.value
+
+        events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(conversion.id)]
+        )
     }
 
     func testUpdateAlreadyAwaitingHistoryWhenRestoreStartsStillEmits() async throws {

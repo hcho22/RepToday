@@ -51,6 +51,8 @@ struct StoreSubscriptionTransaction: Equatable, Sendable {
         /// An introductory offer whose payment mode is explicitly free-trial (or, on iOS 17.0/17.1,
         /// an introductory transaction whose StoreKit-recorded price is zero).
         case introductoryFreeTrial
+        /// StoreKit recorded a zero price outside the introductory free-trial period.
+        case nonPaid
         /// StoreKit recorded a price greater than zero for this transaction.
         case paid
         /// No price/offer combination proves either state. Conservatively ineligible for conversion.
@@ -67,6 +69,20 @@ struct StoreSubscriptionTransaction: Equatable, Sendable {
     let isPurchased: Bool
     let isRevoked: Bool
     let isUpgraded: Bool
+}
+
+/// A finite StoreKit history snapshot and whether any rows in that snapshot failed verification.
+/// The integrity flag prevents a partial verified projection from proving a first-paid boundary.
+struct StoreTransactionHistory: Equatable, Sendable {
+    let transactions: [StoreSubscriptionTransaction]
+    let containsUnverifiedTransactions: Bool
+
+    static func verified(_ transactions: [StoreSubscriptionTransaction]) -> StoreTransactionHistory {
+        StoreTransactionHistory(
+            transactions: transactions,
+            containsUnverifiedTransactions: false
+        )
+    }
 }
 
 /// A listener value keeps verification explicit at the service boundary. Production only constructs
@@ -107,10 +123,10 @@ protocol StoreKitFacade: Sendable {
     func purchase(productID: String) async throws -> StorePurchaseResult
     /// Sync with the App Store to restore purchases across devices/reinstalls.
     func sync() async throws
-    /// A finite snapshot of the customer's verified transaction history. Auto-renewable history
-    /// includes every renewal, which lets the service prove a trial -> first paid renewal transition
-    /// from signed StoreKit facts rather than from an entitlement read or a guessed trial-end date.
-    func transactionHistory() async -> [StoreSubscriptionTransaction]
+    /// A finite snapshot of the customer's transaction history. Verified rows carry the signed facts
+    /// used to prove a trial -> first paid renewal transition; the integrity flag records whether the
+    /// snapshot also contained an unverified row that makes that boundary unprovable.
+    func transactionHistory() async -> StoreTransactionHistory
     /// Begin observing StoreKit's out-of-band `Transaction.updates` (auto-renewals, refunds,
     /// cross-device purchases, deferred Ask-to-Buy approvals), asking `prepareUpdate` to capture each
     /// delivery in order before acknowledging verified updates with `finish()`. The returned processing
