@@ -222,6 +222,12 @@ actor TrialConversionObserver {
         let independentTransactionIDs: Set<UInt64>
     }
 
+    private struct RestoreFinalization {
+        let history: StoreTransactionHistory
+        let independentTransactionIDs: Set<UInt64>
+        let pendingTransactions: [StoreSubscriptionTransaction]
+    }
+
     private let productIDs: Set<String>
     private let analytics: (any AnalyticsServiceProtocol)?
     private let userDefaults: UserDefaults
@@ -230,6 +236,7 @@ actor TrialConversionObserver {
     private var activeRestoreEpoch: UInt64?
     private var inFlightObservations: [UInt64: TransactionObservation] = [:]
     private var completedRestores: [UInt64: CompletedRestore] = [:]
+    private var terminalHistoriesByObservationSequence: [UInt64: StoreTransactionHistory] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
     private var restoreCandidates: [StoreSubscriptionTransaction] = []
     private var retainedPurchaseDates: [String: Date]
@@ -256,8 +263,7 @@ actor TrialConversionObserver {
             restoreEpoch: activeRestoreEpoch
         )
         inFlightObservations[observation.sequence] = observation
-        if observation.restoreEpoch != nil,
-           !restoreCandidates.contains(where: { $0.id == transaction.id }) {
+        if observation.restoreEpoch != nil {
             restoreCandidates.append(transaction)
         }
         return observation
@@ -297,10 +303,13 @@ actor TrialConversionObserver {
             return
         }
 
+        let terminalHistory = terminalHistoriesByObservationSequence.removeValue(
+            forKey: observation.sequence
+        )
         let completedRestore = observation.restoreEpoch.flatMap { completedRestores[$0] }
         let yieldsToIndependentObservation = completedRestore?.independentTransactionIDs
             .contains(transaction.id) == true
-        let classificationHistory = completedRestore?.history ?? history
+        let classificationHistory = terminalHistory ?? completedRestore?.history ?? history
         let qualifies = Self.isQualifyingConversion(
             transaction,
             history: classificationHistory,
@@ -354,8 +363,13 @@ actor TrialConversionObserver {
             restoreEpoch: restoreEpoch,
             history: history
         )
-        let historicalConversions = history.transactions.filter {
-            Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
+        let classificationHistory = finalization.history
+        let historicalConversions = classificationHistory.transactions.filter {
+            Self.isQualifyingConversion(
+                $0,
+                history: classificationHistory,
+                productIDs: productIDs
+            )
         }
         let conversionsToBaseline = historicalConversions.filter {
             if finalization.independentTransactionIDs.contains($0.id) {
@@ -366,12 +380,12 @@ actor TrialConversionObserver {
         }
         retainAsEmitted(
             conversionsToBaseline + finalization.pendingTransactions,
-            referenceTransactions: history.transactions + finalization.pendingTransactions
+            referenceTransactions: classificationHistory.transactions
         )
         concludeRestore(
             restoreEpoch,
             outcome: .succeeded,
-            history: history,
+            history: classificationHistory,
             independentTransactionIDs: finalization.independentTransactionIDs
         )
     }
@@ -385,14 +399,14 @@ actor TrialConversionObserver {
         concludeRestore(
             restoreEpoch,
             outcome: .failed,
-            history: history,
+            history: finalization.history,
             independentTransactionIDs: finalization.independentTransactionIDs
         )
 
         guard let analytics else { return }
         await emitIfNeeded(
             finalization.pendingTransactions,
-            referenceTransactions: history.transactions + finalization.pendingTransactions,
+            referenceTransactions: finalization.history.transactions,
             analytics: analytics
         )
     }
@@ -400,26 +414,41 @@ actor TrialConversionObserver {
     private func restoreFinalization(
         restoreEpoch: UInt64,
         history: StoreTransactionHistory
-    ) -> (
-        independentTransactionIDs: Set<UInt64>,
-        pendingTransactions: [StoreSubscriptionTransaction]
-    ) {
-        let independentTransactionIDs = Set(
-            inFlightObservations.values.compactMap {
-                $0.restoreEpoch == restoreEpoch ? nil : $0.transaction.id
-            }
-        )
+    ) -> RestoreFinalization {
+        let observations = inFlightObservations.values.sorted { $0.sequence < $1.sequence }
+        let independentObservations = observations.filter { $0.restoreEpoch != restoreEpoch }
+        let independentTransactionIDs = Set(independentObservations.map(\.transaction.id))
         let inFlightRestoreTransactionIDs = Set(
-            inFlightObservations.values.compactMap {
+            observations.compactMap {
                 $0.restoreEpoch == restoreEpoch ? $0.transaction.id : nil
             }
         )
-        let pendingTransactions = restoreCandidates.filter {
-            !independentTransactionIDs.contains($0.id)
-                && !inFlightRestoreTransactionIDs.contains($0.id)
-                && Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
+        let classificationHistory = StoreTransactionHistory(
+            transactions: Self.mergedTransactions(
+                observations.map(\.transaction) + restoreCandidates + history.transactions
+            ),
+            containsUnverifiedTransactions: history.containsUnverifiedTransactions
+        )
+        for observation in independentObservations {
+            terminalHistoriesByObservationSequence[observation.sequence] = classificationHistory
         }
-        return (independentTransactionIDs, pendingTransactions)
+
+        let candidateTransactionIDs = Set(restoreCandidates.map(\.id))
+        let pendingTransactions = classificationHistory.transactions.filter {
+            candidateTransactionIDs.contains($0.id)
+                && !independentTransactionIDs.contains($0.id)
+                && !inFlightRestoreTransactionIDs.contains($0.id)
+                && Self.isQualifyingConversion(
+                    $0,
+                    history: classificationHistory,
+                    productIDs: productIDs
+                )
+        }
+        return RestoreFinalization(
+            history: classificationHistory,
+            independentTransactionIDs: independentTransactionIDs,
+            pendingTransactions: pendingTransactions
+        )
     }
 
     private func emitIfNeeded(
@@ -573,6 +602,23 @@ actor TrialConversionObserver {
         }
         var seenTransactionIDs = Set<UInt64>()
         return orderedTransactions.filter { seenTransactionIDs.insert($0.id).inserted }
+    }
+
+    private static func mergedTransactions(
+        _ transactions: [StoreSubscriptionTransaction]
+    ) -> [StoreSubscriptionTransaction] {
+        var transactionIDs: [UInt64] = []
+        var transactionsByID: [UInt64: StoreSubscriptionTransaction] = [:]
+        for transaction in transactions {
+            if transactionsByID[transaction.id] == nil {
+                transactionIDs.append(transaction.id)
+            }
+            if transactionsByID[transaction.id]?.isRevoked == true {
+                continue
+            }
+            transactionsByID[transaction.id] = transaction
+        }
+        return transactionIDs.compactMap { transactionsByID[$0] }
     }
 
     static func isQualifyingConversion(

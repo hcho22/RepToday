@@ -21,11 +21,11 @@ xcodebuild \
 The tests use an isolated `UserDefaults` suite and `MockAnalyticsService`; they send no telemetry.
 They cover the qualifying conversion, canonical `plan`, exact StoreKit purchase timestamp, direct
 purchase, initial trial, repeat delivery, later paid renewal, ordinary paid chain, pending purchase,
-current-entitlement and restore reads, terminal-history revalidation of initially unproven and in-flight
-candidates on successful and failed restore, an independent pre-restore capture redelivered during
-restore, unverified/revoked updates and history, unknown payment under renewal and other StoreKit
-reasons, a known-zero promotional period, overlapping restores, relaunch dedup, stable partial
-legacy-metadata migration, and the bounded 32-id replacement rule.
+current-entitlement and restore reads, shared terminal-union classification of multiple captured
+renewals, sticky same-id revocation, stale pre-restore observations bound to fresher paid-boundary and
+revocation facts, unverified/revoked updates and history, unknown payment under renewal and other
+StoreKit reasons, a known-zero promotional period, overlapping restores, relaunch dedup, stable
+partial legacy-metadata migration, and the bounded 32-id replacement rule.
 
 ## Local StoreKit Configuration recipe
 

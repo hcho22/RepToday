@@ -1079,6 +1079,77 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testFailedRestoreClassifiesCapturedRenewalsAgainstOneTerminalUnion() async {
+        let trial = storeTransaction(
+            id: 6_100, originalID: 6_100, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let firstPaidRenewal = storeTransaction(
+            id: 6_101, originalID: 6_100, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 6_102, originalID: 6_100, day: 45,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await observer.beginRestore()
+        await observer.observe(.verified(laterPaidRenewal), history: [trial])
+        await observer.observe(.verified(firstPaidRenewal), history: [trial])
+        await observer.failRestore(history: .verified([trial]))
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        XCTAssertEqual(
+            events.first?.timestampMs,
+            Int(firstPaidRenewal.purchaseDate.timeIntervalSince1970 * 1_000)
+        )
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(firstPaidRenewal.id)]
+        )
+    }
+
+    func testFailedRestoreKeepsLaterSameIDRevocationStickyAcrossCapturedCandidates() async {
+        let trial = storeTransaction(
+            id: 6_110, originalID: 6_110, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_111, originalID: 6_110, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let revokedConversion = storeTransaction(
+            id: 6_111, originalID: 6_110, day: 15,
+            reason: .renewal, payment: .paid, isRevoked: true
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await observer.beginRestore()
+        await observer.observe(.verified(conversion), history: [trial])
+        await observer.observe(.verified(revokedConversion), history: [trial])
+        await observer.failRestore(history: .verified([trial]))
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
+        )
+    }
+
     func testSuccessfulRestoreReclassifiesInitiallyUnprovenCandidateAtTerminalHistory() async {
         let trial = storeTransaction(
             id: 623, originalID: 623, day: 1,
@@ -1244,6 +1315,79 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(
             observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
             [String(conversion.id)]
+        )
+    }
+
+    func testTerminalHistoryPreventsStaleIndependentLaterRenewalEmission() async {
+        let trial = storeTransaction(
+            id: 6_120, originalID: 6_120, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let firstPaidRenewal = storeTransaction(
+            id: 6_121, originalID: 6_120, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 6_122, originalID: 6_120, day: 45,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let independentObservation = await observer.capture(.verified(laterPaidRenewal))
+        XCTAssertNotNil(independentObservation)
+
+        await observer.beginRestore()
+        await observer.completeRestore(history: [trial, firstPaidRenewal, laterPaidRenewal])
+        if let independentObservation {
+            await observer.observe(independentObservation, history: [trial])
+        }
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(firstPaidRenewal.id)]
+        )
+    }
+
+    func testTerminalRevocationPreventsStaleIndependentConversionEmission() async {
+        let trial = storeTransaction(
+            id: 6_130, originalID: 6_130, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_131, originalID: 6_130, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let revokedConversion = storeTransaction(
+            id: 6_131, originalID: 6_130, day: 15,
+            reason: .renewal, payment: .paid, isRevoked: true
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let independentObservation = await observer.capture(.verified(conversion))
+        XCTAssertNotNil(independentObservation)
+
+        await observer.beginRestore()
+        await observer.completeRestore(history: [trial, revokedConversion])
+        if let independentObservation {
+            await observer.observe(independentObservation, history: [trial])
+        }
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
         )
     }
 
