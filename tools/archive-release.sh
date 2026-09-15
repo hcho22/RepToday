@@ -30,6 +30,7 @@ for argument in "$@"; do
 done
 
 repo_root=$(git rev-parse --show-toplevel)
+"$repo_root/tools/validate-production-telemetry.sh"
 private_dir=$(mktemp -d "${TMPDIR:-/tmp}/reptoday-release.XXXXXX")
 private_xcconfig="$private_dir/TelemetrySecrets.xcconfig"
 

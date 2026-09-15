@@ -49,18 +49,6 @@ private final class AnalyticsAcceptanceBuffer: @unchecked Sendable {
         return result
     }
 
-    func prepend(_ restored: [AcceptedAnalyticsEvent], limit: Int) -> [AcceptedAnalyticsEvent] {
-        lock.lock()
-        events = restored + events
-        let overflowCount = max(0, events.count - limit)
-        let evicted = Array(events.prefix(overflowCount))
-        if overflowCount > 0 {
-            events.removeFirst(overflowCount)
-        }
-        lock.unlock()
-        return evicted
-    }
-
     var count: Int {
         lock.lock()
         defer { lock.unlock() }
@@ -315,6 +303,7 @@ private final class AnalyticsSendCancellation: @unchecked Sendable {
 actor AnalyticsDeliveryQueue {
     static let maxPendingEvents = 50
     static let maxAttempts = 3
+    static let maxPersistenceAttempts = 3
     static let maxDeliveriesPerDrain = 4
     static let maxAge: TimeInterval = 7 * 24 * 60 * 60
 
@@ -420,20 +409,20 @@ actor AnalyticsDeliveryQueue {
         if deliveries.count > Self.maxPendingEvents {
             deliveries.removeFirst(deliveries.count - Self.maxPendingEvents)
         }
-        guard persist() else {
+        var didPersist = false
+        for _ in 0..<Self.maxPersistenceAttempts {
+            if persist() {
+                didPersist = true
+                break
+            }
+        }
+        if !didPersist {
             deliveries = original
-            for acceptedEvent in persistable {
-                acceptedEvent.backgroundActivity.finish()
-            }
-            let evicted = acceptanceBuffer.prepend(persistable, limit: Self.maxPendingEvents)
-            for event in evicted {
-                event.backgroundActivity.finish()
-            }
-            return
         }
         for acceptedEvent in persistable {
             acceptedEvent.backgroundActivity.finish()
         }
+        guard didPersist else { return }
         pruneIneligibleAndExpired()
         scheduleDrain()
     }

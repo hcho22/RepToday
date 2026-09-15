@@ -343,6 +343,70 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         try await eventually { await service.pendingDeliveryCount == 0 }
     }
 
+    func testTransientOutboxSaveFailuresRetainBackgroundOwnershipUntilPersistence() async throws {
+        let storage = FailingAnalyticsOutboxStorage(failuresBeforeSuccess: 2, blockSuccess: true)
+        let expirationProbe = BackgroundExecutionProbe()
+        let transport = ScriptedAnalyticsTransport(outcomes: [.retryableFailure])
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            outboxStorage: storage,
+            backgroundExecution: expirationProbe.execution,
+            newEventId: { "persist-after-retry" },
+        )
+        defer { storage.unblock() }
+
+        service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        try await eventually { storage.successfulSaveIsBlocked }
+
+        XCTAssertEqual(storage.failedSaveCount, 2)
+        XCTAssertEqual(expirationProbe.beginCount, 1)
+        XCTAssertEqual(expirationProbe.endCount, 0)
+
+        storage.unblock()
+        try await eventually { await transport.requestCount == 1 }
+        try await eventually { await service.pendingDeliveryCount == 1 }
+        try await eventually { expirationProbe.endCount == 2 }
+
+        let eventIds = await transport.eventIds
+        XCTAssertEqual(expirationProbe.beginCount, 2)
+        XCTAssertEqual(expirationProbe.endCount, 2)
+        XCTAssertEqual(eventIds, ["persist-after-retry"])
+        XCTAssertEqual(try storage.load().map(\.eventId), ["persist-after-retry"])
+    }
+
+    func testPermanentOutboxSaveFailureRetiresAfterThePersistenceAttemptCap() async throws {
+        let storage = FailingAnalyticsOutboxStorage(failuresBeforeSuccess: nil)
+        let expirationProbe = BackgroundExecutionProbe()
+        let transport = ScriptedAnalyticsTransport(outcomes: [.success])
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            outboxStorage: storage,
+            backgroundExecution: expirationProbe.execution,
+            newEventId: { "retired-save-failure" },
+        )
+
+        service.record(AnalyticsEvent(name: .paywallShown, timestampMs: Self.installMs))
+        try await eventually {
+            storage.saveCount == AnalyticsDeliveryQueue.maxPersistenceAttempts
+                && expirationProbe.endCount == 1
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let requestCount = await transport.requestCount
+        let pendingCount = await service.pendingDeliveryCount
+        XCTAssertEqual(storage.saveCount, AnalyticsDeliveryQueue.maxPersistenceAttempts)
+        XCTAssertEqual(expirationProbe.beginCount, 1)
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(pendingCount, 0)
+        XCTAssertTrue(try storage.load().isEmpty)
+    }
+
     func testRetryableDeliveryStopsAtTheAttemptCapAndRetiresTheRow() async throws {
         let transport = ScriptedAnalyticsTransport(
             outcomes: Array(repeating: .retryableFailure, count: 4)
@@ -1083,6 +1147,88 @@ private final class BlockingAnalyticsOutboxStorage: AnalyticsOutboxStorage, @unc
         lock.lock()
         defer { lock.unlock() }
         return finishedBlockedSave
+    }
+}
+
+private enum AnalyticsOutboxStorageTestError: Error {
+    case saveFailed
+}
+
+private final class FailingAnalyticsOutboxStorage: AnalyticsOutboxStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private let release = DispatchSemaphore(value: 0)
+    private var deliveries: [PendingAnalyticsDelivery] = []
+    private var remainingFailures: Int?
+    private var failedSaves = 0
+    private var saves = 0
+    private var shouldBlockSuccess: Bool
+    private var blockedSuccess = false
+    private var successReleased = false
+
+    init(failuresBeforeSuccess: Int?, blockSuccess: Bool = false) {
+        remainingFailures = failuresBeforeSuccess
+        shouldBlockSuccess = blockSuccess
+    }
+
+    func load() throws -> [PendingAnalyticsDelivery] {
+        lock.lock()
+        defer { lock.unlock() }
+        return deliveries
+    }
+
+    func save(_ deliveries: [PendingAnalyticsDelivery]) throws {
+        lock.lock()
+        saves += 1
+        let shouldFail = remainingFailures.map { $0 > 0 } ?? true
+        if shouldFail {
+            remainingFailures = remainingFailures.map { $0 - 1 }
+            failedSaves += 1
+            lock.unlock()
+            throw AnalyticsOutboxStorageTestError.saveFailed
+        }
+        let block = shouldBlockSuccess && !successReleased
+        if block {
+            shouldBlockSuccess = false
+            blockedSuccess = true
+        }
+        lock.unlock()
+
+        if block {
+            release.wait()
+        }
+
+        lock.lock()
+        self.deliveries = deliveries
+        blockedSuccess = false
+        lock.unlock()
+    }
+
+    func unblock() {
+        lock.lock()
+        let needsSignal = blockedSuccess
+        successReleased = true
+        lock.unlock()
+        if needsSignal {
+            release.signal()
+        }
+    }
+
+    var failedSaveCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return failedSaves
+    }
+
+    var saveCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return saves
+    }
+
+    var successfulSaveIsBlocked: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return blockedSuccess
     }
 }
 

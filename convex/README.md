@@ -56,7 +56,8 @@ later accepted events provide bounded recovery triggers.
 The resource and retry bounds are deliberately short:
 
 - at most **50 pending events**, evicting the oldest when full;
-- at most **3 attempts per event** and **7 days** of age;
+- at most **3 outbox-persistence attempts per accepted batch** before explicit retirement;
+- at most **3 delivery attempts per event** and **7 days** of age;
 - at most **4 deliveries per drain trigger**;
 - a **10-second** request timeout, with no connectivity wait;
 - transport failures plus `408`, `429`, and `5xx` are retryable; other `4xx` responses are
@@ -65,6 +66,19 @@ The resource and retry bounds are deliberately short:
 Every accepted event receives one random `eventId`, stored in the encoded outbox body and reused
 unchanged on every attempt. The mutation's indexed idempotency check means a replay after "insert
 committed, response interrupted" still contributes one evidence row.
+
+## Backend-first Release gate
+
+The indexed idempotent mutation must be deployed to production before any archive containing the
+durable client is distributed. `tools/archive-release.sh` enforces that ordering before invoking
+`xcodebuild`: it runs `tools/validate-production-telemetry.sh`, which POSTs the identical stable
+`eventId` twice and requires two `204` responses but exactly one production row. A production sink
+that ignores `eventId` therefore stops the archive before a client can be built for distribution.
+
+The live check requires the repository's Convex CLI dependencies, the captain-owned Keychain token,
+and access to deployment `sensible-spider-810`. Deploy `convex/schema.ts`, `convex/events.ts`, and
+`convex/http.ts` first; only a passing live replay check unlocks the private archive path. The source
+change that introduced this gate did not deploy or validate production itself.
 
 Consent is authoritative at acceptance, persistence, and send. Every outbox row captures the persisted consent
 generation; a true-to-false Settings transition advances that generation synchronously, cancels

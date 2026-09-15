@@ -1249,7 +1249,14 @@ connectivity wait. Retryable transport/`408`/`429`/`5xx` failures stay pending; 
 outboxes, while missing endpoint/secret configuration resolves to the no-op before a session or
 outbox is constructed.
 
-Each accepted event receives one random `eventId`, encoded and persisted once, then reused across
+The asynchronous acceptance-to-outbox transition owns the same bound. A failed outbox save retries
+the already-encoded batch at most three times while retaining its acceptance background assertion;
+durable persistence transfers ownership to the outbox, while exhausting the cap explicitly retires
+the volatile batch and ends the assertion. The deterministic storage seam blocks the eventual
+successful write after two failures to prove that ownership remains live, and separately proves a
+permanent failure performs exactly three attempts, sends nothing, and retires.
+
+Each accepted event receives one random `eventId`, encoded once and durably stored, then reused across
 attempts. `convex/schema.ts` adds `events.by_eventId` and an optional field. The current durable
 client always supplies it; the HTTP boundary also accepts its absence from already-shipped one-shot
 clients so deploying the sink does not strand an installed build. When present, `events:logEvent`
@@ -1265,6 +1272,12 @@ work. `LiveAnalyticsServiceTests` deterministically cover immediate suspension b
 blocked storage, background recovery, send-time consent, opt-out purge/no resurrection,
 retry/age/queue bounds, successful retirement, and inert configuration; `convex/http.test.ts` covers stable-id replay as one
 insert. The production boundary validator now supplies the durable client's `eventId` too.
+
+Distribution is backend-first. `tools/validate-production-telemetry.sh` replays the identical
+stable-`eventId` request twice and requires two `204` responses but one row;
+`tools/archive-release.sh` runs that live production check before `xcodebuild` and aborts on failure.
+The indexed Convex schema and mutation must therefore be deployed before an archive containing the
+durable client can be built. This source change neither deployed production nor ran the live check.
 
 ## Owed work
 

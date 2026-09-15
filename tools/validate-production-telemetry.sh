@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# One-shot, secret-safe production boundary validation. Reads the same Keychain item as the Release
-# archive path, never prints the value, and reports only statuses and row counts. The rate-limit leg
+# Secret-safe production boundary validation. Reads the same Keychain item as the Release archive
+# path, never prints the value, and reports only statuses and row counts. The rate-limit leg
 # deliberately uses a props key Convex refuses after the limiter, so the first 60 attempts consume
 # budget without polluting the evidence table and the 61st can prove 429/no insert.
 
@@ -110,6 +110,7 @@ run_rate_attempt() {
 }
 
 smoke_status=$(post "$temp_dir/smoke" "$smoke_body" --config "$secret_header_config")
+smoke_replay_status=$(post "$temp_dir/smoke-replay" "$smoke_body" --config "$secret_header_config")
 missing_status=$(post "$temp_dir/missing" "$missing_body")
 wrong_status=$(post "$temp_dir/wrong" "$wrong_body" -H 'X-RepToday-Analytics-Secret: wrong-production-validation-token')
 
@@ -144,6 +145,7 @@ then
 fi
 
 SMOKE_STATUS="$smoke_status" \
+SMOKE_REPLAY_STATUS="$smoke_replay_status" \
 MISSING_STATUS="$missing_status" \
 WRONG_STATUS="$wrong_status" \
 RATE_400="$rate_400" \
@@ -161,6 +163,7 @@ const by = (id) => rows.filter((row) => row.installId === id);
 const result = {
   smoke_install_id: process.env.SMOKE_ID,
   smoke_status: process.env.SMOKE_STATUS,
+  smoke_replay_status: process.env.SMOKE_REPLAY_STATUS,
   missing_status: process.env.MISSING_STATUS,
   wrong_status: process.env.WRONG_STATUS,
   rate_first_sixty_status_400: Number(process.env.RATE_400),
@@ -175,6 +178,7 @@ const result = {
 console.log(JSON.stringify(result, null, 2));
 const valid =
   result.smoke_status === "204" &&
+  result.smoke_replay_status === "204" &&
   result.missing_status === "401" &&
   result.wrong_status === "401" &&
   result.rate_first_sixty_status_400 === 60 &&
