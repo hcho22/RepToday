@@ -115,7 +115,8 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         } catch {
             // If sync failed, an update that happened independently while it was in flight is still a
             // live transaction and must be judged normally rather than silently discarded.
-            await trialConversionObserver.failRestore()
+            let history = await facade.transactionHistory()
+            await trialConversionObserver.failRestore(history: history)
             throw error
         }
     }
@@ -335,40 +336,60 @@ actor TrialConversionObserver {
 
     func completeRestore(history: StoreTransactionHistory) {
         guard let restoreEpoch = activeRestoreEpoch else { return }
+        let finalization = restoreFinalization(
+            restoreEpoch: restoreEpoch,
+            history: history
+        )
         let historicalConversions = history.transactions.filter {
             Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
         }
-        let independentInFlightTransactionIDs = Set(
-            inFlightObservations.values.compactMap {
-                $0.restoreEpoch == restoreEpoch ? nil : $0.transaction.id
-            }
-        )
         let conversionsToBaseline = historicalConversions.filter {
-            if independentInFlightTransactionIDs.contains($0.id) {
+            if finalization.independentTransactionIDs.contains($0.id) {
                 deferredRestoreBaselines[$0.id] = $0
                 return false
             }
             return true
         }
-        let pendingTransactions = conversionsPendingDuringRestore
         retainAsEmitted(
-            conversionsToBaseline + pendingTransactions,
-            referenceTransactions: history.transactions + pendingTransactions
+            conversionsToBaseline + finalization.pendingTransactions,
+            referenceTransactions: history.transactions + finalization.pendingTransactions
         )
         concludeRestore(restoreEpoch, outcome: .succeeded)
     }
 
-    func failRestore() async {
+    func failRestore(history: StoreTransactionHistory) async {
         guard let restoreEpoch = activeRestoreEpoch else { return }
-        let pendingTransactions = conversionsPendingDuringRestore
+        let finalization = restoreFinalization(
+            restoreEpoch: restoreEpoch,
+            history: history
+        )
         concludeRestore(restoreEpoch, outcome: .failed)
 
         guard let analytics else { return }
         await emitIfNeeded(
-            pendingTransactions,
-            referenceTransactions: pendingTransactions,
+            finalization.pendingTransactions,
+            referenceTransactions: history.transactions + finalization.pendingTransactions,
             analytics: analytics
         )
+    }
+
+    private func restoreFinalization(
+        restoreEpoch: UInt64,
+        history: StoreTransactionHistory
+    ) -> (
+        independentTransactionIDs: Set<UInt64>,
+        pendingTransactions: [StoreSubscriptionTransaction]
+    ) {
+        let independentTransactionIDs = Set(
+            inFlightObservations.values.compactMap {
+                $0.restoreEpoch == restoreEpoch ? nil : $0.transaction.id
+            }
+        )
+        let pendingTransactions = conversionsPendingDuringRestore.filter {
+            !independentTransactionIDs.contains($0.id)
+                && Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
+        }
+        return (independentTransactionIDs, pendingTransactions)
     }
 
     private func emitIfNeeded(
@@ -438,12 +459,13 @@ actor TrialConversionObserver {
             for: candidateIDSet
         )
 
-        var storedOrder: [String: Int] = [:]
-        for (index, id) in storedIDs.enumerated() where storedOrder[id] == nil {
-            storedOrder[id] = index
-        }
-        candidateIDs.sort {
-            retainedID($0, sortsBefore: $1, storedOrder: storedOrder)
+        if candidateIDs.allSatisfy({ retainedPurchaseDates[$0] != nil }) {
+            candidateIDs.sort {
+                let lhsDate = retainedPurchaseDates[$0] ?? .distantPast
+                let rhsDate = retainedPurchaseDates[$1] ?? .distantPast
+                if lhsDate != rhsDate { return lhsDate < rhsDate }
+                return Self.transactionID($0, sortsBefore: $1)
+            }
         }
 
         let retainedIDs = Array(candidateIDs.suffix(Self.retentionLimit))
@@ -485,27 +507,6 @@ actor TrialConversionObserver {
                 retainedPurchaseDates[id] ?? transaction.purchaseDate,
                 transaction.purchaseDate
             )
-        }
-    }
-
-    private func retainedID(
-        _ lhs: String,
-        sortsBefore rhs: String,
-        storedOrder: [String: Int]
-    ) -> Bool {
-        switch (retainedPurchaseDates[lhs], retainedPurchaseDates[rhs]) {
-        case let (lhsDate?, rhsDate?):
-            if lhsDate != rhsDate { return lhsDate < rhsDate }
-            return Self.transactionID(lhs, sortsBefore: rhs)
-        case (nil, _?):
-            return true
-        case (_?, nil):
-            return false
-        case (nil, nil):
-            let lhsIndex = storedOrder[lhs] ?? Int.max
-            let rhsIndex = storedOrder[rhs] ?? Int.max
-            if lhsIndex != rhsIndex { return lhsIndex < rhsIndex }
-            return Self.transactionID(lhs, sortsBefore: rhs)
         }
     }
 
