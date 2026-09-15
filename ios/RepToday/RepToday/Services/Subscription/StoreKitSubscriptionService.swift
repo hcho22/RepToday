@@ -237,6 +237,7 @@ actor TrialConversionObserver {
     private var inFlightObservations: [UInt64: TransactionObservation] = [:]
     private var completedRestores: [UInt64: CompletedRestore] = [:]
     private var terminalHistoriesByObservationSequence: [UInt64: StoreTransactionHistory] = [:]
+    private var restoreFinalizationWaiters: [UInt64: [CheckedContinuation<Void, Never>]] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
     private var restoreCandidates: [StoreSubscriptionTransaction] = []
     private var retainedPurchaseDates: [String: Date]
@@ -289,6 +290,13 @@ actor TrialConversionObserver {
         _ observation: TransactionObservation,
         history: StoreTransactionHistory
     ) async {
+        guard inFlightObservations[observation.sequence] != nil else { return }
+        while let restoreEpoch = activeRestoreEpoch,
+              observation.restoreEpoch != restoreEpoch {
+            await withCheckedContinuation { continuation in
+                restoreFinalizationWaiters[observation.sequence, default: []].append(continuation)
+            }
+        }
         guard inFlightObservations.removeValue(forKey: observation.sequence) != nil else { return }
         guard let analytics else { return }
 
@@ -494,6 +502,10 @@ actor TrialConversionObserver {
             )
         } else {
             completedRestores.removeValue(forKey: restoreEpoch)
+        }
+        for sequence in restoreFinalizationWaiters.keys.sorted() {
+            let continuations = restoreFinalizationWaiters.removeValue(forKey: sequence) ?? []
+            continuations.forEach { $0.resume() }
         }
     }
 

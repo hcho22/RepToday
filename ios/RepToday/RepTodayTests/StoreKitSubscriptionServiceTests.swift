@@ -1354,6 +1354,96 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testIndependentObservationWaitsForActiveRestoreTerminalHistoryBeforeClassifying() async {
+        let trial = storeTransaction(
+            id: 6_125, originalID: 6_125, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let firstPaidRenewal = storeTransaction(
+            id: 6_126, originalID: 6_125, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 6_127, originalID: 6_125, day: 45,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let independentObservation = await observer.capture(.verified(laterPaidRenewal))
+        XCTAssertNotNil(independentObservation)
+        await observer.beginRestore()
+
+        let (observationStarted, observationStartedContinuation) = AsyncStream<Void>.makeStream()
+        let observationTask = Task {
+            observationStartedContinuation.yield(())
+            observationStartedContinuation.finish()
+            if let independentObservation {
+                await observer.observe(independentObservation, history: [trial])
+            }
+        }
+        for await _ in observationStarted { break }
+        for _ in 0..<10 { await Task.yield() }
+
+        var events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        await observer.completeRestore(history: [trial, firstPaidRenewal, laterPaidRenewal])
+        await observationTask.value
+
+        events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(firstPaidRenewal.id)]
+        )
+    }
+
+    func testFailedRestoreReleasesIndependentObservationAfterEarlyHistoryReturn() async {
+        let trial = storeTransaction(
+            id: 6_128, originalID: 6_128, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_129, originalID: 6_128, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let independentObservation = await observer.capture(.verified(conversion))
+        XCTAssertNotNil(independentObservation)
+        await observer.beginRestore()
+
+        let (observationStarted, observationStartedContinuation) = AsyncStream<Void>.makeStream()
+        let observationTask = Task {
+            observationStartedContinuation.yield(())
+            observationStartedContinuation.finish()
+            if let independentObservation {
+                await observer.observe(independentObservation, history: [trial])
+            }
+        }
+        for await _ in observationStarted { break }
+        for _ in 0..<10 { await Task.yield() }
+
+        var events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        await observer.failRestore(history: .verified([trial, conversion]))
+        await observationTask.value
+
+        events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(conversion.id)]
+        )
+    }
+
     func testTerminalRevocationPreventsStaleIndependentConversionEmission() async {
         let trial = storeTransaction(
             id: 6_130, originalID: 6_130, day: 1,

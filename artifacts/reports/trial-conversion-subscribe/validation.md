@@ -22,9 +22,10 @@ The tests use an isolated `UserDefaults` suite and `MockAnalyticsService`; they 
 They cover the qualifying conversion, canonical `plan`, exact StoreKit purchase timestamp, direct
 purchase, initial trial, repeat delivery, later paid renewal, ordinary paid chain, pending purchase,
 current-entitlement and restore reads, shared terminal-union classification of multiple captured
-renewals, sticky same-id revocation, stale pre-restore observations bound to fresher paid-boundary and
-revocation facts, unverified/revoked updates and history, unknown payment under renewal and other
-StoreKit reasons, a known-zero promotional period, overlapping restores, relaunch dedup, stable
+renewals, sticky same-id revocation, and stale pre-restore observations bound to fresher paid-boundary
+and revocation facts whether their history read returns before or after restore finalization,
+unverified/revoked updates and history, unknown payment under renewal and other StoreKit reasons, a
+known-zero promotional period, overlapping restores, relaunch dedup, stable
 partial legacy-metadata migration, and the bounded 32-id replacement rule.
 
 ## Local StoreKit Configuration recipe
