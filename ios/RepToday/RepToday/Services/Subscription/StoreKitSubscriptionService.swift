@@ -113,9 +113,9 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         return facade.listenForTransactions { update in
             // No history read for an unverified update: it can neither grant access nor prove a
             // conversion. Verified updates are processed off the core loop by the app-owned listener.
-            guard case .verified = update else { return }
+            guard let observation = await observer.capture(update) else { return }
             let history = await facade.transactionHistory()
-            await observer.observe(update, history: history)
+            await observer.observe(observation, history: history)
         }
     }
 
@@ -166,11 +166,28 @@ actor TrialConversionObserver {
     static let emittedTransactionIDsKey = "telemetry.trialConversionTransactionIDs"
     static let retentionLimit = 32
 
+    struct TransactionObservation: Sendable {
+        fileprivate let sequence: UInt64
+        fileprivate let transaction: StoreSubscriptionTransaction
+        fileprivate let restoreEpoch: UInt64?
+    }
+
+    private enum RestoreOutcome: Equatable {
+        case succeeded
+        case failed
+    }
+
     private let productIDs: Set<String>
     private let analytics: (any AnalyticsServiceProtocol)?
     private let userDefaults: UserDefaults
-    private var restoreInProgress = false
+    private var nextObservationSequence: UInt64 = 0
+    private var nextRestoreEpoch: UInt64 = 0
+    private var activeRestoreEpoch: UInt64?
+    private var inFlightObservations: [UInt64: TransactionObservation] = [:]
+    private var restoreOutcomes: [UInt64: RestoreOutcome] = [:]
+    private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
     private var conversionsPendingDuringRestore: [StoreSubscriptionTransaction] = []
+    private var retainedPurchaseDates: [String: Date] = [:]
 
     init(
         productIDs: [String],
@@ -182,12 +199,52 @@ actor TrialConversionObserver {
         self.userDefaults = userDefaults
     }
 
-    func observe(_ update: StoreTransactionUpdate, history: [StoreSubscriptionTransaction]) async {
-        guard let analytics else { return }
-        guard case .verified(let transaction) = update else { return }
-        guard Self.isQualifyingConversion(transaction, history: history, productIDs: productIDs) else { return }
+    func capture(_ update: StoreTransactionUpdate) -> TransactionObservation? {
+        guard analytics != nil else { return nil }
+        guard case .verified(let transaction) = update else { return nil }
 
-        if restoreInProgress {
+        nextObservationSequence &+= 1
+        let observation = TransactionObservation(
+            sequence: nextObservationSequence,
+            transaction: transaction,
+            restoreEpoch: activeRestoreEpoch
+        )
+        inFlightObservations[observation.sequence] = observation
+        return observation
+    }
+
+    func observe(_ update: StoreTransactionUpdate, history: [StoreSubscriptionTransaction]) async {
+        guard let observation = capture(update) else { return }
+        await observe(observation, history: history)
+    }
+
+    func observe(
+        _ observation: TransactionObservation,
+        history: [StoreSubscriptionTransaction]
+    ) async {
+        guard inFlightObservations.removeValue(forKey: observation.sequence) != nil else { return }
+        guard let analytics else { return }
+
+        let transaction = observation.transaction
+        let qualifies = Self.isQualifyingConversion(
+            transaction,
+            history: history,
+            productIDs: productIDs
+        )
+        let deliveredIntoActiveRestore = observation.restoreEpoch == activeRestoreEpoch
+            && activeRestoreEpoch != nil
+        let completedRestoreOutcome = observation.restoreEpoch.flatMap { restoreOutcomes[$0] }
+        let deferredBaseline = deferredRestoreBaselines.removeValue(forKey: transaction.id)
+        discardRestoreOutcomeIfFinished(observation.restoreEpoch)
+
+        guard qualifies else {
+            if let deferredBaseline {
+                retainAsEmitted([deferredBaseline], referenceTransactions: history)
+            }
+            return
+        }
+
+        if deliveredIntoActiveRestore {
             // `AppStore.sync()` can redeliver historical transactions. Hold a qualifying update until
             // the restore outcome is known: successful restore baselines it without telemetry; failed
             // restore releases it through the ordinary live-update path.
@@ -197,78 +254,180 @@ actor TrialConversionObserver {
             return
         }
 
-        await emitIfNeeded(transaction, analytics: analytics)
+        if completedRestoreOutcome == .succeeded {
+            retainAsEmitted([transaction], referenceTransactions: history)
+            return
+        }
+
+        await emitIfNeeded([transaction], referenceTransactions: history, analytics: analytics)
     }
 
     func beginRestore() {
-        restoreInProgress = true
+        nextRestoreEpoch &+= 1
+        activeRestoreEpoch = nextRestoreEpoch
         conversionsPendingDuringRestore = []
     }
 
     func completeRestore(history: [StoreSubscriptionTransaction]) {
+        guard let restoreEpoch = activeRestoreEpoch else { return }
         let historicalConversions = history.filter {
             Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
         }
-        let orderedConversions = (historicalConversions + conversionsPendingDuringRestore).sorted {
-            if $0.purchaseDate != $1.purchaseDate { return $0.purchaseDate < $1.purchaseDate }
-            return $0.id < $1.id
+        let independentInFlightTransactionIDs = Set(
+            inFlightObservations.values.compactMap {
+                $0.restoreEpoch == restoreEpoch ? nil : $0.transaction.id
+            }
+        )
+        let conversionsToBaseline = historicalConversions.filter {
+            if independentInFlightTransactionIDs.contains($0.id) {
+                deferredRestoreBaselines[$0.id] = $0
+                return false
+            }
+            return true
         }
-        var seenTransactionIDs = Set<UInt64>()
-        for transaction in orderedConversions {
-            guard seenTransactionIDs.insert(transaction.id).inserted else { continue }
-            markEmitted(transaction.id)
-        }
-        clearRestoreState()
+        let pendingTransactions = conversionsPendingDuringRestore
+        retainAsEmitted(
+            conversionsToBaseline + pendingTransactions,
+            referenceTransactions: history + pendingTransactions
+        )
+        concludeRestore(restoreEpoch, outcome: .succeeded)
     }
 
     func failRestore() async {
+        guard let restoreEpoch = activeRestoreEpoch else { return }
         let pendingTransactions = conversionsPendingDuringRestore
-        clearRestoreState()
+        concludeRestore(restoreEpoch, outcome: .failed)
 
         guard let analytics else { return }
-        for transaction in pendingTransactions {
-            await emitIfNeeded(transaction, analytics: analytics)
-        }
+        await emitIfNeeded(
+            pendingTransactions,
+            referenceTransactions: pendingTransactions,
+            analytics: analytics
+        )
     }
 
     private func emitIfNeeded(
-        _ transaction: StoreSubscriptionTransaction,
+        _ transactions: [StoreSubscriptionTransaction],
+        referenceTransactions: [StoreSubscriptionTransaction],
         analytics: any AnalyticsServiceProtocol
     ) async {
-        guard !emittedTransactionIDs.contains(String(transaction.id)) else { return }
+        let orderedTransactions = Self.normalized(transactions)
+        let previouslyEmittedIDs = Set(emittedTransactionIDs)
+        let newTransactions = orderedTransactions.filter {
+            !previouslyEmittedIDs.contains(String($0.id))
+        }
 
         // Persist before handing off to the fire-and-forget analytics boundary. A cancellation or
         // relaunch after this point may lose delivery (the transport owns reliability), but can never
         // turn StoreKit redelivery into a second emission attempt.
-        markEmitted(transaction.id)
+        retainAsEmitted(orderedTransactions, referenceTransactions: referenceTransactions)
 
-        await analytics.record(
-            AnalyticsEvent(
-                name: .subscribe,
-                timestampMs: Int(transaction.purchaseDate.timeIntervalSince1970 * 1_000),
-                properties: ["plan": .string(transaction.productID)]
+        for transaction in newTransactions {
+            await analytics.record(
+                AnalyticsEvent(
+                    name: .subscribe,
+                    timestampMs: Int(transaction.purchaseDate.timeIntervalSince1970 * 1_000),
+                    properties: ["plan": .string(transaction.productID)]
+                )
             )
-        )
+        }
     }
 
-    private func clearRestoreState() {
-        restoreInProgress = false
+    private func concludeRestore(_ restoreEpoch: UInt64, outcome: RestoreOutcome) {
+        activeRestoreEpoch = nil
         conversionsPendingDuringRestore = []
+        if inFlightObservations.values.contains(where: { $0.restoreEpoch == restoreEpoch }) {
+            restoreOutcomes[restoreEpoch] = outcome
+        } else {
+            restoreOutcomes.removeValue(forKey: restoreEpoch)
+        }
+    }
+
+    private func discardRestoreOutcomeIfFinished(_ restoreEpoch: UInt64?) {
+        guard let restoreEpoch else { return }
+        guard !inFlightObservations.values.contains(where: { $0.restoreEpoch == restoreEpoch }) else { return }
+        restoreOutcomes.removeValue(forKey: restoreEpoch)
     }
 
     private var emittedTransactionIDs: [String] {
         userDefaults.stringArray(forKey: Self.emittedTransactionIDsKey) ?? []
     }
 
-    private func markEmitted(_ transactionID: UInt64) {
-        let id = String(transactionID)
-        var ids = emittedTransactionIDs
-        guard !ids.contains(id) else { return }
-        ids.append(id)
-        if ids.count > Self.retentionLimit {
-            ids.removeFirst(ids.count - Self.retentionLimit)
+    private func retainAsEmitted(
+        _ transactions: [StoreSubscriptionTransaction],
+        referenceTransactions: [StoreSubscriptionTransaction]
+    ) {
+        let orderedTransactions = Self.normalized(transactions)
+        let storedIDs = emittedTransactionIDs
+        var candidateIDs: [String] = []
+        var seenIDs = Set<String>()
+        for id in storedIDs + orderedTransactions.map({ String($0.id) }) {
+            if seenIDs.insert(id).inserted {
+                candidateIDs.append(id)
+            }
         }
-        userDefaults.set(ids, forKey: Self.emittedTransactionIDsKey)
+
+        let candidateIDSet = Set(candidateIDs)
+        for transaction in referenceTransactions + orderedTransactions {
+            let id = String(transaction.id)
+            guard candidateIDSet.contains(id) else { continue }
+            retainedPurchaseDates[id] = min(
+                retainedPurchaseDates[id] ?? transaction.purchaseDate,
+                transaction.purchaseDate
+            )
+        }
+
+        var storedOrder: [String: Int] = [:]
+        for (index, id) in storedIDs.enumerated() where storedOrder[id] == nil {
+            storedOrder[id] = index
+        }
+        candidateIDs.sort {
+            retainedID($0, sortsBefore: $1, storedOrder: storedOrder)
+        }
+
+        let retainedIDs = Array(candidateIDs.suffix(Self.retentionLimit))
+        userDefaults.set(retainedIDs, forKey: Self.emittedTransactionIDsKey)
+        let retainedIDSet = Set(retainedIDs)
+        retainedPurchaseDates = retainedPurchaseDates.filter { retainedIDSet.contains($0.key) }
+    }
+
+    private func retainedID(
+        _ lhs: String,
+        sortsBefore rhs: String,
+        storedOrder: [String: Int]
+    ) -> Bool {
+        switch (retainedPurchaseDates[lhs], retainedPurchaseDates[rhs]) {
+        case let (lhsDate?, rhsDate?):
+            if lhsDate != rhsDate { return lhsDate < rhsDate }
+            return Self.transactionID(lhs, sortsBefore: rhs)
+        case (nil, _?):
+            return true
+        case (_?, nil):
+            return false
+        case (nil, nil):
+            let lhsIndex = storedOrder[lhs] ?? Int.max
+            let rhsIndex = storedOrder[rhs] ?? Int.max
+            if lhsIndex != rhsIndex { return lhsIndex < rhsIndex }
+            return Self.transactionID(lhs, sortsBefore: rhs)
+        }
+    }
+
+    private static func transactionID(_ lhs: String, sortsBefore rhs: String) -> Bool {
+        if let lhsID = UInt64(lhs), let rhsID = UInt64(rhs), lhsID != rhsID {
+            return lhsID < rhsID
+        }
+        return lhs < rhs
+    }
+
+    private static func normalized(
+        _ transactions: [StoreSubscriptionTransaction]
+    ) -> [StoreSubscriptionTransaction] {
+        let orderedTransactions = transactions.sorted {
+            if $0.purchaseDate != $1.purchaseDate { return $0.purchaseDate < $1.purchaseDate }
+            return $0.id < $1.id
+        }
+        var seenTransactionIDs = Set<UInt64>()
+        return orderedTransactions.filter { seenTransactionIDs.insert($0.id).inserted }
     }
 
     static func isQualifyingConversion(
@@ -280,7 +439,6 @@ actor TrialConversionObserver {
               transaction.isAutoRenewable,
               transaction.isPurchased,
               !transaction.isRevoked,
-              !transaction.isUpgraded,
               transaction.reason == .renewal,
               transaction.payment == .paid,
               transaction.id != transaction.originalID else {

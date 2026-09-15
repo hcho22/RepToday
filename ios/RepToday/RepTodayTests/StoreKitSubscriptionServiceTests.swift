@@ -115,6 +115,57 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         }
     }
 
+    private actor FirstHistoryReadGate {
+        private let history: [StoreSubscriptionTransaction]
+        private var readCount = 0
+        private var firstReadStarted = false
+        private var firstReadContinuation: CheckedContinuation<[StoreSubscriptionTransaction], Never>?
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+
+        init(history: [StoreSubscriptionTransaction]) {
+            self.history = history
+        }
+
+        func read() async -> [StoreSubscriptionTransaction] {
+            readCount += 1
+            guard readCount == 1 else { return history }
+
+            firstReadStarted = true
+            let waiters = startWaiters
+            startWaiters = []
+            waiters.forEach { $0.resume() }
+            return await withCheckedContinuation { firstReadContinuation = $0 }
+        }
+
+        func waitUntilFirstReadStarts() async {
+            guard !firstReadStarted else { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func releaseFirstRead() {
+            firstReadContinuation?.resume(returning: history)
+            firstReadContinuation = nil
+        }
+    }
+
+    private struct RestoreRaceFacade: StoreKitFacade {
+        let historyGate: FirstHistoryReadGate
+        let update: StoreSubscriptionTransaction
+
+        func loadProducts(ids: [String]) async throws -> [StoreProduct] { [] }
+        func currentEntitlements() async -> [StoreEntitlement] { [] }
+        func purchase(productID: String) async throws -> StorePurchaseResult { .userCancelled }
+        func sync() async throws {}
+        func transactionHistory() async -> [StoreSubscriptionTransaction] { await historyGate.read() }
+
+        func listenForTransactions(
+            onUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> Void
+        ) -> Task<Void, Never> {
+            let update = update
+            return Task { await onUpdate(.verified(update)) }
+        }
+    }
+
     private func storeTransaction(
         id: UInt64,
         originalID: UInt64,
@@ -392,6 +443,27 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertTrue(events.allSatisfy { $0.name != .trialStarted }, "conversion never repeats trial_started")
     }
 
+    func testDelayedFirstPaidRenewalStillEmitsAfterTheSubscriptionWasUpgraded() async {
+        let trial = storeTransaction(
+            id: 320, originalID: 320, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 321, originalID: 320, day: 15,
+            reason: .renewal, payment: .paid, isUpgraded: true
+        )
+
+        let events = await observedEvents(
+            facade: ObservingFacade(
+                history: [trial, conversion],
+                updates: [.verified(conversion)]
+            )
+        )
+
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        XCTAssertEqual(events.first?.properties, ["plan": .string(SubscriptionPlan.ProductID.monthly)])
+    }
+
     func testRepeatedConversionUpdateEmitsExactlyOnce() async {
         let trial = storeTransaction(
             id: 400, originalID: 400, day: 1,
@@ -523,6 +595,39 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey), ["611"])
     }
 
+    func testUpdateAlreadyAwaitingHistoryWhenRestoreStartsStillEmits() async throws {
+        let trial = storeTransaction(
+            id: 612, originalID: 612, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 613, originalID: 612, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let historyGate = FirstHistoryReadGate(history: [trial, conversion])
+        let service = StoreKitSubscriptionService(
+            facade: RestoreRaceFacade(historyGate: historyGate, update: conversion),
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        let listenerTask = service.startObservingTransactions()
+        await historyGate.waitUntilFirstReadStarts()
+
+        let restoreTask = Task { try await service.restorePurchases() }
+        _ = try await restoreTask.value
+        await historyGate.releaseFirstRead()
+        await listenerTask.value
+
+        let events = await analytics.recordedEvents
+        XCTAssertEqual(events.map(\.name), [.subscribe])
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            ["613"]
+        )
+    }
+
     func testReverseOrderedRestoreRetainsTheNewestConversionForRedeliveryDeduplication() async {
         var history: [StoreSubscriptionTransaction] = []
         var conversions: [StoreSubscriptionTransaction] = []
@@ -564,6 +669,92 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
         let events = await analytics.recordedEvents
         XCTAssertTrue(events.isEmpty, "the latest restored conversion remains baselined when redelivered")
+    }
+
+    func testReverseOrderedLiveUpdatesRetainTheNewestConversionForRedeliveryDeduplication() async {
+        var history: [StoreSubscriptionTransaction] = []
+        var conversions: [StoreSubscriptionTransaction] = []
+        for offset in 0...TrialConversionObserver.retentionLimit {
+            let originalID = UInt64(1_000 + offset * 2)
+            let trial = storeTransaction(
+                id: originalID, originalID: originalID, day: TimeInterval(offset * 20 + 1),
+                reason: .purchase, payment: .introductoryFreeTrial
+            )
+            let conversion = storeTransaction(
+                id: originalID + 1, originalID: originalID, day: TimeInterval(offset * 20 + 15),
+                reason: .renewal, payment: .paid
+            )
+            history.append(contentsOf: [trial, conversion])
+            conversions.append(conversion)
+        }
+
+        let firstEvents = await observedEvents(
+            facade: ObservingFacade(
+                history: history,
+                updates: conversions.reversed().map(StoreTransactionUpdate.verified)
+            )
+        )
+        XCTAssertEqual(firstEvents.count, TrialConversionObserver.retentionLimit + 1)
+
+        let newestConversion = conversions[TrialConversionObserver.retentionLimit]
+        let storedIDs = observerDefaults.stringArray(
+            forKey: TrialConversionObserver.emittedTransactionIDsKey
+        )
+        XCTAssertFalse(storedIDs?.contains(String(conversions[0].id)) == true)
+        XCTAssertTrue(storedIDs?.contains(String(newestConversion.id)) == true)
+
+        let redeliveryEvents = await observedEvents(
+            facade: ObservingFacade(
+                history: history,
+                updates: [.verified(newestConversion)]
+            )
+        )
+        XCTAssertTrue(redeliveryEvents.isEmpty)
+    }
+
+    func testFailedRestoreReleasesReverseOrderedUpdatesAndRetainsTheNewestConversion() async {
+        var history: [StoreSubscriptionTransaction] = []
+        var conversions: [StoreSubscriptionTransaction] = []
+        for offset in 0...TrialConversionObserver.retentionLimit {
+            let originalID = UInt64(1_100 + offset * 2)
+            let trial = storeTransaction(
+                id: originalID, originalID: originalID, day: TimeInterval(offset * 20 + 1),
+                reason: .purchase, payment: .introductoryFreeTrial
+            )
+            let conversion = storeTransaction(
+                id: originalID + 1, originalID: originalID, day: TimeInterval(offset * 20 + 15),
+                reason: .renewal, payment: .paid
+            )
+            history.append(contentsOf: [trial, conversion])
+            conversions.append(conversion)
+        }
+
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await observer.beginRestore()
+        for conversion in conversions.reversed() {
+            await observer.observe(.verified(conversion), history: history)
+        }
+        await observer.failRestore()
+
+        var events = await analytics.recordedEvents
+        XCTAssertEqual(events.count, TrialConversionObserver.retentionLimit + 1)
+        let newestConversion = conversions[TrialConversionObserver.retentionLimit]
+        let storedIDs = observerDefaults.stringArray(
+            forKey: TrialConversionObserver.emittedTransactionIDsKey
+        )
+        XCTAssertFalse(storedIDs?.contains(String(conversions[0].id)) == true)
+        XCTAssertTrue(storedIDs?.contains(String(newestConversion.id)) == true)
+
+        await observer.observe(.verified(newestConversion), history: history)
+
+        events = await analytics.recordedEvents
+        XCTAssertEqual(events.count, TrialConversionObserver.retentionLimit + 1)
     }
 
     func testUnverifiedAndRevokedUpdatesDoNotEmit() async {
