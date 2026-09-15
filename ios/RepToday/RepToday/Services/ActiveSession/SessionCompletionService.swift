@@ -224,7 +224,7 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
             name: .weekActive,
             timestampMs: Int(log.completedAt.timeIntervalSince1970 * 1000)
         )
-        await analytics.record(event)
+        analytics.record(event)
     }
 
     func recordPerceivedDifficulty(_ difficulty: PerceivedDifficulty?, forLog log: WorkoutLog) async throws {

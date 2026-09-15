@@ -274,11 +274,6 @@ final class ActiveSessionViewModel {
     /// re-checks the opt-out flag (a second gate could disagree with the first).
     private let analytics: (any AnalyticsServiceProtocol)?
 
-    /// The most recently launched telemetry hand-off, chained so events enqueue in call order and
-    /// exposed only so tests can await the sink settling. The UI never awaits it, and the sink never
-    /// awaits network delivery, so the player cannot stall on analytics.
-    private(set) var analyticsTask: Task<Void, Never>?
-
     /// Ensures `session_completed` is emitted at most once per player (US-T10). It fires from the
     /// single dismiss choke point `recordSessionEnd()`, so this one-shot makes a repeated dismiss a
     /// no-op and the completion never double-fires. (The abandonment terminal event is not emitted by
@@ -1533,15 +1528,14 @@ final class ActiveSessionViewModel {
         Int(now().timeIntervalSince1970 * 1000)
     }
 
-    /// Hand one telemetry event to the sink off the UI path. A `nil` sink (previews / tests that do
-    /// not exercise the funnel) simply skips it. Emissions are chained behind the previous one so the
-    /// durable hand-offs preserve call order - `session_started` before either terminal event - while
-    /// network delivery remains independent and is never awaited by the UI.
+    /// Hand one telemetry event to the sink. A `nil` sink (previews / tests that do not exercise the
+    /// funnel) simply skips it. The synchronous acceptance boundary preserves call order -
+    /// `session_started` before either terminal event - while encoding, persistence, and network
+    /// delivery remain independent of the UI.
     private func emit(_ name: AnalyticsEventName, properties: [String: AnalyticsValue] = [:]) {
         guard let analytics else { return }
         let event = AnalyticsEvent(name: name, timestampMs: timestampMs(), properties: properties)
-        let previous = analyticsTask
-        analyticsTask = Task { _ = await previous?.value; await analytics.record(event) }
+        analytics.record(event)
     }
 
     // MARK: - Snapshot & persistence (US-K04)

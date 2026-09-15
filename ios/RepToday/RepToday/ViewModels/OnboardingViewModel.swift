@@ -160,12 +160,12 @@ final class OnboardingViewModel {
 
     /// Emits `onboarding_started` (no properties) on the first onboarding screen's appearance, exactly
     /// once per flow, and records the start instant that anchors `elapsed_seconds`. The sink performs
-    /// only its bounded local enqueue and swallows failures, so this never waits on network delivery.
-    func onboardingStarted() async {
+    /// only its bounded synchronous acceptance and swallows failures; storage and delivery stay off this path.
+    func onboardingStarted() {
         guard !didEmitOnboardingStarted else { return }
         didEmitOnboardingStarted = true
         onboardingStartInstant = now()
-        await analytics?.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: timestampMs()))
+        analytics?.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: timestampMs()))
     }
 
     /// The current millisecond client timestamp off the injected clock - the same encoding
@@ -265,7 +265,7 @@ final class OnboardingViewModel {
             // delivery, so telemetry cannot gate the save/seed. If no start instant was recorded, elapsed
             // is treated as 0 rather than fabricating a start.
             let elapsedSeconds = onboardingStartInstant.map { max(0, Int(now().timeIntervalSince($0))) } ?? 0
-            await analytics?.record(
+            analytics?.record(
                 AnalyticsEvent(
                     name: .onboardingCompleted,
                     timestampMs: timestampMs(),

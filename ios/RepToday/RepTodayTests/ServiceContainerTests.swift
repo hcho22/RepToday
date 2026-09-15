@@ -32,7 +32,7 @@ final class ServiceContainerTests: XCTestCase {
         _ = try await services.healthKitService.authorizationStatus()
         _ = try await services.subscriptionService.currentSubscription()
         _ = try await services.authService.currentUserIdentifier()
-        await services.analyticsService.record(AnalyticsEvent(name: .appInstall, timestampMs: 0))
+        services.analyticsService.record(AnalyticsEvent(name: .appInstall, timestampMs: 0))
         // Resolved but not exercised: running it would tear down the container's stores and mutate an
         // AppState. Its teardown is covered by `AccountDeletionServiceTests`.
         _ = services.accountDeletionService

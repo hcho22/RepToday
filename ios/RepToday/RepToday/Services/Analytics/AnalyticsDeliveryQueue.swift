@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// The durable unit handed from `LiveAnalyticsService` to the delivery queue.
+/// The durable unit written by the delivery queue after synchronous acceptance.
 ///
 /// `eventId` is generated once and travels unchanged through every retry. The Convex sink uses it
 /// as an idempotency key, so an interrupted response can be replayed without inflating a metric.
@@ -14,6 +14,58 @@ struct PendingAnalyticsDelivery: Codable, Equatable, Sendable {
     let createdAtMs: Int64
     let consentGeneration: Int
     var attemptCount: Int
+}
+
+private struct AcceptedAnalyticsEvent: Sendable {
+    let event: AnalyticsEvent
+    let eventId: String
+    let installId: String
+    let createdAtMs: Int64
+    let consentGeneration: Int
+    let backgroundActivity: AnalyticsBackgroundActivity
+}
+
+private final class AnalyticsAcceptanceBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [AcceptedAnalyticsEvent] = []
+
+    func append(_ event: AcceptedAnalyticsEvent, limit: Int) -> [AcceptedAnalyticsEvent] {
+        lock.lock()
+        events.append(event)
+        let overflowCount = max(0, events.count - limit)
+        let evicted = Array(events.prefix(overflowCount))
+        if overflowCount > 0 {
+            events.removeFirst(overflowCount)
+        }
+        lock.unlock()
+        return evicted
+    }
+
+    func takeAll() -> [AcceptedAnalyticsEvent] {
+        lock.lock()
+        let result = events
+        events = []
+        lock.unlock()
+        return result
+    }
+
+    func prepend(_ restored: [AcceptedAnalyticsEvent], limit: Int) -> [AcceptedAnalyticsEvent] {
+        lock.lock()
+        events = restored + events
+        let overflowCount = max(0, events.count - limit)
+        let evicted = Array(events.prefix(overflowCount))
+        if overflowCount > 0 {
+            events.removeFirst(overflowCount)
+        }
+        lock.unlock()
+        return evicted
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return events.count
+    }
 }
 
 /// Minimal durable storage seam. Production writes one small atomic JSON file; tests use memory.
@@ -121,15 +173,54 @@ struct URLSessionAnalyticsDeliveryTransport: AnalyticsDeliveryTransport, @unchec
 
 /// Ends one iOS background-execution assertion. The closure form keeps UIKit identifiers out of
 /// the deterministic test seam.
-struct AnalyticsBackgroundLease: @unchecked Sendable {
-    private let endOperation: @Sendable () async -> Void
+final class AnalyticsBackgroundLease: @unchecked Sendable {
+    private let lock = NSLock()
+    private let endOperation: @Sendable () -> Void
+    private var hasEnded = false
 
-    init(end: @escaping @Sendable () async -> Void) {
+    init(end: @escaping @Sendable () -> Void) {
         self.endOperation = end
     }
 
-    func end() async {
-        await endOperation()
+    func end() {
+        lock.lock()
+        guard !hasEnded else {
+            lock.unlock()
+            return
+        }
+        hasEnded = true
+        lock.unlock()
+        endOperation()
+    }
+}
+
+private final class AnalyticsBackgroundActivity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lease: AnalyticsBackgroundLease?
+    private var hasFinished = false
+
+    func install(_ lease: AnalyticsBackgroundLease) {
+        lock.lock()
+        if hasFinished {
+            lock.unlock()
+            lease.end()
+            return
+        }
+        self.lease = lease
+        lock.unlock()
+    }
+
+    func finish() {
+        lock.lock()
+        guard !hasFinished else {
+            lock.unlock()
+            return
+        }
+        hasFinished = true
+        let lease = self.lease
+        self.lease = nil
+        lock.unlock()
+        lease?.end()
     }
 }
 
@@ -140,31 +231,44 @@ struct AnalyticsBackgroundLease: @unchecked Sendable {
 struct AnalyticsBackgroundExecution: @unchecked Sendable {
     private let beginOperation: @Sendable (
         @escaping @Sendable () -> Void
-    ) async -> AnalyticsBackgroundLease
+    ) -> AnalyticsBackgroundLease
 
     init(
         begin: @escaping @Sendable (
             @escaping @Sendable () -> Void
-        ) async -> AnalyticsBackgroundLease
+        ) -> AnalyticsBackgroundLease
     ) {
         self.beginOperation = begin
     }
 
-    func begin(expirationHandler: @escaping @Sendable () -> Void) async -> AnalyticsBackgroundLease {
-        await beginOperation(expirationHandler)
+    func begin(expirationHandler: @escaping @Sendable () -> Void) -> AnalyticsBackgroundLease {
+        beginOperation(expirationHandler)
     }
 
     static let live = AnalyticsBackgroundExecution { expirationHandler in
-        let identifier = await MainActor.run {
-            UIApplication.shared.beginBackgroundTask(
-                withName: "RepTodayAnalyticsDelivery",
-                expirationHandler: expirationHandler
-            )
+        let begin = {
+            MainActor.assumeIsolated {
+                UIApplication.shared.beginBackgroundTask(
+                    withName: "RepTodayAnalyticsDelivery",
+                    expirationHandler: expirationHandler
+                )
+            }
+        }
+        let identifier = if Thread.isMainThread {
+            begin()
+        } else {
+            DispatchQueue.main.sync(execute: begin)
         }
         return AnalyticsBackgroundLease {
             guard identifier != .invalid else { return }
-            await MainActor.run {
-                UIApplication.shared.endBackgroundTask(identifier)
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    UIApplication.shared.endBackgroundTask(identifier)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    UIApplication.shared.endBackgroundTask(identifier)
+                }
             }
         }
     }
@@ -202,11 +306,12 @@ private final class AnalyticsSendCancellation: @unchecked Sendable {
 
 /// Serial, bounded delivery state machine behind `LiveAnalyticsService`.
 ///
-/// Enqueue persists before returning, but never waits on a request. A drain gets at most four
-/// deliveries, each with a ten-second request timeout owned by the transport. Retryable failures
-/// remain durable for foreground/relaunch recovery; every item is capped at three attempts, seven
-/// days, and a 50-item queue. Oldest work is evicted first so an exit-adjacent completion or
-/// subscription event is not crowded out by a stale backlog.
+/// Acceptance is synchronous into a lock-backed buffer under a background-execution lease. The
+/// actor encodes and persists afterward, then drains at most four deliveries, each with a ten-second
+/// request timeout owned by the transport. Retryable failures remain durable for foreground/relaunch
+/// recovery; every item is capped at three attempts, seven days, and a 50-item queue. Oldest work is
+/// evicted first so an exit-adjacent completion or subscription event is not crowded out by a stale
+/// backlog.
 actor AnalyticsDeliveryQueue {
     static let maxPendingEvents = 50
     static let maxAttempts = 3
@@ -223,6 +328,7 @@ actor AnalyticsDeliveryQueue {
     private let backgroundExecution: AnalyticsBackgroundExecution
     private let now: @Sendable () -> Date
     private let newEventId: @Sendable () -> String
+    private nonisolated let acceptanceBuffer = AnalyticsAcceptanceBuffer()
 
     private var deliveries: [PendingAnalyticsDelivery] = []
     private var hasLoaded = false
@@ -254,50 +360,88 @@ actor AnalyticsDeliveryQueue {
         self.newEventId = newEventId
     }
 
-    func enqueue(_ event: AnalyticsEvent) {
+    nonisolated func accept(_ event: AnalyticsEvent) {
         guard isEnabled() else { return }
-        loadIfNeeded()
-
         let generation = consentGeneration()
-        guard isEnabled() else {
-            discardAll()
-            return
-        }
-
-        pruneIneligibleAndExpired()
+        guard isEnabled(), generation == consentGeneration() else { return }
         let eventId = newEventId()
-        guard let body = try? AnalyticsWireBody.encode(event, installId: installId(), eventId: eventId) else {
-            return
+        let backgroundActivity = AnalyticsBackgroundActivity()
+        let backgroundLease = backgroundExecution.begin {
+            backgroundActivity.finish()
         }
-        // Consent can change while encoding. Re-read both facts before the durable hand-off.
-        guard isEnabled(), generation == consentGeneration() else {
-            discardAll()
-            return
+        backgroundActivity.install(backgroundLease)
+        let accepted = AcceptedAnalyticsEvent(
+            event: event,
+            eventId: eventId,
+            installId: installId(),
+            createdAtMs: milliseconds(now()),
+            consentGeneration: generation,
+            backgroundActivity: backgroundActivity
+        )
+        let evicted = acceptanceBuffer.append(accepted, limit: Self.maxPendingEvents)
+        for event in evicted {
+            event.backgroundActivity.finish()
         }
+        Task(priority: .utility) { await self.persistAcceptedEvents() }
+    }
+
+    private func persistAcceptedEvents() {
+        let accepted = acceptanceBuffer.takeAll()
+        guard !accepted.isEmpty else { return }
+        loadIfNeeded()
+        pruneIneligibleAndExpired()
 
         let original = deliveries
-        if deliveries.count >= Self.maxPendingEvents {
-            deliveries.removeFirst(deliveries.count - Self.maxPendingEvents + 1)
-        }
-        deliveries.append(
-            PendingAnalyticsDelivery(
-                eventId: eventId,
-                body: body,
-                createdAtMs: milliseconds(now()),
-                consentGeneration: generation,
-                attemptCount: 0
+        var persistable: [AcceptedAnalyticsEvent] = []
+        for acceptedEvent in accepted {
+            guard isEligible(acceptedEvent) else {
+                acceptedEvent.backgroundActivity.finish()
+                continue
+            }
+            guard let body = try? AnalyticsWireBody.encode(
+                acceptedEvent.event,
+                installId: acceptedEvent.installId,
+                eventId: acceptedEvent.eventId
+            ) else {
+                acceptedEvent.backgroundActivity.finish()
+                continue
+            }
+            persistable.append(acceptedEvent)
+            deliveries.append(
+                PendingAnalyticsDelivery(
+                    eventId: acceptedEvent.eventId,
+                    body: body,
+                    createdAtMs: acceptedEvent.createdAtMs,
+                    consentGeneration: acceptedEvent.consentGeneration,
+                    attemptCount: 0
+                )
             )
-        )
+        }
+        if deliveries.count > Self.maxPendingEvents {
+            deliveries.removeFirst(deliveries.count - Self.maxPendingEvents)
+        }
         guard persist() else {
             deliveries = original
+            for acceptedEvent in persistable {
+                acceptedEvent.backgroundActivity.finish()
+            }
+            let evicted = acceptanceBuffer.prepend(persistable, limit: Self.maxPendingEvents)
+            for event in evicted {
+                event.backgroundActivity.finish()
+            }
             return
         }
+        for acceptedEvent in persistable {
+            acceptedEvent.backgroundActivity.finish()
+        }
+        pruneIneligibleAndExpired()
         scheduleDrain()
     }
 
     /// Called on app launch and foreground. It is intentionally safe to call often:
     /// one actor-owned drain runs at a time and each invocation has a fixed work cap.
     func resumePendingDelivery() {
+        persistAcceptedEvents()
         loadIfNeeded()
         guard isEnabled() else {
             activeCancellation?.cancel()
@@ -311,7 +455,15 @@ actor AnalyticsDeliveryQueue {
     /// Called after the persisted setting changes. Generation mismatch makes an opt-out permanent
     /// even if a rapid re-enable races this actor message: pre-opt-out work is ineligible forever.
     func consentDidChange() {
-        activeCancellation?.cancel()
+        if !isEnabled() {
+            activeCancellation?.cancel()
+            let accepted = acceptanceBuffer.takeAll()
+            for event in accepted {
+                event.backgroundActivity.finish()
+            }
+        } else {
+            persistAcceptedEvents()
+        }
         loadIfNeeded()
         pruneIneligibleAndExpired()
         if !isEnabled() {
@@ -322,9 +474,10 @@ actor AnalyticsDeliveryQueue {
     }
 
     var pendingCount: Int {
+        persistAcceptedEvents()
         loadIfNeeded()
         pruneIneligibleAndExpired()
-        return deliveries.count
+        return deliveries.count + acceptanceBuffer.count
     }
 
     private func scheduleDrain() {
@@ -375,16 +528,19 @@ actor AnalyticsDeliveryQueue {
 
             let cancellation = AnalyticsSendCancellation()
             activeCancellation = cancellation
-            let lease = await backgroundExecution.begin {
+            let backgroundActivity = AnalyticsBackgroundActivity()
+            let lease = backgroundExecution.begin {
                 cancellation.cancel()
+                backgroundActivity.finish()
             }
+            backgroundActivity.install(lease)
 
             // This is the send-time consent gate. The lease was acquired first so suspension cannot
             // strand the gap between the check and request start; no bytes are attempted until both
             // consent and the generation captured at enqueue still match.
             guard isEligible(delivery) else {
                 cancellation.cancel()
-                await lease.end()
+                backgroundActivity.finish()
                 remove(delivery.eventId)
                 return
             }
@@ -395,7 +551,7 @@ actor AnalyticsDeliveryQueue {
             cancellation.install(sendTask)
             let outcome = await sendTask.value
             activeCancellation = nil
-            await lease.end()
+            backgroundActivity.finish()
             deliveryCount += 1
 
             // Opt-out may have run while the request was in flight. Its generation invalidates the
@@ -452,6 +608,10 @@ actor AnalyticsDeliveryQueue {
         isEnabled() && delivery.consentGeneration == consentGeneration()
     }
 
+    private func isEligible(_ event: AcceptedAnalyticsEvent) -> Bool {
+        isEnabled() && event.consentGeneration == consentGeneration()
+    }
+
     private func discardAll() {
         let original = deliveries
         deliveries = []
@@ -479,7 +639,7 @@ actor AnalyticsDeliveryQueue {
         }
     }
 
-    private func milliseconds(_ date: Date) -> Int64 {
+    nonisolated private func milliseconds(_ date: Date) -> Int64 {
         Int64(date.timeIntervalSince1970 * 1_000)
     }
 }

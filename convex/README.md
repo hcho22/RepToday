@@ -44,12 +44,14 @@ action performs. It is an `internalMutation` now - see below.
 
 ## Client delivery contract
 
-`LiveAnalyticsService.record(_:)` is non-throwing. With consent enabled it atomically hands the
-encoded event to a small Application Support outbox, then returns without awaiting a request. The
-queue sends independently through the existing ephemeral `URLSession`, under an iOS
-`beginBackgroundTask` assertion so an exit-adjacent POST can finish through ordinary suspension.
-If that assertion expires, it cancels the request and leaves the row durable. App launch,
-foregrounding, and later accepted events provide bounded recovery triggers.
+`LiveAnalyticsService.record(_:)` is synchronous and non-throwing. With consent enabled it transfers
+the event into a bounded queue-owned front buffer and acquires an iOS `beginBackgroundTask`
+assertion before returning. The queue encodes and atomically persists the event to its small
+Application Support outbox asynchronously, so product flows wait on neither storage nor network.
+It then sends independently through the existing ephemeral `URLSession`, under a separate
+background assertion so an exit-adjacent POST can finish through ordinary suspension. If that send
+assertion expires, it cancels the request and leaves the row durable. App launch, foregrounding, and
+later accepted events provide bounded recovery triggers.
 
 The resource and retry bounds are deliberately short:
 
@@ -64,7 +66,7 @@ Every accepted event receives one random `eventId`, stored in the encoded outbox
 unchanged on every attempt. The mutation's indexed idempotency check means a replay after "insert
 committed, response interrupted" still contributes one evidence row.
 
-Consent is authoritative at enqueue and send. Every outbox row captures the persisted consent
+Consent is authoritative at acceptance, persistence, and send. Every outbox row captures the persisted consent
 generation; a true-to-false Settings transition advances that generation synchronously, cancels
 in-flight work, and discards pending rows. A pre-opt-out row can therefore never become eligible
 again if analytics is re-enabled. When the endpoint or secret is unusable, the container resolves

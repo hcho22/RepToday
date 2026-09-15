@@ -7,12 +7,12 @@ import Foundation
 /// plain Foundation networking with no new third-party dependency. The body shape is
 /// `AnalyticsWireBody`.
 ///
-/// **Non-blocking remains a constraint.** `record(_:)` checks consent and performs only a bounded
-/// local enqueue before returning; it never awaits network delivery. The queue sends independently
-/// under a short iOS background-execution assertion, so a request started as the app leaves the
-/// foreground can finish through ordinary suspension. Retryable interruptions remain in the
-/// durable outbox for the next foreground/relaunch, capped at three attempts, seven days, and 50
-/// pending events. Every error is swallowed and no analytics result can become a product failure.
+/// **Non-blocking remains a constraint.** `record(_:)` synchronously checks consent, transfers the
+/// event into a bounded queue-owned buffer, and acquires background execution before returning.
+/// Encoding, durable persistence, retry, and network delivery all proceed asynchronously. Retryable
+/// interruptions remain in the durable outbox for the next foreground/relaunch, capped at three
+/// attempts, seven days, and 50 pending events. Every error is swallowed and no analytics result can
+/// become a product failure.
 ///
 /// **Consent is checked twice.** The persisted gate is read at enqueue and immediately before every
 /// attempt. Each queued row also carries `AppState`'s consent generation; opting out advances that
@@ -198,9 +198,8 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
 
     var isEmissionEnabled: Bool { isEnabled() }
 
-    func record(_ event: AnalyticsEvent) async {
-        guard isEnabled() else { return }
-        await deliveryQueue.enqueue(event)
+    func record(_ event: AnalyticsEvent) {
+        deliveryQueue.accept(event)
     }
 
     func resumePendingDelivery() async {

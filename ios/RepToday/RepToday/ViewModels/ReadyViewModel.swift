@@ -189,11 +189,11 @@ final class ReadyViewModel {
             // successful load, carrying the `generation_ms` just measured in `generate()`. Guarded like
             // the `hasComputedConsistency` / `hasCheckedReprogramOnOpen` one-shots below, and emitted
             // here rather than inside `generate()` so a chip-tap regeneration (which never runs `load()`)
-            // cannot re-emit and inflate the count. The sink performs only a bounded local hand-off
-            // and swallows failure; it never awaits network delivery or gates the render / Start.
+            // cannot re-emit and inflate the count. The sink performs only bounded synchronous
+            // acceptance and swallows failure; storage and delivery never gate the render / Start.
             if !hasEmittedReadyScreenShown {
                 hasEmittedReadyScreenShown = true
-                await analytics?.record(
+                analytics?.record(
                     AnalyticsEvent(
                         name: .readyScreenShown,
                         timestampMs: timestampMs(),
@@ -382,7 +382,7 @@ final class ReadyViewModel {
             let index = min(max(state.currentStepIndex, 0), state.slots.count - 1)
             category = state.slots[index].blockCategory
         }
-        await analytics.record(
+        analytics.record(
             AnalyticsEvent(
                 name: .sessionAbandoned,
                 timestampMs: timestampMs(),

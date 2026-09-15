@@ -43,8 +43,8 @@ final class PaywallViewModel {
 
     /// Anonymous product telemetry sink (US-T12). Optional exactly like `ReadyViewModel.analytics`,
     /// defaulted `nil`, so previews and the unit suite inject a mock (or nothing) while production
-    /// threads `services.analyticsService` in. Emission performs only a bounded local hand-off and
-    /// never awaits network delivery or gates the paywall, purchase, or dismissal.
+    /// threads `services.analyticsService` in. Emission performs only bounded synchronous acceptance;
+    /// storage and delivery never gate the paywall, purchase, or dismissal.
     private let analytics: (any AnalyticsServiceProtocol)?
 
     /// Where this paywall was opened from - the closed `entry_point` the `paywall_shown` event
@@ -81,7 +81,7 @@ final class PaywallViewModel {
         // await delivery here, so telemetry never gates plans loading or the purchase.
         if !hasEmittedPaywallShown {
             hasEmittedPaywallShown = true
-            await analytics?.record(
+            analytics?.record(
                 AnalyticsEvent(
                     name: .paywallShown,
                     timestampMs: timestampMs(),
@@ -177,9 +177,9 @@ final class PaywallViewModel {
     private func emitPurchaseTelemetry(for subscription: Subscription, plan: SubscriptionPlan) async {
         guard let analytics else { return }
         if subscription.trialEndsAt != nil {
-            await analytics.record(AnalyticsEvent(name: .trialStarted, timestampMs: timestampMs()))
+            analytics.record(AnalyticsEvent(name: .trialStarted, timestampMs: timestampMs()))
         } else {
-            await analytics.record(
+            analytics.record(
                 AnalyticsEvent(
                     name: .subscribe,
                     timestampMs: timestampMs(),

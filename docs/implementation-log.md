@@ -399,12 +399,12 @@ Without that passthrough the redirect would have been documented but dead - the 
 US-T02 (`Models/AnalyticsEvent.swift`, `Services/Protocols/ServiceProtocols.swift`, `Services/Mock/MockServices.swift`, `Services/Analytics/NoOpAnalyticsService.swift`, `DI/ServiceContainer.swift`) opens the **funnel-instrumentation** epic (a separate PRD, `.claude/agent/tasks/prd-funnel-instrumentation_260803.md`) with the analytics **seam only** - no emission call sites, no transport, no new Swift Package (Lottie stays the app's one third-party dependency).
 `AnalyticsEvent` is a `Codable`, `Sendable` value: a closed `AnalyticsEventName` enum over exactly the 13 pre-registered in-app events (the event-metric schema, snake_case raw values that are the Convex wire contract - the two web-side events are out of scope), a millisecond client timestamp, and a `[String: AnalyticsValue]` property bag where `AnalyticsValue` is a closed union of `Int`/`Double`/`String`/`Bool`.
 `AnalyticsValue` encodes with an explicit `type` discriminator so every scalar case round-trips losslessly - `.int(1)`, `.double(1)`, and `.bool(true)` never collapse into one another the way natural JSON number/bool decoding would let them.
-`AnalyticsServiceProtocol.record(_:)` is `async` but deliberately **not** `throws` (the one departure from the file's `async throws` house style): emission is fire-and-forget, so a call site reads `await analytics.record(event)` with no `try`, and the live transport that landed in US-T04 swallows every failure rather than surfacing it into the core loop.
+At US-T02's landing, `AnalyticsServiceProtocol.record(_:)` was `async` but deliberately **not** `throws`; the 2026-09-14 suspension-resilience amendment below supersedes that signature with synchronous queue acceptance while preserving the non-throwing product contract.
 `MockAnalyticsService` is an `actor` recording every event into `recordedEvents` in order with no I/O; `analyticsService` is a new `ServiceContainer` property wired in both `mock()` and `live(...)`, a required initializer parameter like every other service so each construction site wires it explicitly and a container built without a sink fails to compile rather than silently dropping telemetry.
 The two containers wire *different* sinks: `mock()` takes the recording `MockAnalyticsService`, while `live(context:)` takes `NoOpAnalyticsService` (`Services/Analytics/`, the directory US-T04's real Convex-backed `URLSession` POST later landed in - where the no-op survives as what a build carrying no usable endpoint wires, which today is every Release build).
 A shipping build with no transport must emit nothing **and accumulate nothing**, so production discards each event rather than appending it to a `recordedEvents` array nothing drains - otherwise the first emission story to land ahead of the transport would grow one `AnalyticsEvent` per event for the process's whole lifetime, silently.
 `AnalyticsServiceTests` covers the three-event-in-order record, every `AnalyticsValue` round-trip, the whole-event round-trip, and an exactly-13-cases assertion so a missing or extra event name fails loudly.
-It also exercises the seam rather than only the model: one anonymous install's whole funnel - all 13 events, in emission order, with the schema's own property names - is recorded through `analyticsService`, written the way an emission call site must write it (`await services.analyticsService.record(event)`, no `try`), so the deliberate non-throwing signature is used as a call site rather than asserted about; the test asserts the mock container hands every event back in order, and the recorded array is then encoded to the model's own JSON and decoded back losslessly, asserting the snake_case event names are what serialise and neither web-side event appears.
+It also exercises the seam rather than only the model: one anonymous install's whole funnel - all 13 events, in emission order, with the schema's own property names - is recorded through `analyticsService`; the suspension-resilience amendment below made that call synchronous, and the test continues to exercise the real non-throwing call shape rather than asserting it from source. The mock container hands every event back in order, and the recorded array is then encoded to the model's own JSON and decoded back losslessly, asserting the snake_case event names are what serialise and neither web-side event appears.
 As US-T02 shipped it, that funnel ran through **both** containers, because production wired the discarding no-op and so cost nothing to drive. US-T04 changed that: the production container now wires a real transport pointed at a real deployment, so recording 13 events through it from a unit test would put 13 POSTs on the wire, and the test asserts the production wiring **by type** instead while emitting only through the mock. It claims nothing about the request body, which is `AnalyticsWireBody`'s shape and is covered by `LiveAnalyticsServiceTests`.
 The funnel fixture's timestamps are fixed offsets from a pinned install moment rather than read from the clock, so the container test is deterministic run to run; it writes no files and touches no network.
 Landing the seam also fixed a pre-existing time-bomb: `MockWorkoutEngine.generateWorkout` read the wall clock (`asOf: Date()`), violating the "engine logic never reads the wall clock inline" rule, so `PerSideSwapEvidenceTests`'s hosted Ready Screen drifted a staleness tier from its fixed-clock `generate()` baseline as real time moved past the fixture date (2026-07-30) and began failing on 2026-08-03; the engine now takes an injected `now` clock defaulting to `Date()` (production unchanged) and the evidence test pins it, so the suite is deterministic again.
@@ -637,7 +637,7 @@ An unrated completion omits the `perceived_difficulty` key (the property bag car
 
 `abandon_point` is a new small closed enum `AbandonPoint` (`Models/AnalyticsEvent.swift`, `warmup`/`mainWork`/`cooldown`, raw values spelled to match the schema and Validation verbatim), derived via `AbandonPoint(blockCategory:)` - every training block (strength/mobility/primal) folds into `mainWork`, so the value stays coarse and non-identifying and carries no free text.
 `completed_minutes` reuses the same `completedDurationMinutes()` the completion log uses, so "completed minutes" means one thing on both terminal events; on the completed path it reads `WorkoutLog.durationMinutes` off the log built at `finish()`, and on the give-up path it reads the snapshot's `exercisedMinutes` (captured off that same `completedDurationMinutes()`).
-The player's completion emission is chained behind the previous one (`analyticsTask`, the idiom `completionTask`/`persistenceTask` already use) so `session_started` always lands before it and tests can await the sink settling deterministically.
+At US-T10's landing, the player's completion emission was chained behind the previous one through `analyticsTask`; the suspension-resilience amendment below removed that caller-owned task because the synchronous sink boundary now accepts events in call order before returning.
 Verified on an iPhone 16 Simulator: `-scheme RepToday test` = 917 tests, 0 failures. Player-side `ActiveSessionTelemetryTests` cover `session_started` + idempotency, `session_completed` with rating present/omitted, a resumable pause emitting no terminal event, a resumed `start()` not re-emitting, the two-player resume->finish invariant (one started, one completed, zero abandoned), the snapshot capturing `exercisedMinutes`, repeated-dismiss idempotency, and the optional sink; give-up-side `ReadyViewModelTests` cover Discard and overwrite emitting `session_abandoned` with all three `abandon_point` buckets and `completed_minutes`, an ordinary fresh Start emitting nothing, and the cross-view-model pause->Discard invariant (one started, one abandoned, zero completed). `-scheme RepTodayUITests test` = 10 tests, 0 failures. This repo has no CI, so those local runs are the gate.
 
 US-T11 (`Services/ActiveSession/SessionCompletionService.swift`, `DI/ServiceContainer.swift`, `RepTodayTests/WeekActiveEventTests.swift`, `RepTodayTests/CoreDataServicesTests.swift`) lands the **seventh** production emission call site: `week_active`, the Weekly Active Exercisers North Star and kill-criterion K4 signal, carrying **no** properties per the pre-registered schema.
@@ -1234,12 +1234,13 @@ The persistence rule is centralized at the shared user boundary. `UserServicePro
 ### Telemetry delivery survives ordinary iOS suspension
 
 The original `Task.detached` one-shot made exit-adjacent events depend on the process staying alive.
-`LiveAnalyticsService` now hands an enabled event to `AnalyticsDeliveryQueue`: an actor-owned,
-atomically persisted Application Support outbox. Delivery runs independently through the existing
-ephemeral `URLSession`, with each request wrapped in `UIApplication.beginBackgroundTask` so ordinary
-suspension can finish it. Expiration cancels only the active request and leaves its row for launch or
-foreground recovery. Product callers never await network delivery and never receive an analytics
-failure.
+`LiveAnalyticsService.record(_:)` is now a synchronous acceptance boundary: after checking consent it
+transfers the event into a bounded lock-backed front buffer and acquires
+`UIApplication.beginBackgroundTask` before returning. An actor encodes and atomically persists the
+event to the Application Support outbox afterward, so product callers wait on neither storage nor
+network. Each subsequent request receives its own background lease; expiration cancels only the
+active request and leaves its durable row for launch or foreground recovery. Analytics failures never
+surface as product failures.
 
 The recovery path is explicitly bounded: 50 pending events (oldest evicted), three attempts per
 event, seven days of age, four sends per drain trigger, and the existing ten-second timeout with no
@@ -1256,13 +1257,13 @@ performs the indexed lookup plus insert in one Convex mutation. A replay after a
 whose response was lost therefore answers `204` without inflating the evidence table. The reconciliation query deliberately
 continues returning its frozen five analytic columns and omits this transport-only key.
 
-Consent is checked before enqueue and again after acquiring the background lease, immediately before
-request start. A true-to-false `AppState.analyticsEnabled` transition synchronously advances a
+Consent is checked at synchronous acceptance, before persistence, and again after acquiring the send
+lease immediately before request start. A true-to-false `AppState.analyticsEnabled` transition synchronously advances a
 persisted consent generation, then asks the queue to cancel/discard. Every row captures its enqueue
 generation, so even a rapid re-enable or a process death before deletion cannot resurrect pre-opt-out
-work. `LiveAnalyticsServiceTests` deterministically cover background expiration plus relaunch,
-foreground recovery, send-time consent, opt-out purge/no resurrection, retry/age/queue bounds,
-successful retirement, and inert configuration; `convex/http.test.ts` covers stable-id replay as one
+work. `LiveAnalyticsServiceTests` deterministically cover immediate suspension before persistence,
+blocked storage, background recovery, send-time consent, opt-out purge/no resurrection,
+retry/age/queue bounds, successful retirement, and inert configuration; `convex/http.test.ts` covers stable-id replay as one
 insert. The production boundary validator now supplies the durable client's `eventId` too.
 
 ## Owed work

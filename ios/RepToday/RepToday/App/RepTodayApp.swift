@@ -76,12 +76,12 @@ struct RepTodayApp: App {
 
         // US-T07: the three app-entry funnel events - `app_install`, `day7_return`, `day30_return` -
         // decided from the identity `AppState` just settled and a single wall-clock read, then handed
-        // to the sink's bounded local enqueue. This site emits **unconditionally**: consent lives inside the
+        // to the sink's bounded acceptance buffer. This site emits **unconditionally**: consent lives inside the
         // sink (`LiveAnalyticsService.record(_:)` reads the opt-out gate per emission), so re-checking
         // the flag here would only be a second gate that could disagree with the first. The decision
         // unit is what makes the window/dedup logic testable off an injected clock; here it takes the
-        // one `Date()` this entry point is allowed. `record(_:)` never awaits network delivery, so the
-        // wrapping `Task` only bridges `init`'s synchronous context.
+        // one `Date()` this entry point is allowed. `record(_:)` synchronously hands ownership to the
+        // sink, while all encoding, persistence, and delivery work proceeds independently.
         let entryEvents = AppEntryTelemetry.eventsForLaunch(
             isFirstLaunch: appState.isFirstLaunch,
             firstLaunchAt: appState.firstLaunchAt,
@@ -89,10 +89,8 @@ struct RepTodayApp: App {
             now: Date(),
             defaults: appState.telemetryDefaults
         )
-        Task {
-            for event in entryEvents {
-                await analytics.record(event)
-            }
+        for event in entryEvents {
+            analytics.record(event)
         }
 
         // The US-T06 out-of-process proof needs something for the opt-out gate to block that fires on

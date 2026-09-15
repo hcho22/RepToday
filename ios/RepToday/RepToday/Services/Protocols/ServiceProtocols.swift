@@ -184,11 +184,11 @@ extension SubscriptionServiceProtocol {
 /// The single emission method is the funnel-instrumentation seam: every later story emits the 13
 /// pre-registered events (the event-metric schema) through this one interface, and
 /// tests assert on `MockAnalyticsService`'s in-memory record with no network. `record(_:)` is
-/// `async` but **not** `throws` - unlike the rest of this file's `async throws` house style - because
-/// a call site reads `await analytics.record(event)` with no `try`; the live service performs only
-/// a bounded durable enqueue there and never awaits network delivery. A failed, slow, offline, or
-/// interrupted send is swallowed, retained only within the live service's retry bounds, and never
-/// surfaced to a caller or allowed to gate the core loop. The first production caller
+/// synchronous and never throws: the live service checks consent, transfers ownership to a bounded
+/// in-memory acceptance buffer, and acquires background execution before returning. Encoding,
+/// durable persistence, retry, and network delivery proceed asynchronously. A failed, slow,
+/// offline, or interrupted operation is swallowed, retained only within the live service's bounds,
+/// and never surfaced to a caller or allowed to gate the core loop. The first production caller
 /// landed in US-T07 - `RepTodayApp.init()` emits the three app-entry events through
 /// `AppEntryTelemetry` - and the other 10 of the 13 emission sites landed across US-T08 through
 /// US-T12, so all 13 events now have their emission sites;
@@ -218,7 +218,7 @@ extension SubscriptionServiceProtocol {
 /// on somebody noticing a defect is the weaker kind, which is why this one is a count. The item is
 /// filed in firstmate's work queue as well, so the sequencing does not rest on this paragraph.
 protocol AnalyticsServiceProtocol {
-    func record(_ event: AnalyticsEvent) async
+    func record(_ event: AnalyticsEvent)
     /// Gives a durable live sink a bounded recovery opportunity on foreground/relaunch. Mocks and
     /// inert sinks use the default no-op.
     func resumePendingDelivery() async

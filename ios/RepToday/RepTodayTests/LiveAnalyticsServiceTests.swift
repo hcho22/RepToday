@@ -65,7 +65,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
         let service = makeService(installId: "install-42")
-        await service.record(
+        service.record(
             AnalyticsEvent(
                 name: .sessionCompleted,
                 timestampMs: Self.installMs,
@@ -113,7 +113,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
         let service = makeService(secret: "s3cr3t-value-xyz")
-        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
 
         let request = try XCTUnwrap(StubURLProtocol.captured.first)
@@ -131,7 +131,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let sent = expectation(description: "request intercepted")
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
-        await makeService().record(AnalyticsEvent(name: .weekActive, timestampMs: Self.installMs))
+        makeService().record(AnalyticsEvent(name: .weekActive, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
 
         let body = try XCTUnwrap(StubURLProtocol.captured.first?.capturedBody)
@@ -149,7 +149,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let sent = expectation(description: "request intercepted")
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
-        await makeService().record(
+        makeService().record(
             AnalyticsEvent(
                 name: .readyScreenShown,
                 timestampMs: Self.installMs,
@@ -223,7 +223,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in held.fulfill() }
 
         let started = Date()
-        await makeService().record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
+        makeService().record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
         let elapsed = Date().timeIntervalSince(started)
 
         XCTAssertLessThan(elapsed, 0.5, "record(_:) awaited the network instead of only enqueueing")
@@ -238,14 +238,14 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in firstSent.fulfill() }
 
         let service = makeService()
-        await service.record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
         await fulfillment(of: [firstSent], timeout: 5)
 
         let secondSent = expectation(description: "pending retry and second request intercepted")
         secondSent.expectedFulfillmentCount = 2
         StubURLProtocol.failure = nil
         StubURLProtocol.onRequest = { _ in secondSent.fulfill() }
-        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
         await fulfillment(of: [secondSent], timeout: 5)
 
         XCTAssertEqual(StubURLProtocol.captured.count, 3)
@@ -258,7 +258,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in interrupted.fulfill() }
 
         let service = makeService()
-        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
         await fulfillment(of: [interrupted], timeout: 5)
 
         let recovered = expectation(description: "pending request retried")
@@ -272,10 +272,10 @@ final class LiveAnalyticsServiceTests: XCTestCase {
 
     // MARK: - Durable suspension recovery and bounds
 
-    func testBackgroundExpirationLeavesDurableWorkForRelaunchAndReusesItsEventId() async throws {
-        let storage = VolatileAnalyticsOutboxStorage()
-        let expirationProbe = BackgroundExecutionProbe(expireImmediately: true)
-        let interruptedTransport = CancellationAwareAnalyticsTransport()
+    func testImmediateSuspensionAfterRecordStillPersistsForRelaunchWithTheSameEventId() async throws {
+        let storage = BlockingAnalyticsOutboxStorage()
+        let expirationProbe = BackgroundExecutionProbe()
+        let interruptedTransport = ScriptedAnalyticsTransport(outcomes: [.retryableFailure])
         let first = LiveAnalyticsService(
             endpoint: endpoint,
             installId: { "install-42" },
@@ -286,12 +286,15 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             newEventId: { "stable-event-id" },
         )
 
-        await first.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        first.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        XCTAssertEqual(expirationProbe.beginCount, 1)
+        expirationProbe.expireAll()
+        try await eventually { storage.saveIsBlocked }
+        XCTAssertFalse(storage.didFinishBlockedSave)
+        storage.unblock()
+
         try await eventually { await interruptedTransport.requestCount == 1 }
         try await eventually { await first.pendingDeliveryCount == 1 }
-        try await eventually { expirationProbe.endCount == 1 }
-        XCTAssertEqual(expirationProbe.beginCount, 1)
-        XCTAssertEqual(expirationProbe.endCount, 1)
 
         // A new service over the same storage is a process relaunch. No event is re-enqueued; app
         // launch recovery drains the durable row left by the expired background lease.
@@ -313,6 +316,33 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(recoveredIds, ["stable-event-id"], "a retry minted a duplicate-prone id")
     }
 
+    func testRecordReturnsWhileDurableStorageIsBlocked() async throws {
+        let storage = BlockingAnalyticsOutboxStorage()
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: ScriptedAnalyticsTransport(outcomes: [.success]),
+            outboxStorage: storage,
+            backgroundExecution: .none,
+            newEventId: { "blocked-storage" },
+        )
+        let returned = expectation(description: "record returned")
+        defer { storage.unblock() }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            service.record(AnalyticsEvent(name: .paywallShown, timestampMs: Self.installMs))
+            returned.fulfill()
+        }
+
+        await fulfillment(of: [returned], timeout: 0.5)
+        try await eventually { storage.saveIsBlocked }
+        XCTAssertFalse(storage.didFinishBlockedSave)
+
+        storage.unblock()
+        try await eventually { await service.pendingDeliveryCount == 0 }
+    }
+
     func testRetryableDeliveryStopsAtTheAttemptCapAndRetiresTheRow() async throws {
         let transport = ScriptedAnalyticsTransport(
             outcomes: Array(repeating: .retryableFailure, count: 4)
@@ -326,7 +356,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             newEventId: { "bounded-retry" },
         )
 
-        await service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
         try await eventually { await transport.requestCount == 1 }
         await service.resumePendingDelivery()
         try await eventually { await transport.requestCount == 2 }
@@ -352,7 +382,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             newEventId: { "retire-me" },
         )
 
-        await service.record(AnalyticsEvent(name: .weekActive, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .weekActive, timestampMs: Self.installMs))
         try await eventually { await transport.requestCount == 1 }
         try await eventually { await service.pendingDeliveryCount == 0 }
         XCTAssertTrue(try storage.load().isEmpty)
@@ -370,7 +400,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             outboxStorage: storage,
         )
 
-        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
         await service.resumePendingDelivery()
         let requestCount = await transport.requestCount
         XCTAssertEqual(requestCount, 0)
@@ -380,11 +410,15 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     func testConsentIsRecheckedAfterBackgroundLeaseBeforeRequestStarts() async throws {
         let enabled = UncheckedBox(true)
         let generation = UncheckedBox(0)
+        let leaseCount = UncheckedBox(0)
         let storage = VolatileAnalyticsOutboxStorage()
         let transport = ScriptedAnalyticsTransport(outcomes: [.success])
         let execution = AnalyticsBackgroundExecution { _ in
-            enabled.value = false
-            generation.value += 1
+            leaseCount.value += 1
+            if leaseCount.value == 2 {
+                enabled.value = false
+                generation.value += 1
+            }
             return AnalyticsBackgroundLease {}
         }
         let service = LiveAnalyticsService(
@@ -399,10 +433,11 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             newEventId: { "disabled-before-send" },
         )
 
-        await service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
         try await eventually { await service.pendingDeliveryCount == 0 }
 
         let requestCount = await transport.requestCount
+        XCTAssertEqual(leaseCount.value, 2)
         XCTAssertEqual(requestCount, 0, "the send-time consent check happened after request start")
         XCTAssertTrue(try storage.load().isEmpty)
     }
@@ -423,7 +458,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             newEventId: { "pre-opt-out" },
         )
 
-        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
         try await eventually { await transport.requestCount == 1 }
         try await eventually { await service.pendingDeliveryCount == 1 }
 
@@ -458,7 +493,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         )
 
         for index in 0..<(AnalyticsDeliveryQueue.maxPendingEvents + 7) {
-            await service.record(AnalyticsEvent(name: .readyScreenShown, timestampMs: index))
+            service.record(AnalyticsEvent(name: .readyScreenShown, timestampMs: index))
         }
         let pendingCount = await service.pendingDeliveryCount
         XCTAssertEqual(pendingCount, AnalyticsDeliveryQueue.maxPendingEvents)
@@ -533,7 +568,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
         let service = makeService()
-        await service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
         try await eventually { await service.pendingDeliveryCount == 0 }
 
@@ -551,7 +586,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         }
 
         let service = makeService(isEnabled: { false })
-        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
 
         // The send would have been dispatched by now if it were going to be; nothing was.
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -566,12 +601,12 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
         let service = makeService(isEnabled: { enabled.value })
-        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertTrue(StubURLProtocol.captured.isEmpty, "the closed gate let an event through")
 
         enabled.value = true
-        await service.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
         XCTAssertEqual(StubURLProtocol.captured.count, 1)
     }
@@ -598,10 +633,10 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             backgroundExecution: .none,
         )
 
-        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
         await fulfillment(of: [firstSent], timeout: 5)
         installId.value = "after-deletion"
-        await service.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: Self.installMs))
         await fulfillment(of: [secondSent], timeout: 5)
 
         let ids = try StubURLProtocol.captured.map { request in
@@ -639,20 +674,20 @@ final class LiveAnalyticsServiceTests: XCTestCase {
 
         let optedIn = expectation(description: "the default opted-in state emits")
         StubURLProtocol.onRequest = { _ in optedIn.fulfill() }
-        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
         await fulfillment(of: [optedIn], timeout: 5)
         XCTAssertEqual(StubURLProtocol.captured.count, 1, "a fresh install must be opted in")
 
         defaults.set(false, forKey: AppState.analyticsEnabledKey)
         StubURLProtocol.onRequest = { _ in XCTFail("an event was sent after the user opted out") }
-        await service.record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
         try await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(StubURLProtocol.captured.count, 1, "opting out did not take effect until a restart")
 
         let resumed = expectation(description: "opting back in resumes emission")
         defaults.set(true, forKey: AppState.analyticsEnabledKey)
         StubURLProtocol.onRequest = { _ in resumed.fulfill() }
-        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
         await fulfillment(of: [resumed], timeout: 5)
         XCTAssertEqual(StubURLProtocol.captured.count, 2)
     }
@@ -923,7 +958,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             )
         )
 
-        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
 
         let request = try XCTUnwrap(StubURLProtocol.captured.first)
@@ -994,6 +1029,63 @@ private final class CountingAnalyticsOutboxStorage: AnalyticsOutboxStorage, @unc
     }
 }
 
+private final class BlockingAnalyticsOutboxStorage: AnalyticsOutboxStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private let release = DispatchSemaphore(value: 0)
+    private var deliveries: [PendingAnalyticsDelivery] = []
+    private var shouldBlock = true
+    private var blocked = false
+    private var finishedBlockedSave = false
+
+    func load() throws -> [PendingAnalyticsDelivery] {
+        lock.lock()
+        defer { lock.unlock() }
+        return deliveries
+    }
+
+    func save(_ deliveries: [PendingAnalyticsDelivery]) throws {
+        lock.lock()
+        let block = shouldBlock
+        if block {
+            shouldBlock = false
+            blocked = true
+        }
+        lock.unlock()
+
+        if block {
+            release.wait()
+        }
+
+        lock.lock()
+        self.deliveries = deliveries
+        if block {
+            finishedBlockedSave = true
+        }
+        lock.unlock()
+    }
+
+    func unblock() {
+        lock.lock()
+        let needsSignal = blocked && !finishedBlockedSave
+        lock.unlock()
+        if needsSignal {
+            release.signal()
+        }
+    }
+
+    var saveIsBlocked: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return blocked && !finishedBlockedSave
+    }
+
+    var didFinishBlockedSave: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return finishedBlockedSave
+    }
+}
+
 private actor ScriptedAnalyticsTransport: AnalyticsDeliveryTransport {
     private var outcomes: [AnalyticsDeliveryOutcome]
     private var requests: [URLRequest] = []
@@ -1048,30 +1140,32 @@ private actor CancellationAwareAnalyticsTransport: AnalyticsDeliveryTransport {
 
 private final class BackgroundExecutionProbe: @unchecked Sendable {
     private let lock = NSLock()
-    private let expireImmediately: Bool
     private var begins = 0
     private var ends = 0
-
-    init(expireImmediately: Bool) {
-        self.expireImmediately = expireImmediately
-    }
+    private var expirationHandlers: [@Sendable () -> Void] = []
 
     var execution: AnalyticsBackgroundExecution {
         AnalyticsBackgroundExecution { [self] expirationHandler in
-            recordBegin()
-            if expireImmediately {
-                expirationHandler()
-            }
+            recordBegin(expirationHandler)
             return AnalyticsBackgroundLease { [self] in
                 recordEnd()
             }
         }
     }
 
-    private func recordBegin() {
+    private func recordBegin(_ expirationHandler: @escaping @Sendable () -> Void) {
         lock.lock()
         begins += 1
+        expirationHandlers.append(expirationHandler)
         lock.unlock()
+    }
+
+    func expireAll() {
+        lock.lock()
+        let handlers = expirationHandlers
+        expirationHandlers = []
+        lock.unlock()
+        handlers.forEach { $0() }
     }
 
     private func recordEnd() {

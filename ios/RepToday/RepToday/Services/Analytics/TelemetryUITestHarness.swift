@@ -98,7 +98,7 @@ enum TelemetryUITestHarness {
     /// has already replaced the transport's session by the time this runs.
     static func emitProbeEventIfActive(through analytics: any AnalyticsServiceProtocol) {
         guard isActive else { return }
-        Task { await analytics.record(probeEvent()) }
+        analytics.record(probeEvent())
     }
 
     static func probeEvent(now: Date = Date()) -> AnalyticsEvent {
@@ -196,7 +196,7 @@ struct TelemetryProbeHUD: View {
                 Spacer(minLength: 0)
 
                 Button("Emit probe") {
-                    Task { await services.analyticsService.record(TelemetryUITestHarness.probeEvent()) }
+                    services.analyticsService.record(TelemetryUITestHarness.probeEvent())
                 }
                 .font(Theme.Typography.caption)
                 .frame(minHeight: Theme.Spacing.minTouchTarget)

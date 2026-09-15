@@ -59,10 +59,7 @@ final class ActiveSessionTelemetryTests: XCTestCase {
         ActiveSessionViewModel(workout: workout, analytics: analytics, now: { clock.now })
     }
 
-    /// Drain the chained emission task, then read what the sink recorded. Awaiting the last chained
-    /// task awaits the whole chain, since each emission awaits the previous one.
-    private func recorded(_ analytics: MockAnalyticsService, _ vm: ActiveSessionViewModel) async -> [AnalyticsEvent] {
-        await vm.analyticsTask?.value
+    private func recorded(_ analytics: MockAnalyticsService, _: ActiveSessionViewModel) async -> [AnalyticsEvent] {
         return await analytics.recordedEvents
     }
 
@@ -198,7 +195,6 @@ final class ActiveSessionTelemetryTests: XCTestCase {
         player1.completeSet()    // advance + persist a resumable snapshot
         player1.recordSessionEnd()   // a resumable pause: no terminal event
         await player1.persistenceTask?.value
-        await player1.analyticsTask?.value
 
         let loaded = try await store.load(for: "u")
         let saved = try XCTUnwrap(loaded, "the paused session is resumable")
@@ -206,7 +202,6 @@ final class ActiveSessionTelemetryTests: XCTestCase {
         player2.start()          // resumed: no re-emit
         completeAllSets(player2)
         player2.recordSessionEnd()   // session_completed
-        await player2.analyticsTask?.value
 
         let events = await analytics.recordedEvents
         XCTAssertEqual(events.filter { $0.name == .sessionStarted }.count, 1, "started fires once for the physical session")

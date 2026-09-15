@@ -133,7 +133,7 @@ The Phase-2 premium Coach is implemented but its production endpoint is not depl
                    │
 ┌──────────────────▼──────────────────────────────┐
 │  Service Protocols (Services/Protocols/)         │
-│  Methods async throws; mock implementations     │
+│  Async methods + sync analytics acceptance; mocks│
 └──────────────────┬──────────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────────┐
@@ -145,7 +145,7 @@ The Phase-2 premium Coach is implemented but its production endpoint is not depl
 
 **Key design decisions:**
 
-- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched. Service methods are `async throws`, with one deliberate exception: `AnalyticsServiceProtocol.record(_:)` is `async` but never `throws`, because anonymous telemetry performs only a bounded local hand-off and must never make product code handle a delivery failure.
+- **Protocol-based services** - all services are protocol-defined with mock implementations. To swap a mock for a real implementation, change one line in `ServiceContainer`; views and viewmodels remain untouched. Service methods are `async throws`, with one deliberate exception: `AnalyticsServiceProtocol.record(_:)` is synchronous and never throws, because anonymous telemetry synchronously transfers ownership into a bounded buffer while encoding, persistence, retry, and delivery remain off the product path.
 - **CoreData with domain separation** - domain models are plain `Codable` structs; CoreData entities convert via `toUser()`/`update(from:)`-style methods, with complex nested fields stored as JSON-encoded `Data`. The core loop works fully offline; CloudKit handles sync and backup when available.
 - **Deterministic engine** - the workout engine runs entirely on-device with no network or LLM calls (see below).
 - **Environment-based DI** - `ServiceContainer` holds all service instances, injected at the app root via a custom `EnvironmentKey`.
