@@ -254,6 +254,7 @@ actor TrialConversionObserver {
     ] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
     private var restoreCandidates: [UInt64: StoreSubscriptionTransaction] = [:]
+    private var restoreCandidateHistories: [UInt64: StoreTransactionHistory] = [:]
     private var retainedPurchaseDates: [String: Date]
 
     init(
@@ -324,6 +325,7 @@ actor TrialConversionObserver {
         let deliveredIntoActiveRestore = observation.restoreEpoch == activeRestoreEpoch
             && activeRestoreEpoch != nil
         if deliveredIntoActiveRestore {
+            restoreCandidateHistories[observation.sequence] = history
             rememberPurchaseDates(
                 from: history.transactions,
                 for: Set(emittedTransactionIDs)
@@ -408,6 +410,7 @@ actor TrialConversionObserver {
     private func cancelObservation(_ sequence: UInt64) {
         let observation = inFlightObservations.removeValue(forKey: sequence)
         restoreCandidates.removeValue(forKey: sequence)
+        restoreCandidateHistories.removeValue(forKey: sequence)
         let terminalHistory = terminalHistoriesByObservationSequence.removeValue(forKey: sequence)
         if let observation,
            let deferredBaseline = deferredRestoreBaselines.removeValue(
@@ -428,6 +431,7 @@ actor TrialConversionObserver {
         nextRestoreEpoch &+= 1
         activeRestoreEpoch = nextRestoreEpoch
         restoreCandidates = [:]
+        restoreCandidateHistories = [:]
     }
 
     func completeRestore(history: [StoreSubscriptionTransaction]) {
@@ -500,11 +504,19 @@ actor TrialConversionObserver {
                 $0.restoreEpoch == restoreEpoch ? $0.transaction.id : nil
             }
         )
-        let classificationHistory = StoreTransactionHistory(
-            transactions: Self.mergedTransactions(
-                observations.map(\.transaction) + Array(restoreCandidates.values) + history.transactions
-            ),
-            containsUnverifiedTransactions: history.containsUnverifiedTransactions
+        let restoreCandidateSequences = restoreCandidates.keys.sorted()
+        let candidateTransactions = restoreCandidateSequences.compactMap {
+            restoreCandidates[$0]
+        }
+        let candidateHistories = restoreCandidateSequences.compactMap {
+            restoreCandidateHistories[$0]
+        }
+        let capturedTransactions = StoreTransactionHistory(
+            transactions: observations.map(\.transaction) + candidateTransactions,
+            containsUnverifiedTransactions: false
+        )
+        let classificationHistory = Self.mergedHistory(
+            [capturedTransactions] + candidateHistories + [history]
         )
         for observation in independentObservations {
             terminalHistoriesByObservationSequence[observation.sequence] = classificationHistory
@@ -563,6 +575,7 @@ actor TrialConversionObserver {
     ) {
         activeRestoreEpoch = nil
         restoreCandidates = [:]
+        restoreCandidateHistories = [:]
         if inFlightObservations.values.contains(where: { $0.restoreEpoch == restoreEpoch }) {
             completedRestores[restoreEpoch] = CompletedRestore(
                 outcome: outcome,

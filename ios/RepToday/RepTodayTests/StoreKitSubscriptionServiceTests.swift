@@ -1314,6 +1314,78 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testFailedRestoreRetainsCompletedRestoreUpdatePaidBoundaryHistory() async {
+        let trial = storeTransaction(
+            id: 6_115, originalID: 6_115, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let firstPaidRenewal = storeTransaction(
+            id: 6_116, originalID: 6_115, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 6_117, originalID: 6_115, day: 45,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await observer.beginRestore()
+        await observer.observe(
+            .verified(laterPaidRenewal),
+            history: [trial, firstPaidRenewal, laterPaidRenewal]
+        )
+        await observer.failRestore(history: .verified([trial, laterPaidRenewal]))
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
+        )
+    }
+
+    func testFailedRestoreRetainsCompletedRestoreUpdateRevocationHistory() async {
+        let trial = storeTransaction(
+            id: 6_118, originalID: 6_118, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_119, originalID: 6_118, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let revokedConversion = storeTransaction(
+            id: 6_119, originalID: 6_118, day: 15,
+            reason: .renewal, payment: .paid, isRevoked: true
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+
+        await observer.beginRestore()
+        await observer.observe(
+            .verified(conversion),
+            history: [trial, revokedConversion]
+        )
+        await observer.failRestore(history: .verified([trial, conversion]))
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
+        )
+    }
+
     func testSuccessfulRestoreReclassifiesInitiallyUnprovenCandidateAtTerminalHistory() async {
         let trial = storeTransaction(
             id: 623, originalID: 623, day: 1,

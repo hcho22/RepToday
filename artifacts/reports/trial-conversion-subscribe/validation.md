@@ -22,8 +22,9 @@ The tests use an isolated `UserDefaults` suite and `MockAnalyticsService`; they 
 They cover the qualifying conversion, canonical `plan`, exact StoreKit purchase timestamp, direct
 purchase, initial trial, repeat delivery, later paid renewal, ordinary paid chain, pending purchase,
 current-entitlement and restore reads, shared terminal-union classification of multiple captured
-renewals, sticky same-id revocation, and stale pre-restore observations merged with later paid-boundary
-and revocation facts whether their history read returns before or after restore finalization,
+renewals, sticky same-id revocation, completed restore-tagged histories preserved when terminal history
+is stale, and stale pre-restore observations merged with later paid-boundary and revocation facts
+whether their history read returns before or after restore finalization,
 restore-waiter cancellation plus immediate prepared and queued observation disposal without a later
 emission, stale restore ownership, or hung listener, including eventual completion of a suspended
 non-cooperative acknowledgement under background ownership,
