@@ -216,6 +216,11 @@ actor TrialConversionObserver {
         case failed
     }
 
+    private enum RestoreWaitResolution: Equatable {
+        case finalized
+        case cancelled
+    }
+
     private struct CompletedRestore {
         let outcome: RestoreOutcome
         let history: StoreTransactionHistory
@@ -237,7 +242,9 @@ actor TrialConversionObserver {
     private var inFlightObservations: [UInt64: TransactionObservation] = [:]
     private var completedRestores: [UInt64: CompletedRestore] = [:]
     private var terminalHistoriesByObservationSequence: [UInt64: StoreTransactionHistory] = [:]
-    private var restoreFinalizationWaiters: [UInt64: [CheckedContinuation<Void, Never>]] = [:]
+    private var restoreFinalizationWaiters: [
+        UInt64: [CheckedContinuation<RestoreWaitResolution, Never>]
+    ] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
     private var restoreCandidates: [StoreSubscriptionTransaction] = []
     private var retainedPurchaseDates: [String: Date]
@@ -293,9 +300,11 @@ actor TrialConversionObserver {
         guard inFlightObservations[observation.sequence] != nil else { return }
         while let restoreEpoch = activeRestoreEpoch,
               observation.restoreEpoch != restoreEpoch {
-            await withCheckedContinuation { continuation in
-                restoreFinalizationWaiters[observation.sequence, default: []].append(continuation)
-            }
+            guard await waitForRestoreFinalization(observation) else { return }
+        }
+        guard !Task.isCancelled else {
+            cancelObservation(observation.sequence)
+            return
         }
         guard inFlightObservations.removeValue(forKey: observation.sequence) != nil else { return }
         guard let analytics else { return }
@@ -353,6 +362,52 @@ actor TrialConversionObserver {
             referenceTransactions: classificationHistory.transactions,
             analytics: analytics
         )
+    }
+
+    private func waitForRestoreFinalization(_ observation: TransactionObservation) async -> Bool {
+        let sequence = observation.sequence
+        let resolution = await withTaskCancellationHandler {
+            await withCheckedContinuation {
+                (continuation: CheckedContinuation<RestoreWaitResolution, Never>) in
+                guard !Task.isCancelled,
+                      inFlightObservations[sequence] != nil,
+                      let restoreEpoch = activeRestoreEpoch,
+                      observation.restoreEpoch != restoreEpoch else {
+                    let resolution: RestoreWaitResolution = Task.isCancelled
+                        ? .cancelled
+                        : .finalized
+                    continuation.resume(returning: resolution)
+                    return
+                }
+                restoreFinalizationWaiters[sequence, default: []].append(continuation)
+            }
+        } onCancel: {
+            Task { await self.cancelObservation(sequence) }
+        }
+
+        guard resolution == .finalized, !Task.isCancelled else {
+            cancelObservation(sequence)
+            return false
+        }
+        return inFlightObservations[sequence] != nil
+    }
+
+    private func cancelObservation(_ sequence: UInt64) {
+        let observation = inFlightObservations.removeValue(forKey: sequence)
+        let terminalHistory = terminalHistoriesByObservationSequence.removeValue(forKey: sequence)
+        if let observation,
+           let deferredBaseline = deferredRestoreBaselines.removeValue(
+               forKey: observation.transaction.id
+           ) {
+            retainAsEmitted(
+                [deferredBaseline],
+                referenceTransactions: terminalHistory?.transactions ?? [deferredBaseline]
+            )
+        }
+        discardCompletedRestoreIfFinished(observation?.restoreEpoch)
+
+        let continuations = restoreFinalizationWaiters.removeValue(forKey: sequence) ?? []
+        continuations.forEach { $0.resume(returning: .cancelled) }
     }
 
     func beginRestore() {
@@ -505,7 +560,7 @@ actor TrialConversionObserver {
         }
         for sequence in restoreFinalizationWaiters.keys.sorted() {
             let continuations = restoreFinalizationWaiters.removeValue(forKey: sequence) ?? []
-            continuations.forEach { $0.resume() }
+            continuations.forEach { $0.resume(returning: .finalized) }
         }
     }
 

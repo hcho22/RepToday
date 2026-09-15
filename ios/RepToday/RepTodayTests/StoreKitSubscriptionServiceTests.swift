@@ -1444,6 +1444,118 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testCancellingRestoreWaiterReturnsBeforeRestoreFinalization() async {
+        let trial = storeTransaction(
+            id: 6_132, originalID: 6_132, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_133, originalID: 6_132, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let independentObservation = await observer.capture(.verified(conversion))
+        XCTAssertNotNil(independentObservation)
+        await observer.beginRestore()
+
+        let observationFinished = expectation(description: "cancelled observation finished")
+        let observationTask = Task {
+            if let independentObservation {
+                await observer.observe(independentObservation, history: [trial])
+            }
+            observationFinished.fulfill()
+        }
+        for _ in 0..<10 { await Task.yield() }
+        observationTask.cancel()
+
+        await fulfillment(of: [observationFinished], timeout: 1)
+        var events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+
+        await observer.completeRestore(history: [trial, conversion])
+        await observationTask.value
+
+        events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(conversion.id)]
+        )
+    }
+
+    func testCancellingListenerReleasesRestoreWaiterWithoutLaterEmission() async {
+        let trial = storeTransaction(
+            id: 6_134, originalID: 6_134, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_135, originalID: 6_134, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let (updates, updatesContinuation) = AsyncStream<UInt64>.makeStream()
+        let acknowledgementGate = ProcessingGate()
+        let probe = TransactionListenerProbe()
+        let listenerFinished = expectation(description: "cancelled listener finished")
+
+        let listener = Task {
+            await LiveStoreKitFacade.processUpdates(
+                updates,
+                project: { _ in .verified(conversion) },
+                acknowledge: { id in
+                    await probe.record(.acknowledgementStarted(id))
+                    await acknowledgementGate.wait()
+                    await probe.record(.acknowledged(id))
+                },
+                prepareUpdate: { update in
+                    guard let observation = await observer.capture(update) else { return nil }
+                    let id = conversion.id
+                    await probe.record(.prepared(id))
+                    return {
+                        await probe.record(.processingStarted(id))
+                        await observer.observe(observation, history: [trial])
+                        await probe.record(.processingFinished(id))
+                    }
+                }
+            )
+            listenerFinished.fulfill()
+        }
+
+        updatesContinuation.yield(conversion.id)
+        updatesContinuation.finish()
+        await probe.waitUntilRecorded(.acknowledgementStarted(conversion.id))
+        await observer.beginRestore()
+        await acknowledgementGate.open()
+        await probe.waitUntilRecorded(.processingStarted(conversion.id))
+        for _ in 0..<10 { await Task.yield() }
+
+        listener.cancel()
+        await fulfillment(of: [listenerFinished], timeout: 1)
+        var events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+
+        await observer.failRestore(history: .verified([trial, conversion]))
+        await listener.value
+
+        events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
+        )
+    }
+
     func testTerminalRevocationPreventsStaleIndependentConversionEmission() async {
         let trial = storeTransaction(
             id: 6_130, originalID: 6_130, day: 1,
