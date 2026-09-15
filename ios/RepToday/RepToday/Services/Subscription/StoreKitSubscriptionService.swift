@@ -209,7 +209,13 @@ actor TrialConversionObserver {
         let historicalConversions = history.filter {
             Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
         }
-        for transaction in historicalConversions + conversionsPendingDuringRestore {
+        let orderedConversions = (historicalConversions + conversionsPendingDuringRestore).sorted {
+            if $0.purchaseDate != $1.purchaseDate { return $0.purchaseDate < $1.purchaseDate }
+            return $0.id < $1.id
+        }
+        var seenTransactionIDs = Set<UInt64>()
+        for transaction in orderedConversions {
+            guard seenTransactionIDs.insert(transaction.id).inserted else { continue }
             markEmitted(transaction.id)
         }
         clearRestoreState()

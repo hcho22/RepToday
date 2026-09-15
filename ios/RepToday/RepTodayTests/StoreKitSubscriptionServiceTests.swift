@@ -523,6 +523,49 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey), ["611"])
     }
 
+    func testReverseOrderedRestoreRetainsTheNewestConversionForRedeliveryDeduplication() async {
+        var history: [StoreSubscriptionTransaction] = []
+        var conversions: [StoreSubscriptionTransaction] = []
+        for offset in 0...TrialConversionObserver.retentionLimit {
+            let originalID = UInt64(620 + offset * 2)
+            let trial = storeTransaction(
+                id: originalID, originalID: originalID, day: TimeInterval(offset * 20 + 1),
+                reason: .purchase, payment: .introductoryFreeTrial
+            )
+            let conversion = storeTransaction(
+                id: originalID + 1, originalID: originalID, day: TimeInterval(offset * 20 + 15),
+                reason: .renewal, payment: .paid
+            )
+            history.append(contentsOf: [trial, conversion])
+            conversions.append(conversion)
+        }
+
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let reverseOrderedHistory = Array(history.reversed())
+
+        await observer.beginRestore()
+        await observer.completeRestore(history: reverseOrderedHistory)
+
+        let storedIDs = observerDefaults.stringArray(
+            forKey: TrialConversionObserver.emittedTransactionIDsKey
+        )
+        let oldestConversion = conversions[0]
+        let newestConversion = conversions[TrialConversionObserver.retentionLimit]
+        XCTAssertEqual(storedIDs?.count, TrialConversionObserver.retentionLimit)
+        XCTAssertFalse(storedIDs?.contains(String(oldestConversion.id)) == true)
+        XCTAssertTrue(storedIDs?.contains(String(newestConversion.id)) == true)
+
+        await observer.observe(.verified(newestConversion), history: reverseOrderedHistory)
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty, "the latest restored conversion remains baselined when redelivered")
+    }
+
     func testUnverifiedAndRevokedUpdatesDoNotEmit() async {
         let trial = storeTransaction(
             id: 700, originalID: 700, day: 1,
