@@ -1,6 +1,50 @@
 import Foundation
 import StoreKit
 
+private actor StoreTransactionProcessingQueue {
+    private var pending: [StoreTransactionProcessing] = []
+    private var nextWaiter: CheckedContinuation<StoreTransactionProcessing?, Never>?
+    private var acceptsWork = true
+
+    func enqueue(_ processing: StoreTransactionProcessing) -> Bool {
+        guard acceptsWork else { return false }
+        if let nextWaiter {
+            self.nextWaiter = nil
+            nextWaiter.resume(returning: processing)
+        } else {
+            pending.append(processing)
+        }
+        return true
+    }
+
+    func next() async -> StoreTransactionProcessing? {
+        if !pending.isEmpty {
+            return pending.removeFirst()
+        }
+        guard acceptsWork else { return nil }
+        return await withCheckedContinuation { nextWaiter = $0 }
+    }
+
+    func finish() {
+        acceptsWork = false
+        let nextWaiter = self.nextWaiter
+        self.nextWaiter = nil
+        nextWaiter?.resume(returning: nil)
+    }
+
+    func cancel() async {
+        acceptsWork = false
+        let abandoned = pending
+        pending = []
+        let nextWaiter = self.nextWaiter
+        self.nextWaiter = nil
+        for processing in abandoned {
+            await processing.dispose()
+        }
+        nextWaiter?.resume(returning: nil)
+    }
+}
+
 /// Production `StoreKitFacade`: drives the real StoreKit 2 API and projects its types into the plain
 /// values the service maps. Stateless and `Sendable`.
 ///
@@ -130,13 +174,30 @@ final class LiveStoreKitFacade: StoreKitFacade {
         acknowledge: (Updates.Element) async -> Void,
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) async {
-        let (processingStream, processingContinuation) = AsyncStream<StoreTransactionProcessing>.makeStream()
+        let processingQueue = StoreTransactionProcessingQueue()
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
-                for await process in processingStream {
-                    guard !Task.isCancelled else { return }
-                    await process()
+                await withTaskCancellationHandler {
+                    while let processing = await processingQueue.next() {
+                        guard !Task.isCancelled else {
+                            await processing.dispose()
+                            await processingQueue.cancel()
+                            return
+                        }
+                        await withTaskCancellationHandler {
+                            await processing()
+                        } onCancel: {
+                            Task { await processing.dispose() }
+                        }
+                        if Task.isCancelled {
+                            await processing.dispose()
+                            await processingQueue.cancel()
+                            return
+                        }
+                    }
+                } onCancel: {
+                    Task { await processingQueue.cancel() }
                 }
             }
 
@@ -144,18 +205,30 @@ final class LiveStoreKitFacade: StoreKitFacade {
                 for try await element in updates {
                     guard !Task.isCancelled else { break }
                     let update = project(element)
-                    let process = await prepareUpdate(update)
+                    let processing = await prepareUpdate(update)
                     await acknowledge(element)
-                    guard !Task.isCancelled else { break }
-                    if let process {
-                        processingContinuation.yield(process)
+                    guard !Task.isCancelled else {
+                        await processing?.dispose()
+                        break
+                    }
+                    if let processing,
+                       !(await processingQueue.enqueue(processing)) {
+                        await processing.dispose()
                     }
                 }
             } catch {
-                processingContinuation.finish()
+                if Task.isCancelled {
+                    await processingQueue.cancel()
+                } else {
+                    await processingQueue.finish()
+                }
                 return
             }
-            processingContinuation.finish()
+            if Task.isCancelled {
+                await processingQueue.cancel()
+            } else {
+                await processingQueue.finish()
+            }
         }
     }
 

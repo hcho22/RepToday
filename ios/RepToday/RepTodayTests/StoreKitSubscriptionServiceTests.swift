@@ -756,7 +756,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
                     guard case .verified(let transaction) = update else { return nil }
                     let id = transaction.id
                     await probe.record(.prepared(id))
-                    return {
+                    return StoreTransactionProcessing {
                         await probe.record(.processingStarted(id))
                         if id == first.id {
                             await gate.wait()
@@ -829,7 +829,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
                 },
                 prepareUpdate: { update in
                     guard let observation = await observer.capture(update) else { return nil }
-                    return {
+                    return StoreTransactionProcessing {
                         await observer.observe(observation, history: [trial, conversion])
                     }
                 }
@@ -851,6 +851,162 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(
             observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
             [String(conversion.id)]
+        )
+    }
+
+    func testCancellationDuringAcknowledgementDisposesPreparedObservation() async {
+        let trial = storeTransaction(
+            id: 352, originalID: 352, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 353, originalID: 352, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let (updates, continuation) = AsyncStream<UInt64>.makeStream()
+        let probe = TransactionListenerProbe()
+        let acknowledgementGate = ProcessingGate()
+        let listenerFinished = expectation(description: "cancelled listener finished")
+
+        let listener = Task {
+            await LiveStoreKitFacade.processUpdates(
+                updates,
+                project: { _ in .verified(conversion) },
+                acknowledge: { id in
+                    await probe.record(.acknowledgementStarted(id))
+                    await acknowledgementGate.wait()
+                    await probe.record(.acknowledged(id))
+                },
+                prepareUpdate: { update in
+                    guard let observation = await observer.capture(update) else { return nil }
+                    await probe.record(.prepared(conversion.id))
+                    return StoreTransactionProcessing(
+                        operation: {
+                            await probe.record(.processingStarted(conversion.id))
+                            await observer.observe(observation, history: [trial, conversion])
+                        },
+                        disposal: {
+                            await observer.discard(observation)
+                        }
+                    )
+                }
+            )
+            listenerFinished.fulfill()
+        }
+
+        continuation.yield(conversion.id)
+        continuation.finish()
+        await probe.waitUntilRecorded(.acknowledgementStarted(conversion.id))
+        await observer.beginRestore()
+
+        listener.cancel()
+        await acknowledgementGate.open()
+        await fulfillment(of: [listenerFinished], timeout: 1)
+
+        let listenerEvents = await probe.recordedEvents()
+        XCTAssertFalse(listenerEvents.contains(.processingStarted(conversion.id)))
+        await observer.completeRestore(history: [trial, conversion])
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(conversion.id)]
+        )
+    }
+
+    func testListenerCancellationDisposesQueuedObservations() async {
+        let firstTrial = storeTransaction(
+            id: 354, originalID: 354, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let firstConversion = storeTransaction(
+            id: 355, originalID: 354, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let secondTrial = storeTransaction(
+            id: 356, originalID: 356, day: 21,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let secondConversion = storeTransaction(
+            id: 357, originalID: 356, day: 35,
+            reason: .renewal, payment: .paid
+        )
+        let history = [firstTrial, firstConversion, secondTrial, secondConversion]
+        let projectedUpdates: [UInt64: StoreTransactionUpdate] = [
+            firstConversion.id: .verified(firstConversion),
+            secondConversion.id: .verified(secondConversion)
+        ]
+        let marker = UInt64.max
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let (updates, continuation) = AsyncStream<UInt64>.makeStream()
+        let probe = TransactionListenerProbe()
+        let firstProcessingGate = ProcessingGate()
+        let listenerFinished = expectation(description: "cancelled queued listener finished")
+
+        let listener = Task {
+            await LiveStoreKitFacade.processUpdates(
+                updates,
+                project: { projectedUpdates[$0] ?? .unverified },
+                acknowledge: { id in
+                    await probe.record(.acknowledged(id))
+                },
+                prepareUpdate: { update in
+                    guard case .verified(let transaction) = update else {
+                        await probe.record(.prepared(marker))
+                        return nil
+                    }
+                    guard let observation = await observer.capture(update) else { return nil }
+                    let id = transaction.id
+                    await probe.record(.prepared(id))
+                    return StoreTransactionProcessing(
+                        operation: {
+                            await probe.record(.processingStarted(id))
+                            if id == firstConversion.id {
+                                await firstProcessingGate.wait()
+                            }
+                            await observer.observe(observation, history: history)
+                            await probe.record(.processingFinished(id))
+                        },
+                        disposal: {
+                            await observer.discard(observation)
+                        }
+                    )
+                }
+            )
+            listenerFinished.fulfill()
+        }
+
+        continuation.yield(firstConversion.id)
+        await probe.waitUntilRecorded(.processingStarted(firstConversion.id))
+        continuation.yield(secondConversion.id)
+        await probe.waitUntilRecorded(.acknowledged(secondConversion.id))
+        continuation.yield(marker)
+        await probe.waitUntilRecorded(.prepared(marker))
+        continuation.finish()
+        await observer.beginRestore()
+
+        listener.cancel()
+        await firstProcessingGate.open()
+        await fulfillment(of: [listenerFinished], timeout: 1)
+        await observer.completeRestore(history: history)
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(
+            observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
+            [String(firstConversion.id), String(secondConversion.id)]
         )
     }
 
@@ -1521,7 +1677,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
                     guard let observation = await observer.capture(update) else { return nil }
                     let id = conversion.id
                     await probe.record(.prepared(id))
-                    return {
+                    return StoreTransactionProcessing {
                         await probe.record(.processingStarted(id))
                         await observer.observe(observation, history: [trial])
                         await probe.record(.processingFinished(id))

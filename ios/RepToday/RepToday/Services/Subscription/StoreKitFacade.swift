@@ -94,7 +94,31 @@ enum StoreTransactionUpdate: Equatable, Sendable {
     case unverified
 }
 
-typealias StoreTransactionProcessing = @Sendable () async -> Void
+struct StoreTransactionProcessing: Sendable {
+    private let operation: @Sendable () async -> Void
+    private let disposal: @Sendable () async -> Void
+
+    init(_ operation: @escaping @Sendable () async -> Void) {
+        self.operation = operation
+        self.disposal = {}
+    }
+
+    init(
+        operation: @escaping @Sendable () async -> Void,
+        disposal: @escaping @Sendable () async -> Void
+    ) {
+        self.operation = operation
+        self.disposal = disposal
+    }
+
+    func callAsFunction() async {
+        await operation()
+    }
+
+    func dispose() async {
+        await disposal()
+    }
+}
 
 /// The outcome of a purchase attempt, independent of StoreKit's `Product.PurchaseResult`.
 enum StorePurchaseResult: Equatable {
@@ -132,9 +156,10 @@ protocol StoreKitFacade: Sendable {
     /// cross-device purchases, deferred Ask-to-Buy approvals), asking `prepareUpdate` to capture each
     /// delivery in order before acknowledging verified updates with `finish()`. The returned processing
     /// work begins after acknowledgement and runs under the listener's ownership without delaying the
-    /// next update. Returns the listener task for the caller to retain for the app's lifetime; cancelling
-    /// that task cancels the sequence and its processing. A StoreKit-free implementation returns a no-op
-    /// task.
+    /// next update. Prepared work also owns disposal of its captured state if it cannot run. Returns the
+    /// listener task for the caller to retain for the app's lifetime; cancelling that task cancels the
+    /// sequence, disposes abandoned work, and cancels running processing. A StoreKit-free implementation
+    /// returns a no-op task.
     func listenForTransactions(
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) -> Task<Void, Never>

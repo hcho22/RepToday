@@ -129,10 +129,15 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             // No history read for an unverified update: it can neither grant access nor prove a
             // conversion. Verified updates are processed off the core loop by the app-owned listener.
             guard let observation = await observer.capture(update) else { return nil }
-            return {
-                let history = await facade.transactionHistory()
-                await observer.observe(observation, history: history)
-            }
+            return StoreTransactionProcessing(
+                operation: {
+                    let history = await facade.transactionHistory()
+                    await observer.observe(observation, history: history)
+                },
+                disposal: {
+                    await observer.discard(observation)
+                }
+            )
         }
     }
 
@@ -248,7 +253,7 @@ actor TrialConversionObserver {
         UInt64: [CheckedContinuation<RestoreWaitResolution, Never>]
     ] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
-    private var restoreCandidates: [StoreSubscriptionTransaction] = []
+    private var restoreCandidates: [UInt64: StoreSubscriptionTransaction] = [:]
     private var retainedPurchaseDates: [String: Date]
 
     init(
@@ -274,9 +279,13 @@ actor TrialConversionObserver {
         )
         inFlightObservations[observation.sequence] = observation
         if observation.restoreEpoch != nil {
-            restoreCandidates.append(transaction)
+            restoreCandidates[observation.sequence] = transaction
         }
         return observation
+    }
+
+    func discard(_ observation: TransactionObservation) {
+        cancelObservation(observation.sequence)
     }
 
     func observe(_ update: StoreTransactionUpdate, history: [StoreSubscriptionTransaction]) async {
@@ -396,6 +405,7 @@ actor TrialConversionObserver {
 
     private func cancelObservation(_ sequence: UInt64) {
         let observation = inFlightObservations.removeValue(forKey: sequence)
+        restoreCandidates.removeValue(forKey: sequence)
         let terminalHistory = terminalHistoriesByObservationSequence.removeValue(forKey: sequence)
         if let observation,
            let deferredBaseline = deferredRestoreBaselines.removeValue(
@@ -415,7 +425,7 @@ actor TrialConversionObserver {
     func beginRestore() {
         nextRestoreEpoch &+= 1
         activeRestoreEpoch = nextRestoreEpoch
-        restoreCandidates = []
+        restoreCandidates = [:]
     }
 
     func completeRestore(history: [StoreSubscriptionTransaction]) {
@@ -490,7 +500,7 @@ actor TrialConversionObserver {
         )
         let classificationHistory = StoreTransactionHistory(
             transactions: Self.mergedTransactions(
-                observations.map(\.transaction) + restoreCandidates + history.transactions
+                observations.map(\.transaction) + Array(restoreCandidates.values) + history.transactions
             ),
             containsUnverifiedTransactions: history.containsUnverifiedTransactions
         )
@@ -498,7 +508,7 @@ actor TrialConversionObserver {
             terminalHistoriesByObservationSequence[observation.sequence] = classificationHistory
         }
 
-        let candidateTransactionIDs = Set(restoreCandidates.map(\.id))
+        let candidateTransactionIDs = Set(restoreCandidates.values.map(\.id))
         let pendingTransactions = classificationHistory.transactions.filter {
             candidateTransactionIDs.contains($0.id)
                 && !independentTransactionIDs.contains($0.id)
@@ -550,7 +560,7 @@ actor TrialConversionObserver {
         independentTransactionIDs: Set<UInt64>
     ) {
         activeRestoreEpoch = nil
-        restoreCandidates = []
+        restoreCandidates = [:]
         if inFlightObservations.values.contains(where: { $0.restoreEpoch == restoreEpoch }) {
             completedRestores[restoreEpoch] = CompletedRestore(
                 outcome: outcome,

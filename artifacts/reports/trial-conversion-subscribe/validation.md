@@ -24,7 +24,8 @@ purchase, initial trial, repeat delivery, later paid renewal, ordinary paid chai
 current-entitlement and restore reads, shared terminal-union classification of multiple captured
 renewals, sticky same-id revocation, and stale pre-restore observations bound to fresher paid-boundary
 and revocation facts whether their history read returns before or after restore finalization,
-restore-waiter and app-owned-listener cancellation without a later emission or hung owned task,
+restore-waiter cancellation plus prepared and queued observation disposal without a later emission,
+stale restore ownership, or hung owned task,
 unverified/revoked updates and history, unknown payment under renewal and other StoreKit reasons, a
 known-zero promotional period, overlapping restores, relaunch dedup, stable
 partial legacy-metadata migration, and the bounded 32-id replacement rule.
