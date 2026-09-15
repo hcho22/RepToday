@@ -854,7 +854,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
     }
 
-    func testCancellationDuringAcknowledgementDisposesPreparedObservation() async {
+    func testCancellationDuringSuspendedAcknowledgementReturnsAndDisposesPreparedObservation() async {
         let trial = storeTransaction(
             id: 352, originalID: 352, day: 1,
             reason: .purchase, payment: .introductoryFreeTrial
@@ -873,6 +873,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let probe = TransactionListenerProbe()
         let acknowledgementGate = ProcessingGate()
         let listenerFinished = expectation(description: "cancelled listener finished")
+        let acknowledgementFinished = expectation(description: "background acknowledgement finished")
 
         let listener = Task {
             await LiveStoreKitFacade.processUpdates(
@@ -882,6 +883,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
                     await probe.record(.acknowledgementStarted(id))
                     await acknowledgementGate.wait()
                     await probe.record(.acknowledged(id))
+                    acknowledgementFinished.fulfill()
                 },
                 prepareUpdate: { update in
                     guard let observation = await observer.capture(update) else { return nil }
@@ -906,7 +908,6 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         await observer.beginRestore()
 
         listener.cancel()
-        await acknowledgementGate.open()
         await fulfillment(of: [listenerFinished], timeout: 1)
 
         let listenerEvents = await probe.recordedEvents()
@@ -919,6 +920,13 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
             [String(conversion.id)]
         )
+
+        await acknowledgementGate.open()
+        await fulfillment(of: [acknowledgementFinished], timeout: 1)
+        let finalEvents = await analytics.recordedEvents
+        let finalListenerEvents = await probe.recordedEvents()
+        XCTAssertTrue(finalEvents.isEmpty)
+        XCTAssertFalse(finalListenerEvents.contains(.processingStarted(conversion.id)))
     }
 
     func testListenerCancellationDisposesQueuedObservations() async {
@@ -1507,6 +1515,83 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(
             observerDefaults.stringArray(forKey: TrialConversionObserver.emittedTransactionIDsKey),
             [String(firstPaidRenewal.id)]
+        )
+    }
+
+    func testObservationHistoryAddsPaidBoundaryMissingFromRestoreSnapshot() async {
+        let trial = storeTransaction(
+            id: 6_140, originalID: 6_140, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let firstPaidRenewal = storeTransaction(
+            id: 6_141, originalID: 6_140, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let laterPaidRenewal = storeTransaction(
+            id: 6_142, originalID: 6_140, day: 45,
+            reason: .renewal, payment: .paid
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let observation = await observer.capture(.verified(laterPaidRenewal))
+        XCTAssertNotNil(observation)
+
+        await observer.beginRestore()
+        await observer.failRestore(history: .verified([trial, laterPaidRenewal]))
+        if let observation {
+            await observer.observe(
+                observation,
+                history: [trial, firstPaidRenewal, laterPaidRenewal]
+            )
+        }
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
+        )
+    }
+
+    func testObservationHistoryRevocationOverridesRestoreSnapshot() async {
+        let trial = storeTransaction(
+            id: 6_143, originalID: 6_143, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let conversion = storeTransaction(
+            id: 6_144, originalID: 6_143, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let revokedConversion = storeTransaction(
+            id: 6_144, originalID: 6_143, day: 15,
+            reason: .renewal, payment: .paid, isRevoked: true
+        )
+        let analytics = MockAnalyticsService()
+        let observer = TrialConversionObserver(
+            productIDs: SubscriptionPlan.ProductID.all,
+            analytics: analytics,
+            userDefaults: observerDefaults
+        )
+        let observation = await observer.capture(.verified(conversion))
+        XCTAssertNotNil(observation)
+
+        await observer.beginRestore()
+        await observer.failRestore(history: .verified([trial, conversion]))
+        if let observation {
+            await observer.observe(observation, history: [trial, revokedConversion])
+        }
+
+        let events = await analytics.recordedEvents
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(
+            (observerDefaults.stringArray(
+                forKey: TrialConversionObserver.emittedTransactionIDsKey
+            ) ?? []).isEmpty
         )
     }
 

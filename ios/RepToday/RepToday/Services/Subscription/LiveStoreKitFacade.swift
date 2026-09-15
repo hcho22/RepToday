@@ -1,6 +1,66 @@
 import Foundation
 import StoreKit
 
+private actor StoreTransactionAcknowledgementOwner {
+    private enum WaitResolution: Equatable {
+        case completed
+        case cancelled
+    }
+
+    private struct Acknowledgement {
+        let task: Task<Void, Never>
+        var waiter: CheckedContinuation<WaitResolution, Never>?
+    }
+
+    private var nextID: UInt64 = 0
+    private var acknowledgements: [UInt64: Acknowledgement] = [:]
+
+    func start(_ operation: @escaping @Sendable () async -> Void) -> UInt64 {
+        nextID &+= 1
+        let id = nextID
+        let task = Task.detached(priority: .background) { [self] in
+            await operation()
+            await complete(id)
+        }
+        acknowledgements[id] = Acknowledgement(task: task, waiter: nil)
+        return id
+    }
+
+    func wait(for id: UInt64) async -> Bool {
+        let resolution = await withTaskCancellationHandler {
+            await withCheckedContinuation {
+                (continuation: CheckedContinuation<WaitResolution, Never>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: .cancelled)
+                    return
+                }
+                guard var acknowledgement = acknowledgements[id] else {
+                    continuation.resume(returning: .completed)
+                    return
+                }
+                acknowledgement.waiter = continuation
+                acknowledgements[id] = acknowledgement
+            }
+        } onCancel: {
+            Task { await self.cancelWait(for: id) }
+        }
+        return resolution == .completed
+    }
+
+    private func complete(_ id: UInt64) {
+        let waiter = acknowledgements.removeValue(forKey: id)?.waiter
+        waiter?.resume(returning: .completed)
+    }
+
+    private func cancelWait(for id: UInt64) {
+        guard var acknowledgement = acknowledgements[id],
+              let waiter = acknowledgement.waiter else { return }
+        acknowledgement.waiter = nil
+        acknowledgements[id] = acknowledgement
+        waiter.resume(returning: .cancelled)
+    }
+}
+
 private actor StoreTransactionProcessingQueue {
     private var pending: [StoreTransactionProcessing] = []
     private var nextWaiter: CheckedContinuation<StoreTransactionProcessing?, Never>?
@@ -171,9 +231,10 @@ final class LiveStoreKitFacade: StoreKitFacade {
     static func processUpdates<Updates: AsyncSequence>(
         _ updates: Updates,
         project: (Updates.Element) -> StoreTransactionUpdate,
-        acknowledge: (Updates.Element) async -> Void,
+        acknowledge: @escaping @Sendable (Updates.Element) async -> Void,
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
-    ) async {
+    ) async where Updates.Element: Sendable {
+        let acknowledgementOwner = StoreTransactionAcknowledgementOwner()
         let processingQueue = StoreTransactionProcessingQueue()
 
         await withTaskGroup(of: Void.self) { group in
@@ -206,8 +267,11 @@ final class LiveStoreKitFacade: StoreKitFacade {
                     guard !Task.isCancelled else { break }
                     let update = project(element)
                     let processing = await prepareUpdate(update)
-                    await acknowledge(element)
-                    guard !Task.isCancelled else {
+                    let acknowledgement = await acknowledgementOwner.start {
+                        await acknowledge(element)
+                    }
+                    let didAcknowledge = await acknowledgementOwner.wait(for: acknowledgement)
+                    guard didAcknowledge, !Task.isCancelled else {
                         await processing?.dispose()
                         break
                     }

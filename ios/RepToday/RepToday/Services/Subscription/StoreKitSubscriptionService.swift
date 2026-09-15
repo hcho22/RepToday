@@ -337,7 +337,9 @@ actor TrialConversionObserver {
         let completedRestore = observation.restoreEpoch.flatMap { completedRestores[$0] }
         let yieldsToIndependentObservation = completedRestore?.independentTransactionIDs
             .contains(transaction.id) == true
-        let classificationHistory = terminalHistory ?? completedRestore?.history ?? history
+        let classificationHistory = Self.mergedHistory(
+            [completedRestore?.history, terminalHistory, history].compactMap { $0 }
+        )
         let qualifies = Self.isQualifyingConversion(
             transaction,
             history: classificationHistory,
@@ -698,6 +700,17 @@ actor TrialConversionObserver {
             transactionsByID[transaction.id] = transaction
         }
         return transactionIDs.compactMap { transactionsByID[$0] }
+    }
+
+    private static func mergedHistory(
+        _ histories: [StoreTransactionHistory]
+    ) -> StoreTransactionHistory {
+        StoreTransactionHistory(
+            transactions: mergedTransactions(histories.flatMap(\.transactions)),
+            containsUnverifiedTransactions: histories.contains(
+                where: \.containsUnverifiedTransactions
+            )
+        )
     }
 
     static func isQualifyingConversion(

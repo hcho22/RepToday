@@ -158,8 +158,9 @@ protocol StoreKitFacade: Sendable {
     /// work begins after acknowledgement and runs under the listener's ownership without delaying the
     /// next update. Prepared work also owns disposal of its captured state if it cannot run. Returns the
     /// listener task for the caller to retain for the app's lifetime; cancelling that task cancels the
-    /// sequence, disposes abandoned work, and cancels running processing. A StoreKit-free implementation
-    /// returns a no-op task.
+    /// sequence, immediately disposes abandoned work, and cancels running processing while an in-flight
+    /// StoreKit acknowledgement completes under explicit background ownership. A StoreKit-free
+    /// implementation returns a no-op task.
     func listenForTransactions(
         prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
     ) -> Task<Void, Never>
