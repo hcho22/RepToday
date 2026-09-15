@@ -551,9 +551,9 @@ actor TrialConversionObserver {
             !previouslyEmittedIDs.contains(String($0.id))
         }
 
-        // Persist before handing off to the fire-and-forget analytics boundary. A cancellation or
-        // relaunch after this point may lose delivery (the transport owns reliability), but can never
-        // turn StoreKit redelivery into a second emission attempt.
+        // Persist before handing off to the synchronous analytics acceptance boundary. This makes
+        // StoreKit redelivery at-most-one emission attempt; once accepted, durable delivery and retry
+        // belong to the analytics service, while consent or missing configuration may still discard it.
         retainAsEmitted(orderedTransactions, referenceTransactions: referenceTransactions)
 
         for transaction in newTransactions {

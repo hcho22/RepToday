@@ -437,7 +437,7 @@ The phrase "Nothing leaves the device" appears only in internal planning notes, 
 - [x] `entry_point` is a new **small closed enum** (per the schema's convention). Today the only presentation path is the Progress-tab premium upsell (`ProgressTabView`'s `PremiumUpsellCard`), so the enum starts with that case (e.g. `progressUpsell`) and is extended as new entry points appear - never free text.
 - [x] `subscribe` is emitted when paid service begins, carrying `plan` as the StoreKit product id: `PaywallViewModel.purchase(_:)` owns a direct paid purchase, while `TrialConversionObserver` owns the later first billed renewal of an introductory free-trial chain.
 - [x] `trial_started` is emitted when the initial purchased subscription is a trial. Trial-ness is derived from the resolved `Subscription.trialEndsAt != nil`; a trial-bearing purchase emits `trial_started` (no properties) and deliberately does not emit `subscribe` until StoreKit later proves the paid renewal.
-- [x] These paths are entitlement-gated and only build for device; they verify only on real hardware, never in the Simulator (StoreKit 2 live purchases). The Simulator run uses the `.storekit` test configuration where possible.
+- [x] Live App Store or sandbox purchases verify only on device; Simulator integration uses the local `.storekit` configuration, while pure classification and emission decisions remain unit-testable through `StoreKitFacade`.
 - [x] Verify on device (or via the StoreKit test configuration) rather than the plain Simulator. Build and tests pass.
 
 **Validation Test:**
