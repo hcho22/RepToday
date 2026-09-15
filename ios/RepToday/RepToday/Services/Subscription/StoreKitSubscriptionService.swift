@@ -248,6 +248,10 @@ actor TrialConversionObserver {
             // `AppStore.sync()` can redeliver historical transactions. Hold a qualifying update until
             // the restore outcome is known: successful restore baselines it without telemetry; failed
             // restore releases it through the ordinary live-update path.
+            rememberPurchaseDates(
+                from: history,
+                for: Set(emittedTransactionIDs)
+            )
             if !conversionsPendingDuringRestore.contains(where: { $0.id == transaction.id }) {
                 conversionsPendingDuringRestore.append(transaction)
             }
@@ -368,14 +372,10 @@ actor TrialConversionObserver {
         }
 
         let candidateIDSet = Set(candidateIDs)
-        for transaction in referenceTransactions + orderedTransactions {
-            let id = String(transaction.id)
-            guard candidateIDSet.contains(id) else { continue }
-            retainedPurchaseDates[id] = min(
-                retainedPurchaseDates[id] ?? transaction.purchaseDate,
-                transaction.purchaseDate
-            )
-        }
+        rememberPurchaseDates(
+            from: referenceTransactions + orderedTransactions,
+            for: candidateIDSet
+        )
 
         var storedOrder: [String: Int] = [:]
         for (index, id) in storedIDs.enumerated() where storedOrder[id] == nil {
@@ -389,6 +389,20 @@ actor TrialConversionObserver {
         userDefaults.set(retainedIDs, forKey: Self.emittedTransactionIDsKey)
         let retainedIDSet = Set(retainedIDs)
         retainedPurchaseDates = retainedPurchaseDates.filter { retainedIDSet.contains($0.key) }
+    }
+
+    private func rememberPurchaseDates(
+        from transactions: [StoreSubscriptionTransaction],
+        for transactionIDs: Set<String>
+    ) {
+        for transaction in transactions {
+            let id = String(transaction.id)
+            guard transactionIDs.contains(id) else { continue }
+            retainedPurchaseDates[id] = min(
+                retainedPurchaseDates[id] ?? transaction.purchaseDate,
+                transaction.purchaseDate
+            )
+        }
     }
 
     private func retainedID(
@@ -447,7 +461,7 @@ actor TrialConversionObserver {
 
         // Include the update itself because `Transaction.all` is a point-in-time snapshot and the
         // update may have arrived just after that snapshot began. Dedup by transaction id before
-        // determining the first paid renewal.
+        // determining the first paid transaction.
         let chain = (history + [transaction]).reduce(into: [UInt64: StoreSubscriptionTransaction]()) {
             $0[$1.id] = $1
         }.values.filter {
@@ -462,15 +476,12 @@ actor TrialConversionObserver {
         }
         guard hasFreeTrialOrigin else { return false }
 
-        let paidRenewals = chain.filter {
-            $0.reason == .renewal
-                && $0.payment == .paid
-        }
-        let firstPaidRenewal = paidRenewals.min {
+        let paidTransactions = chain.filter { $0.payment == .paid }
+        let firstPaidTransaction = paidTransactions.min {
             if $0.purchaseDate != $1.purchaseDate { return $0.purchaseDate < $1.purchaseDate }
             return $0.id < $1.id
         }
-        return firstPaidRenewal?.id == transaction.id
+        return firstPaidTransaction?.id == transaction.id
     }
 }
 
