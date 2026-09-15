@@ -147,9 +147,9 @@ final class OnboardingViewModel {
     // MARK: - Onboarding funnel telemetry (US-T08)
 
     /// Guards `onboarding_started` to exactly one emission per view-model lifetime, so a re-`onAppear`
-    /// within the same flow does not double-fire. This is not persisted across launches: the funnel
-    /// counts distinct installs and the backend dedups by `installId`, so emitting once per
-    /// presentation is correct.
+    /// within the same flow does not double-fire. This is not persisted across launches: each new
+    /// presentation is a new funnel attempt, while transport retries of one accepted emission are
+    /// deduplicated separately by its stable `eventId`.
     private var didEmitOnboardingStarted = false
 
     /// The instant `onboarding_started` was emitted, captured off the injected clock. It anchors the

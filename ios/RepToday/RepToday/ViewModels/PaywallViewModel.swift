@@ -58,7 +58,8 @@ final class PaywallViewModel {
 
     /// One-shot guard so a re-`load()` (the paywall's `.task` can run again on a re-appear) does not
     /// re-emit `paywall_shown`. Modeled on `ReadyViewModel.hasEmittedReadyScreenShown`; not persisted,
-    /// because the funnel counts distinct paywall presentations and the backend dedups by `installId`.
+    /// because each new view model represents a distinct paywall presentation. Transport retries of
+    /// one accepted emission are deduplicated separately by its stable `eventId`.
     private var hasEmittedPaywallShown = false
 
     init(

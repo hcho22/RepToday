@@ -14,13 +14,13 @@ import Foundation
 /// attempts, seven days, and 50 pending events. Every error is swallowed and no analytics result can
 /// become a product failure.
 ///
-/// **Consent is checked twice.** The persisted gate is read at enqueue and immediately before every
-/// attempt. Each queued row also carries `AppState`'s consent generation; opting out advances that
+/// **Consent is checked throughout ownership.** The persisted gate and consent generation are read
+/// at acceptance, before persistence, and immediately before every send. Opting out advances that
 /// generation and discards/cancels pending work, so re-enabling cannot resurrect a pre-opt-out row.
 ///
-/// **Retry duplicates are measurement-safe.** One random `eventId` is encoded at enqueue and reused
-/// by every retry. Convex returns `204` but inserts at most one row for that id, covering the classic
-/// "insert committed, response was interrupted" case.
+/// **Retry duplicates are measurement-safe.** One random `eventId` is assigned at acceptance,
+/// encoded once during persistence, and reused by every retry. Convex returns `204` but inserts at
+/// most one row for that id, covering the classic "insert committed, response was interrupted" case.
 final class LiveAnalyticsService: AnalyticsServiceProtocol {
     static let routePath = "logEvent"
     static let endpointInfoPlistKey = "RepTodayAnalyticsEndpoint"

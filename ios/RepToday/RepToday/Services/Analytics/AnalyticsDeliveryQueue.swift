@@ -212,10 +212,10 @@ private final class AnalyticsBackgroundActivity: @unchecked Sendable {
     }
 }
 
-/// Acquires a short `beginBackgroundTask` lease around an in-flight POST. This is the iOS mechanism
-/// that lets an event emitted as the app leaves the foreground finish during ordinary suspension.
-/// If iOS expires the lease, the request is cancelled and its durable row remains for the next
-/// foreground or relaunch.
+/// Acquires a short `beginBackgroundTask` lease for the acceptance-to-outbox handoff and for each
+/// in-flight POST. This is the iOS mechanism that lets exit-adjacent work continue during ordinary
+/// suspension. The operation-specific expiration handler ends acceptance protection or cancels a
+/// send; an interrupted durable row remains for the next foreground or relaunch.
 struct AnalyticsBackgroundExecution: @unchecked Sendable {
     private let beginOperation: @Sendable (
         @escaping @Sendable () -> Void

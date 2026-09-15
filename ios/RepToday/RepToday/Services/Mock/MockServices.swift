@@ -293,10 +293,10 @@ actor MockAuthService: AuthServiceProtocol {
 /// Records every event into `recordedEvents` in call order and does nothing else: no I/O, no
 /// network, no disk. It is the recording sink `ServiceContainer.mock()` wires, and the one tests
 /// and previews use when they need to assert on what was recorded -
-/// `live(context:installId:analyticsInstallId:coachSafetyIdentifierProvider:analyticsGate:analyticsService:)`
-/// wires the real `LiveAnalyticsService` instead, so a test that wants assertions rather than
-/// requests wants this one. Its synchronous `record(_:)` mirrors the live acceptance boundary, with
-/// lock-backed storage so concurrent test emissions remain ordered and race-free.
+/// `ServiceContainer.live(...)` wires the real `LiveAnalyticsService` instead, so a test that wants
+/// assertions rather than requests wants this one. Its synchronous `record(_:)` mirrors the live
+/// acceptance boundary, with lock-backed storage so concurrent test emissions remain ordered and
+/// race-free.
 actor MockAnalyticsService: AnalyticsServiceProtocol {
     private nonisolated let storage = MockAnalyticsEventStorage()
 

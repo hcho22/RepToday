@@ -278,7 +278,8 @@ final class ActiveSessionViewModel {
     /// single dismiss choke point `recordSessionEnd()`, so this one-shot makes a repeated dismiss a
     /// no-op and the completion never double-fires. (The abandonment terminal event is not emitted by
     /// the player at all - a resumable pause is not an abandonment; see `recordSessionEnd()`.) Not
-    /// persisted: the funnel counts distinct installs and the backend dedups by `installId`.
+    /// persisted: it belongs to this player lifetime. Transport retries of one accepted terminal
+    /// event are deduplicated separately by its stable `eventId`.
     private var hasEmittedTerminalEvent = false
 
     /// The fire-and-forget completion write launched at `finish()`, exposed only so tests can await
@@ -460,7 +461,8 @@ final class ActiveSessionViewModel {
             startedAt = now()
             // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
             // idempotency that gates the clock start, carrying the requested minutes. The hand-off
-            // runs off the UI path and never awaits delivery, so telemetry cannot delay first render.
+            // performs only bounded synchronous acceptance here; first render never waits on
+            // analytics storage or delivery.
             emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
             // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
             persist()

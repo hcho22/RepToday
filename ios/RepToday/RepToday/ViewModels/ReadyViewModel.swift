@@ -113,8 +113,9 @@ final class ReadyViewModel {
     /// Ensures `ready_screen_shown` is emitted exactly once per Ready Screen appearance (US-T09),
     /// scoped to the first successful load. Emission lives in `load()`, not the shared `generate()`,
     /// so a duration-chip regeneration (which reaches the engine only through `selectDuration()`)
-    /// structurally cannot trip it and inflate the funnel count. Not persisted across launches: the
-    /// funnel counts distinct installs and the backend dedups by `installId`.
+    /// structurally cannot trip it and inflate the funnel count. Not persisted across launches: each
+    /// new app-open presentation is eligible to emit; transport retries are deduplicated separately
+    /// by the accepted emission's stable `eventId`.
     private var hasEmittedReadyScreenShown = false
 
     /// The wall-time the most recent session generation took, in whole milliseconds, measured off the

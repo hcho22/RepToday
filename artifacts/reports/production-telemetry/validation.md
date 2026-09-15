@@ -151,7 +151,7 @@ If a token is ever exposed in committed history, a remote log, or a public artif
 
 - Client-side: build with empty `REPTODAY_ANALYTICS_ENDPOINT` and `REPTODAY_ANALYTICS_SECRET`; the existing configuration factory selects the inert no-op sink.
 - Server-side emergency stop: remove `ANALYTICS_SHARED_SECRET` from production. The HTTP action fails closed with `500` and inserts nothing until a replacement is set.
-- Code rollback: redeploy the preceding known-good Convex commit to the same project/deployment; do not create another project. The `events` row shape was not changed by this launch wiring.
+- Backend rollback: keep the optional `eventId` field, `by_eventId` index, and idempotent mutation in place for every distributed durable client. Do not redeploy a pre-durable sink that ignores replay ids; if the current backend cannot remain deployed, use the server-side emergency stop above until a compatible known-good version is ready. Keep the same project/deployment.
 
 ## Measurement limitations intentionally left open
 

@@ -469,7 +469,7 @@ with the reconciliation report against real observed sessions still pending the 
 named non-founder coder, and a frozen rubric - so US-T13's PRD acceptance boxes remain unchecked.
 
 `convex/reconcile.query.test.ts` drives the real internal query through `convex-test`, asserting
-duplicate requested ids are deduplicated, matching rows retain exactly the five wire fields, and
+duplicate requested ids are deduplicated, matching rows retain exactly the five analytic fields, and
 unrelated or absent installs are excluded.
 
 ## Layout and deployment
