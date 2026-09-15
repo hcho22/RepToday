@@ -29,6 +29,23 @@ unverified/revoked updates and history, unknown payment under renewal and other 
 known-zero promotional period, overlapping restores, relaunch dedup, stable
 partial legacy-metadata migration, and the bounded 32-id replacement rule.
 
+To generate the reviewer-readable application-boundary transcript from the same deterministic suite:
+
+```sh
+xcodebuild \
+  -project ios/RepToday/RepToday.xcodeproj \
+  -scheme RepToday \
+  -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.6' \
+  test \
+  -only-testing:RepTodayTests/StoreKitSubscriptionServiceTests/testTrialConversionSubscribeEvidenceTranscript \
+  REPTODAY_WRITE_EVIDENCE=1
+```
+
+This writes `artifacts/reports/trial-conversion-subscribe/telemetry-boundary-transcript.md`, showing
+the trial-start, first-renewal, redelivery, later-renewal, direct-purchase, and bounded-retention
+outcomes at the injected analytics boundary. Without the opt-in build setting, the identical artifact
+is written to a per-run temporary directory so an ordinary test run leaves the worktree unchanged.
+
 ## Local StoreKit Configuration recipe
 
 1. In Xcode, select the `RepToday` scheme and confirm Run > Options > StoreKit Configuration is

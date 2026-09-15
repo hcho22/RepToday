@@ -2190,4 +2190,195 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         XCTAssertFalse(storedIDs?.contains("901") == true, "the oldest id is replaced at the bound")
         XCTAssertEqual(storedIDs?.last, String(900 + TrialConversionObserver.retentionLimit * 2 + 1))
     }
+
+    /// Produces a reviewer-readable transcript of the two monetization journeys at the application
+    /// analytics boundary. StoreKit's signed-update delivery remains framework-owned and is covered by
+    /// the adjacent manual recipe; this scenario executes the app-owned paywall, observer, and durable
+    /// dedup behavior rather than merely recording test names.
+    func testTrialConversionSubscribeEvidenceTranscript() async throws {
+        let monthlyPlan = try XCTUnwrap(
+            SubscriptionPlan.samples.first { $0.id == SubscriptionPlan.ProductID.monthly }
+        )
+        let yearlyPlan = try XCTUnwrap(
+            SubscriptionPlan.samples.first { $0.id == SubscriptionPlan.ProductID.yearly }
+        )
+        let signedTrial = storeTransaction(
+            id: 300, originalID: 300, day: 1,
+            reason: .purchase, payment: .introductoryFreeTrial
+        )
+        let signedConversion = storeTransaction(
+            id: 301, originalID: 300, day: 15,
+            reason: .renewal, payment: .paid
+        )
+        let signedLaterRenewal = storeTransaction(
+            id: 302, originalID: 300, day: 45,
+            reason: .renewal, payment: .paid
+        )
+
+        let journeyAnalytics = MockAnalyticsService()
+        let trialEntitlement = premiumEntitlement(
+            productID: monthlyPlan.id,
+            expiresAt: signedConversion.purchaseDate,
+            isInTrialPeriod: true
+        )
+        let trialPurchaseService = StoreKitSubscriptionService(
+            facade: ObservingFacade(
+                purchaseResult: .success([trialEntitlement])
+            ),
+            analytics: journeyAnalytics,
+            userDefaults: observerDefaults
+        )
+        let trialPaywall = PaywallViewModel(
+            subscriptionService: trialPurchaseService,
+            analytics: journeyAnalytics,
+            now: { signedTrial.purchaseDate }
+        )
+        await trialPaywall.purchase(monthlyPlan)
+        let afterTrialPurchase = await journeyAnalytics.recordedEvents
+
+        _ = await observedEvents(
+            facade: ObservingFacade(
+                history: [signedTrial, signedConversion],
+                updates: [.verified(signedConversion)]
+            ),
+            analytics: journeyAnalytics,
+            defaults: observerDefaults
+        )
+        let afterFirstPaidRenewal = await journeyAnalytics.recordedEvents
+
+        _ = await observedEvents(
+            facade: ObservingFacade(
+                history: [signedTrial, signedConversion],
+                updates: [.verified(signedConversion)]
+            ),
+            analytics: journeyAnalytics,
+            defaults: observerDefaults
+        )
+        let afterRelaunchRedelivery = await journeyAnalytics.recordedEvents
+
+        _ = await observedEvents(
+            facade: ObservingFacade(
+                history: [signedTrial, signedConversion, signedLaterRenewal],
+                updates: [.verified(signedLaterRenewal)]
+            ),
+            analytics: journeyAnalytics,
+            defaults: observerDefaults
+        )
+        let afterLaterRenewal = await journeyAnalytics.recordedEvents
+
+        XCTAssertEqual(afterTrialPurchase.map(\.name), [.trialStarted])
+        XCTAssertEqual(afterFirstPaidRenewal.map(\.name), [.trialStarted, .subscribe])
+        XCTAssertEqual(
+            afterFirstPaidRenewal.last?.properties,
+            ["plan": .string(SubscriptionPlan.ProductID.monthly)]
+        )
+        XCTAssertEqual(
+            afterFirstPaidRenewal.last?.timestampMs,
+            Int(signedConversion.purchaseDate.timeIntervalSince1970 * 1_000),
+            "the conversion carries StoreKit's signed purchase timestamp"
+        )
+        XCTAssertEqual(afterRelaunchRedelivery, afterFirstPaidRenewal)
+        XCTAssertEqual(afterLaterRenewal, afterFirstPaidRenewal)
+
+        let journeyRetainedIDs = observerDefaults.stringArray(
+            forKey: TrialConversionObserver.emittedTransactionIDsKey
+        ) ?? []
+        let journeyRetainedDates = observerDefaults.dictionary(
+            forKey: TrialConversionObserver.emittedTransactionPurchaseDatesKey
+        ) ?? [:]
+        XCTAssertEqual(journeyRetainedIDs, [String(signedConversion.id)])
+        XCTAssertEqual(
+            (journeyRetainedDates[String(signedConversion.id)] as? NSNumber)?.doubleValue,
+            signedConversion.purchaseDate.timeIntervalSince1970
+        )
+
+        var retentionHistory: [StoreSubscriptionTransaction] = []
+        var retentionUpdates: [StoreTransactionUpdate] = []
+        for offset in 0 ..< TrialConversionObserver.retentionLimit {
+            let originalID = UInt64(1_000 + offset * 2)
+            let trial = storeTransaction(
+                id: originalID, originalID: originalID, day: TimeInterval(100 + offset * 20),
+                reason: .purchase, payment: .introductoryFreeTrial
+            )
+            let conversion = storeTransaction(
+                id: originalID + 1, originalID: originalID, day: TimeInterval(114 + offset * 20),
+                reason: .renewal, payment: .paid
+            )
+            retentionHistory.append(contentsOf: [trial, conversion])
+            retentionUpdates.append(.verified(conversion))
+        }
+        _ = await observedEvents(
+            facade: ObservingFacade(history: retentionHistory, updates: retentionUpdates),
+            analytics: MockAnalyticsService(),
+            defaults: observerDefaults
+        )
+        let boundedRetainedIDs = observerDefaults.stringArray(
+            forKey: TrialConversionObserver.emittedTransactionIDsKey
+        ) ?? []
+        XCTAssertEqual(boundedRetainedIDs.count, TrialConversionObserver.retentionLimit)
+        XCTAssertFalse(boundedRetainedIDs.contains(String(signedConversion.id)))
+        XCTAssertEqual(boundedRetainedIDs.first, "1001")
+        XCTAssertEqual(boundedRetainedIDs.last, "1063")
+
+        let durableDomain = observerDefaults.persistentDomain(forName: observerDefaultsSuite) ?? [:]
+        XCTAssertEqual(
+            Set(durableDomain.keys),
+            Set([
+                TrialConversionObserver.emittedTransactionIDsKey,
+                TrialConversionObserver.emittedTransactionPurchaseDatesKey
+            ]),
+            "only bounded ids and signed ordering metadata are persisted"
+        )
+
+        let directAnalytics = MockAnalyticsService()
+        let directEntitlement = premiumEntitlement(productID: yearlyPlan.id)
+        let directPurchaseService = StoreKitSubscriptionService(
+            facade: ObservingFacade(purchaseResult: .success([directEntitlement])),
+            analytics: directAnalytics,
+            userDefaults: observerDefaults
+        )
+        let directPaywall = PaywallViewModel(
+            subscriptionService: directPurchaseService,
+            analytics: directAnalytics,
+            now: { Date(timeIntervalSince1970: 2 * 86_400) }
+        )
+        await directPaywall.purchase(yearlyPlan)
+        let directEvents = await directAnalytics.recordedEvents
+        XCTAssertEqual(directEvents.map(\.name), [.subscribe])
+        XCTAssertEqual(directEvents.first?.properties, ["plan": .string(yearlyPlan.id)])
+        XCTAssertFalse(directEvents.contains { $0.name == .trialStarted })
+
+        let transcript = """
+        # Trial-to-paid `subscribe` product evidence
+
+        Executed through the production `PaywallViewModel` and `StoreKitSubscriptionService` into
+        the injected application analytics boundary. The StoreKit values are deterministic verified
+        facade projections; the framework-owned signed delivery leg is the separate manual recipe.
+
+        | User journey boundary | Application analytics stream after boundary |
+        | --- | --- |
+        | Monthly introductory trial purchase | `trial_started` (no properties) |
+        | First positive-price renewal, transaction 301 | `trial_started`, then `subscribe { plan: \(monthlyPlan.id) }` |
+        | Same renewal redelivered after service relaunch | unchanged; no second event |
+        | Later paid renewal, transaction 302 | unchanged; no second event |
+        | Direct yearly paid purchase | `subscribe { plan: \(yearlyPlan.id) }`; no `trial_started` |
+
+        ## Signed conversion timestamp
+
+        `subscribe.timestampMs = \(afterFirstPaidRenewal.last?.timestampMs ?? -1)`
+
+        ## Durable duplicate-suppression state
+
+        - State after the journey: IDs `\(journeyRetainedIDs)`, purchase dates `\(journeyRetainedDates)`
+        - State after 33 distinct conversions: count `\(boundedRetainedIDs.count)`, IDs `\(boundedRetainedIDs)`
+        - Oldest ID 301 still retained: `\(boundedRetainedIDs.contains(String(signedConversion.id)))`
+        - Persisted keys: `\(durableDomain.keys.sorted())`
+        - Stored receipt/product/price/history: none
+        """
+        try EvidenceOutput.write(
+            transcript + "\n",
+            named: "telemetry-boundary-transcript.md",
+            for: EvidenceOutput.Story.trialConversionSubscribe
+        )
+    }
 }

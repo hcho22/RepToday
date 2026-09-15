@@ -55,7 +55,8 @@ struct StoreSubscriptionTransaction: Equatable, Sendable {
         case nonPaid
         /// StoreKit recorded a price greater than zero for this transaction.
         case paid
-        /// No price/offer combination proves either state. Conservatively ineligible for conversion.
+        /// No price/offer combination proves either state. A candidate is ineligible, and an earlier
+        /// purchased chain row with this value blocks inferring that a later renewal is first-paid.
         case unknown
     }
 

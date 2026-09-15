@@ -16,8 +16,8 @@ and US-T09 added the third - `ReadyView`'s view model emits `ready_screen_shown`
 and US-T10 added the next three - the active-session player's `session_started`, `session_completed`, and `session_abandoned` lifecycle events,
 and US-T11 added the weekly rollup's `week_active`, emitted once per active week from `SessionCompletionService`,
 and US-T12 added the last three - the monetization funnel's `paywall_shown`, `trial_started`, and direct-purchase `subscribe` on the paywall (`PaywallViewModel`); the StoreKit trial-conversion follow-up adds the same canonical `subscribe` at the verified first paid renewal (`TrialConversionObserver`).
-That is **all 13 of the 13 emission sites**. So `record(_:)` is now
-called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, and on the paywall. Release archives now target production deployment `sensible-spider-810`; the matching abuse-deterrence token is injected from the captain-owned macOS Keychain by `tools/archive-release.sh`, never committed. A missing endpoint or token still resolves
+That covers **all 13 registered event names**. So `record(_:)` is now
+called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, on the paywall, and from the app-lifetime StoreKit transaction listener. Release archives now target production deployment `sensible-spider-810`; the matching abuse-deterrence token is injected from the captain-owned macOS Keychain by `tools/archive-release.sh`, never committed. A missing endpoint or token still resolves
 `NoOpAnalyticsService`,
 while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process

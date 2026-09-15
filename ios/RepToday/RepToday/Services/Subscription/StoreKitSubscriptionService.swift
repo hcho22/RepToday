@@ -194,12 +194,14 @@ private actor RestoreOperationGate {
 /// `Transaction.updates` value is itself the first positive-price renewal in a history whose original
 /// purchase is explicitly a free trial. A foreground, restore, current-entitlement read, direct paid
 /// purchase, later renewal, pending purchase, revoked transaction, or unverified result cannot satisfy
-/// that predicate.
+/// that predicate. A revoked first-paid period still blocks a later renewal from being misclassified
+/// as the conversion boundary.
 ///
 /// Dedup is durable and minimal: qualifying conversion transaction ids and their signed purchase
 /// instants are persisted, never a receipt, product, price, or transaction history. The timestamps are
 /// bounded ordering metadata for retaining the newest 32 ids across relaunches and App Store account
-/// changes; the oldest is replaced on the 33rd distinct conversion.
+/// changes; the oldest is replaced on the 33rd distinct conversion. Legacy id-only entries preserve
+/// their durable relative order until signed dates make them comparable.
 actor TrialConversionObserver {
     static let emittedTransactionIDsKey = "telemetry.trialConversionTransactionIDs"
     static let emittedTransactionPurchaseDatesKey = "telemetry.trialConversionTransactionPurchaseDates"
