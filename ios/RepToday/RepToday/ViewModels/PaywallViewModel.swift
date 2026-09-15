@@ -43,8 +43,8 @@ final class PaywallViewModel {
 
     /// Anonymous product telemetry sink (US-T12). Optional exactly like `ReadyViewModel.analytics`,
     /// defaulted `nil`, so previews and the unit suite inject a mock (or nothing) while production
-    /// threads `services.analyticsService` in. Emission is strictly fire-and-forget and never gates
-    /// the paywall, the purchase, or dismissal.
+    /// threads `services.analyticsService` in. Emission performs only bounded synchronous acceptance;
+    /// storage and delivery never gate the paywall, purchase, or dismissal.
     private let analytics: (any AnalyticsServiceProtocol)?
 
     /// Where this paywall was opened from - the closed `entry_point` the `paywall_shown` event
@@ -58,7 +58,8 @@ final class PaywallViewModel {
 
     /// One-shot guard so a re-`load()` (the paywall's `.task` can run again on a re-appear) does not
     /// re-emit `paywall_shown`. Modeled on `ReadyViewModel.hasEmittedReadyScreenShown`; not persisted,
-    /// because the funnel counts distinct paywall presentations and the backend dedups by `installId`.
+    /// because each new view model represents a distinct paywall presentation. Transport retries of
+    /// one accepted emission are deduplicated separately by its stable `eventId`.
     private var hasEmittedPaywallShown = false
 
     init(
@@ -77,11 +78,11 @@ final class PaywallViewModel {
     func load() async {
         // US-T12: `paywall_shown` fires once per paywall presentation, on the first `load()`,
         // carrying `entry_point`. Guarded like `ReadyViewModel`'s one-shots so a re-appear cannot
-        // re-emit and inflate the funnel base. Fire-and-forget: it returns immediately and swallows
-        // any failure, so telemetry never gates the plans loading or the purchase.
+        // re-emit and inflate the funnel base. The sink swallows local/network failures and does not
+        // await delivery here, so telemetry never gates plans loading or the purchase.
         if !hasEmittedPaywallShown {
             hasEmittedPaywallShown = true
-            await analytics?.record(
+            analytics?.record(
                 AnalyticsEvent(
                     name: .paywallShown,
                     timestampMs: timestampMs(),
@@ -177,9 +178,9 @@ final class PaywallViewModel {
     private func emitPurchaseTelemetry(for subscription: Subscription, plan: SubscriptionPlan) async {
         guard let analytics else { return }
         if subscription.trialEndsAt != nil {
-            await analytics.record(AnalyticsEvent(name: .trialStarted, timestampMs: timestampMs()))
+            analytics.record(AnalyticsEvent(name: .trialStarted, timestampMs: timestampMs()))
         } else {
-            await analytics.record(
+            analytics.record(
                 AnalyticsEvent(
                     name: .subscribe,
                     timestampMs: timestampMs(),

@@ -432,7 +432,7 @@ final class OnboardingViewModelTests: XCTestCase {
         let clock = MutableClock(fixedDate)
         let vm = makeTelemetryViewModel(analytics: analytics, clock: clock)
 
-        await vm.onboardingStarted()
+        vm.onboardingStarted()
 
         let events = await analytics.recordedEvents
         XCTAssertEqual(events.map(\.name), [.onboardingStarted])
@@ -445,8 +445,8 @@ final class OnboardingViewModelTests: XCTestCase {
         let clock = MutableClock(fixedDate)
         let vm = makeTelemetryViewModel(analytics: analytics, clock: clock)
 
-        await vm.onboardingStarted()
-        await vm.onboardingStarted()
+        vm.onboardingStarted()
+        vm.onboardingStarted()
 
         let events = await analytics.recordedEvents
         XCTAssertEqual(events.filter { $0.name == .onboardingStarted }.count, 1)
@@ -461,7 +461,7 @@ final class OnboardingViewModelTests: XCTestCase {
         let vm = makeTelemetryViewModel(analytics: analytics, clock: clock)
         fillAnswers(vm)
 
-        await vm.onboardingStarted()
+        vm.onboardingStarted()
         clock.advance(42.9) // truncates to 42 whole seconds
         let ok = await vm.finish()
         XCTAssertTrue(ok)
@@ -482,7 +482,7 @@ final class OnboardingViewModelTests: XCTestCase {
         )
         fillAnswers(vm)
 
-        await vm.onboardingStarted()
+        vm.onboardingStarted()
         clock.advance(10)
         let ok = await vm.finish()
         XCTAssertFalse(ok)
@@ -496,7 +496,7 @@ final class OnboardingViewModelTests: XCTestCase {
     func testTelemetryIsOptional() async {
         let vm = makeViewModel()
         fillAnswers(vm)
-        await vm.onboardingStarted()
+        vm.onboardingStarted()
         let ok = await vm.finish()
         XCTAssertTrue(ok, "onboarding completes with no analytics sink wired")
     }

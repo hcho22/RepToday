@@ -32,10 +32,13 @@ declare const process: { readonly env: Readonly<Record<string, string | undefine
 const http = httpRouter();
 
 /**
- * The two caps the *action* enforces. (`props`'s 32-key / 4096-byte caps live in the mutation -
- * `MAX_PROPS_KEYS` / `MAX_PROPS_BYTES` in `events.ts`.) Both were gaps US-T03 shipped knowingly,
- * on the reasoning that nothing could reach this endpoint until a client existed; US-T04 is that
- * client, so they close here, together, because they are one shape of problem.
+ * The three caps the *action* enforces. (`props`'s 32-key / 4096-byte caps live in the mutation -
+ * `MAX_PROPS_KEYS` / `MAX_PROPS_BYTES` in `events.ts`.) The install/body limits closed gaps US-T03
+ * shipped knowingly once US-T04 supplied a client; the event-id limit arrived with durable replay.
+ * All three keep client-controlled top-level data well below any database/serializer resource rail.
+ *
+ * `MAX_EVENT_ID_BYTES`: the retry-stable key is a UUIDv4 today (36 ASCII characters). The wider
+ * limit leaves room for a different random-id shape while keeping idempotency metadata bounded.
  *
  * `MAX_INSTALL_ID_BYTES`: `installId` was an unbounded `v.string()` while `props` was capped, which
  * made it the one client-controlled field with no ceiling - a hostile caller could push a row
@@ -60,6 +63,7 @@ const http = httpRouter();
  * reached by size.
  */
 export const MAX_INSTALL_ID_BYTES = 64;
+export const MAX_EVENT_ID_BYTES = 64;
 export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 
 /**
@@ -215,6 +219,22 @@ http.route({
       return jsonResponse(400, "name must be one of the 13 pre-registered event names");
     }
 
+    // The current durable client always supplies this idempotency key. Missing remains accepted
+    // only for compatibility with already-shipped one-shot clients, which never replayed a request;
+    // a present value must be a bounded non-empty string. UUIDv4 is 36 ASCII bytes.
+    if (body.eventId !== undefined) {
+      if (typeof body.eventId !== "string" || body.eventId === "") {
+        return jsonResponse(400, "eventId must be a non-empty string when present");
+      }
+      const eventIdBytes = new TextEncoder().encode(body.eventId).length;
+      if (eventIdBytes > MAX_EVENT_ID_BYTES) {
+        return jsonResponse(
+          400,
+          `eventId is ${eventIdBytes} bytes, over the ${MAX_EVENT_ID_BYTES}-byte limit`,
+        );
+      }
+    }
+
     // Not new scope: this is "so a malformed client cannot poison the table" doing its stated job.
     // Coercing these two would have written the literal string "undefined" and `NaN` into exactly
     // the columns the funnel is counted on - `installId` is the cohort key K4 counts unique
@@ -268,6 +288,7 @@ http.route({
       installId: body.installId,
       clientTs,
       props: body.props ?? {},
+      ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
     };
 
     if (!isSerializableAsArgs(args)) {
@@ -283,11 +304,10 @@ http.route({
         // 400 and carry the message so the rejection is observable to a human.
         return jsonResponse(400, rejection);
       }
-      // Anything else is a deployment, runtime, or database failure. US-T04 makes the client
-      // strictly fire-and-forget - it swallows every error - so a sink outage reported as the
-      // client's fault would be invisible: events would simply stop arriving and nothing would say
-      // so. This 4xx/5xx split is the only signal a human watching the PMF test gets. The detail
-      // stays in the deployment log rather than the response body.
+      // Anything else is a deployment, runtime, or database failure. The client never surfaces
+      // analytics failures to product flows; it retains retryable 5xx responses only within its
+      // short durable bounds. The split therefore still matters operationally and also tells the
+      // client whether a replay is useful. Detail stays in the deployment log, not the response.
       console.error("logEvent failed", error);
       return jsonResponse(500, "internal error");
     }

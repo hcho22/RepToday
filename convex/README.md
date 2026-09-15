@@ -1,6 +1,6 @@
 # Rep Today telemetry sink (US-T03)
 
-The whole analytics backend: **one append-only evidence table, one mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
+The whole analytics backend: **one immutable evidence table, one idempotent-insert mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
 
 It exists so the anonymous funnel events defined in the event-metric schema have
 somewhere to land during the 90-day PMF test.
@@ -25,8 +25,10 @@ interceptor in front of it; pointed at a real deployment deliberately, as the US
 did, it writes ordinary rows here, so probe rows are a thing this table can contain and are deleted
 by hand afterwards.
 It also has a consent gate in front of it (US-T06, landed): the transport re-reads the user's
-`AppState.analyticsEnabled` flag on every emission, so this table only ever
-receives rows from installs that have not opted out. That is a **client-side** gate and this sink
+`AppState.analyticsEnabled` flag at enqueue and immediately before each send. Opting out advances
+a persisted consent generation, cancels/discards pending work, and makes every pre-opt-out outbox
+row permanently ineligible even after re-enabling. This table therefore only ever receives rows
+from installs that had not opted out when a request began. That is a **client-side** gate and this sink
 knows nothing about it - it has no notion of consent, and no way to tell an install that opted out
 from one that never ran. An install is simply absent, and this table cannot say which it was.
 Which deployment the app talks to is a per-configuration build setting
@@ -40,23 +42,71 @@ It is now the *sink's* only entry point too, which this file previously claimed 
 `.convex.cloud/api/mutation` endpoint was a second, undocumented way in that skipped every check the
 action performs. It is an `internalMutation` now - see below.
 
+## Client delivery contract
+
+`LiveAnalyticsService.record(_:)` is synchronous and non-throwing. With consent enabled it transfers
+the event into a bounded queue-owned front buffer and acquires an iOS `beginBackgroundTask`
+assertion before returning. The queue encodes and atomically persists the event to its small
+Application Support outbox asynchronously, so product flows wait on neither storage nor network.
+It then sends independently through the existing ephemeral `URLSession`, under a separate
+background assertion so an exit-adjacent POST can finish through ordinary suspension. If that send
+assertion expires, it cancels the request and leaves the row durable. App launch, foregrounding, and
+later accepted events provide bounded recovery triggers.
+
+The resource and retry bounds are deliberately short:
+
+- at most **50 pending events**, evicting the oldest when full;
+- at most **3 outbox-persistence attempts per accepted batch** before explicit retirement;
+- at most **3 delivery attempts per event** and **7 days** of age;
+- at most **4 deliveries per drain trigger**;
+- a **10-second** request timeout, with no connectivity wait;
+- transport failures plus `408`, `429`, and `5xx` are retryable; other `4xx` responses are
+  permanent. Neither kind surfaces as a product failure.
+
+Every accepted event receives one random `eventId`, stored in the encoded outbox body and reused
+unchanged on every attempt. The mutation's indexed idempotency check means a replay after "insert
+committed, response interrupted" still contributes one evidence row.
+
+## Backend-first Release gate
+
+The indexed idempotent mutation must be deployed to production before any archive containing the
+durable client is distributed. `tools/archive-release.sh` enforces that ordering before invoking
+`xcodebuild`: it runs `tools/validate-production-telemetry.sh`, which POSTs the identical stable
+`eventId` twice and requires two `204` responses but exactly one production row. A production sink
+that ignores `eventId` therefore stops the archive before a client can be built for distribution.
+
+The live check requires the repository's Convex CLI dependencies, the captain-owned Keychain token,
+and access to deployment `sensible-spider-810`. Deploy `convex/schema.ts`, `convex/events.ts`, and
+`convex/http.ts` first; only a passing live replay check unlocks the private archive path. The source
+change that introduced this gate did not deploy or validate production itself.
+
+Consent is authoritative at acceptance, persistence, and send. Every outbox row captures the persisted consent
+generation; a true-to-false Settings transition advances that generation synchronously, cancels
+in-flight work, and discards pending rows. A pre-opt-out row can therefore never become eligible
+again if analytics is re-enabled. When the endpoint or secret is unusable, the container resolves
+`NoOpAnalyticsService` before constructing a session or outbox, so the raw Release path remains
+fully inert.
+
 ## Non-goal: no analysis in the backend
 
 **The sink is dumb by design.**
-There is no funnel modelling, no aggregation, no dedup, and no cohort math. The evidence table has
-one operational selection index on `installId`; it does not encode or precompute any metric.
+There is no funnel modelling, no aggregation, and no cohort math. The only deduplication is
+transport idempotency: the sink indexes a client-generated `eventId` and treats a retry as the same
+insert. The evidence table also has the operational `installId` selection index used by
+reconciliation; neither index encodes or precomputes a metric.
 Every kill-criterion metric (K1-K8) is derivable from raw rows by a query written later, so keeping
 the backend dumb keeps the analysis revisable - a funnel baked into the write path would be a
 threshold decision made before there is any data to make it against.
 
 ## Table: `events`
 
-`convex/schema.ts`. The evidence table: five fields plus the `by_installId` selection index used by
-reconciliation and production validation. (`schema.ts` also defines the ephemeral `rateLimits`
+`convex/schema.ts`. The evidence table: six fields plus `by_eventId` for idempotent delivery and
+`by_installId` for reconciliation and production validation. (`schema.ts` also defines the ephemeral `rateLimits`
 helper US-T14 added - a throttle counter store, not an evidence surface; see "Abuse guard" below.)
 
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|
+| `eventId`   | `v.optional(v.string())` | Client-generated idempotency key, stable across retries. The current durable client always supplies it; optionality preserves older rows and requests from already-shipped one-shot clients. |
 | `name`      | `v.string()` | One of the 13 pre-registered event names (below). |
 | `installId` | `v.string()` | Random per-install identifier (US-T05). Never a user identity - no email, IDFA, or Sign in with Apple id ever reaches here. |
 | `clientTs`  | `v.number()` | Client-side timestamp, ms since the Unix epoch. |
@@ -65,11 +115,14 @@ helper US-T14 added - a throttle counter store, not an evidence surface; see "Ab
 
 ## Mutation: `events:logEvent` (internal)
 
-`convex/events.ts`. Append-only: it validates, stamps `serverTs = Date.now()`, inserts exactly one
-row, and returns the document id. Nothing else.
+`convex/events.ts`. Insert-only and idempotent when `eventId` is present: it returns the existing
+document id for a replay; otherwise it validates, stamps `serverTs = Date.now()`, inserts one row,
+and returns its id. The indexed lookup and insert share one serializable mutation, so concurrent
+replays cannot both insert. A missing id retains the legacy insert-on-every-request behavior solely
+for already-shipped one-shot clients. Existing evidence rows are never updated.
 
 ```
-logEvent({ name, installId, clientTs, props }) -> Id<"events">
+logEvent({ eventId?, name, installId, clientTs, props }) -> Id<"events">
 ```
 
 It is declared with `internalMutation`, so it is **not** callable from outside the deployment: the
@@ -126,9 +179,11 @@ There is no schema check on individual property keys or types. Property vocabula
 to move during the PMF test, and a write-path check would turn every such move into a deploy.
 
 The HTTP action adds to that list, and the additions are enumerated rather than summarised. First,
-the body's fields must be **present and of the right kind** before they are handed to the mutation -
-`name` one of the 13, `installId` a non-empty string, `clientTs` an actual JSON number (a numeric
-*string* like `"1e3"` is refused, not coerced).
+the body's counted fields must be **present and of the right kind** before they are handed to the
+mutation - `installId` a non-empty string, `name` one of the 13, and `clientTs` an actual JSON number
+(a numeric *string* like `"1e3"` is refused, not coerced). `eventId` may be absent only for
+compatibility with already-shipped one-shot clients; the current durable client always includes it,
+and when present it must be a non-empty string.
 That is not a third rule so much as the same one applied where untrusted input enters: coercing a
 missing or wrong-kind field with `String(...)` / `Number(...)` would write the literal string
 `"undefined"`, `NaN`, or a silently reinterpreted `"0x1f"` into the two columns the whole funnel is
@@ -142,14 +197,16 @@ is a finite JSON number and lands - the check rules out the *missing* and *wrong
 later against the raw rows, where they can be revised without a deploy, which is the same reason
 the sink is dumb everywhere else.
 
-**Two size caps, added by US-T04** (`MAX_INSTALL_ID_BYTES` and `MAX_REQUEST_BODY_BYTES` in
-`http.ts`), which is when a real client first started sending anything here:
+**Three size caps at the HTTP boundary** (`MAX_EVENT_ID_BYTES`, `MAX_INSTALL_ID_BYTES`, and
+`MAX_REQUEST_BODY_BYTES` in `http.ts`):
 
-3. **An `installId` over 64 UTF-8 bytes.** US-T05's identifier is a UUIDv4 - 36 ASCII characters -
+3. **An `eventId` over 64 UTF-8 bytes.** The live client uses a UUIDv4 (36 ASCII characters), with
+   room left for a different random-id shape but not an unbounded evidence row.
+4. **An `installId` over 64 UTF-8 bytes.** US-T05's identifier is a UUIDv4 - 36 ASCII characters -
    so the bound sits well clear of a legitimate value while leaving room for a differently-shaped
    anonymous id. It is a **length** bound and nothing more: `"not-a-uuid"` is accepted, because
    policing the identifier's *shape* would forbid a future story from changing it.
-4. **A request body over 64 KiB**, checked on the raw bytes before the body is even parsed. 64 KiB
+5. **A request body over 64 KiB**, checked on the raw bytes before the body is even parsed. 64 KiB
    is an order of magnitude above the 4096-byte `props` cap plus that identifier, so across the
    range a real client could send it does not pre-empt the mutation's own, more specific rejection -
    a 5 KiB bag still comes back told which limit it broke. That is not an absolute ordering, and the
@@ -158,8 +215,8 @@ the sink is dumb everywhere else.
    far below any bound Convex applies to a function's arguments, so serialization can no longer be
    reached by size.
 
-Both are the same `400`-and-no-insert as every other caller fault, and both closed gaps this file
-used to carry as accepted; see "What used to be a gap here" below.
+All three are the same `400`-and-no-insert as every other caller fault. The install/body limits
+closed gaps this file used to carry as accepted; see "What used to be a gap here" below.
 
 The action also hands the assembled arguments to the Convex SDK's own `convexToJson` before calling
 the mutation. That is a **classification**, not a rejection: `ctx.runMutation` runs the same
@@ -213,7 +270,7 @@ It is also the one boundary behaviour the automated suite cannot assert, because
 in-memory database does not enforce the value-depth limit - the suite reaches the `500` branch by
 substituting a mutation that throws instead.
 So: the `400` side is exactly the set of rules this sink states for itself, plus the one it borrows,
-plus the two size caps, evaluated where they are - and a caller fault that only a *write-time* Convex
+plus the three size caps, evaluated where they are - and a caller fault that only a *write-time* Convex
 rule catches is still discovered at the insert and reported as ours. Note that when reading `500`s
 during the PMF test; do not read this as a promise that every caller fault is a `400`.
 
@@ -312,10 +369,10 @@ evidence surface, the `events` table's own rate limit is unaffected regardless, 
 massively-distributed flood is the determined-attacker case this guard explicitly does not defend
 against - the same cost-raiser framing that governs the secret and the client-rotatable install id.
 Its two indexes (by key and by window) support those operational point lookups and sweeps; the
-evidence table's one `by_installId` index similarly supports reconciliation and production validation.
-"The sink stays dumb" means neither table performs analysis. The `events` row shape remains the same
-single, append-only five columns (`name`, `installId`, `clientTs`, `serverTs`, `props`), with no
-identity added anywhere.
+evidence table's `by_eventId` and `by_installId` indexes similarly support idempotent delivery and
+reconciliation/production validation. "The sink stays dumb" means neither table performs analysis.
+The `events` row is one immutable evidence record, now with transport-only `eventId` beside the five
+analytic columns (`name`, `installId`, `clientTs`, `serverTs`, `props`), with no user identity added.
 
 ## HTTP action: `POST /logEvent` -> `204`
 
@@ -327,6 +384,7 @@ POST https://<deployment>.convex.site/logEvent
 Content-Type: application/json
 
 {
+  "eventId": "A47A610D-7F6C-4E07-A9EC-33F6905D6865",
   "name": "session_completed",
   "installId": "…",
   "clientTs": 1785780300000,
@@ -335,7 +393,7 @@ Content-Type: application/json
 ```
 
 `props` is the one optional field: omit it and the action sends an empty bag, so a valid event with
-no properties is a three-field body.
+no properties is a four-field body.
 Sending it as `null` is the same thing - `props: body.props ?? {}` treats a null bag as an absent
 one, so it answers `204` and stores `{}`.
 
@@ -346,16 +404,18 @@ from `props`: it carries no schema and is stored exactly as it arrived, so an em
 "this event carried no properties" rather than a fabricated value. The asymmetry is the rule doing
 its stated job, not an oversight, and the suite asserts it in place.
 
-The other three fields are required, and their absence is one of the `400`s below rather than a
-default.
+The other three counted fields are required; `eventId` is required by the durable client contract
+but remains optional at this boundary for an already-shipped one-shot client.
 
-- **`204 No Content`** - the row was inserted. No body.
+- **`204 No Content`** - the row was inserted, or the same `eventId` had already been inserted by an
+  earlier attempt whose response was interrupted. No body in either case.
 - **`401 Unauthorized`** - the caller's fault (US-T14): a missing or wrong shared secret. No row was
   inserted. Checked first, before the body is even buffered.
 - **`400 Bad Request`** - the caller's fault: a body that is not valid JSON, not a JSON object, or
-  over 64 KiB; a missing or wrong-kind `name` / `installId` / `clientTs`; an unknown event name; an
-  `installId` over 64 bytes; a `props` field name Convex cannot store; or an oversized bag. No row
-  was inserted. The body carries the error message for a human.
+  over 64 KiB; a wrong-kind `eventId`; a missing or wrong-kind `name` / `installId` / `clientTs`;
+  an unknown event name; an `eventId` or `installId` over 64 bytes; a `props` field name Convex
+  cannot store; or an oversized bag. No row was inserted. The body carries the error message for a
+  human.
 - **`429 Too Many Requests`** - the caller's fault (US-T14): the per-install id or the source-IP
   backstop is over its rate-limit ceiling for the current window. No row was inserted.
 - **`500 Internal Server Error`** - *our* fault: a deployment, runtime, or database failure - or
@@ -367,15 +427,13 @@ default.
   limit, say - reaches the insert and is reported here too. The two size cases that used to land
   here no longer do.)
 
-Every non-`204` answer is `application/json` in one shape, `{"error": "…"}`, so the client can read
-a rejection the same way whichever side of the split it came from - it just does not, being
-fire-and-forget. `204` carries no body at all.
+Every non-`204` answer is `application/json` in one shape, `{"error": "…"}`. The client does not
+surface the body or any analytics failure to product code, but it does classify status: transport
+errors plus `408`, `429`, and `5xx` stay eligible for a bounded retry; other `4xx` responses retire
+as permanent caller faults. `204` carries no body at all.
 
-That split exists for a human, not for the client - `LiveAnalyticsService` is strictly
-fire-and-forget and swallows every error, so a sink outage answered as `400` would be invisible:
-events would simply stop arriving and nothing would say so. `4xx` versus `5xx` is the only signal
-anyone watching the PMF test gets, so a rejection the sink asked for and a failure it did not must
-not look alike.
+That split serves both operations and delivery safety: a retryable sink outage must not look like a
+permanent malformed event, while a malformed row must not consume all retries forever.
 
 ### Pinned numeric convention
 
@@ -394,9 +452,10 @@ through untouched and the schema stores as-is, so it is not reached by that coer
 `convex/reconcile.ts`. The one function the offline US-T13 reconciliation harness reads through.
 It is an `internalQuery` for the same reason `logEvent` is an `internalMutation`: the sink keeps a
 single, internal-only way in. It adds **no** public Convex function and **no** HTTP route, so it does
-not widen the surface US-T14 hardened. It is read-only, adds no field to the row shape, selects
-the rows whose `installId` is in the supplied set, and returns the five wire columns
-(`name`/`installId`/`clientTs`/`serverTs`/`props`). It performs one `by_installId` lookup per distinct
+not widen the surface US-T14 hardened. It is read-only, selects the rows whose `installId` is in the
+supplied set, and returns the five analytic columns (`name`/`installId`/`clientTs`/`serverTs`/`props`).
+The transport-only `eventId` is deliberately omitted so the frozen reconciliation input shape and
+offline tabulator remain unchanged. It performs one `by_installId` lookup per distinct
 requested id, keeping the ~25-install cohort read and recurring production validators proportional
 to those installs instead of the lifetime event table.
 
@@ -410,7 +469,7 @@ with the reconciliation report against real observed sessions still pending the 
 named non-founder coder, and a frozen rubric - so US-T13's PRD acceptance boxes remain unchecked.
 
 `convex/reconcile.query.test.ts` drives the real internal query through `convex-test`, asserting
-duplicate requested ids are deduplicated, matching rows retain exactly the five wire fields, and
+duplicate requested ids are deduplicated, matching rows retain exactly the five analytic fields, and
 unrelated or absent installs are excluded.
 
 ## Layout and deployment
@@ -498,7 +557,9 @@ the table is still empty afterwards: a `400` that inserted anyway would be worse
 all, so the proof is the row count rather than the status code.
 
 Covered: the happy path (`204`, one row, both timestamps, `props` stored as-is, an omitted bag
-defaulting to `{}`, and two events being two rows); all 13 names accepted and unknown/empty/
+defaulting to `{}`, and two distinct event ids being two rows); one `eventId` replay answering `204`
+twice but inserting once, a legacy no-id request remaining accepted, plus kind/64-byte bounds on a
+present key; all 13 names accepted and unknown/empty/
 non-string/missing names refused; `installId` present, a string, non-empty, and within the 64-byte
 bound, counted as UTF-8 rather than UTF-16, with the bound asserted to be length-only; `clientTs` an
 actual finite JSON number, including `1e400` arriving as `Infinity` off the wire and a `clientTs` of

@@ -475,6 +475,41 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(AppState(userDefaults: defaults).analyticsEnabled)
     }
 
+    func testConsentGenerationAdvancesOnEveryOptOutAndNeverOnReenable() {
+        let appState = AppState(userDefaults: defaults)
+        let provider = appState.analyticsConsentGenerationProvider
+        XCTAssertEqual(provider(), 0)
+
+        appState.analyticsEnabled = false
+        XCTAssertEqual(provider(), 1)
+        appState.analyticsEnabled = true
+        XCTAssertEqual(provider(), 1, "re-enable must not make pre-opt-out work eligible again")
+        appState.analyticsEnabled = false
+        XCTAssertEqual(provider(), 2)
+
+        XCTAssertEqual(
+            AppState(userDefaults: defaults).analyticsConsentGenerationProvider(),
+            2,
+            "the invalidation generation must survive relaunch"
+        )
+    }
+
+    func testConsentObserverRunsAfterTheGateAndGenerationArePersisted() {
+        let appState = AppState(userDefaults: defaults)
+        var observed: (enabled: Bool, generation: Int)?
+        appState.observeAnalyticsConsentChanges {
+            observed = (
+                AppState.isAnalyticsEnabled(in: self.defaults),
+                AppState.analyticsConsentGeneration(in: self.defaults)
+            )
+        }
+
+        appState.analyticsEnabled = false
+
+        XCTAssertEqual(observed?.enabled, false)
+        XCTAssertEqual(observed?.generation, 1)
+    }
+
     /// The XCUITest launch argument `-AppState.analyticsEnabled NO` lands in `UserDefaults`' argument
     /// domain as a **string**, not a `Bool`. That is the shape the out-of-process gate depends on, so
     /// it is asserted here rather than only exercised end to end: an `object(forKey:) as? Bool` read

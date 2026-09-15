@@ -327,7 +327,6 @@ final class ReadyViewModelTests: XCTestCase {
         player.completeSet()      // advance into the strength block, still mid-session
         player.recordSessionEnd() // a resumable pause: no terminal event
         await player.persistenceTask?.value
-        await player.analyticsTask?.value
 
         let vm = makeViewModel(user: onboardedUser(), store: store, analytics: analytics)
         await vm.load()

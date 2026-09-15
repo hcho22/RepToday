@@ -33,9 +33,9 @@ final class AnalyticsServiceTests: XCTestCase {
         )
         let weekActive = AnalyticsEvent(name: .weekActive, timestampMs: 3_000)
 
-        await analytics.record(install)
-        await analytics.record(completed)
-        await analytics.record(weekActive)
+        analytics.record(install)
+        analytics.record(completed)
+        analytics.record(weekActive)
 
         let recorded = await analytics.recordedEvents
         XCTAssertEqual(recorded, [install, completed, weekActive])
@@ -143,9 +143,9 @@ final class AnalyticsServiceTests: XCTestCase {
     /// it is covered by `LiveAnalyticsServiceTests`. What is gated here is the seam and the model.
     ///
     /// This is the end-to-end read of the seam rather than of the model: every emission is written
-    /// the way an emission call site must write it - `await services.analyticsService.record(event)`,
-    /// no `try` - so the deliberate `async`-but-not-`throws` signature is exercised as a call site,
-    /// not asserted about.
+    /// the way an emission call site must write it - `services.analyticsService.record(event)`,
+    /// with no `await` or `try` - so the synchronous acceptance signature is exercised as a call
+    /// site, not asserted about.
     ///
     /// **Only the mock container records here, and that is deliberate.** Before US-T04 the
     /// production container wired the discarding `NoOpAnalyticsService`, so driving the whole funnel
@@ -155,8 +155,7 @@ final class AnalyticsServiceTests: XCTestCase {
     /// stub in `LiveAnalyticsServiceTests`.
     ///
     /// FR-13 is not left resting on that reading, though:
-    /// `live(context:installId:analyticsInstallId:analyticsGate:analyticsService:)` takes a sink as
-    /// its last parameter,
+    /// `ServiceContainer.live(...)` takes an optional sink override,
     /// so any test that builds the production container for reasons unrelated to
     /// telemetry substitutes an inert one and is structurally unable to reach the network even now that
     /// US-T07 through US-T12 have added the emission call sites (`CoreDataServicesTests` does exactly that).
@@ -192,9 +191,9 @@ final class AnalyticsServiceTests: XCTestCase {
 
         let funnel = Self.funnelJourney
 
-        // Exactly how an emission call site reads: awaited, unhandled, no `try`, no result to check.
+        // Exactly how an emission call site reads: synchronous, unhandled, no result to check.
         for event in funnel {
-            await mock.analyticsService.record(event)
+            mock.analyticsService.record(event)
         }
 
         // The production container's default sink follows the build's own configuration, and never

@@ -35,6 +35,7 @@
 		1F3A5554B40AFA5AF0F8C450 /* AnalyticsWireBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BCEFB3AA7AD33112B7B74B /* AnalyticsWireBody.swift */; };
 		1FF8BA4B15D8E3D22D44AAF3 /* StrengthJourneyEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0578D844799A0DC399CE7D2D /* StrengthJourneyEvidenceTests.swift */; };
 		203E6D8A86DDF2608EFAF650 /* RoundCapInvariantGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B24EE6156131F9D47DE607 /* RoundCapInvariantGuardTests.swift */; };
+		20D544DE87BACC768A281DFC /* AnalyticsDeliveryQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B506201248098D1FDB82C733 /* AnalyticsDeliveryQueue.swift */; };
 		21B15AF718594A1F74FAD039 /* MockExerciseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F5CA8D82E90F882906CAB7 /* MockExerciseService.swift */; };
 		21D516D151C1561AE6FDAB4E /* InjuryFlagsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C524ED7DEE3020A4E006F30 /* InjuryFlagsView.swift */; };
 		21FA545D4D92FBDA37CA1726 /* CoachViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F098FEBCC9519FB73D1995A6 /* CoachViewModel.swift */; };
@@ -406,6 +407,7 @@
 		B2F43A38841C6AED24BF5D34 /* UnitConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnitConversion.swift; sourceTree = "<group>"; };
 		B397BE753BD0E7D8D2B580CA /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
 		B4139B1525030F42B3E1AA79 /* AppEntryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEntryTelemetry.swift; sourceTree = "<group>"; };
+		B506201248098D1FDB82C733 /* AnalyticsDeliveryQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsDeliveryQueue.swift; sourceTree = "<group>"; };
 		B575D4C7B1C1390142C58297 /* AppleCredentialState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleCredentialState.swift; sourceTree = "<group>"; };
 		B58995CF734FD6588A97B994 /* NoPerSetCompletionTrackingGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoPerSetCompletionTrackingGuardTests.swift; sourceTree = "<group>"; };
 		B9429B7C6F4A702695CA50A8 /* CoreDataSessionPolicyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataSessionPolicyStore.swift; sourceTree = "<group>"; };
@@ -572,6 +574,7 @@
 		237ECD6285561DF92C272231 /* Analytics */ = {
 			isa = PBXGroup;
 			children = (
+				B506201248098D1FDB82C733 /* AnalyticsDeliveryQueue.swift */,
 				46BCEFB3AA7AD33112B7B74B /* AnalyticsWireBody.swift */,
 				B4139B1525030F42B3E1AA79 /* AppEntryTelemetry.swift */,
 				C979EFF0A30DD82CC24AF3D2 /* LiveAnalyticsService.swift */,
@@ -1264,6 +1267,7 @@
 				F521213458F2B6DFA3203B8F /* ActiveSessionView.swift in Sources */,
 				6481B92FCCB5138E80FCC26E /* ActiveSessionViewModel.swift in Sources */,
 				9539D2EBF523BCF8A09D398B /* AdaptiveOverload.swift in Sources */,
+				20D544DE87BACC768A281DFC /* AnalyticsDeliveryQueue.swift in Sources */,
 				EFA971ADB93B8209F8ADDECF /* AnalyticsEvent.swift in Sources */,
 				1F3A5554B40AFA5AF0F8C450 /* AnalyticsWireBody.swift in Sources */,
 				9D85C9C6D34EEA6F4EC94ABB /* AppEntryTelemetry.swift in Sources */,

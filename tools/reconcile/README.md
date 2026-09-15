@@ -26,9 +26,9 @@ So this directory is the harness only.
 ## The two pieces
 
 1. **Read path** - `convex/reconcile.ts`'s `eventsForInstalls` `internalQuery`.
-   It selects the `events` rows for a supplied set of install ids and returns the five wire columns (`name`, `installId`, `clientTs`, `serverTs`, `props`).
+   It selects the `events` rows for a supplied set of install ids and returns the five analytic columns (`name`, `installId`, `clientTs`, `serverTs`, `props`); transport-only `eventId` is deliberately omitted so the frozen tabulator input stays unchanged.
    It uses the evidence table's `by_installId` selection index, so the read scales with the requested installs rather than all production history.
-   `convex/reconcile.query.test.ts` drives that real internal query through `convex-test`, pinning duplicate-id deduplication, exact wire fields, and exclusion of unrelated or absent installs.
+   `convex/reconcile.query.test.ts` drives that real internal query through `convex-test`, pinning duplicate-id deduplication, the exact five analytic fields, and exclusion of unrelated or absent installs.
    It is **internal-only**, exactly like `logEvent` is an `internalMutation`: no public Convex function and no HTTP route is added, and US-T14's hardening of the public `POST /logEvent` surface is untouched.
    It is reached with a deploy/admin key through `npx convex run`.
 

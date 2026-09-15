@@ -293,17 +293,35 @@ actor MockAuthService: AuthServiceProtocol {
 /// Records every event into `recordedEvents` in call order and does nothing else: no I/O, no
 /// network, no disk. It is the recording sink `ServiceContainer.mock()` wires, and the one tests
 /// and previews use when they need to assert on what was recorded -
-/// `live(context:installId:analyticsInstallId:coachSafetyIdentifierProvider:analyticsGate:analyticsService:)`
-/// wires the real `LiveAnalyticsService` instead, so a test that wants assertions rather than
-/// requests wants this one. An `actor` so appends stay race-free against the detached background
-/// tasks the live transport sends on; tests read the recorded array with
-/// `await mock.recordedEvents`.
+/// `ServiceContainer.live(...)` wires the real `LiveAnalyticsService` instead, so a test that wants
+/// assertions rather than requests wants this one. Its synchronous `record(_:)` mirrors the live
+/// acceptance boundary, with lock-backed storage so concurrent test emissions remain ordered and
+/// race-free.
 actor MockAnalyticsService: AnalyticsServiceProtocol {
-    private(set) var recordedEvents: [AnalyticsEvent] = []
+    private nonisolated let storage = MockAnalyticsEventStorage()
+
+    var recordedEvents: [AnalyticsEvent] { storage.events }
 
     init() {}
 
-    func record(_ event: AnalyticsEvent) async {
+    nonisolated func record(_ event: AnalyticsEvent) {
+        storage.append(event)
+    }
+}
+
+private final class MockAnalyticsEventStorage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedEvents: [AnalyticsEvent] = []
+
+    func append(_ event: AnalyticsEvent) {
+        lock.lock()
         recordedEvents.append(event)
+        lock.unlock()
+    }
+
+    var events: [AnalyticsEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedEvents
     }
 }

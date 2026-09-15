@@ -18,5 +18,5 @@ import Foundation
 actor NoOpAnalyticsService: AnalyticsServiceProtocol {
     init() {}
 
-    func record(_ event: AnalyticsEvent) async {}
+    nonisolated func record(_ event: AnalyticsEvent) {}
 }

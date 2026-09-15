@@ -5,7 +5,12 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { EVENT_NAMES, MAX_PROPS_BYTES, MAX_PROPS_KEYS, logEvent } from "./events";
-import { ANALYTICS_SECRET_HEADER, MAX_INSTALL_ID_BYTES, MAX_REQUEST_BODY_BYTES } from "./http";
+import {
+  ANALYTICS_SECRET_HEADER,
+  MAX_EVENT_ID_BYTES,
+  MAX_INSTALL_ID_BYTES,
+  MAX_REQUEST_BODY_BYTES,
+} from "./http";
 import {
   RECLAIM_BATCH,
   MAX_EVENTS_PER_INSTALL_PER_WINDOW,
@@ -68,11 +73,13 @@ const TEST_SECRET = "test-shared-secret-2f9c1a";
  * within its own body; the next `beforeEach` puts it back.
  */
 let originalSecret: string | undefined;
+let eventSequence = 0;
 beforeAll(() => {
   originalSecret = process.env.ANALYTICS_SHARED_SECRET;
 });
 beforeEach(() => {
   process.env.ANALYTICS_SHARED_SECRET = TEST_SECRET;
+  eventSequence = 0;
 });
 afterAll(() => {
   if (originalSecret === undefined) delete process.env.ANALYTICS_SHARED_SECRET;
@@ -96,7 +103,13 @@ const failingSink = () =>
     "./events.ts": async () => ({
       ...(await import("./events")),
       logEvent: internalMutation({
-        args: { name: v.string(), installId: v.string(), clientTs: v.number(), props: v.any() },
+        args: {
+          eventId: v.optional(v.string()),
+          name: v.string(),
+          installId: v.string(),
+          clientTs: v.number(),
+          props: v.any(),
+        },
         handler: async () => {
           throw new Error("db unavailable at secret-connection-string");
         },
@@ -129,6 +142,7 @@ const post = (
 };
 
 const validBody = (overrides: Record<string, unknown> = {}) => ({
+  eventId: `test-event-${eventSequence += 1}`,
   name: "session_completed",
   installId: VALID_INSTALL_ID,
   clientTs: VALID_CLIENT_TS,
@@ -175,6 +189,7 @@ describe("POST /logEvent - the happy path", () => {
 
     const inserted = await rows(t);
     expect(inserted).toHaveLength(1);
+    expect(inserted[0].eventId).toBe("test-event-1");
     expect(inserted[0].name).toBe("session_completed");
     expect(inserted[0].installId).toBe(VALID_INSTALL_ID);
     // The client's timestamp is stored as sent; the server stamps its own beside it.
@@ -191,6 +206,7 @@ describe("POST /logEvent - the happy path", () => {
   test("props is the one optional field: omitting it stores an empty bag", async () => {
     const t = setup();
     const response = await post(t, {
+      eventId: "week-active-without-props",
       name: "week_active",
       installId: VALID_INSTALL_ID,
       clientTs: VALID_CLIENT_TS,
@@ -205,6 +221,76 @@ describe("POST /logEvent - the happy path", () => {
     await post(t, validBody({ name: "session_started" }));
     await post(t, validBody({ name: "session_started" }));
     expect(await rows(t)).toHaveLength(2);
+  });
+
+  test("replaying one accepted event id inserts it only once", async () => {
+    const t = setup();
+    const replayed = validBody({
+      eventId: "event-replayed-after-interruption",
+      props: { accepted: "first" },
+    });
+
+    expect((await post(t, replayed)).status).toBe(204);
+    expect(
+      (
+        await post(t, {
+          ...replayed,
+          name: "subscribe",
+          clientTs: VALID_CLIENT_TS + 1,
+          props: { accepted: "replay-must-not-mutate" },
+        })
+      ).status,
+    ).toBe(204);
+    const inserted = await rows(t);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({
+      eventId: "event-replayed-after-interruption",
+      name: "session_completed",
+      clientTs: VALID_CLIENT_TS,
+      props: { accepted: "first" },
+    });
+  });
+});
+
+describe("POST /logEvent - eventId is backward-compatible, bounded, and idempotent", () => {
+  test.each([
+    ["empty", ""],
+    ["a number", 12345],
+    ["null", null],
+    ["an object", { id: "x" }],
+  ])("an eventId that is %s is rejected without inserting", async (_label, eventId) => {
+    const t = setup();
+    const body: Record<string, unknown> = validBody();
+    if (eventId === undefined) delete body.eventId;
+    else body.eventId = eventId;
+    await expectRejected(await post(t, body), t);
+  });
+
+  test("a legacy request without eventId remains accepted without changing its row shape", async () => {
+    const t = setup();
+    const body: Record<string, unknown> = validBody();
+    delete body.eventId;
+
+    expect((await post(t, body)).status).toBe(204);
+    const inserted = await rows(t);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].eventId).toBeUndefined();
+  });
+
+  test(`an eventId at exactly ${MAX_EVENT_ID_BYTES} bytes is accepted`, async () => {
+    const t = setup();
+    const eventId = "e".repeat(MAX_EVENT_ID_BYTES);
+    expect((await post(t, validBody({ eventId }))).status).toBe(204);
+    expect((await rows(t))[0].eventId).toBe(eventId);
+  });
+
+  test("an eventId over the byte bound is rejected without inserting", async () => {
+    const t = setup();
+    const error = await expectRejected(
+      await post(t, validBody({ eventId: "e".repeat(MAX_EVENT_ID_BYTES + 1) })),
+      t,
+    );
+    expect(error).toContain(`${MAX_EVENT_ID_BYTES}-byte limit`);
   });
 });
 
@@ -331,7 +417,7 @@ describe("POST /logEvent - clientTs is an actual finite JSON number", () => {
     const t = setup();
     // Written as raw text because `JSON.stringify(Infinity)` is `null` - the only way this value
     // reaches the action is straight off the wire, which is exactly how a real caller would send it.
-    const raw = `{"name":"week_active","installId":"${VALID_INSTALL_ID}","clientTs":1e400,"props":{}}`;
+    const raw = `{"eventId":"raw-non-finite","name":"week_active","installId":"${VALID_INSTALL_ID}","clientTs":1e400,"props":{}}`;
     expect(JSON.parse(raw).clientTs).toBe(Infinity);
     await expectRejected(await post(t, raw, true), t);
   });

@@ -11,11 +11,11 @@ import Foundation
 /// `RepTodayApp.init()` hands every event this returns straight to `record(_:)` and never re-checks
 /// consent (a second gate could disagree with the first). One consequence follows and is accepted
 /// rather than worked around: a return event's dedup flag is stamped here on the *decision*, so an
-/// install that reaches a return window while opted out has the send dropped by the gate and the flag
+/// install that reaches a return window while opted out has the enqueue refused by the gate and the flag
 /// set anyway - it will not re-attempt on a later launch even if consent is turned back on. That
 /// matches the schema's stated constraint that an opted-out install is simply absent from the plane,
-/// and it keeps emit-once meaning "attempted at most once" rather than "retried every launch in the
-/// window until it lands".
+/// and it keeps emit-once meaning "accepted at most once"; an accepted event's bounded transport
+/// retries are owned by the durable outbox rather than by this funnel decision.
 ///
 /// **The three events and their exact rules** (event-metric schema, US-T07):
 /// - `app_install`: exactly once, iff `isFirstLaunch` - the one launch that stamped the origin itself

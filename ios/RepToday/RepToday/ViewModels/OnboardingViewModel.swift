@@ -147,9 +147,9 @@ final class OnboardingViewModel {
     // MARK: - Onboarding funnel telemetry (US-T08)
 
     /// Guards `onboarding_started` to exactly one emission per view-model lifetime, so a re-`onAppear`
-    /// within the same flow does not double-fire. This is not persisted across launches: the funnel
-    /// counts distinct installs and the backend dedups by `installId`, so emitting once per
-    /// presentation is correct.
+    /// within the same flow does not double-fire. This is not persisted across launches: each new
+    /// presentation is a new funnel attempt, while transport retries of one accepted emission are
+    /// deduplicated separately by its stable `eventId`.
     private var didEmitOnboardingStarted = false
 
     /// The instant `onboarding_started` was emitted, captured off the injected clock. It anchors the
@@ -159,13 +159,13 @@ final class OnboardingViewModel {
     private var onboardingStartInstant: Date?
 
     /// Emits `onboarding_started` (no properties) on the first onboarding screen's appearance, exactly
-    /// once per flow, and records the start instant that anchors `elapsed_seconds`. Fire-and-forget:
-    /// the sink returns immediately and swallows any failure, so this never gates onboarding.
-    func onboardingStarted() async {
+    /// once per flow, and records the start instant that anchors `elapsed_seconds`. The sink performs
+    /// only its bounded synchronous acceptance and swallows failures; storage and delivery stay off this path.
+    func onboardingStarted() {
         guard !didEmitOnboardingStarted else { return }
         didEmitOnboardingStarted = true
         onboardingStartInstant = now()
-        await analytics?.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: timestampMs()))
+        analytics?.record(AnalyticsEvent(name: .onboardingStarted, timestampMs: timestampMs()))
     }
 
     /// The current millisecond client timestamp off the injected clock - the same encoding
@@ -261,11 +261,11 @@ final class OnboardingViewModel {
             // US-T08: `onboarding_completed` fires only here, on the success branch that also triggers
             // `onComplete` - never on the failure branch below. `elapsed_seconds` is whole seconds from
             // the `onboarding_started` instant to now, off the injected clock, clamped at 0 defensively.
-            // Fire-and-forget through the sink, after the durable work, so telemetry never gates the
-            // save/seed. If no start instant was recorded (the emission site was never reached), elapsed
+            // Hand off through the sink after the durable product work; it never awaits network
+            // delivery, so telemetry cannot gate the save/seed. If no start instant was recorded, elapsed
             // is treated as 0 rather than fabricating a start.
             let elapsedSeconds = onboardingStartInstant.map { max(0, Int(now().timeIntervalSince($0))) } ?? 0
-            await analytics?.record(
+            analytics?.record(
                 AnalyticsEvent(
                     name: .onboardingCompleted,
                     timestampMs: timestampMs(),

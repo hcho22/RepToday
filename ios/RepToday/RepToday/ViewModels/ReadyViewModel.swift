@@ -113,8 +113,9 @@ final class ReadyViewModel {
     /// Ensures `ready_screen_shown` is emitted exactly once per Ready Screen appearance (US-T09),
     /// scoped to the first successful load. Emission lives in `load()`, not the shared `generate()`,
     /// so a duration-chip regeneration (which reaches the engine only through `selectDuration()`)
-    /// structurally cannot trip it and inflate the funnel count. Not persisted across launches: the
-    /// funnel counts distinct installs and the backend dedups by `installId`.
+    /// structurally cannot trip it and inflate the funnel count. Not persisted across launches: each
+    /// new app-open presentation is eligible to emit; transport retries are deduplicated separately
+    /// by the accepted emission's stable `eventId`.
     private var hasEmittedReadyScreenShown = false
 
     /// The wall-time the most recent session generation took, in whole milliseconds, measured off the
@@ -189,11 +190,11 @@ final class ReadyViewModel {
             // successful load, carrying the `generation_ms` just measured in `generate()`. Guarded like
             // the `hasComputedConsistency` / `hasCheckedReprogramOnOpen` one-shots below, and emitted
             // here rather than inside `generate()` so a chip-tap regeneration (which never runs `load()`)
-            // cannot re-emit and inflate the count. Fire-and-forget through the sink: it returns
-            // immediately and swallows any failure, so telemetry never gates the session render or Start.
+            // cannot re-emit and inflate the count. The sink performs only bounded synchronous
+            // acceptance and swallows failure; storage and delivery never gate the render / Start.
             if !hasEmittedReadyScreenShown {
                 hasEmittedReadyScreenShown = true
-                await analytics?.record(
+                analytics?.record(
                     AnalyticsEvent(
                         name: .readyScreenShown,
                         timestampMs: timestampMs(),
@@ -368,7 +369,7 @@ final class ReadyViewModel {
     /// once per given-up physical session and reads its coarse `abandon_point` and exercised-minutes
     /// straight off the persisted snapshot (the player that produced them is already gone). The
     /// emission goes through the sink **unconditionally** - consent (US-T06) is enforced inside the
-    /// sink - and is fire-and-forget, so the give-up UI never waits on it. A `nil` sink (previews /
+    /// sink; its network delivery is independent, so the give-up UI never waits on it. A `nil` sink (previews /
     /// tests not exercising the funnel) simply skips it.
     private func emitSessionAbandoned(for state: ActiveSessionState) async {
         guard let analytics else { return }
@@ -382,7 +383,7 @@ final class ReadyViewModel {
             let index = min(max(state.currentStepIndex, 0), state.slots.count - 1)
             category = state.slots[index].blockCategory
         }
-        await analytics.record(
+        analytics.record(
             AnalyticsEvent(
                 name: .sessionAbandoned,
                 timestampMs: timestampMs(),

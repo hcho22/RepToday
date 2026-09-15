@@ -274,16 +274,12 @@ final class ActiveSessionViewModel {
     /// re-checks the opt-out flag (a second gate could disagree with the first).
     private let analytics: (any AnalyticsServiceProtocol)?
 
-    /// The most recently launched telemetry emission, chained so the events land in call order and
-    /// exposed only so tests can await the sink settling. The UI never awaits it: emission is strictly
-    /// fire-and-forget, so the player never stalls on the network.
-    private(set) var analyticsTask: Task<Void, Never>?
-
     /// Ensures `session_completed` is emitted at most once per player (US-T10). It fires from the
     /// single dismiss choke point `recordSessionEnd()`, so this one-shot makes a repeated dismiss a
     /// no-op and the completion never double-fires. (The abandonment terminal event is not emitted by
     /// the player at all - a resumable pause is not an abandonment; see `recordSessionEnd()`.) Not
-    /// persisted: the funnel counts distinct installs and the backend dedups by `installId`.
+    /// persisted: it belongs to this player lifetime. Transport retries of one accepted terminal
+    /// event are deduplicated separately by its stable `eventId`.
     private var hasEmittedTerminalEvent = false
 
     /// The fire-and-forget completion write launched at `finish()`, exposed only so tests can await
@@ -464,8 +460,9 @@ final class ActiveSessionViewModel {
         if startedAt == nil {
             startedAt = now()
             // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
-            // idempotency that gates the clock start, carrying the requested minutes. Fire-and-forget
-            // through the sink, so telemetry never delays the first render.
+            // idempotency that gates the clock start, carrying the requested minutes. The hand-off
+            // performs only bounded synchronous acceptance here; first render never waits on
+            // analytics storage or delivery.
             emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
             // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
             persist()
@@ -1533,15 +1530,14 @@ final class ActiveSessionViewModel {
         Int(now().timeIntervalSince1970 * 1000)
     }
 
-    /// Hand one telemetry event to the sink, fire-and-forget. A `nil` sink (previews / tests that do
-    /// not exercise the funnel) simply skips it. Emissions are chained behind the previous one so they
-    /// land in call order - `session_started` before either terminal event - even though each is
-    /// launched off the calling path and never awaited by the UI.
+    /// Hand one telemetry event to the sink. A `nil` sink (previews / tests that do not exercise the
+    /// funnel) simply skips it. The synchronous acceptance boundary preserves call order -
+    /// `session_started` before either terminal event - while encoding, persistence, and network
+    /// delivery remain independent of the UI.
     private func emit(_ name: AnalyticsEventName, properties: [String: AnalyticsValue] = [:]) {
         guard let analytics else { return }
         let event = AnalyticsEvent(name: name, timestampMs: timestampMs(), properties: properties)
-        let previous = analyticsTask
-        analyticsTask = Task { _ = await previous?.value; await analytics.record(event) }
+        analytics.record(event)
     }
 
     // MARK: - Snapshot & persistence (US-K04)

@@ -15,6 +15,8 @@ describe("reconcile:eventsForInstalls", () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       await ctx.db.insert("events", {
+        // Production rows from before durable delivery have no eventId. Schema compatibility and
+        // the frozen analytic read must keep those rows queryable unchanged.
         name: "app_install",
         installId: "wanted",
         clientTs: 1,
@@ -22,6 +24,7 @@ describe("reconcile:eventsForInstalls", () => {
         props: { marker: "first" },
       });
       await ctx.db.insert("events", {
+        eventId: "event-a-2",
         name: "session_started",
         installId: "unrelated",
         clientTs: 3,
@@ -29,6 +32,7 @@ describe("reconcile:eventsForInstalls", () => {
         props: {},
       });
       await ctx.db.insert("events", {
+        eventId: "event-b-1",
         name: "onboarding_started",
         installId: "wanted",
         clientTs: 5,

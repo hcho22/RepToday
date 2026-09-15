@@ -15,6 +15,24 @@
 
 `LiveAnalyticsService.configured(...)` still requires both a usable HTTPS endpoint and a non-empty string token. A missing, non-string, or blank value - or an unusable endpoint - returns `nil`; `ServiceContainer.live(...)` selects `NoOpAnalyticsService`; the app remains nonfatal and sends nothing. Emptying both Release settings is therefore the client rollback/disable posture. The private archive script separately enforces the production token's 64-hex-character shape before injection.
 
+## Backend-first durable-client prerequisite — pending live validation
+
+The durable client must not be distributed against the previously deployed one-shot sink, because a
+committed insert followed by an interrupted response would be replayed and inserted twice. Deploy the
+current `convex/schema.ts`, `convex/events.ts`, and `convex/http.ts` to production first. Then run:
+
+```text
+tools/validate-production-telemetry.sh
+```
+
+The smoke leg sends the identical stable `eventId` twice and passes only when both responses are
+`204` and the indexed reconciliation read returns exactly one marked row. `tools/archive-release.sh`
+runs this validator before `xcodebuild`, so a missing deployment, missing CLI/Keychain prerequisite,
+or duplicate replay prevents the archive from being built. There is no bypass flag.
+
+This 2026-09-14 source change did not deploy Convex production and did not run the live validator.
+Record the dated two-`204`/one-row result here before distributing the first durable-client archive.
+
 ## Commands and results
 
 All token positions below are intentionally redacted.
@@ -133,11 +151,11 @@ If a token is ever exposed in committed history, a remote log, or a public artif
 
 - Client-side: build with empty `REPTODAY_ANALYTICS_ENDPOINT` and `REPTODAY_ANALYTICS_SECRET`; the existing configuration factory selects the inert no-op sink.
 - Server-side emergency stop: remove `ANALYTICS_SHARED_SECRET` from production. The HTTP action fails closed with `500` and inserts nothing until a replacement is set.
-- Code rollback: redeploy the preceding known-good Convex commit to the same project/deployment; do not create another project. The `events` row shape was not changed by this launch wiring.
+- Backend rollback: keep the optional `eventId` field, `by_eventId` index, and idempotent mutation in place for every distributed durable client. Do not redeploy a pre-durable sink that ignores replay ids; if the current backend cannot remain deployed, use the server-side emergency stop above until a compatible known-good version is ready. Keep the same project/deployment.
 
 ## Measurement limitations intentionally left open
 
-- Telemetry is fire-and-forget with no queue/retry. iOS suspension or termination can lose in-flight requests, so production counts are a lower bound on events the app attempted to emit.
+- The durable client's production rollout remains blocked until the backend-first duplicate-replay prerequisite above is deployed and observed live.
 - A later trial-to-paid StoreKit conversion still undercounts `subscribe`, because the out-of-band transaction observer is not connected to the analytics seam. Direct paid grants are counted; conversions after a trial may be absent.
 
-No queue/retry subsystem or StoreKit conversion observer was added here. The removed public `gtm/` package was not recreated or edited; the already-approved collecting App Store privacy posture remains the controlling disclosure.
+No StoreKit conversion observer was added here. The removed public `gtm/` package was not recreated or edited; the already-approved collecting App Store privacy posture remains the controlling disclosure.

@@ -10,6 +10,7 @@ import SwiftUI
 /// `AppState` (US-A05) are injected here as the top-level app dependencies.
 @main
 struct RepTodayApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     /// The app-wide CloudKit-enabled CoreData stack, instantiated at launch so the store loads
     /// immediately. It degrades to local-only when CloudKit is unavailable, so it never requires
     /// an iCloud account for the core loop to work.
@@ -56,19 +57,31 @@ struct RepTodayApp: App {
             installId: appState.installId,
             analyticsInstallId: appState.analyticsInstallId,
             coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
-            analyticsGate: appState.analyticsGate
+            analyticsGate: appState.analyticsGate,
+            analyticsConsentGeneration: appState.analyticsConsentGenerationProvider
         )
         self.services = services
         self.transactionListener = services.subscriptionService.startObservingTransactions()
 
+        // Settings persists the authoritative gate and advances its opt-out generation before this
+        // callback runs. The live sink cancels/discards ineligible pending work; mocks and an inert
+        // unconfigured Release sink use the protocol's no-op default.
+        let analytics = services.analyticsService
+        appState.observeAnalyticsConsentChanges {
+            Task { await analytics.analyticsConsentDidChange() }
+        }
+        // Relaunch recovery is explicit at the app boundary rather than an initializer side effect,
+        // so tests may inspect a configured service without a hidden network attempt.
+        Task { await analytics.resumePendingDelivery() }
+
         // US-T07: the three app-entry funnel events - `app_install`, `day7_return`, `day30_return` -
         // decided from the identity `AppState` just settled and a single wall-clock read, then handed
-        // to the sink fire-and-forget. This site emits **unconditionally**: consent lives inside the
+        // to the sink's bounded acceptance buffer. This site emits **unconditionally**: consent lives inside the
         // sink (`LiveAnalyticsService.record(_:)` reads the opt-out gate per emission), so re-checking
         // the flag here would only be a second gate that could disagree with the first. The decision
         // unit is what makes the window/dedup logic testable off an injected clock; here it takes the
-        // one `Date()` this entry point is allowed. `record(_:)` returns immediately after dispatching
-        // to its own detached task, so the wrapping `Task` only bridges `init`'s synchronous context.
+        // one `Date()` this entry point is allowed. `record(_:)` synchronously hands ownership to the
+        // sink, while all encoding, persistence, and delivery work proceeds independently.
         let entryEvents = AppEntryTelemetry.eventsForLaunch(
             isFirstLaunch: appState.isFirstLaunch,
             firstLaunchAt: appState.firstLaunchAt,
@@ -76,11 +89,8 @@ struct RepTodayApp: App {
             now: Date(),
             defaults: appState.telemetryDefaults
         )
-        let analytics = services.analyticsService
-        Task {
-            for event in entryEvents {
-                await analytics.record(event)
-            }
+        for event in entryEvents {
+            analytics.record(event)
         }
 
         // The US-T06 out-of-process proof needs something for the opt-out gate to block that fires on
@@ -100,6 +110,12 @@ struct RepTodayApp: App {
                 .environment(\.managedObjectContext, persistenceController.viewContext)
                 .environment(\.services, services)
                 .environment(appState)
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active else { return }
+                    // A foreground is a bounded recovery trigger for work whose prior attempt was
+                    // interrupted or whose background-execution lease expired.
+                    Task { await services.analyticsService.resumePendingDelivery() }
+                }
         }
     }
 }

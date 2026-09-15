@@ -2,7 +2,7 @@
   "name": "reptoday-telemetry-sink",
   "version": "1.0.0",
   "private": true,
-  "description": "Append-only Convex sink for Rep Today's anonymous product telemetry (US-T03).",
+  "description": "Idempotent insert-only Convex sink for Rep Today's anonymous product telemetry.",
   "type": "module",
   "scripts": {
     "dev": "convex dev",
