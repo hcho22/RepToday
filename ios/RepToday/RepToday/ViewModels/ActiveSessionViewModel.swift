@@ -274,9 +274,9 @@ final class ActiveSessionViewModel {
     /// re-checks the opt-out flag (a second gate could disagree with the first).
     private let analytics: (any AnalyticsServiceProtocol)?
 
-    /// The most recently launched telemetry emission, chained so the events land in call order and
-    /// exposed only so tests can await the sink settling. The UI never awaits it: emission is strictly
-    /// fire-and-forget, so the player never stalls on the network.
+    /// The most recently launched telemetry hand-off, chained so events enqueue in call order and
+    /// exposed only so tests can await the sink settling. The UI never awaits it, and the sink never
+    /// awaits network delivery, so the player cannot stall on analytics.
     private(set) var analyticsTask: Task<Void, Never>?
 
     /// Ensures `session_completed` is emitted at most once per player (US-T10). It fires from the
@@ -464,8 +464,8 @@ final class ActiveSessionViewModel {
         if startedAt == nil {
             startedAt = now()
             // US-T10: `session_started` fires once per session, inside the same `startedAt == nil`
-            // idempotency that gates the clock start, carrying the requested minutes. Fire-and-forget
-            // through the sink, so telemetry never delays the first render.
+            // idempotency that gates the clock start, carrying the requested minutes. The hand-off
+            // runs off the UI path and never awaits delivery, so telemetry cannot delay first render.
             emit(.sessionStarted, properties: ["requested_minutes": .int(workout.requestedMinutes)])
             // Persist immediately so even an untouched-but-started session is resumable after a relaunch.
             persist()
@@ -1533,10 +1533,10 @@ final class ActiveSessionViewModel {
         Int(now().timeIntervalSince1970 * 1000)
     }
 
-    /// Hand one telemetry event to the sink, fire-and-forget. A `nil` sink (previews / tests that do
-    /// not exercise the funnel) simply skips it. Emissions are chained behind the previous one so they
-    /// land in call order - `session_started` before either terminal event - even though each is
-    /// launched off the calling path and never awaited by the UI.
+    /// Hand one telemetry event to the sink off the UI path. A `nil` sink (previews / tests that do
+    /// not exercise the funnel) simply skips it. Emissions are chained behind the previous one so the
+    /// durable hand-offs preserve call order - `session_started` before either terminal event - while
+    /// network delivery remains independent and is never awaited by the UI.
     private func emit(_ name: AnalyticsEventName, properties: [String: AnalyticsValue] = [:]) {
         guard let analytics else { return }
         let event = AnalyticsEvent(name: name, timestampMs: timestampMs(), properties: properties)

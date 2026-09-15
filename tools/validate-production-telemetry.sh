@@ -25,6 +25,9 @@ smoke_id="${VALIDATION_ID_PREFIX}smoke-$run_stamp"
 missing_id="${VALIDATION_ID_PREFIX}missing-$run_stamp"
 wrong_id="${VALIDATION_ID_PREFIX}wrong-$run_stamp"
 rate_id=''
+smoke_event_id="event-smoke-$run_stamp"
+missing_event_id="event-missing-$run_stamp"
+wrong_event_id="event-wrong-$run_stamp"
 client_ts=$(($(date +%s) * 1000))
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/reptoday-production-validation.XXXXXX")
 trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
@@ -43,9 +46,9 @@ secret_header_config="$temp_dir/curl-secret.conf"
 printf 'header = "X-RepToday-Analytics-Secret: %s"\n' "$secret" > "$secret_header_config"
 unset secret
 
-smoke_body=$(printf '{"name":"app_install","installId":"%s","clientTs":%s,"props":{"install_week":"production-validation","validation_marker":"%s"}}' "$smoke_id" "$client_ts" "$run_stamp")
-missing_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{}}' "$missing_id" "$client_ts")
-wrong_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{}}' "$wrong_id" "$client_ts")
+smoke_body=$(printf '{"eventId":"%s","name":"app_install","installId":"%s","clientTs":%s,"props":{"install_week":"production-validation","validation_marker":"%s"}}' "$smoke_event_id" "$smoke_id" "$client_ts" "$run_stamp")
+missing_body=$(printf '{"eventId":"%s","name":"session_started","installId":"%s","clientTs":%s,"props":{}}' "$missing_event_id" "$missing_id" "$client_ts")
+wrong_body=$(printf '{"eventId":"%s","name":"session_started","installId":"%s","clientTs":%s,"props":{}}' "$wrong_event_id" "$wrong_id" "$client_ts")
 post() {
     local response_file=$1
     local body=$2
@@ -114,9 +117,10 @@ rate_attempt_complete=false
 for rate_attempt in $(seq 1 "$MAX_RATE_WINDOW_ATTEMPTS"); do
     wait_for_fresh_rate_window
     rate_id="${VALIDATION_ID_PREFIX}rate-$run_stamp-$rate_attempt"
+    rate_event_id="event-rate-$run_stamp-$rate_attempt"
     # `$invalid` below is the intentional literal invalid Convex field name.
     # shellcheck disable=SC2016
-    rate_body=$(printf '{"name":"session_started","installId":"%s","clientTs":%s,"props":{"$invalid":"rate-validation"}}' "$rate_id" "$client_ts")
+    rate_body=$(printf '{"eventId":"%s","name":"session_started","installId":"%s","clientTs":%s,"props":{"$invalid":"rate-validation"}}' "$rate_event_id" "$rate_id" "$client_ts")
     if run_rate_attempt; then
         rate_attempt_complete=true
         break

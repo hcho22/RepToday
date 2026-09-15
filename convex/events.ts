@@ -49,11 +49,12 @@ export const MAX_PROPS_BYTES = 4096;
 export const MAX_PROPS_KEYS = 32;
 
 /**
- * Append one telemetry event.
+ * Insert one telemetry event idempotently.
  *
- * Append-only by construction: it validates, stamps `serverTs`, inserts exactly one row, and
- * returns the id. No aggregation, no dedup, no funnel modelling, no cohort math - analysis is
- * deferred to queries written against the raw rows later.
+ * Existing rows are never mutated. A retry carrying an `eventId` already in the evidence table
+ * returns that row's id without a second insert; otherwise this validates, stamps `serverTs`, and
+ * inserts exactly one row. The indexed check and insert run in one serializable Convex mutation, so
+ * concurrent replays cannot both win. No aggregation, funnel modelling, or cohort math happens here.
  *
  * `internalMutation`, not `mutation`: a public Convex function is callable directly on the
  * deployment's own `.convex.cloud/api/mutation` endpoint, which shares its slug with the
@@ -65,12 +66,23 @@ export const MAX_PROPS_KEYS = 32;
  */
 export const logEvent = internalMutation({
   args: {
+    // Optional at the internal boundary only for already-shipped clients that predate durable
+    // replay. The current iOS client always supplies it; present ids are idempotent.
+    eventId: v.optional(v.string()),
     name: v.union(...EVENT_NAMES.map((name) => v.literal(name))),
     installId: v.string(),
     clientTs: v.number(),
     props: v.any(),
   },
   handler: async (ctx, args) => {
+    if (args.eventId !== undefined) {
+      const existing = await ctx.db
+        .query("events")
+        .withIndex("by_eventId", (q) => q.eq("eventId", args.eventId))
+        .unique();
+      if (existing) return existing._id;
+    }
+
     const props = args.props ?? {};
 
     // Not a third rule: a bag that is not a bag has no size, so this is the precondition the
@@ -95,12 +107,16 @@ export const logEvent = internalMutation({
       );
     }
 
-    return await ctx.db.insert("events", {
+    const event = {
       name: args.name,
       installId: args.installId,
       clientTs: args.clientTs,
       serverTs: Date.now(),
       props,
-    });
+    };
+    return await ctx.db.insert(
+      "events",
+      args.eventId === undefined ? event : { ...event, eventId: args.eventId },
+    );
   },
 });

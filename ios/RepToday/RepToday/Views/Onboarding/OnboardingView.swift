@@ -66,8 +66,8 @@ struct OnboardingView: View {
         .onAppear {
             // US-T08: `onboarding_started` fires on the first onboarding screen's appearance. The view
             // model guards it to one emission per flow, so a re-`onAppear` does not double-fire; the
-            // sink enforces consent, so an opted-out install produces no request. Fire-and-forget, so
-            // the wrapping `Task` only bridges `onAppear`'s synchronous context.
+            // sink enforces consent, so an opted-out install produces no durable/network work. The
+            // wrapping `Task` bridges `onAppear`; delivery proceeds independently after local hand-off.
             Task { await viewModel.onboardingStarted() }
         }
     }

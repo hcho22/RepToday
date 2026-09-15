@@ -90,7 +90,21 @@ final class AppState {
     var analyticsEnabled: Bool {
         didSet {
             userDefaults.set(analyticsEnabled, forKey: AppState.analyticsEnabledKey)
+            if oldValue && !analyticsEnabled {
+                let nextGeneration = AppState.analyticsConsentGeneration(in: userDefaults) &+ 1
+                userDefaults.set(nextGeneration, forKey: AppState.analyticsConsentGenerationKey)
+            }
+            if oldValue != analyticsEnabled {
+                analyticsConsentHandler?()
+            }
         }
+    }
+
+    /// Installs the one app-lifetime callback that wakes the analytics outbox after Settings has
+    /// persisted a consent change. The callback carries no duplicated flag value: the service reads
+    /// the persisted gate and generation that were written immediately above.
+    func observeAnalyticsConsentChanges(_ handler: @escaping () -> Void) {
+        analyticsConsentHandler = handler
     }
 
     /// One-shot flag for the continuous-circuit first-run explainer (US-CC13): `true` once the user
@@ -327,6 +341,11 @@ final class AppState {
     /// the only mechanism that can reach an app launched out of process.
     static let analyticsEnabledKey = "AppState.analyticsEnabled"
 
+    /// Monotonic opt-out generation. Every true -> false transition advances it synchronously;
+    /// queued telemetry captures the current value and becomes permanently ineligible when it no
+    /// longer matches. Re-enabling deliberately does not decrement or reset it.
+    static let analyticsConsentGenerationKey = "AppState.analyticsConsentGeneration"
+
     /// Reads the opt-out flag the way every consumer must read it.
     ///
     /// **Absent is not off.** `bool(forKey:)` answers `false` for a key that was never written, so a
@@ -360,10 +379,26 @@ final class AppState {
         return { isAnalyticsEnabled(in: store.wrapped) }
     }
 
+    static func analyticsConsentGeneration(in userDefaults: UserDefaults = .standard) -> Int {
+        userDefaults.integer(forKey: analyticsConsentGenerationKey)
+    }
+
+    static func analyticsConsentGenerationProvider(
+        in userDefaults: UserDefaults = .standard
+    ) -> @Sendable () -> Int {
+        let store = SendableUserDefaults(wrapped: userDefaults)
+        return { analyticsConsentGeneration(in: store.wrapped) }
+    }
+
     /// This instance's gate: the same reader, bound to the very store this `AppState` persists the
     /// flag to. This is what production hands the container, so the toggle the user sees and the
     /// gate the transport asks cannot read different stores.
     var analyticsGate: @Sendable () -> Bool { AppState.analyticsGate(in: userDefaults) }
+
+    /// The generation provider paired with `analyticsGate`, bound to the same persisted store.
+    var analyticsConsentGenerationProvider: @Sendable () -> Int {
+        AppState.analyticsConsentGenerationProvider(in: userDefaults)
+    }
 
     /// The store the app-entry telemetry dedup state lives in: the very store this `AppState`
     /// reads its identity (`firstLaunchAt`, `installWeek`) from. `RepTodayApp.init()` hands this to
@@ -377,6 +412,7 @@ final class AppState {
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let calendar: Calendar
     @ObservationIgnored private let coachSafetyIdentifierGenerator: @Sendable () -> CoachSafetyIdentifier
+    @ObservationIgnored private var analyticsConsentHandler: (() -> Void)?
 
     /// - Parameter userDefaults: The store this state reads and writes, and - through
     ///   `analyticsGate` - the store the telemetry gate reads. Production leaves it at `.standard`,
@@ -503,7 +539,7 @@ final class AppState {
 
 /// Carries a `UserDefaults` into the `@Sendable` telemetry gate.
 ///
-/// The gate is `@Sendable` because the transport reads it from a detached task, and `UserDefaults`
+/// The gate is `@Sendable` because the delivery queue reads it from its actor, and `UserDefaults`
 /// is thread-safe by documentation but carries no `Sendable` conformance. The box is what makes that
 /// gap an explicit, one-line assertion here rather than a warning at every capture site.
 private struct SendableUserDefaults: @unchecked Sendable {

@@ -57,6 +57,14 @@ enum TelemetryUITestHarness {
         UserDefaults.standard.bool(forKey: probeDefaultsKey)
     }
 
+    /// Unit tests run inside the app executable. Intercepting the production container there keeps
+    /// launch recovery structurally off the network, including a durable row left by an earlier
+    /// interrupted test-host launch. The XCUITest-driven app process does not carry this variable;
+    /// its opted-in legs use the explicit probe path above instead.
+    static var isUnitTestProcess: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     /// Clears the persisted opt-out flag so a probe run starts from the shipped default.
     ///
     /// Must run before `AppState.init` reads the flag. The installed app's container survives
@@ -74,9 +82,11 @@ enum TelemetryUITestHarness {
     /// In probe mode this is an ephemeral session whose only protocol is the counting interceptor,
     /// so every request the transport dispatches is recorded and none of them leaves the process.
     static func interceptingSession() -> URLSession? {
-        guard isActive else { return nil }
+        guard isActive || isUnitTestProcess else { return nil }
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [TelemetryProbeURLProtocol.self]
+        configuration.protocolClasses = [
+            isActive ? TelemetryProbeURLProtocol.self : TelemetryUnitTestURLProtocol.self
+        ]
         return URLSession(configuration: configuration)
     }
 
@@ -134,6 +144,31 @@ final class TelemetryProbeURLProtocol: URLProtocol {
             return
         }
         let response = HTTPURLResponse(url: url, statusCode: 204, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+/// Silent `204` interceptor for the in-process unit-test host. Unlike the XCUITest probe it keeps no
+/// count and renders no HUD; its sole contract is that a launch/recovery test cannot reach a socket.
+final class TelemetryUnitTestURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: 204,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocolDidFinishLoading(self)
     }

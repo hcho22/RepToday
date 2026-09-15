@@ -200,7 +200,7 @@ final class SessionCompletionService: SessionCompletionServiceProtocol {
     /// calendars are coupled, change one only with the other.
     ///
     /// Emit-once is enforced by a *persisted* set of already-emitted week-starts, so a second session in
-    /// the same week is a no-op that survives relaunch. The week is marked before the fire-and-forget
+    /// the same week is a no-op that survives relaunch. The week is marked before the telemetry
     /// `record(_:)` and independently of consent: consent lives only in the sink (US-T06), and an
     /// emission site must never re-check the gate itself - so an opted-out week is still consumed,
     /// exactly as the app-entry return events treat their launch-state dedup.

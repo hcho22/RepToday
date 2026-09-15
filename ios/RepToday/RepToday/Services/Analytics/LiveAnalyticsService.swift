@@ -1,159 +1,137 @@
 import Foundation
 
-/// The production telemetry sink (US-T04): one fire-and-forget `URLSession` POST per event to the
-/// Convex deployment's `POST /logEvent` HTTP action (US-T03).
+/// The production anonymous-telemetry sink: a bounded durable outbox feeding short `URLSession`
+/// POSTs to the Convex deployment's `POST /logEvent` action.
 ///
-/// **No Convex SDK.** The US-T01 spike returned a no-go on `convex-swift` - it ships an arm64-only
-/// xcframework, which would make every Simulator-hosted test suite in this repo unbuildable on an
-/// Intel host - so the transport is a plain JSON POST and Lottie stays the app's only third-party
-/// package (`artifacts/reports/US-T01/spike-note.md`). The body shape is `AnalyticsWireBody`.
+/// **No Convex SDK.** The US-T01 spike returned a no-go on `convex-swift`, so the transport remains
+/// plain Foundation networking with no new third-party dependency. The body shape is
+/// `AnalyticsWireBody`.
 ///
-/// **Fire-and-forget is a constraint, not a phrasing.** `record(_:)` does no I/O on the caller's
-/// path: it checks the opt-out gate, hands the event to a detached background task, and returns.
-/// Every failure past that point - offline, slow, non-2xx, malformed response, an unencodable
-/// event - is swallowed. Nothing about telemetry may block, degrade, or fail the core loop, which
-/// is the same rule every other integration in this app already follows (HealthKit writes,
-/// CloudKit sync, StoreKit transaction observation). That is also why
-/// `AnalyticsServiceProtocol.record(_:)` is `async` but not `throws`: there is no failure for a
-/// call site to handle.
+/// **Non-blocking remains a constraint.** `record(_:)` checks consent and performs only a bounded
+/// local enqueue before returning; it never awaits network delivery. The queue sends independently
+/// under a short iOS background-execution assertion, so a request started as the app leaves the
+/// foreground can finish through ordinary suspension. Retryable interruptions remain in the
+/// durable outbox for the next foreground/relaunch, capped at three attempts, seven days, and 50
+/// pending events. Every error is swallowed and no analytics result can become a product failure.
 ///
-/// **Every emission call site now feeds this service in a Debug build.** US-T04 shipped the
-/// transport; US-T07 through US-T12 added the emission call sites, so all 13 events now reach
-/// `record(_:)` - app entry, onboarding, the Ready Screen, the session lifecycle, the weekly
-/// rollup, and the monetization funnel. Release archives target the production deployment and inject
-/// its token through `tools/archive-release.sh`; a raw Release build without that private injection
-/// remains inert. The other caller is US-T06's Debug-only, launch-argument-gated
-/// `TelemetryUITestHarness`,
-/// which emits one probe event at app entry - and there `ServiceContainer.live` hands this service
-/// a `session` whose only protocol is that harness's counting interceptor, so the attempt is
-/// dispatched and counted without leaving the process.
+/// **Consent is checked twice.** The persisted gate is read at enqueue and immediately before every
+/// attempt. Each queued row also carries `AppState`'s consent generation; opting out advances that
+/// generation and discards/cancels pending work, so re-enabling cannot resurrect a pre-opt-out row.
 ///
-/// **Identity comes from exactly one place.** An install-id reader is passed in from `AppState`
-/// (US-T05), which is the only thing that mints or rotates it. The reader is evaluated per emission
-/// so account deletion can sever the link to the prior identifier without rebuilding this service;
-/// this service never reads `UserDefaults`, re-mints, or re-derives an identity itself.
+/// **Retry duplicates are measurement-safe.** One random `eventId` is encoded at enqueue and reused
+/// by every retry. Convex returns `204` but inserts at most one row for that id, covering the classic
+/// "insert committed, response was interrupted" case.
 final class LiveAnalyticsService: AnalyticsServiceProtocol {
-
-    /// The sink's single route, appended to the configured deployment origin. The path lives here
-    /// rather than in configuration so the code that knows the contract owns it.
     static let routePath = "logEvent"
-
-    /// The `Info.plist` key carrying the deployment's `.site` origin. The value is expanded from the
-    /// per-configuration `REPTODAY_ANALYTICS_ENDPOINT` build setting in `ios/RepToday/project.yml`,
-    /// so which deployment a build talks to is a build choice rather than a source edit. See
-    /// `configured(...)`.
     static let endpointInfoPlistKey = "RepTodayAnalyticsEndpoint"
-
-    /// The `Info.plist` key carrying the shared secret US-T14 sends on every POST. Like the
-    /// endpoint, it is expanded from a per-configuration build setting (`REPTODAY_ANALYTICS_SECRET`)
-    /// rather than written in source: Debug carries the dev deployment's secret, while Release
-    /// receives the production token from the captain-owned Keychain. The committed Release default
-    /// stays empty, so an archive that skips that path is inert. See `configured(...)`.
     static let secretInfoPlistKey = "RepTodayAnalyticsSecret"
-
-    /// The header the shared secret rides on. Matches `ANALYTICS_SECRET_HEADER` in `convex/http.ts`.
-    ///
-    /// **This secret is a cost-raiser, not a guarantee.** It is embedded in the shipped binary, so
-    /// anyone willing to unpack the app can extract it; it stops opportunistic flooding of a
-    /// freshly-discovered endpoint, not a determined attacker. See `convex/README.md`.
     static let secretHeaderField = "X-RepToday-Analytics-Secret"
-
-    /// A telemetry POST is worth a short wait and nothing more; the answer is discarded either way.
     static let requestTimeoutSeconds: TimeInterval = 10
 
-    private let endpoint: URL
-    private let installId: @Sendable () -> String
-    private let secret: String
-    private let session: URLSession
     private let isEnabled: @Sendable () -> Bool
+    private let deliveryQueue: AnalyticsDeliveryQueue
 
-    /// - Parameters:
-    ///   - endpoint: The fully-resolved `POST /logEvent` URL.
-    ///   - installId: Reads the anonymous per-install identifier from `AppState` (US-T05) for each
-    ///     emission, so account deletion's rotation takes effect in the already-running service.
-    ///   - session: The session the POST goes out on; injected so tests can intercept it in
-    ///     process with a `URLProtocol` stub and never touch the network (FR-13).
-    ///   - isEnabled: The opt-out gate, read fresh on every emission. It defaults to enabled, and
-    ///     production passes `AppState.analyticsGate` (US-T06), which reads the persisted
-    ///     `AppState.analyticsEnabled` flag the Settings toggle writes. It is deliberately a closure
-    ///     rather than a stored flag: reading it per emission - not once at construction - is what
-    ///     makes turning telemetry off take effect immediately rather than at the next launch.
-    ///     It is also the *only* gate an out-of-process test can ever reach: `RepTodayUITests`
-    ///     launches the real app, which builds its own container, so `ServiceContainer.live(...)`'s
-    ///     sink parameter cannot bind there. Because the flag lives in `UserDefaults`, the
-    ///     `-AppState.analyticsEnabled NO` launch argument closes this gate in an app the test
-    ///     process never built, which is how FR-13's out-of-process half is held.
-    ///   - secret: The shared secret sent on every POST (US-T14), sourced the same way the endpoint
-    ///     is - a per-configuration build setting. `configured(...)` refuses to build a service
-    ///     without one, so a live build always carries a non-empty secret; an un-injected Release
-    ///     build resolves to `NoOpAnalyticsService` before it ever gets here.
+    /// Foundation-networking initializer used by production, configured tests, and the Debug-only
+    /// URLProtocol probe. Configuration is resolved before this is called, preserving the inert raw
+    /// Release path: no usable endpoint+secret means no service, session, or outbox is constructed.
     init(
         endpoint: URL,
         installId: @escaping @Sendable () -> String,
         secret: String,
         session: URLSession = LiveAnalyticsService.makeSession(),
-        isEnabled: @escaping @Sendable () -> Bool = { true }
+        isEnabled: @escaping @Sendable () -> Bool = { true },
+        consentGeneration: @escaping @Sendable () -> Int = { 0 },
+        outboxStorage: (any AnalyticsOutboxStorage)? = nil,
+        backgroundExecution: AnalyticsBackgroundExecution = .live,
+        now: @escaping @Sendable () -> Date = { Date() },
+        newEventId: @escaping @Sendable () -> String = { UUID().uuidString }
     ) {
-        self.endpoint = endpoint
-        self.installId = installId
-        self.secret = secret
-        self.session = session
         self.isEnabled = isEnabled
+        self.deliveryQueue = AnalyticsDeliveryQueue(
+            endpoint: endpoint,
+            secret: secret,
+            installId: installId,
+            isEnabled: isEnabled,
+            consentGeneration: consentGeneration,
+            transport: URLSessionAnalyticsDeliveryTransport(session: session),
+            storage: outboxStorage ?? FileAnalyticsOutboxStorage(),
+            backgroundExecution: backgroundExecution,
+            now: now,
+            newEventId: newEventId
+        )
     }
 
-    /// Convenience for tests and callers whose identity is intentionally fixed. Production passes
-    /// `AppState.analyticsInstallId` through `configured(...)` instead.
+    /// Transport-level initializer for deterministic recovery tests. Unit tests inject both this
+    /// seam and storage, so they never reach a socket or the app's real outbox.
+    init(
+        endpoint: URL,
+        installId: @escaping @Sendable () -> String,
+        secret: String,
+        transport: any AnalyticsDeliveryTransport,
+        isEnabled: @escaping @Sendable () -> Bool = { true },
+        consentGeneration: @escaping @Sendable () -> Int = { 0 },
+        outboxStorage: any AnalyticsOutboxStorage,
+        backgroundExecution: AnalyticsBackgroundExecution = .none,
+        now: @escaping @Sendable () -> Date = { Date() },
+        newEventId: @escaping @Sendable () -> String = { UUID().uuidString }
+    ) {
+        self.isEnabled = isEnabled
+        self.deliveryQueue = AnalyticsDeliveryQueue(
+            endpoint: endpoint,
+            secret: secret,
+            installId: installId,
+            isEnabled: isEnabled,
+            consentGeneration: consentGeneration,
+            transport: transport,
+            storage: outboxStorage,
+            backgroundExecution: backgroundExecution,
+            now: now,
+            newEventId: newEventId
+        )
+    }
+
     convenience init(
         endpoint: URL,
         installId: String,
         secret: String,
         session: URLSession = LiveAnalyticsService.makeSession(),
-        isEnabled: @escaping @Sendable () -> Bool = { true }
+        isEnabled: @escaping @Sendable () -> Bool = { true },
+        consentGeneration: @escaping @Sendable () -> Int = { 0 },
+        outboxStorage: (any AnalyticsOutboxStorage)? = nil,
+        backgroundExecution: AnalyticsBackgroundExecution = .live,
+        now: @escaping @Sendable () -> Date = { Date() },
+        newEventId: @escaping @Sendable () -> String = { UUID().uuidString }
     ) {
         self.init(
             endpoint: endpoint,
             installId: { installId },
             secret: secret,
             session: session,
-            isEnabled: isEnabled
+            isEnabled: isEnabled,
+            consentGeneration: consentGeneration,
+            outboxStorage: outboxStorage,
+            backgroundExecution: backgroundExecution,
+            now: now,
+            newEventId: newEventId
         )
     }
 
-    /// Builds the service from the deployment origin in the app's `Info.plist`, or returns `nil`
-    /// when that configuration is absent or unusable.
-    ///
-    /// **An unconfigured build must be inert, never fatal.** No `fatalError`, no `try!`, no noisy
-    /// logging on a path the core loop shares: shipping a build that emits nothing is a far better
-    /// outcome than one that traps or spams because a telemetry URL was mistyped. `nil` is what
-    /// that inertness is expressed as, and `ServiceContainer.live(...)` answers it by wiring
-    /// `NoOpAnalyticsService` - a sink that already means exactly "emit nothing, keep nothing" -
-    /// rather than by growing a second, invisible do-nothing branch in here.
-    ///
-    /// That path is also the safe failure posture for Release. Its production endpoint is committed,
-    /// but its token is not: only `tools/archive-release.sh` injects the Keychain-held value. A raw
-    /// Release build therefore returns `nil` and stays silent, making a missed secret injection lose
-    /// data rather than send unauthenticated traffic or fail the core loop.
-    ///
-    /// "Unusable" is checked rather than assumed, because `URL(string:)` accepts almost any string
-    /// as a relative URL: the value must parse, carry an `https` scheme, and have a host. A
-    /// telemetry endpoint that is not HTTPS is a configuration mistake, not a deployment choice.
-    /// - Parameter session: `nil` builds the default one *after* the configuration is known to be
-    ///   usable, so an unconfigured build creates no session at all rather than one it discards.
+    /// Builds the service from the deployment origin and shared secret in `Info.plist`, or `nil`
+    /// when either value is absent/unusable. That `nil` remains the quiet, inert raw-Release posture
+    /// and is resolved to `NoOpAnalyticsService` by the container.
     static func configured(
         bundle: Bundle = .main,
         installId: @escaping @Sendable () -> String,
         session: URLSession? = nil,
-        isEnabled: @escaping @Sendable () -> Bool = { true }
+        isEnabled: @escaping @Sendable () -> Bool = { true },
+        consentGeneration: @escaping @Sendable () -> Int = { 0 },
+        outboxStorage: (any AnalyticsOutboxStorage)? = nil,
+        backgroundExecution: AnalyticsBackgroundExecution = .live
     ) -> LiveAnalyticsService? {
         guard
             let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)),
             let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
         else {
-            // Missing *either* the endpoint or the secret is the one "unconfigured" state, resolved
-            // to the same inert `nil`. A build with an endpoint but no secret would only ever earn
-            // `401`s from the guarded sink, so treating a blank secret as unconfigured keeps the
-            // "inert, never spam" discipline the endpoint already follows rather than firing doomed
-            // requests. A raw Release build has an endpoint but no injected token and is inert.
             return nil
         }
         return LiveAnalyticsService(
@@ -161,27 +139,33 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
             installId: installId,
             secret: secret,
             session: session ?? makeSession(),
-            isEnabled: isEnabled
+            isEnabled: isEnabled,
+            consentGeneration: consentGeneration,
+            outboxStorage: outboxStorage,
+            backgroundExecution: backgroundExecution
         )
     }
 
-    /// Convenience for fixed identities used by tests and isolated container construction.
     static func configured(
         bundle: Bundle = .main,
         installId: String,
         session: URLSession? = nil,
-        isEnabled: @escaping @Sendable () -> Bool = { true }
+        isEnabled: @escaping @Sendable () -> Bool = { true },
+        consentGeneration: @escaping @Sendable () -> Int = { 0 },
+        outboxStorage: (any AnalyticsOutboxStorage)? = nil,
+        backgroundExecution: AnalyticsBackgroundExecution = .live
     ) -> LiveAnalyticsService? {
-        configured(bundle: bundle, installId: { installId }, session: session, isEnabled: isEnabled)
+        configured(
+            bundle: bundle,
+            installId: { installId },
+            session: session,
+            isEnabled: isEnabled,
+            consentGeneration: consentGeneration,
+            outboxStorage: outboxStorage,
+            backgroundExecution: backgroundExecution
+        )
     }
 
-    /// Resolves a configured deployment origin into the route this service POSTs to, or `nil` if
-    /// the value is missing, empty, not a string, or not a usable HTTPS origin.
-    ///
-    /// The configured value is the deployment's `.site` **origin**
-    /// (`https://<deployment>.convex.site`); `routePath` is appended here. This is the one notion
-    /// of "unconfigured" in the app: a build setting that expands to nothing and a key that is
-    /// absent entirely both land on the same `nil` rather than on two parallel branches.
     static func endpoint(fromOrigin origin: Any?) -> URL? {
         guard
             let origin = origin as? String,
@@ -195,21 +179,14 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
         return url.appendingPathComponent(routePath)
     }
 
-    /// Resolves the configured shared secret, or `nil` if it is missing, not a string, or empty
-    /// after trimming. An empty value is the same "unconfigured" state as a missing endpoint - the
-    /// build is inert, never fatal (US-T14), so a Release build with no secret sends nothing rather
-    /// than earning a stream of `401`s.
     static func secret(fromValue value: Any?) -> String? {
         guard let value = value as? String else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// The session telemetry goes out on: ephemeral (no cookie, credential, or disk cache to
-    /// outlive the request), never waiting for connectivity, and short-timed. Offline must fail
-    /// fast and be dropped rather than queue up work that outlives the reason for sending it -
-    /// losing a few offline events is expected and acceptable (the PRD says so); holding the
-    /// system's connectivity-wait machinery open for anonymous counters is not.
+    /// The POST itself stays ephemeral and short. Durability belongs exclusively to the bounded
+    /// outbox; connectivity waiting would duplicate that responsibility and extend resource use.
     static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.waitsForConnectivity = false
@@ -219,47 +196,23 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol {
         return URLSession(configuration: configuration)
     }
 
-    /// The opt-out gate as it reads *right now*, which is exactly what `record(_:)` will ask.
-    ///
-    /// It exists so a test can assert what a built service's gate is backed by - notably that
-    /// `ServiceContainer.live(...)` wired the persisted `AppState.analyticsEnabled` flag and not the
-    /// enabled-by-default stub - without emitting anything to find out. Read-only, and no production
-    /// caller reads it.
     var isEmissionEnabled: Bool { isEnabled() }
 
-    // MARK: - AnalyticsServiceProtocol
-
     func record(_ event: AnalyticsEvent) async {
-        // The gate is read here, on the calling path, so it reflects the user's choice at the
-        // moment of the emission. When telemetry is off there is no task, no encode, and no
-        // request - "zero network calls when off" is US-T06's criterion and is satisfied by there
-        // being nothing after this line, in process and out of it alike.
         guard isEnabled() else { return }
+        await deliveryQueue.enqueue(event)
+    }
 
-        let endpoint = self.endpoint
-        let installId = self.installId()
-        let secret = self.secret
-        let session = self.session
+    func resumePendingDelivery() async {
+        await deliveryQueue.resumePendingDelivery()
+    }
 
-        // The caller's `await` completes here. Everything below - encoding included - runs on a
-        // detached background task, so no core-loop interaction ever waits on telemetry.
-        Task.detached(priority: .utility) {
-            guard let body = try? AnalyticsWireBody.encode(event, installId: installId) else { return }
+    func analyticsConsentDidChange() async {
+        await deliveryQueue.consentDidChange()
+    }
 
-            var request = URLRequest(url: endpoint)
-            request.httpMethod = "POST"
-            request.timeoutInterval = LiveAnalyticsService.requestTimeoutSeconds
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            // The US-T14 shared secret, on every POST. The sink rejects a request without it (`401`),
-            // which - being fire-and-forget - this client neither sees nor retries.
-            request.setValue(secret, forHTTPHeaderField: LiveAnalyticsService.secretHeaderField)
-            request.httpBody = body
-
-            // Every outcome is the same outcome. The sink answers `204` on success and
-            // `{"error": …}` with a `4xx`/`5xx` split otherwise (see `convex/README.md`), but that
-            // split exists for a human watching the PMF test, not for this client: there is no
-            // retry, no queue, and nothing to report, so the response is discarded unread.
-            _ = try? await session.data(for: request)
-        }
+    /// Test-only observability over bounded durable state; production never reads it.
+    var pendingDeliveryCount: Int {
+        get async { await deliveryQueue.pendingCount }
     }
 }

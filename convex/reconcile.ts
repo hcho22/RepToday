@@ -13,8 +13,9 @@ import { v } from "convex/values";
  * carries. It adds **no** public Convex function and **no** HTTP route, and US-T14's hardening of
  * the *public* `POST /logEvent` surface is untouched by it.
  *
- * It is read-only and adds no field to the `events` row shape: it selects the rows whose `installId`
- * is in the supplied set and returns exactly the five wire columns the pure tabulator consumes.
+ * It is read-only: it selects the rows whose `installId` is in the supplied set and returns exactly
+ * the five analytic columns the pure tabulator consumes. The transport-only `eventId` is omitted so
+ * adding idempotent delivery does not change the frozen reconciliation input shape.
  * `_id`/`_creationTime` are deliberately dropped - the reconciliation reasons about `clientTs`
  * (what the device stamped) and `serverTs` (what the sink stamped), not Convex's internal doc id.
  *

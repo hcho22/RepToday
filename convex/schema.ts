@@ -2,12 +2,11 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 /**
- * The whole telemetry backend: one append-only table.
+ * The telemetry evidence backend: one immutable table with idempotent inserts.
  *
- * There is deliberately no funnel, cohort, or aggregate structure here. The only evidence-table
- * index selects rows by install id for reconciliation and production validation; every metric in
- * the anonymous funnel event-metric schema remains derived offline from raw rows, so the sink stays
- * dumb and the analysis stays revisable.
+ * There is deliberately no funnel, cohort, or aggregate structure here. The evidence-table indexes
+ * serve only transport idempotency (`eventId`) and raw-row selection (`installId`) for reconciliation
+ * and production validation; every metric remains derived offline, so analysis stays revisable.
  *
  * Numeric convention (pinned by US-T03): both timestamps are `v.number()` - Convex float64 - and a
  * plain JSON number already *is* float64, so a client sending one never meets the `int64` vs
@@ -18,6 +17,13 @@ import { v } from "convex/values";
  */
 export default defineSchema({
   events: defineTable({
+    /**
+     * Client-generated idempotency key, stable across retries of one accepted event.
+     * Optional so the schema remains deployable over pre-reliability production rows and the HTTP
+     * boundary can keep accepting already-shipped one-shot clients. The current durable client
+     * always supplies it.
+     */
+    eventId: v.optional(v.string()),
     /** One of the 13 pre-registered event names; see `EVENT_NAMES` in `events.ts`. */
     name: v.string(),
     /** Random per-install identifier (US-T05). Never a user identity. */
@@ -28,7 +34,9 @@ export default defineSchema({
     serverTs: v.number(),
     /** The event's non-identifying property bag, stored exactly as it arrived. */
     props: v.any(),
-  }).index("by_installId", ["installId"]),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_installId", ["installId"]),
 
   /**
    * US-T14's rate-limit counter store, and nothing else.

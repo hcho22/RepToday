@@ -220,6 +220,8 @@ struct ServiceContainer {
     ///     to the store its own `AppState` writes rather than letting this side re-derive which
     ///     store to read. The default reads `.standard`, which is where production's `AppState`
     ///     lives, so a test that only wants the CoreData services keeps its existing call.
+    ///   - analyticsConsentGeneration: The opt-out generation paired with `analyticsGate`. Pending
+    ///     rows capture it so a later re-enable cannot revive work from before the opt-out.
     ///   - coachSafetyIdentifierProvider: Reads the persisted, dedicated Coach abuse-prevention
     ///     pseudonym at request time so account deletion rotates an already-configured client.
     static func live(
@@ -228,6 +230,7 @@ struct ServiceContainer {
         analyticsInstallId: (@Sendable () -> String)? = nil,
         coachSafetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
+        analyticsConsentGeneration: @escaping @Sendable () -> Int = AppState.analyticsConsentGenerationProvider(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) -> ServiceContainer {
         // The bundled exercise library is integrity-gated at load; a failure here is a build-time
@@ -251,16 +254,22 @@ struct ServiceContainer {
         // row in the device-local store and the Keychain item that outlives a reinstall.
         let activeSessionStore = CoreDataActiveSessionStore(context: context)
         let authService = AppleAuthService.live()
-        // The telemetry transport keeps its own session in every ordinary build. The one exception is
-        // an XCUITest run launched with the US-T06 probe argument, where it is swapped for an
-        // in-process counting interceptor so an out-of-process test can observe the opt-out gate
-        // without a single byte leaving the app (`TelemetryUITestHarness`). `nil` means "keep your
-        // own", so nothing about the production path changes.
+        // The telemetry transport keeps its own session and durable outbox in every ordinary build.
+        // Debug probe launches use the counting in-process interceptor; an in-process XCTest host uses
+        // a silent interceptor. Both pair interception with volatile storage and no UIKit background
+        // assertion, so no test can reach a socket or consume an ordinary app launch's pending work.
+        // `nil` means "keep production transport/storage".
         let analyticsSession: URLSession?
+        let analyticsOutboxStorage: (any AnalyticsOutboxStorage)?
+        let analyticsBackgroundExecution: AnalyticsBackgroundExecution
         #if DEBUG
         analyticsSession = TelemetryUITestHarness.interceptingSession()
+        analyticsOutboxStorage = analyticsSession == nil ? nil : VolatileAnalyticsOutboxStorage()
+        analyticsBackgroundExecution = analyticsSession == nil ? .live : .none
         #else
         analyticsSession = nil
+        analyticsOutboxStorage = nil
+        analyticsBackgroundExecution = .live
         #endif
         // Resolve the telemetry sink once, so the completion recorder's `week_active` emission (US-T11)
         // and the container's own sink are the same instance and share the consent gate. An explicit
@@ -271,7 +280,10 @@ struct ServiceContainer {
             ?? LiveAnalyticsService.configured(
                 installId: analyticsInstallId ?? { installId },
                 session: analyticsSession,
-                isEnabled: analyticsGate
+                isEnabled: analyticsGate,
+                consentGeneration: analyticsConsentGeneration,
+                outboxStorage: analyticsOutboxStorage,
+                backgroundExecution: analyticsBackgroundExecution
             )
             ?? NoOpAnalyticsService()
         // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`

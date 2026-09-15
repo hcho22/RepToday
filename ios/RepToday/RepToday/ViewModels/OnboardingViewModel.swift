@@ -159,8 +159,8 @@ final class OnboardingViewModel {
     private var onboardingStartInstant: Date?
 
     /// Emits `onboarding_started` (no properties) on the first onboarding screen's appearance, exactly
-    /// once per flow, and records the start instant that anchors `elapsed_seconds`. Fire-and-forget:
-    /// the sink returns immediately and swallows any failure, so this never gates onboarding.
+    /// once per flow, and records the start instant that anchors `elapsed_seconds`. The sink performs
+    /// only its bounded local enqueue and swallows failures, so this never waits on network delivery.
     func onboardingStarted() async {
         guard !didEmitOnboardingStarted else { return }
         didEmitOnboardingStarted = true
@@ -261,8 +261,8 @@ final class OnboardingViewModel {
             // US-T08: `onboarding_completed` fires only here, on the success branch that also triggers
             // `onComplete` - never on the failure branch below. `elapsed_seconds` is whole seconds from
             // the `onboarding_started` instant to now, off the injected clock, clamped at 0 defensively.
-            // Fire-and-forget through the sink, after the durable work, so telemetry never gates the
-            // save/seed. If no start instant was recorded (the emission site was never reached), elapsed
+            // Hand off through the sink after the durable product work; it never awaits network
+            // delivery, so telemetry cannot gate the save/seed. If no start instant was recorded, elapsed
             // is treated as 0 rather than fabricating a start.
             let elapsedSeconds = onboardingStartInstant.map { max(0, Int(now().timeIntervalSince($0))) } ?? 0
             await analytics?.record(

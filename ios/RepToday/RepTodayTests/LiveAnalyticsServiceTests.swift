@@ -27,14 +27,21 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     private func makeService(
         installId: String = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
         secret: String = LiveAnalyticsServiceTests.testSecret,
-        isEnabled: @escaping @Sendable () -> Bool = { true }
+        isEnabled: @escaping @Sendable () -> Bool = { true },
+        consentGeneration: @escaping @Sendable () -> Int = { 0 },
+        outboxStorage: any AnalyticsOutboxStorage = VolatileAnalyticsOutboxStorage()
     ) -> LiveAnalyticsService {
-        LiveAnalyticsService(
+        let ids = SequentialEventIdGenerator()
+        return LiveAnalyticsService(
             endpoint: endpoint,
             installId: installId,
             secret: secret,
             session: StubURLProtocol.makeSession(),
-            isEnabled: isEnabled
+            isEnabled: isEnabled,
+            consentGeneration: consentGeneration,
+            outboxStorage: outboxStorage,
+            backgroundExecution: .none,
+            newEventId: { ids.next() },
         )
     }
 
@@ -51,8 +58,8 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     // MARK: - The request the sink's `POST /logEvent` contract describes
 
     /// The whole wire contract in one assertion: the configured URL, `POST`, a JSON content type,
-    /// and a body of exactly `{name, installId, clientTs, props}` with the property bag flattened
-    /// to plain scalars.
+    /// and a body of exactly `{eventId, name, installId, clientTs, props}` with the property bag
+    /// flattened to plain scalars.
     func testRecordPostsTheWireContractToTheConfiguredEndpoint() async throws {
         let sent = expectation(description: "request intercepted")
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
@@ -80,9 +87,10 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let body = try XCTUnwrap(request.capturedBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
 
-        // The four top-level keys the sink requires, and nothing else. `props` is always written,
+        // The five top-level keys the sink requires, and nothing else. `props` is always written,
         // even when empty, rather than relying on the action's absent-bag default.
-        XCTAssertEqual(Set(json.keys), ["name", "installId", "clientTs", "props"])
+        XCTAssertEqual(Set(json.keys), ["eventId", "name", "installId", "clientTs", "props"])
+        XCTAssertEqual(json["eventId"] as? String, "test-event-1")
         XCTAssertEqual(json["name"] as? String, "session_completed")
         XCTAssertEqual(json["installId"] as? String, "install-42")
         XCTAssertEqual(json["clientTs"] as? Int, Self.installMs)
@@ -177,7 +185,14 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertFalse(modelJSON.contains("installId"))
 
         let wireJSON = try XCTUnwrap(
-            String(data: try AnalyticsWireBody.encode(event, installId: "install-42"), encoding: .utf8)
+            String(
+                data: try AnalyticsWireBody.encode(
+                    event,
+                    installId: "install-42",
+                    eventId: "wire-event-42"
+                ),
+                encoding: .utf8
+            )
         )
         XCTAssertFalse(wireJSON.contains("\"type\""))
         XCTAssertFalse(wireJSON.contains("timestampMs"))
@@ -190,14 +205,15 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         for name in AnalyticsEventName.allCases {
             let body = try AnalyticsWireBody.encode(
                 AnalyticsEvent(name: name, timestampMs: Self.installMs),
-                installId: "install-42"
+                installId: "install-42",
+                eventId: "event-\(name.rawValue)"
             )
             let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
             XCTAssertEqual(json["name"] as? String, name.rawValue)
         }
     }
 
-    // MARK: - Fire-and-forget
+    // MARK: - Non-blocking hand-off and failure classification
 
     /// `record(_:)` must return without awaiting the send. The stub holds the request open for well
     /// over a second; the call has to come back in a small fraction of that.
@@ -210,7 +226,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         await makeService().record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
         let elapsed = Date().timeIntervalSince(started)
 
-        XCTAssertLessThan(elapsed, 0.5, "record(_:) awaited the network; it must be fire-and-forget")
+        XCTAssertLessThan(elapsed, 0.5, "record(_:) awaited the network instead of only enqueueing")
         await fulfillment(of: [held], timeout: 10)
     }
 
@@ -225,25 +241,301 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         await service.record(AnalyticsEvent(name: .sessionStarted, timestampMs: Self.installMs))
         await fulfillment(of: [firstSent], timeout: 5)
 
-        let secondSent = expectation(description: "second request intercepted")
+        let secondSent = expectation(description: "pending retry and second request intercepted")
+        secondSent.expectedFulfillmentCount = 2
         StubURLProtocol.failure = nil
         StubURLProtocol.onRequest = { _ in secondSent.fulfill() }
         await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
         await fulfillment(of: [secondSent], timeout: 5)
 
+        XCTAssertEqual(StubURLProtocol.captured.count, 3)
+    }
+
+    /// An interrupted attempt remains durable and is tried again when the app returns active.
+    func testInterruptedDeliveryRecoversWhenTheAppBecomesActive() async throws {
+        let interrupted = expectation(description: "first request was interrupted")
+        StubURLProtocol.failure = URLError(.networkConnectionLost)
+        StubURLProtocol.onRequest = { _ in interrupted.fulfill() }
+
+        let service = makeService()
+        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        await fulfillment(of: [interrupted], timeout: 5)
+
+        let recovered = expectation(description: "pending request retried")
+        StubURLProtocol.failure = nil
+        StubURLProtocol.onRequest = { _ in recovered.fulfill() }
+        await service.resumePendingDelivery()
+        await fulfillment(of: [recovered], timeout: 5)
+
         XCTAssertEqual(StubURLProtocol.captured.count, 2)
     }
 
-    /// A non-2xx answer is swallowed just as completely as a transport error - the sink's
-    /// `4xx`/`5xx` split exists for a human watching the PMF test, not for this client.
+    // MARK: - Durable suspension recovery and bounds
+
+    func testBackgroundExpirationLeavesDurableWorkForRelaunchAndReusesItsEventId() async throws {
+        let storage = VolatileAnalyticsOutboxStorage()
+        let expirationProbe = BackgroundExecutionProbe(expireImmediately: true)
+        let interruptedTransport = CancellationAwareAnalyticsTransport()
+        let first = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: interruptedTransport,
+            outboxStorage: storage,
+            backgroundExecution: expirationProbe.execution,
+            newEventId: { "stable-event-id" },
+        )
+
+        await first.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        try await eventually { await interruptedTransport.requestCount == 1 }
+        try await eventually { await first.pendingDeliveryCount == 1 }
+        try await eventually { expirationProbe.endCount == 1 }
+        XCTAssertEqual(expirationProbe.beginCount, 1)
+        XCTAssertEqual(expirationProbe.endCount, 1)
+
+        // A new service over the same storage is a process relaunch. No event is re-enqueued; app
+        // launch recovery drains the durable row left by the expired background lease.
+        let recoveredTransport = ScriptedAnalyticsTransport(outcomes: [.success])
+        let relaunched = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: recoveredTransport,
+            outboxStorage: storage,
+        )
+        await relaunched.resumePendingDelivery()
+        try await eventually { await recoveredTransport.requestCount == 1 }
+        try await eventually { await relaunched.pendingDeliveryCount == 0 }
+
+        let interruptedIds = await interruptedTransport.eventIds
+        let recoveredIds = await recoveredTransport.eventIds
+        XCTAssertEqual(interruptedIds, ["stable-event-id"])
+        XCTAssertEqual(recoveredIds, ["stable-event-id"], "a retry minted a duplicate-prone id")
+    }
+
+    func testRetryableDeliveryStopsAtTheAttemptCapAndRetiresTheRow() async throws {
+        let transport = ScriptedAnalyticsTransport(
+            outcomes: Array(repeating: .retryableFailure, count: 4)
+        )
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            outboxStorage: VolatileAnalyticsOutboxStorage(),
+            newEventId: { "bounded-retry" },
+        )
+
+        await service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
+        try await eventually { await transport.requestCount == 1 }
+        await service.resumePendingDelivery()
+        try await eventually { await transport.requestCount == 2 }
+        await service.resumePendingDelivery()
+        try await eventually { await transport.requestCount == AnalyticsDeliveryQueue.maxAttempts }
+        try await eventually { await service.pendingDeliveryCount == 0 }
+
+        await service.resumePendingDelivery()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let finalRequestCount = await transport.requestCount
+        XCTAssertEqual(finalRequestCount, AnalyticsDeliveryQueue.maxAttempts)
+    }
+
+    func testSuccessfulDeliveryRetiresDurableWork() async throws {
+        let storage = VolatileAnalyticsOutboxStorage()
+        let transport = ScriptedAnalyticsTransport(outcomes: [.success])
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            outboxStorage: storage,
+            newEventId: { "retire-me" },
+        )
+
+        await service.record(AnalyticsEvent(name: .weekActive, timestampMs: Self.installMs))
+        try await eventually { await transport.requestCount == 1 }
+        try await eventually { await service.pendingDeliveryCount == 0 }
+        XCTAssertTrue(try storage.load().isEmpty)
+    }
+
+    func testOptOutBeforeEnqueueCreatesNoDurableOrNetworkWork() async throws {
+        let storage = VolatileAnalyticsOutboxStorage()
+        let transport = ScriptedAnalyticsTransport(outcomes: [.success])
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            isEnabled: { false },
+            outboxStorage: storage,
+        )
+
+        await service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        await service.resumePendingDelivery()
+        let requestCount = await transport.requestCount
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertTrue(try storage.load().isEmpty)
+    }
+
+    func testConsentIsRecheckedAfterBackgroundLeaseBeforeRequestStarts() async throws {
+        let enabled = UncheckedBox(true)
+        let generation = UncheckedBox(0)
+        let storage = VolatileAnalyticsOutboxStorage()
+        let transport = ScriptedAnalyticsTransport(outcomes: [.success])
+        let execution = AnalyticsBackgroundExecution { _ in
+            enabled.value = false
+            generation.value += 1
+            return AnalyticsBackgroundLease {}
+        }
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            isEnabled: { enabled.value },
+            consentGeneration: { generation.value },
+            outboxStorage: storage,
+            backgroundExecution: execution,
+            newEventId: { "disabled-before-send" },
+        )
+
+        await service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
+        try await eventually { await service.pendingDeliveryCount == 0 }
+
+        let requestCount = await transport.requestCount
+        XCTAssertEqual(requestCount, 0, "the send-time consent check happened after request start")
+        XCTAssertTrue(try storage.load().isEmpty)
+    }
+
+    func testOptOutDiscardsPendingWorkAndReenableNeverResurrectsIt() async throws {
+        let enabled = UncheckedBox(true)
+        let generation = UncheckedBox(0)
+        let storage = VolatileAnalyticsOutboxStorage()
+        let transport = ScriptedAnalyticsTransport(outcomes: [.retryableFailure, .success])
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            isEnabled: { enabled.value },
+            consentGeneration: { generation.value },
+            outboxStorage: storage,
+            newEventId: { "pre-opt-out" },
+        )
+
+        await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
+        try await eventually { await transport.requestCount == 1 }
+        try await eventually { await service.pendingDeliveryCount == 1 }
+
+        enabled.value = false
+        generation.value += 1
+        await service.analyticsConsentDidChange()
+        let pendingAfterOptOut = await service.pendingDeliveryCount
+        XCTAssertEqual(pendingAfterOptOut, 0)
+        XCTAssertTrue(try storage.load().isEmpty)
+
+        enabled.value = true
+        await service.analyticsConsentDidChange()
+        await service.resumePendingDelivery()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let finalRequestCount = await transport.requestCount
+        XCTAssertEqual(finalRequestCount, 1, "re-enable replayed a pre-opt-out event")
+    }
+
+    func testPendingOutboxEvictsOldestAndNeverExceedsItsBound() async throws {
+        let enabled = UncheckedBox(true)
+        let storage = VolatileAnalyticsOutboxStorage()
+        let transport = CancellationAwareAnalyticsTransport()
+        let ids = SequentialEventIdGenerator()
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            isEnabled: { enabled.value },
+            outboxStorage: storage,
+            newEventId: { ids.next() },
+        )
+
+        for index in 0..<(AnalyticsDeliveryQueue.maxPendingEvents + 7) {
+            await service.record(AnalyticsEvent(name: .readyScreenShown, timestampMs: index))
+        }
+        let pendingCount = await service.pendingDeliveryCount
+        XCTAssertEqual(pendingCount, AnalyticsDeliveryQueue.maxPendingEvents)
+        let persisted = try storage.load()
+        XCTAssertEqual(persisted.count, AnalyticsDeliveryQueue.maxPendingEvents)
+        XCTAssertFalse(persisted.contains { $0.eventId == "test-event-1" })
+
+        // Release the intentionally-blocked test transport and leave no task behind.
+        enabled.value = false
+        await service.analyticsConsentDidChange()
+        try await eventually { await service.pendingDeliveryCount == 0 }
+    }
+
+    func testExpiredPendingWorkIsRetiredWithoutANetworkAttempt() async throws {
+        let current = Date(timeIntervalSince1970: 2_000_000_000)
+        let eventId = "expired-event"
+        let body = try AnalyticsWireBody.encode(
+            AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs),
+            installId: "install-42",
+            eventId: eventId
+        )
+        let storage = VolatileAnalyticsOutboxStorage(
+            deliveries: [
+                PendingAnalyticsDelivery(
+                    eventId: eventId,
+                    body: body,
+                    createdAtMs: Int64(
+                        current.addingTimeInterval(-AnalyticsDeliveryQueue.maxAge - 1)
+                            .timeIntervalSince1970 * 1_000
+                    ),
+                    consentGeneration: 0,
+                    attemptCount: 0
+                )
+            ]
+        )
+        let transport = ScriptedAnalyticsTransport(outcomes: [.success])
+        let service = LiveAnalyticsService(
+            endpoint: endpoint,
+            installId: { "install-42" },
+            secret: Self.testSecret,
+            transport: transport,
+            outboxStorage: storage,
+            now: { current },
+        )
+
+        await service.resumePendingDelivery()
+
+        let pendingCount = await service.pendingDeliveryCount
+        let requestCount = await transport.requestCount
+        XCTAssertEqual(pendingCount, 0)
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertTrue(try storage.load().isEmpty)
+    }
+
+    private func eventually(
+        timeout: TimeInterval = 2,
+        condition: @escaping () async -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await condition() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("condition was not met within \(timeout) seconds")
+    }
+
+    /// A permanent `4xx` is swallowed and retired rather than retried; no product caller sees it.
     func testRejectionResponseIsSwallowed() async throws {
         let sent = expectation(description: "request intercepted")
         StubURLProtocol.statusCode = 400
         StubURLProtocol.responseBody = Data(#"{"error":"props has 40 keys, over the 32-key limit"}"#.utf8)
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
 
-        await makeService().record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
+        let service = makeService()
+        await service.record(AnalyticsEvent(name: .subscribe, timestampMs: Self.installMs))
         await fulfillment(of: [sent], timeout: 5)
+        try await eventually { await service.pendingDeliveryCount == 0 }
 
         XCTAssertEqual(StubURLProtocol.captured.count, 1)
     }
@@ -301,7 +593,9 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             endpoint: endpoint,
             installId: { installId.value },
             secret: Self.testSecret,
-            session: StubURLProtocol.makeSession()
+            session: StubURLProtocol.makeSession(),
+            outboxStorage: VolatileAnalyticsOutboxStorage(),
+            backgroundExecution: .none,
         )
 
         await service.record(AnalyticsEvent(name: .sessionCompleted, timestampMs: Self.installMs))
@@ -338,7 +632,9 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             session: StubURLProtocol.makeSession(),
             // Reconstructed inside the closure from a `Sendable` name, so nothing non-`Sendable` is
             // captured; it is the same suite either way.
-            isEnabled: { AppState.isAnalyticsEnabled(in: UserDefaults(suiteName: suiteName) ?? .standard) }
+            isEnabled: { AppState.isAnalyticsEnabled(in: UserDefaults(suiteName: suiteName) ?? .standard) },
+            outboxStorage: VolatileAnalyticsOutboxStorage(),
+            backgroundExecution: .none,
         )
 
         let optedIn = expectation(description: "the default opted-in state emits")
@@ -497,7 +793,14 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             "the Debug build's analytics secret does not resolve"
         )
         // With both an endpoint and a secret present, the Debug build resolves a live service.
-        XCTAssertNotNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
+        XCTAssertNotNil(
+            LiveAnalyticsService.configured(
+                bundle: .main,
+                installId: "install-42",
+                outboxStorage: VolatileAnalyticsOutboxStorage(),
+                backgroundExecution: .none
+            )
+        )
         #else
         // Nothing configured, so nothing to authenticate with - inert exactly like the endpoint.
         XCTAssertNil(LiveAnalyticsService.secret(fromValue: configured))
@@ -510,8 +813,48 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// `RepTodayAnalyticsEndpoint`.
     func testConfiguredReturnsNilForABundleWithNoEndpoint() {
         let testBundle = Bundle(for: LiveAnalyticsServiceTests.self)
+        let storage = CountingAnalyticsOutboxStorage()
         XCTAssertNil(testBundle.object(forInfoDictionaryKey: LiveAnalyticsService.endpointInfoPlistKey))
-        XCTAssertNil(LiveAnalyticsService.configured(bundle: testBundle, installId: "install-42"))
+        XCTAssertNil(
+            LiveAnalyticsService.configured(
+                bundle: testBundle,
+                installId: "install-42",
+                outboxStorage: storage,
+                backgroundExecution: .none
+            )
+        )
+        XCTAssertEqual(storage.loadCount, 0)
+        XCTAssertEqual(storage.saveCount, 0, "an unconfigured build touched durable analytics state")
+    }
+
+    /// Mirrors a raw Release archive exactly: its production endpoint is present, but the private
+    /// token was not injected. Combined configuration must stop before constructing or loading the
+    /// outbox, not merely build a client that earns `401`s later.
+    func testConfiguredReleaseShapeWithBlankSecretLeavesStorageUntouched() throws {
+        let bundleURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RepToday-Unconfigured-\(UUID().uuidString).bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "com.reptoday.tests.unconfigured",
+            LiveAnalyticsService.endpointInfoPlistKey: "https://production.example.convex.site",
+            LiveAnalyticsService.secretInfoPlistKey: ""
+        ]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: bundleURL.appendingPathComponent("Info.plist"), options: .atomic)
+
+        let bundle = try XCTUnwrap(Bundle(url: bundleURL))
+        let storage = CountingAnalyticsOutboxStorage()
+        XCTAssertNil(
+            LiveAnalyticsService.configured(
+                bundle: bundle,
+                installId: "install-42",
+                outboxStorage: storage,
+                backgroundExecution: .none
+            )
+        )
+        XCTAssertEqual(storage.loadCount, 0)
+        XCTAssertEqual(storage.saveCount, 0, "a blank-token Release build touched durable analytics state")
     }
 
     /// The endpoint is split per build configuration (`REPTODAY_ANALYTICS_ENDPOINT` in
@@ -541,7 +884,14 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         )
         XCTAssertEqual(endpoint.scheme, "https")
         XCTAssertEqual(endpoint.path, "/logEvent")
-        XCTAssertNotNil(LiveAnalyticsService.configured(bundle: .main, installId: "install-42"))
+        XCTAssertNotNil(
+            LiveAnalyticsService.configured(
+                bundle: .main,
+                installId: "install-42",
+                outboxStorage: VolatileAnalyticsOutboxStorage(),
+                backgroundExecution: .none
+            )
+        )
         #else
         // The endpoint is production, but the raw test build has no privately-injected token, so the
         // combined configuration is inert rather than firing unauthenticated requests.
@@ -567,7 +917,9 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             LiveAnalyticsService.configured(
                 bundle: .main,
                 installId: "install-42",
-                session: StubURLProtocol.makeSession()
+                session: StubURLProtocol.makeSession(),
+                outboxStorage: VolatileAnalyticsOutboxStorage(),
+                backgroundExecution: .none
             )
         )
 
@@ -597,6 +949,149 @@ final class LiveAnalyticsServiceTests: XCTestCase {
 }
 
 // MARK: - In-process interception
+
+private final class SequentialEventIdGenerator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func next() -> String {
+        lock.lock()
+        value += 1
+        let result = "test-event-\(value)"
+        lock.unlock()
+        return result
+    }
+}
+
+private final class CountingAnalyticsOutboxStorage: AnalyticsOutboxStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private var loads = 0
+    private var saves = 0
+
+    func load() throws -> [PendingAnalyticsDelivery] {
+        lock.lock()
+        loads += 1
+        lock.unlock()
+        return []
+    }
+
+    func save(_ deliveries: [PendingAnalyticsDelivery]) throws {
+        lock.lock()
+        saves += 1
+        lock.unlock()
+    }
+
+    var loadCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return loads
+    }
+
+    var saveCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return saves
+    }
+}
+
+private actor ScriptedAnalyticsTransport: AnalyticsDeliveryTransport {
+    private var outcomes: [AnalyticsDeliveryOutcome]
+    private var requests: [URLRequest] = []
+
+    init(outcomes: [AnalyticsDeliveryOutcome]) {
+        self.outcomes = outcomes
+    }
+
+    func send(_ request: URLRequest) async -> AnalyticsDeliveryOutcome {
+        requests.append(request)
+        return outcomes.isEmpty ? .retryableFailure : outcomes.removeFirst()
+    }
+
+    var requestCount: Int { requests.count }
+
+    var eventIds: [String] {
+        requests.compactMap { request in
+            guard
+                let body = request.httpBody,
+                let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            else { return nil }
+            return json["eventId"] as? String
+        }
+    }
+}
+
+private actor CancellationAwareAnalyticsTransport: AnalyticsDeliveryTransport {
+    private var requests: [URLRequest] = []
+
+    func send(_ request: URLRequest) async -> AnalyticsDeliveryOutcome {
+        requests.append(request)
+        do {
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+            return .success
+        } catch {
+            return .retryableFailure
+        }
+    }
+
+    var requestCount: Int { requests.count }
+
+    var eventIds: [String] {
+        requests.compactMap { request in
+            guard
+                let body = request.httpBody,
+                let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            else { return nil }
+            return json["eventId"] as? String
+        }
+    }
+}
+
+private final class BackgroundExecutionProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let expireImmediately: Bool
+    private var begins = 0
+    private var ends = 0
+
+    init(expireImmediately: Bool) {
+        self.expireImmediately = expireImmediately
+    }
+
+    var execution: AnalyticsBackgroundExecution {
+        AnalyticsBackgroundExecution { [self] expirationHandler in
+            recordBegin()
+            if expireImmediately {
+                expirationHandler()
+            }
+            return AnalyticsBackgroundLease { [self] in
+                recordEnd()
+            }
+        }
+    }
+
+    private func recordBegin() {
+        lock.lock()
+        begins += 1
+        lock.unlock()
+    }
+
+    private func recordEnd() {
+        lock.lock()
+        ends += 1
+        lock.unlock()
+    }
+
+    var beginCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return begins
+    }
+
+    var endCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return ends
+    }
+}
 
 /// A mutable box for a value a `@Sendable` closure reads. The tests that use it drive the service
 /// from one task at a time, so the unchecked conformance is not papering over a race.

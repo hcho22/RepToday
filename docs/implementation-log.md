@@ -1223,13 +1223,47 @@ The first production-collecting Release path now targets the existing `hcho22/re
 
 Account deletion now closes the anonymous-identity boundary in the already-running process. `AppState.rotateAnalyticsInstallId()` persists a new UUID while deliberately preserving the install origin and telemetry preference; `RepTodayApp` hands `ServiceContainer.live(...)` the `analyticsInstallId` reader, and `LiveAnalyticsService` resolves it per emission rather than freezing the launch value. The deletion orchestrator rotates only on the first successful, onboarded teardown, so retries remain idempotent while later onboarding events cannot share the pre-deletion identifier.
 
-The live operational checks are re-runnable and secret-safe: `tools/validate-production-telemetry.sh` proves correct/missing/wrong authentication, insert/no-insert, and the authoritative 60-per-install rate ceiling; `tools/validate-release-telemetry-client.sh` builds the privately configured Release app and proves an opted-in launch persists while an opted-out launch does not. Both read rows through the internal `reconcile:eventsForInstalls` query, now backed by `events.by_installId` and covered by `convex/reconcile.query.test.ts`; the evidence row remains the same five fields and all tabulation remains offline. The sanitized ownership, provisioning, deployment, synthetic-row exclusions, rotation, rollback, and observed results are in `artifacts/reports/production-telemetry/validation.md`. The accepted measurement limits remain explicit: sends have no queue/retry and a later trial conversion still does not emit `subscribe`. No public `gtm/` package was recreated.
+The live operational checks are re-runnable and secret-safe: `tools/validate-production-telemetry.sh` proves correct/missing/wrong authentication, insert/no-insert, and the authoritative 60-per-install rate ceiling; `tools/validate-release-telemetry-client.sh` builds the privately configured Release app and proves an opted-in launch persists while an opted-out launch does not. Both read rows through the internal `reconcile:eventsForInstalls` query, now backed by `events.by_installId` and covered by `convex/reconcile.query.test.ts`; the evidence row remains the same five analytic fields and all tabulation remains offline. The sanitized ownership, provisioning, deployment, synthetic-row exclusions, rotation, rollback, and observed results are in `artifacts/reports/production-telemetry/validation.md`. At this story's landing sends still had no queue/retry; the 2026-09-14 suspension-resilience entry below supersedes that limitation. A later trial conversion still does not emit `subscribe`. No public `gtm/` package was recreated.
 
 ### Earned Strength Phase enters the production lifecycle
 
 The existing `PhaseEvaluatorService` now advances the persisted `User.phase` through two real lifecycle seams. `SessionCompletionService` is the incremental authority: after saving a completed log it evaluates a still-Discipline user against the full history and folds a newly earned Strength phase into the same user-aggregate write that already refreshes consistency and cold start. The existing app-open `StrengthGraduationViewModel` is also a reconciliation path for users whose histories qualified before this wiring landed and still qualify when evaluated now; the separate celebration marker never grants phase authority.
 
 The persistence rule is centralized at the shared user boundary. `UserServiceProtocol.advancePhase(to:for:)` performs an atomic, identity-keyed, phase-only `.discipline -> .strength` ratchet, while whole-aggregate saves merge any already-persisted Strength phase before writing so a stale duration/profile writer cannot downgrade it. The CoreData implementation serializes both operations on its context; the in-memory implementation mirrors the contract. `RootView` waits for app-open reconciliation before constructing the Ready and Progress tabs, so their first reads see the persisted phase. Persisted Strength skips later evaluation, unchanged reconciliation performs no write, and users who no longer qualify are not migrated from the celebration marker. `ServiceContainer.mock()` and `.live()` share one real `PhaseEvaluatorService` between phase-reading surfaces and completion processing, so the CoreData user the engine reads now activates US-SP01's cap lift and supplies US-SP06's durable earned state. No progression criteria, telemetry, subscription, or graduation-copy policy changed.
+
+### Telemetry delivery survives ordinary iOS suspension
+
+The original `Task.detached` one-shot made exit-adjacent events depend on the process staying alive.
+`LiveAnalyticsService` now hands an enabled event to `AnalyticsDeliveryQueue`: an actor-owned,
+atomically persisted Application Support outbox. Delivery runs independently through the existing
+ephemeral `URLSession`, with each request wrapped in `UIApplication.beginBackgroundTask` so ordinary
+suspension can finish it. Expiration cancels only the active request and leaves its row for launch or
+foreground recovery. Product callers never await network delivery and never receive an analytics
+failure.
+
+The recovery path is explicitly bounded: 50 pending events (oldest evicted), three attempts per
+event, seven days of age, four sends per drain trigger, and the existing ten-second timeout with no
+connectivity wait. Retryable transport/`408`/`429`/`5xx` failures stay pending; success and permanent
+`4xx` retire. The Debug probe and in-process XCTest host use intercepted sessions plus volatile
+outboxes, while missing endpoint/secret configuration resolves to the no-op before a session or
+outbox is constructed.
+
+Each accepted event receives one random `eventId`, encoded and persisted once, then reused across
+attempts. `convex/schema.ts` adds `events.by_eventId` and an optional field. The current durable
+client always supplies it; the HTTP boundary also accepts its absence from already-shipped one-shot
+clients so deploying the sink does not strand an installed build. When present, `events:logEvent`
+performs the indexed lookup plus insert in one Convex mutation. A replay after a committed insert
+whose response was lost therefore answers `204` without inflating the evidence table. The reconciliation query deliberately
+continues returning its frozen five analytic columns and omits this transport-only key.
+
+Consent is checked before enqueue and again after acquiring the background lease, immediately before
+request start. A true-to-false `AppState.analyticsEnabled` transition synchronously advances a
+persisted consent generation, then asks the queue to cancel/discard. Every row captures its enqueue
+generation, so even a rapid re-enable or a process death before deletion cannot resurrect pre-opt-out
+work. `LiveAnalyticsServiceTests` deterministically cover background expiration plus relaunch,
+foreground recovery, send-time consent, opt-out purge/no resurrection, retry/age/queue bounds,
+successful retirement, and inert configuration; `convex/http.test.ts` covers stable-id replay as one
+insert. The production boundary validator now supplies the durable client's `eventId` too.
 
 ## Owed work
 

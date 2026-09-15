@@ -295,8 +295,8 @@ actor MockAuthService: AuthServiceProtocol {
 /// and previews use when they need to assert on what was recorded -
 /// `live(context:installId:analyticsInstallId:coachSafetyIdentifierProvider:analyticsGate:analyticsService:)`
 /// wires the real `LiveAnalyticsService` instead, so a test that wants assertions rather than
-/// requests wants this one. An `actor` so appends stay race-free against the detached background
-/// tasks the live transport sends on; tests read the recorded array with
+/// requests wants this one. An `actor` so appends stay race-free with the async call sites the live
+/// transport's queue also serves; tests read the recorded array with
 /// `await mock.recordedEvents`.
 actor MockAnalyticsService: AnalyticsServiceProtocol {
     private(set) var recordedEvents: [AnalyticsEvent] = []

@@ -166,7 +166,7 @@ enum AnalyticsValue: Codable, Equatable, Sendable {
 
 /// One anonymous telemetry event: a pre-registered name, a millisecond client timestamp, and a
 /// small string-keyed property bag. A value type so it crosses concurrency domains freely when
-/// `LiveAnalyticsService` sends it off the calling path on a detached task.
+/// `LiveAnalyticsService` hands it to the actor-owned delivery queue.
 struct AnalyticsEvent: Codable, Equatable, Sendable {
     /// The pre-registered event name.
     let name: AnalyticsEventName

@@ -189,8 +189,8 @@ final class ReadyViewModel {
             // successful load, carrying the `generation_ms` just measured in `generate()`. Guarded like
             // the `hasComputedConsistency` / `hasCheckedReprogramOnOpen` one-shots below, and emitted
             // here rather than inside `generate()` so a chip-tap regeneration (which never runs `load()`)
-            // cannot re-emit and inflate the count. Fire-and-forget through the sink: it returns
-            // immediately and swallows any failure, so telemetry never gates the session render or Start.
+            // cannot re-emit and inflate the count. The sink performs only a bounded local hand-off
+            // and swallows failure; it never awaits network delivery or gates the render / Start.
             if !hasEmittedReadyScreenShown {
                 hasEmittedReadyScreenShown = true
                 await analytics?.record(
@@ -368,7 +368,7 @@ final class ReadyViewModel {
     /// once per given-up physical session and reads its coarse `abandon_point` and exercised-minutes
     /// straight off the persisted snapshot (the player that produced them is already gone). The
     /// emission goes through the sink **unconditionally** - consent (US-T06) is enforced inside the
-    /// sink - and is fire-and-forget, so the give-up UI never waits on it. A `nil` sink (previews /
+    /// sink; its network delivery is independent, so the give-up UI never waits on it. A `nil` sink (previews /
     /// tests not exercising the funnel) simply skips it.
     private func emitSessionAbandoned(for state: ActiveSessionState) async {
         guard let analytics else { return }

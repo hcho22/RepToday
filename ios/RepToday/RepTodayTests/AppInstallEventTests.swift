@@ -145,7 +145,11 @@ final class AppInstallEventTests: XCTestCase {
         let firstLaunch = Self.date(2026, 8, 4, hour: 9)
         let install = try XCTUnwrap(emit(at: firstLaunch).first)
 
-        let wire = try AnalyticsWireBody.encode(install, installId: "install-42")
+        let wire = try AnalyticsWireBody.encode(
+            install,
+            installId: "install-42",
+            eventId: "install-event-42"
+        )
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: wire) as? [String: Any])
         let props = try XCTUnwrap(json["props"] as? [String: Any])
         XCTAssertEqual(props["install_week"] as? String, "2026-08-02")

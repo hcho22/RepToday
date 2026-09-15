@@ -185,9 +185,10 @@ extension SubscriptionServiceProtocol {
 /// pre-registered events (the event-metric schema) through this one interface, and
 /// tests assert on `MockAnalyticsService`'s in-memory record with no network. `record(_:)` is
 /// `async` but **not** `throws` - unlike the rest of this file's `async throws` house style - because
-/// emission is strictly fire-and-forget: a call site reads `await analytics.record(event)` with no
-/// `try`, and a failed, slow, or offline send is swallowed by `LiveAnalyticsService` (US-T04),
-/// never surfaced to a caller and never allowed to gate the core loop. The first production caller
+/// a call site reads `await analytics.record(event)` with no `try`; the live service performs only
+/// a bounded durable enqueue there and never awaits network delivery. A failed, slow, offline, or
+/// interrupted send is swallowed, retained only within the live service's retry bounds, and never
+/// surfaced to a caller or allowed to gate the core loop. The first production caller
 /// landed in US-T07 - `RepTodayApp.init()` emits the three app-entry events through
 /// `AppEntryTelemetry` - and the other 10 of the 13 emission sites landed across US-T08 through
 /// US-T12, so all 13 events now have their emission sites;
@@ -218,6 +219,17 @@ extension SubscriptionServiceProtocol {
 /// filed in firstmate's work queue as well, so the sequencing does not rest on this paragraph.
 protocol AnalyticsServiceProtocol {
     func record(_ event: AnalyticsEvent) async
+    /// Gives a durable live sink a bounded recovery opportunity on foreground/relaunch. Mocks and
+    /// inert sinks use the default no-op.
+    func resumePendingDelivery() async
+    /// Reconciles/cancels pending work after `AppState` persists a consent change. The live sink
+    /// re-reads the authoritative gate and generation; the argument is deliberately not duplicated.
+    func analyticsConsentDidChange() async
+}
+
+extension AnalyticsServiceProtocol {
+    func resumePendingDelivery() async {}
+    func analyticsConsentDidChange() async {}
 }
 
 /// Handles Sign in with Apple identity.

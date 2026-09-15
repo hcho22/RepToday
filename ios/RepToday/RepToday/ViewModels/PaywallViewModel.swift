@@ -43,8 +43,8 @@ final class PaywallViewModel {
 
     /// Anonymous product telemetry sink (US-T12). Optional exactly like `ReadyViewModel.analytics`,
     /// defaulted `nil`, so previews and the unit suite inject a mock (or nothing) while production
-    /// threads `services.analyticsService` in. Emission is strictly fire-and-forget and never gates
-    /// the paywall, the purchase, or dismissal.
+    /// threads `services.analyticsService` in. Emission performs only a bounded local hand-off and
+    /// never awaits network delivery or gates the paywall, purchase, or dismissal.
     private let analytics: (any AnalyticsServiceProtocol)?
 
     /// Where this paywall was opened from - the closed `entry_point` the `paywall_shown` event
@@ -77,8 +77,8 @@ final class PaywallViewModel {
     func load() async {
         // US-T12: `paywall_shown` fires once per paywall presentation, on the first `load()`,
         // carrying `entry_point`. Guarded like `ReadyViewModel`'s one-shots so a re-appear cannot
-        // re-emit and inflate the funnel base. Fire-and-forget: it returns immediately and swallows
-        // any failure, so telemetry never gates the plans loading or the purchase.
+        // re-emit and inflate the funnel base. The sink swallows local/network failures and does not
+        // await delivery here, so telemetry never gates plans loading or the purchase.
         if !hasEmittedPaywallShown {
             hasEmittedPaywallShown = true
             await analytics?.record(
