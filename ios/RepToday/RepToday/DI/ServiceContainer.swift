@@ -323,7 +323,9 @@ struct ServiceContainer {
             healthKitService: healthKitService,
             // Real StoreKit 2 subscriptions and paywall (US-N04): entitlement drives the US-M02 depth
             // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
-            subscriptionService: StoreKitSubscriptionService.live(),
+            // The same resolved, consent-gated telemetry service is injected into its lifetime
+            // transaction observer for the verified trial-to-paid `subscribe` boundary.
+            subscriptionService: StoreKitSubscriptionService.live(analytics: resolvedAnalyticsService),
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: authService,
             // The same telemetry sink resolved above (`resolvedAnalyticsService`), so the container and

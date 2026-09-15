@@ -1,6 +1,110 @@
 import Foundation
 import StoreKit
 
+private actor StoreTransactionAcknowledgementOwner {
+    private enum WaitResolution: Equatable {
+        case completed
+        case cancelled
+    }
+
+    private struct Acknowledgement {
+        let task: Task<Void, Never>
+        var waiter: CheckedContinuation<WaitResolution, Never>?
+    }
+
+    private var nextID: UInt64 = 0
+    private var acknowledgements: [UInt64: Acknowledgement] = [:]
+
+    func start(_ operation: @escaping @Sendable () async -> Void) -> UInt64 {
+        nextID &+= 1
+        let id = nextID
+        let task = Task.detached(priority: .background) { [self] in
+            await operation()
+            await complete(id)
+        }
+        acknowledgements[id] = Acknowledgement(task: task, waiter: nil)
+        return id
+    }
+
+    func wait(for id: UInt64) async -> Bool {
+        let resolution = await withTaskCancellationHandler {
+            await withCheckedContinuation {
+                (continuation: CheckedContinuation<WaitResolution, Never>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: .cancelled)
+                    return
+                }
+                guard var acknowledgement = acknowledgements[id] else {
+                    continuation.resume(returning: .completed)
+                    return
+                }
+                acknowledgement.waiter = continuation
+                acknowledgements[id] = acknowledgement
+            }
+        } onCancel: {
+            Task { await self.cancelWait(for: id) }
+        }
+        return resolution == .completed
+    }
+
+    private func complete(_ id: UInt64) {
+        let waiter = acknowledgements.removeValue(forKey: id)?.waiter
+        waiter?.resume(returning: .completed)
+    }
+
+    private func cancelWait(for id: UInt64) {
+        guard var acknowledgement = acknowledgements[id],
+              let waiter = acknowledgement.waiter else { return }
+        acknowledgement.waiter = nil
+        acknowledgements[id] = acknowledgement
+        waiter.resume(returning: .cancelled)
+    }
+}
+
+private actor StoreTransactionProcessingQueue {
+    private var pending: [StoreTransactionProcessing] = []
+    private var nextWaiter: CheckedContinuation<StoreTransactionProcessing?, Never>?
+    private var acceptsWork = true
+
+    func enqueue(_ processing: StoreTransactionProcessing) -> Bool {
+        guard acceptsWork else { return false }
+        if let nextWaiter {
+            self.nextWaiter = nil
+            nextWaiter.resume(returning: processing)
+        } else {
+            pending.append(processing)
+        }
+        return true
+    }
+
+    func next() async -> StoreTransactionProcessing? {
+        if !pending.isEmpty {
+            return pending.removeFirst()
+        }
+        guard acceptsWork else { return nil }
+        return await withCheckedContinuation { nextWaiter = $0 }
+    }
+
+    func finish() {
+        acceptsWork = false
+        let nextWaiter = self.nextWaiter
+        self.nextWaiter = nil
+        nextWaiter?.resume(returning: nil)
+    }
+
+    func cancel() async {
+        acceptsWork = false
+        let abandoned = pending
+        pending = []
+        let nextWaiter = self.nextWaiter
+        self.nextWaiter = nil
+        for processing in abandoned {
+            await processing.dispose()
+        }
+        nextWaiter?.resume(returning: nil)
+    }
+}
+
 /// Production `StoreKitFacade`: drives the real StoreKit 2 API and projects its types into the plain
 /// values the service maps. Stateless and `Sendable`.
 ///
@@ -78,15 +182,116 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
-    func listenForTransactions() -> Task<Void, Never> {
+    func transactionHistory() async -> StoreTransactionHistory {
+        var result: [StoreSubscriptionTransaction] = []
+        var containsUnverifiedTransactions = false
+        for await verification in Transaction.all {
+            switch verification {
+            case .verified(let transaction):
+                result.append(Self.subscriptionTransaction(from: transaction))
+            case .unverified:
+                containsUnverifiedTransactions = true
+            }
+        }
+        return StoreTransactionHistory(
+            transactions: result,
+            containsUnverifiedTransactions: containsUnverifiedTransactions
+        )
+    }
+
+    func listenForTransactions(
+        prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
+    ) -> Task<Void, Never> {
         // StoreKit 2 delivers transactions that happen outside a direct `purchase()` - auto-renewals,
         // refunds, cross-device purchases, and deferred Ask-to-Buy approvals - only through
-        // `Transaction.updates`. Finish each verified update so it is acknowledged and never lingers
-        // unfinished; the entitlement-gated surfaces re-read `currentEntitlements()` on their next open.
-        Task.detached {
-            for await verification in Transaction.updates {
-                guard case .verified(let transaction) = verification else { continue }
-                await transaction.finish()
+        // `Transaction.updates`. Project every result and let the service capture its delivery order,
+        // then finish every verified update before queueing its inspection: analytics can never delay
+        // transaction acknowledgement. The task remains the app-owned lifetime handle; cancelling it
+        // stops the sequence and its owned processing worker.
+        Task.detached(priority: .background) {
+            await Self.processUpdates(
+                Transaction.updates,
+                project: { verification in
+                    guard case .verified(let transaction) = verification else {
+                        return .unverified
+                    }
+                    return StoreTransactionUpdate.verified(
+                        Self.subscriptionTransaction(from: transaction)
+                    )
+                },
+                acknowledge: { verification in
+                    guard case .verified(let transaction) = verification else { return }
+                    await transaction.finish()
+                },
+                prepareUpdate: prepareUpdate
+            )
+        }
+    }
+
+    static func processUpdates<Updates: AsyncSequence>(
+        _ updates: Updates,
+        project: (Updates.Element) -> StoreTransactionUpdate,
+        acknowledge: @escaping @Sendable (Updates.Element) async -> Void,
+        prepareUpdate: @escaping @Sendable (StoreTransactionUpdate) async -> StoreTransactionProcessing?
+    ) async where Updates.Element: Sendable {
+        let acknowledgementOwner = StoreTransactionAcknowledgementOwner()
+        let processingQueue = StoreTransactionProcessingQueue()
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await withTaskCancellationHandler {
+                    while let processing = await processingQueue.next() {
+                        guard !Task.isCancelled else {
+                            await processing.dispose()
+                            await processingQueue.cancel()
+                            return
+                        }
+                        await withTaskCancellationHandler {
+                            await processing()
+                        } onCancel: {
+                            Task { await processing.dispose() }
+                        }
+                        if Task.isCancelled {
+                            await processing.dispose()
+                            await processingQueue.cancel()
+                            return
+                        }
+                    }
+                } onCancel: {
+                    Task { await processingQueue.cancel() }
+                }
+            }
+
+            do {
+                for try await element in updates {
+                    guard !Task.isCancelled else { break }
+                    let update = project(element)
+                    let processing = await prepareUpdate(update)
+                    let acknowledgement = await acknowledgementOwner.start {
+                        await acknowledge(element)
+                    }
+                    let didAcknowledge = await acknowledgementOwner.wait(for: acknowledgement)
+                    guard didAcknowledge, !Task.isCancelled else {
+                        await processing?.dispose()
+                        break
+                    }
+                    if let processing,
+                       !(await processingQueue.enqueue(processing)) {
+                        await processing.dispose()
+                    }
+                }
+            } catch {
+                if Task.isCancelled {
+                    await processingQueue.cancel()
+                } else {
+                    await processingQueue.finish()
+                }
+                return
+            }
+            if Task.isCancelled {
+                await processingQueue.cancel()
+            } else {
+                await processingQueue.finish()
             }
         }
     }
@@ -105,6 +310,30 @@ final class LiveStoreKitFacade: StoreKitFacade {
             productID: transaction.productID,
             expiresAt: transaction.expirationDate,
             isInTrialPeriod: isInTrial(transaction)
+        )
+    }
+
+    private static func subscriptionTransaction(from transaction: Transaction) -> StoreSubscriptionTransaction {
+        let reason: StoreSubscriptionTransaction.Reason
+        if transaction.reason == .purchase {
+            reason = .purchase
+        } else if transaction.reason == .renewal {
+            reason = .renewal
+        } else {
+            reason = .other
+        }
+
+        return StoreSubscriptionTransaction(
+            id: transaction.id,
+            originalID: transaction.originalID,
+            productID: transaction.productID,
+            purchaseDate: transaction.purchaseDate,
+            reason: reason,
+            payment: payment(for: transaction),
+            isAutoRenewable: transaction.productType == .autoRenewable,
+            isPurchased: transaction.ownershipType == .purchased,
+            isRevoked: transaction.revocationDate != nil,
+            isUpgraded: transaction.isUpgraded
         )
     }
 
@@ -151,12 +380,32 @@ final class LiveStoreKitFacade: StoreKitFacade {
         }
     }
 
-    /// Whether a transaction is currently inside its introductory free-trial window.
+    /// Whether a transaction is an introductory **free-trial** period. Introductory pay-as-you-go
+    /// and pay-up-front offers are paid periods and must not emit `trial_started` or seed a later
+    /// trial-conversion event.
     private static func isInTrial(_ transaction: Transaction) -> Bool {
+        payment(for: transaction) == .introductoryFreeTrial
+    }
+
+    private static func payment(for transaction: Transaction) -> StoreSubscriptionTransaction.Payment {
         if #available(iOS 17.2, *) {
-            return transaction.offer?.type == .introductory
+            if transaction.offer?.type == .introductory,
+               transaction.offer?.paymentMode == .freeTrial {
+                return .introductoryFreeTrial
+            }
         } else {
-            return transaction.offerType == .introductory
+            // `Transaction.Offer` arrived in iOS 17.2. On 17.0/17.1 the deprecated offer API exposes
+            // the introductory type but not a typed payment mode; StoreKit's signed price separates a
+            // genuinely free period (zero) from pay-as-you-go/pay-up-front introductory offers.
+            if transaction.offerType == .introductory, transaction.price == 0 {
+                return .introductoryFreeTrial
+            }
         }
+
+        if let price = transaction.price {
+            if price > 0 { return .paid }
+            if price == 0 { return .nonPaid }
+        }
+        return .unknown
     }
 }

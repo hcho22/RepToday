@@ -167,14 +167,11 @@ final class PaywallViewModel {
     ///   properties, per the schema).
     /// - A **direct paid** subscription (no trial) emits `subscribe` carrying `plan`.
     ///
-    /// The schema defines `subscribe` as "paid subscription starts (trial converts or direct)", so a
-    /// trial that *later converts* to paid should also emit `subscribe` at conversion. That
-    /// conversion leg is **not** wired here: the only signal of a trial converting is an out-of-band
-    /// StoreKit transaction update, which `LiveStoreKitFacade.listenForTransactions()` consumes
-    /// internally to refresh the entitlement but does not surface to any emission-capable seam. Wiring
-    /// it would require new conversion-tracking machinery (a listener callback carrying the converting
-    /// transaction to a sink, plus dedup), which US-T12 explicitly scopes out. Recorded in the PRD's
-    /// US-T12 note; the direct-purchase and trial-start legs below are fully covered.
+    /// The schema defines `subscribe` as "paid subscription starts (trial converts or direct)". This
+    /// call site owns the direct-purchase half. The later trial-to-paid half is deliberately separate:
+    /// `TrialConversionObserver` receives verified StoreKit transaction updates and emits only for the
+    /// first positive-price renewal of an introductory-free-trial chain. Keeping the sites distinct is
+    /// what prevents the initial trial transaction from emitting both events.
     private func emitPurchaseTelemetry(for subscription: Subscription, plan: SubscriptionPlan) async {
         guard let analytics else { return }
         if subscription.trialEndsAt != nil {
