@@ -21,10 +21,11 @@ xcodebuild \
 The tests use an isolated `UserDefaults` suite and `MockAnalyticsService`; they send no telemetry.
 They cover the qualifying conversion, canonical `plan`, exact StoreKit purchase timestamp, direct
 purchase, initial trial, repeat delivery, later paid renewal, ordinary paid chain, pending purchase,
-current-entitlement and restore reads, terminal-history revalidation on successful and failed restore,
-an independent pre-restore capture redelivered during restore, unverified/revoked updates and history,
-a known-zero promotional period, overlapping restores, relaunch dedup, partial legacy-metadata
-migration, and the bounded 32-id replacement rule.
+current-entitlement and restore reads, terminal-history revalidation of initially unproven and in-flight
+candidates on successful and failed restore, an independent pre-restore capture redelivered during
+restore, unverified/revoked updates and history, unknown payment under renewal and other StoreKit
+reasons, a known-zero promotional period, overlapping restores, relaunch dedup, stable partial
+legacy-metadata migration, and the bounded 32-id replacement rule.
 
 ## Local StoreKit Configuration recipe
 
@@ -70,7 +71,7 @@ nonpaid and therefore does not block a later first positive-price renewal.
 Deduplication persists qualifying conversion transaction ids as decimal strings plus their signed
 purchase timestamps solely as bounded ordering metadata—never a receipt, product, price, or transaction
 history. It retains the newest 32 and replaces the oldest on the 33rd distinct conversion. Legacy
-id-only state preserves its existing relative order during partial timestamp migration; chronological
-ordering resumes only once every retained id has a comparable signed timestamp. This makes ordinary
-StoreKit redelivery and relaunch at-most-once while an id remains inside the documented bound; it is not
-a claim of server-side exactly-once delivery.
+id-only state keeps undated ids in their durable relative positions during partial timestamp migration,
+while ids with signed timestamps are ordered within their comparable positions for eviction; fully
+dated state is chronological. This makes ordinary StoreKit redelivery and relaunch at-most-once while
+an id remains inside the documented bound; it is not a claim of server-side exactly-once delivery.

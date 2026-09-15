@@ -216,6 +216,12 @@ actor TrialConversionObserver {
         case failed
     }
 
+    private struct CompletedRestore {
+        let outcome: RestoreOutcome
+        let history: StoreTransactionHistory
+        let independentTransactionIDs: Set<UInt64>
+    }
+
     private let productIDs: Set<String>
     private let analytics: (any AnalyticsServiceProtocol)?
     private let userDefaults: UserDefaults
@@ -223,9 +229,9 @@ actor TrialConversionObserver {
     private var nextRestoreEpoch: UInt64 = 0
     private var activeRestoreEpoch: UInt64?
     private var inFlightObservations: [UInt64: TransactionObservation] = [:]
-    private var restoreOutcomes: [UInt64: RestoreOutcome] = [:]
+    private var completedRestores: [UInt64: CompletedRestore] = [:]
     private var deferredRestoreBaselines: [UInt64: StoreSubscriptionTransaction] = [:]
-    private var conversionsPendingDuringRestore: [StoreSubscriptionTransaction] = []
+    private var restoreCandidates: [StoreSubscriptionTransaction] = []
     private var retainedPurchaseDates: [String: Date]
 
     init(
@@ -250,6 +256,10 @@ actor TrialConversionObserver {
             restoreEpoch: activeRestoreEpoch
         )
         inFlightObservations[observation.sequence] = observation
+        if observation.restoreEpoch != nil,
+           !restoreCandidates.contains(where: { $0.id == transaction.id }) {
+            restoreCandidates.append(transaction)
+        }
         return observation
     }
 
@@ -277,49 +287,53 @@ actor TrialConversionObserver {
         guard let analytics else { return }
 
         let transaction = observation.transaction
-        let qualifies = Self.isQualifyingConversion(
-            transaction,
-            history: history,
-            productIDs: productIDs
-        )
         let deliveredIntoActiveRestore = observation.restoreEpoch == activeRestoreEpoch
             && activeRestoreEpoch != nil
-        let completedRestoreOutcome = observation.restoreEpoch.flatMap { restoreOutcomes[$0] }
-        let deferredBaseline = deferredRestoreBaselines.removeValue(forKey: transaction.id)
-        discardRestoreOutcomeIfFinished(observation.restoreEpoch)
+        if deliveredIntoActiveRestore {
+            rememberPurchaseDates(
+                from: history.transactions,
+                for: Set(emittedTransactionIDs)
+            )
+            return
+        }
+
+        let completedRestore = observation.restoreEpoch.flatMap { completedRestores[$0] }
+        let yieldsToIndependentObservation = completedRestore?.independentTransactionIDs
+            .contains(transaction.id) == true
+        let classificationHistory = completedRestore?.history ?? history
+        let qualifies = Self.isQualifyingConversion(
+            transaction,
+            history: classificationHistory,
+            productIDs: productIDs
+        )
+        let deferredBaseline = yieldsToIndependentObservation
+            ? nil
+            : deferredRestoreBaselines.removeValue(forKey: transaction.id)
+        discardCompletedRestoreIfFinished(observation.restoreEpoch)
+
+        guard !yieldsToIndependentObservation else { return }
 
         guard qualifies else {
             if let deferredBaseline {
                 retainAsEmitted(
                     [deferredBaseline],
-                    referenceTransactions: history.transactions
+                    referenceTransactions: classificationHistory.transactions
                 )
             }
             return
         }
 
-        if deliveredIntoActiveRestore {
-            // `AppStore.sync()` can redeliver historical transactions. Hold a qualifying update until
-            // the restore outcome is known: successful restore baselines it without telemetry; failed
-            // restore releases it through the ordinary live-update path.
-            rememberPurchaseDates(
-                from: history.transactions,
-                for: Set(emittedTransactionIDs)
+        if completedRestore?.outcome == .succeeded {
+            retainAsEmitted(
+                [transaction],
+                referenceTransactions: classificationHistory.transactions
             )
-            if !conversionsPendingDuringRestore.contains(where: { $0.id == transaction.id }) {
-                conversionsPendingDuringRestore.append(transaction)
-            }
-            return
-        }
-
-        if completedRestoreOutcome == .succeeded {
-            retainAsEmitted([transaction], referenceTransactions: history.transactions)
             return
         }
 
         await emitIfNeeded(
             [transaction],
-            referenceTransactions: history.transactions,
+            referenceTransactions: classificationHistory.transactions,
             analytics: analytics
         )
     }
@@ -327,7 +341,7 @@ actor TrialConversionObserver {
     func beginRestore() {
         nextRestoreEpoch &+= 1
         activeRestoreEpoch = nextRestoreEpoch
-        conversionsPendingDuringRestore = []
+        restoreCandidates = []
     }
 
     func completeRestore(history: [StoreSubscriptionTransaction]) {
@@ -354,7 +368,12 @@ actor TrialConversionObserver {
             conversionsToBaseline + finalization.pendingTransactions,
             referenceTransactions: history.transactions + finalization.pendingTransactions
         )
-        concludeRestore(restoreEpoch, outcome: .succeeded)
+        concludeRestore(
+            restoreEpoch,
+            outcome: .succeeded,
+            history: history,
+            independentTransactionIDs: finalization.independentTransactionIDs
+        )
     }
 
     func failRestore(history: StoreTransactionHistory) async {
@@ -363,7 +382,12 @@ actor TrialConversionObserver {
             restoreEpoch: restoreEpoch,
             history: history
         )
-        concludeRestore(restoreEpoch, outcome: .failed)
+        concludeRestore(
+            restoreEpoch,
+            outcome: .failed,
+            history: history,
+            independentTransactionIDs: finalization.independentTransactionIDs
+        )
 
         guard let analytics else { return }
         await emitIfNeeded(
@@ -385,8 +409,14 @@ actor TrialConversionObserver {
                 $0.restoreEpoch == restoreEpoch ? nil : $0.transaction.id
             }
         )
-        let pendingTransactions = conversionsPendingDuringRestore.filter {
+        let inFlightRestoreTransactionIDs = Set(
+            inFlightObservations.values.compactMap {
+                $0.restoreEpoch == restoreEpoch ? $0.transaction.id : nil
+            }
+        )
+        let pendingTransactions = restoreCandidates.filter {
             !independentTransactionIDs.contains($0.id)
+                && !inFlightRestoreTransactionIDs.contains($0.id)
                 && Self.isQualifyingConversion($0, history: history, productIDs: productIDs)
         }
         return (independentTransactionIDs, pendingTransactions)
@@ -419,20 +449,29 @@ actor TrialConversionObserver {
         }
     }
 
-    private func concludeRestore(_ restoreEpoch: UInt64, outcome: RestoreOutcome) {
+    private func concludeRestore(
+        _ restoreEpoch: UInt64,
+        outcome: RestoreOutcome,
+        history: StoreTransactionHistory,
+        independentTransactionIDs: Set<UInt64>
+    ) {
         activeRestoreEpoch = nil
-        conversionsPendingDuringRestore = []
+        restoreCandidates = []
         if inFlightObservations.values.contains(where: { $0.restoreEpoch == restoreEpoch }) {
-            restoreOutcomes[restoreEpoch] = outcome
+            completedRestores[restoreEpoch] = CompletedRestore(
+                outcome: outcome,
+                history: history,
+                independentTransactionIDs: independentTransactionIDs
+            )
         } else {
-            restoreOutcomes.removeValue(forKey: restoreEpoch)
+            completedRestores.removeValue(forKey: restoreEpoch)
         }
     }
 
-    private func discardRestoreOutcomeIfFinished(_ restoreEpoch: UInt64?) {
+    private func discardCompletedRestoreIfFinished(_ restoreEpoch: UInt64?) {
         guard let restoreEpoch else { return }
         guard !inFlightObservations.values.contains(where: { $0.restoreEpoch == restoreEpoch }) else { return }
-        restoreOutcomes.removeValue(forKey: restoreEpoch)
+        completedRestores.removeValue(forKey: restoreEpoch)
     }
 
     private var emittedTransactionIDs: [String] {
@@ -459,16 +498,24 @@ actor TrialConversionObserver {
             for: candidateIDSet
         )
 
-        if candidateIDs.allSatisfy({ retainedPurchaseDates[$0] != nil }) {
-            candidateIDs.sort {
-                let lhsDate = retainedPurchaseDates[$0] ?? .distantPast
-                let rhsDate = retainedPurchaseDates[$1] ?? .distantPast
-                if lhsDate != rhsDate { return lhsDate < rhsDate }
-                return Self.transactionID($0, sortsBefore: $1)
-            }
+        var retentionOrder = candidateIDs
+        let datedIDs = retentionOrder.filter { retainedPurchaseDates[$0] != nil }.sorted {
+            let lhsDate = retainedPurchaseDates[$0] ?? .distantPast
+            let rhsDate = retainedPurchaseDates[$1] ?? .distantPast
+            if lhsDate != rhsDate { return lhsDate < rhsDate }
+            return Self.transactionID($0, sortsBefore: $1)
+        }
+        var datedIndex = 0
+        for index in retentionOrder.indices where retainedPurchaseDates[retentionOrder[index]] != nil {
+            retentionOrder[index] = datedIDs[datedIndex]
+            datedIndex += 1
         }
 
-        let retainedIDs = Array(candidateIDs.suffix(Self.retentionLimit))
+        let selectedIDs = Array(retentionOrder.suffix(Self.retentionLimit))
+        let selectedIDSet = Set(selectedIDs)
+        let retainedIDs = candidateIDs.allSatisfy { retainedPurchaseDates[$0] != nil }
+            ? selectedIDs
+            : candidateIDs.filter { selectedIDSet.contains($0) }
         let retainedIDSet = Set(retainedIDs)
         retainedPurchaseDates = retainedPurchaseDates.filter { retainedIDSet.contains($0.key) }
         userDefaults.set(
@@ -570,7 +617,6 @@ actor TrialConversionObserver {
         let possiblePaidBoundaryTransactions = chain.filter {
             if $0.payment == .paid { return true }
             return $0.payment == .unknown
-                && ($0.reason == .purchase || $0.reason == .renewal)
         }
         let firstPossiblePaidBoundaryTransaction = possiblePaidBoundaryTransactions.min {
             if $0.purchaseDate != $1.purchaseDate { return $0.purchaseDate < $1.purchaseDate }
