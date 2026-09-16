@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 // Non-secret in-memory doubles only. No NativeCoachCredentialReader is constructed here.
 final class DoubleReader: CoachCredentialReader {
@@ -28,6 +29,36 @@ final class DoubleCoordinator: CoachDeploymentCoordinator {
     }
 }
 
+// Model an authorization read that needs a visible owner and a main-queue callback.
+// This never constructs an LAContext, calls Security.framework, or accesses Keychain.
+private final class PresentationObservation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var presented = false
+    func record(_ value: Bool) { lock.lock(); presented = value; lock.unlock() }
+    func value() -> Bool { lock.lock(); defer { lock.unlock() }; return presented }
+}
+
+private struct PresentationRequiredReader: CoachCredentialReader {
+    func read(_ item: CoachCredential) throws -> Data {
+        guard !Thread.isMainThread else { throw CoachDeployFailure.retrieval }
+        let observation = PresentationObservation()
+        let callback = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async {
+            let app = NSApplication.shared
+            let visible = app.activationPolicy() == .accessory && app.windows.contains {
+                $0.identifier == NSUserInterfaceItemIdentifier("RepTodayCoachKeychainAccess") && $0.isVisible
+            }
+            observation.record(visible)
+            callback.signal()
+        }
+        guard callback.wait(timeout: .now() + 3) == .success && observation.value() else {
+            throw CoachDeployFailure.retrieval
+        }
+        guard item == .wafToken else { throw CoachDeployFailure.retrieval }
+        return Data("NONSECRET_WAF_TEST_DOUBLE_1234567890".utf8)
+    }
+}
+
 @main
 struct CoachDeploymentTests {
     static func main() throws {
@@ -35,6 +66,33 @@ struct CoachDeploymentTests {
         let result = try deployCoach(reader: reader, coordinator: coordinator)
         precondition(result == "non-secret double completed")
         precondition(reader.reads == CoachCredential.allCases && coordinator.calls == 1)
+        // The Foundation-only call pattern cannot satisfy the modeled presentation requirement.
+        let directCoordinator = DoubleCoordinator()
+        directCoordinator.expected = [.wafToken]
+        do {
+            _ = try deployCoach(reader: PresentationRequiredReader(), coordinator: directCoordinator, operation: .inspect)
+            preconditionFailure("direct main-thread read must fail the presentation counterfactual")
+        } catch CoachDeployFailure.retrieval {}
+        precondition(directCoordinator.calls == 0)
+        // Change only presentation: a real AppKit modal is visible, its main loop services the
+        // callback, the delegated read runs off-main, and only the non-secret WAF double is used.
+        let presentedCoordinator = DoubleCoordinator()
+        presentedCoordinator.expected = [.wafToken]
+        _ = try deployCoach(reader: AppKitCoachCredentialReader(reader: PresentationRequiredReader()),
+            coordinator: presentedCoordinator, operation: .inspect)
+        precondition(presentedCoordinator.calls == 1)
+        precondition(!NSApplication.shared.windows.contains {
+            $0.identifier == NSUserInterfaceItemIdentifier("RepTodayCoachKeychainAccess") && $0.isVisible
+        })
+        let failedReader = DoubleReader(), failedCoordinator = DoubleCoordinator()
+        failedReader.failAt = .wafToken
+        failedCoordinator.expected = [.wafToken]
+        do {
+            _ = try deployCoach(reader: AppKitCoachCredentialReader(reader: failedReader),
+                coordinator: failedCoordinator, operation: .inspect)
+            preconditionFailure("presented read failure must still stop before the coordinator")
+        } catch CoachDeployFailure.retrieval {}
+        precondition(failedCoordinator.calls == 0 && failedReader.reads == [.wafToken])
         let inspectReader = DoubleReader(), inspectCoordinator = DoubleCoordinator()
         inspectReader.failAt = .openAI
         inspectCoordinator.expected = [.wafToken]

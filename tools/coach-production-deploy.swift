@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Security
 import LocalAuthentication
 
@@ -49,6 +50,74 @@ struct NativeCoachCredentialReader: CoachCredentialReader {
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let bytes = result as? Data else { throw CoachDeployFailure.retrieval }
         return bytes
+    }
+}
+
+// Only presentation changes here: the existing Security query and LAContext policy are untouched.
+// Security.framework blocks its caller. Keep AppKit's event loop alive while that call runs.
+private final class PresentedReadWork: @unchecked Sendable {
+    private let reader: CoachCredentialReader
+    private let item: CoachCredential
+    private let lock = NSLock()
+    private var result: Result<Data, Error>?
+
+    init(reader: CoachCredentialReader, item: CoachCredential) {
+        self.reader = reader
+        self.item = item
+    }
+
+    func execute() {
+        let value = Result { try reader.read(item) }
+        lock.lock()
+        result = value
+        lock.unlock()
+    }
+
+    func take() throws -> Data {
+        lock.lock()
+        let value = result
+        result = nil
+        lock.unlock()
+        guard let value else { throw CoachDeployFailure.retrieval }
+        return try value.get()
+    }
+}
+
+struct AppKitCoachCredentialReader: CoachCredentialReader {
+    let reader: CoachCredentialReader
+
+    func read(_ item: CoachCredential) throws -> Data {
+        guard Thread.isMainThread else { throw CoachDeployFailure.retrieval }
+        return try MainActor.assumeIsolated {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+            let panel = NSAlert()
+            panel.messageText = "Rep Today Keychain access"
+            let label: String
+            switch item {
+            case .openAI: label = "OpenAI API key"
+            case .clientGate: label = "client gate"
+            case .wafToken: label = "zone-WAF token"
+            }
+            panel.informativeText = "Reading the existing \(label) from this Mac's Keychain. Authorize the macOS prompt for this dedicated helper if it appears."
+            panel.addButton(withTitle: "Cancel")
+            // This is an informational owner window, with no credential or re-entry field.
+            panel.window.identifier = NSUserInterfaceItemIdentifier("RepTodayCoachKeychainAccess")
+            panel.window.level = .normal
+            app.activate(ignoringOtherApps: true)
+            let work = PresentedReadWork(reader: reader, item: item)
+            // Start after runModal has presented its window and entered the UI event loop.
+            DispatchQueue.main.async {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    work.execute()
+                    DispatchQueue.main.async { NSApplication.shared.abortModal() }
+                }
+            }
+            let response = panel.runModal()
+            panel.window.orderOut(nil)
+            guard response == .abort else { throw CoachDeployFailure.retrieval }
+            return try work.take()
+        }
     }
 }
 
@@ -185,7 +254,7 @@ struct CoachProductionDeploy {
             exit(64)
         }
         do {
-            let result = try deployCoach(reader: NativeCoachCredentialReader(), coordinator: LocalNodeCoordinator(
+            let result = try deployCoach(reader: AppKitCoachCredentialReader(reader: NativeCoachCredentialReader()), coordinator: LocalNodeCoordinator(
                 repository: URL(fileURLWithPath: args[1], isDirectory: true), node: URL(fileURLWithPath: args[2]), operation: operation
             ), operation: operation)
             print(result)

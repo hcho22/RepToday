@@ -371,6 +371,24 @@ It never prints ruleset bodies, account/zone/rule identifiers, tokens or arbitra
 If the recompiled dedicated executable needs native Keychain access, the captain authorizes its
 local prompt; never grant broad CLI access or supply the token in a shell command.
 
+The original inspector triggered synchronous Security.framework retrieval from a Foundation-only
+process on the main thread. Firstmate observed a wait of over four minutes with no usable prompt,
+then interrupted it before the coordinator started. Missing foreground AppKit presentation and
+an unavailable UI event loop are the presentation hypotheses; ACL/session restrictions remain
+an alternative until a real local retry succeeds. Apple's
+[Keychain retrieval guidance](https://developer.apple.com/documentation/security/secitemcopymatching%28_%3A_%3A%29)
+recommends running the blocking API away from the main thread.
+
+The dedicated reader now activates an accessory AppKit application and shows an informational
+Keychain-access panel while delegating the unchanged Security query to a background queue.
+Its modal event loop stays responsive; the panel has only Cancel and no credential input.
+Cancellation or retrieval failure stops before the coordinator. No ACL, LAContext policy,
+credential, intake flow or Cloudflare operation changed. The native non-secret counterfactual
+rejects the direct main-thread call, then confirms a visible owner window and serviced main-queue
+callback through the presentation wrapper. This proves the local presentation mechanism, not
+system-prompt visibility, real Keychain access or any Cloudflare observation. Retry only the
+GET-only command above locally, keeping deployment disabled during diagnosis.
+
 The initial agent inspection attempt waited at native retrieval and was stopped before the
 local coordinator started. It produced no Cloudflare observations. The 31 offline tests and
 native tests establish the inspection boundary, not the live ruleset state or the cause of the
