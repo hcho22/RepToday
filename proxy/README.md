@@ -238,7 +238,7 @@ rotation requires a separate coordinated operation. Do not use a Keychain CLI th
 in command arguments or grants every app access.
 
 Secure intake is a prerequisite, not deployment evidence. Before provisioning these credentials
-via Wrangler stdin, confirm the authenticated account and the explicit Worker target
+through the dedicated deployment helper, confirm the authenticated account and the explicit Worker target
 `reptoday-variety-language-proxy`, and establish the rate-limit/WAF protection described above.
 Keep provider keys solely on the Worker. A client gate embedded in an iOS binary is extractable
 and only deters opportunistic abuse; it does not verify premium entitlement. Decide that production
@@ -277,12 +277,72 @@ are preserved rather than silently replaced. Never put the token in chat, comman
 environment, source, logs, or status. Subsequent API operations must retrieve it through the
 approved local Keychain mechanism into process memory and suppress credential-bearing output.
 
-If macOS prompts for Keychain read access, Firstmate can run
-`python3 tools/check-coach-keychain-access.py` locally while the captain authorizes the native
-Keychain prompts for `/usr/bin/security` on these three items. This check captures all password
-output in process memory and emits only readiness. Never run `security ... -w` directly in a
-terminal, record the prompts, or grant all applications access. A metadata-only readiness check
-does not prove password retrieval is permitted.
+The older `tools/check-coach-keychain-access.py` check captures CLI password output, but timed out
+waiting for local access. The approved deployment path now uses a dedicated native reader instead.
+Never run `security ... -w` directly in a terminal, record the prompts, or grant all applications
+access. A metadata-only readiness check does not prove password retrieval is permitted.
+
+### Dedicated production deployment helper (awaiting rate-limit scope decision)
+
+`tools/deploy-coach-production.sh` builds the dedicated `tools/coach-production-deploy.swift`
+Security.framework reader in ignored `build/coach-production-deploy/`. It can retrieve only the
+three existing items above, and has no Keychain creation, replacement or rotation interface.
+The captain may authorize the native prompt for this dedicated executable locally; no broad
+permission for `/usr/bin/security` is required. Credential values travel only through an anonymous
+pipe to the local `tools/coach-production-deploy.mjs` coordinator, never through argv, environment,
+temporary secret files, terminal output, Wrangler diagnostics or status. The WAF token is used
+only for the confirmed product zone's Rulesets API; only the provider key and gate can be
+provisioned as missing secret bindings on the exact approved Worker. Existing remote bindings
+are preserved, so this helper is not a rotation tool.
+
+Before any mutation, the coordinator requires exactly one authenticated account, its active
+`reptoday.app` zone, and rate-limit support for the exact approved hostname. **The inspected zone
+is Free, and the helper currently stops with `rate-plan` before any production mutation.** Free
+rate rules support Path/Verified Bot, not Host; Pro or higher permits Host. The captain must
+resolve whether to authorize an existing-zone plan change or a different abuse-control scope.
+The helper never buys a plan or silently applies a path-only rule to every hostname in the zone.
+See Cloudflare's [rate-limit plan availability](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability).
+The existing Wrangler OAuth must also have at least 20 minutes remaining; missing, expiring or
+overridden authentication stops with `auth`. The helper does not refresh or rewrite the shared
+authentication store, and rechecks it before Wrangler starts.
+
+Once that decision is resolved and the helper reviewed, the exact local Firstmate launch is:
+
+```bash
+./tools/deploy-coach-production.sh
+```
+
+Run it in this clean, committed task worktree on `fm/reptoday-ai-coach-proxy-live-qa`. Supply no
+credentials as arguments. Launching under the current Free plan will stop safely, not deploy.
+The native reader never relays arbitrary coordinator stdout/stderr, API responses or exceptions.
+
+With hostname-scoped rate limiting available, the reviewed flow first enables a hostname-wide
+deployment-hold WAF block, appends an exact-path boundary and a 10-requests/10-seconds IP/location
+rate rule with a 10-second block, and verifies their configuration. It preserves unrelated rules
+and refuses skip rules, unexpected logging, occupied rate-rule capacity or conflicting owned
+rules. It stages the current source with supported `wrangler deploy`, `workers_dev = false`,
+`preview_urls = false`, no routes, no persistence and observability/Logpush disabled. Wrangler
+stdout/stderr are discarded; its debug-log destination is an ignored symlink to `/dev/null`.
+Only after confirming closed development URLs and safe settings does it provision missing
+server bindings. Custom-domain attachment uses the Cloudflare changeset/records API with both
+DNS/origin override flags false, avoiding Wrangler's automatic non-interactive conflict override.
+
+The hold is released only after rechecking bindings, settings, route ownership and WAF rules.
+Three bounded malformed-JSON probes check missing/wrong/correct authorization without a model
+call; any probe failure re-enables the hold. Earlier failures retain the hold. Inspect only safe
+error codes when blocked; do not dump API bodies or credential-bearing diagnostics. Do not
+disable a hold manually to get past a failure. DNS/certificate propagation can cause a bounded
+probe failure and requires a reviewed later retry while protection remains in place.
+
+This helper makes **zero paid model calls**. Its successful deployment message still explicitly
+says live model QA is pending. Actual non-empty model replies, real-client QA, iOS production
+configuration, and the explicit extractable-client-gate security choice remain separate gates.
+
+Offline tests and native compilation (no Keychain access or network):
+
+```bash
+./tools/test-coach-production-deploy.sh
+```
 
 ### Wrangler flow
 

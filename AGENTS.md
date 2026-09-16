@@ -12,7 +12,7 @@ The MVP is Apple-native with no custom backend behind the core loop (the `convex
 
 ## Source of Truth
 
-- **Production Coach credential intake:** `tools/prepare-coach-keychain.sh` is the captain-operated local secure-input helper; Keychain item names and deployment prerequisites are in `proxy/README.md`. Intake alone is not proof of deployment or live model QA.
+- **Production Coach operations:** `tools/prepare-coach-keychain.sh` is the captain-operated secure-input helper; `tools/deploy-coach-production.sh` is the dedicated native Keychain deployment boundary. Keychain item names, the unresolved Free-plan hostname-rate-limit constraint, and deployment prerequisites are in `proxy/README.md`. Offline helper tests: `tools/test-coach-production-deploy.sh`. Intake and helper readiness are not proof of deployment or live model QA.
 
 - **Production telemetry operations:** the existing Convex project is `hcho22/reptoday-telemetry`; production is `sensible-spider-810` (`https://sensible-spider-810.convex.site`). Release keeps the token out of source and generated project files: `tools/archive-release.sh` injects the captain-owned macOS Keychain item through a temporary xcconfig, while `tools/validate-production-telemetry.sh` and `tools/validate-release-telemetry-client.sh` are the secret-safe live checks. The sanitized provisioning/rotation/rollback record is `artifacts/reports/production-telemetry/validation.md`. Account deletion rotates `AppState.installId`, and the live service reads its provider per emission so the rotation applies without relaunch.
 
