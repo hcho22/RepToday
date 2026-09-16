@@ -244,6 +244,36 @@ Keep provider keys solely on the Worker. A client gate embedded in an iOS binary
 and only deters opportunistic abuse; it does not verify premium entitlement. Decide that production
 security boundary explicitly before injecting the gate through a private build configuration.
 
+### Zone-scoped Cloudflare WAF token intake
+
+The existing product zone and public website hostname are `reptoday.app`; the authoritative
+repository pointer is `gtm/03-site/DEPLOY.md` (the `reptoday-site` Pages project). This identifies
+the product's zone, but does not choose a Coach route or authorize an invented API subdomain.
+Confirm the exact Coach origin before adding a Worker route or changing zone rules.
+
+The captain-authorized zone-WAF path uses a separate API token with **only `Zone WAF Write`**,
+restricted to **the specific `reptoday.app` zone**. It needs no account-wide permissions, DNS edit,
+or global API key. This permission also permits ruleset inspection; `Zone WAF Read` need not be
+added separately. See Cloudflare's official [zone rate-limit permission documentation](https://developers.cloudflare.com/terraform/additional-configurations/rate-limiting-rules/)
+and [ruleset inspection permissions](https://developers.cloudflare.com/ruleset-engine/rulesets-api/view/).
+Keep the existing authenticated Wrangler credential for Worker deployment; do not replace it with
+the narrower WAF-only token.
+
+After creating that scoped token in their own Cloudflare dashboard, the captain enters it only
+in the native secure-input dialog Firstmate launches locally:
+
+```bash
+./tools/prepare-coach-keychain.sh --cloudflare-waf
+```
+
+This saves the token under the existing Keychain service `com.reptoday.coach.production`, account
+`cloudflare-zone-waf-token`. It does not read or rotate the OpenAI key or client gate, contact
+Cloudflare, or perform production mutations. The `--check-cloudflare-waf` mode checks only item
+metadata; existence is not proof of valid scope or installed abuse protection. Existing tokens
+are preserved rather than silently replaced. Never put the token in chat, command arguments,
+environment, source, logs, or status. Subsequent API operations must retrieve it through the
+approved local Keychain mechanism into process memory and suppress credential-bearing output.
+
 ### Wrangler flow
 
 ```bash

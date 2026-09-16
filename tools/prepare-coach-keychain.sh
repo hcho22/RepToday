@@ -6,10 +6,17 @@ set -euo pipefail
 set +x
 umask 077
 
-if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--check" ) ]]; then
-    echo 'usage: tools/prepare-coach-keychain.sh [--check] (never pass a credential)' >&2
+if [[ $# -gt 1 ]]; then
+    echo 'usage: tools/prepare-coach-keychain.sh [--check|--cloudflare-waf|--check-cloudflare-waf] (never pass a credential)' >&2
     exit 64
 fi
+case "${1:-}" in
+    ''|--check|--cloudflare-waf|--check-cloudflare-waf) ;;
+    *)
+        echo 'usage: tools/prepare-coach-keychain.sh [--check|--cloudflare-waf|--check-cloudflare-waf] (never pass a credential)' >&2
+        exit 64
+        ;;
+esac
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 private_build="$repo_root/build/coach-key-intake"
