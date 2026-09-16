@@ -249,7 +249,10 @@ security boundary explicitly before injecting the gate through a private build c
 The existing product zone and public website hostname are `reptoday.app`; the authoritative
 repository pointer is `gtm/03-site/DEPLOY.md` (the `reptoday-site` Pages project). This identifies
 the product's zone, but does not choose a Coach route or authorize an invented API subdomain.
-Confirm the exact Coach origin before adding a Worker route or changing zone rules.
+The captain-approved Coach origin is `https://coach.reptoday.app/coach`. Only that route and
+its necessary method handling may be publicly exposed. Install and verify zone rate limiting
+before enabling traffic; disable `workers.dev` and preview URLs. The zone-WAF token stays local
+in Keychain and must never be uploaded to the Worker.
 
 The captain-authorized zone-WAF path uses a separate API token with **only `Zone WAF Write`**,
 restricted to **the specific `reptoday.app` zone**. It needs no account-wide permissions, DNS edit,
@@ -273,6 +276,13 @@ metadata; existence is not proof of valid scope or installed abuse protection. E
 are preserved rather than silently replaced. Never put the token in chat, command arguments,
 environment, source, logs, or status. Subsequent API operations must retrieve it through the
 approved local Keychain mechanism into process memory and suppress credential-bearing output.
+
+If macOS prompts for Keychain read access, Firstmate can run
+`python3 tools/check-coach-keychain-access.py` locally while the captain authorizes the native
+Keychain prompts for `/usr/bin/security` on these three items. This check captures all password
+output in process memory and emits only readiness. Never run `security ... -w` directly in a
+terminal, record the prompts, or grant all applications access. A metadata-only readiness check
+does not prove password retrieval is permitted.
 
 ### Wrangler flow
 
