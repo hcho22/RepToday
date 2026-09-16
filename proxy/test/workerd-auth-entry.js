@@ -1,6 +1,7 @@
 // Test-only entry: never referenced by either Wrangler deployment configuration.
 import gateway, { CoachAuthenticationState } from '../src/coach-auth-worker.js';
 import { assertKey, attestKey, premiumEntitlement, CoachAuthFailure } from '../src/coach-auth-crypto.js';
+import {probeAppleAPI, probeAppleRequest} from './apple-api-probe.js';
 // Tests seed a generated public key through a separate class, not a production enrollment bypass.
 export class FixtureAuthenticationState extends CoachAuthenticationState {
   async fetch(request) {
@@ -22,21 +23,10 @@ export default { async fetch(request, env) {
       else if (input.operation === 'attest') await attestKey(Buffer.from(input.attestation, 'base64'), input.keyId,
         input.challenge, input.prefix, Date.now());
       else if (input.operation === 'premium') await premiumEntitlement(input.jws, env);
-      else if (input.operation === 'apple-api') {
-        const { AppStoreServerAPIClient, Environment } = await import('@apple/app-store-server-library');
-        const client = new AppStoreServerAPIClient(input.privateKey, env.APP_STORE_KEY_ID, env.APP_STORE_ISSUER_ID,
-          'com.reptoday.app', Environment.PRODUCTION);
-        let result;
-        try { result = await client.getAllSubscriptionStatuses('123'); }
-        catch (error) {
-          // Diagnostic classes only; never return the SDK message, generated JWT or input key.
-          const message = String(error?.message ?? '');
-          const kind = /Unexpected response body/.test(message) ? 'response-shape' :
-            /not implemented|not supported/i.test(message) ? 'runtime-api' :
-            /key|curve|ES256/i.test(message) ? 'key-signing' : 'transport';
-          return new Response('test-api-failure:' + kind, {status: 401});
-        }
-        if (result.environment !== 'Production' || result.data.length !== 0) throw new CoachAuthFailure();
+      else if (input.operation === 'apple-request') return Response.json(await probeAppleRequest());
+      else if (input.operation === 'apple-api' || input.operation === 'apple-response') {
+        const result = await probeAppleAPI(input.privateKey, env, input.operation === 'apple-response', input.diagnose === true);
+        return Response.json(result, {status: result.ok ? 200 : 401});
       }
       else throw new CoachAuthFailure();
       return new Response('verified');

@@ -1330,5 +1330,11 @@ strict binding/SQLite/migration/source checks, missing-only Apple provisioning a
 Its coordinator/native doubles passed without credential, UI, account or endpoint access. The
 app-host test blocker was traced to unsigned simulator flags: unchanged-source tests passed with
 the checked-in CI ad hoc signing contract. Shared-source native and simulator Coach checks passed.
-The added official Apple SDK API JWT/status-transport workerd regression still fails after production
-host alignment; full runtime compatibility is blocked. No runtime migration or live model QA occurred.
+The official SDK API JWT/status-transport regression is now resolved locally: the same SDK and
+fixture passed in Node, minimal workerd responses passed with both Response classes, and isolated
+request checks proved installed workerd rejects `redirect: "error"` during Request construction.
+The bounded adapter now forces manual mode and rejects every 3xx before body consumption. The
+retained full actual-workerd suite passes, including ES256 JWT verification, a foreign redirect
+rejection and SQLite atomic replay; 162 proxy units and typecheck pass. Genuine Apple enrollment,
+purchase/restore/revocation, runtime migration and live model/semantic QA remain unverified. No
+production operation occurred in this diagnostic continuation.

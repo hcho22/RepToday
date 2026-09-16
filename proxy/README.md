@@ -23,8 +23,9 @@ never receives the production operator gate. Ordinary endpoint settings remain e
 migration and genuine-device QA are accepted. The dedicated prepared migration helper
 `tools/migrate-coach-runtime.sh` stages under a verified hold and has separate release/hold-only
 rollback operations; `tools/test-coach-runtime-migration.sh` tests it without external access. The
-new official Apple SDK API workerd regression is still blocked, so preparation is not migration
-readiness or evidence of genuine Apple/model QA.
+official Apple SDK API workerd regression passes after a diagnosed redirect-mode correction; all
+requests still terminate in a local fixture. Preparation is not evidence of approved migration
+readiness or genuine Apple/model QA.
 
 ## What it does
 

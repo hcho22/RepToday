@@ -120,9 +120,10 @@ strict native QA output/budgets with no credential/network calls;
 and compiles the native intake without executing its Security/UI entry. Proxy suites cover actual
 generated-key signatures, binding/replay/expiry/deletion/concurrency and fail-before-provider
 boundaries, plus trusted Apple payload/API workflow doubles. `npm run test:runtime` executes native
-crypto/official-verifier negative inputs and actual SQLite atomic replay in installed workerd, with
-outbound requests denied. `CoachRuntimeAuthenticationTests` drives the real iOS client using explicit
-doubles and checks total deadlines/late callbacks/account reset/configuration; it provides no
+crypto/official-verifier negative inputs, actual SDK ES256 JWT generation/verification and status
+transport, foreign redirect rejection and actual SQLite atomic replay in installed workerd. Every
+outbound request is intercepted locally; no external request is allowed.
+`CoachRuntimeAuthenticationTests` drives the real iOS client using explicit doubles and checks total deadlines/late callbacks/account reset/configuration; it provides no
 production bypass. Positive current Apple enrollment/purchase verification and live prompt semantics
 require the genuine production-purchase device plan in `docs/coach-runtime-authentication.md`.
 
@@ -134,6 +135,8 @@ and HTTP sources with local URLProtocol/Apple doubles (including stream/declared
 partial-body timeout, total callback deadline, concurrency and reset), without real Apple/endpoint
 access. App-hosted simulator tests use CI's ad hoc signing flags; unsigned hosts reproduce an early
 pre-XCTest crash even from unchanged committed source. The original workerd assertion/import/SQLite
-subset passed; the new official SDK API JWT/status local-service regression currently fails and is
-retained as a deployment blocker. Generated credentials/proofs and trusted payload/API doubles never
-substitute for genuine Apple enrollment, production purchase or paid model/semantic verification.
+subset and retained official SDK API JWT/status local-service regression pass. A bounded Node/workerd
+comparison isolates the installed runtime's unsupported error redirect mode from service/Response
+fixtures; the adapter forces manual mode, with unit tests rejecting every 3xx before reading a body.
+The diagnostic command is documented in `docs/coach-runtime-authentication.md`. Generated
+credentials/proofs and trusted payload/API doubles never substitute for genuine Apple enrollment, production purchase or paid model/semantic verification.

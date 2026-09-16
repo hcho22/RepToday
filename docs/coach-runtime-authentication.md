@@ -157,29 +157,41 @@ the CI flags. A minimal host without those entitlements passed unsigned. No app 
 was changed to resolve this harness configuration issue.
 
 Runtime tests use installed Miniflare/workerd 2025-07-18, native crypto and actual SQLite atomic
-storage. Every outbound request is intercepted by a local service; no external requests are allowed. The test bundler models the installed Wrangler native-require
-plugin and sets the documented `modulesRoot`; generic esbuild externalization is insufficient.
-Apple's verifier dependency initializes randomness, so it imports inside a handler, never module
-scope. Production configuration uses 2026-01-01; compatibility-date behavior beyond the installed
-runtime's date is not proven by these tests. The earlier assertion/import/SQLite subset passed, but the subsequently added real official SDK API
-JWT/status-transport test currently fails with the fixed `transport` class in this installed runtime,
-including after aligning the adapter to SDK 3.1.0's `api.storekit.apple.com` production origin. Its
-failing regression is retained; full runtime compatibility is **blocked**, and no migration/release
-may proceed on this evidence. That correction follows [Apple's pinned SDK source](https://github.com/apple/app-store-server-library-node/blob/v3.1.0/index.ts).
+storage. Every outbound request is intercepted by a local service; no external requests are allowed.
+The test bundler models the installed Wrangler native-require plugin and sets the documented
+`modulesRoot`; generic esbuild externalization is insufficient. Apple's verifier dependency
+initializes randomness, so it imports inside a handler, never module scope. Production configuration
+uses 2026-01-01; compatibility-date behavior beyond the installed runtime's date is not proven by
+these tests.
+
+The official SDK API regression is resolved locally. The same pinned SDK, generated signing key,
+bounded adapter and local response fixture passed in Node, while workerd initially failed before
+service dispatch. Minimal responses passed with both Node and Miniflare Response classes. Isolated
+request-option checks established that installed workerd rejects `redirect: "error"` during Request
+construction; its [pinned implementation](https://github.com/cloudflare/workerd/blob/v1.20250718.0/src/workerd/api/http.c%2B%2B#L502)
+specifies manual mode with a response-status check. The adapter now forces manual mode and rejects
+all 3xx before reading/decoding the response, including when a caller asks to follow redirects.
+The full runtime suite passes with actual SDK ES256 JWT verification, bounded local status transport,
+foreign redirect rejection, negative Apple proofs and SQLite atomic replay. Re-run the bounded
+Node/workerd comparison with `node test/workerd-auth.mjs --diagnose-apple-api` from `proxy/` using Node
+20; output contains only observed phases and fixed local fixture counts.
+
+The production origin restriction follows
+[Apple's pinned SDK source](https://github.com/apple/app-store-server-library-node/blob/v3.1.0/index.ts).
 Actual supported Wrangler dry-build/deployment and positive current Apple trust-chain/online checks
-also remain final migration validations. Generated-key
-signature tests and trusted payload/API doubles do not prove a valid Apple production enrollment.
+remain final migration validations. Generated-key signatures and trusted payload/API doubles do not
+prove a valid Apple production enrollment or purchase.
 
 The prepared native migration boundary is `tools/migrate-coach-runtime.sh`, with three separate
 operations. **None has been launched against production during preparation.** Before any operation,
-Firstmate must resolve the runtime compatibility blocker and confirm captain authorization, reviewed
-committed source, Apple/account prerequisites, existing Keychain items and production-device access.
+Firstmate must confirm captain authorization, reviewed committed source, Apple/account prerequisites,
+existing Keychain items and production-device access; local compatibility checks do not grant that
+authority or prove those prerequisites.
 Use the installed Node 20 environment; the wrapper refuses other Node majors, dirty source or a
 different task branch. Stage/release also require offline proxy unit/type/runtime checks to pass
-before opening Keychain/UI or making a control-plane request; the known regression therefore
-prevents launch. Hold-only rollback remains available when runtime checks fail. The coordinator
-also refuses account/token overrides or OAuth expiry within
-20 minutes. It never refreshes or writes the shared Wrangler authentication file.
+before opening Keychain/UI or making a control-plane request. Hold-only rollback remains available
+when runtime checks fail. The coordinator also refuses account/token overrides or OAuth expiry
+within 20 minutes. It never refreshes or writes the shared Wrangler authentication file.
 
 ```sh
 PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --stage
@@ -234,15 +246,15 @@ The separate prepared operator command `./tools/validate-coach-live.sh` exercise
 calls and fixed-output validation. Its lexical signals are smoke evidence only; semantic correctness,
 real shipped authentication and UI QA remain unverified. See `proxy/README.md` for the full boundary.
 
-Local checkpoint (2026-09-16): 151 proxy unit tests and typecheck passed; 38 actual shared-source
-native client tests passed; 145 selected app-hosted simulator tests passed, including actual
+Local checkpoint (2026-09-16): 162 proxy unit tests, typecheck and the full actual-workerd suite
+passed after the redirect-mode correction. The unchanged client/helper checks passed in the preceding
+local phase: 38 actual shared-source native client tests passed; 145 selected app-hosted simulator tests passed, including actual
 configured runtime-transport construction, invalid production-host variants, view-model/core/error
 behavior, context/gating/disclosure, AppState and account-deletion cleanup. 57 legacy coordinator
 checks, 37 runtime migration coordinator checks, native migration/intake/live-QA doubles and
 production-entry compilation passed. Debug app-host and Release simulator builds passed. Both built Info.plists have empty Coach endpoint
 and binary secret and the exact runtime mode. Production App Attest is declared in the checked-in
 entitlement source; signed entitlement extraction and genuine Developer account/profile authority
-remain unverified. The added actual-workerd
-official API test remains a blocker,
-not a green check. There were no real Security/UI, control-plane, endpoint or paid model operations
-in this local continuation.
+remain unverified. The official API regression is retained and passes against the local service;
+it is not genuine Apple/model evidence. There were no real Security/UI, control-plane, endpoint or
+paid model operations in these local continuations.

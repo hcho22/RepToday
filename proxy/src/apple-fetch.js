@@ -13,8 +13,13 @@ export default async function appleFetch(input, options = {}) {
   const ocsp = ['ocsp.apple.com', 'ocsp2.apple.com'].includes(url.hostname) &&
     ['http:', 'https:'].includes(url.protocol) && !url.port && method === 'POST';
   if ((!api && !ocsp) || url.username || url.password || url.hash) throw new Error('Apple verification unavailable');
-  const response = await fetch(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(2_500) });
-  if (response.redirected || !response.body) throw new Error('Apple verification unavailable');
+  // Installed workerd rejects redirect:'error' at Request construction. Manual mode never follows;
+  // reject every 3xx before consuming a body or allowing Apple's SDK to decode it.
+  const response = await fetch(url, { ...options, redirect: 'manual', signal: AbortSignal.timeout(2_500) });
+  if (response.redirected || (response.status >= 300 && response.status < 400) || !response.body) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error('Apple verification unavailable');
+  }
   const maximum = api ? 64 * 1024 : 16 * 1024;
   const reader = response.body.getReader();
   const chunks = []; let count = 0;
