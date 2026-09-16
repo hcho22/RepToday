@@ -148,6 +148,11 @@ struct LocalNodeCoordinator: CoachDeploymentCoordinator {
     let node: URL
     var operation: CoachOperation = .deploy
 
+    private static func isGateFailureLine(_ line: String) -> Bool {
+        let pattern = "^gate: probe (missing-authorization|wrong-authorization|correct-authorization) failure (request|timeout|body|size|json|redirect|status|contract) status (none|[1-5][0-9]{2}) redirected (unknown|yes|no) contract (not-read|body-unavailable|oversized|non-json|unauthorized|string-error|invalid-error)$"
+        return line.range(of: pattern, options: .regularExpression) != nil
+    }
+
     func run(_ credentials: [CoachCredential: Data]) throws -> String {
         guard Set(credentials.keys) == Set(operation.items) else { throw CoachDeployFailure.coordinator }
         let process = Process()
@@ -238,12 +243,17 @@ struct LocalNodeCoordinator: CoachDeploymentCoordinator {
             "secret", "wrangler", "http", "gate", "rate-plan", "unexpected"
         ])
         guard !lines.isEmpty, lines.allSatisfy({ permitted.contains($0) ||
+            (operation == .deploy && Self.isGateFailureLine($0)) ||
             ($0.hasPrefix("blocked: ") && failures.contains(String($0.dropFirst(9)))) }) else {
             throw CoachDeployFailure.coordinator
         }
         if process.terminationStatus != 0 {
             let code = lines.last.flatMap { $0.hasPrefix("blocked: ") ? String($0.dropFirst(9)) : nil } ?? "unexpected"
-            return "blocked: dedicated deployment helper stopped (\(code)); inspect configuration without printing credentials"
+            let diagnostics = lines.filter { Self.isGateFailureLine($0) }
+            guard diagnostics.count <= 1, diagnostics.isEmpty || code == "gate" else { throw CoachDeployFailure.coordinator }
+            let summary = "blocked: dedicated deployment helper stopped (\(code)); inspect configuration without printing credentials"
+            // Keep the blocked prefix so the existing executable still exits 78; suppress partial progress.
+            return ([summary] + diagnostics).joined(separator: "\n")
         }
         if operation == .inspect {
             guard lines.first == "inspect: account single approved",

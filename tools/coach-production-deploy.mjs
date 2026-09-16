@@ -31,6 +31,18 @@ export class DeploymentFailure extends Error {
   constructor(code) { super('Deployment stopped'); this.code = code; }
 }
 
+export function gateFailureLine(error) {
+  const diagnostic = error instanceof DeploymentFailure && error.code === 'gate' ? error.gateDiagnostic : null;
+  if (!diagnostic || Object.keys(diagnostic).sort().join(',') !== 'contract,failure,redirected,stage,status' ||
+      !['missing-authorization', 'wrong-authorization', 'correct-authorization'].includes(diagnostic.stage) ||
+      !['request', 'timeout', 'body', 'size', 'json', 'redirect', 'status', 'contract'].includes(diagnostic.failure) ||
+      !(diagnostic.status === null || Number.isInteger(diagnostic.status) && diagnostic.status >= 100 && diagnostic.status <= 599) ||
+      !['unknown', 'yes', 'no'].includes(diagnostic.redirected) ||
+      !['not-read', 'body-unavailable', 'oversized', 'non-json', 'unauthorized', 'string-error', 'invalid-error'].includes(diagnostic.contract)) return null;
+  return `gate: probe ${diagnostic.stage} failure ${diagnostic.failure} status ${diagnostic.status ?? 'none'} ` +
+    `redirected ${diagnostic.redirected} contract ${diagnostic.contract}`;
+}
+
 export function credentialsFromPacket(packet) {
   requireThat(packet && Object.keys(packet).sort().join(',') === 'clientGate,openAI,wafToken', 'input');
   const safe = value => typeof value === 'string' && /^[A-Za-z0-9_-]{20,1024}$/.test(value);
@@ -116,12 +128,12 @@ export class Cloudflare {
   }
 }
 
-async function boundedBody(response, maximum) {
+async function boundedBody(response, maximum, onTooLarge = () => {}) {
   requireThat(response.body, 'http');
   const chunks = []; let count = 0;
   for await (const chunk of response.body) {
     count += chunk.length;
-    if (count > maximum) { await response.body.cancel().catch(() => {}); throw new DeploymentFailure('http'); }
+    if (count > maximum) { onTooLarge(); await response.body.cancel().catch(() => {}); throw new DeploymentFailure('http'); }
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf8');
@@ -481,19 +493,35 @@ async function confirmDomainChangeset(cf, worker) {
 }
 
 export async function gateProbes(gate, fetchImpl = fetch) {
-  for (const authorization of [null, 'Bearer deliberately-invalid-coach-gate', `Bearer ${gate}`]) {
+  const stages = ['missing-authorization', 'wrong-authorization', 'correct-authorization'];
+  for (const [index, authorization] of [null, 'Bearer deliberately-invalid-coach-gate', `Bearer ${gate}`].entries()) {
     let response;
+    let failure = 'request', status = null, redirected = 'unknown', contract = 'not-read';
     try {
       response = await fetchImpl(TARGET.origin, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
         headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
         body: '{',
       });
+      status = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : null;
+      redirected = response.redirected === true ? 'yes' : response.redirected === false ? 'no' : 'unknown';
       const expected = authorization === `Bearer ${gate}` ? 400 : 401;
-      const body = JSON.parse(await boundedBody(response, 8192));
+      failure = 'body';
+      if (!response.body) contract = 'body-unavailable';
+      const bytes = await boundedBody(response, 8192, () => { failure = 'size'; contract = 'oversized'; });
+      failure = 'json'; contract = 'non-json';
+      const body = JSON.parse(bytes);
+      contract = body?.error === 'unauthorized' ? 'unauthorized' : typeof body?.error === 'string' ? 'string-error' : 'invalid-error';
+      failure = response.redirected ? 'redirect' : response.status !== expected ? 'status' : 'contract';
       requireThat(!response.redirected && response.status === expected &&
         (expected === 401 ? body.error === 'unauthorized' : typeof body.error === 'string'), 'gate');
-    } catch { throw new DeploymentFailure('gate'); }
+    } catch (cause) {
+      if (cause?.name === 'TimeoutError' || cause?.name === 'AbortError') failure = 'timeout';
+      const error = new DeploymentFailure('gate');
+      // No request/response content, headers, URL, identifier or exception survives this boundary.
+      error.gateDiagnostic = Object.freeze({ stage: stages[index], failure, status, redirected, contract });
+      throw error;
+    }
   }
 }
 
@@ -583,6 +611,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const codes = new Set(['input', 'auth', 'account', 'zone', 'target', 'scope', 'rules', 'route',
       'settings', 'secret', 'wrangler', 'http', 'gate', 'rate-plan']);
     const code = error instanceof DeploymentFailure && codes.has(error.code) ? error.code : 'unexpected';
+    const diagnostic = gateFailureLine(error);
+    if (diagnostic) process.stdout.write(`${diagnostic}\n`);
     process.stdout.write(`blocked: ${code}\n`);
     process.exitCode = 78;
   });

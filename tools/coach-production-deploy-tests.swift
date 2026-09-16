@@ -144,6 +144,58 @@ struct CoachDeploymentTests {
         try Data("for await (const bytes of process.stdin) {}\nconsole.log('blocked: scope'); process.exitCode=78;".utf8).write(to: entry)
         let blocked = try deployCoach(reader: DoubleReader(), coordinator: native)
         precondition(blocked == "blocked: dedicated deployment helper stopped (scope); inspect configuration without printing credentials")
+        let gateLine = "gate: probe missing-authorization failure json status 403 redirected no contract non-json"
+        let gateFailure = """
+        const { gateProbes, gateFailureLine } = await import(new URL('../../../tools/coach-production-deploy.mjs', import.meta.url));
+        let packet = ''; for await (const bytes of process.stdin) packet += bytes;
+        const credentials = JSON.parse(packet);
+        console.log('confirmed: approved account, zone and Worker target');
+        try {
+          await gateProbes(credentials.clientGate, async () => new Response('<html>' + credentials.openAI + '</html>', { status: 403 }));
+          process.exitCode = 1;
+        } catch (error) {
+          console.log(gateFailureLine(error));
+          console.log('blocked: gate');
+          process.exitCode = 78;
+        }
+        """
+        try Data(gateFailure.utf8).write(to: entry)
+        let diagnosed = try deployCoach(reader: DoubleReader(), coordinator: native)
+        precondition(diagnosed == "blocked: dedicated deployment helper stopped (gate); inspect configuration without printing credentials\n" + gateLine)
+        // The blocked prefix preserves the production executable's existing exit-78 rule.
+        precondition(diagnosed.hasPrefix("blocked:"))
+        precondition(!diagnosed.contains("confirmed:") && !diagnosed.contains("sk-NONSECRET"))
+        let rejected: [[String]] = [
+            [gateLine.replacingOccurrences(of: "status 403", with: "status NONSECRET_PRIVATE_VALUE"), "blocked: gate"],
+            [gateLine.replacingOccurrences(of: "status 403", with: "status 600"), "blocked: gate"],
+            [gateLine.replacingOccurrences(of: "status 403", with: "status 0403"), "blocked: gate"],
+            [gateLine.replacingOccurrences(of: "failure json", with: "failure NONSECRET_EXCEPTION"), "blocked: gate"],
+            [gateLine.replacingOccurrences(of: "contract non-json", with: "contract NONSECRET_BODY"), "blocked: gate"],
+            [gateLine + " NONSECRET_HEADER", "blocked: gate"],
+            [gateLine, "NONSECRET_PRIVATE_BODY", "blocked: gate"],
+            [gateLine, gateLine, "blocked: gate"],
+            [gateLine, "blocked: scope"]
+        ]
+        for lines in rejected {
+            let encoded = String(data: try JSONSerialization.data(withJSONObject: lines), encoding: .utf8)!
+            let child = "for await (const bytes of process.stdin) {}\nfor (const line of \(encoded)) console.log(line); process.exitCode=78;"
+            try Data(child.utf8).write(to: entry)
+            do {
+                _ = try deployCoach(reader: DoubleReader(), coordinator: native)
+                preconditionFailure("arbitrary or mixed diagnostic output must be rejected entirely")
+            } catch CoachDeployFailure.coordinator {}
+        }
+        try Data((success + "\nconsole.log('\(gateLine)');").utf8).write(to: entry)
+        do {
+            _ = try deployCoach(reader: DoubleReader(), coordinator: native)
+            preconditionFailure("a diagnostic must not turn a successful child exit into an accepted deployment")
+        } catch CoachDeployFailure.coordinator {}
+        try Data(gateFailure.utf8).write(to: entry)
+        do {
+            _ = try deployCoach(reader: DoubleReader(), coordinator: LocalNodeCoordinator(
+                repository: fixture, node: node, operation: .inspect), operation: .inspect)
+            preconditionFailure("inspection must not relay deployment gate diagnostics")
+        } catch CoachDeployFailure.coordinator {}
         let inspectSuccess = """
         let packet = ''; for await (const bytes of process.stdin) packet += bytes;
         if (process.argv[2] !== '--inspect' || Object.keys(JSON.parse(packet)).join(',') !== 'wafToken') process.exit(78);

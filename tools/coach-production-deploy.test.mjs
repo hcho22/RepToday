@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { Cloudflare, DeploymentFailure, TARGET, deploy, gateProbes,
+import worker from '../proxy/src/worker.js';
+import { Cloudflare, DeploymentFailure, TARGET, deploy, gateProbes, gateFailureLine,
   credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant, rateFieldClasses, settingsFieldClasses,
   readWranglerOAuth, stagingConfig } from './coach-production-deploy.mjs';
 
@@ -517,6 +518,171 @@ test('gate probes use only malformed JSON and check missing, wrong and correct a
   });
   assert.equal(requests.length, 3); assert.equal(requests[0].headers.Authorization, undefined);
   await assert.rejects(gateProbes(credentials.clientGate, async () => new Response('{}', { status: 200 })), stopped('gate'));
+});
+
+test('gate failure diagnostics identify the failed probe and retain only safe response classes', async () => {
+  let requests = 0;
+  await assert.rejects(gateProbes(credentials.clientGate, async () => {
+    requests++;
+    return new Response(JSON.stringify({ error: requests === 1 ? 'unauthorized' : 'NONSECRET_PRIVATE_RESPONSE' }),
+      { status: requests === 1 ? 401 : 503 });
+  }), error => {
+    assert.ok(stopped('gate')(error));
+    assert.deepEqual(error.gateDiagnostic, { stage: 'wrong-authorization', failure: 'status', status: 503,
+      redirected: 'no', contract: 'string-error' });
+    assert.ok(!JSON.stringify(error).includes('NONSECRET_PRIVATE_RESPONSE'));
+    return true;
+  });
+  assert.equal(requests, 2);
+});
+
+test('gate failure diagnostics survive successful hold restoration without reporting deployment success', async () => {
+  const { run, hold, state } = fixture();
+  await assert.rejects(run({ probe: gate => gateProbes(gate, async () => {
+    assert.equal(hold().enabled, false);
+    return new Response('<html>NONSECRET_PRIVATE_EDGE_BODY</html>', { status: 403 });
+  }) }), error => {
+    assert.ok(stopped('gate')(error));
+    assert.equal(hold().enabled, true);
+    assert.deepEqual(error.gateDiagnostic, { stage: 'missing-authorization', failure: 'json', status: 403,
+      redirected: 'no', contract: 'non-json' });
+    return true;
+  });
+  assert.equal(state.reports.some(line => line.startsWith('deployed:')), false);
+});
+
+test('real Worker and gate probes agree without an upstream call or success diagnostic', async () => {
+  let upstream = 0; const priorFetch = globalThis.fetch;
+  globalThis.fetch = async () => { upstream++; throw new Error('NONSECRET_FORBIDDEN_UPSTREAM'); };
+  try {
+    const statuses = [], requests = [];
+    const result = await gateProbes(credentials.clientGate, async (url, options) => {
+      requests.push(options);
+      const response = await worker.fetch(new Request(url, options), { CLIENT_SHARED_SECRET: credentials.clientGate });
+      statuses.push(response.status); return response;
+    });
+    assert.equal(result, undefined); assert.deepEqual(statuses, [401, 401, 400]); assert.equal(upstream, 0);
+    assert.ok(requests.every(request => request.body === '{' && request.redirect === 'error' && request.signal));
+    assert.deepEqual(requests.map(request => request.headers.Authorization),
+      [undefined, 'Bearer deliberately-invalid-coach-gate', `Bearer ${credentials.clientGate}`]);
+  } finally { globalThis.fetch = priorFetch; }
+});
+
+test('transport and timeout failures expose no exception, URL, header or credential data', async () => {
+  const privateValue = 'sk-NONSECRET_SENSITIVE_LOOKING_FIXTURE';
+  for (const [cause, failure] of [
+    [Object.assign(new Error(privateValue), { cause: { message: privateValue }, url: privateValue }), 'request'],
+    [new DOMException(privateValue, 'TimeoutError'), 'timeout'],
+    [new DOMException(privateValue, 'AbortError'), 'timeout'],
+  ]) {
+    let requests = 0;
+    await assert.rejects(gateProbes(credentials.clientGate, async () => { requests++; throw cause; }), error => {
+      assert.ok(stopped('gate')(error));
+      assert.deepEqual(error.gateDiagnostic, { stage: 'missing-authorization', failure, status: null,
+        redirected: 'unknown', contract: 'not-read' });
+      assert.equal(gateFailureLine(error), `gate: probe missing-authorization failure ${failure} status none redirected unknown contract not-read`);
+      assert.ok(!JSON.stringify(error).includes(privateValue)); assert.equal(error.cause, undefined);
+      return true;
+    });
+    assert.equal(requests, 1);
+  }
+});
+
+test('correct authorization returning unauthorized is a third-probe status failure and stops without retry', async () => {
+  let requests = 0;
+  await assert.rejects(gateProbes(credentials.clientGate, async () => {
+    requests++; return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+  }), error => {
+    assert.deepEqual(error.gateDiagnostic, { stage: 'correct-authorization', failure: 'status', status: 401,
+      redirected: 'no', contract: 'unauthorized' }); return stopped('gate')(error);
+  });
+  assert.equal(requests, 3);
+});
+
+test('bounded body diagnostics distinguish absent, interrupted and oversized responses without retaining bytes', async () => {
+  const privateValue = 'NONSECRET_PRIVATE_BODY';
+  for (const [response, contract, failure] of [
+    [new Response(null, { status: 401 }), 'body-unavailable', 'body'],
+    [new Response(new ReadableStream({ start(controller) { controller.error(new Error(privateValue)); } }),
+      { status: 401 }), 'not-read', 'body'],
+    [new Response(privateValue.repeat(500), { status: 401 }), 'oversized', 'size'],
+  ]) {
+    await assert.rejects(gateProbes(credentials.clientGate, async () => response), error => {
+      assert.ok(stopped('gate')(error));
+      assert.deepEqual(error.gateDiagnostic, { stage: 'missing-authorization', failure, status: 401,
+        redirected: 'no', contract });
+      assert.ok(!JSON.stringify(error).includes(privateValue)); return true;
+    });
+  }
+});
+
+test('gate response limit accepts exactly 8192 bytes and rejects the first byte beyond it', async () => {
+  const make = (size, status, error) => {
+    const base = JSON.stringify({ error, padding: '' });
+    return new Response(JSON.stringify({ error, padding: 'x'.repeat(size - base.length) }), { status });
+  };
+  let requests = 0;
+  await gateProbes(credentials.clientGate, async () => {
+    requests++;
+    return make(8192, requests < 3 ? 401 : 400, requests < 3 ? 'unauthorized' : 'invalid_json');
+  });
+  assert.equal(requests, 3); requests = 0;
+  await assert.rejects(gateProbes(credentials.clientGate, async () => {
+    requests++; return make(8193, 401, 'unauthorized');
+  }), error => error.gateDiagnostic?.failure === 'size' && stopped('gate')(error));
+  assert.equal(requests, 1);
+});
+
+test('redirect and JSON-contract diagnostics retain only classes and sanitized numeric status', async () => {
+  const privateValue = 'sk-NONSECRET_PRIVATE_RESPONSE';
+  for (const [response, expected] of [
+    [{ status: 401, redirected: true, url: privateValue,
+      body: new Response(JSON.stringify({ error: 'unauthorized' })).body },
+    { failure: 'redirect', status: 401, redirected: 'yes', contract: 'unauthorized' }],
+    [new Response(JSON.stringify({ error: privateValue }), { status: 401, headers: { 'X-Private': privateValue } }),
+    { failure: 'contract', status: 401, redirected: 'no', contract: 'string-error' }],
+    [new Response('null', { status: 401 }),
+    { failure: 'contract', status: 401, redirected: 'no', contract: 'invalid-error' }],
+    [new Response('{"error":42}', { status: 401 }),
+    { failure: 'contract', status: 401, redirected: 'no', contract: 'invalid-error' }],
+    [{ status: privateValue, redirected: false, body: new Response('{"error":"unauthorized"}').body },
+    { failure: 'status', status: null, redirected: 'no', contract: 'unauthorized' }],
+  ]) {
+    await assert.rejects(gateProbes(credentials.clientGate, async () => response), error => {
+      assert.ok(stopped('gate')(error));
+      assert.deepEqual(error.gateDiagnostic, { stage: 'missing-authorization', ...expected });
+      assert.ok(!JSON.stringify(error).includes(privateValue));
+      assert.ok(!gateFailureLine(error).includes(privateValue)); return true;
+    });
+  }
+});
+
+test('diagnostic formatter rejects arbitrary classes, fields and status values instead of serializing them', () => {
+  const diagnostic = { stage: 'missing-authorization', failure: 'request', status: null,
+    redirected: 'unknown', contract: 'not-read' };
+  for (const invalid of [
+    { ...diagnostic, stage: 'NONSECRET_PRIVATE_STAGE' }, { ...diagnostic, failure: 'NONSECRET_PRIVATE_EXCEPTION' },
+    { ...diagnostic, redirected: 'NONSECRET_PRIVATE_HEADER' }, { ...diagnostic, contract: 'NONSECRET_PRIVATE_BODY' },
+    ...['401', 99, 600, 401.5, NaN].map(status => ({ ...diagnostic, status })),
+    { ...diagnostic, body: 'NONSECRET_PRIVATE_BODY' },
+  ]) {
+    const error = new DeploymentFailure('gate'); error.gateDiagnostic = invalid;
+    assert.equal(gateFailureLine(error), null);
+  }
+  const error = new DeploymentFailure('scope'); error.gateDiagnostic = diagnostic;
+  assert.equal(gateFailureLine(error), null);
+  assert.equal(gateFailureLine(new Error('NONSECRET_PRIVATE_EXCEPTION')), null);
+});
+
+test('failed re-closing remains a rules failure and does not emit a gate diagnostic', async () => {
+  const { state, run } = fixture();
+  await assert.rejects(run({ probe: gate => {
+    state.failure = (endpoint, options, body) => options.method === 'PATCH' && body?.enabled === true;
+    return gateProbes(gate, async () => new Response('<html>blocked</html>', { status: 403 }));
+  } }), error => {
+    assert.ok(stopped('rules')(error)); assert.equal(gateFailureLine(error), null); return true;
+  });
+  assert.equal(state.reports.some(line => line.startsWith('deployed:')), false);
 });
 
 test('input protocol accepts only the three known existing credentials', () => {

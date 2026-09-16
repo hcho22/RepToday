@@ -333,8 +333,26 @@ DNS/origin override flags false, avoiding Wrangler's automatic non-interactive c
 
 The hold is released only after rechecking bindings, settings, route ownership and WAF rules.
 Three bounded malformed-JSON probes check missing/wrong/correct authorization without a model
-call; any probe failure re-enables the hold. Earlier failures retain the hold. Inspect only safe
-error codes when blocked; do not dump API bodies or credential-bearing diagnostics. Do not
+call; any probe failure re-enables the hold. Earlier failures retain the hold. A `gate` failure
+now carries one fixed diagnostic line through the same native boundary, after the blocked summary:
+
+| Field | Allowlisted classes |
+| --- | --- |
+| Probe | `missing-authorization`, `wrong-authorization`, `correct-authorization` |
+| Failure | `request`, `timeout`, `body`, `size`, `json`, `redirect`, `status`, `contract` |
+| Status | Standard numeric HTTP status, or `none` when unavailable |
+| Redirected | `yes`, `no`, `unknown` |
+| JSON/error contract | `not-read`, `body-unavailable`, `oversized`, `non-json`, `unauthorized`, `string-error`, `invalid-error` |
+
+`request` means fetch failed without a response; it can include DNS/TLS/connection failure or
+a redirect rejected by fetch. It does not prove which occurred. `timeout` classifies named
+timeout/abort failures. `redirect` identifies a received response marked redirected. Body/JSON
+classes describe only the bounded read and error-field shape, never their contents. The native
+reader accepts at most one diagnostic on a failed deployment with code `gate`, rejects arbitrary
+or mixed output entirely, and suppresses partial progress. The blocked prefix and exit 78 remain.
+No probe count/order, deadline, redirect prohibition, body bound or authorization expectation changed.
+
+Inspect only safe error codes/classes when blocked; do not dump API bodies or credential-bearing diagnostics. Do not
 disable a hold manually to get past a failure. DNS/certificate propagation can cause a bounded
 probe failure and requires a reviewed later retry while protection remains in place.
 
@@ -366,9 +384,18 @@ after Wrangler explicitly submitted `enabled: false`. The corrected helper accep
 observed omission or literal `enabled: false`, rejecting null, malformed and enabled values.
 Evidence and negative regressions are in
 [`settings-normalization.md`](../artifacts/reports/coach-production/settings-normalization.md).
-Production remains held and unreachable. Neither diagnosis changed rules, deployed source,
-provisioned secrets, attached the domain or called the Worker/model. Further launch, live model
-QA, iOS production configuration and the extractable-client-gate decision remain pending.
+Neither normalization diagnosis changed rules, deployed source, provisioned secrets, attached
+the domain or called the Worker/model.
+
+A later approved Firstmate retry provisioned the provider/client-gate bindings and attached
+the approved custom domain, then stopped with `gate`. Firstmate's subsequent GET-only inspection
+confirmed the hold restored, both other safeguards enabled, settings/rate invariants `ok`,
+bindings present and domain approved. A separately authorized credential-free observation
+confirmed current DNS readiness and validated TLS, with no HTTP request. The original failing
+probe stage/response class was discarded, so the cause remains unproven. The fixed diagnostics
+above are instrumentation for a reviewed later launch, not a production fix or completed deployment.
+Production remains held and unreachable. Further launch, live model/client QA, iOS production
+configuration and the extractable-client-gate decision remain pending.
 
 Firstmate can launch the dedicated read-only mode locally:
 
