@@ -19,7 +19,8 @@ const BOUNDARY = Object.freeze({ ref: 'reptoday_coach_path_boundary_v1',
   expression: `${host} and (http.request.uri.path ne "/coach")`, enabled: true });
 const LIMIT = Object.freeze({ ref: 'reptoday_coach_ip_rate_v1',
   description: 'RepToday Coach 10 requests per 10 seconds per IP and location', action: 'block',
-  expression: `${host} and (http.request.uri.path eq "/coach")`,
+  // Captain-approved Free-plan scope: /coach is reserved across every hostname in this zone.
+  expression: '(http.request.uri.path eq "/coach")',
   enabled: true, ratelimit: { characteristics: ['cf.colo.id', 'ip.src'], period: 10,
     requests_per_period: 10, mitigation_timeout: 10, requests_to_origin: false } });
 const secretNames = ['CLIENT_SHARED_SECRET', 'OPENAI_API_KEY'];
@@ -219,10 +220,9 @@ export async function deploy({ cf, credentials, stageWorker, report = () => {}, 
   const zones = await cf.accountRequest(`/zones?name=${TARGET.zone}&account.id=${cf.account}&status=active`);
   requireThat(Array.isArray(zones) && zones.length === 1 && zones[0].name === TARGET.zone &&
     zones[0].status === 'active' && zones[0].account?.id === cf.account && id(zones[0].id), 'zone');
-  // The already inspected zone is Free. Free rate rules permit Path/Verified Bot only,
-  // so host-specific abuse protection cannot be installed under the approved scope.
-  // Do not broaden to every host's /coach, buy a plan, or attempt a doomed mutation.
-  requireThat(/^(Pro|Business|Enterprise)(?:\b|\s)/i.test(zones[0].plan?.name ?? ''), 'rate-plan');
+  // Captain explicitly approved a path-only rule on the existing Free zone. Refuse a
+  // changed/unknown plan rather than purchasing capacity or guessing another configuration.
+  requireThat(/^Free(?:\b|\s)/i.test(zones[0].plan?.name ?? ''), 'rate-plan');
   cf.setScope(cf.account, zones[0].id);
   const worker = `/accounts/${cf.account}/workers/scripts/${TARGET.worker}`;
   const scripts = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts`);

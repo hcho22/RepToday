@@ -282,7 +282,7 @@ waiting for local access. The approved deployment path now uses a dedicated nati
 Never run `security ... -w` directly in a terminal, record the prompts, or grant all applications
 access. A metadata-only readiness check does not prove password retrieval is permitted.
 
-### Dedicated production deployment helper (awaiting rate-limit scope decision)
+### Dedicated production deployment helper (awaiting reviewed local launch)
 
 `tools/deploy-coach-production.sh` builds the dedicated `tools/coach-production-deploy.swift`
 Security.framework reader in ignored `build/coach-production-deploy/`. It can retrieve only the
@@ -295,30 +295,34 @@ only for the confirmed product zone's Rulesets API; only the provider key and ga
 provisioned as missing secret bindings on the exact approved Worker. Existing remote bindings
 are preserved, so this helper is not a rotation tool.
 
-Before any mutation, the coordinator requires exactly one authenticated account, its active
-`reptoday.app` zone, and rate-limit support for the exact approved hostname. **The inspected zone
-is Free, and the helper currently stops with `rate-plan` before any production mutation.** Free
-rate rules support Path/Verified Bot, not Host; Pro or higher permits Host. The captain must
-resolve whether to authorize an existing-zone plan change or a different abuse-control scope.
-The helper never buys a plan or silently applies a path-only rule to every hostname in the zone.
-See Cloudflare's [rate-limit plan availability](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability).
+Before any mutation, the coordinator requires exactly one authenticated account and its active
+`reptoday.app` zone on the existing Free plan. A changed or unknown plan stops with `rate-plan`.
+Free rate rules support Path/Verified Bot, not Host; see Cloudflare's
+[rate-limit plan availability](https://developers.cloudflare.com/waf/rate-limiting-rules/#availability).
+**The captain explicitly approved a zone-wide rule for the exact `/coach` path on Free.**
+`/coach` is therefore reserved across every hostname in the `reptoday.app` zone, including the
+apex and website hostnames. All methods at that exact path share the approved limit of 10
+requests per 10 seconds per IP and Cloudflare location, followed by a 10-second block. This
+reservation must be considered before another zone hostname adds its own `/coach` endpoint.
+The deployment hold and path-boundary custom rules remain scoped to `coach.reptoday.app`,
+and the Worker is attached only to that hostname. The helper never buys or changes a plan.
 The existing Wrangler OAuth must also have at least 20 minutes remaining; missing, expiring or
 overridden authentication stops with `auth`. The helper does not refresh or rewrite the shared
 authentication store, and rechecks it before Wrangler starts.
 
-Once that decision is resolved and the helper reviewed, the exact local Firstmate launch is:
+After review, the exact local Firstmate launch is:
 
 ```bash
 ./tools/deploy-coach-production.sh
 ```
 
 Run it in this clean, committed task worktree on `fm/reptoday-ai-coach-proxy-live-qa`. Supply no
-credentials as arguments. Launching under the current Free plan will stop safely, not deploy.
+credentials as arguments. Production mutation awaits this reviewed local launch.
 The native reader never relays arbitrary coordinator stdout/stderr, API responses or exceptions.
 
-With hostname-scoped rate limiting available, the reviewed flow first enables a hostname-wide
-deployment-hold WAF block, appends an exact-path boundary and a 10-requests/10-seconds IP/location
-rate rule with a 10-second block, and verifies their configuration. It preserves unrelated rules
+The reviewed flow first enables a Coach-hostname deployment-hold WAF block, appends a
+Coach-hostname exact-path boundary and the zone-wide `/coach` IP/location rate rule described
+above, and verifies their configuration. It preserves unrelated rules
 and refuses skip rules, unexpected logging, occupied rate-rule capacity or conflicting owned
 rules. It stages the current source with supported `wrangler deploy`, `workers_dev = false`,
 `preview_urls = false`, no routes, no persistence and observability/Logpush disabled. Wrangler

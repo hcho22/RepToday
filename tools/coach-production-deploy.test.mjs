@@ -16,8 +16,7 @@ const workerPath = `/accounts/${account}/workers/scripts/${TARGET.worker}`;
 function fixture() {
   const state = {
     accounts: [{ id: account }],
-    // Pro is a non-secret capability double, not the actual production zone (which is Free).
-    zones: [{ id: zone, name: TARGET.zone, status: 'active', account: { id: account }, plan: { name: 'Pro Website' } }],
+    zones: [{ id: zone, name: TARGET.zone, status: 'active', account: { id: account }, plan: { name: 'Free Website' } }],
     exists: false, domains: [], routes: [], rulesets: new Map(), calls: [], reports: [], stages: 0,
     settings: { bindings: [{ name: 'ANTHROPIC_MODEL', type: 'plain_text', text: 'claude-opus-4-8' }],
       observability: { enabled: false }, logpush: false, tail_consumers: [] },
@@ -123,6 +122,26 @@ test('rerun preserves server secret bindings and restores the hold during stagin
   assert.equal(state.calls.filter(call => call.method === 'PUT' && call.endpoint.endsWith('/secrets')).length, 0);
 });
 
+test('Free-plan rate protection covers only the exact reserved zone-wide path while custom safeguards remain on the Coach hostname', async () => {
+  const { state, run } = fixture(); await run();
+  const rate = state.rulesets.get(ratePhase).rules;
+  assert.equal(rate.length, 1);
+  assert.equal(rate[0].expression, '(http.request.uri.path eq "/coach")');
+  assert.equal(rate[0].enabled, true); assert.equal(rate[0].action, 'block');
+  assert.deepEqual(rate[0].ratelimit, { characteristics: ['cf.colo.id', 'ip.src'], period: 10,
+    requests_per_period: 10, mitigation_timeout: 10, requests_to_origin: false });
+  const custom = state.rulesets.get(customPhase).rules;
+  const hold = custom.find(rule => rule.ref === 'reptoday_coach_deployment_hold_v1');
+  const boundary = custom.find(rule => rule.ref === 'reptoday_coach_path_boundary_v1');
+  assert.equal(hold.expression, '(http.host eq "coach.reptoday.app")');
+  assert.equal(hold.action, 'block'); assert.equal(hold.enabled, false);
+  assert.equal(boundary.expression, '(http.host eq "coach.reptoday.app") and (http.request.uri.path ne "/coach")');
+  assert.equal(boundary.action, 'block'); assert.equal(boundary.enabled, true);
+  assert.deepEqual(state.domains, [{ hostname: TARGET.hostname, service: TARGET.worker,
+    zone_id: zone, environment: 'production' }]);
+  assert.deepEqual(state.subdomain, { enabled: false, previews_enabled: false });
+});
+
 test('ambiguous account stops before any mutation', async () => {
   const { state, run } = fixture(); state.accounts.push({ id: 'c'.repeat(32) });
   await assert.rejects(run(), stopped('account')); assert.equal(mutations(state).length, 0);
@@ -135,8 +154,8 @@ test('wrong zone account and inactive zone each stop before mutation', async () 
   }
 });
 
-test('actual Free plan and unknown plans stop before any WAF, Worker, routing or secret mutation', async () => {
-  for (const plan of ['Free Website', 'Unknown Subscription']) {
+test('changed and unknown plans stop before any WAF, Worker, routing or secret mutation', async () => {
+  for (const plan of ['Pro Website', 'Business', 'Unknown Subscription']) {
     const { state, run } = fixture(); state.zones[0].plan.name = plan;
     await assert.rejects(run(), stopped('rate-plan'));
     assert.equal(mutations(state).length, 0); assert.equal(state.stages, 0);
