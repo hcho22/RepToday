@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Cloudflare, DeploymentFailure, TARGET, deploy, gateProbes,
-  credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant,
+  credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant, rateFieldClasses,
   readWranglerOAuth, stagingConfig } from './coach-production-deploy.mjs';
 
 // Deliberately non-secret doubles. This suite cannot contact the network or read Keychain.
@@ -14,7 +14,7 @@ const account = 'a'.repeat(32), zone = 'b'.repeat(32);
 const customPhase = 'http_request_firewall_custom', ratePhase = 'http_ratelimit';
 const workerPath = `/accounts/${account}/workers/scripts/${TARGET.worker}`;
 
-function fixture({ readOnly = false } = {}) {
+function fixture({ readOnly = false, omitRateDefault = false } = {}) {
   const state = {
     accounts: [{ id: account }],
     zones: [{ id: zone, name: TARGET.zone, status: 'active', account: { id: account }, plan: { name: 'Free Website' } }],
@@ -48,6 +48,8 @@ function fixture({ readOnly = false } = {}) {
       if (options.method === 'POST' && suffix === '/rulesets') {
         assert.ok(!state.rulesets.has(body.phase));
         const value = { ...body, id: nextId(), rules: body.rules.map(rule => ({ ...rule, id: nextId() })) };
+        // Live Free-plan GET responses omit this optional false default after creation.
+        if (omitRateDefault && body.phase === ratePhase) delete value.rules[0].ratelimit.requests_to_origin;
         state.rulesets.set(body.phase, value); return respond(value);
       }
       const ruleset = [...state.rulesets.values()].find(value => value.id === suffix.split('/')[2]);
@@ -173,6 +175,78 @@ test('inspection input protocol forbids provider or client-gate credentials', ()
   assert.deepEqual(inspectionCredentialsFromPacket({ wafToken: credentials.wafToken }), { wafToken: credentials.wafToken });
   assert.throws(() => inspectionCredentialsFromPacket(credentials), stopped('input'));
   assert.throws(() => inspectionCredentialsFromPacket({ wafToken: '' }), stopped('input'));
+});
+
+test('rate inspection classifies optional defaults, core mismatches and extra fields without returning their values', async () => {
+  const normal = fixture(); await normal.run();
+  const rate = structuredClone(normal.state.rulesets.get(ratePhase).rules[0]);
+  const original = rateFieldClasses(rate);
+  assert.equal(original.expression, 'matches'); assert.equal(original.characteristics, 'matches');
+  assert.equal(original['requests-to-origin'], 'matches');
+  delete rate.ratelimit.requests_to_origin;
+  assert.equal(rateFieldClasses(rate)['requests-to-origin'], 'absent-default');
+  rate.action_parameters = {};
+  assert.equal(rateFieldClasses(rate)['action-parameters'], 'empty-default');
+  rate.ratelimit.period = 60;
+  assert.equal(rateFieldClasses(rate).period, 'mismatch');
+  rate.ratelimit['NONSECRET_EXTRA_FIELD'] = 'NONSECRET_VALUE_MUST_NOT_BE_RETURNED';
+  const fields = rateFieldClasses(rate);
+  assert.equal(fields['extra-rate-fields'], 'unexpected');
+  assert.ok(!JSON.stringify(fields).includes('NONSECRET_VALUE_MUST_NOT_BE_RETURNED'));
+  const { state, read } = fixture({ readOnly: true });
+  state.rulesets = structuredClone(normal.state.rulesets);
+  state.rulesets.get(ratePhase).rules[0] = rate;
+  const before = structuredClone(state.rulesets); await read();
+  assert.ok(state.reports.includes('inspect: rate first divergence action-parameters'));
+  assert.ok(state.reports.includes('inspect: rate field period mismatch'));
+  assert.ok(state.reports.includes('inspect: rate field requests-to-origin absent-default'));
+  assert.deepEqual(state.rulesets, before); assert.ok(state.calls.every(call => call.method === 'GET'));
+});
+
+test('live-shaped optional false omission preserves the approved rate semantics and rejects changed core fields', () => {
+  // Sanitized shape reconstructed from fixed field classes, never a captured API body.
+  const rate = { id: 'e'.repeat(32), ref: 'reptoday_coach_ip_rate_v1', action: 'block', enabled: true,
+    expression: '(http.request.uri.path eq "/coach")', ratelimit: {
+      characteristics: ['cf.colo.id', 'ip.src'], period: 10, requests_per_period: 10, mitigation_timeout: 10,
+    } };
+  const entrypoint = { id: 'd'.repeat(32), kind: 'zone', phase: ratePhase, rules: [rate] };
+  assert.equal(rulesetInvariant(entrypoint, ratePhase), 'ok');
+  for (const value of [true, null, 0, 'false']) {
+    const changed = structuredClone(entrypoint); changed.rules[0].ratelimit.requests_to_origin = value;
+    assert.equal(rulesetInvariant(changed, ratePhase), 'owned-semantics');
+  }
+  const changes = [
+    rule => { rule.expression = '(http.request.uri.path eq "/other")'; },
+    rule => { rule.action = 'log'; }, rule => { rule.enabled = false; },
+    rule => { rule.ratelimit.characteristics = ['cf.colo.id']; },
+    rule => { rule.ratelimit.period = 60; }, rule => { rule.ratelimit.requests_per_period = 20; },
+    rule => { rule.ratelimit.mitigation_timeout = 0; },
+    rule => { rule.action_parameters = {}; },
+    rule => { rule.ratelimit.counting_expression = '(http.request.method eq "POST")'; },
+  ];
+  for (const change of changes) {
+    const changed = structuredClone(entrypoint); change(changed.rules[0]);
+    assert.equal(rulesetInvariant(changed, ratePhase), 'owned-semantics');
+  }
+  const logging = structuredClone(entrypoint); logging.rules[0].logging = { enabled: true };
+  assert.equal(rulesetInvariant(logging, ratePhase), 'logging');
+});
+
+test('live-shaped optional false omission passes post-create verification and a protected retry without rewriting the rate rule', async () => {
+  const { state, run, hold } = fixture({ omitRateDefault: true });
+  await run();
+  assert.equal(state.stages, 1); assert.equal(state.probes, 1); assert.equal(hold().enabled, false);
+  assert.equal(Object.hasOwn(state.rulesets.get(ratePhase).rules[0].ratelimit, 'requests_to_origin'), false);
+  state.calls = []; await run();
+  assert.equal(state.stages, 2); assert.equal(hold().enabled, false);
+  assert.equal(mutations(state).filter(call => call.endpoint.startsWith(`/zones/${zone}/rulesets`) &&
+    call.endpoint.includes(state.rulesets.get(ratePhase).id)).length, 0);
+  const { state: readState, read } = fixture({ readOnly: true });
+  readState.rulesets = structuredClone(state.rulesets); await read();
+  assert.ok(readState.reports.includes('inspect: rate invariant ok'));
+  assert.ok(readState.reports.includes('inspect: rate field requests-to-origin absent-default'));
+  assert.ok(readState.reports.includes('inspect: rate first divergence none'));
+  assert.ok(readState.calls.every(call => call.method === 'GET'));
 });
 
 test('approved deployment stays closed through staging, installs both safeguards, and uploads only two existing values', async () => {

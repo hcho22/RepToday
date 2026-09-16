@@ -352,9 +352,17 @@ Offline tests and native compilation (no Keychain access or network):
 
 The first reviewed launch stopped before mutation with `auth`; Firstmate refreshed the existing
 Wrangler OAuth through the browser. The next reviewed launch stopped with the fixed code
-`rules`. **Treat production state as unknown until inspection succeeds.** A partial launch may
-have enabled the deployment hold or added the path boundary. Do not retry deployment, disable
-a hold, provision bindings, attach a domain or call a model while diagnosing this failure.
+`rules`. GET-only inspection has now confirmed the partial state: the owned deployment hold,
+path boundary and rate rule are enabled; unrelated rules and route conflicts are absent; the
+Worker, provider/client-gate bindings and custom domain are absent. The hold remains enabled.
+The rate comparison failed because the server omitted the optional `requests_to_origin: false`
+default. The reviewed helper now accepts that omission while still rejecting explicit `true`,
+invalid values and changed core semantics. The field evidence, failing counterfactual and
+passing regression are recorded in
+[`rate-normalization.md`](../artifacts/reports/coach-production/rate-normalization.md).
+No deployment retry, rule change, secret provisioning, domain attachment or model call was
+performed during diagnosis. The corrected helper still awaits the reviewed local Firstmate
+deployment launch above; live model QA and iOS production configuration remain pending.
 
 Firstmate can launch the dedicated read-only mode locally:
 
@@ -367,6 +375,8 @@ OAuth in memory. Its transport refuses every non-GET request, including the cust
 changeset preview. It does not invoke Wrangler, retrieve the model key or gate, refresh auth,
 change rules, or call the Worker. It emits only allowlisted states for owned rules, unrelated
 rules/capacity, phase/invariant classes, Worker/binding presence and domain/route ownership.
+For the owned rate rule it also reports fixed field-match/default classes and the first
+comparison divergence, without field values or expressions.
 It never prints ruleset bodies, account/zone/rule identifiers, tokens or arbitrary diagnostics.
 If the recompiled dedicated executable needs native Keychain access, the captain authorizes its
 local prompt; never grant broad CLI access or supply the token in a shell command.
@@ -385,14 +395,16 @@ Its modal event loop stays responsive; the panel has only Cancel and no credenti
 Cancellation or retrieval failure stops before the coordinator. No ACL, LAContext policy,
 credential, intake flow or Cloudflare operation changed. The native non-secret counterfactual
 rejects the direct main-thread call, then confirms a visible owner window and serviced main-queue
-callback through the presentation wrapper. This proves the local presentation mechanism, not
-system-prompt visibility, real Keychain access or any Cloudflare observation. Retry only the
-GET-only command above locally, keeping deployment disabled during diagnosis.
+callback through the presentation wrapper. These offline tests establish the local presentation
+mechanism. Firstmate subsequently confirmed that the captain's native Allow let the GET-only
+inspector finish. The refined agent GET-only inspection also finished through the same dedicated
+reader. Neither inspection retrieved the provider key or gate, mutated production or called the model.
 
 The initial agent inspection attempt waited at native retrieval and was stopped before the
-local coordinator started. It produced no Cloudflare observations. The 31 offline tests and
-native tests establish the inspection boundary, not the live ruleset state or the cause of the
-`rules` stop. The earlier 25-test fixture assumed an empty phase was either absent or contained
+local coordinator started. It produced no Cloudflare observations; the successful later
+inspections above supersede that uncertainty. The current 34 coordinator tests plus native
+tests/compile establish the corrected boundary, and include the observed rate-default omission.
+The earlier 25-test fixture assumed an empty phase was either absent or contained
 an explicit `rules: []` array, and modeled server rule responses by echoing submitted fields.
 Inspection distinguishes sparse arrays, phase/kind mismatches, skip/logging conflicts, owned
 semantics and occupied rate capacity before choosing a fix. The fixed `rules` deployment code

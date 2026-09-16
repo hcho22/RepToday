@@ -212,6 +212,17 @@ struct LocalNodeCoordinator: CoachDeploymentCoordinator {
             }
             for state in ["absent", "approved", "conflict"] { permitted.insert("inspect: domain \(state)") }
             for state in ["clear", "conflict"] { permitted.insert("inspect: legacy route \(state)") }
+            let rateFields = ["ref", "action", "expression", "enabled", "logging", "action-parameters",
+                "characteristics", "period", "requests", "mitigation", "requests-to-origin",
+                "counting-expression", "score-per-period", "score-response-header", "extra-rule-fields", "extra-rate-fields"]
+            for field in rateFields {
+                for state in ["missing", "matches", "mismatch", "absent", "disabled", "enabled", "invalid",
+                    "empty-default", "present", "missing-or-invalid", "absent-default", "zero-default", "unexpected", "none"] {
+                    permitted.insert("inspect: rate field \(field) \(state)")
+                }
+                permitted.insert("inspect: rate first divergence \(field)")
+            }
+            permitted.insert("inspect: rate first divergence none")
         }
         let lines = text.split(separator: "\n").map(String.init)
         let failures = Set([

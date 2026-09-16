@@ -149,6 +149,8 @@ struct CoachDeploymentTests {
         if (process.argv[2] !== '--inspect' || Object.keys(JSON.parse(packet)).join(',') !== 'wafToken') process.exit(78);
         console.log('inspect: account single approved');
         console.log('inspect: custom invariant rules-array');
+        console.log('inspect: rate field requests-to-origin absent-default');
+        console.log('inspect: rate first divergence requests-to-origin');
         console.log('inspected: read-only production state; no mutations or model calls');
         """
         try Data(inspectSuccess.utf8).write(to: entry)

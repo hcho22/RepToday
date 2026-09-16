@@ -167,10 +167,59 @@ function ruleMatches(rule, expected, holdCanBeDisabled = false) {
   if (expected.ratelimit) {
     const actual = rule.ratelimit;
     return actual && Object.keys(expected.ratelimit).every(key => key === 'characteristics' ?
-      Array.isArray(actual[key]) && [...actual[key]].sort().join(',') === [...expected.ratelimit[key]].sort().join(',') : actual[key] === expected.ratelimit[key]) &&
+      Array.isArray(actual[key]) && [...actual[key]].sort().join(',') === [...expected.ratelimit[key]].sort().join(',') :
+      // Cloudflare's confirmed Free-plan response omits the optional all-requests default.
+      key === 'requests_to_origin' && expected.ratelimit[key] === false ?
+        actual[key] === undefined || actual[key] === false : actual[key] === expected.ratelimit[key]) &&
       !actual.counting_expression && !actual.score_per_period && !actual.score_response_header_name;
   }
   return !rule.ratelimit;
+}
+
+export function rateFieldClasses(rule) {
+  // Every value is a fixed class. Never return a field value, identifier, expression or body.
+  const classes = {};
+  const exact = (actual, expected) => actual === undefined ? 'missing' : actual === expected ? 'matches' : 'mismatch';
+  for (const field of ['ref', 'action', 'expression', 'enabled']) classes[field] = exact(rule?.[field], LIMIT[field]);
+  classes.logging = rule?.logging === undefined ? 'absent' : rule.logging?.enabled === false ? 'disabled' :
+    rule.logging?.enabled === true ? 'enabled' : 'invalid';
+  classes['action-parameters'] = rule?.action_parameters === undefined ? 'absent' :
+    rule.action_parameters && typeof rule.action_parameters === 'object' && !Array.isArray(rule.action_parameters) ?
+      Object.keys(rule.action_parameters).length === 0 ? 'empty-default' : 'present' : 'invalid';
+  const rate = rule?.ratelimit;
+  classes.characteristics = !Array.isArray(rate?.characteristics) ? 'missing-or-invalid' :
+    [...rate.characteristics].sort().join(',') === [...LIMIT.ratelimit.characteristics].sort().join(',') ? 'matches' : 'mismatch';
+  for (const [label, field] of [['period', 'period'], ['requests', 'requests_per_period'], ['mitigation', 'mitigation_timeout']]) {
+    classes[label] = exact(rate?.[field], LIMIT.ratelimit[field]);
+  }
+  classes['requests-to-origin'] = rate?.requests_to_origin === undefined ? 'absent-default' :
+    rate.requests_to_origin === false ? 'matches' : rate.requests_to_origin === true ? 'mismatch' : 'invalid';
+  classes['counting-expression'] = rate?.counting_expression === undefined ? 'absent-default' :
+    rate.counting_expression === '' ? 'empty-default' : typeof rate.counting_expression === 'string' ? 'present' : 'invalid';
+  classes['score-per-period'] = rate?.score_per_period === undefined ? 'absent' : rate.score_per_period === 0 ? 'zero-default' :
+    typeof rate.score_per_period === 'number' ? 'present' : 'invalid';
+  classes['score-response-header'] = rate?.score_response_header_name === undefined ? 'absent' :
+    rate.score_response_header_name === '' ? 'empty-default' : typeof rate.score_response_header_name === 'string' ? 'present' : 'invalid';
+  const metadata = ['id', 'version', 'ref', 'description', 'last_updated', 'action', 'expression', 'enabled',
+    'logging', 'action_parameters', 'ratelimit', 'position'];
+  classes['extra-rule-fields'] = rule && Object.keys(rule).some(key => !metadata.includes(key)) ? 'unexpected' : 'none';
+  const allowedRate = [...Object.keys(LIMIT.ratelimit), 'counting_expression', 'score_per_period', 'score_response_header_name'];
+  classes['extra-rate-fields'] = rate && Object.keys(rate).some(key => !allowedRate.includes(key)) ? 'unexpected' : 'none';
+  return classes;
+}
+
+function firstRateDivergence(rule, fields) {
+  for (const field of ['ref', 'action', 'expression', 'enabled']) if (fields[field] !== 'matches') return field;
+  if (rule.logging?.enabled) return 'logging';
+  if (rule.action_parameters) return 'action-parameters';
+  for (const field of ['characteristics', 'period', 'requests', 'mitigation']) {
+    if (fields[field] !== 'matches') return field;
+  }
+  if (!['matches', 'absent-default'].includes(fields['requests-to-origin'])) return 'requests-to-origin';
+  if (rule.ratelimit.counting_expression) return 'counting-expression';
+  if (rule.ratelimit.score_per_period) return 'score-per-period';
+  if (rule.ratelimit.score_response_header_name) return 'score-response-header';
+  return 'none';
 }
 
 export function rulesetInvariant(ruleset, phase) {
@@ -250,6 +299,14 @@ function inspectRuleset(ruleset, phase, report) {
   const required = rules?.length + expected.filter(owned => !rules?.some(rule => rule.ref === owned.ref)).length;
   report(`inspect: ${label} capacity ${ruleset === null ? 'available' : rules === null ? 'unknown' :
     required > (phase === CUSTOM ? 5 : 1) ? 'conflict' : 'available'}`);
+  if (phase === RATE) {
+    const owned = rules?.filter(rule => rule.ref === LIMIT.ref);
+    if (owned?.length === 1) {
+      const fields = rateFieldClasses(owned[0]);
+      for (const [field, state] of Object.entries(fields)) report(`inspect: rate field ${field} ${state}`);
+      report(`inspect: rate first divergence ${firstRateDivergence(owned[0], fields)}`);
+    }
+  }
 }
 
 export async function inspect({ cf, report = () => {} }) {
