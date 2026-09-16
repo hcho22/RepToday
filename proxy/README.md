@@ -1,11 +1,11 @@
 # Rep Today LLM Proxy
 
-A thin, stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It exists so every upstream
+A thin, content-stateless, key-holding proxy for Rep Today's Phase 2 LLM slices. It exists so every upstream
 model call runs **without shipping an API key in the app**, and so the app never has to trust it: each
 client enforces its own short timeout and degrades cleanly on any failure, timeout, or absence of
 this proxy.
 
-Two routes live here, both stateless and storing nothing:
+The currently deployed legacy entry serves two routes and stores no user data:
 
 - **`POST /variety-language`** (US-N05) - the deferred day-one Variety Language line. Not wired in
   the shipping MVP; the client (`ProxyVarietyLanguageProvider`) falls back to the deterministic
@@ -31,7 +31,8 @@ readiness or genuine Apple/model QA.
 
 - Holds provider API keys (Wrangler secrets) and proxies **exactly one** model call per request.
   Variety Language uses Anthropic; the premium Coach uses OpenAI.
-- **Stores no user data at rest, on either route.** Nothing is persisted: no KV, no D1, no cache, no
+- **The deployed legacy entry stores no user data at rest, on either route.** Nothing is persisted:
+  no KV, no D1, no cache, no
   scheduler, and **no request/response body logging**. History is read transiently from the request
   and discarded when the response is sent. The coach's conversation memory, if any, lives on the
   device in the client - never here.
@@ -43,7 +44,7 @@ readiness or genuine Apple/model QA.
 - Bounds every upstream call with `AbortSignal.timeout` and caps the request body at **32 KiB**
   (checked before parsing, so an oversized payload never reaches JSON parsing or a paid model call).
 
-"Stateless" and "stores nothing" above describe the Rep Today Worker. The Coach request sets
+"Stateless" and "stores nothing" above describe the deployed legacy Worker entry. The Coach request sets
 `store: false`, so the OpenAI Responses API does not retain response application state, but that flag
 does not disable OpenAI's standard abuse-monitoring logs. OpenAI may retain the Coach prompt (message
 and training summary) and reply in those logs for up to 30 days. This deployment does not require Zero
