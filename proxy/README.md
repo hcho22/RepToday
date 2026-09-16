@@ -271,13 +271,14 @@ service is `com.reptoday.coach.production`; accounts are `openai-api-key` and
 rotation requires a separate coordinated operation. Do not use a Keychain CLI that puts a value
 in command arguments or grants every app access.
 
-Secure intake is a prerequisite, not deployment evidence. Before provisioning these credentials
-through the dedicated deployment helper, confirm the authenticated account and the explicit Worker target
-`reptoday-variety-language-proxy`, and establish the rate-limit/WAF protection described above.
-Keep provider keys solely on the Worker. A client gate embedded in an iOS binary is extractable
-and only deters opportunistic abuse; it does not verify premium entitlement. The captain has selected stronger runtime authentication; do not inject this operator gate
-into a distributed build. See the runtime-authentication design for the pending platform and
-security-metadata prerequisites.
+Secure intake alone is not deployment evidence. The completed operator-only deployment used the
+existing items through the dedicated helper, which confirmed the authenticated account, exact
+Worker target `reptoday-variety-language-proxy`, and rate-limit/WAF protection before mutation.
+Any separately authorized future operator redeployment must repeat those checks. Provider keys
+stay solely on the Worker. A client gate embedded in an iOS binary is extractable and only deters
+opportunistic abuse; it does not verify premium entitlement. The captain selected the locally
+implemented App Attest/StoreKit path for shipped authentication, so the operator gate must never
+enter a distributed build. Its production migration and genuine-device QA remain pending.
 
 ### Zone-scoped Cloudflare WAF token intake
 
@@ -317,7 +318,7 @@ waiting for local access. The approved deployment path now uses a dedicated nati
 Never run `security ... -w` directly in a terminal, record the prompts, or grant all applications
 access. A metadata-only readiness check does not prove password retrieval is permitted.
 
-### Dedicated production deployment helper (guarded launch incomplete)
+### Dedicated production deployment helper (operator launch completed)
 
 `tools/deploy-coach-production.sh` builds the dedicated `tools/coach-production-deploy.swift`
 Security.framework reader in ignored `build/coach-production-deploy/`. It can retrieve only the
@@ -345,15 +346,17 @@ The existing Wrangler OAuth must also have at least 20 minutes remaining; missin
 overridden authentication stops with `auth`. The helper does not refresh or rewrite the shared
 authentication store, and rechecks it before Wrangler starts.
 
-After review of the settings correction below, the exact local Firstmate retry is:
+The successful operator-only launch used the helper exactly as follows:
 
 ```bash
 ./tools/deploy-coach-production.sh
 ```
 
-Run it in this clean, committed task worktree on `fm/reptoday-ai-coach-proxy-live-qa`. Supply no
-credentials as arguments. Further production mutation awaits this reviewed local retry.
-The native reader never relays arbitrary coordinator stdout/stderr, API responses or exceptions.
+It ran from clean tested commit `a8b8f75` on `fm/reptoday-ai-coach-proxy-live-qa`, with no
+credential arguments, and completed the no-model 401/401/400 probes. This invocation is deployment
+history, not authorization to run it again; any further production mutation requires separate
+review. The native reader never relays arbitrary coordinator stdout/stderr, API responses or
+exceptions.
 
 The reviewed flow first enables a Coach-hostname deployment-hold WAF block, appends a
 Coach-hostname exact-path boundary and the zone-wide `/coach` IP/location rate rule described
@@ -380,8 +383,8 @@ The wrong/correct-authorization stages run once each after readiness succeeds an
 excluding control-plane checks and hold restoration. These are finite operator ceilings, **not a
 Cloudflare propagation guarantee**. No user-agent override or valid provider input is sent.
 
-This extends the temporary release window while the verified client gate, exact-path boundary
-and rate protection remain configured. Any sustained denial, exhausted readiness budget or later
+During a launch, this extends the temporary release window while the verified client gate,
+exact-path boundary and rate protection remain configured. Any sustained denial, exhausted readiness budget or later
 probe failure re-enables and verifies the hold; earlier failures retain it. Other edge policies
 can share the denial class, so retries never identify a producer or establish readiness: only the
 existing 401 JSON contract permits moving to the later authorization stages. A `gate` failure
@@ -410,7 +413,9 @@ probe failure and requires a reviewed later retry while protection remains in pl
 
 This helper makes **zero paid model calls**. Its successful deployment message still explicitly
 says live model QA is pending. Actual non-empty model replies, real-client QA, iOS production
-configuration, and the explicit extractable-client-gate security choice remain separate gates.
+configuration, stronger-authentication migration and genuine-device QA remain separate gates.
+The shipped-client choice is settled: the locally implemented App Attest/StoreKit path replaces
+the operator gate after reviewed migration.
 
 Offline tests and native compilation (no Keychain access or network):
 
@@ -418,7 +423,7 @@ Offline tests and native compilation (no Keychain access or network):
 ./tools/test-coach-production-deploy.sh
 ```
 
-### Read-only diagnosis after a stopped launch
+### Guarded-launch history and read-only diagnosis
 
 The first reviewed launch stopped before mutation with `auth`; Firstmate refreshed the existing
 Wrangler OAuth through the browser. A subsequent launch stopped with `rules` after installing
@@ -545,8 +550,8 @@ local prompt; never grant broad CLI access or supply the token in a shell comman
 The original inspector triggered synchronous Security.framework retrieval from a Foundation-only
 process on the main thread. Firstmate observed a wait of over four minutes with no usable prompt,
 then interrupted it before the coordinator started. Missing foreground AppKit presentation and
-an unavailable UI event loop are the presentation hypotheses; ACL/session restrictions remain
-an alternative until a real local retry succeeds. Apple's
+an unavailable UI event loop were the presentation hypotheses; the later successful native
+inspection resolved the local retrieval uncertainty without changing credentials or ACLs. Apple's
 [Keychain retrieval guidance](https://developer.apple.com/documentation/security/secitemcopymatching%28_%3A_%3A%29)
 recommends running the blocking API away from the main thread.
 
@@ -592,7 +597,7 @@ npm run deploy
 
 Then point the client at the deployed route (`https://<worker-subdomain>/variety-language`).
 
-## Wiring the client (deferred - not shipped in the MVP)
+## Client wiring boundaries
 
 `VarietyLanguageResolver.provider` is `nil` in the MVP, so every note is template-sourced.
 To enable the LLM upgrade once this proxy is deployed:
@@ -613,8 +618,7 @@ online; on any failure it falls back to the template.
 See `ios/RepToday/RepToday/Services/Language/ProxyVarietyLanguageProvider.swift` and
 `VarietyLanguageResolver.swift`.
 
-The coach client is analogous (US-AC01 ships the transport; the chat surface that drives it is
-US-AC02):
+An explicit DEBUG non-production Coach client can use the legacy shared-secret initializer:
 
 ```swift
 let coach = CoachProxyClient(
@@ -634,6 +638,10 @@ let reply = try await coach.reply(to: userMessage, context: bundle)
 
 `CoachProxyClient` is bounded (per-request timeout) and throws on any failure, so the coach never
 blocks the free core loop. Production uses `appState.coachSafetyIdentifierProvider` through
-`ServiceContainer.live`, so an account deletion updates the already-built client in the same process.
+`ServiceContainer.live` and accepts only the exact `https://coach.reptoday.app/coach` origin with
+`app-attest-storekit-v1` and an empty binary secret; it constructs the App Attest/StoreKit transport,
+never this shared-secret example. Both ordinary Debug and Release origins/secrets remain empty until
+reviewed migration and genuine-device QA. The deployed operator bearer remains confined to the
+separate native QA path. An account deletion updates the already-built client in the same process.
 The bundle remains the single audited definition of training context - see
 `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
