@@ -14,6 +14,18 @@ Two routes live here, both stateless and storing nothing:
   bundle + the user's message + a dedicated abuse-prevention pseudonym in, an OpenAI reply out. The
   chat surface that drives it is US-AC02; US-AC01 ships the transport only.
 
+The descriptions above and below concern the currently deployed legacy Worker entry. The prepared
+stronger-authentication gateway is separate and **not deployed**: it adds bounded device security
+metadata while retaining no message/training/reply content or purchase proofs. Its iOS flow,
+prerequisites, secure Apple intake, TestFlight/Sandbox limit and held migration plan are in
+[`docs/coach-runtime-authentication.md`](../docs/coach-runtime-authentication.md). A shipped binary
+never receives the production operator gate. Ordinary endpoint settings remain empty until the
+migration and genuine-device QA are accepted. The dedicated prepared migration helper
+`tools/migrate-coach-runtime.sh` stages under a verified hold and has separate release/hold-only
+rollback operations; `tools/test-coach-runtime-migration.sh` tests it without external access. The
+new official Apple SDK API workerd regression is still blocked, so preparation is not migration
+readiness or evidence of genuine Apple/model QA.
+
 ## What it does
 
 - Holds provider API keys (Wrangler secrets) and proxies **exactly one** model call per request.
@@ -216,6 +228,27 @@ Variety Language remains on `claude-opus-4-8` by default. Override only that rou
 
 Prerequisites: a Cloudflare account and [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
+### Current production Coach status (2026-09-16)
+
+Firstmate's captain-authorized native launch from clean tested commit `a8b8f75`
+completed with exit 0, deploying Worker `reptoday-variety-language-proxy` at
+`https://coach.reptoday.app/coach`. The helper verified the approved account/active Free
+zone, provider/client-gate binding names, routing, no persistence/body logging, and disabled
+development/preview URLs. Its missing/wrong/correct-authorization probes passed the
+required **401/401/400** contracts without a model call. The successful release disables
+the temporary deployment hold; the exact-path boundary and rate protection remain enabled
+and verified. The staging `protected` message does not describe the final hold state.
+
+This proves the guarded deployment and gate path, **not live model or shipped-client QA**.
+The native result retains neither actual retry count nor serving-edge convergence duration.
+Standard installed Wrangler OAuth refresh recovered the unchanged local auth guard before
+this attempt; no new interactive login, credential mode/scope/account/plan change or rotation
+was needed. The captain selected **stronger runtime authentication**. Both ordinary iOS Coach build
+configurations remain empty until that path is ready; the operator gate must never be distributed
+in a shipped binary.
+Provider keys remain solely on the Worker. Only `/coach` is exposed at this production hostname;
+the separate Variety Language route is not enabled by this deployment.
+
 ### Production Coach credential intake on macOS
 
 `tools/prepare-coach-keychain.sh` opens a local macOS secure-input dialog for the captain's
@@ -241,8 +274,9 @@ Secure intake is a prerequisite, not deployment evidence. Before provisioning th
 through the dedicated deployment helper, confirm the authenticated account and the explicit Worker target
 `reptoday-variety-language-proxy`, and establish the rate-limit/WAF protection described above.
 Keep provider keys solely on the Worker. A client gate embedded in an iOS binary is extractable
-and only deters opportunistic abuse; it does not verify premium entitlement. Decide that production
-security boundary explicitly before injecting the gate through a private build configuration.
+and only deters opportunistic abuse; it does not verify premium entitlement. The captain has selected stronger runtime authentication; do not inject this operator gate
+into a distributed build. See the runtime-authentication design for the pending platform and
+security-metadata prerequisites.
 
 ### Zone-scoped Cloudflare WAF token intake
 
@@ -416,13 +450,81 @@ exact probe timestamp/Ray correlation was retained. This supports the narrow rea
 above; serving-edge convergence remains a hypothesis, not a proven propagation deadline.
 Offline regressions compose transitional denial with the actual Worker, verify finite exhaustion
 and hold restoration, and reject unrelated retry classes. They do not demonstrate production success.
-Production remains held and unreachable. Further launch, live model/client QA, iOS production
-configuration and the extractable-client-gate decision remain pending.
+The subsequent retry initially stopped with `auth`. Standard installed Wrangler `whoami`
+refreshed the existing OAuth session: the unchanged helper guard rejected it before the flow,
+accepted it afterward, and GET-only account/zone verification succeeded. Firstmate's next
+guarded native launch from `a8b8f75` completed exit 0 with the 401/401/400 gate contracts.
+Production is deployed and released as described above. Live model/client QA, iOS production
+configuration and stronger runtime authentication implementation remain pending. The earlier held-state
+observations are historical, not the current production state.
 
 Firstmate can launch the dedicated read-only mode locally:
 
 ```bash
 ./tools/deploy-coach-production.sh --inspect
+```
+
+### Native live-QA preparation, separate from shipped-client authentication
+
+The reviewed local launch command, owned by Firstmate after handoff, is:
+
+```bash
+./tools/validate-coach-live.sh
+```
+
+It requires the clean committed Coach task branch, accepts no arguments, and reuses the
+dedicated AppKit/Security.framework reader for **only** the existing client-gate item. It never
+retrieves the provider key or zone-WAF token, distributes a gate into an app build, changes
+production, or prints credentials/prompts/responses/errors. The actual app `CoachProxyClient`
+and `CoachContextBundle` are compiled into the macOS QA executable. This is an equivalent
+native transport check, not simulator chat-surface QA or a shipped-build configuration.
+
+It sends four invalid-input boundary probes (missing/wrong bearer -> 401 `unauthorized`,
+authorized 32769-byte body -> 413 `payload_too_large`, authorized malformed JSON -> 400
+`invalid_json`), then at most **two paid model requests**, one per PRD intent: why squats and
+pistol-squat form. The contexts are synthetic non-identifying catalog/aggregate summaries;
+the random QA safety pseudonym exists only in memory. There is no retry, and any failure stops
+before subsequent calls. A local offline transport and oversized-message rejection exercise
+the real client's error paths without network. They do not prove the full view-model/UI behavior.
+
+Only the approved HTTPS endpoint is accepted. An ephemeral URLSession with cache, cookies
+and credential storage disabled rejects redirects, caps retained response data at **16384 bytes**,
+and uses both request and entire-resource deadlines. Invalid-input probes get at most **10 seconds**
+each; model requests retain the app's at most **30-second** deadline. A **100-second monotonic
+network budget** shrinks later request deadlines and rejects late completion; compilation,
+human Keychain authorization and local processing are outside that budget. Apple's
+[resource timeout contract](https://developer.apple.com/documentation/foundation/urlsessionconfiguration/timeoutintervalforresource)
+covers the entire transfer, including streamed bodies. No raw response/body/identifier is retained
+in an artifact or forwarded through diagnostics.
+
+After all executable checks pass, the exact fixed output is:
+
+```text
+qa: missing-authorization pass
+qa: wrong-authorization pass
+qa: oversized pass
+qa: malformed pass
+qa: offline pass
+qa: local-limit pass
+qa: why-squats non-empty lexical-context-signals-present
+qa: pistol-form non-empty lexical-context-signals-present
+qa: semantic-context-form-and-no-workout-fabrication unverified
+validated: CoachProxyClient live model path returned; shipped client authentication pending
+```
+
+Success validates non-empty actual client replies and lexical smoke signals from the supplied
+contexts. **It cannot establish full personalization, safe form or absence of fabricated/altered
+workouts.** A fabricated-plan counterexample deliberately passes the lexical predicate in the
+offline suite, which verifies that the limitation remains in output. Replies stay only in process
+memory; semantic review and simulator/on-device premium/chat/offline QA remain separate gates.
+A failure returns exit 78 with only an allowlisted stage/failure summary, and no partial success
+or arbitrary returned output is printed. This helper makes no on-device workout/policy writes.
+
+Preparation/compilation and local doubles are not live model evidence. No live launch has yet
+been recorded. Offline checks intercept every transport request and access no Keychain:
+
+```bash
+./tools/test-coach-live-qa.sh
 ```
 
 This mode retrieves only the existing zone-WAF Keychain item and uses the existing Wrangler

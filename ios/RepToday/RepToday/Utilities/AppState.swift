@@ -161,7 +161,7 @@ final class AppState {
         lastCelebratedPhase = .strength
     }
 
-    static let coachDataSharingDisclosureVersion = 2
+    static let coachDataSharingDisclosureVersion = 3
 
     private(set) var acknowledgedCoachDataSharingDisclosureVersion: Int? {
         didSet {

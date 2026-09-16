@@ -31,8 +31,8 @@ struct ServiceContainer {
     /// this container already wires, so a delete clears exactly what the rest of the app reads.
     let accountDeletionService: any AccountDeletionServiceProtocol
     /// The premium AI coach transport (US-AC02), `nil` when no coach proxy is configured for this
-    /// build - which is every build today, because the `proxy/` Worker is deploy-ready but not yet
-    /// deployed. The coach chat surface reads this and, when it is `nil`, shows a clear "coach
+    /// build. The production proxy is deployed, while ordinary build settings remain empty pending
+    /// the shipped-client authentication decision. The coach chat surface reads this and, when it is `nil`, shows a clear "coach
     /// unavailable" state; it never gates or blocks the core loop. `live(...)` resolves it once from
     /// the build-configured `Info.plist` origin (`CoachProxyClient.configured(...)`), exactly like the
     /// telemetry sink; `mock()` leaves it `nil`. Unlike the other services this is genuinely optional -
@@ -287,11 +287,13 @@ struct ServiceContainer {
             )
             ?? NoOpAnalyticsService()
         // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`
-        // origin exactly like the telemetry sink. `nil` today (no proxy deployed and no origin set), so
+        // origin exactly like the telemetry sink. Ordinary builds remain `nil` pending stronger-authentication migration and
+        // genuine-device QA, so
         // the coach surface renders its "unavailable" state; it never gates the core loop.
         let resolvedCoachClient = CoachProxyClient.configured(
             safetyIdentifierProvider: coachSafetyIdentifierProvider
         )
+        let runtimeCoachAuthentication = resolvedCoachClient?.transport as? RuntimeAuthenticatedCoachTransport
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -345,7 +347,8 @@ struct ServiceContainer {
                 workoutLogService: workoutLogService,
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
-                authService: authService
+                authService: authService,
+                coachAuthenticationCleanup: { await runtimeCoachAuthentication?.resetAccount() }
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
             coachClient: resolvedCoachClient,

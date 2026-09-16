@@ -22,7 +22,8 @@ enum CoachDataDisclosureCopy {
     static let whatIsSentTitle = "What's sent"
     static let whatIsSent = "When you send a question, your message and a short summary of your training - "
         + "your current movements, how consistent you've been, and your phase - go to OpenAI, the AI service that "
-        + "writes the reply."
+        + "writes the reply. Rep Today's server also checks Apple proofs that this is our app and that your "
+        + "premium purchase is active. Those proofs are not sent to OpenAI."
 
     static let leavesDeviceTitle = "It leaves your device - just for this"
     static let leavesDevice = "This is the one moment Rep Today sends your content off your phone. Your full "
@@ -33,7 +34,9 @@ enum CoachDataDisclosureCopy {
         + "its standard retention, OpenAI may keep that content in abuse-monitoring logs for up to 30 days. "
         + "To help prevent abuse, Rep Today also sends a random Coach code that stays the same between app "
         + "launches and changes if you delete your account. It is not your installation ID, name, email, or "
-        + "Rep Today identity."
+        + "Rep Today identity. The server keeps a device verification key and counters to prevent reused "
+        + "requests, for up to 30 days without activity. It doesn't save your purchase proof. Account deletion "
+        + "clears the key on your phone and tries to remove the server record; if offline, that record expires."
 
     /// The primary control: an explicit acknowledgement. Tapping it is what opens the coach.
     static let acknowledge = "I understand"
@@ -50,7 +53,10 @@ enum CoachDataDisclosureCopy {
         + "are sent to OpenAI to answer. Rep Today's proxy doesn't store them. OpenAI may retain them and the "
         + "reply in abuse-monitoring logs for up to 30 days under standard retention. A random Coach code is also "
         + "sent for abuse prevention; it is not your installation ID or Rep Today identity and changes when you "
-        + "delete your account. This is separate from the anonymous usage data above."
+        + "delete your account. Apple app and purchase proofs are checked by Rep Today's server, not sent "
+        + "to OpenAI or saved. Device verification keys and counters expire after 30 days without activity; "
+        + "account deletion clears the local key and attempts server deletion. This is separate from the "
+        + "anonymous usage data above."
 }
 
 /// The versioned, pre-use consent disclosure for the AI coach (US-AC04).

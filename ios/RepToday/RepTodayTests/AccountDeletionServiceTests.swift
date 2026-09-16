@@ -79,6 +79,29 @@ final class AccountDeletionServiceTests: XCTestCase {
 
     // MARK: - US-AD03 orchestration
 
+    func testCoachAuthenticationCleanupFollowsDurableDeletionAndSignOutBeforeRouting() async throws {
+        let userService=MockUserService(user:MockPersistence.sampleUser),logs=MockWorkoutLogService(logs:[makeLog()])
+        let auth=MockAuthService(userIdentifier:"fixture-apple-user");let appState=makeAppState(isOnboarded:true,selectedTab:.home)
+        let cleaned=CleanupObservation()
+        let service=AccountDeletionService(userService:userService,workoutLogService:logs,
+            sessionPolicyStore:InMemorySessionPolicyStore(),activeSessionStore:InMemoryActiveSessionStore(),authService:auth,
+            coachAuthenticationCleanup:{
+                let user=try? await userService.currentUser();let remaining=try? await logs.workoutLogs(from:nil,to:nil)
+                let identifier=try? await auth.currentUserIdentifier()
+                await cleaned.record(user == nil && remaining?.isEmpty == true && identifier == nil)
+            })
+        try await service.deleteAccount(appState:appState)
+        let observation=await cleaned.values;XCTAssertEqual(observation,[true]);XCTAssertFalse(appState.isOnboarded)
+    }
+    func testFailedDurableDeletionDoesNotUnlinkCoachAuthenticationOrRouteAway() async throws {
+        let appState=makeAppState(isOnboarded:true,selectedTab:.home);let cleaned=CleanupObservation()
+        let service=AccountDeletionService(userService:ThrowingUserService(failDeletion:true),workoutLogService:MockWorkoutLogService(),
+            sessionPolicyStore:InMemorySessionPolicyStore(),activeSessionStore:InMemoryActiveSessionStore(),authService:MockAuthService(),
+            coachAuthenticationCleanup:{await cleaned.record(true)})
+        do {try await service.deleteAccount(appState:appState);XCTFail("durable deletion should fail")} catch {}
+        let observation=await cleaned.values;XCTAssertTrue(observation.isEmpty);XCTAssertTrue(appState.isOnboarded)
+    }
+
     func testDeleteAccountClearsEverythingForASignedInUser() async throws {
         let userService = MockUserService(user: MockPersistence.sampleUser)
         let logs = MockWorkoutLogService(logs: [makeLog(), makeLog()])
@@ -306,6 +329,11 @@ final class AccountDeletionServiceTests: XCTestCase {
     }
 }
 
+private actor CleanupObservation {
+    private(set) var values:[Bool]=[]
+    func record(_ value:Bool) {values.append(value)}
+}
+
 /// A `UserServiceProtocol` double whose `currentUser()` always throws - modelling a corrupt/unreadable
 /// `CDUser` blob that fails to decode on read - while `deleteCurrentUser()` still succeeds (a real
 /// delete fetches and removes without decoding). Used to prove the teardown keys nothing off reading
@@ -313,9 +341,11 @@ final class AccountDeletionServiceTests: XCTestCase {
 private final class ThrowingUserService: UserServiceProtocol, @unchecked Sendable {
     struct Unreadable: Error {}
     private(set) var didDelete = false
+    private let failDeletion:Bool
+    init(failDeletion:Bool = false) {self.failDeletion=failDeletion}
 
     func currentUser() async throws -> User? { throw Unreadable() }
     func save(_ user: User) async throws {}
     func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { throw Unreadable() }
-    func deleteCurrentUser() async throws { didDelete = true }
+    func deleteCurrentUser() async throws {if failDeletion {throw Unreadable()};didDelete = true}
 }

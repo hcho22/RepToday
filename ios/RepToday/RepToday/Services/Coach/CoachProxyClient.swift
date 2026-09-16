@@ -103,8 +103,8 @@ struct CoachProxyClient {
     /// The maximum message length accepted before a request is even attempted.
     let messageCharacterLimit: Int
     /// The optional client shared secret that gates the Worker's route (abuse protection). When set,
-    /// every request sends `Authorization: Bearer <secret>` so the Worker can reject unauthenticated
-    /// traffic before it bills a model call; `nil` matches an open (dev) Worker. See `proxy/README.md`.
+    /// explicit development/operator requests send `Authorization: Bearer <secret>`. Ordinary
+    /// production configuration requires the runtime authentication transport and no embedded gate.
     let sharedSecret: String?
     private let safetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier?
     /// The HTTP seam, injected so tests exercise the request/response contract without a live network.
@@ -152,9 +152,16 @@ struct CoachProxyClient {
 
     /// The `Info.plist` key carrying the client shared secret the proxy's abuse gate checks. Expanded
     /// from the per-configuration `REPTODAY_COACH_SECRET` build setting. Unlike the analytics secret
-    /// this one is **optional**: an open (dev) Worker with no secret set matches a `nil` here, so a
-    /// missing/empty value is not "unconfigured", it just sends no `Authorization` header.
+    /// this one is optional for development Workers. The production origin rejects a nonempty
+    /// value; its device/purchase proof replaces a client bearer. No provider/operator key ships.
     static let secretInfoPlistKey = "RepTodayCoachSecret"
+    static let authenticationModeInfoPlistKey = "RepTodayCoachAuthMode"
+    static let productionOrigin = "https://coach.reptoday.app/coach"
+    static let productionAuthenticationMode = "app-attest-storekit-v1"
+
+    static func productionConfigurationAllowed(origin: URL, mode: Any?, secret: String?) -> Bool {
+        origin.absoluteString == productionOrigin && mode as? String == productionAuthenticationMode && secret == nil
+    }
 
     /// Builds the client from the coach proxy origin in the app's `Info.plist`, or returns `nil` when
     /// that configuration is absent or unusable - the coach is then **inert, never fatal**, exactly
@@ -162,10 +169,10 @@ struct CoachProxyClient {
     /// and the chat surface shows a clear "coach unavailable" state rather than trapping or pointing at
     /// a wrong destination.
     ///
-    /// No production coach proxy is deployed yet, so both configurations currently expand to an empty
-    /// value and this returns `nil` by design (the surface renders its unavailable state, and the unit
-    /// suite exercises the wired path through the injected transport seam instead). Setting
-    /// `REPTODAY_COACH_ENDPOINT` to a deployed origin is a one-line config change once the proxy ships.
+    /// The production proxy is deployed at `https://coach.reptoday.app/coach`. Both ordinary build
+    /// configurations remain empty pending stronger-authentication migration and genuine-device QA, so this
+    /// returns `nil` by design. Production configuration requires App Attest/StoreKit mode and no
+    /// embedded gate. The currently deployed operator entry is separate from that migration. See `proxy/README.md` for deployment evidence and native live-QA preparation.
     ///
     /// "Unusable" is checked rather than assumed - the value must parse, carry an `https` scheme, and
     /// have a host - so a mistyped endpoint stays inert rather than firing doomed requests.
@@ -178,12 +185,28 @@ struct CoachProxyClient {
             return nil
         }
         let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
+        if endpoint.host?.lowercased() == "coach.reptoday.app" {
+            guard productionConfigurationAllowed(origin: endpoint,
+                mode: bundle.object(forInfoDictionaryKey: authenticationModeInfoPlistKey), secret: secret) else { return nil }
+            #if os(iOS)
+            // Production configuration always constructs the real DeviceCheck/StoreKit transport.
+            // Test transports belong to explicit test clients, never a shipped configuration flag.
+            return CoachProxyClient(endpoint: endpoint, safetyIdentifierProvider: safetyIdentifierProvider,
+                                    transport: RuntimeAuthenticatedCoachTransport())
+            #else
+            return nil
+            #endif
+        }
+        #if DEBUG
         return CoachProxyClient(
             endpoint: endpoint,
             sharedSecret: secret,
             safetyIdentifierProvider: safetyIdentifierProvider,
             transport: transport
         )
+        #else
+        return nil
+        #endif
     }
 
     /// Resolves a configured proxy origin into the `POST /coach` URL this client targets, or `nil` if

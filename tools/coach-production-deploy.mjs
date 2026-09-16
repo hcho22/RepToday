@@ -9,15 +9,15 @@ export const TARGET = Object.freeze({
   worker: 'reptoday-variety-language-proxy', zone: 'reptoday.app',
   hostname: 'coach.reptoday.app', origin: 'https://coach.reptoday.app/coach',
 });
-const CUSTOM = 'http_request_firewall_custom';
-const RATE = 'http_ratelimit';
+export const CUSTOM = 'http_request_firewall_custom';
+export const RATE = 'http_ratelimit';
 const host = `(http.host eq "${TARGET.hostname}")`;
-const HOLD = Object.freeze({ ref: 'reptoday_coach_deployment_hold_v1',
+export const HOLD = Object.freeze({ ref: 'reptoday_coach_deployment_hold_v1',
   description: 'RepToday Coach deployment hold', action: 'block', expression: host, enabled: true });
-const BOUNDARY = Object.freeze({ ref: 'reptoday_coach_path_boundary_v1',
+export const BOUNDARY = Object.freeze({ ref: 'reptoday_coach_path_boundary_v1',
   description: 'RepToday Coach exact public path', action: 'block',
   expression: `${host} and (http.request.uri.path ne "/coach")`, enabled: true });
-const LIMIT = Object.freeze({ ref: 'reptoday_coach_ip_rate_v1',
+export const LIMIT = Object.freeze({ ref: 'reptoday_coach_ip_rate_v1',
   description: 'RepToday Coach 10 requests per 10 seconds per IP and location', action: 'block',
   // Captain-approved Free-plan scope: /coach is reserved across every hostname in this zone.
   expression: '(http.request.uri.path eq "/coach")',
@@ -139,7 +139,7 @@ async function boundedBody(response, maximum, onTooLarge = () => {}) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-function checkSettings(settings, requireSecrets = false) {
+export function checkSettings(settings, requireSecrets = false) {
   requireThat(settings && Array.isArray(settings.bindings), 'settings');
   const seen = new Set();
   for (const binding of settings.bindings) {
@@ -178,7 +178,7 @@ export function settingsFieldClasses(settings, subdomain) {
   };
 }
 
-function checkDomains(domains, account, zone, requireAttached = false) {
+export function checkDomains(domains, account, zone, requireAttached = false) {
   requireThat(Array.isArray(domains), 'route');
   const assigned = domains.filter(domain => domain.service === TARGET.worker || domain.hostname === TARGET.hostname);
   requireThat(assigned.length <= 1 && assigned.every(domain => domain.hostname === TARGET.hostname &&
@@ -188,7 +188,7 @@ function checkDomains(domains, account, zone, requireAttached = false) {
   return assigned.length === 1;
 }
 
-function checkRoutes(routes) {
+export function checkRoutes(routes) {
   requireThat(Array.isArray(routes) && routes.every(route => {
     if (route.script === TARGET.worker || typeof route.pattern !== 'string') return false;
     const hostname = route.pattern.replace(/^https?:\/\//, '').split('/')[0];
@@ -285,13 +285,13 @@ function checkRuleset(ruleset, phase) {
   requireThat(rulesetInvariant(ruleset, phase) === 'ok', 'rules');
 }
 
-async function entrypoint(cf, phase) {
+export async function entrypoint(cf, phase) {
   const ruleset = await cf.zoneRequest(`/rulesets/phases/${phase}/entrypoint`, 'GET', undefined, true);
   checkRuleset(ruleset, phase);
   return ruleset;
 }
 
-async function ensureRule(cf, phase, expected) {
+export async function ensureRule(cf, phase, expected) {
   let ruleset = await entrypoint(cf, phase);
   if (ruleset === null) {
     await cf.zoneRequest('/rulesets', 'POST', {
@@ -309,7 +309,7 @@ async function ensureRule(cf, phase, expected) {
   requireThat(ruleMatches(ruleset?.rules.find(rule => rule.ref === expected.ref), expected), 'rules');
 }
 
-async function verifyProtection(cf, held) {
+export async function verifyProtection(cf, held) {
   const custom = await entrypoint(cf, CUSTOM);
   const rate = await entrypoint(cf, RATE);
   requireThat(ruleMatches(custom?.rules.find(rule => rule.ref === HOLD.ref), { ...HOLD, enabled: held }) &&
@@ -477,7 +477,7 @@ export async function deploy({ cf, credentials, stageWorker, report = () => {}, 
   report(`deployed: ${TARGET.worker} ${TARGET.origin}; live model QA pending`);
 }
 
-async function verifyClosedWorker(cf, worker) {
+export async function verifyClosedWorker(cf, worker) {
   const state = await cf.accountRequest(worker + '/subdomain');
   requireThat(state?.enabled === false && state.previews_enabled === false, 'settings');
 }
@@ -569,14 +569,14 @@ export function stagingConfig(repository) {
   };
 }
 
-async function stageWithWrangler(repository, account, expectedOAuth) {
+export async function stageWithWrangler(repository, account, expectedOAuth, configFactory = stagingConfig) {
   // Refuse a changed or expiring shared credential before allowing Wrangler to select an account.
   requireThat(await readWranglerOAuth() === expectedOAuth, 'auth');
   const build = path.join(repository, 'build/coach-production-deploy');
   await fs.mkdir(build, { recursive: true, mode: 0o700 });
   const config = path.join(build, 'staging.json');
   // This file contains only public source/configuration. No account ID or credential enters it.
-  await fs.writeFile(config, JSON.stringify(stagingConfig(repository)), { mode: 0o600 });
+  await fs.writeFile(config, JSON.stringify(configFactory(repository)), { mode: 0o600 });
   const discard = path.join(build, 'wrangler-discard.log');
   try { await fs.unlink(discard); } catch (error) { if (error.code !== 'ENOENT') throw new DeploymentFailure('wrangler'); }
   await fs.symlink('/dev/null', discard);

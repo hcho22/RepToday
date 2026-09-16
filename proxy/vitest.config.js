@@ -11,6 +11,12 @@ import { defineConfig } from "vitest/config";
  * request is rejected *before* that call; nothing is logged or persisted.
  */
 export default defineConfig({
+  resolve: {
+    alias: {
+      'node-fetch': new URL('./src/apple-fetch.js', import.meta.url).pathname,
+      'cloudflare:workers': new URL('./test/cloudflare-double.js', import.meta.url).pathname,
+    },
+  },
   test: {
     include: ["test/**/*.test.js"],
     environment: "node",
