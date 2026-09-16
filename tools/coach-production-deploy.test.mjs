@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Cloudflare, DeploymentFailure, TARGET, deploy, gateProbes,
-  credentialsFromPacket, readWranglerOAuth, stagingConfig } from './coach-production-deploy.mjs';
+  credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant,
+  readWranglerOAuth, stagingConfig } from './coach-production-deploy.mjs';
 
 // Deliberately non-secret doubles. This suite cannot contact the network or read Keychain.
 const credentials = { openAI: 'sk-NONSECRET_TEST_DOUBLE_1234567890',
@@ -13,7 +14,7 @@ const account = 'a'.repeat(32), zone = 'b'.repeat(32);
 const customPhase = 'http_request_firewall_custom', ratePhase = 'http_ratelimit';
 const workerPath = `/accounts/${account}/workers/scripts/${TARGET.worker}`;
 
-function fixture() {
+function fixture({ readOnly = false } = {}) {
   const state = {
     accounts: [{ id: account }],
     zones: [{ id: zone, name: TARGET.zone, status: 'active', account: { id: account }, plan: { name: 'Free Website' } }],
@@ -86,7 +87,7 @@ function fixture() {
     }
     assert.fail('Unexpected account operation');
   };
-  const cf = new Cloudflare(oauth, credentials.wafToken, fetchImpl);
+  const cf = new Cloudflare(oauth, credentials.wafToken, fetchImpl, { readOnly });
   const hold = () => state.rulesets.get(customPhase)?.rules.find(rule => rule.ref === 'reptoday_coach_deployment_hold_v1');
   const run = (overrides = {}) => deploy({ cf, credentials,
     stageWorker: async confirmedAccount => {
@@ -95,12 +96,84 @@ function fixture() {
     }, report: line => state.reports.push(line), probe: async gate => {
       assert.equal(gate, credentials.clientGate); assert.equal(hold()?.enabled, false); state.probes++;
     }, ...overrides });
-  return { state, cf, run, hold };
+  const read = () => inspect({ cf, report: line => state.reports.push(line) });
+  return { state, cf, run, hold, read };
 }
 
 const stopped = code => error => error instanceof DeploymentFailure && error.code === code;
 const mutations = state => state.calls.filter(call => ['PUT', 'PATCH', 'POST'].includes(call.method) &&
   !call.endpoint.includes('/changeset?'));
+
+test('read-only inspection emits only fixed absent-state facts and performs exclusively GET requests', async () => {
+  const { state, read } = fixture({ readOnly: true }); await read();
+  assert.ok(state.calls.every(call => call.method === 'GET' && call.body === undefined));
+  assert.equal(state.stages, 0); assert.equal(state.probes, 0); assert.equal(state.rulesets.size, 0);
+  assert.ok(state.reports.includes('inspect: owned hold absent'));
+  assert.ok(state.reports.includes('inspect: owned boundary absent'));
+  assert.ok(state.reports.includes('inspect: owned rate absent'));
+  assert.ok(state.reports.includes('inspect: worker absent'));
+  assert.ok(state.reports.includes('inspect: provider binding absent'));
+  assert.ok(state.reports.includes('inspect: client-gate binding absent'));
+  assert.ok(state.reports.includes('inspect: domain absent'));
+  assert.equal(state.reports.at(-1), 'inspected: read-only production state; no mutations or model calls');
+  assert.ok(state.reports.every(line => ![account, zone, oauth, ...Object.values(credentials)].some(value => line.includes(value))));
+});
+
+test('read-only transport refuses every write and the changeset preview before reaching fetch', async () => {
+  const { state, cf } = fixture({ readOnly: true }); cf.setScope(account, zone);
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    await assert.rejects(cf.request(oauth, '/accounts', method, {}), stopped('scope'));
+  }
+  await assert.rejects(cf.zoneRequest('/rulesets', 'POST', {}), stopped('scope'));
+  await assert.rejects(cf.accountRequest(workerPath + '/domains/changeset?replace_state=true', 'POST', []), stopped('scope'));
+  assert.equal(state.calls.length, 0);
+  assert.throws(() => { cf.readOnly = false; }, TypeError);
+});
+
+test('inspection classifies a sparse empty entrypoint without normalizing or mutating it', async () => {
+  const { state, read } = fixture({ readOnly: true });
+  const sparse = { id: 'd'.repeat(32), kind: 'zone', phase: customPhase };
+  state.rulesets.set(customPhase, sparse); await read();
+  assert.ok(state.reports.includes('inspect: custom invariant rules-array'));
+  assert.ok(state.reports.includes('inspect: custom rules-list omitted-or-invalid'));
+  assert.ok(state.reports.includes('inspect: owned hold unknown'));
+  assert.equal(Object.hasOwn(sparse, 'rules'), false);
+  assert.ok(state.calls.every(call => call.method === 'GET'));
+});
+
+test('invariant classifier distinguishes shape, kind, phase, skip, logging and occupied capacity', () => {
+  const empty = { id: 'd'.repeat(32), kind: 'zone', phase: customPhase, rules: [] };
+  assert.equal(rulesetInvariant(null, customPhase), 'ok');
+  assert.equal(rulesetInvariant(empty, customPhase), 'ok');
+  assert.equal(rulesetInvariant({ ...empty, kind: 'root' }, customPhase), 'kind');
+  assert.equal(rulesetInvariant({ ...empty, phase: ratePhase }, customPhase), 'phase');
+  assert.equal(rulesetInvariant({ ...empty, rules: undefined }, customPhase), 'rules-array');
+  assert.equal(rulesetInvariant({ ...empty, rules: [{ id: 'e'.repeat(32), action: 'skip' }] }, customPhase), 'skip');
+  assert.equal(rulesetInvariant({ ...empty, rules: [{ id: 'e'.repeat(32), action: 'block', logging: { enabled: true } }] }, customPhase), 'logging');
+  assert.equal(rulesetInvariant({ ...empty, phase: ratePhase, rules: [{ id: 'e'.repeat(32), action: 'block', ref: 'unrelated' }] }, ratePhase), 'rate-capacity');
+});
+
+test('inspection identifies owned enabled states and unrelated capacity without changing any rule', async () => {
+  const normal = fixture(); await normal.run();
+  const { state, read } = fixture({ readOnly: true });
+  state.rulesets = structuredClone(normal.state.rulesets);
+  state.rulesets.get(customPhase).rules.find(rule => rule.ref === 'reptoday_coach_deployment_hold_v1').enabled = true;
+  state.rulesets.get(ratePhase).rules.push({ id: 'f'.repeat(32), ref: 'unrelated', action: 'block', enabled: true });
+  const before = structuredClone(state.rulesets); await read();
+  assert.ok(state.reports.includes('inspect: owned hold enabled'));
+  assert.ok(state.reports.includes('inspect: owned boundary enabled'));
+  assert.ok(state.reports.includes('inspect: owned rate enabled'));
+  assert.ok(state.reports.includes('inspect: unrelated rate rules present'));
+  assert.ok(state.reports.includes('inspect: rate capacity conflict'));
+  assert.ok(state.reports.includes('inspect: rate invariant rate-capacity'));
+  assert.deepEqual(state.rulesets, before); assert.ok(state.calls.every(call => call.method === 'GET'));
+});
+
+test('inspection input protocol forbids provider or client-gate credentials', () => {
+  assert.deepEqual(inspectionCredentialsFromPacket({ wafToken: credentials.wafToken }), { wafToken: credentials.wafToken });
+  assert.throws(() => inspectionCredentialsFromPacket(credentials), stopped('input'));
+  assert.throws(() => inspectionCredentialsFromPacket({ wafToken: '' }), stopped('input'));
+});
 
 test('approved deployment stays closed through staging, installs both safeguards, and uploads only two existing values', async () => {
   const { state, run, hold } = fixture(); await run();

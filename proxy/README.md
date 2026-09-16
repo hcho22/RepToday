@@ -348,6 +348,39 @@ Offline tests and native compilation (no Keychain access or network):
 ./tools/test-coach-production-deploy.sh
 ```
 
+### Read-only diagnosis after a stopped launch
+
+The first reviewed launch stopped before mutation with `auth`; Firstmate refreshed the existing
+Wrangler OAuth through the browser. The next reviewed launch stopped with the fixed code
+`rules`. **Treat production state as unknown until inspection succeeds.** A partial launch may
+have enabled the deployment hold or added the path boundary. Do not retry deployment, disable
+a hold, provision bindings, attach a domain or call a model while diagnosing this failure.
+
+Firstmate can launch the dedicated read-only mode locally:
+
+```bash
+./tools/deploy-coach-production.sh --inspect
+```
+
+This mode retrieves only the existing zone-WAF Keychain item and uses the existing Wrangler
+OAuth in memory. Its transport refuses every non-GET request, including the custom-domain
+changeset preview. It does not invoke Wrangler, retrieve the model key or gate, refresh auth,
+change rules, or call the Worker. It emits only allowlisted states for owned rules, unrelated
+rules/capacity, phase/invariant classes, Worker/binding presence and domain/route ownership.
+It never prints ruleset bodies, account/zone/rule identifiers, tokens or arbitrary diagnostics.
+If the recompiled dedicated executable needs native Keychain access, the captain authorizes its
+local prompt; never grant broad CLI access or supply the token in a shell command.
+
+The initial agent inspection attempt waited at native retrieval and was stopped before the
+local coordinator started. It produced no Cloudflare observations. The 31 offline tests and
+native tests establish the inspection boundary, not the live ruleset state or the cause of the
+`rules` stop. The earlier 25-test fixture assumed an empty phase was either absent or contained
+an explicit `rules: []` array, and modeled server rule responses by echoing submitted fields.
+Inspection distinguishes sparse arrays, phase/kind mismatches, skip/logging conflicts, owned
+semantics and occupied rate capacity before choosing a fix. The fixed `rules` deployment code
+and suppression of partial progress on error mask the exact failing guard and stage; neither
+is evidence that the Worker or its bindings were created.
+
 ### Wrangler flow
 
 ```bash

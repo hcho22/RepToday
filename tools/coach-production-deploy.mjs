@@ -40,15 +40,23 @@ export function credentialsFromPacket(packet) {
   return packet;
 }
 
+export function inspectionCredentialsFromPacket(packet) {
+  requireThat(packet && Object.keys(packet).join(',') === 'wafToken' &&
+    typeof packet.wafToken === 'string' && /^[A-Za-z0-9_-]{20,1024}$/.test(packet.wafToken), 'input');
+  return packet;
+}
+
 export class Cloudflare {
-  constructor(oauth, waf, fetchImpl = fetch) {
+  constructor(oauth, waf, fetchImpl = fetch, { readOnly = false } = {}) {
     this.oauth = oauth; this.waf = waf; this.fetch = fetchImpl;
+    Object.defineProperty(this, 'readOnly', { value: readOnly });
   }
   setScope(account, zone) {
     requireThat(id(account) && id(zone), 'scope');
     this.account = account; this.zone = zone;
   }
   async request(credential, endpoint, method = 'GET', body, allowMissing = false) {
+    requireThat(!this.readOnly || method === 'GET' && body === undefined, 'scope');
     requireThat(endpoint.startsWith('/') && !endpoint.includes('..') && !endpoint.includes('#'), 'scope');
     const url = new URL(`https://api.cloudflare.com/client/v4${endpoint}`);
     requireThat(url.origin === 'https://api.cloudflare.com', 'scope');
@@ -165,19 +173,29 @@ function ruleMatches(rule, expected, holdCanBeDisabled = false) {
   return !rule.ratelimit;
 }
 
-function checkRuleset(ruleset, phase) {
-  if (ruleset === null) return;
-  requireThat(ruleset && id(ruleset.id) && ruleset.kind === 'zone' && ruleset.phase === phase &&
-    Array.isArray(ruleset.rules), 'rules');
-  requireThat(ruleset.rules.every(rule => id(rule.id) && rule.action !== 'skip' && !rule.logging?.enabled), 'rules');
+export function rulesetInvariant(ruleset, phase) {
+  if (ruleset === null) return 'ok';
+  if (!ruleset || typeof ruleset !== 'object') return 'ruleset-shape';
+  if (!id(ruleset.id)) return 'ruleset-identity';
+  if (ruleset.kind !== 'zone') return 'kind';
+  if (ruleset.phase !== phase) return 'phase';
+  if (!Array.isArray(ruleset.rules)) return 'rules-array';
+  if (ruleset.rules.some(rule => !id(rule.id))) return 'rule-identity';
+  if (ruleset.rules.some(rule => rule.action === 'skip')) return 'skip';
+  if (ruleset.rules.some(rule => rule.logging?.enabled)) return 'logging';
   const expected = phase === CUSTOM ? [HOLD, BOUNDARY] : [LIMIT];
-  requireThat(expected.every(rule => ruleset.rules.filter(actual => actual.ref === rule.ref).length <= 1), 'rules');
+  if (!expected.every(rule => ruleset.rules.filter(actual => actual.ref === rule.ref).length <= 1)) return 'duplicate-ref';
   for (const rule of expected) {
     const actual = ruleset.rules.find(candidate => candidate.ref === rule.ref);
-    if (actual) requireThat(ruleMatches(actual, rule, rule.ref === HOLD.ref), 'rules');
+    if (actual && !ruleMatches(actual, rule, rule.ref === HOLD.ref)) return 'owned-semantics';
   }
   // Never consume an unrelated rule slot or purchase capacity, regardless of zone plan.
-  if (phase === RATE) requireThat(ruleset.rules.every(rule => rule.ref === LIMIT.ref), 'rules');
+  if (phase === RATE && !ruleset.rules.every(rule => rule.ref === LIMIT.ref)) return 'rate-capacity';
+  return 'ok';
+}
+
+function checkRuleset(ruleset, phase) {
+  requireThat(rulesetInvariant(ruleset, phase) === 'ok', 'rules');
 }
 
 async function entrypoint(cf, phase) {
@@ -210,6 +228,68 @@ async function verifyProtection(cf, held) {
   requireThat(ruleMatches(custom?.rules.find(rule => rule.ref === HOLD.ref), { ...HOLD, enabled: held }) &&
     ruleMatches(custom?.rules.find(rule => rule.ref === BOUNDARY.ref), BOUNDARY) &&
     ruleMatches(rate?.rules.find(rule => rule.ref === LIMIT.ref), LIMIT), 'rules');
+}
+
+function inspectRuleset(ruleset, phase, report) {
+  const label = phase === CUSTOM ? 'custom' : 'rate';
+  const expected = phase === CUSTOM ? [HOLD, BOUNDARY] : [LIMIT];
+  report(`inspect: ${label} phase ${ruleset === null ? 'absent' : ruleset?.phase === phase ? 'matches' : 'mismatch'}`);
+  report(`inspect: ${label} invariant ${rulesetInvariant(ruleset, phase)}`);
+  const rules = Array.isArray(ruleset?.rules) ? ruleset.rules : null;
+  report(`inspect: ${label} rules-list ${ruleset === null ? 'absent' : rules === null ? 'omitted-or-invalid' : rules.length ? 'populated' : 'empty'}`);
+  for (const rule of expected) {
+    const name = rule.ref === HOLD.ref ? 'hold' : rule.ref === BOUNDARY.ref ? 'boundary' : 'rate';
+    const matches = rules?.filter(actual => actual.ref === rule.ref);
+    const state = ruleset === null ? 'absent' : matches === undefined ? 'unknown' :
+      matches.length === 0 ? 'absent' : matches.length > 1 ? 'conflict' :
+      matches[0].enabled === true ? 'enabled' : matches[0].enabled === false ? 'disabled' : 'unknown';
+    report(`inspect: owned ${name} ${state}`);
+  }
+  const unrelated = rules?.filter(rule => !expected.some(owned => owned.ref === rule.ref));
+  report(`inspect: unrelated ${label} rules ${ruleset === null ? 'none' : unrelated === undefined ? 'unknown' : unrelated.length ? 'present' : 'none'}`);
+  const required = rules?.length + expected.filter(owned => !rules?.some(rule => rule.ref === owned.ref)).length;
+  report(`inspect: ${label} capacity ${ruleset === null ? 'available' : rules === null ? 'unknown' :
+    required > (phase === CUSTOM ? 5 : 1) ? 'conflict' : 'available'}`);
+}
+
+export async function inspect({ cf, report = () => {} }) {
+  requireThat(cf.readOnly === true, 'scope');
+  const accounts = await cf.accountRequest('/accounts');
+  requireThat(Array.isArray(accounts) && accounts.length === 1 && id(accounts[0].id), 'account');
+  cf.account = accounts[0].id;
+  const zones = await cf.accountRequest(`/zones?name=${TARGET.zone}&account.id=${cf.account}&status=active`);
+  requireThat(Array.isArray(zones) && zones.length === 1 && zones[0].name === TARGET.zone &&
+    zones[0].status === 'active' && zones[0].account?.id === cf.account && id(zones[0].id), 'zone');
+  requireThat(/^Free(?:\b|\s)/i.test(zones[0].plan?.name ?? ''), 'rate-plan');
+  cf.setScope(cf.account, zones[0].id);
+  report('inspect: account single approved'); report('inspect: zone active approved Free');
+  // GET raw phase entrypoints without changing or normalizing them. Report only fixed classes.
+  const custom = await cf.zoneRequest(`/rulesets/phases/${CUSTOM}/entrypoint`, 'GET', undefined, true);
+  const rate = await cf.zoneRequest(`/rulesets/phases/${RATE}/entrypoint`, 'GET', undefined, true);
+  inspectRuleset(custom, CUSTOM, report); inspectRuleset(rate, RATE, report);
+  const scripts = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts`);
+  requireThat(Array.isArray(scripts) && scripts.filter(script => script.id === TARGET.worker).length <= 1, 'target');
+  const exists = scripts.some(script => script.id === TARGET.worker);
+  report(`inspect: worker ${exists ? 'present' : 'absent'}`);
+  if (exists) {
+    const secrets = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts/${TARGET.worker}/secrets`);
+    requireThat(Array.isArray(secrets), 'secret');
+    report(`inspect: provider binding ${secrets.some(secret => secret.name === 'OPENAI_API_KEY') ? 'present' : 'absent'}`);
+    report(`inspect: client-gate binding ${secrets.some(secret => secret.name === 'CLIENT_SHARED_SECRET') ? 'present' : 'absent'}`);
+    report(`inspect: unexpected secret bindings ${secrets.some(secret => !secretNames.includes(secret.name)) ? 'present' : 'absent'}`);
+  } else {
+    report('inspect: provider binding absent'); report('inspect: client-gate binding absent');
+    report('inspect: unexpected secret bindings absent');
+  }
+  const domains = await cf.accountRequest(`/accounts/${cf.account}/workers/domains`);
+  requireThat(Array.isArray(domains), 'route');
+  let domain = 'conflict';
+  try { domain = checkDomains(domains, cf.account, cf.zone) ? 'approved' : 'absent'; } catch {}
+  report(`inspect: domain ${domain}`);
+  const routes = await cf.accountRequest(`/zones/${cf.zone}/workers/routes`);
+  let route = 'conflict'; try { checkRoutes(routes); route = 'clear'; } catch {}
+  report(`inspect: legacy route ${route}`);
+  report('inspected: read-only production state; no mutations or model calls');
 }
 
 export async function deploy({ cf, credentials, stageWorker, report = () => {}, probe }) {
@@ -384,7 +464,8 @@ async function stageWithWrangler(repository, account, expectedOAuth) {
 }
 
 async function main() {
-  requireThat(process.argv.length === 3 && process.argv[2] === '--deploy' && !process.stdin.isTTY, 'input');
+  requireThat(process.argv.length === 3 && ['--deploy', '--inspect'].includes(process.argv[2]) && !process.stdin.isTTY, 'input');
+  const readOnly = process.argv[2] === '--inspect';
   const repository = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   let bytes = Buffer.alloc(0);
   for await (const chunk of process.stdin) {
@@ -392,11 +473,16 @@ async function main() {
     const next = Buffer.concat([bytes, chunk]); bytes.fill(0); bytes = next;
   }
   let packet;
-  try { packet = credentialsFromPacket(JSON.parse(bytes.toString('utf8'))); }
+  try {
+    packet = JSON.parse(bytes.toString('utf8'));
+    if (readOnly) packet = inspectionCredentialsFromPacket(packet);
+    else packet = credentialsFromPacket(packet);
+  }
   catch { throw new DeploymentFailure('input'); }
   finally { bytes.fill(0); }
   const oauth = await readWranglerOAuth();
-  const cf = new Cloudflare(oauth, packet.wafToken);
+  const cf = new Cloudflare(oauth, packet.wafToken, fetch, { readOnly });
+  if (readOnly) return inspect({ cf, report: line => process.stdout.write(`${line}\n`) });
   await deploy({ cf, credentials: packet, stageWorker: account => stageWithWrangler(repository, account, oauth),
     report: line => process.stdout.write(`${line}\n`), probe: gateProbes });
 }

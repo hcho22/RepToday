@@ -19,9 +19,10 @@ final class DoubleReader: CoachCredentialReader {
 
 final class DoubleCoordinator: CoachDeploymentCoordinator {
     var calls = 0
+    var expected = Set(CoachCredential.allCases)
     func run(_ credentials: [CoachCredential: Data]) throws -> String {
         calls += 1
-        precondition(Set(credentials.keys) == Set(CoachCredential.allCases))
+        precondition(Set(credentials.keys) == expected)
         precondition(credentials.allSatisfy { $0.key.accepts($0.value) })
         return "non-secret double completed"
     }
@@ -34,6 +35,11 @@ struct CoachDeploymentTests {
         let result = try deployCoach(reader: reader, coordinator: coordinator)
         precondition(result == "non-secret double completed")
         precondition(reader.reads == CoachCredential.allCases && coordinator.calls == 1)
+        let inspectReader = DoubleReader(), inspectCoordinator = DoubleCoordinator()
+        inspectReader.failAt = .openAI
+        inspectCoordinator.expected = [.wafToken]
+        _ = try deployCoach(reader: inspectReader, coordinator: inspectCoordinator, operation: .inspect)
+        precondition(inspectReader.reads == [.wafToken] && inspectCoordinator.calls == 1)
         for failed in CoachCredential.allCases {
             let reader = DoubleReader(), coordinator = DoubleCoordinator()
             reader.failAt = failed
@@ -80,6 +86,23 @@ struct CoachDeploymentTests {
         try Data("for await (const bytes of process.stdin) {}\nconsole.log('blocked: scope'); process.exitCode=78;".utf8).write(to: entry)
         let blocked = try deployCoach(reader: DoubleReader(), coordinator: native)
         precondition(blocked == "blocked: dedicated deployment helper stopped (scope); inspect configuration without printing credentials")
+        let inspectSuccess = """
+        let packet = ''; for await (const bytes of process.stdin) packet += bytes;
+        if (process.argv[2] !== '--inspect' || Object.keys(JSON.parse(packet)).join(',') !== 'wafToken') process.exit(78);
+        console.log('inspect: account single approved');
+        console.log('inspect: custom invariant rules-array');
+        console.log('inspected: read-only production state; no mutations or model calls');
+        """
+        try Data(inspectSuccess.utf8).write(to: entry)
+        let inspection = try deployCoach(reader: DoubleReader(), coordinator: LocalNodeCoordinator(
+            repository: fixture, node: node, operation: .inspect), operation: .inspect)
+        precondition(inspection.contains("inspect: custom invariant rules-array"))
+        try Data("for await (const bytes of process.stdin) {}\nconsole.log('inspect: raw NONSECRET_DIAGNOSTIC');".utf8).write(to: entry)
+        do {
+            _ = try deployCoach(reader: DoubleReader(), coordinator: LocalNodeCoordinator(
+                repository: fixture, node: node, operation: .inspect), operation: .inspect)
+            preconditionFailure("raw inspection output must stop")
+        } catch CoachDeployFailure.coordinator {}
         print("passed: native deployment boundary tested with non-secret doubles; no Keychain or network access")
     }
 }
