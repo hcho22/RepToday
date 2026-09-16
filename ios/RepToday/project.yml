@@ -78,11 +78,12 @@ targets:
       # nil and the container falls back to `NoOpAnalyticsService`.
       # The premium coach proxy's `POST /coach` origin (US-AC02), split per configuration and expanded
       # into `Info.plist`'s `RepTodayCoachEndpoint` key exactly like the telemetry endpoint above. The
-      # Production is deployed at https://coach.reptoday.app/coach; guarded authorization checks
-      # passed. Both ordinary build configurations remain empty pending implementation of the captain-selected stronger
-      # runtime authentication, so the chat surface stays unavailable and never gates the core loop.
-      # Production requires the bearer gate. A value distributed in a binary is extractable and
-      # does not verify premium entitlement; never commit it here or in generated project files.
+      # operator-only endpoint is deployed at https://coach.reptoday.app/coach; guarded no-model
+      # authorization checks passed. The captain-selected App Attest/StoreKit implementation is
+      # prepared locally but not deployed. Both ordinary build configurations remain empty pending
+      # reviewed migration and genuine-device/model QA, so the chat surface stays unavailable and
+      # never gates the core loop. Production app configuration requires the runtime mode and an
+      # empty shared secret; the operator bearer must never enter an app binary or generated project.
       # See proxy/README.md for deployment evidence and the separate native live-QA helper.
       configs:
         Debug:

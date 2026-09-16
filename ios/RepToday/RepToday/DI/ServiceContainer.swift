@@ -32,8 +32,9 @@ struct ServiceContainer {
     let accountDeletionService: any AccountDeletionServiceProtocol
     /// The premium AI coach transport (US-AC02), `nil` when no coach proxy is configured for this
     /// build. The production proxy is deployed, while ordinary build settings remain empty pending
-    /// the shipped-client authentication decision. The coach chat surface reads this and, when it is `nil`, shows a clear "coach
-    /// unavailable" state; it never gates or blocks the core loop. `live(...)` resolves it once from
+    /// migration and genuine-device QA of the locally prepared App Attest/StoreKit implementation.
+    /// The coach chat surface reads this and, when it is `nil`, shows a clear "coach unavailable"
+    /// state; it never gates or blocks the core loop. `live(...)` resolves it once from
     /// the build-configured `Info.plist` origin (`CoachProxyClient.configured(...)`), exactly like the
     /// telemetry sink; `mock()` leaves it `nil`. Unlike the other services this is genuinely optional -
     /// the coach is a best-effort upgrade, never a dependency - so it carries an initializer default.
@@ -287,9 +288,9 @@ struct ServiceContainer {
             )
             ?? NoOpAnalyticsService()
         // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`
-        // origin exactly like the telemetry sink. Ordinary builds remain `nil` pending stronger-authentication migration and
-        // genuine-device QA, so
-        // the coach surface renders its "unavailable" state; it never gates the core loop.
+        // origin exactly like the telemetry sink. Ordinary builds remain `nil` while the locally
+        // prepared stronger-authentication path awaits migration and genuine-device QA, so the coach
+        // surface renders its "unavailable" state; it never gates the core loop.
         let resolvedCoachClient = CoachProxyClient.configured(
             safetyIdentifierProvider: coachSafetyIdentifierProvider
         )

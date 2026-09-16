@@ -245,8 +245,8 @@ The native result retains neither actual retry count nor serving-edge convergenc
 Standard installed Wrangler OAuth refresh recovered the unchanged local auth guard before
 this attempt; no new interactive login, credential mode/scope/account/plan change or rotation
 was needed. The captain selected **stronger runtime authentication**. Both ordinary iOS Coach build
-configurations remain empty until that path is ready; the operator gate must never be distributed
-in a shipped binary.
+configurations remain empty until the locally prepared App Attest/StoreKit path is migrated and
+verified on a genuine device; the operator gate must never be distributed in a shipped binary.
 Provider keys remain solely on the Worker. Only `/coach` is exposed at this production hostname;
 the separate Variety Language route is not enabled by this deployment.
 
@@ -456,7 +456,8 @@ refreshed the existing OAuth session: the unchanged helper guard rejected it bef
 accepted it afterward, and GET-only account/zone verification succeeded. Firstmate's next
 guarded native launch from `a8b8f75` completed exit 0 with the 401/401/400 gate contracts.
 Production is deployed and released as described above. Live model/client QA, iOS production
-configuration and stronger runtime authentication implementation remain pending. The earlier held-state
+configuration, stronger-authentication migration and genuine-device QA remain pending. The
+App Attest/StoreKit implementation is prepared locally but not deployed. The earlier held-state
 observations are historical, not the current production state.
 
 Firstmate can launch the dedicated read-only mode locally:

@@ -1,10 +1,17 @@
 # Coach post-stage settings diagnosis — 2026-09-16
 
-Production remains held and unreachable. Firstmate's guarded launch staged Worker
+**Current status update:** This report preserves an earlier stopped-launch diagnosis. A later
+authorized operator-only launch from `a8b8f75` deployed and released
+`https://coach.reptoday.app/coach`; its missing/wrong authorization and authorized malformed-input
+probes passed without a model call. The separately prepared App Attest/StoreKit implementation has
+not been deployed, ordinary iOS endpoint/secret settings remain empty, and live model plus
+genuine-device QA remain pending. See `proxy/README.md` for current status.
+
+At the time of this diagnosis, production remained held and unreachable. Firstmate's guarded launch staged Worker
 `reptoday-variety-language-proxy`, then stopped with `settings` before uploading either
 provider/client secret or attaching the approved origin `https://coach.reptoday.app/coach`.
-No live model reply has returned. This report establishes diagnosis and local validation;
-completed deployment, live model/client QA and no-mistakes PR readiness remain separate gates.
+No live model reply had returned. This report establishes diagnosis and local validation at that
+point; later operator deployment, live model/client QA and no-mistakes PR readiness are separate.
 
 ## Fixed-class GET evidence
 
@@ -79,20 +86,20 @@ Validation completed:
 - GET-only post-correction inspection reports settings `ok` with the same safely held state.
 - `cd proxy && npm test`: 30 Worker tests passed; `npm run typecheck` passed.
 
-No iOS configuration/client behavior changed in this correction. Production model calls,
+No iOS configuration/client behavior changed in this correction. At this point, production model calls,
 the two PRD real-client prompts, offline/error real-client QA, private iOS authentication
-configuration, iOS validation/build and the shipped gate's security decision remain pending.
+configuration, iOS validation/build and the shipped authentication decision remained pending.
 No deployment retry or paid call was performed during this diagnosis.
 
-## Next local Firstmate action
+## Historical next local Firstmate action
 
-Review the committed correction. The exact guarded retry from this clean isolated task branch,
-when Firstmate authorizes that next launch, is:
+The next authorized step from this diagnosis was the guarded retry below; the later operator-only
+deployment described in the status update completed that step.
 
 ```bash
 ./tools/deploy-coach-production.sh
 ```
 
-Supply no credentials as arguments. The helper must re-confirm account, zone, targets and
-safeguards; keep the hold through staging/secrets/domain verification; and make only malformed
-JSON authorization probes. A successful helper return still means live model QA is pending.
+The helper was required to accept no credential arguments, re-confirm account, zone, targets and
+safeguards, keep the hold through staging/secrets/domain verification, and make only malformed JSON
+authorization probes. Its later successful return did not establish live model QA.

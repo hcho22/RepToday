@@ -34,17 +34,19 @@
 	<string>$(REPTODAY_ANALYTICS_SECRET)</string>
 	<!-- The premium coach proxy's `POST /coach` origin (US-AC02), expanded from the per-configuration
 	     `REPTODAY_COACH_ENDPOINT` build setting exactly like the analytics endpoint above. The `proxy/`
-	     Worker is deployed at https://coach.reptoday.app/coach. Both ordinary configurations remain empty
-	     pending implementation of the captain-selected stronger runtime authentication. An
+	     Worker's operator-only entry is deployed at https://coach.reptoday.app/coach. The captain-selected
+	     App Attest/StoreKit implementation is prepared locally but not deployed. Both ordinary
+	     configurations remain empty pending reviewed migration and genuine-device/model QA. An
 	     empty/missing/mistyped value makes `CoachProxyClient.configured(...)` return nil, leaving the
 	     coach inert (the chat surface shows a clear "coach unavailable" state) rather than pointing at a
-	     wrong destination. Production also requires the bearer gate; the build values remain unset. -->
+	     wrong destination. Production app configuration requires `app-attest-storekit-v1` and no shared
+	     secret; the operator bearer remains confined to separate native QA. -->
 	<key>RepTodayCoachEndpoint</key>
 	<string>$(REPTODAY_COACH_ENDPOINT)</string>
-	<!-- The coach client shared secret (US-AC02), expanded from `REPTODAY_COACH_SECRET`. Unlike the
-	     analytics secret this one is optional: an empty value matches an open dev Worker (no
-	     `Authorization` header sent), not an unconfigured build. Set it when the proxy sets
-	     `CLIENT_SHARED_SECRET`. -->
+	<!-- The coach client shared secret (US-AC02), expanded from `REPTODAY_COACH_SECRET`, is available
+	     only to explicit DEBUG non-production configuration. Ordinary Debug and Release values stay
+	     empty. The approved production origin rejects a nonempty value because shipped authentication
+	     uses App Attest/StoreKit; the operator bearer must never be distributed in an app binary. -->
 	<key>RepTodayCoachSecret</key>
 	<string>$(REPTODAY_COACH_SECRET)</string>
 	<key>RepTodayCoachAuthMode</key>

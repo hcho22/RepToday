@@ -1,10 +1,16 @@
 # Coach production rate-rule diagnosis — 2026-09-16
 
-This report records the earlier rate-rule stop, which left only the three protective rules.
-A later Firstmate launch staged the Worker and stopped before secrets/domain on `settings`;
-the hold remains enabled and no live model reply has returned. Current state and the later
-diagnosis are in [settings-normalization.md](settings-normalization.md). These reports are
-diagnostic evidence, not completed production deployment or code/PR readiness evidence.
+**Current status update:** This report records an earlier rate-rule stop. A later authorized
+operator-only launch from `a8b8f75` deployed and released `https://coach.reptoday.app/coach` and
+passed no-model authorization/malformed-input probes. The separately prepared App Attest/StoreKit
+implementation has not been deployed, ordinary iOS endpoint/secret settings remain empty, and live
+model plus genuine-device QA remain pending. See `proxy/README.md` for current status.
+
+At the time, the rate-rule stop left only the three protective rules. A later Firstmate launch
+staged the Worker and stopped before secrets/domain on `settings`; the hold remained enabled and no
+live model reply had returned. The later diagnosis is in
+[settings-normalization.md](settings-normalization.md). These reports are historical diagnostic
+evidence, not the final operator deployment or code/PR readiness evidence.
 
 ## GET-only observations
 
@@ -88,17 +94,17 @@ These checks use no network or Keychain. Later GET-only inspection confirmed the
 production rate invariant `ok`; the subsequent guarded launch also passed rate verification
 before stopping on settings, as recorded in the report linked above.
 
-## Next authorized local boundary
+## Historical next authorized local boundary
 
-Firstmate must review the committed correction and perform the dedicated local launch from
-the clean isolated task worktree, without credential arguments:
+The next authorized step from this diagnosis was the dedicated local launch below; the later
+operator-only deployment described in the status update completed that step.
 
 ```bash
 ./tools/deploy-coach-production.sh
 ```
 
-The helper must re-confirm account, zone, targets and all safeguards before mutation. The
-existing hold must remain enabled through staging, binding verification and domain attachment.
-The helper's final authorization probes use malformed JSON and make no model calls.
-A successful launch still leaves real model QA, real-client QA, iOS production configuration
-and the shipped client-gate security choice pending. No end-to-end success is claimed here.
+The helper was required to re-confirm account, zone, targets and all safeguards before mutation,
+keep the existing hold enabled through staging, binding verification and domain attachment, and
+use only malformed JSON for its final authorization probes. Its later successful launch still left
+real model QA, real-client QA, ordinary iOS configuration, strong-authentication migration and
+genuine-device QA pending. No end-to-end model or shipped-client success is claimed here.

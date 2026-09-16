@@ -22,8 +22,9 @@ import Observation
 ///   points at the user's own injury control; the coach cannot set or clear an injury flag, and the
 ///   policy-write path it does have (US-AC07) cannot express one.
 /// - **Inert when unconfigured.** When no coach proxy is configured for the build (`client == nil` -
-///   as in ordinary builds pending implementation of the captain-selected stronger runtime authentication), the surface is
-///   `isAvailable == false` and shows a clear "coach unavailable" state instead of failing.
+///   as in ordinary builds while the locally prepared App Attest/StoreKit path awaits migration and
+///   genuine-device QA), the surface is `isAvailable == false` and shows a clear "coach unavailable"
+///   state instead of failing.
 ///
 /// It is `@Observable`, takes its services as protocols, and injects a clock/calendar so the derived
 /// context is deterministic under test - the same conventions as the other v6 view models. It is
