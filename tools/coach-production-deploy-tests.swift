@@ -151,7 +151,7 @@ struct CoachDeploymentTests {
         const credentials = JSON.parse(packet);
         console.log('confirmed: approved account, zone and Worker target');
         try {
-          await gateProbes(credentials.clientGate, async () => new Response('<html>' + credentials.openAI + '</html>', { status: 403 }));
+          await gateProbes(credentials.clientGate, async () => new Response('<html>' + credentials.openAI + '</html>', { status: 403 }), { wait: async () => {} });
           process.exitCode = 1;
         } catch (error) {
           console.log(gateFailureLine(error));

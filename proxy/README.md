@@ -332,8 +332,24 @@ server bindings. Custom-domain attachment uses the Cloudflare changeset/records 
 DNS/origin override flags false, avoiding Wrangler's automatic non-interactive conflict override.
 
 The hold is released only after rechecking bindings, settings, route ownership and WAF rules.
-Three bounded malformed-JSON probes check missing/wrong/correct authorization without a model
-call; any probe failure re-enables the hold. Earlier failures retain the hold. A `gate` failure
+Malformed-JSON probes check missing/wrong/correct authorization without a model call, with
+final expectations of 401 JSON `unauthorized`, 401 JSON `unauthorized`, and 400 JSON string error.
+The missing-authorization stage now observes serving-edge readiness: only the observed completed
+403/non-JSON, non-redirected denial may repeat, at most **four attempts** separated by **five
+seconds**, within a **45-second total readiness budget** including requests, body reads and waits.
+Each request retains its 15-second deadline and 8192-byte response ceiling; the first-stage
+request deadline shortens to the remaining readiness budget when necessary. Timeout, transport,
+redirect, absent/oversized/interrupted body, unexpected JSON/status/contract failures stop immediately.
+The wrong/correct-authorization stages run once each after readiness succeeds and retain their
+15-second deadlines: at most six public requests and 75 seconds for the whole gate-probe sequence,
+excluding control-plane checks and hold restoration. These are finite operator ceilings, **not a
+Cloudflare propagation guarantee**. No user-agent override or valid provider input is sent.
+
+This extends the temporary release window while the verified client gate, exact-path boundary
+and rate protection remain configured. Any sustained denial, exhausted readiness budget or later
+probe failure re-enables and verifies the hold; earlier failures retain it. Other edge policies
+can share the denial class, so retries never identify a producer or establish readiness: only the
+existing 401 JSON contract permits moving to the later authorization stages. A `gate` failure
 now carries one fixed diagnostic line through the same native boundary, after the blocked summary:
 
 | Field | Allowlisted classes |
@@ -350,7 +366,8 @@ timeout/abort failures. `redirect` identifies a received response marked redirec
 classes describe only the bounded read and error-field shape, never their contents. The native
 reader accepts at most one diagnostic on a failed deployment with code `gate`, rejects arbitrary
 or mixed output entirely, and suppresses partial progress. The blocked prefix and exit 78 remain.
-No probe count/order, deadline, redirect prohibition, body bound or authorization expectation changed.
+Only the missing-authorization stage permits the bounded readiness attempts above. Final
+verification order/contracts, per-request maximum deadline, redirect prohibition and body bound remain.
 
 Inspect only safe error codes/classes when blocked; do not dump API bodies or credential-bearing diagnostics. Do not
 disable a hold manually to get past a failure. DNS/certificate propagation can cause a bounded
@@ -392,8 +409,13 @@ the approved custom domain, then stopped with `gate`. Firstmate's subsequent GET
 confirmed the hold restored, both other safeguards enabled, settings/rate invariants `ok`,
 bindings present and domain approved. A separately authorized credential-free observation
 confirmed current DNS readiness and validated TLS, with no HTTP request. The original failing
-probe stage/response class was discarded, so the cause remains unproven. The fixed diagnostics
-above are instrumentation for a reviewed later launch, not a production fix or completed deployment.
+probe stage/response class was discarded. The next guarded launch at `8601cee` retained a
+first-probe 403/non-JSON denial. The captain's expanded existing event identifies the owned
+deployment hold blocking a Node `POST /coach` during the available attempt window, though no
+exact probe timestamp/Ray correlation was retained. This supports the narrow readiness behavior
+above; serving-edge convergence remains a hypothesis, not a proven propagation deadline.
+Offline regressions compose transitional denial with the actual Worker, verify finite exhaustion
+and hold restoration, and reject unrelated retry classes. They do not demonstrate production success.
 Production remains held and unreachable. Further launch, live model/client QA, iOS production
 configuration and the extractable-client-gate decision remain pending.
 

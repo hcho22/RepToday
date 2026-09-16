@@ -106,6 +106,11 @@ function fixture({ readOnly = false, omitRateDefault = false, omitObservability 
 }
 
 const stopped = code => error => error instanceof DeploymentFailure && error.code === code;
+function readinessClock() {
+  let elapsed = 0; const waits = [];
+  return { now: () => elapsed, wait: async ms => { waits.push(ms); elapsed += ms; },
+    advance: ms => { elapsed += ms; }, waits };
+}
 const mutations = state => state.calls.filter(call => ['PUT', 'PATCH', 'POST'].includes(call.method) &&
   !call.endpoint.includes('/changeset?'));
 
@@ -520,6 +525,115 @@ test('gate probes use only malformed JSON and check missing, wrong and correct a
   await assert.rejects(gateProbes(credentials.clientGate, async () => new Response('{}', { status: 200 })), stopped('gate'));
 });
 
+test('a transitional first-probe hold denial reaches the real Worker gate before later authorization probes', async () => {
+  const clock = readinessClock(), requests = [], statuses = [];
+  let upstream = 0; const priorFetch = globalThis.fetch;
+  globalThis.fetch = async () => { upstream++; throw new Error('NONSECRET_FORBIDDEN_UPSTREAM'); };
+  try {
+    await gateProbes(credentials.clientGate, async (url, options) => {
+      requests.push(options);
+      const response = requests.length === 1 ? new Response('<html>NONSECRET_HOLD_BODY</html>', { status: 403 }) :
+        await worker.fetch(new Request(url, options), { CLIENT_SHARED_SECRET: credentials.clientGate });
+      statuses.push(response.status); return response;
+    }, clock);
+    assert.deepEqual(statuses, [403, 401, 401, 400]);
+    assert.deepEqual(requests.map(request => request.headers.Authorization),
+      [undefined, undefined, 'Bearer deliberately-invalid-coach-gate', `Bearer ${credentials.clientGate}`]);
+    assert.ok(requests.every(request => request.body === '{' && request.redirect === 'error' && request.signal));
+    assert.deepEqual(clock.waits, [5000]); assert.equal(upstream, 0);
+  } finally { globalThis.fetch = priorFetch; }
+});
+
+test('persistent first-probe denial exhausts four attempts, restores and verifies the hold without success', async () => {
+  const { run, hold, state } = fixture(); const clock = readinessClock();
+  let requests = 0;
+  await assert.rejects(run({ probe: gate => gateProbes(gate, async (url, options) => {
+    assert.equal(hold().enabled, false); assert.equal(url, TARGET.origin);
+    assert.equal(options.headers.Authorization, undefined); assert.equal(options.body, '{');
+    requests++; return new Response('<html>NONSECRET_PRIVATE_EDGE_DENIAL</html>', { status: 403 });
+  }, clock) }), error => {
+    assert.equal(hold().enabled, true);
+    assert.equal(gateFailureLine(error), 'gate: probe missing-authorization failure json status 403 redirected no contract non-json');
+    assert.ok(!JSON.stringify(error).includes('NONSECRET_PRIVATE_EDGE_DENIAL')); return stopped('gate')(error);
+  });
+  assert.equal(requests, 4); assert.deepEqual(clock.waits, [5000, 5000, 5000]);
+  assert.equal(state.calls.at(-2).method, 'PATCH'); assert.equal(state.calls.at(-2).body.enabled, true);
+  assert.equal(state.calls.at(-1).method, 'GET');
+  assert.equal(state.calls.at(-1).endpoint, `/zones/${zone}/rulesets/phases/${customPhase}/entrypoint`);
+  assert.equal(state.reports.some(line => line.startsWith('deployed:')), false);
+});
+
+test('readiness budget includes requests and waits and stops before an unfittable extra delay', async () => {
+  const { run, hold, state } = fixture(); const clock = readinessClock(); let requests = 0;
+  await assert.rejects(run({ probe: gate => gateProbes(gate, async () => {
+    requests++; clock.advance(requests < 3 ? 12_000 : 10_000);
+    return new Response('<html>hold</html>', { status: 403 });
+  }, clock) }), error => stopped('gate')(error) && error.gateDiagnostic?.status === 403);
+  assert.equal(requests, 3); assert.deepEqual(clock.waits, [5000, 5000]); assert.equal(clock.now(), 44_000);
+  assert.equal(hold().enabled, true); assert.equal(state.calls.at(-1).method, 'GET');
+  assert.equal(state.reports.some(line => line.startsWith('deployed:')), false);
+});
+
+test('an overshooting readiness wait cannot start another request after the readiness deadline', async () => {
+  const clock = readinessClock(); let requests = 0;
+  await assert.rejects(gateProbes(credentials.clientGate, async () => {
+    requests++; return new Response('<html>hold</html>', { status: 403 });
+  }, { now: clock.now, wait: async () => clock.advance(45_000) }), error => stopped('gate')(error));
+  assert.equal(requests, 1); assert.equal(clock.now(), 45_000);
+});
+
+test('a first-stage success arriving after the operator deadline cannot report ready', async () => {
+  const clock = readinessClock(); let requests = 0;
+  await assert.rejects(gateProbes(credentials.clientGate, async (url, options) => {
+    requests++; clock.advance(45_000);
+    return worker.fetch(new Request(url, options), { CLIENT_SHARED_SECRET: credentials.clientGate });
+  }, clock), error => error.gateDiagnostic?.failure === 'timeout' && stopped('gate')(error));
+  assert.equal(requests, 1); assert.deepEqual(clock.waits, []);
+});
+
+test('the remaining readiness budget aborts a streamed body even after response headers arrive', async () => {
+  let nowCalls = 0, requests = 0;
+  // Ten milliseconds remain at the first request; do not wait the real 45-second operator budget.
+  const now = () => nowCalls++ === 0 ? 0 : 44_990;
+  const keepAlive = setTimeout(() => {}, 500);
+  try {
+    await assert.rejects(gateProbes(credentials.clientGate, async (url, options) => {
+      requests++;
+      return new Response(new ReadableStream({ start(controller) {
+        options.signal.addEventListener('abort', () => controller.error(options.signal.reason), { once: true });
+      } }), { status: 401 });
+    }, { now, wait: async () => assert.fail('timeout cannot retry') }), error => {
+      assert.deepEqual(error.gateDiagnostic, { stage: 'missing-authorization', failure: 'timeout', status: 401,
+        redirected: 'no', contract: 'not-read' }); return stopped('gate')(error);
+    });
+    assert.equal(requests, 1);
+  } finally { clearTimeout(keepAlive); }
+});
+
+test('all unobserved first-stage failures stop immediately and later authorization stages never retry', async () => {
+  for (const [fetchImpl, stage, expectedRequests] of [
+    [async () => new Response('<html>unavailable</html>', { status: 503 }), 'missing-authorization', 1],
+    [async () => new Response('{"error":"forbidden"}', { status: 403 }), 'missing-authorization', 1],
+    [async () => ({ status: 403, redirected: true, body: new Response('<html>hold</html>').body }), 'missing-authorization', 1],
+    [async () => new Response(null, { status: 403 }), 'missing-authorization', 1],
+    [async () => new Response('x'.repeat(8193), { status: 403 }), 'missing-authorization', 1],
+    [async () => { throw new DOMException('NONSECRET_TIMEOUT', 'TimeoutError'); }, 'missing-authorization', 1],
+    [async () => { throw new Error('NONSECRET_REQUEST_ERROR'); }, 'missing-authorization', 1],
+    [async (url, options) => options.headers.Authorization === undefined ?
+      worker.fetch(new Request(url, options), { CLIENT_SHARED_SECRET: credentials.clientGate }) :
+      new Response('<html>hold</html>', { status: 403 }), 'wrong-authorization', 2],
+    [async (url, options) => options.headers.Authorization !== `Bearer ${credentials.clientGate}` ?
+      worker.fetch(new Request(url, options), { CLIENT_SHARED_SECRET: credentials.clientGate }) :
+      new Response('<html>hold</html>', { status: 403 }), 'correct-authorization', 3],
+  ]) {
+    const clock = readinessClock(); let requests = 0;
+    await assert.rejects(gateProbes(credentials.clientGate, async (...args) => {
+      requests++; return fetchImpl(...args);
+    }, clock), error => stopped('gate')(error) && error.gateDiagnostic?.stage === stage);
+    assert.equal(requests, expectedRequests); assert.deepEqual(clock.waits, []);
+  }
+});
+
 test('gate failure diagnostics identify the failed probe and retain only safe response classes', async () => {
   let requests = 0;
   await assert.rejects(gateProbes(credentials.clientGate, async () => {
@@ -541,7 +655,7 @@ test('gate failure diagnostics survive successful hold restoration without repor
   await assert.rejects(run({ probe: gate => gateProbes(gate, async () => {
     assert.equal(hold().enabled, false);
     return new Response('<html>NONSECRET_PRIVATE_EDGE_BODY</html>', { status: 403 });
-  }) }), error => {
+  }, readinessClock()) }), error => {
     assert.ok(stopped('gate')(error));
     assert.equal(hold().enabled, true);
     assert.deepEqual(error.gateDiagnostic, { stage: 'missing-authorization', failure: 'json', status: 403,
@@ -678,7 +792,7 @@ test('failed re-closing remains a rules failure and does not emit a gate diagnos
   const { state, run } = fixture();
   await assert.rejects(run({ probe: gate => {
     state.failure = (endpoint, options, body) => options.method === 'PATCH' && body?.enabled === true;
-    return gateProbes(gate, async () => new Response('<html>blocked</html>', { status: 403 }));
+    return gateProbes(gate, async () => new Response('<html>blocked</html>', { status: 403 }), readinessClock());
   } }), error => {
     assert.ok(stopped('rules')(error)); assert.equal(gateFailureLine(error), null); return true;
   });
