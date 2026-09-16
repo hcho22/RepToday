@@ -216,6 +216,36 @@ Variety Language remains on `claude-opus-4-8` by default. Override only that rou
 
 Prerequisites: a Cloudflare account and [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
+### Production Coach credential intake on macOS
+
+`tools/prepare-coach-keychain.sh` opens a local macOS secure-input dialog for the captain's
+OpenAI API key and saves it directly through Security.framework to the default macOS Keychain.
+It also generates a 256-bit client gate if none exists, preserving any existing credential on
+subsequent runs. No values are printed or passed through shell arguments, environment, or secret
+files. The helper performs no deployment and makes no paid API calls.
+
+Firstmate launches it locally with:
+
+```bash
+./tools/prepare-coach-keychain.sh
+```
+
+The captain enters the key only in that dialog. `./tools/prepare-coach-keychain.sh --check`
+checks metadata and reports readiness without retrieving either credential. The generic-password
+service is `com.reptoday.coach.production`; accounts are `openai-api-key` and
+`client-shared-secret`. Intake preserves an existing key rather than silently replacing it;
+rotation requires a separate coordinated operation. Do not use a Keychain CLI that puts a value
+in command arguments or grants every app access.
+
+Secure intake is a prerequisite, not deployment evidence. Before provisioning these credentials
+via Wrangler stdin, confirm the authenticated account and the explicit Worker target
+`reptoday-variety-language-proxy`, and establish the rate-limit/WAF protection described above.
+Keep provider keys solely on the Worker. A client gate embedded in an iOS binary is extractable
+and only deters opportunistic abuse; it does not verify premium entitlement. Decide that production
+security boundary explicitly before injecting the gate through a private build configuration.
+
+### Wrangler flow
+
 ```bash
 cd proxy
 npm install
