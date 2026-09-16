@@ -1,6 +1,11 @@
 import CoreData
 import SwiftUI
 
+struct ResolvedCoachAuthentication {
+    let client: CoachProxyClient?
+    let accountCleanup: CoachAuthenticationAccountCleanup
+}
+
 /// App-wide service registry.
 ///
 /// Views read this from `@Environment(\.services)`, and view models receive the service
@@ -291,10 +296,11 @@ struct ServiceContainer {
         // origin exactly like the telemetry sink. Ordinary builds remain `nil` while the locally
         // prepared stronger-authentication path awaits migration and genuine-device QA, so the coach
         // surface renders its "unavailable" state; it never gates the core loop.
-        let resolvedCoachClient = CoachProxyClient.configured(
+        let resolvedCoachAuthentication = resolveCoachAuthentication(
             safetyIdentifierProvider: coachSafetyIdentifierProvider
         )
-        let runtimeCoachAuthentication = resolvedCoachClient?.transport as? RuntimeAuthenticatedCoachTransport
+        let resolvedCoachClient = resolvedCoachAuthentication.client
+        let coachAuthenticationCleanup = resolvedCoachAuthentication.accountCleanup
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -349,7 +355,7 @@ struct ServiceContainer {
                 sessionPolicyStore: policyStore,
                 activeSessionStore: activeSessionStore,
                 authService: authService,
-                coachAuthenticationCleanup: { await runtimeCoachAuthentication?.resetAccount() }
+                coachAuthenticationCleanup: { await coachAuthenticationCleanup.resetAccount() }
             ),
             // The build-configured premium coach transport (US-AC02); nil until a proxy origin is set.
             coachClient: resolvedCoachClient,
@@ -357,6 +363,25 @@ struct ServiceContainer {
             // as the deterministic Programmer, so a coach nudge and a deterministic re-program write one
             // in-force policy and the engine reads whichever landed last on the next open.
             coachPolicyService: CoachSessionPolicyService(store: policyStore)
+        )
+    }
+
+    static func resolveCoachAuthentication(
+        safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
+        bundle: Bundle = .main,
+        keyStore: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore()
+    ) -> ResolvedCoachAuthentication {
+        let client = CoachProxyClient.configured(
+            safetyIdentifierProvider: safetyIdentifierProvider,
+            bundle: bundle,
+            runtimeAuthenticationKeyStore: keyStore
+        )
+        return ResolvedCoachAuthentication(
+            client: client,
+            accountCleanup: CoachAuthenticationAccountCleanup(
+                keys: keyStore,
+                runtime: client?.transport as? RuntimeAuthenticatedCoachTransport
+            )
         )
     }
 }

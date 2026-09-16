@@ -123,8 +123,11 @@ boundaries, plus trusted Apple payload/API workflow doubles. `npm run test:runti
 crypto/official-verifier negative inputs, actual SDK ES256 JWT generation/verification and status
 transport, foreign redirect rejection and actual SQLite atomic replay in installed workerd. Every
 outbound request is intercepted locally; no external request is allowed.
-`CoachRuntimeAuthenticationTests` drives the real iOS client using explicit doubles and checks total deadlines/late callbacks/account reset/configuration; it provides no
-production bypass. Positive current Apple enrollment/purchase verification and live prompt semantics
+`CoachRuntimeAuthenticationTests` drives the real iOS client using explicit doubles and checks the
+actual DeviceCheck invalid-key classification, one-attempt restored-key recovery, generic-failure
+preservation, total deadlines, late callbacks, account reset and configuration. Account-deletion
+coverage also exercises disabled and invalid Coach configuration against the shared local key store.
+These tests provide no production bypass. Positive current Apple enrollment/purchase verification and live prompt semantics
 require the genuine production-purchase device plan in `docs/coach-runtime-authentication.md`.
 
 `tools/test-coach-runtime-migration.sh` checks separate held staging, reviewed-source release,

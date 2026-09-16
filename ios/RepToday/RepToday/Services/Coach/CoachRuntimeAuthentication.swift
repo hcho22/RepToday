@@ -3,7 +3,7 @@ import CryptoKit
 import DeviceCheck
 import StoreKit
 
-enum CoachAuthenticationError: Error { case unavailable, timeout }
+enum CoachAuthenticationError: Error, Equatable { case unavailable, invalidKey, timeout }
 
 protocol CoachAppAttesting: Sendable {
     var isSupported: Bool { get }
@@ -32,27 +32,32 @@ final class DefaultsCoachAuthenticationKeyStore: CoachAuthenticationKeyStoring, 
 
 struct DeviceCoachAppAttester: CoachAppAttesting {
     var isSupported: Bool { DCAppAttestService.shared.isSupported }
+    static func authenticationError(_ error: Error?) -> CoachAuthenticationError {
+        guard let error = error as NSError?, error.domain == DCErrorDomain,
+              error.code == DCError.invalidKey.rawValue else { return .unavailable }
+        return .invalidKey
+    }
     func generateKey() async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
-            DCAppAttestService.shared.generateKey { value, _ in
+            DCAppAttestService.shared.generateKey { value, error in
                 if let value { continuation.resume(returning: value) }
-                else { continuation.resume(throwing: CoachAuthenticationError.unavailable) }
+                else { continuation.resume(throwing: Self.authenticationError(error)) }
             }
         }
     }
     func attest(key: String, hash: Data) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
-            DCAppAttestService.shared.attestKey(key, clientDataHash: hash) { value, _ in
+            DCAppAttestService.shared.attestKey(key, clientDataHash: hash) { value, error in
                 if let value { continuation.resume(returning: value) }
-                else { continuation.resume(throwing: CoachAuthenticationError.unavailable) }
+                else { continuation.resume(throwing: Self.authenticationError(error)) }
             }
         }
     }
     func assertion(key: String, hash: Data) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
-            DCAppAttestService.shared.generateAssertion(key, clientDataHash: hash) { value, _ in
+            DCAppAttestService.shared.generateAssertion(key, clientDataHash: hash) { value, error in
                 if let value { continuation.resume(returning: value) }
-                else { continuation.resume(throwing: CoachAuthenticationError.unavailable) }
+                else { continuation.resume(throwing: Self.authenticationError(error)) }
             }
         }
     }
@@ -165,17 +170,39 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport {
         _ = try remaining(deadline, expected)
         guard !transaction.isEmpty, transaction.utf8.count <= 12_000 else { throw CoachAuthenticationError.unavailable }
         var key = keys.load()
-        if key.map(Self.validKey) != true { key = try await enroll(generation: expected, deadline: deadline) }
+        var enrolledFreshly = false
+        if key.map(Self.validKey) != true {
+            key = try await enroll(generation: expected, deadline: deadline)
+            enrolledFreshly = true
+        }
         guard var enrolled = key else { throw CoachAuthenticationError.unavailable }
-        let token: String
+        var token: String
         do { token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline) }
         catch is KeyUnavailable {
             _ = try remaining(deadline, expected); keys.save(nil)
             enrolled = try await enroll(generation: expected, deadline: deadline)
+            enrolledFreshly = true
             token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline)
         }
-        let headers = try await proof(operation: "reply", key: enrolled, challenge: token, body: body,
+        let headers: [String: String]
+        do {
+            headers = try await proof(operation: "reply", key: enrolled, challenge: token, body: body,
                                       transaction: transaction, generation: expected, deadline: deadline)
+        } catch CoachAuthenticationError.invalidKey {
+            _ = try remaining(deadline, expected)
+            keys.save(nil)
+            guard !enrolledFreshly else { throw CoachAuthenticationError.unavailable }
+            enrolled = try await enroll(generation: expected, deadline: deadline)
+            token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline)
+            do {
+                headers = try await proof(operation: "reply", key: enrolled, challenge: token, body: body,
+                                          transaction: transaction, generation: expected, deadline: deadline)
+            } catch CoachAuthenticationError.invalidKey {
+                _ = try remaining(deadline, expected)
+                keys.save(nil)
+                throw CoachAuthenticationError.unavailable
+            }
+        }
         let left = try remaining(deadline, expected)
         let result = try await http.post(to: Self.origin, jsonBody: body, headers: headers, timeoutSeconds: left)
         _ = try remaining(deadline, expected)
@@ -221,6 +248,24 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport {
     private struct Enrollment: Decodable { let enrolled: Bool }
     private struct AuthError: Decodable { let error: String }
     private struct KeyUnavailable: Error {}
+}
+
+struct CoachAuthenticationAccountCleanup: Sendable {
+    private let keys: any CoachAuthenticationKeyStoring
+    private let runtime: RuntimeAuthenticatedCoachTransport?
+
+    init(keys: any CoachAuthenticationKeyStoring, runtime: RuntimeAuthenticatedCoachTransport?) {
+        self.keys = keys
+        self.runtime = runtime
+    }
+
+    func resetAccount() async {
+        if let runtime {
+            await runtime.resetAccount()
+        } else {
+            keys.save(nil)
+        }
+    }
 }
 
 /// A timeout must return even when an Apple callback ignores cancellation. Late work is cancelled

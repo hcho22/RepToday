@@ -93,6 +93,25 @@ final class AccountDeletionServiceTests: XCTestCase {
         try await service.deleteAccount(appState:appState)
         let observation=await cleaned.values;XCTAssertEqual(observation,[true]);XCTAssertFalse(appState.isOnboarded)
     }
+    func testDisabledAndInvalidCoachConfigurationsStillUnlinkTheSharedAuthenticationKey() async throws {
+        for endpoint in ["", "http://worker.example.com/coach"] {
+            let keyStore=DefaultsCoachAuthenticationKeyStore(defaults:defaults)
+            keyStore.save(Data(repeating:1,count:32).base64EncodedString())
+            try await withCoachConfiguration([CoachProxyClient.endpointInfoPlistKey:endpoint]) {bundle in
+                let resolution=ServiceContainer.resolveCoachAuthentication(
+                    safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle,keyStore:keyStore)
+                XCTAssertNil(resolution.client)
+                let cleanup=resolution.accountCleanup
+                let appState=makeAppState(isOnboarded:true,selectedTab:.home)
+                let service=AccountDeletionService(userService:MockUserService(user:MockPersistence.sampleUser),
+                    workoutLogService:MockWorkoutLogService(),sessionPolicyStore:InMemorySessionPolicyStore(),
+                    activeSessionStore:InMemoryActiveSessionStore(),authService:MockAuthService(),
+                    coachAuthenticationCleanup:{await cleanup.resetAccount()})
+                try await service.deleteAccount(appState:appState)
+                XCTAssertNil(keyStore.load())
+            }
+        }
+    }
     func testFailedDurableDeletionDoesNotUnlinkCoachAuthenticationOrRouteAway() async throws {
         let appState=makeAppState(isOnboarded:true,selectedTab:.home);let cleaned=CleanupObservation()
         let service=AccountDeletionService(userService:ThrowingUserService(failDeletion:true),workoutLogService:MockWorkoutLogService(),
@@ -297,6 +316,22 @@ final class AccountDeletionServiceTests: XCTestCase {
         appState.isOnboarded = isOnboarded
         appState.selectedTab = selectedTab
         return appState
+    }
+
+    private func withCoachConfiguration(
+        _ values:[String:Any],
+        check:(Bundle) async throws -> Void
+    ) async throws {
+        var repository=URL(fileURLWithPath:#filePath)
+        for _ in 0..<4 {repository.deleteLastPathComponent()}
+        let fixture=repository.appendingPathComponent("build/coach-deletion-fixtures/\(UUID().uuidString).bundle")
+        try FileManager.default.createDirectory(at:fixture,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:fixture)}
+        var info=values;info["CFBundleIdentifier"]="com.reptoday.localcoachdeletionfixture"
+        info["CFBundlePackageType"]="BNDL"
+        let data=try PropertyListSerialization.data(fromPropertyList:info,format:.xml,options:0)
+        try data.write(to:fixture.appendingPathComponent("Info.plist"))
+        try await check(try XCTUnwrap(Bundle(url:fixture)))
     }
 
     private func makeLog(id: UUID = UUID()) -> WorkoutLog {

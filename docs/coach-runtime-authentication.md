@@ -71,6 +71,10 @@ requiring a current purchase. Offline/busy/failed cleanup leaves only bounded se
 expiry. Local deletion and the core loop never wait for that network operation. The disclosure is
 version 3 so prior acknowledgement does not silently authorize this new security-data contract.
 
+An App Attest assertion that returns Apple's invalid-key domain and code clears only that unusable
+local identifier and permits one fully verified fresh enrollment before a Coach request is sent.
+Generic native or server failures do not rotate the key, and a second invalid-key result fails closed.
+
 The service is **content stateless**, rather than entirely persistence free after migration. Request
 and response body logs, observability, tails, development URLs and caching remain disabled. Provider
 standard abuse-monitoring retention remains as disclosed in `proxy/README.md`.

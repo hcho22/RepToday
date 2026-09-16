@@ -179,7 +179,8 @@ struct CoachProxyClient {
     static func configured(
         safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
         bundle: Bundle = .main,
-        transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
+        transport: any CoachProxyTransport = URLSessionCoachProxyTransport(),
+        runtimeAuthenticationKeyStore: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore()
     ) -> CoachProxyClient? {
         guard let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)) else {
             return nil
@@ -192,7 +193,7 @@ struct CoachProxyClient {
             // Production configuration always constructs the real DeviceCheck/StoreKit transport.
             // Test transports belong to explicit test clients, never a shipped configuration flag.
             return CoachProxyClient(endpoint: endpoint, safetyIdentifierProvider: safetyIdentifierProvider,
-                                    transport: RuntimeAuthenticatedCoachTransport())
+                                    transport: RuntimeAuthenticatedCoachTransport(keys: runtimeAuthenticationKeyStore))
             #else
             return nil
             #endif

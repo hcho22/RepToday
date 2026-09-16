@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import DeviceCheck
 @testable import RepToday
 
 private final class FixtureCoachKeyStore: CoachAuthenticationKeyStoring, @unchecked Sendable {
@@ -13,16 +14,35 @@ private actor FixtureCoachAttester: CoachAppAttesting {
     let key = Data(repeating: 255, count: 32).base64EncodedString()
     private(set) var calls = [String](); private(set) var hashes = [Data]()
     var wait: CheckedContinuation<String, Never>?
+    var assertionWait: CheckedContinuation<Void, Never>?
     var hangKey: Bool
-    init(supported: Bool = true, hangKey: Bool = false) { isSupported = supported; self.hangKey = hangKey }
+    var hangInvalidAssertion: Bool
+    var assertionFailures: [CoachAuthenticationError]
+    init(supported: Bool = true, hangKey: Bool = false, hangInvalidAssertion: Bool = false,
+         assertionFailures: [CoachAuthenticationError] = []) {
+        isSupported = supported
+        self.hangKey = hangKey
+        self.hangInvalidAssertion = hangInvalidAssertion
+        self.assertionFailures = assertionFailures
+    }
     func generateKey() async throws -> String {
         calls.append("key")
         if hangKey { return await withCheckedContinuation { wait = $0 } }
         return key
     }
     func releaseKey() { wait?.resume(returning: key); wait = nil }
+    func releaseAssertion() { assertionWait?.resume(); assertionWait = nil }
     func attest(key: String, hash: Data) async throws -> Data { calls.append("attest"); hashes.append(hash); return Data([1]) }
-    func assertion(key: String, hash: Data) async throws -> Data { calls.append("assert"); hashes.append(hash); return Data([2]) }
+    func assertion(key: String, hash: Data) async throws -> Data {
+        calls.append("assert"); hashes.append(hash)
+        if hangInvalidAssertion {
+            hangInvalidAssertion = false
+            await withCheckedContinuation { assertionWait = $0 }
+            throw CoachAuthenticationError.invalidKey
+        }
+        if !assertionFailures.isEmpty { throw assertionFailures.removeFirst() }
+        return Data([2])
+    }
 }
 private struct FixtureCoachPurchase: CoachPurchaseProofProviding {
     let proof: String?
@@ -125,6 +145,41 @@ final class CoachRuntimeAuthenticationTests: XCTestCase {
         XCTAssertNotEqual(keys.load(),old);let calls=await http.calls
         XCTAssertEqual(calls.count,5);XCTAssertEqual(calls.filter{!$0.headers.isEmpty}.count,1)
     }
+    func testDeviceCheckErrorClassifierRecognizesOnlyTheInvalidKeyDomainAndCode() {
+        XCTAssertEqual(DeviceCoachAppAttester.authenticationError(
+            NSError(domain:DCErrorDomain,code:DCError.invalidKey.rawValue)),.invalidKey)
+        XCTAssertEqual(DeviceCoachAppAttester.authenticationError(
+            NSError(domain:"FixtureDeviceCheck",code:DCError.invalidKey.rawValue)),.unavailable)
+        XCTAssertEqual(DeviceCoachAppAttester.authenticationError(NSError(domain:DCErrorDomain,code:999)),.unavailable)
+    }
+    func testInvalidRestoredKeyEnrollsOnceBeforeTheOnlyPaidRequest() async throws {
+        let old=Data(repeating:1,count:32).base64EncodedString();let keys=FixtureCoachKeyStore(old)
+        let attester=FixtureCoachAttester(assertionFailures:[.invalidKey]);let http=FixtureCoachHTTP()
+        let transport=RuntimeAuthenticatedCoachTransport(attester:attester,purchase:FixtureCoachPurchase(proof:purchase),keys:keys,http:http)
+        _ = try await client(transport).reply(to:"Why squats?",context:context())
+        let calls=await http.calls;let appleCalls=await attester.calls
+        XCTAssertEqual(keys.load(),attester.key);XCTAssertEqual(appleCalls,["assert","key","attest","assert"])
+        XCTAssertEqual(calls.count,5);XCTAssertTrue(calls.prefix(4).allSatisfy{$0.headers.isEmpty})
+        XCTAssertEqual(calls.filter{!$0.headers.isEmpty}.count,1)
+    }
+    func testGenericAssertionFailureKeepsExistingKeyAndDoesNotEnrollOrCallModel() async {
+        let old=Data(repeating:1,count:32).base64EncodedString();let keys=FixtureCoachKeyStore(old)
+        let attester=FixtureCoachAttester(assertionFailures:[.unavailable]);let http=FixtureCoachHTTP()
+        let transport=RuntimeAuthenticatedCoachTransport(attester:attester,purchase:FixtureCoachPurchase(proof:purchase),keys:keys,http:http)
+        do {_ = try await client(transport).reply(to:"Why squats?",context:context());XCTFail("expected failure")} catch {}
+        let calls=await http.calls;let appleCalls=await attester.calls
+        XCTAssertEqual(keys.load(),old);XCTAssertEqual(appleCalls,["assert"])
+        XCTAssertEqual(calls.count,1);XCTAssertTrue(calls.allSatisfy{$0.headers.isEmpty})
+    }
+    func testSecondInvalidKeyFailureStopsAfterOneEnrollmentWithoutCallingModel() async {
+        let old=Data(repeating:1,count:32).base64EncodedString();let keys=FixtureCoachKeyStore(old)
+        let attester=FixtureCoachAttester(assertionFailures:[.invalidKey,.invalidKey]);let http=FixtureCoachHTTP()
+        let transport=RuntimeAuthenticatedCoachTransport(attester:attester,purchase:FixtureCoachPurchase(proof:purchase),keys:keys,http:http)
+        do {_ = try await client(transport).reply(to:"Why squats?",context:context());XCTFail("expected failure")} catch {}
+        let calls=await http.calls;let appleCalls=await attester.calls
+        XCTAssertNil(keys.load());XCTAssertEqual(appleCalls,["assert","key","attest","assert"])
+        XCTAssertEqual(calls.count,4);XCTAssertTrue(calls.allSatisfy{$0.headers.isEmpty})
+    }
     func testMissingPurchaseOrUnsupportedAttestMakesZeroHTTPCalls() async {
         for supported in [true,false] {
             let http=FixtureCoachHTTP();let attester=FixtureCoachAttester(supported:supported)
@@ -161,6 +216,17 @@ final class CoachRuntimeAuthenticationTests: XCTestCase {
         XCTAssertLessThan(ProcessInfo.processInfo.systemUptime-started,0.5)
         await attester.releaseKey();_ = try? await send.value
         let calls=await http.calls;XCTAssertTrue(calls.isEmpty);XCTAssertNil(keys.load())
+    }
+    func testAccountResetPreventsLateInvalidKeyCallbackFromReenrolling() async throws {
+        let old=Data(repeating:1,count:32).base64EncodedString();let keys=FixtureCoachKeyStore(old)
+        let attester=FixtureCoachAttester(hangInvalidAssertion:true);let http=FixtureCoachHTTP()
+        let transport=RuntimeAuthenticatedCoachTransport(attester:attester,purchase:FixtureCoachPurchase(proof:purchase),keys:keys,http:http)
+        let send=Task {try await self.client(transport).reply(to:"Why squats?",context:self.context())}
+        while !(await attester.calls.contains("assert")) {await Task.yield()}
+        await transport.resetAccount();await attester.releaseAssertion();_ = try? await send.value
+        let calls=await http.calls;let appleCalls=await attester.calls
+        XCTAssertNil(keys.load());XCTAssertEqual(appleCalls,["assert"])
+        XCTAssertEqual(calls.count,1);XCTAssertTrue(calls.allSatisfy{$0.headers.isEmpty})
     }
     func testConcurrentTurnFailsPromptlyWithoutReplacingAnInFlightHandshake() async throws {
         let attester=FixtureCoachAttester(hangKey:true);let http=FixtureCoachHTTP();let keys=FixtureCoachKeyStore()

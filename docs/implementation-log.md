@@ -1316,7 +1316,9 @@ challenges/atomic counters, Apple's official transaction verifier and fresh prod
 status. A bounded SQLite security record expires after 30 days without accepted assertion activity;
 no workout/chat/proof/transaction identifier is saved. The actual iOS flow uses DeviceCheck/StoreKit
 with a total 30-second budget, never retries a paid request, invalidates late work on account reset,
-and attempts bounded metadata deletion without blocking the core. Disclosure version 3 names that
+recovers once from an actual DeviceCheck invalid-key result without rotating on generic failures,
+and attempts bounded metadata deletion without blocking the core. Account deletion clears the shared
+local key identifier even when Coach configuration is unavailable. Disclosure version 3 names that
 security boundary. Production configuration pins the approved endpoint/auth mode and rejects an
 embedded gate; ordinary endpoints remain empty until migration/physical-device verification.
 
