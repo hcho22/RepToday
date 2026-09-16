@@ -282,7 +282,7 @@ waiting for local access. The approved deployment path now uses a dedicated nati
 Never run `security ... -w` directly in a terminal, record the prompts, or grant all applications
 access. A metadata-only readiness check does not prove password retrieval is permitted.
 
-### Dedicated production deployment helper (awaiting reviewed local launch)
+### Dedicated production deployment helper (guarded launch incomplete)
 
 `tools/deploy-coach-production.sh` builds the dedicated `tools/coach-production-deploy.swift`
 Security.framework reader in ignored `build/coach-production-deploy/`. It can retrieve only the
@@ -310,14 +310,14 @@ The existing Wrangler OAuth must also have at least 20 minutes remaining; missin
 overridden authentication stops with `auth`. The helper does not refresh or rewrite the shared
 authentication store, and rechecks it before Wrangler starts.
 
-After review, the exact local Firstmate launch is:
+After review of the settings correction below, the exact local Firstmate retry is:
 
 ```bash
 ./tools/deploy-coach-production.sh
 ```
 
 Run it in this clean, committed task worktree on `fm/reptoday-ai-coach-proxy-live-qa`. Supply no
-credentials as arguments. Production mutation awaits this reviewed local launch.
+credentials as arguments. Further production mutation awaits this reviewed local retry.
 The native reader never relays arbitrary coordinator stdout/stderr, API responses or exceptions.
 
 The reviewed flow first enables a Coach-hostname deployment-hold WAF block, appends a
@@ -351,18 +351,24 @@ Offline tests and native compilation (no Keychain access or network):
 ### Read-only diagnosis after a stopped launch
 
 The first reviewed launch stopped before mutation with `auth`; Firstmate refreshed the existing
-Wrangler OAuth through the browser. The next reviewed launch stopped with the fixed code
-`rules`. GET-only inspection has now confirmed the partial state: the owned deployment hold,
-path boundary and rate rule are enabled; unrelated rules and route conflicts are absent; the
-Worker, provider/client-gate bindings and custom domain are absent. The hold remains enabled.
-The rate comparison failed because the server omitted the optional `requests_to_origin: false`
-default. The reviewed helper now accepts that omission while still rejecting explicit `true`,
-invalid values and changed core semantics. The field evidence, failing counterfactual and
-passing regression are recorded in
+Wrangler OAuth through the browser. A subsequent launch stopped with `rules` after installing
+the three protective rules. GET-only diagnosis proved an omitted `requests_to_origin: false`
+default; the helper now accepts only that safety-equivalent omission. The field evidence and
+regressions are in
 [`rate-normalization.md`](../artifacts/reports/coach-production/rate-normalization.md).
-No deployment retry, rule change, secret provisioning, domain attachment or model call was
-performed during diagnosis. The corrected helper still awaits the reviewed local Firstmate
-deployment launch above; live model QA and iOS production configuration remain pending.
+
+The next Firstmate launch passed rate verification and staged the Worker, then stopped with
+`settings` before secret provisioning or domain attachment. GET-only inspection on 2026-09-16
+confirmed the owned hold, boundary and rate rule enabled; no unrelated rules or route conflicts;
+Worker present; provider/client-gate and unexpected secrets absent; domain absent. Logpush is
+disabled, tails empty, and development/preview URLs disabled. Cloudflare omitted `observability`
+after Wrangler explicitly submitted `enabled: false`. The corrected helper accepts only that
+observed omission or literal `enabled: false`, rejecting null, malformed and enabled values.
+Evidence and negative regressions are in
+[`settings-normalization.md`](../artifacts/reports/coach-production/settings-normalization.md).
+Production remains held and unreachable. Neither diagnosis changed rules, deployed source,
+provisioned secrets, attached the domain or called the Worker/model. Further launch, live model
+QA, iOS production configuration and the extractable-client-gate decision remain pending.
 
 Firstmate can launch the dedicated read-only mode locally:
 
@@ -376,7 +382,9 @@ changeset preview. It does not invoke Wrangler, retrieve the model key or gate, 
 change rules, or call the Worker. It emits only allowlisted states for owned rules, unrelated
 rules/capacity, phase/invariant classes, Worker/binding presence and domain/route ownership.
 For the owned rate rule it also reports fixed field-match/default classes and the first
-comparison divergence, without field values or expressions.
+comparison divergence. For a present Worker it reports fixed classes for binding policy/names,
+observability, Logpush, tails and development/preview URLs, plus the settings invariant.
+No field values or expressions are returned.
 It never prints ruleset bodies, account/zone/rule identifiers, tokens or arbitrary diagnostics.
 If the recompiled dedicated executable needs native Keychain access, the captain authorizes its
 local prompt; never grant broad CLI access or supply the token in a shell command.
@@ -402,8 +410,8 @@ reader. Neither inspection retrieved the provider key or gate, mutated productio
 
 The initial agent inspection attempt waited at native retrieval and was stopped before the
 local coordinator started. It produced no Cloudflare observations; the successful later
-inspections above supersede that uncertainty. The current 34 coordinator tests plus native
-tests/compile establish the corrected boundary, and include the observed rate-default omission.
+inspections above supersede that uncertainty. The coordinator and native tests/compile establish
+the corrected boundary, including both observed server normalizations.
 The earlier 25-test fixture assumed an empty phase was either absent or contained
 an explicit `rules: []` array, and modeled server rule responses by echoing submitted fields.
 Inspection distinguishes sparse arrays, phase/kind mismatches, skip/logging conflicts, owned

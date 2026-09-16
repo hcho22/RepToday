@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Cloudflare, DeploymentFailure, TARGET, deploy, gateProbes,
-  credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant, rateFieldClasses,
+  credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant, rateFieldClasses, settingsFieldClasses,
   readWranglerOAuth, stagingConfig } from './coach-production-deploy.mjs';
 
 // Deliberately non-secret doubles. This suite cannot contact the network or read Keychain.
@@ -14,7 +14,7 @@ const account = 'a'.repeat(32), zone = 'b'.repeat(32);
 const customPhase = 'http_request_firewall_custom', ratePhase = 'http_ratelimit';
 const workerPath = `/accounts/${account}/workers/scripts/${TARGET.worker}`;
 
-function fixture({ readOnly = false, omitRateDefault = false } = {}) {
+function fixture({ readOnly = false, omitRateDefault = false, omitObservability = false } = {}) {
   const state = {
     accounts: [{ id: account }],
     zones: [{ id: zone, name: TARGET.zone, status: 'active', account: { id: account }, plan: { name: 'Free Website' } }],
@@ -95,6 +95,8 @@ function fixture({ readOnly = false, omitRateDefault = false } = {}) {
     stageWorker: async confirmedAccount => {
       assert.equal(confirmedAccount, account); assert.equal(hold()?.enabled, true);
       state.stages++; state.exists = true;
+      // Live settings GET omits observability after Wrangler explicitly disables it.
+      if (omitObservability) delete state.settings.observability;
     }, report: line => state.reports.push(line), probe: async gate => {
       assert.equal(gate, credentials.clientGate); assert.equal(hold()?.enabled, false); state.probes++;
     }, ...overrides });
@@ -175,6 +177,87 @@ test('inspection input protocol forbids provider or client-gate credentials', ()
   assert.deepEqual(inspectionCredentialsFromPacket({ wafToken: credentials.wafToken }), { wafToken: credentials.wafToken });
   assert.throws(() => inspectionCredentialsFromPacket(credentials), stopped('input'));
   assert.throws(() => inspectionCredentialsFromPacket({ wafToken: '' }), stopped('input'));
+});
+
+test('settings inspection reports fixed classes through GET only without returning settings values', async () => {
+  const { state, read } = fixture({ readOnly: true }); state.exists = true;
+  state.settings.observability = null;
+  state.settings.bindings.push({ name: 'NONSECRET_UNEXPECTED_BINDING', type: 'kv_namespace',
+    namespace_id: 'NONSECRET_VALUE_MUST_NOT_BE_RETURNED' });
+  const before = structuredClone(state.settings); await read();
+  assert.ok(state.reports.includes('inspect: settings field binding-policy conflict'));
+  assert.ok(state.reports.includes('inspect: settings field observability null'));
+  assert.ok(state.reports.includes('inspect: settings field workers-dev disabled'));
+  assert.ok(state.reports.includes('inspect: settings field preview-urls disabled'));
+  assert.ok(state.reports.includes('inspect: settings invariant conflict'));
+  assert.deepEqual(state.settings, before);
+  assert.ok(state.calls.every(call => call.method === 'GET' && call.body === undefined));
+  assert.equal(state.stages, 0); assert.equal(state.probes, 0);
+  assert.ok(!JSON.stringify(state.reports).includes('NONSECRET_UNEXPECTED_BINDING'));
+  assert.ok(!JSON.stringify(state.reports).includes('NONSECRET_VALUE_MUST_NOT_BE_RETURNED'));
+  assert.ok(state.reports.every(line => ![account, zone, oauth, ...Object.values(credentials)].some(value => line.includes(value))));
+});
+
+test('settings diagnostics distinguish absent, null, disabled, enabled and malformed observability', () => {
+  for (const [observability, expected] of [[undefined, 'absent'], [null, 'null'], [{ enabled: false }, 'disabled'],
+    [{ enabled: true }, 'enabled'], [{}, 'missing'], [false, 'invalid'], [[], 'invalid'], [{ enabled: 'false' }, 'invalid']]) {
+    assert.equal(settingsFieldClasses({ observability }, {}).observability, expected);
+  }
+});
+
+test('live-shaped omitted observability passes protected staging and retry without changing logging or development URL settings', async () => {
+  const { state, run, hold } = fixture({ omitObservability: true });
+  await run();
+  assert.equal(Object.hasOwn(state.settings, 'observability'), false);
+  assert.equal(state.settings.logpush, false); assert.deepEqual(state.settings.tail_consumers, []);
+  assert.deepEqual(state.subdomain, { enabled: false, previews_enabled: false });
+  assert.equal(state.stages, 1); assert.equal(state.probes, 1);
+  assert.equal(hold().enabled, false);
+  const bindings = structuredClone(state.settings.bindings); state.calls = [];
+  await run();
+  assert.equal(state.stages, 2); assert.equal(state.probes, 2);
+  assert.deepEqual(state.settings.bindings, bindings);
+  assert.equal(state.calls.some(call => call.method === 'PUT' && call.endpoint.endsWith('/secrets')), false);
+});
+
+test('null, malformed and enabled observability stop after staging with the hold active and no credentials or hostname', async () => {
+  for (const observability of [null, {}, false, [], 'false', { enabled: true }, { enabled: null },
+    { enabled: 'false' }, { enabled: 0 }]) {
+    const { state, run, hold } = fixture(); state.settings.observability = observability;
+    await assert.rejects(run(), stopped('settings'));
+    assert.equal(state.stages, 1); assert.equal(hold().enabled, true);
+    assert.equal(state.calls.some(call => call.method === 'PUT'), false);
+    assert.deepEqual(state.domains, []); assert.equal(state.probes, 0);
+  }
+});
+
+test('omitted observability never bypasses persistence, logging, secret or development URL guards', async () => {
+  for (const change of [
+    state => state.settings.bindings.push({ name: 'DATABASE', type: 'kv_namespace' }),
+    state => state.settings.bindings.push({ name: 'ANTHROPIC_API_KEY', type: 'secret_text' }),
+    state => state.settings.bindings.push(structuredClone(state.settings.bindings[0])),
+    state => { state.settings.tail_consumers = [{ service: 'other' }]; },
+    state => { state.settings.logpush = true; },
+    state => { state.subdomain.enabled = true; },
+    state => { state.subdomain.previews_enabled = true; },
+  ]) {
+    const { state, run, hold } = fixture({ omitObservability: true }); change(state);
+    await assert.rejects(run(), stopped('settings'));
+    assert.equal(Object.hasOwn(state.settings, 'observability'), false);
+    assert.equal(hold().enabled, true); assert.equal(state.calls.some(call => call.method === 'PUT'), false);
+    assert.deepEqual(state.domains, []); assert.equal(state.probes, 0);
+  }
+});
+
+test('GET-only inspection recognizes omitted disabled observability while retaining the raw fixed field class', async () => {
+  const { state, read } = fixture({ readOnly: true }); state.exists = true;
+  delete state.settings.observability;
+  const before = structuredClone(state.settings); await read();
+  assert.ok(state.reports.includes('inspect: settings field observability absent'));
+  assert.ok(state.reports.includes('inspect: settings invariant ok'));
+  assert.deepEqual(state.settings, before);
+  assert.ok(state.calls.every(call => call.method === 'GET' && call.body === undefined));
+  assert.equal(state.stages, 0); assert.equal(state.probes, 0);
 });
 
 test('rate inspection classifies optional defaults, core mismatches and extra fields without returning their values', async () => {

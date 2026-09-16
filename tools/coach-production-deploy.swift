@@ -223,6 +223,14 @@ struct LocalNodeCoordinator: CoachDeploymentCoordinator {
                 permitted.insert("inspect: rate first divergence \(field)")
             }
             permitted.insert("inspect: rate first divergence none")
+            for field in ["bindings", "binding-policy", "binding-names", "observability", "logpush",
+                "tail-consumers", "workers-dev", "preview-urls"] {
+                for state in ["valid", "invalid", "unknown", "matches", "conflict", "unique", "duplicate",
+                    "absent", "null", "missing", "disabled", "enabled", "present", "empty"] {
+                    permitted.insert("inspect: settings field \(field) \(state)")
+                }
+            }
+            for state in ["ok", "conflict"] { permitted.insert("inspect: settings invariant \(state)") }
         }
         let lines = text.split(separator: "\n").map(String.init)
         let failures = Set([

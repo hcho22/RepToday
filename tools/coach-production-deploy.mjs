@@ -135,9 +135,35 @@ function checkSettings(settings, requireSecrets = false) {
     requireThat(binding.type === 'plain_text' && binding.name === 'ANTHROPIC_MODEL' && binding.text === 'claude-opus-4-8' ||
       binding.type === 'secret_text' && secretNames.includes(binding.name), 'settings');
   }
-  requireThat(settings.observability?.enabled === false && settings.logpush !== true &&
+  // Cloudflare omits observability on settings GET after Wrangler explicitly disables it.
+  // Accept only that observed omission or literal false; null/malformed/enabled still stop.
+  requireThat((settings.observability === undefined || settings.observability?.enabled === false) && settings.logpush !== true &&
     (!settings.tail_consumers || settings.tail_consumers.length === 0), 'settings');
   if (requireSecrets) requireThat(secretNames.every(name => seen.has(name)), 'secret');
+}
+
+export function settingsFieldClasses(settings, subdomain) {
+  // Fixed classes only: no binding values, service names, identifiers or raw settings.
+  const bindings = settings?.bindings;
+  const validBinding = binding => binding && typeof binding.name === 'string' &&
+    (binding.type === 'plain_text' && binding.name === 'ANTHROPIC_MODEL' && binding.text === 'claude-opus-4-8' ||
+      binding.type === 'secret_text' && secretNames.includes(binding.name));
+  const flag = value => value === undefined ? 'missing' : value === false ? 'disabled' :
+    value === true ? 'enabled' : 'invalid';
+  const observability = settings?.observability;
+  return {
+    bindings: Array.isArray(bindings) ? 'valid' : 'invalid',
+    'binding-policy': !Array.isArray(bindings) ? 'unknown' : bindings.every(validBinding) ? 'matches' : 'conflict',
+    'binding-names': !Array.isArray(bindings) ? 'unknown' :
+      new Set(bindings.map(binding => binding?.name)).size === bindings.length ? 'unique' : 'duplicate',
+    observability: observability === undefined ? 'absent' : observability === null ? 'null' :
+      typeof observability !== 'object' || Array.isArray(observability) ? 'invalid' : flag(observability.enabled),
+    logpush: settings?.logpush === undefined ? 'absent' : flag(settings.logpush),
+    'tail-consumers': settings?.tail_consumers === undefined ? 'absent' :
+      !Array.isArray(settings.tail_consumers) ? 'invalid' : settings.tail_consumers.length ? 'present' : 'empty',
+    'workers-dev': flag(subdomain?.enabled),
+    'preview-urls': flag(subdomain?.previews_enabled),
+  };
 }
 
 function checkDomains(domains, account, zone, requireAttached = false) {
@@ -329,6 +355,14 @@ export async function inspect({ cf, report = () => {} }) {
   const exists = scripts.some(script => script.id === TARGET.worker);
   report(`inspect: worker ${exists ? 'present' : 'absent'}`);
   if (exists) {
+    const worker = `/accounts/${cf.account}/workers/scripts/${TARGET.worker}`;
+    const settings = await cf.accountRequest(worker + '/settings');
+    const subdomain = await cf.accountRequest(worker + '/subdomain');
+    for (const [field, state] of Object.entries(settingsFieldClasses(settings, subdomain))) {
+      report(`inspect: settings field ${field} ${state}`);
+    }
+    let settingsState = 'ok'; try { checkSettings(settings); } catch { settingsState = 'conflict'; }
+    report(`inspect: settings invariant ${settingsState}`);
     const secrets = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts/${TARGET.worker}/secrets`);
     requireThat(Array.isArray(secrets), 'secret');
     report(`inspect: provider binding ${secrets.some(secret => secret.name === 'OPENAI_API_KEY') ? 'present' : 'absent'}`);

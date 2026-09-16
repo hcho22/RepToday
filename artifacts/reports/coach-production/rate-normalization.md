@@ -1,8 +1,10 @@
 # Coach production rate-rule diagnosis — 2026-09-16
 
-The stopped deployment left only the three protective rules. The deployment hold remains
-enabled. The Worker is not deployed, and no live model reply has returned. This report is
-diagnostic evidence, not production deployment or code/PR readiness evidence.
+This report records the earlier rate-rule stop, which left only the three protective rules.
+A later Firstmate launch staged the Worker and stopped before secrets/domain on `settings`;
+the hold remains enabled and no live model reply has returned. Current state and the later
+diagnosis are in [settings-normalization.md](settings-normalization.md). These reports are
+diagnostic evidence, not completed production deployment or code/PR readiness evidence.
 
 ## GET-only observations
 
@@ -82,8 +84,9 @@ route conflicts, persistence/logging restrictions, release failure and re-closin
 
 Validation: `./tools/test-coach-production-deploy.sh` passed all 34 Node coordinator tests,
 native non-secret boundary/presentation tests and Swift compilation with warnings as errors.
-These checks use no network or Keychain. The corrected production comparison has not yet
-been exercised in another live inspection or deployment launch.
+These checks use no network or Keychain. Later GET-only inspection confirmed the corrected
+production rate invariant `ok`; the subsequent guarded launch also passed rate verification
+before stopping on settings, as recorded in the report linked above.
 
 ## Next authorized local boundary
 

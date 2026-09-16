@@ -151,17 +151,28 @@ struct CoachDeploymentTests {
         console.log('inspect: custom invariant rules-array');
         console.log('inspect: rate field requests-to-origin absent-default');
         console.log('inspect: rate first divergence requests-to-origin');
+        console.log('inspect: settings field observability null');
+        console.log('inspect: settings field workers-dev disabled');
+        console.log('inspect: settings invariant conflict');
         console.log('inspected: read-only production state; no mutations or model calls');
         """
         try Data(inspectSuccess.utf8).write(to: entry)
         let inspection = try deployCoach(reader: DoubleReader(), coordinator: LocalNodeCoordinator(
             repository: fixture, node: node, operation: .inspect), operation: .inspect)
         precondition(inspection.contains("inspect: custom invariant rules-array"))
+        precondition(inspection.contains("inspect: settings field observability null"))
+        precondition(inspection.contains("inspect: settings invariant conflict"))
         try Data("for await (const bytes of process.stdin) {}\nconsole.log('inspect: raw NONSECRET_DIAGNOSTIC');".utf8).write(to: entry)
         do {
             _ = try deployCoach(reader: DoubleReader(), coordinator: LocalNodeCoordinator(
                 repository: fixture, node: node, operation: .inspect), operation: .inspect)
             preconditionFailure("raw inspection output must stop")
+        } catch CoachDeployFailure.coordinator {}
+        try Data("for await (const bytes of process.stdin) {}\nconsole.log('inspect: settings field observability NONSECRET_RAW_VALUE');".utf8).write(to: entry)
+        do {
+            _ = try deployCoach(reader: DoubleReader(), coordinator: LocalNodeCoordinator(
+                repository: fixture, node: node, operation: .inspect), operation: .inspect)
+            preconditionFailure("raw settings field output must stop")
         } catch CoachDeployFailure.coordinator {}
         print("passed: native deployment boundary tested with non-secret doubles; no Keychain or network access")
     }
