@@ -4,7 +4,7 @@ import XCTest
 /// Tests US-AC02's build-configured resolution of the coach transport: `CoachProxyClient.configured`
 /// mirrors `LiveAnalyticsService.configured` - a usable HTTPS origin yields a client, anything absent
 /// or unusable yields `nil` (the coach is inert, never fatal, and the surface shows "unavailable").
-/// The shared secret is optional here (an open dev Worker), unlike the required analytics secret.
+/// The approved production hostname always requires exact origin/mode and no embedded gate.
 final class CoachProxyClientConfiguredTests: XCTestCase {
 
     // MARK: - Endpoint resolution
@@ -56,13 +56,55 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
     // MARK: - Unconfigured build is inert
 
     func testAppBundleHasNoCoachEndpointToday() {
-        // The proxy is deploy-ready but not deployed, so both configurations expand to empty and the
-        // app is inert by design. This pins that "inert, never fatal" state for the shipped build:
+        // The operator proxy is deployed. Ordinary endpoints remain empty until the stronger-auth
+        // migration and genuine-device verification are accepted. This pins graceful unavailability:
         // `configured()` returns nil rather than trapping.
         XCTAssertNil(
             CoachProxyClient.configured(
                 safetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") }
             )
         )
+    }
+    private func withConfiguration(_ values:[String:Any],check:(Bundle)->Void) throws {
+        var repository=URL(fileURLWithPath:#filePath)
+        for _ in 0..<4 {repository.deleteLastPathComponent()}
+        guard FileManager.default.fileExists(atPath:repository.appendingPathComponent("AGENTS.md").path) else {
+            throw NSError(domain:"LocalCoachFixture",code:1)
+        }
+        let fixture=repository.appendingPathComponent("build/coach-config-fixtures/\(UUID().uuidString).bundle")
+        try FileManager.default.createDirectory(at:fixture,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:fixture)}
+        var info=values;info["CFBundleIdentifier"]="com.reptoday.localcoachfixture";info["CFBundlePackageType"]="BNDL"
+        let data=try PropertyListSerialization.data(fromPropertyList:info,format:.xml,options:0)
+        try data.write(to:fixture.appendingPathComponent("Info.plist"))
+        let bundle=try XCTUnwrap(Bundle(url:fixture));check(bundle)
+    }
+    func testProductionHostnameCannotFallThroughToDevelopmentTransport() throws {
+        for origin in ["https://coach.reptoday.app/coach?x=1","https://coach.reptoday.app/coach/",
+                       "https://coach.reptoday.app/variety-language","https://user@coach.reptoday.app/coach"] {
+            try withConfiguration([CoachProxyClient.endpointInfoPlistKey:origin,
+                CoachProxyClient.authenticationModeInfoPlistKey:CoachProxyClient.productionAuthenticationMode]) {bundle in
+                XCTAssertNil(CoachProxyClient.configured(safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle))
+            }
+        }
+        for extra in [[:],[CoachProxyClient.authenticationModeInfoPlistKey:"bearer"],
+                      [CoachProxyClient.authenticationModeInfoPlistKey:CoachProxyClient.productionAuthenticationMode,
+                       CoachProxyClient.secretInfoPlistKey:"NONSECRET_EMBEDDED_GATE_FIXTURE"]] {
+            var info=extra;info[CoachProxyClient.endpointInfoPlistKey]=CoachProxyClient.productionOrigin
+            try withConfiguration(info) {bundle in
+                XCTAssertNil(CoachProxyClient.configured(safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle))
+            }
+        }
+    }
+    func testExactProductionConfigurationConstructsRealRuntimeTransportOnlyOnIOS() throws {
+        try withConfiguration([CoachProxyClient.endpointInfoPlistKey:CoachProxyClient.productionOrigin,
+            CoachProxyClient.authenticationModeInfoPlistKey:CoachProxyClient.productionAuthenticationMode]) {bundle in
+            let client=CoachProxyClient.configured(safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle)
+            #if os(iOS)
+            XCTAssertNotNil(client?.transport as? RuntimeAuthenticatedCoachTransport);XCTAssertNil(client?.sharedSecret)
+            #else
+            XCTAssertNil(client)
+            #endif
+        }
     }
 }

@@ -79,6 +79,48 @@ final class AccountDeletionServiceTests: XCTestCase {
 
     // MARK: - US-AD03 orchestration
 
+    func testCoachAuthenticationCleanupFollowsDurableDeletionAndSignOutBeforeRouting() async throws {
+        let userService=MockUserService(user:MockPersistence.sampleUser),logs=MockWorkoutLogService(logs:[makeLog()])
+        let auth=MockAuthService(userIdentifier:"fixture-apple-user");let appState=makeAppState(isOnboarded:true,selectedTab:.home)
+        let cleaned=CleanupObservation()
+        let service=AccountDeletionService(userService:userService,workoutLogService:logs,
+            sessionPolicyStore:InMemorySessionPolicyStore(),activeSessionStore:InMemoryActiveSessionStore(),authService:auth,
+            coachAuthenticationCleanup:{
+                let user=try? await userService.currentUser();let remaining=try? await logs.workoutLogs(from:nil,to:nil)
+                let identifier=try? await auth.currentUserIdentifier()
+                await cleaned.record(user == nil && remaining?.isEmpty == true && identifier == nil)
+            })
+        try await service.deleteAccount(appState:appState)
+        let observation=await cleaned.values;XCTAssertEqual(observation,[true]);XCTAssertFalse(appState.isOnboarded)
+    }
+    func testDisabledAndInvalidCoachConfigurationsStillUnlinkTheSharedAuthenticationKey() async throws {
+        for endpoint in ["", "http://worker.example.com/coach"] {
+            let keyStore=DefaultsCoachAuthenticationKeyStore(defaults:defaults)
+            keyStore.save(Data(repeating:1,count:32).base64EncodedString())
+            try await withCoachConfiguration([CoachProxyClient.endpointInfoPlistKey:endpoint]) {bundle in
+                let resolution=ServiceContainer.resolveCoachAuthentication(
+                    safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle,keyStore:keyStore)
+                XCTAssertNil(resolution.client)
+                let cleanup=resolution.accountCleanup
+                let appState=makeAppState(isOnboarded:true,selectedTab:.home)
+                let service=AccountDeletionService(userService:MockUserService(user:MockPersistence.sampleUser),
+                    workoutLogService:MockWorkoutLogService(),sessionPolicyStore:InMemorySessionPolicyStore(),
+                    activeSessionStore:InMemoryActiveSessionStore(),authService:MockAuthService(),
+                    coachAuthenticationCleanup:{await cleanup.resetAccount()})
+                try await service.deleteAccount(appState:appState)
+                XCTAssertNil(keyStore.load())
+            }
+        }
+    }
+    func testFailedDurableDeletionDoesNotUnlinkCoachAuthenticationOrRouteAway() async throws {
+        let appState=makeAppState(isOnboarded:true,selectedTab:.home);let cleaned=CleanupObservation()
+        let service=AccountDeletionService(userService:ThrowingUserService(failDeletion:true),workoutLogService:MockWorkoutLogService(),
+            sessionPolicyStore:InMemorySessionPolicyStore(),activeSessionStore:InMemoryActiveSessionStore(),authService:MockAuthService(),
+            coachAuthenticationCleanup:{await cleaned.record(true)})
+        do {try await service.deleteAccount(appState:appState);XCTFail("durable deletion should fail")} catch {}
+        let observation=await cleaned.values;XCTAssertTrue(observation.isEmpty);XCTAssertTrue(appState.isOnboarded)
+    }
+
     func testDeleteAccountClearsEverythingForASignedInUser() async throws {
         let userService = MockUserService(user: MockPersistence.sampleUser)
         let logs = MockWorkoutLogService(logs: [makeLog(), makeLog()])
@@ -276,6 +318,22 @@ final class AccountDeletionServiceTests: XCTestCase {
         return appState
     }
 
+    private func withCoachConfiguration(
+        _ values:[String:Any],
+        check:(Bundle) async throws -> Void
+    ) async throws {
+        var repository=URL(fileURLWithPath:#filePath)
+        for _ in 0..<4 {repository.deleteLastPathComponent()}
+        let fixture=repository.appendingPathComponent("build/coach-deletion-fixtures/\(UUID().uuidString).bundle")
+        try FileManager.default.createDirectory(at:fixture,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:fixture)}
+        var info=values;info["CFBundleIdentifier"]="com.reptoday.localcoachdeletionfixture"
+        info["CFBundlePackageType"]="BNDL"
+        let data=try PropertyListSerialization.data(fromPropertyList:info,format:.xml,options:0)
+        try data.write(to:fixture.appendingPathComponent("Info.plist"))
+        try await check(try XCTUnwrap(Bundle(url:fixture)))
+    }
+
     private func makeLog(id: UUID = UUID()) -> WorkoutLog {
         WorkoutLog(
             id: id, workoutId: UUID(),
@@ -306,6 +364,11 @@ final class AccountDeletionServiceTests: XCTestCase {
     }
 }
 
+private actor CleanupObservation {
+    private(set) var values:[Bool]=[]
+    func record(_ value:Bool) {values.append(value)}
+}
+
 /// A `UserServiceProtocol` double whose `currentUser()` always throws - modelling a corrupt/unreadable
 /// `CDUser` blob that fails to decode on read - while `deleteCurrentUser()` still succeeds (a real
 /// delete fetches and removes without decoding). Used to prove the teardown keys nothing off reading
@@ -313,9 +376,11 @@ final class AccountDeletionServiceTests: XCTestCase {
 private final class ThrowingUserService: UserServiceProtocol, @unchecked Sendable {
     struct Unreadable: Error {}
     private(set) var didDelete = false
+    private let failDeletion:Bool
+    init(failDeletion:Bool = false) {self.failDeletion=failDeletion}
 
     func currentUser() async throws -> User? { throw Unreadable() }
     func save(_ user: User) async throws {}
     func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { throw Unreadable() }
-    func deleteCurrentUser() async throws { didDelete = true }
+    func deleteCurrentUser() async throws {if failDeletion {throw Unreadable()};didDelete = true}
 }

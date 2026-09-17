@@ -78,25 +78,26 @@ targets:
       # nil and the container falls back to `NoOpAnalyticsService`.
       # The premium coach proxy's `POST /coach` origin (US-AC02), split per configuration and expanded
       # into `Info.plist`'s `RepTodayCoachEndpoint` key exactly like the telemetry endpoint above. The
-      # `proxy/` Cloudflare Worker is deploy-ready but not yet deployed, so BOTH configurations carry
-      # nothing today: an empty value is inert (`CoachProxyClient.configured(...)` returns nil and the
-      # container leaves `coachClient` nil), so the chat surface shows a clear "coach unavailable" state
-      # and never points at a wrong destination. Setting this to the deployed `https://<worker>/coach`
-      # origin is a one-line change once the proxy ships (US-AC03 gates the entry point behind premium).
-      # The coach shared secret is split the same way and is *optional* - an open dev Worker with no
-      # secret set matches an empty value here (no `Authorization` header), unlike the telemetry secret
-      # which is required. When the proxy sets `CLIENT_SHARED_SECRET`, put the matching value here.
+      # operator-only endpoint is deployed at https://coach.reptoday.app/coach; guarded no-model
+      # authorization checks passed. The captain-selected App Attest/StoreKit implementation is
+      # prepared locally but not deployed. Both ordinary build configurations remain empty pending
+      # reviewed migration and genuine-device/model QA, so the chat surface stays unavailable and
+      # never gates the core loop. Production app configuration requires the runtime mode and an
+      # empty shared secret; the operator bearer must never enter an app binary or generated project.
+      # See proxy/README.md for deployment evidence and the separate native live-QA helper.
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
           REPTODAY_ANALYTICS_SECRET: d8f3a1c07b9e4256a1c3e5f7091b2d4e
           REPTODAY_COACH_ENDPOINT: ""
           REPTODAY_COACH_SECRET: ""
+          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
         Release:
           REPTODAY_ANALYTICS_ENDPOINT: https://sensible-spider-810.convex.site
           REPTODAY_ANALYTICS_SECRET: ""
           REPTODAY_COACH_ENDPOINT: ""
           REPTODAY_COACH_SECRET: ""
+          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.

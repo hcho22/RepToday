@@ -6,8 +6,9 @@ import UIKit
 /// Reviewer-visible evidence for US-AC04, the coach data disclosure: before first use, a plain,
 /// unavoidable disclosure states that a coach message plus a training-context summary are sent to
 /// OpenAI to answer, Rep Today's proxy stores no content, OpenAI may retain content in abuse-monitoring
-/// logs for up to 30 days, a separate random abuse-prevention code is sent instead of Rep Today
-/// identity and rotates on account deletion, and declining sends nothing.
+/// logs for up to 30 days, bounded device verification metadata expires after inactivity, a separate
+/// random abuse-prevention code is sent instead of Rep Today identity and rotates on account deletion,
+/// and declining sends nothing.
 ///
 /// This drives the *production* `CoachView` in a real key window with a fresh (un-acknowledged)
 /// `AppState` in the environment, so the disclosure overlay presents exactly as it does on a first
@@ -127,6 +128,10 @@ final class CoachDataDisclosureEvidenceTests: XCTestCase {
                       "it must explain the pseudonym's abuse-prevention purpose; spoke: \(spoken)")
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("delete your account"),
                       "it must disclose identifier rotation on account deletion; spoke: \(spoken)")
+
+        XCTAssertTrue(spoken.contains("Apple proofs") && spoken.contains("not sent to OpenAI"))
+        XCTAssertTrue(spoken.contains("verification key and counters") && spoken.contains("30 days without activity"))
+        XCTAssertTrue(spoken.contains("doesn't save your purchase proof") && spoken.contains("tries to remove the server record"))
 
         // Both consent controls are reachable, labeled VoiceOver elements.
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachDataDisclosureCopy.acknowledge, in: root),

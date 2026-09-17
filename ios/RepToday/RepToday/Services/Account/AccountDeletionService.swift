@@ -39,19 +39,22 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
     private let sessionPolicyStore: any SessionPolicyStore
     private let activeSessionStore: any ActiveSessionStore
     private let authService: any AuthServiceProtocol
+    private let coachAuthenticationCleanup: (@Sendable () async -> Void)?
 
     init(
         userService: any UserServiceProtocol,
         workoutLogService: any WorkoutLogServiceProtocol,
         sessionPolicyStore: any SessionPolicyStore,
         activeSessionStore: any ActiveSessionStore,
-        authService: any AuthServiceProtocol
+        authService: any AuthServiceProtocol,
+        coachAuthenticationCleanup: (@Sendable () async -> Void)? = nil
     ) {
         self.userService = userService
         self.workoutLogService = workoutLogService
         self.sessionPolicyStore = sessionPolicyStore
         self.activeSessionStore = activeSessionStore
         self.authService = authService
+        self.coachAuthenticationCleanup = coachAuthenticationCleanup
     }
 
     func deleteAccount(appState: AppState) async throws {
@@ -69,6 +72,9 @@ struct AccountDeletionService: AccountDeletionServiceProtocol {
         // 2. The Keychain identifier - mandatory, since it outlives a reinstall. A no-op for the
         //    local-UUID user who never signed in with Apple (`SecItemDelete` tolerates "not found").
         try await authService.signOut()
+        // Unlink the device's Coach key immediately. Remote content-free metadata deletion is
+        // bounded best effort and never gates deletion of on-device/CloudKit records or routing.
+        await coachAuthenticationCleanup?()
 
         // 3. Reset routing state on the main actor (it is what SwiftUI observes), which sends the app
         //    back to onboarding. Done last, so a throw in an earlier step leaves the user in place to
