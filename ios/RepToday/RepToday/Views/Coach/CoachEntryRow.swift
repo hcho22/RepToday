@@ -13,6 +13,9 @@ import SwiftUI
 /// failure - a transient error never silently unlocks a paid surface.
 struct CoachEntryRow: View {
     @Environment(\.services) private var services
+    #if COACH_IPHONE_QA
+    @Environment(AppState.self) private var appState
+    #endif
 
     @State private var viewModel: CoachGateViewModel
     @State private var showPaywall = false
@@ -28,6 +31,15 @@ struct CoachEntryRow: View {
     }
 
     var body: some View {
+        #if COACH_IPHONE_QA
+        NavigationLink {
+            CoachSyntheticQAView(services: services, appState: appState)
+        } label: {
+            ProfileRowLabel(icon: "testtube.2", title: "Coach Synthetic QA")
+        }
+        .accessibilityLabel("Coach Synthetic QA")
+        .accessibilityHint("Approved synthetic contexts. Consent and verified Premium required to send.")
+        #else
         Group {
             if viewModel.isPremium {
                 // Unlocked: navigate straight into the talking coach.
@@ -67,6 +79,7 @@ struct CoachEntryRow: View {
                 Task { await viewModel.load() }
             }
         }
+        #endif
     }
 }
 

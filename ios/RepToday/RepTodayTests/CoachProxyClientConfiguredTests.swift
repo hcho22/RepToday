@@ -55,15 +55,18 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
 
     // MARK: - Unconfigured build is inert
 
-    func testAppBundleHasNoCoachEndpointToday() {
-        // The operator proxy is deployed. Ordinary endpoints remain empty until the stronger-auth
-        // migration and genuine-device verification are accepted. This pins graceful unavailability:
-        // `configured()` returns nil rather than trapping.
-        XCTAssertNil(
-            CoachProxyClient.configured(
-                safetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") }
-            )
-        )
+    func testActualAppBundleSelectsTheIntendedConfiguration() {
+        let client = CoachProxyClient.configured(safetyIdentifierProvider: { testCoachSafetyIdentifier })
+        #if COACH_IPHONE_QA
+        XCTAssertTrue(CoachSyntheticQAConfiguration.isEnabled())
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "RepTodayBuildConfiguration") as? String, "CoachDeviceQA")
+        XCTAssertEqual(client?.endpoint.absoluteString, CoachProxyClient.productionOrigin)
+        XCTAssertNil(client?.sharedSecret)
+        XCTAssertNotNil(client?.transport as? RuntimeAuthenticatedCoachTransport)
+        #else
+        XCTAssertFalse(CoachSyntheticQAConfiguration.isEnabled())
+        XCTAssertNil(client)
+        #endif
     }
     private func withConfiguration(_ values:[String:Any],check:(Bundle)->Void) throws {
         var repository=URL(fileURLWithPath:#filePath)
@@ -94,6 +97,22 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
             try withConfiguration(info) {bundle in
                 XCTAssertNil(CoachProxyClient.configured(safetyIdentifierProvider:{testCoachSafetyIdentifier},bundle:bundle))
             }
+        }
+    }
+    func testSyntheticQASelectionRequiresEnabledFlagExactProductionModeAndEmptySecret() throws {
+        let valid: [String: Any] = ["RepTodayCoachSyntheticQA": "1",
+            CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,
+            CoachProxyClient.authenticationModeInfoPlistKey: CoachProxyClient.productionAuthenticationMode,
+            CoachProxyClient.secretInfoPlistKey: ""]
+        try withConfiguration(valid) { XCTAssertTrue(CoachSyntheticQAConfiguration.isEnabled(bundle: $0)) }
+        for (key, value) in [("RepTodayCoachSyntheticQA", "0"),
+            (CoachProxyClient.endpointInfoPlistKey, "https://fixture.invalid/coach"),
+            (CoachProxyClient.endpointInfoPlistKey, ""),
+            (CoachProxyClient.authenticationModeInfoPlistKey, "bearer"),
+            (CoachProxyClient.secretInfoPlistKey, "NONSECRET_FIXTURE")] {
+            var invalid = valid
+            invalid[key] = value
+            try withConfiguration(invalid) { XCTAssertFalse(CoachSyntheticQAConfiguration.isEnabled(bundle: $0)) }
         }
     }
     func testExactProductionConfigurationConstructsRealRuntimeTransportOnlyOnIOS() throws {

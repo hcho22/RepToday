@@ -294,8 +294,9 @@ struct ServiceContainer {
             ?? NoOpAnalyticsService()
         // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`
         // origin exactly like the telemetry sink. Ordinary builds remain `nil` while the locally
-        // prepared stronger-authentication path awaits migration and genuine-device QA, so the coach
-        // surface renders its "unavailable" state; it never gates the core loop.
+        // prepared stronger-authentication path awaits migration and genuine-device QA. CoachDeviceQA
+        // is an explicit synthetic preparation lane (docs/coach-iphone-qa.md); ordinary builds stay
+        // inert and render the "unavailable" state; the coach never gates the core loop.
         let resolvedCoachAuthentication = resolveCoachAuthentication(
             safetyIdentifierProvider: coachSafetyIdentifierProvider
         )

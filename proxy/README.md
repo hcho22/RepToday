@@ -646,3 +646,17 @@ reviewed migration and genuine-device QA. The deployed operator bearer remains c
 separate native QA path. An account deletion updates the already-built client in the same process.
 The bundle remains the single audited definition of training context - see
 `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
+
+### Explicit physical-iPhone synthetic QA preparation
+
+The `RepTodayCoachDeviceQA` scheme uses release-type `CoachDeviceQA` with the public
+`https://coach.reptoday.app/coach` origin, empty binary secret and `app-attest-storekit-v1`.
+Ordinary Debug/Release remain inert. This is source/build preparation, not migration or live service
+evidence. It has no local StoreKit configuration or telemetry. Its Profile entry selects only the
+approved shared `CoachSyntheticFixtures` through the actual configured client, preserving consent
+and locally verified Premium plus genuine production Apple authentication. One why-squats and
+one pistol-form attempt are reserved before execution; failures/interruption stop the run with
+no retry/reset. Replies are reviewed only locally and never exported or logged. Non-empty text
+does not prove semantics. Build/launch steps, local review and signing/device/service limits are
+in [`coach-iphone-qa.md`](../docs/coach-iphone-qa.md). The separate operator helper must not spend
+an additional two calls. No TestFlight Sandbox choice or production migration is implied.
