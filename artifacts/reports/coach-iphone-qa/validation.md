@@ -53,12 +53,15 @@ or account/profile inspection ran.
 
 ## Execution/readiness gaps
 
-- App-hosted **UIKit tests were compiled, not executed** in this preparation. No task-isolated
-  Xcode test destination was established; shared Simulator mutation was excluded. Native SwiftPM
-  executes the actual client/context/configuration/QA-view-model source, but cannot establish the
-  iOS-only configured runtime-transport branch, UIKit navigation/controls or native DeviceCheck
-  behavior. Hosted synthetic-label/entry tests and actual-bundle configuration tests remain for an
-  authorized isolated iOS test run/CI. No shared Simulator was booted, erased or otherwise driven.
+- App-hosted **UIKit tests were compiled, not executed** in this preparation. A task-private
+  `simctl --set` device set and iOS 26.5 iPhone booted successfully, but Xcode 26.5 did not expose
+  that device as a test destination: `xcodebuild test-without-building` rejected its exact UUID and
+  listed only shared destinations. Per the isolation requirement, no shared Simulator was booted,
+  installed to, erased or otherwise driven. Native SwiftPM executes the actual
+  client/context/configuration/QA-view-model source, but cannot establish the iOS-only configured
+  runtime-transport branch, UIKit navigation/controls or native DeviceCheck behavior. Hosted
+  synthetic-label/entry tests and actual-bundle configuration tests remain for tooling that can
+  target a private device set, or an otherwise explicitly authorized isolated iOS test run/CI.
 - Compatible existing signing/profile/distribution, actual App ID prefix/capability, effective
   production App Attest entitlement, an eligible physical iPhone and existing active production
   purchase/trial remain unconfirmed. The precise local install blocker is the unsigned artifact;
