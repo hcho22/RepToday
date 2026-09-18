@@ -17,9 +17,10 @@ authentication. Prompt/context/reply content remains stateless; bounded device s
 persisted as documented below. The legacy helper is incompatible with this persistence binding.
 Ordinary Debug/Release Coach endpoints remain empty. `CoachDeviceQA` enables only the public origin
 for synthetic device preparation. TestFlight inclusion is being implemented separately and remains
-subject to precise verified TestFlight proof-format compatibility. The selected source policy admits
-Apple-verified active Sandbox Premium only for cryptographically verified TestFlight distribution;
-it has not changed the deployed production-only verifier, which still denies TestFlight purchases.
+subject to precise verified TestFlight proof-format compatibility. The selected future policy would
+admit Apple-verified active Sandbox Premium only for cryptographically verified TestFlight
+distribution; neither side of that compatibility path is implemented, and the deployed
+production-only verifier still denies TestFlight purchases.
 
 The hidden server-proof preparation signs only `{}` as an ordinary runtime reply, requires both
 verification gates before `400 invalid_context`, then checks exact-replay denial. Local signatures,
@@ -152,11 +153,12 @@ the new persistence binding; **do not use it to perform or roll back this migrat
 
 Apple documents [production App Attest after distribution](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.devicecheck.appattest-environment)
 and [Sandbox In-App Purchases in TestFlight](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testing-subscriptions-and-in-app-purchases-in-testflight/).
-The selected TestFlight source policy uses the same public service, with Apple-verified active
-Sandbox Premium admitted only when production App Attest cryptographically verifies the current
-request's TestFlight distribution. Existing production purchases retain their verification path;
-there is no arbitrary beta-version whitelist. This compatibility code is not implemented/deployed
-yet: precise assertion extension encoding and supported-device availability remain unestablished.
+The selected TestFlight design would use the same public service, admitting Apple-verified active
+Sandbox Premium only when production App Attest cryptographically verifies the current request's
+TestFlight distribution. Existing production purchases would retain their verification path; there
+would be no arbitrary beta-version whitelist. This compatibility code is not implemented or
+deployed: precise assertion extension encoding and supported-device availability remain
+unestablished.
 Broad production Sandbox fallback, simulator bypass, local boolean grants and operator gates in
 a binary remain prohibited.
 

@@ -1,8 +1,8 @@
 # Coach proof-only QA — intermediate diagnostic source
 
-2026-09-18. Prepared from default-branch revision `248f997` on a new delivery branch,
+2026-09-18. Prepared from default-branch revision `248f997` on delivery branch
 `fm/reptoday-coach-beta-verification-2026-09-18`. Retained deployment/preparation branches and
-their completed pipeline histories were preserved. No pipeline owns this branch yet.
+their completed pipeline histories were preserved.
 
 **TestFlight Coach is not enabled.** Exact authenticated assertion extension encoding/availability
 remains unresolved. The client/server retain Production-only purchase checks and ordinary
@@ -37,7 +37,6 @@ new deployment or model result is claimed. Historical guarded release `2952fab` 
 | Actual QA/Release built-plist and scheme inspection | QA public origin/runtime/empty gate/no telemetry/local StoreKit; ordinary Release empty Coach endpoint, empty gate and QA disabled; ArchiveAction selects Release without local StoreKit |
 | Built-configuration negative tests | 5 QA + 7 Release/override checks passed; QA tests consumed the new actual built app by replacing the test module's app-path input, not an old build or a fabricated plist |
 | `git diff --check` | passed |
-| no-mistakes custody | doctor healthy, prior diagnostic run completed/merged; new source awaits the separately instructed diagnostic-only pipeline |
 
 The ambient Node 26 run initially failed eight baseline crypto/state tests because fixture CBOR
 could not be decoded. Switching only the tool runtime to the project's existing Node 20 made
