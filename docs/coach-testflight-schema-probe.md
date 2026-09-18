@@ -113,14 +113,15 @@ OS when the fields are present and unambiguous. It does **not** turn the candida
 or the known installation channel into cryptographic TestFlight authorization, and cannot establish
 availability on every supported OS, valid Premium, server admission or a model return.
 
-If the expected fields and comparisons all appear, the smallest remaining evidence dependency is
-extension availability on the supported OS range: Apple's explicit availability contract or a
-separately approved genuine proof on a representative oldest-supported OS. One newer device does
-not justify raising the OS floor. The observed format still needs acceptance and review before an
-exact fail-closed admission decoder is implemented. If a required field is missing, unknown,
-unsupported or ambiguous, that precise field/encoding/OS gap remains; seek primary clarification
-for it rather than adding decoder aliases or dumping opaque proofs. This preparation never
-silently resolves the proof-contract blocker.
+If the expected fields and comparisons all appear, that fully bound observation can supply empirical
+wire-format evidence for targeted implementation after acceptance and review. An exhaustive OS
+availability statement or positive hardware evidence on every supported OS is not a prerequisite
+for that scoped work. Broader positive OS-support claims require their own evidence. No app OS
+floor may be raised, and unknown/missing/unsupported signed properties must deny beta admission
+before model access through the existing unavailable/authentication handling. If a required field
+is missing, unknown, unsupported or ambiguous, the smallest further evidence dependency is primary
+clarification of that precise field/encoding/OS gap, rather than decoder aliases or opaque proof
+dumps. This preparation never silently resolves the proof-contract blocker.
 
 ## Offline validation
 
