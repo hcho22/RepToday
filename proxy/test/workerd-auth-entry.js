@@ -1,5 +1,5 @@
 // Test-only entry: never referenced by either Wrangler deployment configuration.
-import gateway, { CoachAuthenticationState } from '../src/coach-auth-worker.js';
+import gateway, { CoachAuthenticationState, handleRuntimeCoach } from '../src/coach-auth-worker.js';
 import { assertKey, attestKey, premiumEntitlement, CoachAuthFailure } from '../src/coach-auth-crypto.js';
 import {probeAppleAPI, probeAppleRequest} from './apple-api-probe.js';
 // Tests seed a generated public key through a separate class, not a production enrollment bypass.
@@ -15,6 +15,15 @@ export class FixtureAuthenticationState extends CoachAuthenticationState {
   }
 }
 export default { async fetch(request, env) {
+  // Local-only integration seam: real request/assertion/SQLite gates, trusted Premium double.
+  // Never selected by a published Wrangler entry or an origin on the public service.
+  if (request.url === 'https://runtime-fixture.invalid/admission') {
+    const bytes = await request.arrayBuffer();
+    return handleRuntimeCoach(new Request('https://coach.reptoday.app/coach', {
+      method: 'POST', headers: request.headers, body: bytes }), env, {
+      premium: async jws => { if (jws !== 'fixture.purchase.proof') throw new CoachAuthFailure(); },
+    });
+  }
   if (request.url.startsWith('https://runtime-fixture.invalid/')) {
     try {
       const input = await request.json();

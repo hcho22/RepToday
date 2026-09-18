@@ -201,6 +201,16 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 ### US-AC02: The talking coach (A) - history-aware, science-grounded
 
+**TestFlight verification checkpoint (2026-09-18):** hidden proof-only QA instrumentation is an
+intermediate diagnostic preparation (`docs/coach-proof-only-qa.md`), not completed beta inclusion.
+It sends signed `{}` and its exact replay through the existing runtime gates, with no provider
+request. Local tests prove ordering, operator exclusion and replay with trusted Apple doubles;
+genuine installed-beta distribution/App Attest and server-verified Premium remain unverified.
+Exact authenticated assertion extension encoding/availability is still unresolved. Client and
+server purchase policy stay Production-only and ordinary Debug/Release endpoints remain empty.
+The selected same-service verified-TestFlight-only Sandbox policy and complete ordinary archive
+inclusion remain pending; the prior deployed revision is historical evidence.
+
 **Description:** As a premium user, I want to ask the coach questions and get answers grounded in my real history and exercise science, so that I understand and stay motivated.
 
 **Acceptance Criteria:**

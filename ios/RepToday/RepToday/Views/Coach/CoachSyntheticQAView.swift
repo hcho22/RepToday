@@ -7,16 +7,19 @@ struct CoachSyntheticQAView: View {
     @Environment(\.dismiss) private var dismiss
     private let appState: AppState
     private let configurationEnabled: Bool
+    private let runtimeTransport: RuntimeAuthenticatedCoachTransport?
     @State private var viewModel: CoachSyntheticQAViewModel
     @State private var showDisclosure = false
     @State private var sendTask: Task<Void, Never>?
     #if COACH_IPHONE_QA
     @State private var showProofSchema = false
+    @State private var showRuntimeProof = false
     #endif
 
     init(services: ServiceContainer, appState: AppState) {
         self.appState = appState
         configurationEnabled = CoachSyntheticQAConfiguration.isEnabled()
+        runtimeTransport = services.coachClient?.transport as? RuntimeAuthenticatedCoachTransport
         _viewModel = State(initialValue: CoachSyntheticQAViewModel(
             client: configurationEnabled ? services.coachClient : nil,
             subscription: services.subscriptionService,
@@ -29,6 +32,7 @@ struct CoachSyntheticQAView: View {
     init(viewModel: CoachSyntheticQAViewModel, appState: AppState, configurationEnabled: Bool) {
         self.appState = appState
         self.configurationEnabled = configurationEnabled
+        runtimeTransport = nil
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -51,7 +55,12 @@ struct CoachSyntheticQAView: View {
                         #endif
                     #if COACH_IPHONE_QA
                     if showProofSchema {
-                        CoachProofSchemaProbeView()
+                        Toggle("Server admission preparation", isOn: $showRuntimeProof)
+                        if showRuntimeProof {
+                            CoachRuntimeProofProbeView(transport: runtimeTransport)
+                        } else {
+                            CoachProofSchemaProbeView()
+                        }
                         Text("Close and reopen this screen to return to synthetic model QA.")
                     }
                     #endif

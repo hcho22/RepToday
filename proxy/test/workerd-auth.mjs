@@ -146,9 +146,40 @@ try {
     const record=await (await stub.fetch('https://fixture-record.invalid/')).json();
     assert.equal(record.counter,1);
     assert.deepEqual(Object.keys(record).sort(),['counter','expiresAt','publicKey','v']);
+    // Real gateway + P-256 assertion + SQLite consumption. Only Apple Premium is doubled.
+    const admissionChallenge = await (await call(ORIGIN, {operation:'challenge',kind:'assert',keyId:key.keyId})).json();
+    const admissionAssertion = signedAssertion(key, assertionPayload('reply', key.keyId, admissionChallenge.challenge,
+      TEST_BODY_HASH, TEST_TRANSACTION_HASH), 2);
+    const admissionProof = {operation:'reply',keyId:key.keyId,challenge:admissionChallenge.challenge,
+      assertion:admissionAssertion.toString('base64'),transactionJws:'fixture.purchase.proof'};
+    const admissionHeaders = {'X-RepToday-Coach-Auth':JSON.stringify(admissionProof)};
+    const admission = await call('https://runtime-fixture.invalid/admission', {}, admissionHeaders);
+    assert.equal(admission.status,400);assert.deepEqual(await admission.json(),{error:'invalid_context'});
+    const replay = await call('https://runtime-fixture.invalid/admission', {}, admissionHeaders);
+    assert.equal(replay.status,401);assert.deepEqual(await replay.json(),{error:'unauthorized'});
+    const operator = await call(ORIGIN, {}, {Authorization:'Bearer '+TEST_GATE});
+    assert.equal(operator.status,401);assert.deepEqual(await operator.json(),{error:'unauthorized'});
+    const finalRecord = await (await stub.fetch('https://fixture-record.invalid/')).json();
+    assert.equal(finalRecord.counter,2);
+    assert.deepEqual(Object.keys(finalRecord).sort(),['counter','expiresAt','publicKey','v']);
+    const deniedChallenge = await (await call(ORIGIN, {operation:'challenge',kind:'assert',keyId:key.keyId})).json();
+    const deniedJws = 'fixture.ineligible.purchase';
+    const deniedAssertion = signedAssertion(key, assertionPayload('reply', key.keyId, deniedChallenge.challenge,
+      TEST_BODY_HASH, hash(deniedJws)), 3);
+    const deniedProof = {...admissionProof,challenge:deniedChallenge.challenge,
+      assertion:deniedAssertion.toString('base64'),transactionJws:deniedJws};
+    const forgedBytes = Buffer.from(deniedAssertion); forgedBytes[forgedBytes.length-1] ^= 1;
+    const forgedAdmission = await call('https://runtime-fixture.invalid/admission', {}, {
+      'X-RepToday-Coach-Auth':JSON.stringify({...deniedProof,assertion:forgedBytes.toString('base64')})});
+    assert.equal(forgedAdmission.status,401);assert.deepEqual(await forgedAdmission.json(),{error:'unauthorized'});
+    assert.equal((await (await stub.fetch('https://fixture-record.invalid/')).json()).counter,2);
+    const deniedAdmission = await call('https://runtime-fixture.invalid/admission', {}, {
+      'X-RepToday-Coach-Auth':JSON.stringify(deniedProof)});
+    assert.equal(deniedAdmission.status,401);assert.deepEqual(await deniedAdmission.json(),{error:'unauthorized'});
+    assert.equal((await (await stub.fetch('https://fixture-record.invalid/')).json()).counter,3);
     assert.equal(localAppleCalls,2);
     assert.equal(rejectedLocalCalls,0);
     assert.equal(localResponseCalls,0);
-    console.log('validated: installed workerd native crypto, Apple verifier negatives, official API JWT/transport local double and SQLite atomic replay; zero external requests');
+    console.log('validated: installed workerd native crypto, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering and SQLite atomic replay; zero external requests');
   }
 } finally {await m.dispose();}

@@ -12,10 +12,20 @@ export function fixtureKey() {
   return { keyId: createHash('sha256').update(point).digest('base64'), privateKey,
     publicKey: publicKey.export({ format: 'pem', type: 'spki' }).toString() };
 }
-export function signedAssertion(key, payload, counter = 1, prefix = APP_PREFIX) {
-  const authenticatorData = Buffer.alloc(37);
+/**
+ * @param {any} key
+ * @param {Buffer} payload
+ * @param {number} [counter]
+ * @param {string} [prefix]
+ * @param {{extensions?: Buffer, flags?: number}} [options]
+ */
+export function signedAssertion(key, payload, counter = 1, prefix = APP_PREFIX,
+  {extensions = Buffer.alloc(0), flags = 0} = {}) {
+  const authenticatorData = Buffer.alloc(37 + extensions.length);
   createHash('sha256').update(prefix + '.' + BUNDLE).digest().copy(authenticatorData);
+  authenticatorData[32] = flags;
   authenticatorData.writeUInt32BE(counter, 33);
+  extensions.copy(authenticatorData, 37);
   const clientHash = createHash('sha256').update(payload).digest();
   const nonce = createHash('sha256').update(Buffer.concat([authenticatorData, clientHash])).digest();
   return cbor.encode({ authenticatorData, signature: sign('sha256', nonce, key.privateKey) });

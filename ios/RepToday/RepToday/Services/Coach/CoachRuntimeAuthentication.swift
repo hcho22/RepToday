@@ -86,7 +86,7 @@ struct StoreKitCoachPurchaseProof: CoachPurchaseProofProviding {
 /// Serializes the complete challenge/assertion exchange. Reentrant sends fail promptly instead of
 /// overwriting another turn's one-time server challenge. The UI already admits one send at a time.
 /// Every await, including non-cancellable Apple callbacks, fits inside the client's total deadline.
-actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport {
+actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProofVerifying {
     static let origin = URL(string: "https://coach.reptoday.app/coach")!
     static let protocolVersion = "reptoday-coach-auth-v1"
     private let attester: any CoachAppAttesting
@@ -113,6 +113,20 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport {
         let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
         return try await boundedCoachOperation(seconds: timeoutSeconds) {
             try await self.send(body: jsonBody, generation: expectedGeneration, deadline: deadline)
+        }
+    }
+
+    /// No content and no paid request: the reviewed gateway validates device/Premium first,
+    /// rejects the exact signed {} as invalid_context, then denies its identical replay.
+    /// Only the hidden QA preparation screen calls this; ordinary sends are unchanged.
+    func verifyProofOnly(timeoutSeconds: Double) async throws {
+        guard timeoutSeconds.isFinite, timeoutSeconds > 0, timeoutSeconds <= 30,
+              !busy, attester.isSupported else { throw CoachAuthenticationError.unavailable }
+        busy = true; defer { busy = false }
+        let expected = generation
+        let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
+        _ = try await boundedCoachOperation(seconds: timeoutSeconds) {
+            try await self.send(body: Data("{}".utf8), generation: expected, deadline: deadline, proofOnly: true)
         }
     }
 
@@ -165,7 +179,7 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport {
         guard let data = Data(base64Encoded: value) else { return false }
         return data.count == 32 && data.base64EncodedString() == value
     }
-    private func send(body: Data, generation expected: UInt64, deadline: Double) async throws -> (data: Data, statusCode: Int) {
+    private func send(body: Data, generation expected: UInt64, deadline: Double, proofOnly: Bool = false) async throws -> (data: Data, statusCode: Int) {
         let transaction = try await purchase.productionPremiumProof()
         _ = try remaining(deadline, expected)
         guard !transaction.isEmpty, transaction.utf8.count <= 12_000 else { throw CoachAuthenticationError.unavailable }
@@ -206,7 +220,22 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport {
         let left = try remaining(deadline, expected)
         let result = try await http.post(to: Self.origin, jsonBody: body, headers: headers, timeoutSeconds: left)
         _ = try remaining(deadline, expected)
+        if proofOnly {
+            guard body == Data("{}".utf8), result.statusCode == 400,
+                  Self.fixedError(result.data, equals: "invalid_context") else { throw CoachAuthenticationError.unavailable }
+            // Deliberately identical proof/body; no new challenge, signature, purchase or content.
+            let replay = try await http.post(to: Self.origin, jsonBody: body, headers: headers,
+                                             timeoutSeconds: remaining(deadline, expected))
+            _ = try remaining(deadline, expected)
+            guard replay.statusCode == 401, Self.fixedError(replay.data, equals: "unauthorized")
+            else { throw CoachAuthenticationError.unavailable }
+        }
         return result // No retry of the final paid request, including ambiguous network failures.
+    }
+    private static func fixedError(_ data: Data, equals expected: String) -> Bool {
+        guard data.count <= 256, let value = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return false }
+        return value == ["error": expected]
     }
     private func proof(operation: String, key: String, challenge: String, body: Data, transaction: String,
                        generation expected: UInt64, deadline: Double) async throws -> [String: String] {

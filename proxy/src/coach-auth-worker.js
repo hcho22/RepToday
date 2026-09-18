@@ -42,7 +42,13 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
     if (!ready(env)) throw new CoachAuthFailure('auth_unavailable');
     // Retained operator-only administration/QA credential; never distributed to an iOS app.
     // The reviewed legacy gate performs its constant-time comparison before any provider call.
-    if (request.headers.get('Authorization')?.startsWith('Bearer ')) return legacyWorker.fetch(request, env);
+    if (request.headers.get('Authorization')?.startsWith('Bearer ')) {
+      const operatorBytes = await readBounded(request, 32 * 1024);
+      // Reserve the exact empty-body admission exchange for device proof + fresh Premium.
+      // An operator's body-validation error must never masquerade as those two gates passing.
+      if (operatorBytes.toString('utf8') === '{}') throw new CoachAuthFailure();
+      return legacyWorker.fetch(new Request(ORIGIN, { method: 'POST', headers: request.headers, body: operatorBytes }), env);
+    }
     const auth = request.headers.get('X-RepToday-Coach-Auth');
     const bytes = await readBounded(request, 32 * 1024);
     if (!auth) {

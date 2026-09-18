@@ -3,6 +3,10 @@
 A separate [TestFlight proof-schema probe](coach-testflight-schema-probe.md) is prepared behind this
 dedicated QA surface. It requires its own concrete device/signing/Apple-operation approval, makes
 no model request and does not grant TestFlight Premium or consume the two-model-request budget.
+The same hidden panel now also prepares a separately budgeted
+[server proof-only exchange](coach-proof-only-qa.md). It sends signed `{}` plus its exact replay,
+with no training content or provider request. Its new operator-exclusion server source is
+undeployed; Production-only purchase selection still prevents TestFlight Sandbox admission.
 
 `CoachDeviceQA` is an explicit **preparation** configuration, not evidence of a working service.
 Ordinary Debug/Release Coach endpoints remain empty. The runtime-authentication service is deployed.

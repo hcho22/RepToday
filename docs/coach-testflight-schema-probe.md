@@ -5,6 +5,11 @@ extension contract remains unresolved. The probe never admits Sandbox Premium, e
 Worker, obtains StoreKit proof, sends training content, or calls a model. Ordinary Debug/Release
 Coach settings and the deployed authentication policy remain unchanged.
 
+The hidden panel also offers a separate [server proof-only preparation](coach-proof-only-qa.md),
+selected by **Server admission preparation**. Leave that toggle off for the schema-only operation
+below. Its separate budget and exact empty-body exchange do not resolve this schema contract or
+enable Sandbox; they are not part of the schema-only operation proposal.
+
 ## Existing boundary and minimum addition
 
 `CoachDeviceQA` and `RepTodayCoachDeviceQA` already provide the registered app identity, production

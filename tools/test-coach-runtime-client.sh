@@ -17,9 +17,9 @@ for directory in ['Models','Services/Engine','Services/Consistency']:
  sources+=list((app/directory).glob('*.swift'))
 sources+=[app/p for p in ['Services/Protocols/ServiceProtocols.swift','Services/Progress/ProgressAnalytics.swift',
  'Services/Coach/CoachAnalyticsInsight.swift','Services/Coach/CoachContextBundle.swift',
- 'Services/Coach/CoachProxyClient.swift','Services/Coach/CoachRuntimeAuthentication.swift','Services/Coach/CoachProofSchemaProbe.swift',
+ 'Services/Coach/CoachProxyClient.swift','Services/Coach/CoachRuntimeAuthentication.swift','Services/Coach/CoachProofSchemaProbe.swift','Services/Coach/CoachRuntimeProofProbe.swift',
  'Services/Coach/CoachSyntheticFixtures.swift','ViewModels/CoachSyntheticQAViewModel.swift','Utilities/AppState.swift']]
-tests=[root/'ios/RepToday/RepTodayTests'/p for p in ['CoachProxyClientTests.swift','CoachProxyClientConfiguredTests.swift','CoachRuntimeAuthenticationTests.swift','CoachSyntheticQAViewModelTests.swift','CoachContextBundleTests.swift','CoachProofSchemaProbeTests.swift']]
+tests=[root/'ios/RepToday/RepTodayTests'/p for p in ['CoachProxyClientTests.swift','CoachProxyClientConfiguredTests.swift','CoachRuntimeAuthenticationTests.swift','CoachSyntheticQAViewModelTests.swift','CoachContextBundleTests.swift','CoachProofSchemaProbeTests.swift','CoachRuntimeProofProbeTests.swift']]
 for directory,files in [('Sources',sources),('Tests',tests)]:
  for source in files:
   link=package/directory/source.name
