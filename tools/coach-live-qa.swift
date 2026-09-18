@@ -33,21 +33,10 @@ enum CoachQA {
         return text
     }
 
-    static let whyContext = CoachContextBundle(
-        phase: "discipline", requestedMinutes: 20,
-        chainPositions: [.init(pattern: "squat", currentExercise: "Bodyweight Squat", tier: 3, chainLength: 5, hasNextTier: true)],
-        recentPatterns: ["push", "hinge", "core"],
-        consistency: .init(currentScore: 63, direction: .rising), strengthJourney: []
-    )
-    static let pistolContext = CoachContextBundle(
-        phase: "strength", requestedMinutes: 15,
-        chainPositions: [.init(pattern: "squat", currentExercise: "Assisted Pistol Squat", tier: 6, chainLength: 7, hasNextTier: true)],
-        recentPatterns: ["squat", "push"],
-        consistency: .init(currentScore: 88, direction: .steady),
-        strengthJourney: [.init(pattern: "squat", trend: "flat", weeksAtCurrentTier: 3, hasAdvanced: true)]
-    )
-    static let whyPrompt = "Why did I get squats today? Refer to the supplied phase, squat frontier and recent patterns. Explain what the summary supports and what you cannot know about today's exact session; do not invent or change a workout."
-    static let pistolPrompt = "How do I do a pistol squat? Relate safe form guidance to my supplied current squat frontier and earned phase, without prescribing or changing a workout."
+    static let whyContext = CoachSyntheticFixtures.whyContext
+    static let pistolContext = CoachSyntheticFixtures.pistolContext
+    static let whyPrompt = CoachSyntheticFixtures.whyPrompt
+    static let pistolPrompt = CoachSyntheticFixtures.pistolPrompt
 
     // Lexical smoke signals only: these cannot prove personalization, form safety or non-fabrication.
     static func hasContextSignals(_ reply: String, stage: CoachQAStage) -> Bool {

@@ -237,8 +237,12 @@ a model call. There is no raw legacy rollback, namespace/class deletion, data ex
 secret rotation or automatic fallback. A future code rollback must preserve the class/migration
 and be reviewed independently. The legacy helper still rejects the persistence binding.
 
-After the reviewed migration, enable the approved `/coach` origin via per-configuration build
-settings, keep the binary secret empty, and verify on a genuine production-purchase device. At most
+The explicit `CoachDeviceQA` preparation configuration now enables the public `/coach` origin
+through per-configuration build settings with an empty binary secret and the production runtime
+mode; ordinary Debug/Release remain empty. This source/build preparation does not establish
+migration, signing/device readiness or service success. Follow `docs/coach-iphone-qa.md` for the
+shared synthetic contexts, bounded local review and revision coordination. Only after the reviewed
+migration and signing/device clearance, verify on a genuine production-purchase device. At most
 two paid prompts should cover why squats and pistol-squat form, using supplied non-identifying context
 without fabricating or altering a workout; inspect their semantics locally without recording replies.
 Also test copied proof/body/challenge/counter substitution, expired/revoked premium, concurrent

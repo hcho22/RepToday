@@ -6,11 +6,22 @@ options:
   xcodeVersion: "16.3"
   createIntermediateGroups: true
   generateEmptyDirectories: true
+  defaultConfig: Debug
+
+configs:
+  Debug: debug
+  Release: release
+  CoachDeviceQA: release
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
     DEVELOPMENT_TEAM: "QH9S83CX4Y"
+  configs:
+    CoachDeviceQA:
+      # Keep optimized release behavior while allowing this dedicated lane's @testable XCTest bundle.
+      ENABLE_TESTABILITY: YES
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COACH_IPHONE_QA"
 
 # Lottie powers the exercise demo animations (US-O01). The app ships on SF-Symbol demos and each
 # exercise lights up as its bundled animation file is added; no animation files ship yet, so the
@@ -76,28 +87,33 @@ targets:
       # must match the deployment's `ANALYTICS_SHARED_SECRET` env var (`npx convex env set`). An empty
       # value is inert exactly like an empty endpoint: `LiveAnalyticsService.configured(...)` returns
       # nil and the container falls back to `NoOpAnalyticsService`.
-      # The premium coach proxy's `POST /coach` origin (US-AC02), split per configuration and expanded
-      # into `Info.plist`'s `RepTodayCoachEndpoint` key exactly like the telemetry endpoint above. The
-      # operator-only endpoint is deployed at https://coach.reptoday.app/coach; guarded no-model
-      # authorization checks passed. The captain-selected App Attest/StoreKit implementation is
-      # prepared locally but not deployed. Both ordinary build configurations remain empty pending
-      # reviewed migration and genuine-device/model QA, so the chat surface stays unavailable and
-      # never gates the core loop. Production app configuration requires the runtime mode and an
-      # empty shared secret; the operator bearer must never enter an app binary or generated project.
-      # See proxy/README.md for deployment evidence and the separate native live-QA helper.
+      # Ordinary Debug/Release Coach endpoints stay inert. CoachDeviceQA explicitly enables the
+      # public origin through this same Info.plist path, with genuine production authentication
+      # and no binary secret. It is a preparation build; service migration and eligible signed
+      # device/purchase readiness remain separate. See docs/coach-iphone-qa.md.
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
           REPTODAY_ANALYTICS_SECRET: d8f3a1c07b9e4256a1c3e5f7091b2d4e
+          REPTODAY_COACH_SYNTHETIC_QA: "0"
           REPTODAY_COACH_ENDPOINT: ""
           REPTODAY_COACH_SECRET: ""
           REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
         Release:
           REPTODAY_ANALYTICS_ENDPOINT: https://sensible-spider-810.convex.site
           REPTODAY_ANALYTICS_SECRET: ""
+          REPTODAY_COACH_SYNTHETIC_QA: "0"
           REPTODAY_COACH_ENDPOINT: ""
           REPTODAY_COACH_SECRET: ""
           REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
+        CoachDeviceQA:
+          INFOPLIST_KEY_CFBundleDisplayName: "Rep Today Coach QA"
+          REPTODAY_ANALYTICS_ENDPOINT: ""
+          REPTODAY_ANALYTICS_SECRET: ""
+          REPTODAY_COACH_ENDPOINT: https://coach.reptoday.app/coach
+          REPTODAY_COACH_SECRET: ""
+          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
+          REPTODAY_COACH_SYNTHETIC_QA: "1"
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.
@@ -157,6 +173,24 @@ targets:
 # separate leaves `-scheme RepToday test` exactly the run it has always been, and the touch path is
 # asked for by name - `-scheme RepTodayUITests test` - when that is what is in question.
 schemes:
+  # No local StoreKit configuration and no launch-time send. Build this scheme for the iPhone
+  # preparation lane; ordinary RepToday keeps Debug/Release and its existing local test setup.
+  RepTodayCoachDeviceQA:
+    build:
+      targets:
+        RepToday: all
+    run:
+      config: CoachDeviceQA
+    test:
+      config: CoachDeviceQA
+      targets:
+        - RepTodayTests
+    profile:
+      config: CoachDeviceQA
+    analyze:
+      config: CoachDeviceQA
+    archive:
+      config: CoachDeviceQA
   RepTodayUITests:
     build:
       targets:

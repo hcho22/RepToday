@@ -872,8 +872,6 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let (updates, continuation) = AsyncStream<UInt64>.makeStream()
         let probe = TransactionListenerProbe()
         let acknowledgementGate = ProcessingGate()
-        let listenerFinished = expectation(description: "cancelled listener finished")
-        let acknowledgementFinished = expectation(description: "background acknowledgement finished")
 
         let listener = Task {
             await LiveStoreKitFacade.processUpdates(
@@ -883,7 +881,6 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
                     await probe.record(.acknowledgementStarted(id))
                     await acknowledgementGate.wait()
                     await probe.record(.acknowledged(id))
-                    acknowledgementFinished.fulfill()
                 },
                 prepareUpdate: { update in
                     guard let observation = await observer.capture(update) else { return nil }
@@ -899,7 +896,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
                     )
                 }
             )
-            listenerFinished.fulfill()
+            await probe.record(.listenerFinished)
         }
 
         continuation.yield(conversion.id)
@@ -908,7 +905,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         await observer.beginRestore()
 
         listener.cancel()
-        await fulfillment(of: [listenerFinished], timeout: 1)
+        await probe.waitUntilRecorded(.listenerFinished)
 
         let listenerEvents = await probe.recordedEvents()
         XCTAssertFalse(listenerEvents.contains(.processingStarted(conversion.id)))
@@ -922,7 +919,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         )
 
         await acknowledgementGate.open()
-        await fulfillment(of: [acknowledgementFinished], timeout: 1)
+        await probe.waitUntilRecorded(.acknowledged(conversion.id))
         let finalEvents = await analytics.recordedEvents
         let finalListenerEvents = await probe.recordedEvents()
         XCTAssertTrue(finalEvents.isEmpty)

@@ -646,3 +646,10 @@ reviewed migration and genuine-device QA. The deployed operator bearer remains c
 separate native QA path. An account deletion updates the already-built client in the same process.
 The bundle remains the single audited definition of training context - see
 `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
+
+### Explicit physical-iPhone synthetic QA preparation
+
+The explicit QA configuration, shared fixtures, request budget, build/launch steps and
+signing/device/service boundaries are authoritative in
+[`coach-iphone-qa.md`](../docs/coach-iphone-qa.md). This preparation does not change the deployed
+operator boundary or establish runtime migration or live-service evidence.

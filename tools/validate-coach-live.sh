@@ -24,6 +24,6 @@ xcrun swiftc -parse-as-library -warnings-as-errors -D COACH_DEPLOY_TESTS \
     "$app"/Models/*.swift "$app/Services/Protocols/ServiceProtocols.swift" \
     "$app"/Services/Consistency/*.swift "$app"/Services/Engine/*.swift \
     "$app/Services/Progress/ProgressAnalytics.swift" "$app/Services/Coach/CoachAnalyticsInsight.swift" \
-    "$app/Services/Coach/CoachContextBundle.swift" "$app/Services/Coach/CoachProxyClient.swift" \
+    "$app/Services/Coach/CoachContextBundle.swift" "$app/Services/Coach/CoachSyntheticFixtures.swift" "$app/Services/Coach/CoachProxyClient.swift" "$app/Services/Coach/CoachRuntimeAuthentication.swift" \
     -o "$private_build/coach-live-qa"
 exec "$private_build/coach-live-qa"
