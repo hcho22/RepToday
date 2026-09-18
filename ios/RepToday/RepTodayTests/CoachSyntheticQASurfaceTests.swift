@@ -91,5 +91,63 @@ final class CoachSyntheticQASurfaceTests: XCTestCase {
         window = hosted
         XCTAssertNotNil(AccessibilityTree.element(labeled: "Coach Synthetic QA", in: hosted.rootViewController!.view))
     }
+
+    func testSchemaPreparationOpensThroughVoiceOverActionAndRendersBoundedOneAttemptControls() async throws {
+        let state = AppState(userDefaults: defaults)
+        state.markCoachDataSharingAcknowledged()
+        let vm = model(Transport(), state)
+        await vm.loadEligibility()
+        vm.readinessConfirmed = true
+        let root = host(vm, state)
+        let modelSendBefore = try XCTUnwrap(AccessibilityTree.element(whereLabel: {
+            $0.hasPrefix("Send synthetic ")
+        }, in: root))
+        XCTAssertFalse(modelSendBefore.accessibilityTraits.contains(.notEnabled))
+        let title = try XCTUnwrap(AccessibilityTree.element(labeled: "Synthetic QA — not your workout data", in: root))
+        let action = try XCTUnwrap(title.accessibilityCustomActions?.first {
+            $0.name == "Open schema verification preparation"
+        })
+        let activate = try XCTUnwrap(action.actionHandler)
+
+        XCTAssertTrue(activate(action))
+        HostedSurface.pump(for: 0.5)
+        root.setNeedsLayout()
+        root.layoutIfNeeded()
+
+        let labels = AccessibilityTree.labels(in: root)
+        XCTAssertTrue(labels.contains("Apple proof schema — preparation only"))
+        XCTAssertTrue(labels.contains("This exact schema-only operation is separately authorized"))
+        XCTAssertTrue(labels.contains("Verify Apple schema once"))
+        let modelSendAfter = try XCTUnwrap(AccessibilityTree.element(whereLabel: {
+            $0.hasPrefix("Send synthetic ")
+        }, in: root))
+        XCTAssertTrue(modelSendAfter.accessibilityTraits.contains(.notEnabled))
+
+        window?.isHidden = true
+        let (panelHost, panelWindow) = HostedSurface.host(
+            ZStack {
+                Theme.Colors.background.ignoresSafeArea()
+                ScrollView { CoachProofSchemaProbeView() }
+            }
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .tint(Theme.Colors.accent),
+            size: CGSize(width: 393, height: 852)
+        )
+        window = panelWindow
+        let panelRoot = panelHost.view!
+        let panelLabels = AccessibilityTree.labels(in: panelRoot)
+        XCTAssertTrue(panelLabels.contains("Apple proof schema — preparation only"))
+        XCTAssertTrue(panelLabels.contains("Approved App ID prefix"))
+        XCTAssertTrue(panelLabels.contains("This exact schema-only operation is separately authorized"))
+        XCTAssertTrue(panelLabels.contains("Verify Apple schema once"))
+
+        let image = HostedSurface.capture(panelRoot, size: CGSize(width: 393, height: 852))
+        let path = try EvidenceOutput.write(
+            image,
+            named: "01-qa-proof-schema-preparation.png",
+            for: "coach-testflight-schema-probe"
+        )
+        print("COACH SCHEMA EVIDENCE: 01-qa-proof-schema-preparation.png -> \(path)")
+    }
     #endif
 }

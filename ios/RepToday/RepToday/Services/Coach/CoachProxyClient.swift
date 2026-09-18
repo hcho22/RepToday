@@ -169,10 +169,11 @@ struct CoachProxyClient {
     /// and the chat surface shows a clear "coach unavailable" state rather than trapping or pointing at
     /// a wrong destination.
     ///
-    /// The production proxy is deployed at `https://coach.reptoday.app/coach`. Both ordinary build
-    /// configurations remain empty pending stronger-authentication migration and genuine-device QA, so this
-    /// returns `nil` by design. Production configuration requires App Attest/StoreKit mode and no
-    /// embedded gate. The currently deployed operator entry is separate from that migration. See `proxy/README.md` for deployment evidence and native live-QA preparation.
+    /// The production App Attest/StoreKit gateway is deployed at
+    /// `https://coach.reptoday.app/coach`. Both ordinary build configurations remain empty pending
+    /// verified TestFlight proof-format compatibility and genuine-device QA, so this returns `nil`
+    /// by design. Production configuration requires App Attest/StoreKit mode and no embedded gate.
+    /// See `docs/coach-runtime-authentication.md` for the authoritative runtime status.
     ///
     /// "Unusable" is checked rather than assumed - the value must parse, carry an `https` scheme, and
     /// have a host - so a mistyped endpoint stays inert rather than firing doomed requests.

@@ -423,10 +423,10 @@ disable a hold manually to get past a failure. DNS/certificate propagation can c
 probe failure and requires a reviewed later retry while protection remains in place.
 
 This helper makes **zero paid model calls**. Its successful deployment message still explicitly
-says live model QA is pending. Actual non-empty model replies, real-client QA, iOS production
-configuration, stronger-authentication migration and genuine-device QA remain separate gates.
-The shipped-client choice is settled: the locally implemented App Attest/StoreKit path replaces
-the operator gate after reviewed migration.
+says live model QA is pending. The stronger-authentication migration is now deployed as recorded in
+the current status above; actual non-empty model replies, shipped-client inclusion, verified
+TestFlight proof-format compatibility and genuine-device QA remain separate gates. The operator
+gate remains a separate administration path and must never enter an app binary.
 
 Offline tests and native compilation (no Keychain access or network):
 

@@ -91,13 +91,14 @@ and response body logs, observability, tails, development URLs and caching remai
 standard abuse-monitoring retention remains as disclosed in `proxy/README.md`.
 
 SQLite Durable Objects are supported on the [Workers Free plan](https://developers.cloudflare.com/durable-objects/platform/pricing/).
-The namespace does not require a paid-plan upgrade, but quota/account availability must be confirmed
-before migration. Challenge/counter/alarm updates consume Free-plan storage operations; exceeding
-quotas must fail closed. The existing zone-wide `/coach` WAF rate limit remains the upstream abuse
-boundary. A genuine-device farm or a copied valid Apple purchase proof used by a genuine app can
-still abuse service: there is no proof of the human Apple Account and no transaction/device
-exclusivity that would break legitimate restores. App Attest does not make a compromised client or
-trusted operator credential impossible to abuse.
+The deployed namespace required no paid-plan upgrade; account and namespace availability were
+verified during the guarded stage/release and must be reconfirmed before any future operation.
+Challenge/counter/alarm updates consume Free-plan storage operations; exceeding quotas must fail
+closed. The existing zone-wide `/coach` WAF rate limit remains the upstream abuse boundary. A
+genuine-device farm or a copied valid Apple purchase proof used by a genuine app can still abuse
+service: there is no proof of the human Apple Account and no transaction/device exclusivity that
+would break legitimate restores. App Attest does not make a compromised client or trusted operator
+credential impossible to abuse.
 
 ## Apple prerequisites and secure intake
 
