@@ -5,37 +5,33 @@ model call runs **without shipping an API key in the app**, and so the app never
 client enforces its own short timeout and degrades cleanly on any failure, timeout, or absence of
 this proxy.
 
-The currently deployed legacy entry serves two routes and stores no user data:
+The codebase supports two language routes:
 
-- **`POST /variety-language`** (US-N05) - the deferred day-one Variety Language line. Not wired in
-  the shipping MVP; the client (`ProxyVarietyLanguageProvider`) falls back to the deterministic
-  on-device template on any failure.
-- **`POST /coach`** (US-AC01) - the premium AI coach transport. A derived, non-identifying context
-  bundle + the user's message + a dedicated abuse-prevention pseudonym in, an OpenAI reply out. The
-  chat surface that drives it is US-AC02; US-AC01 ships the transport only.
+- **`POST /variety-language`** (US-N05) remains a deferred Anthropic-backed day-one note. It is
+  unwired in the shipping MVP and is not exposed on the Coach production hostname. The client
+  falls back to the deterministic on-device template on any failure.
+- **`POST /coach`** (US-AC01) accepts the audited derived context, message and separate Coach safety
+  pseudonym, and calls OpenAI `gpt-5.6-luna`. The deployed runtime gateway requires genuine App Attest
+  and independently verified production Premium proof, or its separate operator-only bearer gate.
 
-The descriptions above and below concern the currently deployed legacy Worker entry. The prepared
-stronger-authentication gateway is separate and **not deployed**: it adds bounded device security
-metadata while retaining no message/training/reply content or purchase proofs. Its iOS flow,
-prerequisites, secure Apple intake, TestFlight/Sandbox limit and held migration plan are in
+The runtime gateway is deployed. It persists bounded, content-free device security metadata, and
+retains no message, training summary, reply or purchase proof. Its verification/storage policy and
+migration runbook are authoritative in
 [`docs/coach-runtime-authentication.md`](../docs/coach-runtime-authentication.md). A shipped binary
-never receives the production operator gate. Ordinary endpoint settings remain empty until the
-migration and genuine-device QA are accepted. The dedicated prepared migration helper
-`tools/migrate-coach-runtime.sh` stages under a verified hold and has separate release/hold-only
-rollback operations; `tools/test-coach-runtime-migration.sh` tests it without external access. The
-official Apple SDK API workerd regression passes after a diagnosed redirect-mode correction; all
-requests still terminate in a local fixture. Preparation is not evidence of approved migration
-readiness or genuine Apple/model QA.
+never receives the operator gate. Ordinary Debug/Release Coach endpoints are still empty; the
+separate `CoachDeviceQA` preparation configuration is documented in
+[`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md). Scoped TestFlight compatibility is being prepared for verified beta distribution and active
+Apple-verified Sandbox Premium; the currently deployed verifier still denies Sandbox purchases.
+Deployment and no-model denial probes do not establish genuine Apple/device/model success.
 
 ## What it does
 
 - Holds provider API keys (Wrangler secrets) and proxies **exactly one** model call per request.
   Variety Language uses Anthropic; the premium Coach uses OpenAI.
-- **The deployed legacy entry stores no user data at rest, on either route.** Nothing is persisted:
-  no KV, no D1, no cache, no
-  scheduler, and **no request/response body logging**. History is read transiently from the request
-  and discarded when the response is sent. The coach's conversation memory, if any, lives on the
-  device in the client - never here.
+- **Model content is not persisted or body-logged.** Training context is read transiently from the
+  request and discarded when the response is sent. The deployed runtime gateway persists only
+  bounded device-verification/replay metadata, with expiry alarms, in its SQLite Durable Object.
+  Conversation memory, if any, lives on the device in the client.
 - Carries **no Rep Today identity on the wire**: no account, `installId`, IDFA, Apple ID, email, name,
   or profile. `/variety-language` carries only two pillar values; `/coach` carries the app-audited
   context bundle, the free-text the user typed, and a separately generated random Coach identifier
@@ -44,7 +40,8 @@ readiness or genuine Apple/model QA.
 - Bounds every upstream call with `AbortSignal.timeout` and caps the request body at **32 KiB**
   (checked before parsing, so an oversized payload never reaches JSON parsing or a paid model call).
 
-"Stateless" and "stores nothing" above describe the deployed legacy Worker entry. The Coach request sets
+"Content-stateless" describes prompt/context/reply handling; device security metadata has the
+separate bounded storage policy linked above. The Coach request sets
 `store: false`, so the OpenAI Responses API does not retain response application state, but that flag
 does not disable OpenAI's standard abuse-monitoring logs. OpenAI may retain the Coach prompt (message
 and training summary) and reply in those logs for up to 30 days. This deployment does not require Zero
@@ -230,7 +227,20 @@ Variety Language remains on `claude-opus-4-8` by default. Override only that rou
 
 Prerequisites: a Cloudflare account and [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
-### Current production Coach status (2026-09-16)
+### Current production Coach status (2026-09-18)
+
+The native guarded runtime stage and release of source `2952fab` completed on 2026-09-18 at
+Worker `reptoday-variety-language-proxy`, public origin `https://coach.reptoday.app/coach`.
+The runtime App Attest/StoreKit mode, SQLite `CoachAuthenticationState` binding, server-only credential
+binding names and disabled observability/tails/logpush/development/preview URLs were verified.
+The temporary hold is disabled; the reviewed boundary and rate protections remain enabled.
+The release no-model contract passed missing/wrong operator authorization, authorized malformed
+input and forged runtime-proof denial. No oversized live probe, genuine enrollment/purchase or
+non-empty model response has been demonstrated. Ordinary clients remain unconfigured; endpoint
+inclusion and TestFlight compatibility are separate from deployment.
+
+The following 2026-09-16 record describes the earlier legacy launch, superseded by the runtime
+release above. It is historical evidence, not the current no-persistence configuration.
 
 Firstmate's captain-authorized native launch from clean tested commit `a8b8f75`
 completed with exit 0, deploying Worker `reptoday-variety-language-proxy` at
@@ -245,9 +255,9 @@ This proves the guarded deployment and gate path, **not live model or shipped-cl
 The native result retains neither actual retry count nor serving-edge convergence duration.
 Standard installed Wrangler OAuth refresh recovered the unchanged local auth guard before
 this attempt; no new interactive login, credential mode/scope/account/plan change or rotation
-was needed. The captain selected **stronger runtime authentication**. Both ordinary iOS Coach build
-configurations remain empty until the locally prepared App Attest/StoreKit path is migrated and
-verified on a genuine device; the operator gate must never be distributed in a shipped binary.
+was needed. The captain selected **stronger runtime authentication**. Ordinary iOS Coach endpoint
+settings remain empty; genuine-device QA and verified TestFlight proof-format compatibility remain
+unverified; the operator gate must never be distributed in a shipped binary.
 Provider keys remain solely on the Worker. Only `/coach` is exposed at this production hostname;
 the separate Variety Language route is not enabled by this deployment.
 
@@ -279,7 +289,7 @@ Any separately authorized future operator redeployment must repeat those checks.
 stay solely on the Worker. A client gate embedded in an iOS binary is extractable and only deters
 opportunistic abuse; it does not verify premium entitlement. The captain selected the locally
 implemented App Attest/StoreKit path for shipped authentication, so the operator gate must never
-enter a distributed build. Its production migration and genuine-device QA remain pending.
+enter a distributed build. The runtime migration is deployed; genuine-device and positive model QA remain pending.
 
 ### Zone-scoped Cloudflare WAF token intake
 
@@ -461,9 +471,9 @@ The subsequent retry initially stopped with `auth`. Standard installed Wrangler 
 refreshed the existing OAuth session: the unchanged helper guard rejected it before the flow,
 accepted it afterward, and GET-only account/zone verification succeeded. Firstmate's next
 guarded native launch from `a8b8f75` completed exit 0 with the 401/401/400 gate contracts.
-Production is deployed and released as described above. Live model/client QA, iOS production
-configuration, stronger-authentication migration and genuine-device QA remain pending. The
-App Attest/StoreKit implementation is prepared locally but not deployed. The earlier held-state
+Production is deployed and released as described above. Live model/client QA, ordinary iOS endpoint
+inclusion, TestFlight compatibility and genuine-device QA remain pending. The App Attest/StoreKit runtime migration is deployed as
+recorded in the current status above. The earlier held-state
 observations are historical, not the current production state.
 
 Firstmate can launch the dedicated read-only mode locally:
@@ -578,7 +588,15 @@ semantics and occupied rate capacity before choosing a fix. The fixed `rules` de
 and suppression of partial progress on error mask the exact failing guard and stage; neither
 is evidence that the Worker or its bindings were created.
 
-### Wrangler flow
+### Legacy local/development Wrangler flow
+
+The default `wrangler.toml` and `npm run deploy` target the legacy entry. They do not represent
+the deployed runtime security binding and must not redeploy the production Coach Worker.
+Production uses `wrangler.runtime-auth.toml` through the native guarded stage/release boundary
+documented in `docs/coach-runtime-authentication.md`; concrete operational authority and an exact
+newly reviewed staged revision are required for each future source rollout.
+
+The following example applies only to a separately authorized explicit development target:
 
 ```bash
 cd proxy
@@ -592,7 +610,8 @@ wrangler secret put OPENAI_API_KEY
 cp .dev.vars.example .dev.vars   # put your key in .dev.vars
 npm run dev
 
-# Deploy:
+# Deploy only to that explicit non-production target/configuration:
+# Never use this legacy command for the production Coach Worker.
 npm run deploy
 ```
 
@@ -641,8 +660,8 @@ let reply = try await coach.reply(to: userMessage, context: bundle)
 blocks the free core loop. Production uses `appState.coachSafetyIdentifierProvider` through
 `ServiceContainer.live` and accepts only the exact `https://coach.reptoday.app/coach` origin with
 `app-attest-storekit-v1` and an empty binary secret; it constructs the App Attest/StoreKit transport,
-never this shared-secret example. Both ordinary Debug and Release origins/secrets remain empty until
-reviewed migration and genuine-device QA. The deployed operator bearer remains confined to the
+never this shared-secret example. Ordinary Debug/Release endpoints remain empty pending verified TestFlight
+proof-format compatibility; all binary Coach secrets must remain empty. The deployed operator bearer remains confined to the
 separate native QA path. An account deletion updates the already-built client in the same process.
 The bundle remains the single audited definition of training context - see
 `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
@@ -651,5 +670,7 @@ The bundle remains the single audited definition of training context - see
 
 The explicit QA configuration, shared fixtures, request budget, build/launch steps and
 signing/device/service boundaries are authoritative in
-[`coach-iphone-qa.md`](../docs/coach-iphone-qa.md). This preparation does not change the deployed
-operator boundary or establish runtime migration or live-service evidence.
+[`coach-iphone-qa.md`](../docs/coach-iphone-qa.md). The synthetic preparation scheme is separate
+from the ordinary Release archive and does not establish signed-device, genuine Apple or live-model
+evidence. The runtime gateway deployment is
+recorded separately above.

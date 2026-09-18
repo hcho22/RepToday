@@ -22,8 +22,8 @@ shift
 
 for argument in "$@"; do
     case "$argument" in
-        -configuration|-configuration=*|-xcconfig|-xcconfig=*|-project|-project=*|-scheme|-scheme=*|-destination|-destination=*|-archivePath|-archivePath=*|-showBuildSettings|-showBuildSettingsForIndex|REPTODAY_ANALYTICS_ENDPOINT=*|REPTODAY_ANALYTICS_ENDPOINT\[*|REPTODAY_ANALYTICS_SECRET=*|REPTODAY_ANALYTICS_SECRET\[*|INFOPLIST_KEY_RepTodayAnalyticsEndpoint=*|INFOPLIST_KEY_RepTodayAnalyticsSecret=*)
-            echo "error: additional arguments cannot override the archive or telemetry configuration" >&2
+        -configuration|-configuration=*|-xcconfig|-xcconfig=*|-project|-project=*|-scheme|-scheme=*|-destination|-destination=*|-archivePath|-archivePath=*|-showBuildSettings|-showBuildSettingsForIndex|REPTODAY_ANALYTICS_ENDPOINT=*|REPTODAY_ANALYTICS_ENDPOINT\[*|REPTODAY_ANALYTICS_SECRET=*|REPTODAY_ANALYTICS_SECRET\[*|INFOPLIST_KEY_RepTodayAnalyticsEndpoint=*|INFOPLIST_KEY_RepTodayAnalyticsSecret=*|REPTODAY_COACH_*=*|REPTODAY_COACH_*\[*|INFOPLIST_KEY_RepTodayCoach*=*|INFOPLIST_KEY_RepTodayBuildConfiguration=*)
+            echo "error: additional arguments cannot override the archive, telemetry or Coach configuration" >&2
             exit 64
             ;;
     esac
@@ -73,6 +73,11 @@ if [[ ! -f "$archive_plist" ]]; then
     echo "error: archive did not produce the expected RepToday.app" >&2
     exit 1
 fi
+
+python3 "$repo_root/tools/inspect-coach-qa-build.py" \
+    --app "$archive_path/Products/Applications/RepToday.app" \
+    --configuration Release \
+    --scheme "$repo_root/ios/RepToday/RepToday.xcodeproj/xcshareddata/xcschemes/RepToday.xcscheme"
 
 built_endpoint=$(/usr/libexec/PlistBuddy -c 'Print :RepTodayAnalyticsEndpoint' "$archive_plist" 2>/dev/null || true)
 built_secret=$(/usr/libexec/PlistBuddy -c 'Print :RepTodayAnalyticsSecret' "$archive_plist" 2>/dev/null || true)

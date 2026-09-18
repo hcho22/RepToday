@@ -144,3 +144,12 @@ comparison isolates the installed runtime's unsupported error redirect mode from
 fixtures; the adapter forces manual mode, with unit tests rejecting every 3xx before reading a body.
 The diagnostic command is documented in `docs/coach-runtime-authentication.md`. Generated
 credentials/proofs and trusted payload/API doubles never substitute for genuine Apple enrollment, production purchase or paid model/semantic verification.
+
+
+Release Coach archive configuration: `tools/test-coach-release-build-inspection.py` exercises the
+actual unsigned Release archive's parsed plist and generated ArchiveAction contract, rejects an
+embedded Coach gate/server credential key/wrong mode/configuration/QA flag/local StoreKit archive attachment, and invokes
+the archive wrapper to prove forbidden Coach overrides stop before credential/external operations.
+Run after the offline unsigned archive described in `docs/coach-iphone-qa.md`. This verifies
+configuration boundaries only; it does not establish signing, TestFlight compatibility, Apple
+proofs or live model success.

@@ -1,11 +1,11 @@
 # Physical-iPhone Coach synthetic QA preparation
 
 `CoachDeviceQA` is an explicit **preparation** configuration, not evidence of a working service.
-Ordinary Debug/Release Coach endpoints remain empty. The runtime-authentication service migration,
-compatible production signing/distribution, capable physical iPhone and existing production Premium
-purchase/trial must be confirmed separately before sending either QA turn. No Sandbox fallback,
-operator bearer, local Premium grant or authentication bypass is provided. TestFlight compatibility
-remains a separate product choice; TestFlight's Sandbox purchase cannot satisfy this production gateway.
+Ordinary Debug/Release Coach endpoints remain empty. The runtime-authentication service is deployed.
+Compatible production signing/distribution, a capable physical iPhone and an existing production
+Premium purchase/trial must be confirmed separately before sending either QA turn. No Sandbox fallback,
+operator bearer, local Premium grant or authentication bypass is provided. TestFlight proof-format compatibility implementation
+remains incomplete; TestFlight's Sandbox purchase cannot satisfy this production gateway.
 
 ## Configuration and unsigned build
 
@@ -180,3 +180,36 @@ and switch HEAD for release, weaken the guard, modify a different task checkout 
 use the legacy helper to migrate/roll back the runtime security binding. This document authorizes
 no deployment or service call. `docs/coach-runtime-authentication.md` remains the authentication,
 storage and migration authority.
+
+
+## Ordinary Release archive boundary
+
+The release archive workflow remains `tools/archive-release.sh`, ordinary scheme `RepToday`,
+configuration `Release`. That captain-operated workflow performs its existing production telemetry
+validation and protected credential injection; do not invoke it during offline Coach preparation.
+It rejects additional Coach build-setting/plist overrides and checks the archived app with
+`tools/inspect-coach-qa-build.py --configuration Release` before accepting the archive. A Debug
+launch's local StoreKit attachment is not part of the ArchiveAction.
+
+For a configuration-only check without credentials, services, signing, installation or upload:
+
+```sh
+(cd ios/RepToday && xcodegen generate)
+mkdir -p build/coach-testflight
+xcodebuild -project ios/RepToday/RepToday.xcodeproj \
+  -scheme RepToday -configuration Release -sdk iphoneos \
+  -destination 'generic/platform=iOS' \
+  -derivedDataPath build/coach-testflight/device \
+  -clonedSourcePackagesDirPath build/coach-testflight/packages \
+  -archivePath build/coach-testflight/RepToday.xcarchive \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+  DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= archive
+python3 tools/inspect-coach-qa-build.py \
+  --app build/coach-testflight/RepToday.xcarchive/Products/Applications/RepToday.app \
+  --configuration Release
+python3 tools/test-coach-release-build-inspection.py
+```
+
+This unsigned archive checks the real ArchiveAction/Release plist contract, not genuine signing or
+TestFlight distribution. The current Release endpoint remains empty pending precise verified TestFlight
+proof-format compatibility implementation. Never embed an operator bearer as a workaround.
