@@ -34,6 +34,24 @@ describe('real cryptographic request binding', () => {
   it.each([0, 0x80000000, 0xffffffff])('rejects zero or unsupported counter %d', counter => {
     expect(() => assertKey(signedAssertion(key, payload, counter), key.publicKey, 0, payload, APP_PREFIX)).toThrow();
   });
+  it.each([
+    {validationCategory:2,bundleVersion:'1'},
+    {apple_validation_category_01:2,apple_bundle_version_01:'1'},
+    {validationCategory:Buffer.from([2,0,0,0]),bundleVersion:'1'},
+    {validationCategory:Buffer.from([0,0,0,2]),bundleVersion:'1'},
+    {validationCategory:3,bundleVersion:'1'},
+    {validationCategory:5,bundleVersion:'1'},
+    {validationCategory:99,bundleVersion:'1'},
+    {validationCategory:2,apple_validation_category_01:4,bundleVersion:'1'},
+    {},
+  ])('refuses unsupported signed extension candidates before beta admission %j', extensions => {
+    // These generated-key signatures are not Apple/TestFlight evidence. Until the actual
+    // assertion protocol is established, no alias, byte order or distribution may be guessed.
+    for (const flags of [0,0x80]) {
+      const candidate=signedAssertion(key,payload,1,APP_PREFIX,{extensions:cbor.encode(extensions),flags});
+      expect(()=>assertKey(candidate,key.publicKey,0,payload,APP_PREFIX)).toThrow();
+    }
+  });
   it('bounds challenge expiry exactly and rejects forged/substituted challenges', () => {
     expect(verifyChallenge(challenge, key.keyId, TEST_GATE, now + 59999).k).toBe(key.keyId);
     for (const clock of [now - 1, now + 60000]) expect(() => verifyChallenge(challenge, key.keyId, TEST_GATE, clock)).toThrow();

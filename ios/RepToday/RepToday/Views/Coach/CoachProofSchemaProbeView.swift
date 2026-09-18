@@ -1,6 +1,40 @@
 import SwiftUI
 
 #if COACH_IPHONE_QA
+/// Requires the same configured runtime actor as model QA, so concurrent handshakes are denied.
+@MainActor
+struct CoachRuntimeProofProbeView: View {
+    @State private var probe: CoachRuntimeProofProbe
+    @State private var confirmed = false
+    @State private var task: Task<Void, Never>?
+
+    init(transport: RuntimeAuthenticatedCoachTransport?) {
+        _probe = State(initialValue: CoachRuntimeProofProbe(
+            enabled: CoachSyntheticQAConfiguration.isEnabled(), verifier: transport))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text("Server proof admission — preparation only").font(Theme.Typography.headline)
+            Text("Requires separate approval for this installed build, device, Apple proof and matched reviewed server revision. Sends only signed {} and, after both gates pass, its exact replay. No workout context or model request. Current purchase selection remains Production only; this does not enable TestFlight Premium.")
+            Toggle("This exact proof-only operation is separately authorized", isOn: $confirmed)
+                .disabled(probe.running)
+            Button("Verify server gates once") {
+                task = Task { await probe.run(confirmed: confirmed) }
+            }
+            .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight)
+            .disabled(!probe.available || !confirmed)
+            if probe.running { ProgressView("Bounded server proof verification") }
+            if let outcome = probe.outcome { Text(outcome.rawValue).accessibilityLabel(outcome.rawValue) }
+            if probe.attempted && !probe.running { Text("Attempt reserved. No retry or reset is provided.") }
+            Text("Report only fixed outcomes with the independently confirmed build/channel and deployed revision. Leaving clears output. Offline workouts remain available.")
+                .font(Theme.Typography.caption)
+        }
+        .padding(Theme.Spacing.md)
+        .onDisappear { task?.cancel(); task = nil; confirmed = false; probe.close() }
+    }
+}
+
 /// Hidden dedicated-QA surface. The identity input and opaque proofs never enter product content.
 @MainActor
 struct CoachProofSchemaProbeView: View {

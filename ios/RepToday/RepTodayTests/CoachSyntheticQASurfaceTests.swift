@@ -149,5 +149,65 @@ final class CoachSyntheticQASurfaceTests: XCTestCase {
         )
         print("COACH SCHEMA EVIDENCE: 01-qa-proof-schema-preparation.png -> \(path)")
     }
+
+    func testServerProofPreparationOpensOnTheDedicatedPanelAndRendersItsBoundedContract() async throws {
+        let state = AppState(userDefaults: defaults)
+        state.markCoachDataSharingAcknowledged()
+        let vm = model(Transport(), state)
+        await vm.loadEligibility()
+        vm.readinessConfirmed = true
+        let root = host(vm, state)
+        let title = try XCTUnwrap(AccessibilityTree.element(
+            labeled: "Synthetic QA — not your workout data", in: root
+        ))
+        let action = try XCTUnwrap(title.accessibilityCustomActions?.first {
+            $0.name == "Open schema verification preparation"
+        })
+        XCTAssertTrue(try XCTUnwrap(action.actionHandler)(action))
+        HostedSurface.pump(for: 0.5)
+
+        let selector = try XCTUnwrap(AccessibilityTree.element(
+            labeled: "Server admission preparation", in: root
+        ))
+        XCTAssertTrue(selector.accessibilityActivate())
+        HostedSurface.pump(for: 0.5)
+        root.setNeedsLayout()
+        root.layoutIfNeeded()
+
+        let labels = AccessibilityTree.labels(in: root)
+        XCTAssertTrue(labels.contains("Server proof admission — preparation only"))
+        XCTAssertTrue(labels.contains("This exact proof-only operation is separately authorized"))
+        XCTAssertTrue(labels.contains("Verify server gates once"))
+        let modelSend = try XCTUnwrap(AccessibilityTree.element(whereLabel: {
+            $0.hasPrefix("Send synthetic ")
+        }, in: root))
+        XCTAssertTrue(modelSend.accessibilityTraits.contains(.notEnabled))
+
+        window?.isHidden = true
+        let (panelHost, panelWindow) = HostedSurface.host(
+            ZStack {
+                Theme.Colors.background.ignoresSafeArea()
+                ScrollView { CoachRuntimeProofProbeView(transport: nil) }
+            }
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .tint(Theme.Colors.accent),
+            size: CGSize(width: 393, height: 852)
+        )
+        window = panelWindow
+        let panelRoot = panelHost.view!
+        let panelLabels = AccessibilityTree.labels(in: panelRoot)
+        XCTAssertTrue(panelLabels.contains("Server proof admission — preparation only"))
+        XCTAssertTrue(panelLabels.contains("This exact proof-only operation is separately authorized"))
+        let verify = try XCTUnwrap(AccessibilityTree.element(labeled: "Verify server gates once", in: panelRoot))
+        XCTAssertTrue(verify.accessibilityTraits.contains(.notEnabled))
+
+        let image = HostedSurface.capture(panelRoot, size: CGSize(width: 393, height: 852))
+        let path = try EvidenceOutput.write(
+            image,
+            named: "01-server-proof-admission-preparation.png",
+            for: "coach-proof-only-qa"
+        )
+        print("COACH PROOF EVIDENCE: 01-server-proof-admission-preparation.png -> \(path)")
+    }
     #endif
 }

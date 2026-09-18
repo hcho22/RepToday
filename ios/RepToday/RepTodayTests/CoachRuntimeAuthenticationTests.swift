@@ -54,15 +54,23 @@ private actor FixtureCoachHTTP: CoachProxyTransport {
     struct Call: Sendable { let body: Data; let headers: [String: String]; let timeout: Double }
     private(set) var calls = [Call]()
     var failureAt: Int?; var expireFirstKey: Bool; var finalStatus: Int
+    var finalResponses: [(Data, Int)]?
     let challenge = "eA." + String(repeating: "A", count: 43) // Shape fixture; never a valid server HMAC.
-    init(failureAt: Int? = nil, expireFirstKey: Bool = false, finalStatus: Int = 200) {
+    init(failureAt: Int? = nil, expireFirstKey: Bool = false, finalStatus: Int = 200, finalResponses: [(Data, Int)]? = nil) {
         self.failureAt = failureAt; self.expireFirstKey = expireFirstKey; self.finalStatus = finalStatus
+        self.finalResponses = finalResponses
     }
     func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
         guard url == RuntimeAuthenticatedCoachTransport.origin else { throw CoachAuthenticationError.unavailable }
         calls.append(Call(body: jsonBody, headers: headers, timeout: timeoutSeconds))
         if failureAt == calls.count { throw CoachAuthenticationError.unavailable }
-        if !headers.isEmpty { return (Data(#"{"reply":"Fixture supplied-context reply"}"#.utf8), finalStatus) }
+        if !headers.isEmpty {
+            if finalResponses != nil {
+                guard !finalResponses!.isEmpty else { throw CoachAuthenticationError.unavailable }
+                return finalResponses!.removeFirst()
+            }
+            return (Data(#"{"reply":"Fixture supplied-context reply"}"#.utf8), finalStatus)
+        }
         let input = try JSONDecoder().decode([String: String].self, from: jsonBody)
         if input["operation"] == "challenge" {
             if expireFirstKey, input["kind"] == "assert" { expireFirstKey = false; return (Data(#"{"error":"key_unavailable"}"#.utf8),401) }
@@ -106,6 +114,66 @@ final class CoachRuntimeAuthenticationTests: XCTestCase {
     private func client(_ transport: RuntimeAuthenticatedCoachTransport, timeout: Double = 30) -> CoachProxyClient {
         CoachProxyClient(endpoint:RuntimeAuthenticatedCoachTransport.origin, timeoutSeconds:timeout,
                          safetyIdentifier:testCoachSafetyIdentifier,transport:transport)
+    }
+    func testProofOnlyUsesExactEmptyBodyThenIdenticalReplayWithOneSignatureAndNoBearer() async throws {
+        let http = FixtureCoachHTTP(finalResponses: [
+            (Data(#"{"error":"invalid_context"}"#.utf8), 400),
+            (Data(#"{"error":"unauthorized"}"#.utf8), 401)])
+        let attester = FixtureCoachAttester()
+        let transport = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                                                           keys: FixtureCoachKeyStore(), http: http)
+        try await transport.verifyProofOnly(timeoutSeconds: 30)
+        let calls = await http.calls, appleCalls = await attester.calls
+        XCTAssertEqual(calls.count, 5); XCTAssertEqual(appleCalls, ["key", "attest", "assert"])
+        let originals = Array(calls.suffix(2))
+        XCTAssertEqual(originals[0].body, Data("{}".utf8)); XCTAssertEqual(originals[1].body, originals[0].body)
+        XCTAssertEqual(originals[1].headers, originals[0].headers)
+        XCTAssertTrue(calls.allSatisfy { $0.headers["Authorization"] == nil })
+        XCTAssertTrue(calls.prefix(3).allSatisfy { $0.headers.isEmpty })
+        let proof = try JSONDecoder().decode([String: String].self, from: Data(try XCTUnwrap(originals[0].headers["X-RepToday-Coach-Auth"]).utf8))
+        XCTAssertEqual(proof["operation"], "reply"); XCTAssertEqual(proof["transactionJws"], purchase)
+        func hex(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.withoutEscapingSlashes]
+        let payload = try encoder.encode([RuntimeAuthenticatedCoachTransport.protocolVersion, "POST",
+                                         RuntimeAuthenticatedCoachTransport.origin.absoluteString, "reply", attester.key,
+                                         http.challenge, hex(Data("{}".utf8)), hex(Data(purchase.utf8))])
+        let hashes = await attester.hashes
+        XCTAssertEqual(hashes.last, Data(SHA256.hash(data: payload)))
+    }
+    func testProofOnlyRefusesUnexpectedAdmissionAndDoesNotReplayAFailure() async {
+        for (data, status) in [(#"{"error":"unauthorized"}"#, 401), (#"{"error":"auth_unavailable"}"#, 503),
+                               (#"{"error":"invalid_context"}"#, 200), (#"{"reply":"fixture"}"#, 400),
+                               (#"{"error":"invalid_context","extra":"fixture"}"#, 400)] {
+            let http = FixtureCoachHTTP(finalResponses: [(Data(data.utf8), status)])
+            let attester = FixtureCoachAttester()
+            let transport = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                                                               keys: FixtureCoachKeyStore(attester.key), http: http)
+            do { try await transport.verifyProofOnly(timeoutSeconds: 1); XCTFail("must reject") } catch {}
+            let calls = await http.calls; XCTAssertEqual(calls.count, 2)
+            XCTAssertEqual(calls.last?.body, Data("{}".utf8))
+        }
+    }
+    func testProofOnlyRequiresExactReplayDenialAndNeverRetriesReplay() async {
+        for (data, status) in [(#"{"error":"unauthorized"}"#, 503), (#"{"error":"key_unavailable"}"#, 401),
+                               (#"{"error":"invalid_context"}"#, 400)] {
+            let http = FixtureCoachHTTP(finalResponses: [(Data(#"{"error":"invalid_context"}"#.utf8), 400), (Data(data.utf8), status)])
+            let attester = FixtureCoachAttester()
+            let transport = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                                                               keys: FixtureCoachKeyStore(attester.key), http: http)
+            do { try await transport.verifyProofOnly(timeoutSeconds: 1); XCTFail("must reject") } catch {}
+            let calls = await http.calls; XCTAssertEqual(calls.count, 3)
+            let appleCalls = await attester.calls; XCTAssertEqual(appleCalls, ["assert"])
+        }
+    }
+    func testProofOnlyMissingPurchaseAndOfflineHandshakeRemainBoundedWithoutReplay() async {
+        for missing in [true, false] {
+            let http = FixtureCoachHTTP(failureAt: 1), attester = FixtureCoachAttester()
+            let transport = RuntimeAuthenticatedCoachTransport(attester: attester,
+                purchase: FixtureCoachPurchase(proof: missing ? nil : purchase), keys: FixtureCoachKeyStore(), http: http)
+            do { try await transport.verifyProofOnly(timeoutSeconds: 1); XCTFail("must fail") } catch {}
+            let calls = await http.calls; XCTAssertEqual(calls.count, missing ? 0 : 1)
+            XCTAssertTrue(calls.allSatisfy { $0.headers.isEmpty })
+        }
     }
     func testActualClientEnrollsAndBindsExactBodyAndPurchaseWithoutBearer() async throws {
         let http = FixtureCoachHTTP(); let keys = FixtureCoachKeyStore(); let attester = FixtureCoachAttester()

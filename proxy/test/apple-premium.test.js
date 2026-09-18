@@ -48,4 +48,13 @@ describe('independent fresh Apple premium-status workflow',()=>{
     lookup.mockResolvedValue(statuses);verify.mockResolvedValueOnce(transaction()).mockRejectedValueOnce(new Error('private JWS detail'));
     await expect(premiumEntitlement('presented.proof.fixture',env,()=>now)).rejects.toThrow('Coach authentication failed');
   });
+  it.each(['Sandbox','Xcode','LocalTesting'])('retained production workflow rejects %s in either independently verified transaction',async environment=>{
+    for (const boundary of ['presented','current']) {
+      verify.mockReset();
+      verify.mockResolvedValueOnce({...transaction(),environment:boundary==='presented'?environment:'Production'})
+        .mockResolvedValueOnce({...transaction(),environment:boundary==='current'?environment:'Production'});
+      await expect(premiumEntitlement('presented.proof.fixture',env,()=>now)).rejects.toThrow('Coach authentication failed');
+      expect(construct.mock.calls.every(args=>args[2]==='Production')).toBe(true);
+    }
+  });
 });

@@ -59,6 +59,25 @@ describe('gateway rejects failures before paid model transport',()=>{
     const r=new Request(ORIGIN,{method:'POST',body:JSON.stringify(body),headers:{Authorization:'Bearer wrong-fixture'}});
     expect((await run(r)).status).toBe(401);expect(upstream).not.toHaveBeenCalled();
   });
+  it('the proof-only empty body is unavailable to even the valid operator bearer',async()=>{
+    const r=new Request(ORIGIN,{method:'POST',body:'{}',headers:{Authorization:'Bearer '+TEST_GATE}});
+    const result=await run(r);
+    expect(result.status).toBe(401);expect(await result.json()).toEqual({error:'unauthorized'});
+    expect(state).not.toHaveBeenCalled();expect(premium).not.toHaveBeenCalled();expect(upstream).not.toHaveBeenCalled();
+  });
+  it('empty runtime reply reaches invalid_context only after both authentication gates',async()=>{
+    const result=await run(request(proof(),'{}'));
+    expect(result.status).toBe(400);expect(await result.json()).toEqual({error:'invalid_context'});
+    expect(state).toHaveBeenCalledOnce();expect(premium).toHaveBeenCalledOnce();expect(upstream).not.toHaveBeenCalled();
+    expect(state.mock.invocationCallOrder[0]).toBeLessThan(premium.mock.invocationCallOrder[0]);
+  });
+  it.each(['state','premium'])('empty runtime reply cannot reach invalid_context with failed %s',async boundary=>{
+    ({state,premium})[boundary].mockRejectedValue(new CoachAuthFailure());
+    const result=await run(request(proof(),'{}'));
+    expect(result.status).toBe(401);expect(await result.json()).toEqual({error:'unauthorized'});
+    if(boundary==='state')expect(premium).not.toHaveBeenCalled();
+    expect(upstream).not.toHaveBeenCalled();
+  });
   it('metadata deletion uses a device assertion without a purchase/provider call',async()=>{
     const auth={...proof(),operation:'delete',transactionJws:''};
     expect((await run(request(auth,'{}'))).status).toBe(200);expect(premium).not.toHaveBeenCalled();expect(upstream).not.toHaveBeenCalled();

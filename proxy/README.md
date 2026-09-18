@@ -23,6 +23,13 @@ separate `CoachDeviceQA` preparation configuration is documented in
 [`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md). Scoped TestFlight compatibility is being prepared for verified beta distribution and active
 Apple-verified Sandbox Premium; the currently deployed verifier still denies Sandbox purchases.
 Deployment and no-model denial probes do not establish genuine Apple/device/model success.
+Current source additionally prepares an undeployed
+[`proof-only QA exchange`](../docs/coach-proof-only-qa.md): an exact signed `{}` reaches
+`400 invalid_context` only after runtime device authentication and fresh Premium, then an exact
+replay is denied. The source gateway excludes an operator `{}` from that result. Local integration
+tests establish ordering/replay without provider dispatch; they do not establish genuine Apple
+proof, TestFlight classification or Sandbox compatibility. The historical release above remains
+separate from this diagnostic source.
 
 ## What it does
 

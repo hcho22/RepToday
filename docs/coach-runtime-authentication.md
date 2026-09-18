@@ -9,15 +9,25 @@ Missing/wrong operator authorization, authorized malformed input and a forged ru
 passed the no-model release contract. No genuine Apple enrollment, verified device purchase,
 live model answer or shipped-client end-to-end success has yet been demonstrated.
 
-`proxy/src/coach-auth-worker.js` and `proxy/wrangler.runtime-auth.toml` describe the deployed runtime
-entry/configuration. It retains an operator-only administration gate alongside App Attest/StoreKit
+`proxy/wrangler.runtime-auth.toml` describes the deployed runtime configuration; the historical
+released source is identified above. Current `proxy/src/coach-auth-worker.js` also includes the
+undeployed [proof-only QA reservation](coach-proof-only-qa.md), which excludes an exact `{}`
+operator request from the device/Premium admission result. It retains an operator-only administration gate alongside App Attest/StoreKit
 authentication. Prompt/context/reply content remains stateless; bounded device security metadata is
 persisted as documented below. The legacy helper is incompatible with this persistence binding.
 Ordinary Debug/Release Coach endpoints remain empty. `CoachDeviceQA` enables only the public origin
 for synthetic device preparation. TestFlight inclusion is being implemented separately and remains
-subject to precise verified TestFlight proof-format compatibility. The selected source policy admits
-Apple-verified active Sandbox Premium only for cryptographically verified TestFlight distribution;
-it has not changed the deployed production-only verifier, which still denies TestFlight purchases.
+subject to precise verified TestFlight proof-format compatibility. The selected future policy would
+admit Apple-verified active Sandbox Premium only for cryptographically verified TestFlight
+distribution; neither side of that compatibility path is implemented, and the deployed
+production-only verifier still denies TestFlight purchases.
+
+The hidden server-proof preparation signs only `{}` as an ordinary runtime reply, requires both
+verification gates before `400 invalid_context`, then checks exact-replay denial. Local signatures,
+SQLite and Premium doubles verify this ordering without provider dispatch; genuine installed
+build/channel, Apple proof/current subscription and matched new-server admission remain unverified.
+See [the proof-only runbook](coach-proof-only-qa.md). This intermediate instrumentation is not
+ordinary beta inclusion, a deployed revision or an authoritative TestFlight decoder.
 
 `REPTODAY_COACH_AUTH_MODE` passes through `Info.plist` to `CoachProxyClient.configured`; the approved
 production origin requires `app-attest-storekit-v1` and an empty `REPTODAY_COACH_SECRET`. The app
@@ -143,11 +153,12 @@ the new persistence binding; **do not use it to perform or roll back this migrat
 
 Apple documents [production App Attest after distribution](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.devicecheck.appattest-environment)
 and [Sandbox In-App Purchases in TestFlight](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testing-subscriptions-and-in-app-purchases-in-testflight/).
-The selected TestFlight source policy uses the same public service, with Apple-verified active
-Sandbox Premium admitted only when production App Attest cryptographically verifies the current
-request's TestFlight distribution. Existing production purchases retain their verification path;
-there is no arbitrary beta-version whitelist. This compatibility code is not implemented/deployed
-yet: precise assertion extension encoding and supported-device availability remain unestablished.
+The selected TestFlight design would use the same public service, admitting Apple-verified active
+Sandbox Premium only when production App Attest cryptographically verifies the current request's
+TestFlight distribution. Existing production purchases would retain their verification path; there
+would be no arbitrary beta-version whitelist. This compatibility code is not implemented or
+deployed: precise assertion extension encoding and supported-device availability remain
+unestablished.
 Broad production Sandbox fallback, simulator bypass, local boolean grants and operator gates in
 a binary remain prohibited.
 
