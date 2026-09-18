@@ -34,10 +34,9 @@
 	<string>$(REPTODAY_ANALYTICS_SECRET)</string>
 	<!-- The premium coach proxy's `POST /coach` origin (US-AC02), expanded from the per-configuration
 	     `REPTODAY_COACH_ENDPOINT` build setting exactly like the analytics endpoint above. The `proxy/`
-	     Worker's operator-only entry is deployed at https://coach.reptoday.app/coach. The captain-selected
-	     App Attest/StoreKit implementation is prepared locally but not deployed. Ordinary Debug/Release
+	     Worker's runtime App Attest/StoreKit entry is deployed at https://coach.reptoday.app/coach. Ordinary Debug/Release
 	     remain empty. CoachDeviceQA enables only this public origin for synthetic QA preparation;
-	     migration and genuine signed-device/model verification remain separate gates. An
+	     TestFlight compatibility and genuine signed-device/model verification remain separate gates. An
 	     empty/missing/mistyped value makes `CoachProxyClient.configured(...)` return nil, leaving the
 	     coach inert (the chat surface shows a clear "coach unavailable" state) rather than pointing at a
 	     wrong destination. Production app configuration requires `app-attest-storekit-v1` and no shared

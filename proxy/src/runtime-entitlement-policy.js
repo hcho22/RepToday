@@ -1,6 +1,5 @@
-// Local implementation slice only. This is NOT a signature verifier or a public authentication
-// boundary. The deployed legacy entry does not import it; the prepared runtime gateway supplies
-// inputs from Apple's trusted
+// Pure entitlement decision, not a signature verifier or a public authentication boundary.
+// The deployed runtime gateway supplies inputs from Apple's trusted
 // server-side SignedDataVerifier and a fresh authenticated App Store Server API status lookup.
 const BUNDLE = 'com.reptoday.app';
 const PRODUCTS = new Set(['com.reptoday.app.premium.monthly', 'com.reptoday.app.premium.yearly']);

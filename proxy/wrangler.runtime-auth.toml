@@ -1,5 +1,5 @@
-# Local/reviewable migration target only. Do not deploy until Apple prerequisites, metadata
-# authority and the dedicated native provisioning/hold flow are reviewed. No account IDs or keys.
+# Deployed runtime target. Production updates require the dedicated reviewed native held-stage/
+# release boundary; this file alone grants no deployment authority. No account IDs or keys.
 name = "reptoday-variety-language-proxy"
 main = "src/coach-auth-worker.js"
 compatibility_date = "2026-01-01"

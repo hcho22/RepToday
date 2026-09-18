@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Local-only inspection of the two approved synthetic turns. No free-text input, clipboard,
+/// Local-only inspection of the two approved synthetic turns. No conversational free-text input, clipboard,
 /// share, transcript persistence, history/policy writes, or launch-time requests.
 @MainActor
 struct CoachSyntheticQAView: View {
@@ -10,6 +10,9 @@ struct CoachSyntheticQAView: View {
     @State private var viewModel: CoachSyntheticQAViewModel
     @State private var showDisclosure = false
     @State private var sendTask: Task<Void, Never>?
+    #if COACH_IPHONE_QA
+    @State private var showProofSchema = false
+    #endif
 
     init(services: ServiceContainer, appState: AppState) {
         self.appState = appState
@@ -36,7 +39,24 @@ struct CoachSyntheticQAView: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     Text("Synthetic QA — not your workout data")
                         .font(Theme.Typography.title)
-                    Text("Preparation build. Requires completed Coach runtime migration, an eligible signed physical iPhone, and an existing production Premium purchase or trial. TestFlight Sandbox is not supported by this production gateway.")
+                        #if COACH_IPHONE_QA
+                        .onLongPressGesture(minimumDuration: 3) {
+                            guard !viewModel.isSending else { return }
+                            showProofSchema.toggle()
+                        }
+                        .accessibilityAction(named: "Open schema verification preparation") {
+                            guard !viewModel.isSending else { return }
+                            showProofSchema = true
+                        }
+                        #endif
+                    #if COACH_IPHONE_QA
+                    if showProofSchema {
+                        CoachProofSchemaProbeView()
+                        Text("Close and reopen this screen to return to synthetic model QA.")
+                    }
+                    #endif
+                    Group {
+                    Text("Preparation build. Runtime service is deployed. Requires an eligible signed physical iPhone and an existing production Premium purchase or trial. TestFlight proof compatibility remains incomplete; Sandbox is not supported by this production gateway.")
                     Text("At most two model requests total: why squats, then pistol form. Each needs a tap. Stop on the first failure; never retry a timeout. This installation remembers attempts across relaunches. Reinstalling does not authorize a new budget.")
                     if !configurationEnabled || !viewModel.isAvailable {
                         Text("QA configuration unavailable. No request can be sent.")
@@ -80,6 +100,11 @@ struct CoachSyntheticQAView: View {
                     }
                     Text("Replies exist only on this screen in memory and clear on review or leaving. Leaving before review stops the run. Your deterministic offline workout remains available.")
                         .font(Theme.Typography.caption)
+                    }
+                    #if COACH_IPHONE_QA
+                    .disabled(showProofSchema)
+                    .opacity(showProofSchema ? 0.4 : 1)
+                    #endif
                 }
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textPrimary)

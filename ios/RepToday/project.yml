@@ -89,8 +89,8 @@ targets:
       # nil and the container falls back to `NoOpAnalyticsService`.
       # Ordinary Debug/Release Coach endpoints stay inert. CoachDeviceQA explicitly enables the
       # public origin through this same Info.plist path, with genuine production authentication
-      # and no binary secret. It is a preparation build; service migration and eligible signed
-      # device/purchase readiness remain separate. See docs/coach-iphone-qa.md.
+      # and no binary secret. The runtime service is deployed; eligible signed-device/purchase
+      # readiness and TestFlight entitlement compatibility remain separate. See docs/coach-iphone-qa.md.
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site

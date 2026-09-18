@@ -1,3 +1,5 @@
+# Legacy development entry; production Coach uses wrangler.runtime-auth.toml through the guarded
+# native stage/release flow. Do not deploy this configuration to the production Coach Worker.
 name = "reptoday-variety-language-proxy"
 main = "src/worker.js"
 # AbortSignal.timeout and modern fetch semantics require a recent compatibility date.

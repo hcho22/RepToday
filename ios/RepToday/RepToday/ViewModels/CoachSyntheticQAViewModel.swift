@@ -95,7 +95,7 @@ final class CoachSyntheticQAViewModel {
     private(set) var isSending = false
     private(set) var reply: String?
     private(set) var returnedSelection: CoachSyntheticFixtures.Selection?
-    private(set) var status = "No request sent. Service migration and signed-device readiness are required."
+    private(set) var status = "No request sent. Signed-device QA readiness requires separate authorization."
     var readinessConfirmed = false
     private var generation = 0
 

@@ -1340,3 +1340,38 @@ retained full actual-workerd suite passes, including ES256 JWT verification, a f
 rejection and SQLite atomic replay; 162 proxy units and typecheck pass. Genuine Apple enrollment,
 purchase/restore/revocation, runtime migration and live model/semantic QA remain unverified. No
 production operation occurred in this diagnostic continuation.
+
+
+## Coach runtime release and TestFlight compatibility checkpoint (2026-09-18)
+
+The runtime gateway from reviewed `2952fab` is deployed and released at the existing public Coach
+origin. Bounded SQLite security metadata now exists alongside content-stateless model processing;
+no-model denial probes passed, while genuine Apple/device/purchase and positive model QA remain
+unverified. This supersedes the migration-prepared deployment status in the 2026-09-16 entry.
+The release archive uses ordinary Release, whose endpoint remains empty pending precise verified
+TestFlight proof-format compatibility: TestFlight uses production App Attest and Sandbox
+StoreKit; the current client and server intentionally accept only production purchases.
+
+`tools/archive-release.sh` now rejects Coach configuration overrides before credential/live
+operations and inspects the actual archived public Coach configuration and Release scheme.
+This source checkpoint does not enable a guaranteed-to-fail TestFlight client or relax any server
+policy. The selected source policy admits verified Sandbox Premium only for cryptographically verified
+TestFlight requests, preserving production purchase verification. Precise signed assertion extension
+encoding/support remains unestablished; compatibility implementation must resolve that gap before
+enabling the endpoint.
+Canonical privacy source reflects the deployed security-metadata boundary; hosted publication
+is separate. Runtime deployment is not proof of TestFlight inclusion or end-to-end success.
+
+## TestFlight proof-schema preparation (2026-09-18)
+
+A hidden `CoachDeviceQA`-only panel prepares one separately approved Apple App Attest schema
+observation, using the existing device wrapper and deadline. It verifies the pinned Apple chain,
+nonce/key/app/challenge bindings and full assertion signature locally before showing fixed known
+field names/types/flags, candidate category-2 encoding matches and agreement with the actual build
+version. A separate content-free one-attempt marker preserves the production key and model budget.
+No Worker/model request or Sandbox admission exists in this probe; all results remain unsupported
+for distribution admission. Native tests exercise synthetic memory-only certificate chains and
+signatures, rejection boundaries, one-attempt safety and late callbacks. The unsigned dedicated QA
+build is preparation, not a signed TestFlight install. The concrete proposal and evidence limits
+are in `docs/coach-testflight-schema-probe.md`; genuine execution, supported-OS evidence and final
+Coach enablement remain pending.

@@ -1,13 +1,24 @@
 # Coach runtime authentication and production migration
 
-The existing `reptoday-variety-language-proxy` is deployed at `https://coach.reptoday.app/coach`
-with an operator-only bearer gate and the reviewed WAF boundary/rate protections. Firstmate's
-2026-09-16 guarded launch reported success at source `a8b8f75`; its no-model gate probes passed.
-No live model answer or shipped-client production authentication has yet been verified.
+Worker `reptoday-variety-language-proxy` is deployed at `https://coach.reptoday.app/coach`.
+The native guarded runtime stage and release of reviewed source `2952fab` completed on
+2026-09-18. The release verified the runtime configuration, SQLite security binding and
+server-only credential binding names. The temporary deployment hold is disabled; the reviewed
+hostname boundary and Free-plan zone-wide exact `/coach` path rate protection remain enabled.
+Missing/wrong operator authorization, authorized malformed input and a forged runtime proof
+passed the no-model release contract. No genuine Apple enrollment, verified device purchase,
+live model answer or shipped-client end-to-end success has yet been demonstrated.
 
-`proxy/src/coach-auth-worker.js` and `proxy/wrangler.runtime-auth.toml` prepare the captain-selected
-stronger authentication migration. They are separate from the deployed legacy entry/configuration.
-Ordinary iOS endpoints remain empty until that migration and genuine-device QA are accepted.
+`proxy/src/coach-auth-worker.js` and `proxy/wrangler.runtime-auth.toml` describe the deployed runtime
+entry/configuration. It retains an operator-only administration gate alongside App Attest/StoreKit
+authentication. Prompt/context/reply content remains stateless; bounded device security metadata is
+persisted as documented below. The legacy helper is incompatible with this persistence binding.
+Ordinary Debug/Release Coach endpoints remain empty. `CoachDeviceQA` enables only the public origin
+for synthetic device preparation. TestFlight inclusion is being implemented separately and remains
+subject to precise verified TestFlight proof-format compatibility. The selected source policy admits
+Apple-verified active Sandbox Premium only for cryptographically verified TestFlight distribution;
+it has not changed the deployed production-only verifier, which still denies TestFlight purchases.
+
 `REPTODAY_COACH_AUTH_MODE` passes through `Info.plist` to `CoachProxyClient.configured`; the approved
 production origin requires `app-attest-storekit-v1` and an empty `REPTODAY_COACH_SECRET`. The app
 constructs real DeviceCheck/StoreKit authentication, never a binary-embedded production credential.
@@ -48,8 +59,8 @@ constant-time gate before provider access.
 
 ## Bounded security storage and privacy
 
-The migration adds one SQLite Durable Object per verified App Attest key in a production/protocol
-namespace. A record is under 2 KiB and contains only:
+The deployed runtime gateway uses one SQLite Durable Object per verified App Attest key in a
+production/protocol namespace. A record is under 2 KiB and contains only:
 
 | Field | Purpose / lifetime |
 | --- | --- |
@@ -80,13 +91,14 @@ and response body logs, observability, tails, development URLs and caching remai
 standard abuse-monitoring retention remains as disclosed in `proxy/README.md`.
 
 SQLite Durable Objects are supported on the [Workers Free plan](https://developers.cloudflare.com/durable-objects/platform/pricing/).
-The namespace does not require a paid-plan upgrade, but quota/account availability must be confirmed
-before migration. Challenge/counter/alarm updates consume Free-plan storage operations; exceeding
-quotas must fail closed. The existing zone-wide `/coach` WAF rate limit remains the upstream abuse
-boundary. A genuine-device farm or a copied valid Apple purchase proof used by a genuine app can
-still abuse service: there is no proof of the human Apple Account and no transaction/device
-exclusivity that would break legitimate restores. App Attest does not make a compromised client or
-trusted operator credential impossible to abuse.
+The deployed namespace required no paid-plan upgrade; account and namespace availability were
+verified during the guarded stage/release and must be reconfirmed before any future operation.
+Challenge/counter/alarm updates consume Free-plan storage operations; exceeding quotas must fail
+closed. The existing zone-wide `/coach` WAF rate limit remains the upstream abuse boundary. A
+genuine-device farm or a copied valid Apple purchase proof used by a genuine app can still abuse
+service: there is no proof of the human Apple Account and no transaction/device exclusivity that
+would break legitimate restores. App Attest does not make a compromised client or trusted operator
+credential impossible to abuse.
 
 ## Apple prerequisites and secure intake
 
@@ -113,7 +125,7 @@ deployment/API verification. `--check` checks item metadata only. Items use serv
 `app-store-key-id`, `app-store-issuer-id`, and `app-store-private-key`, non-synchronizing and
 device-local/unlocked. Intake is not platform authority, migration or live-QA evidence.
 
-Those values must later become server-only `secret_text` bindings (`APP_ATTEST_APP_PREFIX`,
+The deployed runtime has server-only `secret_text` bindings (`APP_ATTEST_APP_PREFIX`,
 `APP_STORE_APP_ID`, `APP_STORE_KEY_ID`, `APP_STORE_ISSUER_ID`, `APP_STORE_PRIVATE_KEY`) through a
 reviewed native Keychain boundary, preserving the provider/operator/WAF items. The migration config
 contains no private values or account identifiers. Never insert them in the app, source, generated
@@ -130,10 +142,23 @@ the new persistence binding; **do not use it to perform or roll back this migrat
 | Development on a physical device | Explicit App Attest environment | Usually Sandbox | Does not prove this production purchase path |
 
 Apple documents [production App Attest after distribution](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.devicecheck.appattest-environment)
-and [Sandbox In-App Purchases in TestFlight](https://developer.apple.com/in-app-purchase/).
-TestFlight positive Coach QA would need a separately reviewed isolated Sandbox service/configuration;
-it must not introduce a production fallback, simulator bypass, local boolean grant or operator gate
-in a binary. This is a beta compatibility limit and must be stated before release/QA scheduling.
+and [Sandbox In-App Purchases in TestFlight](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testing-subscriptions-and-in-app-purchases-in-testflight/).
+The selected TestFlight source policy uses the same public service, with Apple-verified active
+Sandbox Premium admitted only when production App Attest cryptographically verifies the current
+request's TestFlight distribution. Existing production purchases retain their verification path;
+there is no arbitrary beta-version whitelist. This compatibility code is not implemented/deployed
+yet: precise assertion extension encoding and supported-device availability remain unestablished.
+Broad production Sandbox fallback, simulator bypass, local boolean grants and operator gates in
+a binary remain prohibited.
+
+The current primary [server validation guide](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server)
+uses different category/version labels in its attestation and assertion sections. The public
+[object validation fixture](https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide)
+has an extension map with the WebAuthn ED flag unset, and supplies no assertion extension example.
+This is fixture/schema evidence only, not genuine Apple validation. Exact signed assertion
+encoding and supported-device availability need authoritative clarification before beta admission
+is implemented; do not infer them from unsigned client flags or guessed field aliases.
+ This is a beta compatibility limit and must be stated before release/QA scheduling.
 
 Active introductory free trials remain eligible without positive price checks; expired transactions,
 billing retry and elapsed-expiry grace remain denied, consistent with the existing
@@ -182,12 +207,14 @@ Node/workerd comparison with `node test/workerd-auth.mjs --diagnose-apple-api` f
 
 The production origin restriction follows
 [Apple's pinned SDK source](https://github.com/apple/app-store-server-library-node/blob/v3.1.0/index.ts).
-Actual supported Wrangler dry-build/deployment and positive current Apple trust-chain/online checks
-remain final migration validations. Generated-key signatures and trusted payload/API doubles do not
+The native reviewed stage/release used the supported Wrangler deployment flow as recorded above.
+Positive genuine Apple trust-chain/purchase checks remain unverified; any future server-source change
+requires a matching newly reviewed held stage and release. Generated-key signatures and trusted payload/API doubles do not
 prove a valid Apple production enrollment or purchase.
 
-The prepared native migration boundary is `tools/migrate-coach-runtime.sh`, with three separate
-operations. **None has been launched against production during preparation.** Before any operation,
+The native migration boundary is `tools/migrate-coach-runtime.sh`, with three separate
+operations. Stage/release of `2952fab` completed as recorded above; the commands below are a runbook,
+not authority to repeat them. Before any future operation,
 Firstmate must confirm captain authorization, reviewed committed source, Apple/account prerequisites,
 existing Keychain items and production-device access; local compatibility checks do not grant that
 authority or prove those prerequisites.
@@ -212,7 +239,8 @@ committed head. Only the approved SQLite class/binding/migration, server secrets
 revision are permitted. It checks the official namespace API's `class`, `script` and `use_sqlite`
 fields, exact migration tag, same namespace on repeat staging, disabled observability/tails/logpush,
 and disabled development/preview URLs. Unknown/missing API fields stop rather than guessing.
-Namespace creation/quota authority is still unverified; an API/Free-quota refusal leaves the hold.
+The existing SQLite namespace was verified at stage/release. A future API/Free-quota refusal leaves
+the hold; never create a replacement namespace or weaken the invariant.
 
 Only the five **missing** Apple bindings are provisioned from the approved existing local items.
 Provider/operator secrets must already exist and are preserved; no existing server secret is read,
@@ -240,9 +268,9 @@ and be reviewed independently. The legacy helper still rejects the persistence b
 The explicit `CoachDeviceQA` preparation configuration now enables the public `/coach` origin
 through per-configuration build settings with an empty binary secret and the production runtime
 mode; ordinary Debug/Release remain empty. This source/build preparation does not establish
-migration, signing/device readiness or service success. Follow `docs/coach-iphone-qa.md` for the
-shared synthetic contexts, bounded local review and revision coordination. Only after the reviewed
-migration and signing/device clearance, verify on a genuine production-purchase device. At most
+signed-device readiness or service/model success. Follow `docs/coach-iphone-qa.md` for the
+shared synthetic contexts, bounded local review and revision coordination. Only after separately
+cleared signing/device readiness, verify on a genuine production-purchase device. At most
 two paid prompts should cover why squats and pistol-squat form, using supplied non-identifying context
 without fabricating or altering a workout; inspect their semantics locally without recording replies.
 Also test copied proof/body/challenge/counter substitution, expired/revoked premium, concurrent
