@@ -1,5 +1,9 @@
 # Physical-iPhone Coach synthetic QA preparation
 
+A separate [TestFlight proof-schema probe](coach-testflight-schema-probe.md) is prepared behind this
+dedicated QA surface. It requires its own concrete device/signing/Apple-operation approval, makes
+no model request and does not grant TestFlight Premium or consume the two-model-request budget.
+
 `CoachDeviceQA` is an explicit **preparation** configuration, not evidence of a working service.
 Ordinary Debug/Release Coach endpoints remain empty. The runtime-authentication service is deployed.
 Compatible production signing/distribution, a capable physical iPhone and an existing production

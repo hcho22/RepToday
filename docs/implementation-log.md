@@ -1361,3 +1361,17 @@ encoding/support remains unestablished; compatibility implementation must resolv
 enabling the endpoint.
 Canonical privacy source reflects the deployed security-metadata boundary; hosted publication
 is separate. Runtime deployment is not proof of TestFlight inclusion or end-to-end success.
+
+## TestFlight proof-schema preparation (2026-09-18)
+
+A hidden `CoachDeviceQA`-only panel prepares one separately approved Apple App Attest schema
+observation, using the existing device wrapper and deadline. It verifies the pinned Apple chain,
+nonce/key/app/challenge bindings and full assertion signature locally before showing fixed known
+field names/types/flags, candidate category-2 encoding matches and agreement with the actual build
+version. A separate content-free one-attempt marker preserves the production key and model budget.
+No Worker/model request or Sandbox admission exists in this probe; all results remain unsupported
+for distribution admission. Native tests exercise synthetic memory-only certificate chains and
+signatures, rejection boundaries, one-attempt safety and late callbacks. The unsigned dedicated QA
+build is preparation, not a signed TestFlight install. The concrete proposal and evidence limits
+are in `docs/coach-testflight-schema-probe.md`; genuine execution, supported-OS evidence and final
+Coach enablement remain pending.
