@@ -39,6 +39,7 @@ private final class QATransportDouble: CoachProxyTransport, @unchecked Sendable 
     struct Call { let body: Data; let headers: [String: String]; let timeout: Double }
     var calls: [Call] = []
     var failAt: Int?
+    var failure = CoachQAFailure.request
     var modelReplies = ["Your discipline-phase bodyweight squat frontier and recent patterns support squat practice.", "Your assisted pistol squat frontier supports discussing pistol form."]
     var modelStatus = 200
     var responseOverride: Data?
@@ -48,7 +49,7 @@ private final class QATransportDouble: CoachProxyTransport, @unchecked Sendable 
         let index = calls.count
         calls.append(.init(body: jsonBody, headers: headers, timeout: timeoutSeconds))
         onCall?(index)
-        if index == failAt { throw URLError(.cannotConnectToHost) }
+        if index == failAt { throw failure }
         let errors = ["unauthorized", "unauthorized", "payload_too_large", "invalid_json"]
         let statuses = [401, 401, 413, 400]
         if index < 4 {
@@ -57,6 +58,8 @@ private final class QATransportDouble: CoachProxyTransport, @unchecked Sendable 
         let data = try responseOverride ?? JSONSerialization.data(withJSONObject: ["reply": modelReplies[index - 4]])
         return (data, modelStatus)
     }
+
+    var paidCallCount: Int { max(0, calls.count - 4) }
 }
 
 private final class LocalQAURLProtocol: URLProtocol, @unchecked Sendable {
@@ -104,6 +107,7 @@ private struct CoachLiveQATests {
             let transport = QATransportDouble()
             let output = try await NativeCoachLiveQACoordinator(transport: transport).run(clientGate: doubleGate)
             try require(output == CoachQA.successLines.joined(separator: "\n") && transport.calls.count == 6, "six-bounded-calls")
+            try require(transport.paidCallCount == 2, "two-successes-consume-exactly-two-paid-calls")
             try require(transport.calls[0].headers.isEmpty && transport.calls[1].headers["Authorization"] != transport.calls[2].headers["Authorization"], "authorization-order")
             try require(transport.calls[2].body.count == 32 * 1024 + 1 && transport.calls[3].body == Data("{".utf8), "invalid-only-boundaries")
             try require(transport.calls.prefix(4).allSatisfy { $0.timeout <= 10 } && transport.calls.suffix(2).allSatisfy { $0.timeout <= 30 }, "request-deadlines")
@@ -127,11 +131,42 @@ private struct CoachLiveQATests {
             for reply in ["", "Generic encouragement without context"] {
                 let failing = QATransportDouble(); failing.modelReplies[0] = reply
                 do { _ = try await NativeCoachLiveQACoordinator(transport: failing).run(clientGate: doubleGate); throw TestFailure.assertion("bad-model-reply-accepted") }
-                catch let error as CoachQAStop { try require(error.stage == .whySquats && failing.calls.count == 5, "one-paid-call-on-model-failure") }
+                catch let error as CoachQAStop { try require(error.stage == .whySquats && failing.paidCallCount == 1, "one-paid-call-on-model-failure") }
             }
             let badStatus = QATransportDouble(); badStatus.modelStatus = 502
             do { _ = try await NativeCoachLiveQACoordinator(transport: badStatus).run(clientGate: doubleGate); throw TestFailure.assertion("model-status-accepted") }
-            catch let error as CoachQAStop { try require(error.stage == .whySquats && badStatus.calls.count == 5, "model-error-stop") }
+            catch let error as CoachQAStop { try require(error.stage == .whySquats && badStatus.paidCallCount == 1, "model-error-stop") }
+            for failure in [CoachQAFailure.request, .timeout] {
+                let first = QATransportDouble(); first.failAt = 4; first.failure = failure
+                do { _ = try await NativeCoachLiveQACoordinator(transport: first).run(clientGate: doubleGate); throw TestFailure.assertion("first-paid-failure-accepted") }
+                catch let error as CoachQAStop {
+                    try require(error.stage == .whySquats && error.failure == failure && first.paidCallCount == 1,
+                                "first-paid-failure-stops-after-one")
+                }
+                let second = QATransportDouble(); second.failAt = 5; second.failure = failure
+                do { _ = try await NativeCoachLiveQACoordinator(transport: second).run(clientGate: doubleGate); throw TestFailure.assertion("second-paid-failure-accepted") }
+                catch let error as CoachQAStop {
+                    try require(error.stage == .pistolForm && error.failure == failure && second.paidCallCount == 2,
+                                "second-paid-failure-stops-after-two")
+                }
+            }
+            var retryBudget = CoachQAPaidCallBudget(), retryPaidCalls = 0
+            for _ in 0..<4 {
+                do {
+                    try await retryBudget.perform {
+                        retryPaidCalls += 1
+                        throw CoachQAFailure.timeout
+                    }
+                } catch CoachQAFailure.timeout, CoachQAFailure.paidCallBudget {}
+            }
+            try require(retryPaidCalls == 1 && retryBudget.consumedCalls == 1,
+                        "ambiguous-timeout-retry-path-stays-at-one")
+            var capBudget = CoachQAPaidCallBudget(), capPaidCalls = 0
+            for _ in 0..<3 {
+                do { try await capBudget.perform { capPaidCalls += 1 } }
+                catch CoachQAFailure.paidCallBudget {}
+            }
+            try require(capPaidCalls == 2 && capBudget.consumedCalls == 2, "third-paid-call-is-impossible")
             let clock = QAClock(), slow = QATransportDouble()
             slow.onCall = { _ in clock.advance(101) }
             do { _ = try await NativeCoachLiveQACoordinator(transport: slow, now: { clock.read() }).run(clientGate: doubleGate); throw TestFailure.assertion("over-budget-accepted") }

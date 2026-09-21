@@ -7,7 +7,9 @@ enum CoachQAStage: String {
     case oversized, malformed, offline, localLimit = "local-limit", whySquats = "why-squats", pistolForm = "pistol-form", output
 }
 
-enum CoachQAFailure: String, Error { case credential, request, timeout, redirect, size, contract, contextSignals = "context-signals", output }
+enum CoachQAFailure: String, Error {
+    case credential, request, timeout, redirect, size, contract, contextSignals = "context-signals", output, paidCallBudget = "paid-call-budget"
+}
 
 struct CoachQAStop: Error {
     let stage: CoachQAStage
@@ -104,6 +106,25 @@ protocol CoachLiveQACoordinator {
     func run(clientGate: Data) async throws -> String
 }
 
+/// One fail-closed budget for the complete live-QA run. Reservation happens before dispatch, so an
+/// ambiguous timeout or lost response is charged as a paid call. Any failure permanently closes the
+/// budget, and successful calls may consume the two-call maximum but never a third call.
+struct CoachQAPaidCallBudget {
+    static let maximumCalls = 2
+    private(set) var consumedCalls = 0
+    private var stopped = false
+
+    mutating func perform<T>(_ operation: () async throws -> T) async throws -> T {
+        guard !stopped, consumedCalls < Self.maximumCalls else { throw CoachQAFailure.paidCallBudget }
+        consumedCalls += 1
+        do { return try await operation() }
+        catch {
+            stopped = true
+            throw error
+        }
+    }
+}
+
 struct NativeCoachLiveQACoordinator: CoachLiveQACoordinator {
     let transport: any CoachProxyTransport
     let now: @Sendable () -> Double
@@ -148,16 +169,20 @@ struct NativeCoachLiveQACoordinator: CoachLiveQACoordinator {
             catch CoachProxyClient.CoachError.messageTooLong(limit: 2000) { return }
             throw CoachQAFailure.contract
         }
-        // No retries. Only these two calls carry valid model payloads. Stop before call two on any failure.
+        // This single budget owns both prompts. It reserves before transport and closes on any
+        // failure, so an ambiguous timeout is spent and no retry branch can make another paid call.
+        var paidCallBudget = CoachQAPaidCallBudget()
         for (stage, prompt, context) in [(CoachQAStage.whySquats, CoachQA.whyPrompt, CoachQA.whyContext), (.pistolForm, CoachQA.pistolPrompt, CoachQA.pistolContext)] {
             try await checked(stage) {
                 let remaining = deadline - now()
                 guard remaining > 0 else { throw CoachQAFailure.timeout }
                 let client = CoachProxyClient(endpoint: CoachQA.endpoint, timeoutSeconds: min(30, remaining), sharedSecret: gate,
                                               safetyIdentifier: safetyIdentifier, transport: transport)
-                let reply = try await client.reply(to: prompt, context: context)
-                guard now() < deadline else { throw CoachQAFailure.timeout }
-                guard CoachQA.hasContextSignals(reply, stage: stage) else { throw CoachQAFailure.contextSignals }
+                try await paidCallBudget.perform {
+                    let reply = try await client.reply(to: prompt, context: context)
+                    guard now() < deadline else { throw CoachQAFailure.timeout }
+                    guard CoachQA.hasContextSignals(reply, stage: stage) else { throw CoachQAFailure.contextSignals }
+                }
             }
         }
         return try CoachQA.validatedOutput(CoachQA.successLines.joined(separator: "\n"))
