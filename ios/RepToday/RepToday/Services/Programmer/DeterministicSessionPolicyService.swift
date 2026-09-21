@@ -211,12 +211,9 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
 
 // MARK: - Policy persistence seam
 
-/// Persists the single current `SessionPolicy` per user (US-D03), keyed by the user's id and
-/// overwritten in place so a user keeps one current policy, never a growing history.
-///
-/// A protocol so the deterministic Programmer is testable without CoreData: `InMemorySessionPolicyStore`
-/// backs tests and previews, while `CoreDataSessionPolicyStore` (Persistence) backs the running app
-/// and, via `CDSessionPolicy`, lets the last-written policy survive relaunch and offline use.
+/// Gates the final mutation of an atomic policy update. A caller whose work can become stale supplies
+/// an authorization that can be invalidated while it is suspended; the store checks it at the commit
+/// boundary and performs the mutation only while that authorization remains held.
 protocol SessionPolicyWriteAuthorization: Sendable {
     func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T?
 }
@@ -227,6 +224,12 @@ struct UnconditionalSessionPolicyWriteAuthorization: SessionPolicyWriteAuthoriza
     }
 }
 
+/// Persists the single current `SessionPolicy` per user (US-D03), keyed by the user's id and
+/// overwritten in place so a user keeps one current policy, never a growing history.
+///
+/// A protocol so the deterministic Programmer is testable without CoreData: `InMemorySessionPolicyStore`
+/// backs tests and previews, while `CoreDataSessionPolicyStore` (Persistence) backs the running app
+/// and, via `CDSessionPolicy`, lets the last-written policy survive relaunch and offline use.
 protocol SessionPolicyStore {
     /// The current policy for `userId`, or `nil` when the Programmer has never written one.
     func policy(for userId: String) async throws -> SessionPolicy?
@@ -238,6 +241,7 @@ protocol SessionPolicyStore {
     /// write nothing; the persisted policy is returned (`nil` on a no-op). This is the two-writer-safe
     /// seam the coach's bounded write routes through (ADR-0005): the deterministic Programmer's safety
     /// moves and a coach preference overlay can never clobber each other through a read-then-save race.
+    /// `authorization` also encloses the final mutation, so revoking stale work prevents its commit.
     func update(
         for userId: String,
         authorization: any SessionPolicyWriteAuthorization,

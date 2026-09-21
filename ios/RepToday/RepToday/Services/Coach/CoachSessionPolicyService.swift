@@ -27,7 +27,8 @@ protocol CoachPolicyServiceProtocol {
     /// Apply `proposal` to `user`'s current in-force policy as of `asOf`, persisting and returning the
     /// newly-written policy - or `nil` when the proposal moved no preference lever after clamping (a no-op
     /// the coach recognized but that changes nothing in force), in which case nothing is written and the
-    /// in-force policy (and its note) is left untouched.
+    /// in-force policy (and its note) is left untouched. `authorization` must still be valid at the store's
+    /// atomic commit boundary; revoking it turns an otherwise valid proposal into a no-op.
     func applyProposal(
         _ proposal: CoachPolicyProposal,
         for user: User,

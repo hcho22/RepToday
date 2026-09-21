@@ -44,7 +44,8 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
     ) async throws -> SessionPolicy? {
         // Atomic: the read, the transform, and the save all run inside a single `context.perform`
         // block, which serializes onto the context queue, so no other writer can interleave between
-        // the read and the write (the two-writer safety seam, ADR-0005).
+        // the read and the write (the two-writer safety seam, ADR-0005). Authorization encloses the
+        // managed-object mutation and save, making revocation and the durable commit mutually exclusive.
         try await context.perform {
             let request = CDSessionPolicy.fetchRequest(userId: userId)
             let existing = try self.context.fetch(request).first

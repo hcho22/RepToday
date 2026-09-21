@@ -19,6 +19,12 @@ import XCTest
 /// the out-of-process `RepTodayUITests` launches, which US-T06's persisted opt-out flag closes.
 final class CoreDataServicesTests: XCTestCase {
 
+    private struct DeniedPolicyWriteAuthorization: SessionPolicyWriteAuthorization {
+        func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T? {
+            nil
+        }
+    }
+
     private var controller: PersistenceController!
     private var context: NSManagedObjectContext { controller.viewContext }
 
@@ -207,6 +213,28 @@ final class CoreDataServicesTests: XCTestCase {
         // Nothing stored: deleting wholesale must not throw and leaves the store empty.
         try await store.deleteAll()
         XCTAssertTrue(try context.fetch(CDSessionPolicy.fetchRequest()).isEmpty)
+    }
+
+    func testSessionPolicyStoreDeniedUpdateDoesNotCommitAStaleCoachPolicy() async throws {
+        let store = CoreDataSessionPolicyStore(context: context)
+        var baseline = SessionPolicy.default
+        baseline.version = 7
+        try await store.save(baseline, for: "apple-user-1")
+
+        let result = try await store.update(
+            for: "apple-user-1",
+            authorization: DeniedPolicyWriteAuthorization()
+        ) { current in
+            var staleCoachWrite = current
+            staleCoachWrite.version += 1
+            staleCoachWrite.updatedBy = .llm
+            return staleCoachWrite
+        }
+
+        XCTAssertNil(result)
+        let stored = try await store.policy(for: "apple-user-1")
+        XCTAssertEqual(stored, baseline)
+        XCTAssertEqual(try context.fetch(CDSessionPolicy.fetchRequest()).count, 1)
     }
 
     // MARK: - Production container wiring
