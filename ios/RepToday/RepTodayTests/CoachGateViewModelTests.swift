@@ -194,7 +194,21 @@ final class CoachGateViewModelTests: XCTestCase {
         )
         vm.acceptAuthoritativeGrant(premiumSubscription())
 
-        sessionAuthority.acceptStoreKitUpdate(.free)
+        let revocation = StoreSubscriptionTransaction(
+            id: 1,
+            originalID: 1,
+            productID: SubscriptionPlan.ProductID.monthly,
+            purchaseDate: Date(),
+            expiresAt: nil,
+            reason: .other,
+            payment: .paid,
+            isAutoRenewable: true,
+            isPurchased: true,
+            isRevoked: true,
+            isUpgraded: false
+        )
+        let update = sessionAuthority.beginStoreKitUpdate(revocation)
+        sessionAuthority.acceptStoreKitUpdate(.free, token: update)
         await vm.load()
 
         XCTAssertFalse(vm.isPremium)

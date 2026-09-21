@@ -3,43 +3,173 @@ import Observation
 
 @Observable
 final class PremiumSessionAuthority: @unchecked Sendable {
+    struct ReadToken: Sendable {
+        fileprivate let generation: UInt64
+    }
+
+    struct StoreKitUpdateToken: Sendable {
+        fileprivate let sequence: UInt64
+        fileprivate let transaction: StoreSubscriptionTransaction
+    }
+
+    private struct TransactionProvenance: Sendable {
+        let transaction: StoreSubscriptionTransaction
+        let validThrough: Date?
+    }
+
+    private enum Provenance {
+        case verifiedGrant(validThrough: Date?)
+        case storeKitTransaction(TransactionProvenance)
+
+        var validThrough: Date? {
+            switch self {
+            case .verifiedGrant(let validThrough):
+                return validThrough
+            case .storeKitTransaction(let transaction):
+                return transaction.validThrough
+            }
+        }
+    }
+
+    private struct AcceptedAuthority {
+        let subscription: Subscription
+        let provenance: Provenance
+    }
+
     private(set) var subscription: Subscription = .free
 
-    private var authoritativeTier: SubscriptionTier?
-    private var readGeneration = 0
+    private var acceptedAuthority: AcceptedAuthority?
+    private var authorityWatermark: UInt64 = 0
+    private var nextAuthoritySequence: UInt64 = 0
+    private var readGeneration: UInt64 = 0
 
     @MainActor
-    func beginRead() -> Int {
+    func beginRead() -> ReadToken {
         readGeneration &+= 1
-        return readGeneration
+        return ReadToken(generation: readGeneration)
     }
 
     @MainActor
-    func acceptSnapshot(_ subscription: Subscription, generation: Int) {
-        guard generation == readGeneration else { return }
-        guard authoritativeTier == nil || subscription.tier == authoritativeTier else { return }
+    func acceptSnapshot(_ subscription: Subscription, token: ReadToken) {
+        guard token.generation == readGeneration else { return }
+        if let acceptedAuthority {
+            guard subscription.tier == acceptedAuthority.subscription.tier else { return }
+            self.acceptedAuthority = AcceptedAuthority(
+                subscription: subscription,
+                provenance: extending(acceptedAuthority.provenance, through: subscription.expiresAt)
+            )
+        }
         self.subscription = subscription
     }
 
     @MainActor
-    func acceptReadFailure(generation: Int) {
-        guard generation == readGeneration, authoritativeTier == nil else { return }
+    func acceptReadFailure(token: ReadToken) {
+        guard token.generation == readGeneration, acceptedAuthority == nil else { return }
         subscription = .free
     }
 
     @MainActor
     func acceptGrant(_ subscription: Subscription) {
         guard subscription.tier == .premium else { return }
-        _ = beginRead()
-        authoritativeTier = .premium
+        invalidateReads()
+        let sequence = issueAuthoritySequence()
+        authorityWatermark = sequence
+        let provenance: Provenance
+        if let acceptedAuthority, acceptedAuthority.subscription == subscription {
+            provenance = extending(acceptedAuthority.provenance, through: subscription.expiresAt)
+        } else {
+            provenance = .verifiedGrant(validThrough: subscription.expiresAt)
+        }
+        acceptedAuthority = AcceptedAuthority(
+            subscription: subscription,
+            provenance: provenance
+        )
         self.subscription = subscription
     }
 
     @MainActor
-    func acceptStoreKitUpdate(_ subscription: Subscription) {
-        _ = beginRead()
-        authoritativeTier = subscription.tier
+    func beginStoreKitUpdate(_ transaction: StoreSubscriptionTransaction) -> StoreKitUpdateToken {
+        invalidateReads()
+        let sequence = issueAuthoritySequence()
+        authorityWatermark = sequence
+        return StoreKitUpdateToken(
+            sequence: sequence,
+            transaction: transaction
+        )
+    }
+
+    @MainActor
+    func acceptStoreKitUpdate(_ subscription: Subscription, token: StoreKitUpdateToken) {
+        guard token.sequence == authorityWatermark else { return }
+
+        let provenance = TransactionProvenance(
+            transaction: token.transaction,
+            validThrough: later(token.transaction.expiresAt, subscription.expiresAt)
+        )
+        if let acceptedAuthority,
+           isOlder(provenance, than: acceptedAuthority.provenance) {
+            return
+        }
+
+        acceptedAuthority = AcceptedAuthority(
+            subscription: subscription,
+            provenance: .storeKitTransaction(provenance)
+        )
         self.subscription = subscription
+    }
+
+    @MainActor
+    private func issueAuthoritySequence() -> UInt64 {
+        nextAuthoritySequence &+= 1
+        return nextAuthoritySequence
+    }
+
+    @MainActor
+    private func invalidateReads() {
+        readGeneration &+= 1
+    }
+
+    private func extending(_ provenance: Provenance, through expiry: Date?) -> Provenance {
+        switch provenance {
+        case .verifiedGrant(let validThrough):
+            return .verifiedGrant(validThrough: later(validThrough, expiry))
+        case .storeKitTransaction(let transaction):
+            return .storeKitTransaction(
+                TransactionProvenance(
+                    transaction: transaction.transaction,
+                    validThrough: later(transaction.validThrough, expiry)
+                )
+            )
+        }
+    }
+
+    private func isOlder(_ candidate: TransactionProvenance, than current: Provenance) -> Bool {
+        if let candidateExpiry = candidate.validThrough,
+           let currentExpiry = current.validThrough,
+           candidateExpiry != currentExpiry {
+            return candidateExpiry < currentExpiry
+        }
+        guard case .storeKitTransaction(let currentTransaction) = current,
+              candidate.transaction.originalID == currentTransaction.transaction.originalID else {
+            return false
+        }
+        if candidate.transaction.purchaseDate != currentTransaction.transaction.purchaseDate {
+            return candidate.transaction.purchaseDate < currentTransaction.transaction.purchaseDate
+        }
+        return candidate.transaction.id < currentTransaction.transaction.id
+    }
+
+    private func later(_ lhs: Date?, _ rhs: Date?) -> Date? {
+        switch (lhs, rhs) {
+        case (.some(let lhs), .some(let rhs)):
+            return max(lhs, rhs)
+        case (.some(let lhs), .none):
+            return lhs
+        case (.none, .some(let rhs)):
+            return rhs
+        case (.none, .none):
+            return nil
+        }
     }
 }
 
@@ -174,17 +304,26 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         let premiumSessionAuthority = premiumSessionAuthority
         return facade.listenForTransactions { update in
             guard case .verified(let transaction) = update else { return nil }
+            let authorityUpdate: PremiumSessionAuthority.StoreKitUpdateToken?
+            if transaction.isAutoRenewable {
+                authorityUpdate = await premiumSessionAuthority.beginStoreKitUpdate(transaction)
+            } else {
+                authorityUpdate = nil
+            }
             let observation = await observer.capture(update)
             return StoreTransactionProcessing(
                 operation: {
-                    if transaction.isAutoRenewable {
+                    if let authorityUpdate {
                         let entitlements = await facade.currentEntitlements()
                         if let subscription = Self.sessionSubscription(
                             for: transaction,
                             currentEntitlements: entitlements,
                             asOf: Date()
                         ) {
-                            await premiumSessionAuthority.acceptStoreKitUpdate(subscription)
+                            await premiumSessionAuthority.acceptStoreKitUpdate(
+                                subscription,
+                                token: authorityUpdate
+                            )
                         }
                     }
                     if let observation {

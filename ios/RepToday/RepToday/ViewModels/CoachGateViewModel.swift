@@ -43,12 +43,12 @@ final class CoachGateViewModel {
     /// explicit StoreKit update supersedes it.
     @MainActor
     func load() async {
-        let generation = premiumSessionAuthority.beginRead()
+        let token = premiumSessionAuthority.beginRead()
         do {
             let subscription = try await subscriptionService.currentSubscription()
-            premiumSessionAuthority.acceptSnapshot(subscription, generation: generation)
+            premiumSessionAuthority.acceptSnapshot(subscription, token: token)
         } catch {
-            premiumSessionAuthority.acceptReadFailure(generation: generation)
+            premiumSessionAuthority.acceptReadFailure(token: token)
         }
     }
 
@@ -64,10 +64,10 @@ final class CoachGateViewModel {
     @MainActor
     func reconcileAfterAuthoritativeGrant() async {
         guard isPremium else { return }
-        let generation = premiumSessionAuthority.beginRead()
+        let token = premiumSessionAuthority.beginRead()
         guard let subscription = try? await subscriptionService.currentSubscription() else { return }
         if subscription.tier == .premium {
-            premiumSessionAuthority.acceptSnapshot(subscription, generation: generation)
+            premiumSessionAuthority.acceptSnapshot(subscription, token: token)
         }
     }
 }
