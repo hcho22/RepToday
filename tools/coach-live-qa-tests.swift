@@ -151,15 +151,19 @@ private struct CoachLiveQATests {
                 }
             }
             var retryBudget = CoachQAPaidCallBudget(), retryPaidCalls = 0
+            var retryFailures: [CoachQAFailure] = []
             for _ in 0..<4 {
                 do {
                     try await retryBudget.perform {
                         retryPaidCalls += 1
                         throw CoachQAFailure.timeout
                     }
-                } catch CoachQAFailure.timeout, CoachQAFailure.paidCallBudget {}
+                } catch let failure as CoachQAFailure {
+                    retryFailures.append(failure)
+                }
             }
-            try require(retryPaidCalls == 1 && retryBudget.consumedCalls == 1,
+            try require(retryFailures == [.timeout, .paidCallBudget, .paidCallBudget, .paidCallBudget]
+                        && retryPaidCalls == 1 && retryBudget.consumedCalls == 1,
                         "ambiguous-timeout-retry-path-stays-at-one")
             var capBudget = CoachQAPaidCallBudget(), capPaidCalls = 0
             for _ in 0..<3 {
