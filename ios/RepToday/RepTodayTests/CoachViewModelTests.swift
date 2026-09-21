@@ -15,6 +15,7 @@ final class CoachViewModelTests: XCTestCase {
     private final class StubTransport: CoachProxyTransport, @unchecked Sendable {
         enum Outcome {
             case success(reply: String, status: Int)
+            case raw(Data, status: Int)
             case safetyRefusal
             case failure(Error)
         }
@@ -35,11 +36,35 @@ final class CoachViewModelTests: XCTestCase {
             switch outcome {
             case let .success(reply, status):
                 return (Data(#"{"reply":"\#(reply)"}"#.utf8), status)
+            case let .raw(data, status):
+                return (data, status)
             case .safetyRefusal:
                 return (Data(#"{"outcome":"safety_refusal"}"#.utf8), 200)
             case let .failure(error):
                 throw error
             }
+        }
+    }
+
+    /// Ignores task cancellation until the test releases it, modelling a system callback that cannot
+    /// be cancelled. The view-model generation boundary must still discard the late result.
+    private actor DeferredTransport: CoachProxyTransport {
+        private var continuation: CheckedContinuation<(data: Data, statusCode: Int), Error>?
+        private(set) var callCount = 0
+
+        func post(
+            to url: URL,
+            jsonBody: Data,
+            headers: [String: String],
+            timeoutSeconds: Double
+        ) async throws -> (data: Data, statusCode: Int) {
+            callCount += 1
+            return try await withCheckedThrowingContinuation { continuation = $0 }
+        }
+
+        func succeed(with reply: String) {
+            continuation?.resume(returning: (Data(#"{"reply":"\#(reply)"}"#.utf8), 200))
+            continuation = nil
         }
     }
 
@@ -133,31 +158,77 @@ final class CoachViewModelTests: XCTestCase {
 
     // MARK: - Graceful failure (never blocks the core loop)
 
-    func testTransportFailureBecomesRetryableErrorAndNeverHangs() async {
-        let transport = StubTransport(.failure(TransportBoom()))
-        let viewModel = makeViewModel(transport: transport)
+    func testOfflineAndTimeoutBecomeRetryableErrorsAndNeverHang() async {
+        for code in [URLError.notConnectedToInternet, .timedOut] {
+            let transport = StubTransport(.failure(URLError(code)))
+            let viewModel = makeViewModel(transport: transport)
 
-        viewModel.draft = "why squats?"
-        await viewModel.send()
+            viewModel.draft = "why squats?"
+            await viewModel.send()
 
-        // The user's turn is shown; the coach's is not; a friendly, non-blocking error is set.
-        XCTAssertEqual(viewModel.messages.count, 1)
-        XCTAssertEqual(viewModel.messages.first?.author, .user)
-        XCTAssertFalse(viewModel.isSending, "a failure must resolve isSending, never leave it stuck")
-        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
-        XCTAssertTrue(viewModel.canRetry, "the failed question can be retried")
+            // The user's turn is shown; the coach's is not; a friendly, non-blocking error is set.
+            XCTAssertEqual(viewModel.messages.count, 1, "failed for \(code)")
+            XCTAssertEqual(viewModel.messages.first?.author, .user)
+            XCTAssertFalse(viewModel.isSending, "a failure must resolve isSending, never leave it stuck")
+            XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+            XCTAssertTrue(viewModel.canRetry, "the failed question can be retried")
+        }
     }
 
-    func testBadStatusMapsToTheGenericNonBlockingError() async {
-        let transport = StubTransport(.success(reply: "ignored", status: 500))
-        let viewModel = makeViewModel(transport: transport)
+    func testAuthorizationServerAndMalformedResponsesStayPrivateAndRetryable() async {
+        let privateProofDetail = "signed-proof-must-not-surface"
+        let outcomes: [StubTransport.Outcome] = [
+            .raw(Data(#"{"error":"unauthorized","detail":"\#(privateProofDetail)"}"#.utf8), status: 401),
+            .raw(Data(#"{"error":"upstream_error"}"#.utf8), status: 503),
+            .raw(Data("not-json".utf8), status: 200),
+        ]
 
-        viewModel.draft = "hi"
-        await viewModel.send()
+        for outcome in outcomes {
+            let transport = StubTransport(outcome)
+            let viewModel = makeViewModel(transport: transport)
+            viewModel.draft = "hi"
+            await viewModel.send()
 
+            XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+            XCTAssertEqual(viewModel.messages.map(\.text), ["hi"])
+            XCTAssertTrue(viewModel.canRetry)
+            XCTAssertFalse(viewModel.isSending)
+            XCTAssertFalse(viewModel.messages.map(\.text).joined().contains(privateProofDetail))
+            XCTAssertFalse((viewModel.errorMessage ?? "").contains(privateProofDetail))
+        }
+    }
+
+    func testScreenDepartureSettlesImmediatelyAndLateReplyCannotWin() async {
+        let transport = DeferredTransport()
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
+            userService: MockUserService(),
+            workoutLogService: MockWorkoutLogService(),
+            exerciseService: try! MockExerciseService()
+        )
+        viewModel.grantDataSharingConsent()
+        viewModel.draft = "why squats?"
+
+        let send = Task { await viewModel.send() }
+        while await transport.callCount == 0 { await Task.yield() }
+
+        viewModel.cancelPendingSend()
+        send.cancel()
+        XCTAssertFalse(viewModel.isSending, "leaving the screen must settle without waiting on the callback")
         XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
-        XCTAssertEqual(viewModel.messages.count, 1)
         XCTAssertTrue(viewModel.canRetry)
+
+        await transport.succeed(with: "This reply arrived after the screen left.")
+        await send.value
+
+        XCTAssertEqual(viewModel.messages.map(\.text), ["why squats?"])
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+        XCTAssertTrue(viewModel.canRetry, "a late callback cannot clear the retry state")
+        XCTAssertFalse(viewModel.isSending)
     }
 
     func testSafetyRefusalShowsOwnedMessageWithoutRetry() async {

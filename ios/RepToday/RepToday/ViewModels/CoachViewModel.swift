@@ -174,6 +174,16 @@ final class CoachViewModel {
     /// user retyping. Cleared on a successful send.
     private var pendingRetryMessage: String?
 
+    /// Identifies the one delivery whose result is still allowed to mutate this view model. Leaving
+    /// the Coach screen invalidates it before cancelling the task, so a transport or Apple callback
+    /// that ignores cancellation cannot arrive late and append a reply, apply a policy nudge, or
+    /// raise an offer on a screen the user already left.
+    private var deliveryGeneration: UInt64 = 0
+
+    /// The question currently in flight. Kept only while the request owns the generation above so a
+    /// cancelled screen can settle into the same calm, retryable state as any other interruption.
+    private var activeDeliveryMessage: String?
+
     /// The derived context, built once from the user's real state and reused across the conversation
     /// (it is a snapshot of "where they are today", which does not change mid-chat). Rebuilt lazily.
     private var cachedContext: CoachContextBundle?
@@ -236,6 +246,22 @@ final class CoachViewModel {
         await deliver(message)
     }
 
+    /// Settle and invalidate the active send when the Coach surface leaves the screen. The caller also
+    /// cancels its task, but this generation boundary is load-bearing: deterministic doubles (and some
+    /// system callbacks) may finish despite cancellation. Their late result must never win. The user's
+    /// already-visible question remains available for a calm retry if this view model is presented
+    /// again; no provider response or authentication material is retained here.
+    func cancelPendingSend() {
+        guard isSending else { return }
+        deliveryGeneration &+= 1
+        if let activeDeliveryMessage {
+            pendingRetryMessage = activeDeliveryMessage
+        }
+        activeDeliveryMessage = nil
+        errorMessage = Self.genericFailureMessage
+        isSending = false
+    }
+
     /// The one send path, shared by `send()` and `retryLastMessage()`. It never throws to the caller:
     /// a `CoachProxyClient` failure becomes `errorMessage`, and `isSending` always returns to `false`.
     private func deliver(_ message: String) async {
@@ -256,34 +282,49 @@ final class CoachViewModel {
         // either changes nothing (neither ever set anything to begin with).
         injuryRoutingOffer = nil
         analyticsOffer = nil
+        deliveryGeneration &+= 1
+        let expectedGeneration = deliveryGeneration
+        activeDeliveryMessage = message
         isSending = true
-        defer { isSending = false }
+        defer {
+            if deliveryGeneration == expectedGeneration {
+                activeDeliveryMessage = nil
+                isSending = false
+            }
+        }
 
         let context = await contextBundle()
+        guard deliveryGeneration == expectedGeneration, !Task.isCancelled else { return }
         do {
             let reply = try await client.reply(to: message, context: context)
+            guard deliveryGeneration == expectedGeneration, !Task.isCancelled else { return }
             // US-AC07: an eligible tuning request ("focus my push", "take it easier") applies a bounded,
             // clamped, preference-only policy nudge on-device and surfaces the honest note as its own coach
             // turn. It runs only on the successful-reply path, so a message the transport rejected (too
             // long) or that failed in flight never tunes the program and never orphans a turn in the
             // transcript; it never touches a safety filter and never blocks.
             await applyTuningIfRequested(message)
+            guard deliveryGeneration == expectedGeneration, !Task.isCancelled else { return }
             // US-AC08: a health/injury signal produces a *routing offer*, never a filter change. Like
             // the tuning above it runs only on the successful-reply path, and unlike it, it writes
             // nothing at all - the flag can only be set by the user in the injury control this offer
             // routes to.
             await offerInjuryRoutingIfSignalled(message)
+            guard deliveryGeneration == expectedGeneration, !Task.isCancelled else { return }
             // US-AN02: a "how am I doing?" progress inquiry, on a journey that shows a real stall,
             // ends the turn with a bounded emphasis *offer*. Like the two above it runs only on the
             // successful-reply path and writes nothing until the user accepts - and accepting routes
             // through the US-AC07 policy path, so it can never be a workout edit.
             await offerAnalyticsInsightIfRequested(message)
+            guard deliveryGeneration == expectedGeneration, !Task.isCancelled else { return }
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isSafetyRefusal {
+            guard deliveryGeneration == expectedGeneration else { return }
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
+            guard deliveryGeneration == expectedGeneration else { return }
             // The one failure the user can fix themselves: give them their text back so they can
             // trim it, drop the rejected turn rather than orphaning it in the transcript, and do not
             // offer retry - resending the identical over-long text just re-hits the same local guard.
@@ -296,9 +337,11 @@ final class CoachViewModel {
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError {
+            guard deliveryGeneration == expectedGeneration else { return }
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = message
         } catch {
+            guard deliveryGeneration == expectedGeneration else { return }
             // Any transport-level failure (offline, DNS, TLS, timeout) - the client throws these
             // through, and they are all recovered identically: a non-blocking, retryable state.
             errorMessage = Self.genericFailureMessage
