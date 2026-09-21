@@ -211,6 +211,19 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
 
 // MARK: - Policy persistence seam
 
+/// Gates the final mutation of an atomic policy update. A caller whose work can become stale supplies
+/// an authorization that can be invalidated while it is suspended; the store checks it at the commit
+/// boundary and performs the mutation only while that authorization remains held.
+protocol SessionPolicyWriteAuthorization: Sendable {
+    func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T?
+}
+
+struct UnconditionalSessionPolicyWriteAuthorization: SessionPolicyWriteAuthorization {
+    func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T? {
+        try body()
+    }
+}
+
 /// Persists the single current `SessionPolicy` per user (US-D03), keyed by the user's id and
 /// overwritten in place so a user keeps one current policy, never a growing history.
 ///
@@ -228,8 +241,10 @@ protocol SessionPolicyStore {
     /// write nothing; the persisted policy is returned (`nil` on a no-op). This is the two-writer-safe
     /// seam the coach's bounded write routes through (ADR-0005): the deterministic Programmer's safety
     /// moves and a coach preference overlay can never clobber each other through a read-then-save race.
+    /// `authorization` also encloses the final mutation, so revoking stale work prevents its commit.
     func update(
         for userId: String,
+        authorization: any SessionPolicyWriteAuthorization,
         transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
     ) async throws -> SessionPolicy?
     /// Delete every stored policy record, regardless of user id, for account deletion
@@ -238,6 +253,19 @@ protocol SessionPolicyStore {
     /// teardown completes even when the `CDUser` aggregate is corrupt. A no-op (never an error) when
     /// none is stored.
     func deleteAll() async throws
+}
+
+extension SessionPolicyStore {
+    func update(
+        for userId: String,
+        transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
+    ) async throws -> SessionPolicy? {
+        try await update(
+            for: userId,
+            authorization: UnconditionalSessionPolicyWriteAuthorization(),
+            transform: transform
+        )
+    }
 }
 
 /// An in-memory `SessionPolicyStore` for tests, previews, and the mock container. Deterministic and
@@ -259,14 +287,17 @@ actor InMemorySessionPolicyStore: SessionPolicyStore {
 
     func update(
         for userId: String,
+        authorization: any SessionPolicyWriteAuthorization,
         transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
     ) async throws -> SessionPolicy? {
         // Atomic by construction: the actor method has no suspension point between the read and the
         // write, so no other writer's `save`/`update` can interleave.
         let current = policies[userId] ?? .default
         guard let next = transform(current) else { return nil }
-        policies[userId] = next
-        return next
+        return authorization.performIfAuthorized {
+            policies[userId] = next
+            return next
+        }
     }
 
     func deleteAll() async throws {

@@ -39,22 +39,26 @@ final class CoreDataSessionPolicyStore: SessionPolicyStore, @unchecked Sendable 
 
     func update(
         for userId: String,
+        authorization: any SessionPolicyWriteAuthorization,
         transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
     ) async throws -> SessionPolicy? {
         // Atomic: the read, the transform, and the save all run inside a single `context.perform`
         // block, which serializes onto the context queue, so no other writer can interleave between
-        // the read and the write (the two-writer safety seam, ADR-0005).
+        // the read and the write (the two-writer safety seam, ADR-0005). Authorization encloses the
+        // managed-object mutation and save, making revocation and the durable commit mutually exclusive.
         try await context.perform {
             let request = CDSessionPolicy.fetchRequest(userId: userId)
             let existing = try self.context.fetch(request).first
             let current = try existing?.toSessionPolicy() ?? .default
             guard let next = transform(current) else { return nil }
-            let record = existing ?? CDSessionPolicy(context: self.context)
-            try record.update(from: next, userId: userId)
-            if self.context.hasChanges {
-                try self.context.save()
+            return try authorization.performIfAuthorized {
+                let record = existing ?? CDSessionPolicy(context: self.context)
+                try record.update(from: next, userId: userId)
+                if self.context.hasChanges {
+                    try self.context.save()
+                }
+                return next
             }
-            return next
         }
     }
 

@@ -28,6 +28,12 @@ struct CoachView: View {
 
     @State private var viewModel: CoachViewModel
 
+    /// The normal chat surface owns its unstructured send task so leaving the screen can cancel it.
+    /// `CoachViewModel.cancelPendingSend()` also invalidates the delivery generation, protecting
+    /// against transports and Apple callbacks that complete after task cancellation.
+    @State private var deliveryTask: Task<Void, Never>?
+    @State private var deliveryReservation: UUID?
+
     /// Drives the coach data disclosure overlay (US-AC04). Set on arrival only when the persisted
     /// acknowledgement does not match the current disclosure contract.
     @State private var showDisclosure = false
@@ -72,6 +78,7 @@ struct CoachView: View {
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: resolveDisclosure)
+        .onDisappear(perform: cancelPendingSend)
         // US-AC08: the route the offer's accept control takes. It presents the *same* injury control
         // Settings navigates to, opened pre-targeted at the area the user mentioned but with nothing
         // saved - the user still confirms there, and can switch it back off from the same screen.
@@ -218,7 +225,7 @@ struct CoachView: View {
                 ForEach(CoachViewModel.suggestedPrompts, id: \.self) { prompt in
                     Button {
                         viewModel.draft = prompt
-                        Task { await viewModel.send() }
+                        beginSend()
                     } label: {
                         HStack(spacing: Theme.Spacing.sm) {
                             Image(systemName: "sparkles")
@@ -268,7 +275,7 @@ struct CoachView: View {
             Spacer(minLength: 0)
             if viewModel.canRetry {
                 Button("Try again") {
-                    Task { await viewModel.retryLastMessage() }
+                    beginRetry()
                 }
                 .font(Theme.Typography.caption.weight(.semibold))
                 .foregroundStyle(Theme.Colors.accent)
@@ -300,7 +307,7 @@ struct CoachView: View {
                 .accessibilityLabel("Message to the coach")
 
             Button {
-                Task { await viewModel.send() }
+                beginSend()
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
@@ -316,6 +323,34 @@ struct CoachView: View {
     }
 
     // MARK: - Unavailable
+
+    private func beginSend() {
+        beginDelivery { await viewModel.send() }
+    }
+
+    private func beginRetry() {
+        beginDelivery { await viewModel.retryLastMessage() }
+    }
+
+    private func beginDelivery(_ delivery: @escaping @MainActor () async -> Void) {
+        guard deliveryReservation == nil, !viewModel.isSending else { return }
+        let reservation = UUID()
+        deliveryReservation = reservation
+        deliveryTask = Task {
+            guard !Task.isCancelled else { return }
+            await delivery()
+            guard deliveryReservation == reservation else { return }
+            deliveryTask = nil
+            deliveryReservation = nil
+        }
+    }
+
+    private func cancelPendingSend() {
+        viewModel.cancelPendingSend()
+        deliveryTask?.cancel()
+        deliveryTask = nil
+        deliveryReservation = nil
+    }
 
     private var unavailableState: some View {
         VStack(spacing: Theme.Spacing.md) {

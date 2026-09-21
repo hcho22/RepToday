@@ -120,6 +120,7 @@
 		7975CB09F69A769EC8E7B6D4 /* AccountDeletionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E91D2606BAA6DBCC888A77 /* AccountDeletionUITests.swift */; };
 		7A1837EE29B0F2FE89ECBD7C /* CoachContextBundleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */; };
 		7A48DCF9726C50E76F0ADEEF /* FirstWeekContrastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D808C6D787C3363FF43205 /* FirstWeekContrastTests.swift */; };
+		7B2333DCD27A886CFE4D4B64 /* CoachCoreWorkoutResilienceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DA831AAAE3F01C5507BF59 /* CoachCoreWorkoutResilienceTests.swift */; };
 		7B59E21D552B6795195BCBC3 /* InjuryFlagsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C94F5E6B3705ED3F038A1A /* InjuryFlagsViewModelTests.swift */; };
 		7C8C0B894B1A1D586CCDC18D /* SessionAssembly.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD63A0252E76FC38027149B8 /* SessionAssembly.swift */; };
 		7C9F7027044F5EC06FDE5B3E /* CoachSyntheticQAViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F28FCBACEC9D29DE8DC69E7 /* CoachSyntheticQAViewModelTests.swift */; };
@@ -447,6 +448,7 @@
 		C3FAEA2B49361473360711E8 /* ReprogramTriggerDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerDetectionTests.swift; sourceTree = "<group>"; };
 		C51DE8917BBD65A2987482D9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C6D035FFA812CB00B1E107C7 /* CoachRuntimeProofProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachRuntimeProofProbe.swift; sourceTree = "<group>"; };
+		C7DA831AAAE3F01C5507BF59 /* CoachCoreWorkoutResilienceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachCoreWorkoutResilienceTests.swift; sourceTree = "<group>"; };
 		C84DBB9BF041BB55765C42B6 /* RepToday.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = RepToday.xcdatamodel; sourceTree = "<group>"; };
 		C967382395B520C6462AB386 /* ReprogramTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReprogramTriggerTests.swift; sourceTree = "<group>"; };
 		C979EFF0A30DD82CC24AF3D2 /* LiveAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAnalyticsService.swift; sourceTree = "<group>"; };
@@ -752,6 +754,7 @@
 				8096A48BEAF2B9E1B9484860 /* CoachAnalyticsInsightEvidenceTests.swift */,
 				EF4F4248BC2AD078D599BF55 /* CoachAnalyticsInsightTests.swift */,
 				5CD2832EF51283166862C768 /* CoachContextBundleTests.swift */,
+				C7DA831AAAE3F01C5507BF59 /* CoachCoreWorkoutResilienceTests.swift */,
 				0A1C6930B3FD973B83C85A1F /* CoachDataDisclosureEvidenceTests.swift */,
 				FFBE13CE4B856A3D3C1B71E2 /* CoachGateViewModelTests.swift */,
 				27AB04CAAA2C6BFB5A4E030C /* CoachGatingEvidenceTests.swift */,
@@ -1187,6 +1190,7 @@
 				C308D903CF70886A0238A308 /* CoachAnalyticsInsightEvidenceTests.swift in Sources */,
 				65347F70031AA6D8EDC239DF /* CoachAnalyticsInsightTests.swift in Sources */,
 				7A1837EE29B0F2FE89ECBD7C /* CoachContextBundleTests.swift in Sources */,
+				7B2333DCD27A886CFE4D4B64 /* CoachCoreWorkoutResilienceTests.swift in Sources */,
 				75BE9DD91701370123DA5903 /* CoachDataDisclosureEvidenceTests.swift in Sources */,
 				3F77D1EDED1F7F3E5C80EF29 /* CoachGateViewModelTests.swift in Sources */,
 				F8692CADAB1FBAD9BCB6153F /* CoachGatingEvidenceTests.swift in Sources */,

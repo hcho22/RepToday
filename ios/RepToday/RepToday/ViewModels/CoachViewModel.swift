@@ -1,6 +1,30 @@
 import Foundation
 import Observation
 
+private final class CoachDeliveryAuthorization: SessionPolicyWriteAuthorization, @unchecked Sendable {
+    private let lock = NSLock()
+    private var valid = true
+
+    func invalidate() {
+        lock.lock()
+        valid = false
+        lock.unlock()
+    }
+
+    func isAuthorized() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return valid
+    }
+
+    func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard valid else { return nil }
+        return try body()
+    }
+}
+
 /// Backs the premium AI coach chat surface (US-AC02, the *talking* coach). The user asks free-text
 /// questions and the coach answers them, grounded in the user's real on-device history via the
 /// audited, non-identifying `CoachContextBundle` (US-AC01) and the stateless `CoachProxyClient`
@@ -174,6 +198,18 @@ final class CoachViewModel {
     /// user retyping. Cleared on a successful send.
     private var pendingRetryMessage: String?
 
+    /// Identifies the one delivery whose result is still allowed to mutate this view model. Leaving
+    /// the Coach screen invalidates it before cancelling the task, so a transport or Apple callback
+    /// that ignores cancellation cannot arrive late and append a reply, apply a policy nudge, or
+    /// raise an offer on a screen the user already left.
+    private var deliveryGeneration: UInt64 = 0
+
+    private var activeDeliveryAuthorization: CoachDeliveryAuthorization?
+
+    /// The question currently in flight. Kept only while the request owns the generation above so a
+    /// cancelled screen can settle into the same calm, retryable state as any other interruption.
+    private var activeDeliveryMessage: String?
+
     /// The derived context, built once from the user's real state and reused across the conversation
     /// (it is a snapshot of "where they are today", which does not change mid-chat). Rebuilt lazily.
     private var cachedContext: CoachContextBundle?
@@ -236,6 +272,23 @@ final class CoachViewModel {
         await deliver(message)
     }
 
+    /// Settle and invalidate the active send when the Coach surface leaves the screen. The caller also
+    /// cancels its task, but this generation boundary is load-bearing: deterministic doubles (and some
+    /// system callbacks) may finish despite cancellation. Their late result must never win. The user's
+    /// already-visible question remains available for a calm retry if this view model is presented
+    /// again; no provider response or authentication material is retained here.
+    func cancelPendingSend() {
+        guard isSending else { return }
+        activeDeliveryAuthorization?.invalidate()
+        deliveryGeneration &+= 1
+        if let activeDeliveryMessage {
+            pendingRetryMessage = activeDeliveryMessage
+        }
+        activeDeliveryMessage = nil
+        errorMessage = Self.genericFailureMessage
+        isSending = false
+    }
+
     /// The one send path, shared by `send()` and `retryLastMessage()`. It never throws to the caller:
     /// a `CoachProxyClient` failure becomes `errorMessage`, and `isSending` always returns to `false`.
     private func deliver(_ message: String) async {
@@ -256,34 +309,64 @@ final class CoachViewModel {
         // either changes nothing (neither ever set anything to begin with).
         injuryRoutingOffer = nil
         analyticsOffer = nil
+        deliveryGeneration &+= 1
+        let expectedGeneration = deliveryGeneration
+        let authorization = CoachDeliveryAuthorization()
+        activeDeliveryAuthorization = authorization
+        activeDeliveryMessage = message
         isSending = true
-        defer { isSending = false }
+        defer {
+            if deliveryGeneration == expectedGeneration {
+                activeDeliveryAuthorization = nil
+                activeDeliveryMessage = nil
+                isSending = false
+            }
+        }
 
         let context = await contextBundle()
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         do {
             let reply = try await client.reply(to: message, context: context)
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             // US-AC07: an eligible tuning request ("focus my push", "take it easier") applies a bounded,
             // clamped, preference-only policy nudge on-device and surfaces the honest note as its own coach
             // turn. It runs only on the successful-reply path, so a message the transport rejected (too
             // long) or that failed in flight never tunes the program and never orphans a turn in the
             // transcript; it never touches a safety filter and never blocks.
-            await applyTuningIfRequested(message)
+            await applyTuningIfRequested(
+                message,
+                expectedGeneration: expectedGeneration,
+                authorization: authorization
+            )
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             // US-AC08: a health/injury signal produces a *routing offer*, never a filter change. Like
             // the tuning above it runs only on the successful-reply path, and unlike it, it writes
             // nothing at all - the flag can only be set by the user in the injury control this offer
             // routes to.
-            await offerInjuryRoutingIfSignalled(message)
+            await offerInjuryRoutingIfSignalled(
+                message,
+                expectedGeneration: expectedGeneration,
+                authorization: authorization
+            )
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             // US-AN02: a "how am I doing?" progress inquiry, on a journey that shows a real stall,
             // ends the turn with a bounded emphasis *offer*. Like the two above it runs only on the
             // successful-reply path and writes nothing until the user accepts - and accepting routes
             // through the US-AC07 policy path, so it can never be a workout edit.
-            await offerAnalyticsInsightIfRequested(message)
+            await offerAnalyticsInsightIfRequested(
+                message,
+                expectedGeneration: expectedGeneration,
+                authorization: authorization
+            )
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             messages.append(Message(author: .coach, text: reply))
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isSafetyRefusal {
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError where error.isMessageTooLong {
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             // The one failure the user can fix themselves: give them their text back so they can
             // trim it, drop the rejected turn rather than orphaning it in the transcript, and do not
             // offer retry - resending the identical over-long text just re-hits the same local guard.
@@ -296,14 +379,26 @@ final class CoachViewModel {
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = nil
         } catch let error as CoachProxyClient.CoachError {
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             errorMessage = Self.friendlyMessage(for: error)
             pendingRetryMessage = message
         } catch {
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
             // Any transport-level failure (offline, DNS, TLS, timeout) - the client throws these
             // through, and they are all recovered identically: a non-blocking, retryable state.
             errorMessage = Self.genericFailureMessage
             pendingRetryMessage = message
         }
+    }
+
+    private func isDeliveryAuthorized(
+        _ expectedGeneration: UInt64,
+        authorization: CoachDeliveryAuthorization
+    ) -> Bool {
+        deliveryGeneration == expectedGeneration
+            && activeDeliveryAuthorization === authorization
+            && authorization.isAuthorized()
+            && !Task.isCancelled
     }
 
     /// Apply a coach policy nudge (US-AC07) when `message` maps to an eligible tuning request. Entirely
@@ -313,12 +408,24 @@ final class CoachViewModel {
     /// that did not happen (the note is `nil` unless a lever actually moved, and only a non-`nil` written
     /// policy reaches here). It can only ever move the three preference levers, so it never blocks the core
     /// loop and never touches a safety filter.
-    private func applyTuningIfRequested(_ message: String) async {
+    private func applyTuningIfRequested(
+        _ message: String,
+        expectedGeneration: UInt64,
+        authorization: CoachDeliveryAuthorization
+    ) async {
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         guard let policyService,
               let proposal = CoachIntentMapper.proposal(for: message),
               let user = try? await userService.currentUser() else { return }
-        guard let written = try? await policyService.applyProposal(proposal, for: user, asOf: now()),
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
+        guard let written = try? await policyService.applyProposal(
+            proposal,
+            for: user,
+            asOf: now(),
+            authorization: authorization
+        ),
               let note = written.note else { return }
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         messages.append(Message(author: .coach, text: note.text))
     }
 
@@ -331,15 +438,23 @@ final class CoachViewModel {
     /// and never touches `UserProfile.injuries` - the flag is set only by the user, in the injury
     /// control the offer routes to. Best-effort and non-blocking throughout: a missing profile or an
     /// unrecognized message simply means no offer.
-    private func offerInjuryRoutingIfSignalled(_ message: String) async {
+    private func offerInjuryRoutingIfSignalled(
+        _ message: String,
+        expectedGeneration: UInt64,
+        authorization: CoachDeliveryAuthorization
+    ) async {
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         guard let routing = CoachInjurySignalMapper.routing(for: message) else { return }
         // Offering to flag something already flagged would be noise, and would invite the user to
         // "confirm" a change that is not a change. The "already flagged" question is asked the
         // engine's way (normalized tags), so an area the filter already protects reads as protected.
-        if let user = try? await userService.currentUser(),
-           routing.area.isFlagged(in: user.profile.injuries) {
-            return
+        if let user = try? await userService.currentUser() {
+            guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
+            if routing.area.isFlagged(in: user.profile.injuries) {
+                return
+            }
         }
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         injuryRoutingOffer = routing
     }
 
@@ -352,13 +467,19 @@ final class CoachViewModel {
     /// through - offering an action the surface cannot take would be noise - and the offer's accept
     /// routes through that same bounded US-AC07 path, so it can never be a workout edit. Best-effort
     /// and non-blocking: no policy service, no progress inquiry, or no stall simply means no offer.
-    private func offerAnalyticsInsightIfRequested(_ message: String) async {
+    private func offerAnalyticsInsightIfRequested(
+        _ message: String,
+        expectedGeneration: UInt64,
+        authorization: CoachDeliveryAuthorization
+    ) async {
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         guard policyService != nil,
               CoachAnalyticsInsight.isProgressInquiry(message) else { return }
         // The trends were cached when `contextBundle()` ran earlier in this send; recompute defensively
         // if a cache miss ever leaves them nil (e.g. a neutral default bundle).
         let trends = cachedStrengthTrends ?? []
         guard let offer = CoachAnalyticsInsight.offer(from: trends) else { return }
+        guard isDeliveryAuthorized(expectedGeneration, authorization: authorization) else { return }
         analyticsOffer = offer
     }
 
