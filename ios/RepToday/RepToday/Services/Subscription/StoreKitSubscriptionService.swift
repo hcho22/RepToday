@@ -8,40 +8,29 @@ final class PremiumSessionAuthority: @unchecked Sendable {
     }
 
     struct StoreKitUpdateToken: Sendable {
-        fileprivate let sequence: UInt64
         fileprivate let transaction: StoreSubscriptionTransaction
     }
 
-    private struct TransactionEvent: Sendable {
+    private struct TransactionCandidate {
+        let subscription: Subscription
         let provenance: SubscriptionGrantProvenance
         let effectiveDate: Date
     }
 
-    private enum Provenance {
-        case verifiedGrant(SubscriptionGrantProvenance?)
-        case storeKitTransaction(TransactionEvent)
-
-        var transaction: SubscriptionGrantProvenance? {
-            switch self {
-            case .verifiedGrant(let provenance):
-                return provenance
-            case .storeKitTransaction(let event):
-                return event.provenance
-            }
-        }
-    }
-
-    private struct AcceptedAuthority {
-        let subscription: Subscription
-        let provenance: Provenance
+    private enum AuthorityCandidate {
+        case unsignedGrant(Subscription)
+        case transaction(TransactionCandidate)
     }
 
     private(set) var subscription: Subscription = .free
 
-    private var acceptedAuthority: AcceptedAuthority?
-    private var authorityWatermark: UInt64 = 0
-    private var nextAuthoritySequence: UInt64 = 0
+    private var transactionsByChain: [UInt64: TransactionCandidate] = [:]
+    private var hasUnsignedAuthority = false
     private var readGeneration: UInt64 = 0
+
+    private var hasAcceptedAuthority: Bool {
+        hasUnsignedAuthority || !transactionsByChain.isEmpty
+    }
 
     @MainActor
     func beginRead() -> ReadToken {
@@ -52,19 +41,15 @@ final class PremiumSessionAuthority: @unchecked Sendable {
     @MainActor
     func acceptSnapshot(_ subscription: Subscription, token: ReadToken) {
         guard token.generation == readGeneration else { return }
-        if let acceptedAuthority {
-            guard subscription.tier == acceptedAuthority.subscription.tier else { return }
-            self.acceptedAuthority = AcceptedAuthority(
-                subscription: subscription,
-                provenance: acceptedAuthority.provenance
-            )
+        if hasAcceptedAuthority {
+            guard subscription.tier == self.subscription.tier else { return }
         }
         self.subscription = subscription
     }
 
     @MainActor
     func acceptReadFailure(token: ReadToken) {
-        guard token.generation == readGeneration, acceptedAuthority == nil else { return }
+        guard token.generation == readGeneration, !hasAcceptedAuthority else { return }
         subscription = .free
     }
 
@@ -77,33 +62,22 @@ final class PremiumSessionAuthority: @unchecked Sendable {
     func acceptGrant(_ grant: SubscriptionGrant) {
         guard grant.subscription.tier == .premium else { return }
         invalidateReads()
-        let sequence = issueAuthoritySequence()
-        authorityWatermark = sequence
-        let provenance: Provenance
-        if let grantProvenance = grant.provenance {
-            provenance = .verifiedGrant(grantProvenance)
-        } else if let acceptedAuthority,
-                  acceptedAuthority.subscription == grant.subscription {
-            provenance = acceptedAuthority.provenance
+        if let provenance = grant.provenance {
+            reduce(
+                [.transaction(activeCandidate(subscription: grant.subscription, provenance: provenance))],
+                preferredGrant: grant
+            )
+        } else if hasAcceptedAuthority, subscription == grant.subscription {
+            subscription = grant.subscription
         } else {
-            provenance = .verifiedGrant(nil)
+            reduce([.unsignedGrant(grant.subscription)])
         }
-        acceptedAuthority = AcceptedAuthority(
-            subscription: grant.subscription,
-            provenance: provenance
-        )
-        subscription = grant.subscription
     }
 
     @MainActor
     func beginStoreKitUpdate(_ transaction: StoreSubscriptionTransaction) -> StoreKitUpdateToken {
         invalidateReads()
-        let sequence = issueAuthoritySequence()
-        authorityWatermark = sequence
-        return StoreKitUpdateToken(
-            sequence: sequence,
-            transaction: transaction
-        )
+        return StoreKitUpdateToken(transaction: transaction)
     }
 
     @MainActor
@@ -113,36 +87,16 @@ final class PremiumSessionAuthority: @unchecked Sendable {
 
     @MainActor
     func acceptStoreKitUpdate(_ grant: SubscriptionGrant, token: StoreKitUpdateToken) {
-        guard token.sequence == authorityWatermark else { return }
-
-        let event = TransactionEvent(
-            provenance: token.transaction.grantProvenance,
-            effectiveDate: token.transaction.revokedAt
-                ?? (grant.subscription.tier == .free ? token.transaction.expiresAt : nil)
-                ?? token.transaction.purchaseDate
-        )
-        if let acceptedAuthority,
-           !shouldAccept(grant, event: event, over: acceptedAuthority) {
-            return
+        var candidates: [AuthorityCandidate] = []
+        if let transaction = transactionCandidate(token.transaction, asOf: Date()) {
+            candidates.append(.transaction(transaction))
         }
-
-        let acceptedProvenance: Provenance
-        if grant.subscription.tier == .premium, let grantProvenance = grant.provenance {
-            acceptedProvenance = .verifiedGrant(grantProvenance)
-        } else {
-            acceptedProvenance = .storeKitTransaction(event)
+        if grant.subscription.tier == .premium, let provenance = grant.provenance {
+            candidates.append(
+                .transaction(activeCandidate(subscription: grant.subscription, provenance: provenance))
+            )
         }
-        acceptedAuthority = AcceptedAuthority(
-            subscription: grant.subscription,
-            provenance: acceptedProvenance
-        )
-        subscription = grant.subscription
-    }
-
-    @MainActor
-    private func issueAuthoritySequence() -> UInt64 {
-        nextAuthoritySequence &+= 1
-        return nextAuthoritySequence
+        reduce(candidates, preferredGrant: grant.subscription.tier == .premium ? grant : nil)
     }
 
     @MainActor
@@ -150,32 +104,96 @@ final class PremiumSessionAuthority: @unchecked Sendable {
         readGeneration &+= 1
     }
 
-    private func shouldAccept(
-        _ candidate: SubscriptionGrant,
-        event: TransactionEvent,
-        over current: AcceptedAuthority
+    private func reduce(
+        _ candidates: [AuthorityCandidate],
+        preferredGrant: SubscriptionGrant? = nil
+    ) {
+        for candidate in candidates {
+            switch candidate {
+            case .unsignedGrant(let subscription):
+                transactionsByChain.removeAll()
+                hasUnsignedAuthority = true
+                self.subscription = subscription
+            case .transaction(let transaction):
+                let chainID = transaction.provenance.originalTransactionID
+                if let current = transactionsByChain[chainID],
+                   !isNewerOrEqual(transaction, than: current) {
+                    continue
+                }
+                transactionsByChain[chainID] = transaction
+                hasUnsignedAuthority = false
+            }
+        }
+
+        guard !hasUnsignedAuthority else { return }
+        if let preferredGrant,
+           let provenance = preferredGrant.provenance,
+           let accepted = transactionsByChain[provenance.originalTransactionID],
+           accepted.provenance == provenance,
+           accepted.subscription.tier == .premium {
+            subscription = preferredGrant.subscription
+            return
+        }
+        subscription = transactionsByChain.values
+            .filter { $0.subscription.tier == .premium }
+            .max(by: { activeSortKey($0) < activeSortKey($1) })?
+            .subscription ?? .free
+    }
+
+    private func transactionCandidate(
+        _ transaction: StoreSubscriptionTransaction,
+        asOf: Date
+    ) -> TransactionCandidate? {
+        let provenance = transaction.grantProvenance
+        if transaction.isRevoked || transaction.expiresAt.map({ $0 <= asOf }) == true {
+            return TransactionCandidate(
+                subscription: .free,
+                provenance: provenance,
+                effectiveDate: transaction.revokedAt ?? transaction.expiresAt ?? transaction.purchaseDate
+            )
+        }
+        guard !transaction.isUpgraded else { return nil }
+        return activeCandidate(
+            subscription: Subscription(
+                tier: .premium,
+                provider: .apple,
+                expiresAt: transaction.expiresAt,
+                trialEndsAt: transaction.payment == .introductoryFreeTrial ? transaction.expiresAt : nil
+            ),
+            provenance: provenance
+        )
+    }
+
+    private func activeCandidate(
+        subscription: Subscription,
+        provenance: SubscriptionGrantProvenance
+    ) -> TransactionCandidate {
+        TransactionCandidate(
+            subscription: subscription,
+            provenance: provenance,
+            effectiveDate: provenance.purchasedAt
+        )
+    }
+
+    private func isNewerOrEqual(
+        _ candidate: TransactionCandidate,
+        than current: TransactionCandidate
     ) -> Bool {
-        guard current.subscription.tier == .premium else { return true }
-        guard let currentTransaction = current.provenance.transaction else { return true }
-
-        if candidate.subscription.tier == .free {
-            guard event.provenance.originalTransactionID == currentTransaction.originalTransactionID else {
-                return false
-            }
-            if event.provenance.transactionID == currentTransaction.transactionID {
-                return event.effectiveDate >= currentTransaction.purchasedAt
-            }
-            if event.provenance.purchasedAt != currentTransaction.purchasedAt {
-                return event.provenance.purchasedAt > currentTransaction.purchasedAt
-            }
-            return event.provenance.transactionID > currentTransaction.transactionID
+        if candidate.provenance.purchasedAt != current.provenance.purchasedAt {
+            return candidate.provenance.purchasedAt > current.provenance.purchasedAt
         }
-
-        guard let candidateTransaction = candidate.provenance else { return false }
-        if candidateTransaction.purchasedAt != currentTransaction.purchasedAt {
-            return candidateTransaction.purchasedAt > currentTransaction.purchasedAt
+        if candidate.provenance.transactionID != current.provenance.transactionID {
+            return candidate.provenance.transactionID > current.provenance.transactionID
         }
-        return candidateTransaction.transactionID >= currentTransaction.transactionID
+        return candidate.effectiveDate >= current.effectiveDate
+    }
+
+    private func activeSortKey(_ candidate: TransactionCandidate) -> (Date, Date, UInt64) {
+        (
+            candidate.subscription.expiresAt ?? .distantFuture,
+            candidate.provenance.purchasedAt,
+            candidate.provenance.transactionID
+        )
     }
 }
 

@@ -558,10 +558,19 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let now = Date()
         let authority = PremiumSessionAuthority()
         let monthlyExpiry = now.addingTimeInterval(3_600)
+        let yearlyGrantTransaction = storeTransaction(
+            id: 394,
+            originalID: 394,
+            productID: SubscriptionPlan.ProductID.yearly,
+            day: 10,
+            expiresAt: now.addingTimeInterval(365 * 24 * 3_600),
+            reason: .purchase,
+            payment: .paid
+        )
         let yearlyGrant = Subscription(
             tier: .premium,
             provider: .apple,
-            expiresAt: now.addingTimeInterval(365 * 24 * 3_600),
+            expiresAt: yearlyGrantTransaction.expiresAt,
             trialEndsAt: nil
         )
         let revokedEarlierTransaction = storeTransaction(
@@ -586,7 +595,12 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
         let listener = service.startObservingTransactions()
         await entitlementGate.waitUntilStarted()
-        authority.acceptGrant(yearlyGrant)
+        authority.acceptGrant(
+            SubscriptionGrant(
+                subscription: yearlyGrant,
+                provenance: yearlyGrantTransaction.grantProvenance
+            )
+        )
         await entitlementGate.release()
         await listener.value
 
@@ -689,24 +703,70 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
     }
 
     @MainActor
-    func testOlderStoreKitProcessingCannotCommitAfterNewerUpdateIsReserved() {
+    func testNewerPurchaseCompletingAfterHistoricalRevocationStillWins() {
         let expiry = Date().addingTimeInterval(3_600)
-        let olderTransaction = storeTransaction(
+        let newerPurchase = storeTransaction(
             id: 396,
             originalID: 396,
+            productID: SubscriptionPlan.ProductID.monthly,
+            day: 10,
+            expiresAt: expiry,
+            reason: .purchase,
+            payment: .paid
+        )
+        let historicalRevocation = storeTransaction(
+            id: 397,
+            originalID: 397,
+            productID: SubscriptionPlan.ProductID.yearly,
             day: 1,
+            expiresAt: expiry,
+            reason: .other,
+            payment: .paid,
+            isRevoked: true,
+            revokedAt: Date(timeIntervalSince1970: 20 * 86_400)
+        )
+        let purchase = Subscription(
+            tier: .premium,
+            provider: .apple,
+            expiresAt: expiry,
+            trialEndsAt: nil
+        )
+        let authority = PremiumSessionAuthority()
+        let purchaseUpdate = authority.beginStoreKitUpdate(newerPurchase)
+        let historicalUpdate = authority.beginStoreKitUpdate(historicalRevocation)
+
+        authority.acceptStoreKitUpdate(.free, token: historicalUpdate)
+        authority.acceptStoreKitUpdate(
+            SubscriptionGrant(
+                subscription: purchase,
+                provenance: newerPurchase.grantProvenance
+            ),
+            token: purchaseUpdate
+        )
+
+        XCTAssertEqual(authority.subscription, purchase)
+    }
+
+    @MainActor
+    func testOlderPurchaseCompletingAfterGenuinelyNewerRevocationStaysFree() {
+        let expiry = Date().addingTimeInterval(3_600)
+        let olderTransaction = storeTransaction(
+            id: 398,
+            originalID: 398,
+            day: 10,
             expiresAt: expiry,
             reason: .purchase,
             payment: .paid
         )
         let newerRevocation = storeTransaction(
-            id: 397,
-            originalID: 396,
-            day: 2,
+            id: 398,
+            originalID: 398,
+            day: 10,
             expiresAt: expiry,
             reason: .other,
             payment: .paid,
-            isRevoked: true
+            isRevoked: true,
+            revokedAt: Date(timeIntervalSince1970: 20 * 86_400)
         )
         let authority = PremiumSessionAuthority()
         let olderUpdate = authority.beginStoreKitUpdate(olderTransaction)
@@ -714,11 +774,14 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
         authority.acceptStoreKitUpdate(.free, token: newerUpdate)
         authority.acceptStoreKitUpdate(
-            Subscription(
-                tier: .premium,
-                provider: .apple,
-                expiresAt: expiry,
-                trialEndsAt: nil
+            SubscriptionGrant(
+                subscription: Subscription(
+                    tier: .premium,
+                    provider: .apple,
+                    expiresAt: expiry,
+                    trialEndsAt: nil
+                ),
+                provenance: olderTransaction.grantProvenance
             ),
             token: olderUpdate
         )
