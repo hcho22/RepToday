@@ -179,6 +179,25 @@ struct Subscription: Codable, Equatable {
     static let free = Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil)
 }
 
+struct SubscriptionGrantProvenance: Equatable, Sendable {
+    let transactionID: UInt64
+    let originalTransactionID: UInt64
+    let productID: String
+    let purchasedAt: Date
+    let expiresAt: Date?
+    let revokedAt: Date?
+}
+
+struct SubscriptionGrant: Equatable {
+    let subscription: Subscription
+    let provenance: SubscriptionGrantProvenance?
+
+    init(subscription: Subscription, provenance: SubscriptionGrantProvenance? = nil) {
+        self.subscription = subscription
+        self.provenance = provenance
+    }
+}
+
 /// The outcome of a paywall purchase attempt (US-N04), surfaced to the view model so it can tell a
 /// resolved purchase (granted, or an unchanged entitlement after a silent user-cancel) apart from a
 /// still-pending one awaiting external approval (e.g. Ask to Buy). Keeping the pending case distinct
@@ -186,8 +205,12 @@ struct Subscription: Codable, Equatable {
 enum PurchaseOutcome: Equatable {
     /// The purchase flow finished: `subscription` is the resulting entitlement (premium on success,
     /// unchanged - typically `.free` - after a user-cancel).
-    case resolved(Subscription)
+    case resolved(SubscriptionGrant)
     /// The purchase is deferred, awaiting external approval; the entitlement is unchanged for now and
     /// will be picked up out-of-band once approved.
     case pending
+
+    static func resolved(_ subscription: Subscription) -> PurchaseOutcome {
+        .resolved(SubscriptionGrant(subscription: subscription))
+    }
 }

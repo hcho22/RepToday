@@ -31,6 +31,19 @@ struct StoreEntitlement: Equatable {
     let expiresAt: Date?
     /// Whether the user is currently inside the introductory free-trial window.
     let isInTrialPeriod: Bool
+    let provenance: SubscriptionGrantProvenance?
+
+    init(
+        productID: String,
+        expiresAt: Date?,
+        isInTrialPeriod: Bool,
+        provenance: SubscriptionGrantProvenance? = nil
+    ) {
+        self.productID = productID
+        self.expiresAt = expiresAt
+        self.isInTrialPeriod = isInTrialPeriod
+        self.provenance = provenance
+    }
 }
 
 /// The StoreKit facts needed to recognize a free-trial conversion without carrying StoreKit types
@@ -65,12 +78,25 @@ struct StoreSubscriptionTransaction: Equatable, Sendable {
     let productID: String
     let purchaseDate: Date
     let expiresAt: Date?
+    let revokedAt: Date?
     let reason: Reason
     let payment: Payment
     let isAutoRenewable: Bool
     let isPurchased: Bool
-    let isRevoked: Bool
     let isUpgraded: Bool
+
+    var isRevoked: Bool { revokedAt != nil }
+
+    var grantProvenance: SubscriptionGrantProvenance {
+        SubscriptionGrantProvenance(
+            transactionID: id,
+            originalTransactionID: originalID,
+            productID: productID,
+            purchasedAt: purchaseDate,
+            expiresAt: expiresAt,
+            revokedAt: revokedAt
+        )
+    }
 }
 
 /// A finite StoreKit history snapshot and whether any rows in that snapshot failed verification.

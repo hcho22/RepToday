@@ -163,6 +163,7 @@ protocol SubscriptionServiceProtocol {
     func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome
     func purchasePremium() async throws -> Subscription
     func restorePurchases() async throws -> Subscription
+    func restorePurchaseGrant() async throws -> SubscriptionGrant
     /// Begin observing StoreKit's out-of-band transaction updates (auto-renewals, refunds,
     /// cross-device purchases, deferred Ask-to-Buy approvals), finishing each so it never lingers
     /// in the queue; the entitlement-gated surfaces pick up the change on their next read. The real
@@ -175,6 +176,10 @@ protocol SubscriptionServiceProtocol {
 }
 
 extension SubscriptionServiceProtocol {
+    func restorePurchaseGrant() async throws -> SubscriptionGrant {
+        SubscriptionGrant(subscription: try await restorePurchases())
+    }
+
     /// Default no-op listener: only the real StoreKit service (US-N04) overrides this, so mocks,
     /// previews, and test stubs stay StoreKit-free and deterministic.
     @discardableResult

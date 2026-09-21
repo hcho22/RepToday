@@ -12,21 +12,21 @@ final class PremiumSessionAuthority: @unchecked Sendable {
         fileprivate let transaction: StoreSubscriptionTransaction
     }
 
-    private struct TransactionProvenance: Sendable {
-        let transaction: StoreSubscriptionTransaction
-        let validThrough: Date?
+    private struct TransactionEvent: Sendable {
+        let provenance: SubscriptionGrantProvenance
+        let effectiveDate: Date
     }
 
     private enum Provenance {
-        case verifiedGrant(validThrough: Date?)
-        case storeKitTransaction(TransactionProvenance)
+        case verifiedGrant(SubscriptionGrantProvenance?)
+        case storeKitTransaction(TransactionEvent)
 
-        var validThrough: Date? {
+        var transaction: SubscriptionGrantProvenance? {
             switch self {
-            case .verifiedGrant(let validThrough):
-                return validThrough
-            case .storeKitTransaction(let transaction):
-                return transaction.validThrough
+            case .verifiedGrant(let provenance):
+                return provenance
+            case .storeKitTransaction(let event):
+                return event.provenance
             }
         }
     }
@@ -56,7 +56,7 @@ final class PremiumSessionAuthority: @unchecked Sendable {
             guard subscription.tier == acceptedAuthority.subscription.tier else { return }
             self.acceptedAuthority = AcceptedAuthority(
                 subscription: subscription,
-                provenance: extending(acceptedAuthority.provenance, through: subscription.expiresAt)
+                provenance: acceptedAuthority.provenance
             )
         }
         self.subscription = subscription
@@ -70,21 +70,29 @@ final class PremiumSessionAuthority: @unchecked Sendable {
 
     @MainActor
     func acceptGrant(_ subscription: Subscription) {
-        guard subscription.tier == .premium else { return }
+        acceptGrant(SubscriptionGrant(subscription: subscription))
+    }
+
+    @MainActor
+    func acceptGrant(_ grant: SubscriptionGrant) {
+        guard grant.subscription.tier == .premium else { return }
         invalidateReads()
         let sequence = issueAuthoritySequence()
         authorityWatermark = sequence
         let provenance: Provenance
-        if let acceptedAuthority, acceptedAuthority.subscription == subscription {
-            provenance = extending(acceptedAuthority.provenance, through: subscription.expiresAt)
+        if let grantProvenance = grant.provenance {
+            provenance = .verifiedGrant(grantProvenance)
+        } else if let acceptedAuthority,
+                  acceptedAuthority.subscription == grant.subscription {
+            provenance = acceptedAuthority.provenance
         } else {
-            provenance = .verifiedGrant(validThrough: subscription.expiresAt)
+            provenance = .verifiedGrant(nil)
         }
         acceptedAuthority = AcceptedAuthority(
-            subscription: subscription,
+            subscription: grant.subscription,
             provenance: provenance
         )
-        self.subscription = subscription
+        subscription = grant.subscription
     }
 
     @MainActor
@@ -100,22 +108,35 @@ final class PremiumSessionAuthority: @unchecked Sendable {
 
     @MainActor
     func acceptStoreKitUpdate(_ subscription: Subscription, token: StoreKitUpdateToken) {
+        acceptStoreKitUpdate(SubscriptionGrant(subscription: subscription), token: token)
+    }
+
+    @MainActor
+    func acceptStoreKitUpdate(_ grant: SubscriptionGrant, token: StoreKitUpdateToken) {
         guard token.sequence == authorityWatermark else { return }
 
-        let provenance = TransactionProvenance(
-            transaction: token.transaction,
-            validThrough: later(token.transaction.expiresAt, subscription.expiresAt)
+        let event = TransactionEvent(
+            provenance: token.transaction.grantProvenance,
+            effectiveDate: token.transaction.revokedAt
+                ?? (grant.subscription.tier == .free ? token.transaction.expiresAt : nil)
+                ?? token.transaction.purchaseDate
         )
         if let acceptedAuthority,
-           isOlder(provenance, than: acceptedAuthority.provenance) {
+           !shouldAccept(grant, event: event, over: acceptedAuthority) {
             return
         }
 
+        let acceptedProvenance: Provenance
+        if grant.subscription.tier == .premium, let grantProvenance = grant.provenance {
+            acceptedProvenance = .verifiedGrant(grantProvenance)
+        } else {
+            acceptedProvenance = .storeKitTransaction(event)
+        }
         acceptedAuthority = AcceptedAuthority(
-            subscription: subscription,
-            provenance: .storeKitTransaction(provenance)
+            subscription: grant.subscription,
+            provenance: acceptedProvenance
         )
-        self.subscription = subscription
+        subscription = grant.subscription
     }
 
     @MainActor
@@ -129,47 +150,32 @@ final class PremiumSessionAuthority: @unchecked Sendable {
         readGeneration &+= 1
     }
 
-    private func extending(_ provenance: Provenance, through expiry: Date?) -> Provenance {
-        switch provenance {
-        case .verifiedGrant(let validThrough):
-            return .verifiedGrant(validThrough: later(validThrough, expiry))
-        case .storeKitTransaction(let transaction):
-            return .storeKitTransaction(
-                TransactionProvenance(
-                    transaction: transaction.transaction,
-                    validThrough: later(transaction.validThrough, expiry)
-                )
-            )
-        }
-    }
+    private func shouldAccept(
+        _ candidate: SubscriptionGrant,
+        event: TransactionEvent,
+        over current: AcceptedAuthority
+    ) -> Bool {
+        guard current.subscription.tier == .premium else { return true }
+        guard let currentTransaction = current.provenance.transaction else { return true }
 
-    private func isOlder(_ candidate: TransactionProvenance, than current: Provenance) -> Bool {
-        if let candidateExpiry = candidate.validThrough,
-           let currentExpiry = current.validThrough,
-           candidateExpiry != currentExpiry {
-            return candidateExpiry < currentExpiry
+        if candidate.subscription.tier == .free {
+            guard event.provenance.originalTransactionID == currentTransaction.originalTransactionID else {
+                return false
+            }
+            if event.provenance.transactionID == currentTransaction.transactionID {
+                return event.effectiveDate >= currentTransaction.purchasedAt
+            }
+            if event.provenance.purchasedAt != currentTransaction.purchasedAt {
+                return event.provenance.purchasedAt > currentTransaction.purchasedAt
+            }
+            return event.provenance.transactionID > currentTransaction.transactionID
         }
-        guard case .storeKitTransaction(let currentTransaction) = current,
-              candidate.transaction.originalID == currentTransaction.transaction.originalID else {
-            return false
-        }
-        if candidate.transaction.purchaseDate != currentTransaction.transaction.purchaseDate {
-            return candidate.transaction.purchaseDate < currentTransaction.transaction.purchaseDate
-        }
-        return candidate.transaction.id < currentTransaction.transaction.id
-    }
 
-    private func later(_ lhs: Date?, _ rhs: Date?) -> Date? {
-        switch (lhs, rhs) {
-        case (.some(let lhs), .some(let rhs)):
-            return max(lhs, rhs)
-        case (.some(let lhs), .none):
-            return lhs
-        case (.none, .some(let rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
+        guard let candidateTransaction = candidate.provenance else { return false }
+        if candidateTransaction.purchasedAt != currentTransaction.purchasedAt {
+            return candidateTransaction.purchasedAt > currentTransaction.purchasedAt
         }
+        return candidateTransaction.transactionID >= currentTransaction.transactionID
     }
 }
 
@@ -239,10 +245,10 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
         switch try await facade.purchase(productID: plan.id) {
         case .success(let entitlements):
-            return .resolved(Self.subscription(from: entitlements))
+            return .resolved(Self.grant(from: entitlements))
         case .userCancelled:
             // A cancel is not an error: the entitlement is simply unchanged, so report current state.
-            return .resolved(Self.subscription(from: await facade.currentEntitlements()))
+            return .resolved(Self.grant(from: await facade.currentEntitlements()))
         case .pending:
             // Awaiting external approval (e.g. Ask to Buy). Nothing is granted yet; the paywall
             // reassures the user and the approval is picked up out-of-band by the transaction listener.
@@ -258,8 +264,8 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             throw SubscriptionError.productsUnavailable
         }
         switch try await purchase(plan) {
-        case .resolved(let subscription):
-            return subscription
+        case .resolved(let grant):
+            return grant.subscription
         case .pending:
             // Deferred: report the (unchanged) current entitlement; the approval lands out-of-band.
             return Self.subscription(from: await facade.currentEntitlements())
@@ -267,18 +273,22 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     }
 
     func restorePurchases() async throws -> Subscription {
+        try await restorePurchaseGrant().subscription
+    }
+
+    func restorePurchaseGrant() async throws -> SubscriptionGrant {
         await restoreGate.acquire()
         do {
-            let subscription = try await performRestore()
+            let grant = try await performRestore()
             await restoreGate.release()
-            return subscription
+            return grant
         } catch {
             await restoreGate.release()
             throw error
         }
     }
 
-    private func performRestore() async throws -> Subscription {
+    private func performRestore() async throws -> SubscriptionGrant {
         await trialConversionObserver.beginRestore()
         do {
             try await facade.sync()
@@ -287,7 +297,7 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             // restore window, so restoring ownership can never masquerade as a new conversion.
             let history = await facade.transactionHistory()
             await trialConversionObserver.completeRestore(history: history)
-            return Self.subscription(from: await facade.currentEntitlements())
+            return Self.grant(from: await facade.currentEntitlements())
         } catch {
             // If sync failed, an update that happened independently while it was in flight is still a
             // live transaction and must be judged normally rather than silently discarded.
@@ -315,13 +325,13 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
                 operation: {
                     if let authorityUpdate {
                         let entitlements = await facade.currentEntitlements()
-                        if let subscription = Self.sessionSubscription(
+                        if let grant = Self.sessionGrant(
                             for: transaction,
                             currentEntitlements: entitlements,
                             asOf: Date()
                         ) {
                             await premiumSessionAuthority.acceptStoreKitUpdate(
-                                subscription,
+                                grant,
                                 token: authorityUpdate
                             )
                         }
@@ -346,14 +356,21 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     /// entitlement grants `.premium`; with several, the one expiring latest wins (its `expiresAt` and
     /// trial state carry through). No entitlement is the free tier.
     static func subscription(from entitlements: [StoreEntitlement]) -> Subscription {
+        grant(from: entitlements).subscription
+    }
+
+    static func grant(from entitlements: [StoreEntitlement]) -> SubscriptionGrant {
         guard let best = entitlements.max(by: { keyDate($0) < keyDate($1) }) else {
-            return .free
+            return SubscriptionGrant(subscription: .free)
         }
-        return Subscription(
-            tier: .premium,
-            provider: .apple,
-            expiresAt: best.expiresAt,
-            trialEndsAt: best.isInTrialPeriod ? best.expiresAt : nil
+        return SubscriptionGrant(
+            subscription: Subscription(
+                tier: .premium,
+                provider: .apple,
+                expiresAt: best.expiresAt,
+                trialEndsAt: best.isInTrialPeriod ? best.expiresAt : nil
+            ),
+            provenance: best.provenance
         )
     }
 
@@ -361,29 +378,37 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
         entitlement.expiresAt ?? .distantFuture
     }
 
-    private static func sessionSubscription(
+    private static func sessionGrant(
         for transaction: StoreSubscriptionTransaction,
         currentEntitlements: [StoreEntitlement],
         asOf: Date
-    ) -> Subscription? {
+    ) -> SubscriptionGrant? {
         guard transaction.isAutoRenewable else { return nil }
         if transaction.isRevoked || transaction.expiresAt.map({ $0 <= asOf }) == true {
             let invalidatedExpiry = transaction.expiresAt ?? .distantFuture
-            return subscription(
+            let currentGrant = grant(
                 from: currentEntitlements.filter {
                     $0.productID != transaction.productID || keyDate($0) > invalidatedExpiry
                 }
+            )
+            if currentGrant.subscription.tier == .premium {
+                return currentGrant
+            }
+            return SubscriptionGrant(
+                subscription: .free,
+                provenance: transaction.grantProvenance
             )
         }
         guard !transaction.isUpgraded else { return nil }
         let fresh = StoreEntitlement(
             productID: transaction.productID,
             expiresAt: transaction.expiresAt,
-            isInTrialPeriod: transaction.payment == .introductoryFreeTrial
+            isInTrialPeriod: transaction.payment == .introductoryFreeTrial,
+            provenance: transaction.grantProvenance
         )
         var merged = currentEntitlements
         merged.append(fresh)
-        return subscription(from: merged)
+        return grant(from: merged)
     }
 
     private static func plan(from product: StoreProduct) -> SubscriptionPlan {

@@ -13,10 +13,12 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: PaywallViewModel
+    private let premiumSessionAuthority: PremiumSessionAuthority
     private let onUnlock: (Subscription) -> Void
 
     init(
         subscriptionService: any SubscriptionServiceProtocol,
+        premiumSessionAuthority: PremiumSessionAuthority,
         analyticsService: (any AnalyticsServiceProtocol)? = nil,
         entryPoint: EntryPoint = .progressUpsell,
         onUnlock: @escaping (Subscription) -> Void = { _ in }
@@ -28,12 +30,18 @@ struct PaywallView: View {
                 entryPoint: entryPoint
             )
         )
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.onUnlock = onUnlock
     }
 
     /// Test/preview seam so a pre-seeded view model can be injected.
-    init(viewModel: PaywallViewModel, onUnlock: @escaping (Subscription) -> Void = { _ in }) {
+    init(
+        viewModel: PaywallViewModel,
+        premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority(),
+        onUnlock: @escaping (Subscription) -> Void = { _ in }
+    ) {
         _viewModel = State(initialValue: viewModel)
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.onUnlock = onUnlock
     }
 
@@ -53,9 +61,10 @@ struct PaywallView: View {
             }
         }
         .task { await viewModel.load() }
-        .onChange(of: viewModel.unlockedSubscription) { _, subscription in
-            guard let subscription else { return }
-            onUnlock(subscription)
+        .onChange(of: viewModel.unlockedGrant) { _, grant in
+            guard let grant else { return }
+            premiumSessionAuthority.acceptGrant(grant)
+            onUnlock(grant.subscription)
             dismiss()
         }
     }
@@ -249,9 +258,15 @@ private struct PaywallPlanButton: View {
 }
 
 #Preview("Plans") {
-    PaywallView(subscriptionService: MockSubscriptionService())
+    PaywallView(
+        subscriptionService: MockSubscriptionService(),
+        premiumSessionAuthority: PremiumSessionAuthority()
+    )
 }
 
 #Preview("Unavailable") {
-    PaywallView(subscriptionService: MockSubscriptionService(plans: [], simulatesPurchase: false))
+    PaywallView(
+        subscriptionService: MockSubscriptionService(plans: [], simulatesPurchase: false),
+        premiumSessionAuthority: PremiumSessionAuthority()
+    )
 }

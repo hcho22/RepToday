@@ -280,6 +280,28 @@ final class ProgressViewModelTests: XCTestCase {
 @MainActor
 final class ProgressTabSnapshotTests: XCTestCase {
 
+    private final class LaggingProgressSubscriptionService: SubscriptionServiceProtocol {
+        private(set) var currentSubscriptionReadCount = 0
+
+        private let grant: SubscriptionGrant
+
+        init(grant: SubscriptionGrant) {
+            self.grant = grant
+        }
+
+        func currentSubscription() async throws -> Subscription {
+            currentSubscriptionReadCount += 1
+            return .free
+        }
+
+        func refreshEntitlements() async throws -> Subscription { .free }
+        func premiumPlans() async throws -> [SubscriptionPlan] { SubscriptionPlan.samples }
+        func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome { .resolved(grant) }
+        func purchasePremium() async throws -> Subscription { grant.subscription }
+        func restorePurchases() async throws -> Subscription { grant.subscription }
+        func restorePurchaseGrant() async throws -> SubscriptionGrant { grant }
+    }
+
     /// The window a hosted surface lives in while it is captured or read.
     private var renderWindow: UIWindow?
 
@@ -461,6 +483,74 @@ final class ProgressTabSnapshotTests: XCTestCase {
     func testRenderPremiumProgressTab() async throws {
         try await snapshot(viewModel: makeViewModel(logs: sampleLogs(), premium: true),
                            tall: true, fileName: "progress-m02-premium.png")
+    }
+
+    func testProgressPurchaseSurvivesEmptyReloadAndPublishesSharedPremiumGrant() async throws {
+        let authority = PremiumSessionAuthority()
+        let provenance = SubscriptionGrantProvenance(
+            transactionID: 900,
+            originalTransactionID: 900,
+            productID: SubscriptionPlan.ProductID.monthly,
+            purchasedAt: asOf,
+            expiresAt: calendar.date(byAdding: .month, value: 1, to: asOf),
+            revokedAt: nil
+        )
+        let grant = SubscriptionGrant(
+            subscription: Subscription(
+                tier: .premium,
+                provider: .apple,
+                expiresAt: provenance.expiresAt,
+                trialEndsAt: nil
+            ),
+            provenance: provenance
+        )
+        let subscriptionService = LaggingProgressSubscriptionService(grant: grant)
+        let viewModel = ProgressViewModel(
+            userService: MockUserService(user: MockPersistence.sampleUser),
+            workoutLogService: MockWorkoutLogService(logs: sampleLogs()),
+            exerciseService: try MockExerciseService(),
+            subscriptionService: subscriptionService,
+            premiumSessionAuthority: authority,
+            consistencyService: ConsistencyScoreService(now: { self.asOf }, calendar: calendar),
+            now: { self.asOf },
+            calendar: calendar
+        )
+        await viewModel.load()
+
+        let paywallViewModel = PaywallViewModel(
+            subscriptionService: subscriptionService,
+            entryPoint: .progressUpsell
+        )
+        var callbackSubscription: Subscription?
+        let (_, paywallWindow) = HostedSurface.host(
+            PaywallView(
+                viewModel: paywallViewModel,
+                premiumSessionAuthority: authority
+            ) { subscription in
+                callbackSubscription = subscription
+            },
+            size: CGSize(width: 393, height: 852)
+        )
+        renderWindow = paywallWindow
+        await paywallViewModel.purchase(SubscriptionPlan.samples[0])
+        HostedSurface.pump(for: HostedSurface.settleInterval)
+
+        XCTAssertEqual(authority.subscription, grant.subscription)
+        XCTAssertEqual(callbackSubscription, grant.subscription)
+        await viewModel.load()
+        XCTAssertTrue(viewModel.isPremium)
+        XCTAssertGreaterThanOrEqual(subscriptionService.currentSubscriptionReadCount, 2)
+
+        let (progressHost, progressWindow) = HostedSurface.host(
+            ProgressTabView(
+                viewModel: viewModel,
+                subscriptionService: subscriptionService,
+                premiumSessionAuthority: authority
+            ),
+            size: CGSize(width: 393, height: HostHeight.populated)
+        )
+        renderWindow = progressWindow
+        XCTAssertTrue(AccessibilityTree.labels(in: progressHost.view).contains("Deeper analytics"))
     }
 
     /// Fresh user: the encouraging empty state (no cards, never gated, never loss-framed).

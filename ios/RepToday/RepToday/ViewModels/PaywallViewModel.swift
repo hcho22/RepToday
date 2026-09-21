@@ -31,7 +31,9 @@ final class PaywallViewModel {
     /// The exact Premium subscription returned by a successful purchase or restore. The presenter
     /// observes this to dismiss and hand the authoritative grant directly to its gate instead of
     /// reconstructing it from an immediately repeated (and potentially lagging) entitlement read.
-    private(set) var unlockedSubscription: Subscription?
+    private(set) var unlockedGrant: SubscriptionGrant?
+
+    var unlockedSubscription: Subscription? { unlockedGrant?.subscription }
 
     /// Compatibility projection used by the focused view-model tests and any non-presentational
     /// consumers that only need the unlock decision.
@@ -123,13 +125,13 @@ final class PaywallViewModel {
 
         do {
             switch try await subscriptionService.purchase(plan) {
-            case .resolved(let subscription):
-                reflect(subscription)
+            case .resolved(let grant):
+                reflect(grant)
                 // US-T12: emit the monetization event only on a real grant. A user-cancel resolves
                 // here too but with an unchanged (typically `.free`) entitlement, so keying off the
                 // granted `.premium` tier means a cancelled or failed purchase emits nothing.
-                if subscription.tier == .premium {
-                    await emitPurchaseTelemetry(for: subscription, plan: plan)
+                if grant.subscription.tier == .premium {
+                    await emitPurchaseTelemetry(for: grant.subscription, plan: plan)
                 }
             case .pending:
                 message = "This purchase needs approval before it unlocks. We'll switch on Premium as soon as it's approved - your workouts stay free in the meantime."
@@ -148,9 +150,9 @@ final class PaywallViewModel {
         defer { isRestoring = false }
 
         do {
-            let subscription = try await subscriptionService.restorePurchases()
-            reflect(subscription)
-            if subscription.tier != .premium {
+            let grant = try await subscriptionService.restorePurchaseGrant()
+            reflect(grant)
+            if grant.subscription.tier != .premium {
                 message = "No previous purchase found on this Apple ID."
             }
         } catch {
@@ -158,9 +160,9 @@ final class PaywallViewModel {
         }
     }
 
-    private func reflect(_ subscription: Subscription) {
-        if subscription.tier == .premium {
-            unlockedSubscription = subscription
+    private func reflect(_ grant: SubscriptionGrant) {
+        if grant.subscription.tier == .premium {
+            unlockedGrant = grant
         }
     }
 

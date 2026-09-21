@@ -85,9 +85,15 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
     private func premiumEntitlement(
         productID: String = SubscriptionPlan.ProductID.monthly,
         expiresAt: Date? = Date(timeIntervalSince1970: 2_000_000),
-        isInTrialPeriod: Bool = false
+        isInTrialPeriod: Bool = false,
+        provenance: SubscriptionGrantProvenance? = nil
     ) -> StoreEntitlement {
-        StoreEntitlement(productID: productID, expiresAt: expiresAt, isInTrialPeriod: isInTrialPeriod)
+        StoreEntitlement(
+            productID: productID,
+            expiresAt: expiresAt,
+            isInTrialPeriod: isInTrialPeriod,
+            provenance: provenance
+        )
     }
 
     private struct ObservingFacade: StoreKitFacade {
@@ -374,19 +380,21 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         isAutoRenewable: Bool = true,
         isPurchased: Bool = true,
         isRevoked: Bool = false,
+        revokedAt: Date? = nil,
         isUpgraded: Bool = false
     ) -> StoreSubscriptionTransaction {
-        StoreSubscriptionTransaction(
+        let purchaseDate = Date(timeIntervalSince1970: day * 86_400)
+        return StoreSubscriptionTransaction(
             id: id,
             originalID: originalID,
             productID: productID,
-            purchaseDate: Date(timeIntervalSince1970: day * 86_400),
+            purchaseDate: purchaseDate,
             expiresAt: expiresAt,
+            revokedAt: revokedAt ?? (isRevoked ? purchaseDate : nil),
             reason: reason,
             payment: payment,
             isAutoRenewable: isAutoRenewable,
             isPurchased: isPurchased,
-            isRevoked: isRevoked,
             isUpgraded: isUpgraded
         )
     }
@@ -586,37 +594,52 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
     }
 
     @MainActor
-    func testHistoricalMonthlyRevocationDeliveredAfterNewerYearlyGrantIsIgnored() async {
+    func testHistoricalYearlyRevocationCannotOverwriteNewerMonthlyGrant() async {
         let now = Date()
         let authority = PremiumSessionAuthority()
-        let yearlyGrant = Subscription(
-            tier: .premium,
-            provider: .apple,
-            expiresAt: now.addingTimeInterval(365 * 24 * 3_600),
-            trialEndsAt: nil
-        )
-        authority.acceptGrant(yearlyGrant)
-        let revokedEarlierTransaction = storeTransaction(
+        let monthlyGrantTransaction = storeTransaction(
             id: 394,
             originalID: 394,
             productID: SubscriptionPlan.ProductID.monthly,
+            day: 10,
+            expiresAt: now.addingTimeInterval(30 * 24 * 3_600),
+            reason: .purchase,
+            payment: .paid
+        )
+        let monthlyGrant = Subscription(
+            tier: .premium,
+            provider: .apple,
+            expiresAt: monthlyGrantTransaction.expiresAt,
+            trialEndsAt: nil
+        )
+        authority.acceptGrant(
+            SubscriptionGrant(
+                subscription: monthlyGrant,
+                provenance: monthlyGrantTransaction.grantProvenance
+            )
+        )
+        let historicalYearlyRevocation = storeTransaction(
+            id: 393,
+            originalID: 393,
+            productID: SubscriptionPlan.ProductID.yearly,
             day: 1,
-            expiresAt: now.addingTimeInterval(3_600),
+            expiresAt: now.addingTimeInterval(365 * 24 * 3_600),
             reason: .other,
             payment: .paid,
-            isRevoked: true
+            isRevoked: true,
+            revokedAt: Date(timeIntervalSince1970: 20 * 86_400)
         )
         let service = StoreKitSubscriptionService(
             facade: ObservingFacade(
                 entitlements: [],
-                updates: [.verified(revokedEarlierTransaction)]
+                updates: [.verified(historicalYearlyRevocation)]
             ),
             premiumSessionAuthority: authority
         )
 
         await service.startObservingTransactions().value
 
-        XCTAssertEqual(authority.subscription, yearlyGrant)
+        XCTAssertEqual(authority.subscription, monthlyGrant)
     }
 
     @MainActor
@@ -624,23 +647,36 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let now = Date()
         let authority = PremiumSessionAuthority()
         let expiry = now.addingTimeInterval(30 * 24 * 3_600)
+        let grantTransaction = storeTransaction(
+            id: 395,
+            originalID: 395,
+            productID: SubscriptionPlan.ProductID.monthly,
+            day: 10,
+            expiresAt: expiry,
+            reason: .purchase,
+            payment: .paid
+        )
         authority.acceptGrant(
-            Subscription(
-                tier: .premium,
-                provider: .apple,
-                expiresAt: expiry,
-                trialEndsAt: nil
+            SubscriptionGrant(
+                subscription: Subscription(
+                    tier: .premium,
+                    provider: .apple,
+                    expiresAt: expiry,
+                    trialEndsAt: nil
+                ),
+                provenance: grantTransaction.grantProvenance
             )
         )
         let revocation = storeTransaction(
             id: 395,
             originalID: 395,
             productID: SubscriptionPlan.ProductID.monthly,
-            day: 2,
+            day: 10,
             expiresAt: expiry,
             reason: .other,
             payment: .paid,
-            isRevoked: true
+            isRevoked: true,
+            revokedAt: Date(timeIntervalSince1970: 20 * 86_400)
         )
         let service = StoreKitSubscriptionService(
             facade: ObservingFacade(entitlements: [], updates: [.verified(revocation)]),
@@ -718,14 +754,37 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
     func testPurchaseSuccessUnlocksPremium() async throws {
         // PRD validation: purchasing premium unlocks the entitlement that drives the US-M02 gate.
+        let transaction = storeTransaction(
+            id: 700,
+            originalID: 700,
+            day: 1,
+            expiresAt: Date(timeIntervalSince1970: 2_000_000),
+            reason: .purchase,
+            payment: .paid
+        )
+        let entitlement = premiumEntitlement(provenance: transaction.grantProvenance)
         let facade = StubFacade(
             products: [monthlyProduct],
             entitlements: [],
-            purchaseResult: .success([premiumEntitlement()])
+            purchaseResult: .success([entitlement])
         )
         let outcome = try await service(facade).purchase(SubscriptionPlan.samples[0])
 
-        XCTAssertEqual(outcome, .resolved(Subscription(tier: .premium, provider: .apple, expiresAt: premiumEntitlement().expiresAt, trialEndsAt: nil)), "a completed purchase resolves to premium")
+        XCTAssertEqual(
+            outcome,
+            .resolved(
+                SubscriptionGrant(
+                    subscription: Subscription(
+                        tier: .premium,
+                        provider: .apple,
+                        expiresAt: entitlement.expiresAt,
+                        trialEndsAt: nil
+                    ),
+                    provenance: transaction.grantProvenance
+                )
+            ),
+            "a completed purchase resolves to the verified Premium grant"
+        )
     }
 
     func testPurchaseCancelledKeepsFreeTier() async throws {
@@ -740,8 +799,8 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let facade = StubFacade(entitlements: [premiumEntitlement()], purchaseResult: .userCancelled)
         let outcome = try await service(facade).purchase(SubscriptionPlan.samples[0])
 
-        guard case .resolved(let subscription) = outcome else { return XCTFail("a cancel resolves") }
-        XCTAssertEqual(subscription.tier, .premium)
+        guard case .resolved(let grant) = outcome else { return XCTFail("a cancel resolves") }
+        XCTAssertEqual(grant.subscription.tier, .premium)
     }
 
     func testPurchasePendingReportsPending() async throws {
@@ -810,10 +869,21 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
 
     func testRestoreRegrantsEntitlement() async throws {
         // PRD validation: restore re-grants a previously-owned entitlement.
-        let facade = StubFacade(entitlements: [premiumEntitlement()])
-        let subscription = try await service(facade).restorePurchases()
+        let transaction = storeTransaction(
+            id: 701,
+            originalID: 701,
+            day: 1,
+            expiresAt: Date(timeIntervalSince1970: 2_000_000),
+            reason: .purchase,
+            payment: .paid
+        )
+        let facade = StubFacade(
+            entitlements: [premiumEntitlement(provenance: transaction.grantProvenance)]
+        )
+        let grant = try await service(facade).restorePurchaseGrant()
 
-        XCTAssertEqual(subscription.tier, .premium, "restore re-grants the owned entitlement")
+        XCTAssertEqual(grant.subscription.tier, .premium, "restore re-grants the owned entitlement")
+        XCTAssertEqual(grant.provenance, transaction.grantProvenance)
     }
 
     func testRestoreWithNoEntitlementIsFree() async throws {

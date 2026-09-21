@@ -200,11 +200,11 @@ final class CoachGateViewModelTests: XCTestCase {
             productID: SubscriptionPlan.ProductID.monthly,
             purchaseDate: Date(),
             expiresAt: nil,
+            revokedAt: Date(),
             reason: .other,
             payment: .paid,
             isAutoRenewable: true,
             isPurchased: true,
-            isRevoked: true,
             isUpgraded: false
         )
         let update = sessionAuthority.beginStoreKitUpdate(revocation)

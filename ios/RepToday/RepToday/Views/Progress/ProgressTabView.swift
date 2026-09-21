@@ -18,6 +18,7 @@ struct ProgressTabView: View {
     /// The subscription service the paywall (US-N04) purchases through. Held separately from the view
     /// model so the upsell can present the paywall sheet; the mock keeps previews rendering.
     private let subscriptionService: any SubscriptionServiceProtocol
+    private let premiumSessionAuthority: PremiumSessionAuthority
 
     /// The telemetry sink the presented paywall emits `paywall_shown`/`trial_started`/`subscribe`
     /// through (US-T12). Held alongside `subscriptionService` and threaded into `PaywallView`; the
@@ -31,11 +32,13 @@ struct ProgressTabView: View {
                 workoutLogService: services.workoutLogService,
                 exerciseService: services.exerciseService,
                 subscriptionService: services.subscriptionService,
+                premiumSessionAuthority: services.premiumSessionAuthority,
                 consistencyService: services.consistencyService,
                 phaseService: services.phaseService
             )
         )
         self.subscriptionService = services.subscriptionService
+        self.premiumSessionAuthority = services.premiumSessionAuthority
         self.analyticsService = services.analyticsService
     }
 
@@ -43,10 +46,12 @@ struct ProgressTabView: View {
     init(
         viewModel: ProgressViewModel,
         subscriptionService: any SubscriptionServiceProtocol = MockSubscriptionService(),
+        premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.subscriptionService = subscriptionService
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.analyticsService = analyticsService
     }
 
@@ -67,6 +72,7 @@ struct ProgressTabView: View {
             // free surfaces are never affected.
             PaywallView(
                 subscriptionService: subscriptionService,
+                premiumSessionAuthority: premiumSessionAuthority,
                 analyticsService: analyticsService,
                 entryPoint: .progressUpsell
             ) { _ in

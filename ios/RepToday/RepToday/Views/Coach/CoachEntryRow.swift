@@ -76,13 +76,13 @@ struct CoachEntryRow: View {
             // paywall itself. Nothing here blocks the core loop.
             PaywallView(
                 subscriptionService: services.subscriptionService,
+                premiumSessionAuthority: services.premiumSessionAuthority,
                 analyticsService: services.analyticsService,
                 entryPoint: .coachUpsell
-            ) { subscription in
+            ) { _ in
                 // The purchase/restore result is the newest verified StoreKit fact. Apply it before
                 // dismissing the paywall, then reconcile asynchronously without allowing a lagging
                 // current-entitlements projection to immediately re-lock the Coach.
-                viewModel.acceptAuthoritativeGrant(subscription)
                 Task { await viewModel.reconcileAfterAuthoritativeGrant() }
             }
         }
