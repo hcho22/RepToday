@@ -75,8 +75,12 @@ struct CoachEntryRow: View {
                 subscriptionService: services.subscriptionService,
                 analyticsService: services.analyticsService,
                 entryPoint: .coachUpsell
-            ) {
-                Task { await viewModel.load() }
+            ) { subscription in
+                // The purchase/restore result is the newest verified StoreKit fact. Apply it before
+                // dismissing the paywall, then reconcile asynchronously without allowing a lagging
+                // current-entitlements projection to immediately re-lock the Coach.
+                viewModel.acceptAuthoritativeGrant(subscription)
+                Task { await viewModel.reconcileAfterAuthoritativeGrant() }
             }
         }
         #endif

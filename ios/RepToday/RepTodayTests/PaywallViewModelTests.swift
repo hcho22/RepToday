@@ -7,8 +7,8 @@ import XCTest
 /// entitlement - all without gating anything. A configurable stub service exercises the success and
 /// failure paths:
 /// - `load()` populates plans, and surfaces a gentle message (not a wall) when none are available;
-/// - a successful purchase/restore flips `didUnlockPremium`; a user-cancel or a nothing-owned restore
-///   does not, and a failure surfaces a gentle message.
+/// - a successful purchase/restore preserves the exact Premium `Subscription` for its presenter; a
+///   user-cancel or a nothing-owned restore does not, and a failure surfaces a gentle message.
 final class PaywallViewModelTests: XCTestCase {
 
     // MARK: - Stub
@@ -101,6 +101,7 @@ final class PaywallViewModelTests: XCTestCase {
         await vm.purchase(SubscriptionPlan.samples[0])
 
         XCTAssertTrue(vm.didUnlockPremium, "a granted entitlement unlocks the gate")
+        XCTAssertEqual(vm.unlockedSubscription, premium, "the exact verified purchase grant is handed off")
         XCTAssertNil(vm.message)
         XCTAssertNil(vm.purchasingPlanID, "the in-flight marker clears when done")
     }
@@ -140,6 +141,7 @@ final class PaywallViewModelTests: XCTestCase {
         await vm.restore()
 
         XCTAssertTrue(vm.didUnlockPremium)
+        XCTAssertEqual(vm.unlockedSubscription, premium, "restore uses the same exact-subscription handoff")
         XCTAssertNil(vm.message)
     }
 

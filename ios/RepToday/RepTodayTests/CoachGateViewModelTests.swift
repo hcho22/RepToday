@@ -8,6 +8,21 @@ import XCTest
 @MainActor
 final class CoachGateViewModelTests: XCTestCase {
 
+    private final class MutableSubscriptionService: SubscriptionServiceProtocol {
+        var subscription: Subscription
+
+        init(subscription: Subscription) {
+            self.subscription = subscription
+        }
+
+        func currentSubscription() async throws -> Subscription { subscription }
+        func refreshEntitlements() async throws -> Subscription { subscription }
+        func premiumPlans() async throws -> [SubscriptionPlan] { SubscriptionPlan.samples }
+        func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome { .resolved(subscription) }
+        func purchasePremium() async throws -> Subscription { subscription }
+        func restorePurchases() async throws -> Subscription { subscription }
+    }
+
     /// A subscription service that always throws, to prove the gate fails safe (never unlocks) when
     /// the entitlement read errors.
     private struct ThrowingSubscriptionService: SubscriptionServiceProtocol {
@@ -52,12 +67,49 @@ final class CoachGateViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isPremium)
     }
 
-    /// The read is idempotent - a re-`load()` after an entitlement change reflects the new state.
+    /// The bounded post-purchase reconciliation is deliberately different from an ordinary load: a
+    /// transient failure cannot erase the verified result that triggered it, while a later ordinary
+    /// read still follows the gate's fail-safe behavior.
+    func testFailedImmediateReconciliationPreservesGrantButLaterLoadFailsSafe() async {
+        let vm = CoachGateViewModel(subscriptionService: ThrowingSubscriptionService())
+        vm.acceptAuthoritativeGrant(premiumSubscription())
+
+        await vm.reconcileAfterAuthoritativeGrant()
+        XCTAssertTrue(vm.isPremium)
+
+        await vm.load()
+        XCTAssertFalse(vm.isPremium)
+    }
+
+    /// Ordinary reads remain authoritative for out-of-band StoreKit changes: renewal/approval unlocks,
+    /// and a later expiry/refund locks the gate again.
     func testReloadReflectsEntitlementChange() async {
-        let vm = CoachGateViewModel(subscriptionService: MockSubscriptionService(subscription: premiumSubscription()))
+        let service = MutableSubscriptionService(subscription: .free)
+        let vm = CoachGateViewModel(subscriptionService: service)
+        await vm.load()
+        XCTAssertFalse(vm.isPremium)
+
+        service.subscription = premiumSubscription()
         await vm.load()
         XCTAssertTrue(vm.isPremium)
+
+        service.subscription = .free
         await vm.load()
+        XCTAssertFalse(vm.isPremium)
+    }
+
+    /// A just-returned verified purchase/restore result wins over the one immediately lagging cache
+    /// projection, while the next ordinary appearance read can still observe a real revocation.
+    func testAuthoritativeGrantSurvivesImmediateLaggingReconciliation() async {
+        let service = MutableSubscriptionService(subscription: .free)
+        let vm = CoachGateViewModel(subscriptionService: service)
+
+        vm.acceptAuthoritativeGrant(premiumSubscription())
+        await vm.reconcileAfterAuthoritativeGrant()
         XCTAssertTrue(vm.isPremium)
+        XCTAssertEqual(vm.subscription, premiumSubscription())
+
+        await vm.load()
+        XCTAssertFalse(vm.isPremium, "a later ordinary read remains authoritative for revocation")
     }
 }

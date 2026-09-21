@@ -69,7 +69,7 @@ struct ProgressTabView: View {
                 subscriptionService: subscriptionService,
                 analyticsService: analyticsService,
                 entryPoint: .progressUpsell
-            ) {
+            ) { _ in
                 Task { await viewModel.load() }
             }
         }
