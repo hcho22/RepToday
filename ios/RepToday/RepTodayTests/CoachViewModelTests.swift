@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import RepToday
 
 /// Tests US-AC02: the talking coach view model. It drives the send flow over a stub `CoachProxyClient`
@@ -50,6 +52,7 @@ final class CoachViewModelTests: XCTestCase {
     /// be cancelled. The view-model generation boundary must still discard the late result.
     private actor DeferredTransport: CoachProxyTransport {
         private var continuation: CheckedContinuation<(data: Data, statusCode: Int), Error>?
+        private var queuedReply: String?
         private(set) var callCount = 0
 
         func post(
@@ -59,12 +62,76 @@ final class CoachViewModelTests: XCTestCase {
             timeoutSeconds: Double
         ) async throws -> (data: Data, statusCode: Int) {
             callCount += 1
+            if let queuedReply {
+                self.queuedReply = nil
+                return (Data(#"{"reply":"\#(queuedReply)"}"#.utf8), 200)
+            }
             return try await withCheckedThrowingContinuation { continuation = $0 }
         }
 
         func succeed(with reply: String) {
-            continuation?.resume(returning: (Data(#"{"reply":"\#(reply)"}"#.utf8), 200))
+            guard let continuation else {
+                queuedReply = reply
+                return
+            }
+            continuation.resume(returning: (Data(#"{"reply":"\#(reply)"}"#.utf8), 200))
+            self.continuation = nil
+        }
+    }
+
+    private actor DeferredPolicyService: CoachPolicyServiceProtocol {
+        private let service: CoachSessionPolicyService
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var released = false
+        private(set) var callCount = 0
+        private(set) var completedCount = 0
+
+        init(store: any SessionPolicyStore) {
+            service = CoachSessionPolicyService(store: store)
+        }
+
+        func applyProposal(
+            _ proposal: CoachPolicyProposal,
+            for user: User,
+            asOf: Date,
+            authorization: any SessionPolicyWriteAuthorization
+        ) async throws -> SessionPolicy? {
+            callCount += 1
+            if !released {
+                await withCheckedContinuation { continuation = $0 }
+            }
+            defer { completedCount += 1 }
+            return try await service.applyProposal(
+                proposal,
+                for: user,
+                asOf: asOf,
+                authorization: authorization
+            )
+        }
+
+        func release() {
+            released = true
+            continuation?.resume()
             continuation = nil
+        }
+    }
+
+    private final class CoachHostState: ObservableObject {
+        @Published var isPresented = true
+    }
+
+    private struct CoachLifecycleHost: View {
+        @ObservedObject var state: CoachHostState
+        let viewModel: CoachViewModel
+
+        var body: some View {
+            NavigationStack {
+                if state.isPresented {
+                    CoachView(viewModel: viewModel)
+                } else {
+                    Text("Coach dismissed")
+                }
+            }
         }
     }
 
@@ -103,6 +170,18 @@ final class CoachViewModelTests: XCTestCase {
             workoutLogService: MockWorkoutLogService(),
             exerciseService: try! MockExerciseService()
         )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 1,
+        condition: @escaping @Sendable () async -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await condition() { return true }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return await condition()
     }
 
     // MARK: - Happy path
@@ -214,7 +293,14 @@ final class CoachViewModelTests: XCTestCase {
         viewModel.draft = "why squats?"
 
         let send = Task { await viewModel.send() }
-        while await transport.callCount == 0 { await Task.yield() }
+        let reachedTransport = await waitUntil { await transport.callCount > 0 }
+        guard reachedTransport else {
+            send.cancel()
+            await transport.succeed(with: "cleanup")
+            await send.value
+            XCTFail("the send did not reach the deferred transport before the deadline")
+            return
+        }
 
         viewModel.cancelPendingSend()
         send.cancel()
@@ -229,6 +315,68 @@ final class CoachViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
         XCTAssertTrue(viewModel.canRetry, "a late callback cannot clear the retry state")
         XCTAssertFalse(viewModel.isSending)
+    }
+
+    func testCoachSurfaceDepartureInvalidatesLatePolicyCommitAndReply() async throws {
+        var user = MockPersistence.sampleUser
+        user.id = "coach-surface-departure"
+        let store = InMemorySessionPolicyStore()
+        let policyService = DeferredPolicyService(store: store)
+        let transport = StubTransport(.success(reply: "Late provider reply", status: 200))
+        let viewModel = CoachViewModel(
+            client: CoachProxyClient(
+                endpoint: endpoint,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: transport
+            ),
+            userService: MockUserService(user: user),
+            workoutLogService: MockWorkoutLogService(),
+            exerciseService: try MockExerciseService(),
+            policyService: policyService
+        )
+        viewModel.grantDataSharingConsent()
+        viewModel.draft = "Focus my push."
+
+        let hostState = CoachHostState()
+        let services = ServiceContainer.mock()
+        let surface = HostedSurface.host(
+            CoachLifecycleHost(state: hostState, viewModel: viewModel)
+                .environment(\.services, services),
+            size: CGSize(width: 393, height: 852),
+            settleFor: 0.1
+        )
+        let root = try XCTUnwrap(surface.window.rootViewController?.view)
+        let send = try XCTUnwrap(AccessibilityTree.element(labeled: "Send", in: root))
+        XCTAssertTrue(send.accessibilityActivate())
+        _ = send.accessibilityActivate()
+
+        let reachedPolicy = await waitUntil { await policyService.callCount == 1 }
+        guard reachedPolicy else {
+            hostState.isPresented = false
+            await policyService.release()
+            XCTFail("the hosted send did not reach the deferred policy boundary before the deadline")
+            return
+        }
+        XCTAssertEqual(transport.callCount, 1)
+
+        hostState.isPresented = false
+        HostedSurface.pump(for: 0.2)
+
+        XCTAssertFalse(viewModel.isSending)
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+        XCTAssertTrue(viewModel.canRetry)
+
+        await policyService.release()
+        let completed = await waitUntil { await policyService.completedCount == 1 }
+        XCTAssertTrue(completed, "the ignored-cancellation callback did not settle before the deadline")
+
+        let storedPolicy = try await store.policy(for: user.id)
+        XCTAssertNil(storedPolicy)
+        XCTAssertEqual(viewModel.messages.map(\.text), ["Focus my push."])
+        XCTAssertEqual(viewModel.errorMessage, CoachViewModel.genericFailureMessage)
+        XCTAssertTrue(viewModel.canRetry)
+        XCTAssertFalse(viewModel.isSending)
+        _ = surface.host
     }
 
     func testSafetyRefusalShowsOwnedMessageWithoutRetry() async {

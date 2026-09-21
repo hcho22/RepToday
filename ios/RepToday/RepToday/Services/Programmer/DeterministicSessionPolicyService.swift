@@ -217,6 +217,16 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
 /// A protocol so the deterministic Programmer is testable without CoreData: `InMemorySessionPolicyStore`
 /// backs tests and previews, while `CoreDataSessionPolicyStore` (Persistence) backs the running app
 /// and, via `CDSessionPolicy`, lets the last-written policy survive relaunch and offline use.
+protocol SessionPolicyWriteAuthorization: Sendable {
+    func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T?
+}
+
+struct UnconditionalSessionPolicyWriteAuthorization: SessionPolicyWriteAuthorization {
+    func performIfAuthorized<T>(_ body: () throws -> T) rethrows -> T? {
+        try body()
+    }
+}
+
 protocol SessionPolicyStore {
     /// The current policy for `userId`, or `nil` when the Programmer has never written one.
     func policy(for userId: String) async throws -> SessionPolicy?
@@ -230,6 +240,7 @@ protocol SessionPolicyStore {
     /// moves and a coach preference overlay can never clobber each other through a read-then-save race.
     func update(
         for userId: String,
+        authorization: any SessionPolicyWriteAuthorization,
         transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
     ) async throws -> SessionPolicy?
     /// Delete every stored policy record, regardless of user id, for account deletion
@@ -238,6 +249,19 @@ protocol SessionPolicyStore {
     /// teardown completes even when the `CDUser` aggregate is corrupt. A no-op (never an error) when
     /// none is stored.
     func deleteAll() async throws
+}
+
+extension SessionPolicyStore {
+    func update(
+        for userId: String,
+        transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
+    ) async throws -> SessionPolicy? {
+        try await update(
+            for: userId,
+            authorization: UnconditionalSessionPolicyWriteAuthorization(),
+            transform: transform
+        )
+    }
 }
 
 /// An in-memory `SessionPolicyStore` for tests, previews, and the mock container. Deterministic and
@@ -259,14 +283,17 @@ actor InMemorySessionPolicyStore: SessionPolicyStore {
 
     func update(
         for userId: String,
+        authorization: any SessionPolicyWriteAuthorization,
         transform: @escaping @Sendable (SessionPolicy) -> SessionPolicy?
     ) async throws -> SessionPolicy? {
         // Atomic by construction: the actor method has no suspension point between the read and the
         // write, so no other writer's `save`/`update` can interleave.
         let current = policies[userId] ?? .default
         guard let next = transform(current) else { return nil }
-        policies[userId] = next
-        return next
+        return authorization.performIfAuthorized {
+            policies[userId] = next
+            return next
+        }
     }
 
     func deleteAll() async throws {

@@ -32,6 +32,7 @@ struct CoachView: View {
     /// `CoachViewModel.cancelPendingSend()` also invalidates the delivery generation, protecting
     /// against transports and Apple callbacks that complete after task cancellation.
     @State private var deliveryTask: Task<Void, Never>?
+    @State private var deliveryReservation: UUID?
 
     /// Drives the coach data disclosure overlay (US-AC04). Set on arrival only when the persisted
     /// acknowledgement does not match the current disclosure contract.
@@ -324,19 +325,31 @@ struct CoachView: View {
     // MARK: - Unavailable
 
     private func beginSend() {
-        guard !viewModel.isSending else { return }
-        deliveryTask = Task { await viewModel.send() }
+        beginDelivery { await viewModel.send() }
     }
 
     private func beginRetry() {
-        guard !viewModel.isSending else { return }
-        deliveryTask = Task { await viewModel.retryLastMessage() }
+        beginDelivery { await viewModel.retryLastMessage() }
+    }
+
+    private func beginDelivery(_ delivery: @escaping @MainActor () async -> Void) {
+        guard deliveryReservation == nil, !viewModel.isSending else { return }
+        let reservation = UUID()
+        deliveryReservation = reservation
+        deliveryTask = Task {
+            guard !Task.isCancelled else { return }
+            await delivery()
+            guard deliveryReservation == reservation else { return }
+            deliveryTask = nil
+            deliveryReservation = nil
+        }
     }
 
     private func cancelPendingSend() {
         viewModel.cancelPendingSend()
         deliveryTask?.cancel()
         deliveryTask = nil
+        deliveryReservation = nil
     }
 
     private var unavailableState: some View {

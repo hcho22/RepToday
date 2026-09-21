@@ -31,8 +31,24 @@ protocol CoachPolicyServiceProtocol {
     func applyProposal(
         _ proposal: CoachPolicyProposal,
         for user: User,
-        asOf: Date
+        asOf: Date,
+        authorization: any SessionPolicyWriteAuthorization
     ) async throws -> SessionPolicy?
+}
+
+extension CoachPolicyServiceProtocol {
+    func applyProposal(
+        _ proposal: CoachPolicyProposal,
+        for user: User,
+        asOf: Date
+    ) async throws -> SessionPolicy? {
+        try await applyProposal(
+            proposal,
+            for: user,
+            asOf: asOf,
+            authorization: UnconditionalSessionPolicyWriteAuthorization()
+        )
+    }
 }
 
 final class CoachSessionPolicyService: CoachPolicyServiceProtocol {
@@ -49,13 +65,14 @@ final class CoachSessionPolicyService: CoachPolicyServiceProtocol {
     func applyProposal(
         _ proposal: CoachPolicyProposal,
         for user: User,
-        asOf: Date
+        asOf: Date,
+        authorization: any SessionPolicyWriteAuthorization
     ) async throws -> SessionPolicy? {
         // Read-overlay-write **atomically** through the store's own isolation, so a deterministic
         // de-load / Re-entry Ramp can never land in a window between the coach's read and its save and
         // get clobbered by an overlay built on a stale base (ADR-0005). The transform runs on the
         // freshest in-force policy the store hands it, and returns `nil` to write nothing.
-        try await store.update(for: user.id) { current in
+        try await store.update(for: user.id, authorization: authorization) { current in
             // Overlay only the preference levers, each clamped to the engine's rails and direction-safe
             // (emphasis disjoint; rate ease-down-only; window narrow-only). Pure, no clock.
             let overlaid = current.applyingCoachProposal(proposal)
