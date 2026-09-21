@@ -33,6 +33,7 @@ final class CoachCoreWorkoutResilienceTests: XCTestCase {
             sessionCompletionService: base.sessionCompletionService,
             healthKitService: base.healthKitService,
             subscriptionService: base.subscriptionService,
+            premiumSessionAuthority: base.premiumSessionAuthority,
             authService: base.authService,
             analyticsService: base.analyticsService,
             accountDeletionService: base.accountDeletionService,

@@ -22,7 +22,10 @@ struct CoachEntryRow: View {
 
     /// Production entry: builds the gate over the container's subscription service.
     init(services: ServiceContainer) {
-        _viewModel = State(initialValue: CoachGateViewModel(subscriptionService: services.subscriptionService))
+        _viewModel = State(initialValue: CoachGateViewModel(
+            subscriptionService: services.subscriptionService,
+            premiumSessionAuthority: services.premiumSessionAuthority
+        ))
     }
 
     /// Test/preview seam: inject a pre-built gate view model (e.g. one over a Premium or free mock).

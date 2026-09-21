@@ -25,6 +25,7 @@ struct ServiceContainer {
     let sessionCompletionService: any SessionCompletionServiceProtocol
     let healthKitService: any HealthKitServiceProtocol
     let subscriptionService: any SubscriptionServiceProtocol
+    let premiumSessionAuthority: PremiumSessionAuthority
     let authService: any AuthServiceProtocol
     /// The anonymous product-telemetry sink (US-T02; live transport at US-T04). Additive and never
     /// gates the core loop, but it carries no initializer default: every construction site wires it
@@ -65,6 +66,7 @@ struct ServiceContainer {
         sessionCompletionService: any SessionCompletionServiceProtocol,
         healthKitService: any HealthKitServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
+        premiumSessionAuthority: PremiumSessionAuthority,
         authService: any AuthServiceProtocol,
         analyticsService: any AnalyticsServiceProtocol,
         accountDeletionService: any AccountDeletionServiceProtocol,
@@ -82,6 +84,7 @@ struct ServiceContainer {
         self.sessionCompletionService = sessionCompletionService
         self.healthKitService = healthKitService
         self.subscriptionService = subscriptionService
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.authService = authService
         self.analyticsService = analyticsService
         self.accountDeletionService = accountDeletionService
@@ -151,6 +154,7 @@ struct ServiceContainer {
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
+            premiumSessionAuthority: PremiumSessionAuthority(),
             authService: authService,
             // The in-memory telemetry sink (US-T02): records events for test assertions, no I/O.
             analyticsService: MockAnalyticsService(),
@@ -302,6 +306,11 @@ struct ServiceContainer {
         )
         let resolvedCoachClient = resolvedCoachAuthentication.client
         let coachAuthenticationCleanup = resolvedCoachAuthentication.accountCleanup
+        let premiumSessionAuthority = PremiumSessionAuthority()
+        let subscriptionService = StoreKitSubscriptionService.live(
+            analytics: resolvedAnalyticsService,
+            premiumSessionAuthority: premiumSessionAuthority
+        )
         return ServiceContainer(
             exerciseService: exerciseService,
             workoutEngine: MockWorkoutEngine(exerciseService: exerciseService),
@@ -335,7 +344,8 @@ struct ServiceContainer {
             // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
             // The same resolved, consent-gated telemetry service is injected into its lifetime
             // transaction observer for the verified trial-to-paid `subscribe` boundary.
-            subscriptionService: StoreKitSubscriptionService.live(analytics: resolvedAnalyticsService),
+            subscriptionService: subscriptionService,
+            premiumSessionAuthority: premiumSessionAuthority,
             // Real Keychain-backed Sign in with Apple (US-N01).
             authService: authService,
             // The same telemetry sink resolved above (`resolvedAnalyticsService`), so the container and

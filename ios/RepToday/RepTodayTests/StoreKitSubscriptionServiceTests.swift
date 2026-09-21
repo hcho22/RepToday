@@ -315,6 +315,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         originalID: UInt64,
         productID: String = SubscriptionPlan.ProductID.monthly,
         day: TimeInterval,
+        expiresAt: Date? = nil,
         reason: StoreSubscriptionTransaction.Reason,
         payment: StoreSubscriptionTransaction.Payment,
         isAutoRenewable: Bool = true,
@@ -327,6 +328,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
             originalID: originalID,
             productID: productID,
             purchaseDate: Date(timeIntervalSince1970: day * 86_400),
+            expiresAt: expiresAt,
             reason: reason,
             payment: payment,
             isAutoRenewable: isAutoRenewable,
@@ -394,6 +396,134 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         let current = try await service(facade).currentSubscription()
         let refreshed = try await service(facade).refreshEntitlements()
         XCTAssertEqual(current, refreshed)
+    }
+
+    @MainActor
+    func testVerifiedActiveTransactionUpdateGrantsSharedPremiumSessionWhenSnapshotLags() async {
+        let authority = PremiumSessionAuthority()
+        let expiry = Date().addingTimeInterval(3_600)
+        let update = storeTransaction(
+            id: 390,
+            originalID: 390,
+            day: 1,
+            expiresAt: expiry,
+            reason: .purchase,
+            payment: .introductoryFreeTrial
+        )
+        let facade = ObservingFacade(entitlements: [], updates: [.verified(update)])
+        let service = StoreKitSubscriptionService(
+            facade: facade,
+            premiumSessionAuthority: authority
+        )
+
+        await service.startObservingTransactions().value
+
+        let reconstructedGate = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: authority
+        )
+        await reconstructedGate.load()
+        XCTAssertTrue(reconstructedGate.isPremium)
+        XCTAssertEqual(reconstructedGate.subscription.expiresAt, expiry)
+        XCTAssertEqual(reconstructedGate.subscription.trialEndsAt, expiry)
+    }
+
+    @MainActor
+    func testVerifiedRevocationAndExpiryUpdatesClearSharedPremiumSession() async {
+        let now = Date()
+        let staleEntitlement = premiumEntitlement(expiresAt: now.addingTimeInterval(3_600))
+        let cases = [
+            (
+                storeTransaction(
+                    id: 391,
+                    originalID: 391,
+                    day: 1,
+                    expiresAt: staleEntitlement.expiresAt,
+                    reason: .other,
+                    payment: .paid,
+                    isRevoked: true
+                ),
+                [staleEntitlement]
+            ),
+            (
+                storeTransaction(
+                    id: 392,
+                    originalID: 392,
+                    day: 1,
+                    expiresAt: now.addingTimeInterval(-3_600),
+                    reason: .other,
+                    payment: .paid
+                ),
+                []
+            )
+        ]
+
+        for (update, entitlements) in cases {
+            let authority = PremiumSessionAuthority()
+            authority.acceptGrant(
+                Subscription(
+                    tier: .premium,
+                    provider: .apple,
+                    expiresAt: staleEntitlement.expiresAt,
+                    trialEndsAt: nil
+                )
+            )
+            let facade = ObservingFacade(
+                entitlements: entitlements,
+                updates: [.verified(update)]
+            )
+            let service = StoreKitSubscriptionService(
+                facade: facade,
+                premiumSessionAuthority: authority
+            )
+
+            await service.startObservingTransactions().value
+
+            let reconstructedGate = CoachGateViewModel(
+                subscriptionService: service,
+                premiumSessionAuthority: authority
+            )
+            await reconstructedGate.load()
+            XCTAssertFalse(reconstructedGate.isPremium)
+            XCTAssertEqual(reconstructedGate.subscription, .free)
+        }
+    }
+
+    @MainActor
+    func testRevokedHistoricalUpdateKeepsNewerActiveEntitlement() async {
+        let now = Date()
+        let authority = PremiumSessionAuthority()
+        let laterEntitlement = premiumEntitlement(expiresAt: now.addingTimeInterval(7_200))
+        authority.acceptGrant(
+            Subscription(
+                tier: .premium,
+                provider: .apple,
+                expiresAt: laterEntitlement.expiresAt,
+                trialEndsAt: nil
+            )
+        )
+        let revokedEarlierTransaction = storeTransaction(
+            id: 393,
+            originalID: 393,
+            day: 1,
+            expiresAt: now.addingTimeInterval(3_600),
+            reason: .other,
+            payment: .paid,
+            isRevoked: true
+        )
+        let facade = ObservingFacade(
+            entitlements: [laterEntitlement],
+            updates: [.verified(revokedEarlierTransaction)]
+        )
+        let service = StoreKitSubscriptionService(
+            facade: facade,
+            premiumSessionAuthority: authority
+        )
+
+        await service.startObservingTransactions().value
+
+        XCTAssertEqual(authority.subscription.tier, .premium)
+        XCTAssertEqual(authority.subscription.expiresAt, laterEntitlement.expiresAt)
     }
 
     // MARK: - Plans

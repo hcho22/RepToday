@@ -68,6 +68,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
             sessionCompletionService: base.sessionCompletionService,
             healthKitService: base.healthKitService,
             subscriptionService: subscriptionService,
+            premiumSessionAuthority: base.premiumSessionAuthority,
             authService: base.authService,
             analyticsService: base.analyticsService,
             accountDeletionService: base.accountDeletionService,

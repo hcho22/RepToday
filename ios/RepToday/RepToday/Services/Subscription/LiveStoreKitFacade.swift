@@ -328,6 +328,7 @@ final class LiveStoreKitFacade: StoreKitFacade {
             originalID: transaction.originalID,
             productID: transaction.productID,
             purchaseDate: transaction.purchaseDate,
+            expiresAt: transaction.expirationDate,
             reason: reason,
             payment: payment(for: transaction),
             isAutoRenewable: transaction.productType == .autoRenewable,

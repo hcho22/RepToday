@@ -1,4 +1,47 @@
 import Foundation
+import Observation
+
+@Observable
+final class PremiumSessionAuthority: @unchecked Sendable {
+    private(set) var subscription: Subscription = .free
+
+    private var authoritativeTier: SubscriptionTier?
+    private var readGeneration = 0
+
+    @MainActor
+    func beginRead() -> Int {
+        readGeneration &+= 1
+        return readGeneration
+    }
+
+    @MainActor
+    func acceptSnapshot(_ subscription: Subscription, generation: Int) {
+        guard generation == readGeneration else { return }
+        guard authoritativeTier == nil || subscription.tier == authoritativeTier else { return }
+        self.subscription = subscription
+    }
+
+    @MainActor
+    func acceptReadFailure(generation: Int) {
+        guard generation == readGeneration, authoritativeTier == nil else { return }
+        subscription = .free
+    }
+
+    @MainActor
+    func acceptGrant(_ subscription: Subscription) {
+        guard subscription.tier == .premium else { return }
+        _ = beginRead()
+        authoritativeTier = .premium
+        self.subscription = subscription
+    }
+
+    @MainActor
+    func acceptStoreKitUpdate(_ subscription: Subscription) {
+        _ = beginRead()
+        authoritativeTier = subscription.tier
+        self.subscription = subscription
+    }
+}
 
 /// The real StoreKit 2 subscription service (US-N04).
 ///
@@ -22,12 +65,14 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     private let productIDs: [String]
     private let trialConversionObserver: TrialConversionObserver
     private let restoreGate: RestoreOperationGate
+    private let premiumSessionAuthority: PremiumSessionAuthority
 
     init(
         facade: any StoreKitFacade,
         productIDs: [String] = SubscriptionPlan.ProductID.all,
         analytics: (any AnalyticsServiceProtocol)? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority()
     ) {
         self.facade = facade
         self.productIDs = productIDs
@@ -37,6 +82,7 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             userDefaults: userDefaults
         )
         self.restoreGate = RestoreOperationGate()
+        self.premiumSessionAuthority = premiumSessionAuthority
     }
 
     // MARK: - Entitlement
@@ -125,17 +171,31 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     func startObservingTransactions() -> Task<Void, Never> {
         let facade = facade
         let observer = trialConversionObserver
+        let premiumSessionAuthority = premiumSessionAuthority
         return facade.listenForTransactions { update in
-            // No history read for an unverified update: it can neither grant access nor prove a
-            // conversion. Verified updates are processed off the core loop by the app-owned listener.
-            guard let observation = await observer.capture(update) else { return nil }
+            guard case .verified(let transaction) = update else { return nil }
+            let observation = await observer.capture(update)
             return StoreTransactionProcessing(
                 operation: {
-                    let history = await facade.transactionHistory()
-                    await observer.observe(observation, history: history)
+                    if transaction.isAutoRenewable {
+                        let entitlements = await facade.currentEntitlements()
+                        if let subscription = Self.sessionSubscription(
+                            for: transaction,
+                            currentEntitlements: entitlements,
+                            asOf: Date()
+                        ) {
+                            await premiumSessionAuthority.acceptStoreKitUpdate(subscription)
+                        }
+                    }
+                    if let observation {
+                        let history = await facade.transactionHistory()
+                        await observer.observe(observation, history: history)
+                    }
                 },
                 disposal: {
-                    await observer.discard(observation)
+                    if let observation {
+                        await observer.discard(observation)
+                    }
                 }
             )
         }
@@ -160,6 +220,31 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
 
     private static func keyDate(_ entitlement: StoreEntitlement) -> Date {
         entitlement.expiresAt ?? .distantFuture
+    }
+
+    private static func sessionSubscription(
+        for transaction: StoreSubscriptionTransaction,
+        currentEntitlements: [StoreEntitlement],
+        asOf: Date
+    ) -> Subscription? {
+        guard transaction.isAutoRenewable else { return nil }
+        if transaction.isRevoked || transaction.expiresAt.map({ $0 <= asOf }) == true {
+            let invalidatedExpiry = transaction.expiresAt ?? .distantFuture
+            return subscription(
+                from: currentEntitlements.filter {
+                    $0.productID != transaction.productID || keyDate($0) > invalidatedExpiry
+                }
+            )
+        }
+        guard !transaction.isUpgraded else { return nil }
+        let fresh = StoreEntitlement(
+            productID: transaction.productID,
+            expiresAt: transaction.expiresAt,
+            isInTrialPeriod: transaction.payment == .introductoryFreeTrial
+        )
+        var merged = currentEntitlements
+        merged.append(fresh)
+        return subscription(from: merged)
     }
 
     private static func plan(from product: StoreProduct) -> SubscriptionPlan {
@@ -780,7 +865,14 @@ actor TrialConversionObserver {
 extension StoreKitSubscriptionService {
     /// Production wiring: the real StoreKit 2 facade. `mock()` keeps `MockSubscriptionService` so the
     /// suite and previews stay off the App Store and deterministic.
-    static func live(analytics: any AnalyticsServiceProtocol) -> StoreKitSubscriptionService {
-        StoreKitSubscriptionService(facade: LiveStoreKitFacade(), analytics: analytics)
+    static func live(
+        analytics: any AnalyticsServiceProtocol,
+        premiumSessionAuthority: PremiumSessionAuthority
+    ) -> StoreKitSubscriptionService {
+        StoreKitSubscriptionService(
+            facade: LiveStoreKitFacade(),
+            analytics: analytics,
+            premiumSessionAuthority: premiumSessionAuthority
+        )
     }
 }

@@ -158,28 +158,43 @@ final class CoachGateViewModelTests: XCTestCase {
         XCTAssertEqual(vm.subscription, premiumSubscription())
     }
 
-    /// Session authority is in memory only: a newly constructed gate starts from current StoreKit
-    /// entitlements rather than inheriting an earlier gate's verified handoff.
-    func testFreshGateStartsOnlyFromCurrentEntitlements() async {
+    func testSessionGrantSurvivesGateReconstructionButFreshSessionStartsFromEntitlements() async {
         let service = MutableSubscriptionService(subscription: .free)
-        let grantedGate = CoachGateViewModel(subscriptionService: service)
+        let sessionAuthority = PremiumSessionAuthority()
+        let grantedGate = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: sessionAuthority
+        )
         grantedGate.acceptAuthoritativeGrant(premiumSubscription())
         await grantedGate.load()
         XCTAssertTrue(grantedGate.isPremium)
 
-        let freshGate = CoachGateViewModel(subscriptionService: service)
+        let reconstructedGate = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: sessionAuthority
+        )
+        await reconstructedGate.load()
+        XCTAssertTrue(reconstructedGate.isPremium)
+        XCTAssertEqual(reconstructedGate.subscription, premiumSubscription())
+
+        let freshGate = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: PremiumSessionAuthority()
+        )
         await freshGate.load()
         XCTAssertFalse(freshGate.isPremium)
     }
 
-    /// A verified StoreKit revocation/refund/expiry update is newer evidence than the session grant
-    /// and may lock the Coach immediately without waiting for another cache projection.
     func testExplicitStoreKitRevocationClearsSessionGrant() async {
         let service = MutableSubscriptionService(subscription: premiumSubscription())
-        let vm = CoachGateViewModel(subscriptionService: service)
+        let sessionAuthority = PremiumSessionAuthority()
+        let vm = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: sessionAuthority
+        )
         vm.acceptAuthoritativeGrant(premiumSubscription())
 
-        vm.acceptAuthoritativeStoreKitUpdate(.free)
+        sessionAuthority.acceptStoreKitUpdate(.free)
         await vm.load()
 
         XCTAssertFalse(vm.isPremium)
@@ -190,7 +205,15 @@ final class CoachGateViewModelTests: XCTestCase {
     /// overwrite a later tab-entry load, even when the older result finishes last.
     func testOlderReconciliationCannotOverwriteNewerAuthoritativeLoad() async {
         let service = SuspendedSubscriptionService()
-        let vm = CoachGateViewModel(subscriptionService: service)
+        let sessionAuthority = PremiumSessionAuthority()
+        let firstGate = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: sessionAuthority
+        )
+        let reconstructedGate = CoachGateViewModel(
+            subscriptionService: service,
+            premiumSessionAuthority: sessionAuthority
+        )
         let originalGrant = Subscription(
             tier: .premium,
             provider: .apple,
@@ -203,11 +226,11 @@ final class CoachGateViewModelTests: XCTestCase {
             expiresAt: Date(timeIntervalSince1970: 2_000),
             trialEndsAt: nil
         )
-        vm.acceptAuthoritativeGrant(originalGrant)
+        firstGate.acceptAuthoritativeGrant(originalGrant)
 
-        let reconciliation = Task { await vm.reconcileAfterAuthoritativeGrant() }
+        let reconciliation = Task { await firstGate.reconcileAfterAuthoritativeGrant() }
         await service.waitForRequestCount(1)
-        let newerLoad = Task { await vm.load() }
+        let newerLoad = Task { await reconstructedGate.load() }
         await service.waitForRequestCount(2)
 
         await service.resolveRequest(1, with: .free)
@@ -215,7 +238,9 @@ final class CoachGateViewModelTests: XCTestCase {
         await service.resolveRequest(0, with: staleReconciliation)
         await reconciliation.value
 
-        XCTAssertEqual(vm.subscription, originalGrant)
-        XCTAssertTrue(vm.isPremium)
+        XCTAssertEqual(firstGate.subscription, originalGrant)
+        XCTAssertEqual(reconstructedGate.subscription, originalGrant)
+        XCTAssertTrue(firstGate.isPremium)
+        XCTAssertTrue(reconstructedGate.isPremium)
     }
 }

@@ -691,6 +691,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             ),
             healthKitService: MockHealthKitService(),
             subscriptionService: MockSubscriptionService(),
+            premiumSessionAuthority: PremiumSessionAuthority(),
             authService: authService,
             analyticsService: MockAnalyticsService(),
             accountDeletionService: AccountDeletionService(

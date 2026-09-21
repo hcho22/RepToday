@@ -64,6 +64,7 @@ struct StoreSubscriptionTransaction: Equatable, Sendable {
     let originalID: UInt64
     let productID: String
     let purchaseDate: Date
+    let expiresAt: Date?
     let reason: Reason
     let payment: Payment
     let isAutoRenewable: Bool
