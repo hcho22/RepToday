@@ -23,6 +23,50 @@ final class CoachGateViewModelTests: XCTestCase {
         func restorePurchases() async throws -> Subscription { subscription }
     }
 
+    private actor SuspendedSubscriptionService: SubscriptionServiceProtocol {
+        private var nextRequestID = 0
+        private var reads: [Int: CheckedContinuation<Subscription, Error>] = [:]
+        private var requestWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+        func currentSubscription() async throws -> Subscription {
+            let requestID = nextRequestID
+            nextRequestID += 1
+            return try await withCheckedThrowingContinuation { continuation in
+                reads[requestID] = continuation
+                resumeRequestWaiters()
+            }
+        }
+
+        func waitForRequestCount(_ count: Int) async {
+            guard reads.count < count else { return }
+            await withCheckedContinuation { continuation in
+                requestWaiters.append((count, continuation))
+            }
+        }
+
+        func resolveRequest(_ requestID: Int, with subscription: Subscription) {
+            reads.removeValue(forKey: requestID)?.resume(returning: subscription)
+        }
+
+        private func resumeRequestWaiters() {
+            var pending: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+            for waiter in requestWaiters {
+                if reads.count >= waiter.count {
+                    waiter.continuation.resume()
+                } else {
+                    pending.append(waiter)
+                }
+            }
+            requestWaiters = pending
+        }
+
+        func refreshEntitlements() async throws -> Subscription { .free }
+        func premiumPlans() async throws -> [SubscriptionPlan] { SubscriptionPlan.samples }
+        func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome { .resolved(.free) }
+        func purchasePremium() async throws -> Subscription { .free }
+        func restorePurchases() async throws -> Subscription { .free }
+    }
+
     /// A subscription service that always throws, to prove the gate fails safe (never unlocks) when
     /// the entitlement read errors.
     private struct ThrowingSubscriptionService: SubscriptionServiceProtocol {
@@ -67,18 +111,20 @@ final class CoachGateViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isPremium)
     }
 
-    /// The bounded post-purchase reconciliation is deliberately different from an ordinary load: a
-    /// transient failure cannot erase the verified result that triggered it, while a later ordinary
-    /// read still follows the gate's fail-safe behavior.
-    func testFailedImmediateReconciliationPreservesGrantButLaterLoadFailsSafe() async {
+    /// A verified purchase/restore grant remains authoritative for the gate's lifetime, including
+    /// repeated appearances whose cached entitlement reads are empty or fail.
+    func testAuthoritativeGrantSurvivesTabReentryWithEmptyOrFailedReads() async {
         let vm = CoachGateViewModel(subscriptionService: ThrowingSubscriptionService())
-        vm.acceptAuthoritativeGrant(premiumSubscription())
+        let grant = premiumSubscription()
+        vm.acceptAuthoritativeGrant(grant)
 
         await vm.reconcileAfterAuthoritativeGrant()
         XCTAssertTrue(vm.isPremium)
 
         await vm.load()
-        XCTAssertFalse(vm.isPremium)
+        await vm.load()
+        XCTAssertTrue(vm.isPremium)
+        XCTAssertEqual(vm.subscription, grant)
     }
 
     /// Ordinary reads remain authoritative for out-of-band StoreKit changes: renewal/approval unlocks,
@@ -98,18 +144,78 @@ final class CoachGateViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isPremium)
     }
 
-    /// A just-returned verified purchase/restore result wins over the one immediately lagging cache
-    /// projection, while the next ordinary appearance read can still observe a real revocation.
-    func testAuthoritativeGrantSurvivesImmediateLaggingReconciliation() async {
+    /// A just-returned verified purchase/restore result wins over every lagging cache projection in
+    /// this gate session, including the ordinary reads triggered by tab re-entry.
+    func testAuthoritativeGrantSurvivesLaggingReconciliationAndTabReentry() async {
         let service = MutableSubscriptionService(subscription: .free)
         let vm = CoachGateViewModel(subscriptionService: service)
 
         vm.acceptAuthoritativeGrant(premiumSubscription())
         await vm.reconcileAfterAuthoritativeGrant()
+        await vm.load()
+        await vm.load()
         XCTAssertTrue(vm.isPremium)
         XCTAssertEqual(vm.subscription, premiumSubscription())
+    }
 
+    /// Session authority is in memory only: a newly constructed gate starts from current StoreKit
+    /// entitlements rather than inheriting an earlier gate's verified handoff.
+    func testFreshGateStartsOnlyFromCurrentEntitlements() async {
+        let service = MutableSubscriptionService(subscription: .free)
+        let grantedGate = CoachGateViewModel(subscriptionService: service)
+        grantedGate.acceptAuthoritativeGrant(premiumSubscription())
+        await grantedGate.load()
+        XCTAssertTrue(grantedGate.isPremium)
+
+        let freshGate = CoachGateViewModel(subscriptionService: service)
+        await freshGate.load()
+        XCTAssertFalse(freshGate.isPremium)
+    }
+
+    /// A verified StoreKit revocation/refund/expiry update is newer evidence than the session grant
+    /// and may lock the Coach immediately without waiting for another cache projection.
+    func testExplicitStoreKitRevocationClearsSessionGrant() async {
+        let service = MutableSubscriptionService(subscription: premiumSubscription())
+        let vm = CoachGateViewModel(subscriptionService: service)
+        vm.acceptAuthoritativeGrant(premiumSubscription())
+
+        vm.acceptAuthoritativeStoreKitUpdate(.free)
         await vm.load()
-        XCTAssertFalse(vm.isPremium, "a later ordinary read remains authoritative for revocation")
+
+        XCTAssertFalse(vm.isPremium)
+        XCTAssertEqual(vm.subscription, .free)
+    }
+
+    /// All asynchronous reads share one generation: a reconciliation that started first cannot
+    /// overwrite a later tab-entry load, even when the older result finishes last.
+    func testOlderReconciliationCannotOverwriteNewerAuthoritativeLoad() async {
+        let service = SuspendedSubscriptionService()
+        let vm = CoachGateViewModel(subscriptionService: service)
+        let originalGrant = Subscription(
+            tier: .premium,
+            provider: .apple,
+            expiresAt: Date(timeIntervalSince1970: 1_000),
+            trialEndsAt: nil
+        )
+        let staleReconciliation = Subscription(
+            tier: .premium,
+            provider: .apple,
+            expiresAt: Date(timeIntervalSince1970: 2_000),
+            trialEndsAt: nil
+        )
+        vm.acceptAuthoritativeGrant(originalGrant)
+
+        let reconciliation = Task { await vm.reconcileAfterAuthoritativeGrant() }
+        await service.waitForRequestCount(1)
+        let newerLoad = Task { await vm.load() }
+        await service.waitForRequestCount(2)
+
+        await service.resolveRequest(1, with: .free)
+        await newerLoad.value
+        await service.resolveRequest(0, with: staleReconciliation)
+        await reconciliation.value
+
+        XCTAssertEqual(vm.subscription, originalGrant)
+        XCTAssertTrue(vm.isPremium)
     }
 }

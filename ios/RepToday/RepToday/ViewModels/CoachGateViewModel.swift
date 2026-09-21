@@ -12,11 +12,9 @@ import Observation
 /// than silently unlocking a paid surface. Nothing here touches or blocks the core loop - it is read
 /// off the Profile tab, not the Home/Ready critical path.
 ///
-/// A verified purchase/restore result is more recent than an immediately repeated StoreKit entitlement
-/// projection. `acceptAuthoritativeGrant(_:)` therefore opens the gate synchronously, while
-/// `reconcileAfterAuthoritativeGrant()` refreshes in the background without allowing that one lagging
-/// projection to revoke the grant. A later ordinary `load()` remains authoritative, preserving
-/// out-of-band renewal/refund behavior on the next appearance.
+/// A verified purchase/restore result is more recent than StoreKit's cached entitlement projection.
+/// `acceptAuthoritativeGrant(_:)` therefore keeps that grant authoritative for this view-model session;
+/// ordinary empty reads cannot erase it, while an explicit StoreKit update can.
 @Observable
 final class CoachGateViewModel {
 
@@ -31,30 +29,29 @@ final class CoachGateViewModel {
 
     private let subscriptionService: any SubscriptionServiceProtocol
 
-    /// Changes whenever this instance accepts a newer authoritative paywall result. An entitlement
-    /// read that started before the change is stale by definition and must not overwrite the grant.
-    private var authoritativeGrantRevision = 0
+    private var authoritativeSessionTier: SubscriptionTier?
+    private var readGeneration = 0
 
     init(subscriptionService: any SubscriptionServiceProtocol) {
         self.subscriptionService = subscriptionService
     }
 
-    /// Read the current entitlement. Idempotent and safe to call on every appear; best-effort, so a
-    /// throwing read fails safe to the locked state rather than surfacing an error or gating anything.
-    /// (The one bounded post-grant reconciliation has separate, non-revoking semantics below.)
-    ///
-    /// Capturing the revision before suspension prevents a read already in flight when a purchase
-    /// completes from overwriting the newer verified result when it resumes.
+    /// Read the current entitlement. Before a purchase/restore handoff, a missing or throwing read
+    /// fails safe to the locked state. After one, the verified grant remains authoritative until an
+    /// explicit StoreKit update supersedes it.
     @MainActor
     func load() async {
-        let revisionAtStart = authoritativeGrantRevision
+        let generation = nextReadGeneration()
         do {
             let subscription = try await subscriptionService.currentSubscription()
-            guard revisionAtStart == authoritativeGrantRevision else { return }
+            guard generation == readGeneration else { return }
+            guard authoritativeSessionTier == nil || subscription.tier == authoritativeSessionTier else { return }
             self.subscription = subscription
         } catch {
-            guard revisionAtStart == authoritativeGrantRevision else { return }
-            self.subscription = .free
+            guard generation == readGeneration else { return }
+            if authoritativeSessionTier == nil {
+                self.subscription = .free
+            }
         }
     }
 
@@ -63,21 +60,34 @@ final class CoachGateViewModel {
     @MainActor
     func acceptAuthoritativeGrant(_ subscription: Subscription) {
         guard subscription.tier == .premium else { return }
-        authoritativeGrantRevision &+= 1
+        _ = nextReadGeneration()
+        authoritativeSessionTier = .premium
         self.subscription = subscription
     }
 
-    /// Re-read StoreKit after an authoritative grant without treating an immediately lagging free
-    /// projection as a revocation. A later ordinary `load()` still reflects the then-current state,
-    /// including an out-of-band expiry/refund, while a Premium result here confirms the gate.
+    @MainActor
+    func acceptAuthoritativeStoreKitUpdate(_ subscription: Subscription) {
+        _ = nextReadGeneration()
+        authoritativeSessionTier = subscription.tier
+        self.subscription = subscription
+    }
+
+    /// Re-read StoreKit after an authoritative grant without treating a lagging empty projection as
+    /// a revocation. Every read shares one generation, so the latest-started operation owns the commit.
     @MainActor
     func reconcileAfterAuthoritativeGrant() async {
-        let revisionAtStart = authoritativeGrantRevision
         guard isPremium else { return }
+        let generation = nextReadGeneration()
         guard let subscription = try? await subscriptionService.currentSubscription() else { return }
-        guard revisionAtStart == authoritativeGrantRevision else { return }
+        guard generation == readGeneration else { return }
         if subscription.tier == .premium {
             self.subscription = subscription
         }
+    }
+
+    @MainActor
+    private func nextReadGeneration() -> Int {
+        readGeneration &+= 1
+        return readGeneration
     }
 }
