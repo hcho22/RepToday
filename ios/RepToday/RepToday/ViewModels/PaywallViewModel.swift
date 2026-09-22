@@ -6,8 +6,8 @@ import Observation
 /// It loads the purchasable plans (priced by StoreKit), drives a purchase or a restore, and reflects
 /// the resulting entitlement. Nothing here gates the core loop: the paywall is a dismissible sheet, a
 /// load/purchase failure surfaces a gentle message (never a wall), and the free tier keeps working
-/// unlimited. On a successful unlock `unlockedSubscription` carries the exact verified grant back to
-/// the presenter, so a lagging entitlement-cache projection cannot immediately erase it.
+/// unlimited. On a successful unlock `unlockedGrant` carries the exact verified subscription and
+/// transaction provenance back to the presenter, so a lagging entitlement projection cannot erase it.
 ///
 /// Like the other v6 view models it is `@Observable` and takes its service as a protocol, so previews
 /// and tests inject the mock.
@@ -115,8 +115,8 @@ final class PaywallViewModel {
 
     /// Purchase the selected plan. A user cancel is silent (no message, no unlock); a purchase left
     /// awaiting approval (Ask to Buy) surfaces a gentle "waiting" note without unlocking; a real
-    /// failure surfaces a gentle message. On a granted entitlement `unlockedSubscription` retains
-    /// the exact verified value for the presenter.
+    /// failure surfaces a gentle message. On a granted entitlement `unlockedGrant` retains the exact
+    /// verified value and provenance for the presenter.
     func purchase(_ plan: SubscriptionPlan) async {
         guard !isBusy else { return }
         purchasingPlanID = plan.id

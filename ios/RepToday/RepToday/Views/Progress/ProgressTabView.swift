@@ -67,9 +67,9 @@ struct ProgressTabView: View {
         }
         .task { await viewModel.load() }
         .sheet(isPresented: $showPaywall) {
-            // On a successful unlock the paywall dismisses itself and calls this, so the gated depth
-            // layer swaps in without leaving the tab. The reload is best-effort; the core loop and the
-            // free surfaces are never affected.
+            // The paywall accepts the exact verified grant into the shared authority before dismissal
+            // and this callback, so the gated layer survives an immediately lagging entitlement read.
+            // The reload is best-effort; the core loop and free surfaces are never affected.
             PaywallView(
                 subscriptionService: subscriptionService,
                 premiumSessionAuthority: premiumSessionAuthority,

@@ -7,14 +7,13 @@ import Observation
 /// layer use, no new billing path - and exposes a single `isPremium` the coach entry point branches
 /// on: Premium navigates into the coach, free opens the paywall.
 ///
-/// The read is best-effort and defaults to the safe, non-unlocking state: `isPremium` starts `false`
-/// and a throwing entitlement read leaves it `false`, so a transient failure shows the upsell rather
-/// than silently unlocking a paid surface. Nothing here touches or blocks the core loop - it is read
-/// off the Profile tab, not the Home/Ready critical path.
+/// The read is best-effort and defaults to the safe, non-unlocking state: a fresh application-session
+/// authority starts free, and a throwing read cannot fabricate an unlock. Once a stronger verified
+/// grant or update exists, a weaker failed/lagging read also cannot erase it. Nothing here touches or
+/// blocks the core loop - it is read off the Profile tab, not the Home/Ready critical path.
 ///
-/// A verified purchase/restore result is more recent than StoreKit's cached entitlement projection.
-/// `acceptAuthoritativeGrant(_:)` therefore keeps that grant authoritative for this application session;
-/// ordinary empty reads cannot erase it, while an explicit StoreKit update can.
+/// Purchase/restore handoff, signed snapshots, and verified StoreKit updates converge on the shared
+/// `PremiumSessionAuthority`, so reconstructed Coach gates in the same process see the same decision.
 @Observable
 final class CoachGateViewModel {
 
@@ -38,9 +37,8 @@ final class CoachGateViewModel {
         self.premiumSessionAuthority = premiumSessionAuthority
     }
 
-    /// Read the current entitlement. Before a purchase/restore handoff, a missing or throwing read
-    /// fails safe to the locked state. After one, the verified grant remains authoritative until an
-    /// explicit StoreKit update supersedes it.
+    /// Read the current entitlement with signed provenance when the live StoreKit service supplies it.
+    /// A missing or throwing first read fails safe; an accepted stronger authority is preserved.
     @MainActor
     func load() async {
         let token = premiumSessionAuthority.beginRead()
@@ -52,8 +50,9 @@ final class CoachGateViewModel {
         }
     }
 
-    /// Apply the exact verified Premium result returned by a purchase or restore. This is synchronous
-    /// so the paywall handoff cannot briefly re-lock the Coach between dismissal and reconciliation.
+    /// Compatibility seam for applying a Premium result directly to this gate. Production paywalls
+    /// first accept the full provenance-bearing `SubscriptionGrant` into the shared authority, then
+    /// call their subscription-only presentation callback.
     @MainActor
     func acceptAuthoritativeGrant(_ subscription: Subscription) {
         premiumSessionAuthority.acceptGrant(subscription)

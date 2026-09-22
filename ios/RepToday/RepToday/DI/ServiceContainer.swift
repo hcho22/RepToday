@@ -342,7 +342,8 @@ struct ServiceContainer {
             healthKitService: healthKitService,
             // Real StoreKit 2 subscriptions and paywall (US-N04): entitlement drives the US-M02 depth
             // gate; the free tier is unlimited core workouts forever, so nothing here gates the loop.
-            // The same resolved, consent-gated telemetry service is injected into its lifetime
+            // This service and every Premium surface share the process-scoped authority immediately
+            // above. The same resolved, consent-gated telemetry service is injected into its lifetime
             // transaction observer for the verified trial-to-paid `subscribe` boundary.
             subscriptionService: subscriptionService,
             premiumSessionAuthority: premiumSessionAuthority,

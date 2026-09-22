@@ -31,6 +31,8 @@ struct StoreEntitlement: Equatable {
     let expiresAt: Date?
     /// Whether the user is currently inside the introductory free-trial window.
     let isInTrialPeriod: Bool
+    /// Verified transaction identity for production values; optional so StoreKit-free tests and mocks
+    /// can continue to model an entitlement without manufacturing signed provenance.
     let provenance: SubscriptionGrantProvenance?
 
     init(

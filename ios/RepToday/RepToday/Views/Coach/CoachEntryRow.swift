@@ -80,9 +80,9 @@ struct CoachEntryRow: View {
                 analyticsService: services.analyticsService,
                 entryPoint: .coachUpsell
             ) { _ in
-                // The purchase/restore result is the newest verified StoreKit fact. Apply it before
-                // dismissing the paywall, then reconcile asynchronously without allowing a lagging
-                // current-entitlements projection to immediately re-lock the Coach.
+                // PaywallView has already accepted the exact purchase/restore grant into the shared
+                // authority. Reconcile asynchronously without allowing a lagging current-entitlements
+                // projection to immediately re-lock the Coach.
                 Task { await viewModel.reconcileAfterAuthoritativeGrant() }
             }
         }

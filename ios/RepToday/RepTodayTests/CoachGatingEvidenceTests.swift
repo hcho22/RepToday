@@ -93,7 +93,9 @@ final class CoachGatingEvidenceTests: XCTestCase {
         print("US-AC03 EVIDENCE: \(fileName) -> \(path)")
     }
 
-    private func presentCoachPaywall(using subscriptionService: LaggingGrantSubscriptionService) throws -> UIView {
+    private func presentCoachPaywall(
+        using subscriptionService: LaggingGrantSubscriptionService
+    ) throws -> (paywall: UIView, services: ServiceContainer) {
         let services = replacingSubscription(in: .mock(), with: subscriptionService)
         let (_, hostedWindow) = HostedSurface.host(
             NavigationStack { List { CoachEntryRow(services: services) } }
@@ -106,7 +108,19 @@ final class CoachGatingEvidenceTests: XCTestCase {
         let coachUpsell = try XCTUnwrap(AccessibilityTree.element(labeled: "Coach", in: root))
         XCTAssertTrue(coachUpsell.accessibilityActivate())
         HostedSurface.pump(for: 1)
-        return try XCTUnwrap(hostedWindow.rootViewController?.presentedViewController?.view)
+        let paywall = try XCTUnwrap(hostedWindow.rootViewController?.presentedViewController?.view)
+        return (paywall, services)
+    }
+
+    private func rehostCoachRow(using services: ServiceContainer) {
+        window?.isHidden = true
+        let (_, hostedWindow) = HostedSurface.host(
+            NavigationStack { List { CoachEntryRow(services: services) } }
+                .environment(\.services, services),
+            size: CGSize(width: 393, height: 852)
+        )
+        window = hostedWindow
+        HostedSurface.pump(for: HostedSurface.settleInterval)
     }
 
     private func assertCoachUnlockedAfterLaggingReconciliation(
@@ -181,21 +195,35 @@ final class CoachGatingEvidenceTests: XCTestCase {
     /// read still says free. The authoritative purchase result must keep Coach unlocked.
     func testVerifiedPurchaseUnlocksCoachWhenImmediateEntitlementReadStillLags() throws {
         let subscriptionService = LaggingGrantSubscriptionService()
-        let paywall = try presentCoachPaywall(using: subscriptionService)
+        let presented = try presentCoachPaywall(using: subscriptionService)
         let monthlyPlan = try XCTUnwrap(
-            AccessibilityTree.element(whereLabel: { $0.hasPrefix("Monthly, ") }, in: paywall)
+            AccessibilityTree.element(whereLabel: { $0.hasPrefix("Monthly, ") }, in: presented.paywall)
         )
         XCTAssertTrue(monthlyPlan.accessibilityActivate())
         assertCoachUnlockedAfterLaggingReconciliation(subscriptionService)
+        rehostCoachRow(using: presented.services)
+        assertCoachUnlockedAfterLaggingReconciliation(subscriptionService)
+        try capture(
+            named: "03-verified-purchase-survives-lagging-entitlements.png",
+            size: CGSize(width: 393, height: 852)
+        )
     }
 
     /// Restore uses the same authoritative handoff as purchase; it must not regress into a second,
     /// cache-only unlock path.
     func testVerifiedRestoreUnlocksCoachWhenImmediateEntitlementReadStillLags() throws {
         let subscriptionService = LaggingGrantSubscriptionService()
-        let paywall = try presentCoachPaywall(using: subscriptionService)
-        let restore = try XCTUnwrap(AccessibilityTree.element(labeled: "Restore purchases", in: paywall))
+        let presented = try presentCoachPaywall(using: subscriptionService)
+        let restore = try XCTUnwrap(
+            AccessibilityTree.element(labeled: "Restore purchases", in: presented.paywall)
+        )
         XCTAssertTrue(restore.accessibilityActivate())
         assertCoachUnlockedAfterLaggingReconciliation(subscriptionService)
+        rehostCoachRow(using: presented.services)
+        assertCoachUnlockedAfterLaggingReconciliation(subscriptionService)
+        try capture(
+            named: "04-verified-restore-survives-lagging-entitlements.png",
+            size: CGSize(width: 393, height: 852)
+        )
     }
 }

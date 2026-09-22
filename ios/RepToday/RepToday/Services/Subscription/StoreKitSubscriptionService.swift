@@ -1,6 +1,13 @@
 import Foundation
 import Observation
 
+/// The application-process owner of Premium access shared by every entitlement-gated surface.
+/// Purchase/restore results, signed current-entitlement snapshots, and verified transaction updates
+/// all enter this one reducer. Signed candidates are ordered within their original transaction chain,
+/// so a historical revocation or lagging projection cannot overwrite a causally newer grant; a newer
+/// revocation on an active chain can still clear that chain. Read generations prevent an older asynchronous
+/// snapshot from committing after a newer read or transaction update. A new app process constructs a
+/// fresh owner and establishes authority again from signed current entitlements.
 @Observable
 final class PremiumSessionAuthority: @unchecked Sendable {
     struct ReadToken: Sendable {
@@ -212,17 +219,20 @@ final class PremiumSessionAuthority: @unchecked Sendable {
 /// The real StoreKit 2 subscription service (US-N04).
 ///
 /// It composes one seam - a `StoreKitFacade` (the App Store ceremony) - and owns the domain mapping
-/// from raw store entitlements/products to the app's `Subscription`/`SubscriptionPlan` types. Because
-/// the ceremony lives in the seam, the service itself is a pure, `Sendable` composition, unit-testable
-/// end to end with a stub facade.
+/// from raw store entitlements/products to the app's `Subscription`/`SubscriptionPlan` types. Keeping
+/// the ceremony behind that seam leaves the mapping and authority handoff unit-testable end to end
+/// with a stub facade.
 ///
 /// Design principles:
 /// - **Never gates the loop.** Premium only unlocks the depth layer (US-M02). Free is unlimited core
-///   workouts forever; a failure anywhere here resolves to the free tier rather than blocking anything.
-/// - **Entitlement is a local read.** `currentSubscription()` reads StoreKit's cached current
-///   entitlements, so it resolves fast and offline; it drives the US-M02 gate.
-/// - **Purchase and restore both re-resolve.** A completed purchase and an `AppStore.sync()` restore
-///   each re-read current entitlements, so the returned `Subscription` reflects the real granted state.
+///   workouts forever; an unresolved fresh process fails closed without blocking anything.
+/// - **Entitlement is a local, provenance-bearing read.** `currentSubscriptionGrant()` maps StoreKit's
+///   cached current entitlements into the subscription plus its signed transaction identity.
+/// - **Verified grants cross the paywall boundary exactly.** Purchase uses StoreKit's verified success
+///   entitlements and restore re-reads after `AppStore.sync()`; the resulting `SubscriptionGrant` is
+///   accepted by the shared session authority before a lagging reconciliation can re-lock a surface.
+/// - **Updates share that authority boundary.** The app-lifetime listener reduces verified grants,
+///   renewals, revocations, and expiries by transaction provenance instead of delivery order.
 /// - **Conversions come from transactions, not time.** The lifetime listener proves the free-trial
 ///   origin and first paid renewal from verified StoreKit history before emitting `subscribe`.
 struct StoreKitSubscriptionService: SubscriptionServiceProtocol {

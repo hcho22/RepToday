@@ -5,9 +5,9 @@ import SwiftUI
 /// carries the App Store-required auto-renewal disclosure.
 ///
 /// It never gates the core loop: it is a sheet the user can dismiss at any time, and the free tier is
-/// unlimited forever. On a successful unlock it passes the exact verified `Subscription` to
-/// `onUnlock` (so the presenter can update its gate before any cache reconciliation) and dismisses
-/// itself. Every token comes from `Theme`;
+/// unlimited forever. On a successful unlock it synchronously accepts the exact verified
+/// `SubscriptionGrant` into the shared application-session authority before passing its Subscription
+/// projection to `onUnlock` and dismissing. Every token comes from `Theme`;
 /// there is no XP, no levels, no badges.
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss

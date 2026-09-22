@@ -149,8 +149,9 @@ protocol HealthKitServiceProtocol {
 
 /// Reads and refreshes premium entitlement state, and drives the paywall (US-N04).
 ///
-/// The entitlement methods (`currentSubscription`/`refreshEntitlements`) resolve the local premium
-/// state that gates the US-M02 depth layer; the free tier is unlimited core workouts forever, so
+/// The entitlement methods resolve the local premium state that gates the US-M02 depth layer; the
+/// `*Grant` variants also preserve verified transaction provenance for the application-session
+/// authority shared by Premium surfaces. The free tier is unlimited core workouts forever, so
 /// nothing here ever gates the core loop. The paywall methods load purchasable plans and buy a
 /// selected one; `purchasePremium()` is the plan-agnostic convenience (the primary monthly plan).
 protocol SubscriptionServiceProtocol {
@@ -167,10 +168,10 @@ protocol SubscriptionServiceProtocol {
     func restorePurchaseGrant() async throws -> SubscriptionGrant
     /// Begin observing StoreKit's out-of-band transaction updates (auto-renewals, refunds,
     /// cross-device purchases, deferred Ask-to-Buy approvals), finishing each so it never lingers
-    /// in the queue; the entitlement-gated surfaces pick up the change on their next read. The real
-    /// implementation also observes the verified first paid renewal after an introductory free trial
-    /// and records `subscribe` through its injected analytics boundary. Called once at launch, retained
-    /// for the app's lifetime. Never gates the core loop; the mock and any StoreKit-free implementation
+    /// in the queue. The real implementation reduces verified subscription updates into the shared
+    /// application-session Premium authority and separately observes the verified first paid renewal
+    /// after an introductory free trial for `subscribe` telemetry. Called once at launch, retained for
+    /// the app's lifetime. Never gates the core loop; the mock and any StoreKit-free implementation
     /// default to an immediately-completing no-op.
     @discardableResult
     func startObservingTransactions() -> Task<Void, Never>
