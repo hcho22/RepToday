@@ -40,11 +40,23 @@ final class PremiumSessionAuthority: @unchecked Sendable {
 
     @MainActor
     func acceptSnapshot(_ subscription: Subscription, token: ReadToken) {
+        acceptSnapshot(SubscriptionGrant(subscription: subscription), token: token)
+    }
+
+    @MainActor
+    func acceptSnapshot(_ grant: SubscriptionGrant, token: ReadToken) {
+        if grant.subscription.tier == .premium, let provenance = grant.provenance {
+            reduce(
+                [.transaction(activeCandidate(subscription: grant.subscription, provenance: provenance))],
+                preferredGrant: grant
+            )
+            return
+        }
         guard token.generation == readGeneration else { return }
         if hasAcceptedAuthority {
-            guard subscription.tier == self.subscription.tier else { return }
+            guard grant.subscription.tier == subscription.tier else { return }
         }
-        self.subscription = subscription
+        subscription = grant.subscription
     }
 
     @MainActor
@@ -242,7 +254,11 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     // MARK: - Entitlement
 
     func currentSubscription() async throws -> Subscription {
-        Self.subscription(from: await facade.currentEntitlements())
+        try await currentSubscriptionGrant().subscription
+    }
+
+    func currentSubscriptionGrant() async throws -> SubscriptionGrant {
+        Self.grant(from: await facade.currentEntitlements())
     }
 
     func refreshEntitlements() async throws -> Subscription {

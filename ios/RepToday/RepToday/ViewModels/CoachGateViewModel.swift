@@ -45,8 +45,8 @@ final class CoachGateViewModel {
     func load() async {
         let token = premiumSessionAuthority.beginRead()
         do {
-            let subscription = try await subscriptionService.currentSubscription()
-            premiumSessionAuthority.acceptSnapshot(subscription, token: token)
+            let grant = try await subscriptionService.currentSubscriptionGrant()
+            premiumSessionAuthority.acceptSnapshot(grant, token: token)
         } catch {
             premiumSessionAuthority.acceptReadFailure(token: token)
         }
@@ -65,9 +65,9 @@ final class CoachGateViewModel {
     func reconcileAfterAuthoritativeGrant() async {
         guard isPremium else { return }
         let token = premiumSessionAuthority.beginRead()
-        guard let subscription = try? await subscriptionService.currentSubscription() else { return }
-        if subscription.tier == .premium {
-            premiumSessionAuthority.acceptSnapshot(subscription, token: token)
+        guard let grant = try? await subscriptionService.currentSubscriptionGrant() else { return }
+        if grant.subscription.tier == .premium {
+            premiumSessionAuthority.acceptSnapshot(grant, token: token)
         }
     }
 }

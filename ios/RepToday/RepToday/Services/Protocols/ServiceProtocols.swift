@@ -155,6 +155,7 @@ protocol HealthKitServiceProtocol {
 /// selected one; `purchasePremium()` is the plan-agnostic convenience (the primary monthly plan).
 protocol SubscriptionServiceProtocol {
     func currentSubscription() async throws -> Subscription
+    func currentSubscriptionGrant() async throws -> SubscriptionGrant
     func refreshEntitlements() async throws -> Subscription
     /// The purchasable premium plans for the paywall, priced and ordered (monthly first).
     func premiumPlans() async throws -> [SubscriptionPlan]
@@ -176,6 +177,10 @@ protocol SubscriptionServiceProtocol {
 }
 
 extension SubscriptionServiceProtocol {
+    func currentSubscriptionGrant() async throws -> SubscriptionGrant {
+        SubscriptionGrant(subscription: try await currentSubscription())
+    }
+
     func restorePurchaseGrant() async throws -> SubscriptionGrant {
         SubscriptionGrant(subscription: try await restorePurchases())
     }

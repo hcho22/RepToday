@@ -142,8 +142,8 @@ final class ProgressViewModel {
         }
         let entitlementRead = premiumSessionAuthority.beginRead()
         do {
-            let subscription = try await subscriptionService.currentSubscription()
-            premiumSessionAuthority.acceptSnapshot(subscription, token: entitlementRead)
+            let grant = try await subscriptionService.currentSubscriptionGrant()
+            premiumSessionAuthority.acceptSnapshot(grant, token: entitlementRead)
         } catch {
             premiumSessionAuthority.acceptReadFailure(token: entitlementRead)
         }
