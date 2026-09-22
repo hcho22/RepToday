@@ -1,19 +1,238 @@
 import Foundation
+import Observation
+
+/// The application-process owner of Premium access shared by every entitlement-gated surface.
+/// Purchase/restore results, signed current-entitlement snapshots, and verified transaction updates
+/// all enter this one reducer. Signed candidates are ordered within their original transaction chain,
+/// so a historical revocation or lagging projection cannot overwrite a causally newer grant; a newer
+/// revocation on an active chain can still clear that chain. Read generations prevent an older asynchronous
+/// snapshot from committing after a newer read or transaction update. A new app process constructs a
+/// fresh owner and establishes authority again from signed current entitlements.
+@Observable
+final class PremiumSessionAuthority: @unchecked Sendable {
+    struct ReadToken: Sendable {
+        fileprivate let generation: UInt64
+    }
+
+    struct StoreKitUpdateToken: Sendable {
+        fileprivate let transaction: StoreSubscriptionTransaction
+    }
+
+    private struct TransactionCandidate {
+        let subscription: Subscription
+        let provenance: SubscriptionGrantProvenance
+        let effectiveDate: Date
+    }
+
+    private enum AuthorityCandidate {
+        case unsignedGrant(Subscription)
+        case transaction(TransactionCandidate)
+    }
+
+    private(set) var subscription: Subscription = .free
+
+    private var transactionsByChain: [UInt64: TransactionCandidate] = [:]
+    private var hasUnsignedAuthority = false
+    private var readGeneration: UInt64 = 0
+
+    private var hasAcceptedAuthority: Bool {
+        hasUnsignedAuthority || !transactionsByChain.isEmpty
+    }
+
+    @MainActor
+    func beginRead() -> ReadToken {
+        readGeneration &+= 1
+        return ReadToken(generation: readGeneration)
+    }
+
+    @MainActor
+    func acceptSnapshot(_ subscription: Subscription, token: ReadToken) {
+        acceptSnapshot(SubscriptionGrant(subscription: subscription), token: token)
+    }
+
+    @MainActor
+    func acceptSnapshot(_ grant: SubscriptionGrant, token: ReadToken) {
+        if grant.subscription.tier == .premium, let provenance = grant.provenance {
+            reduce(
+                [.transaction(activeCandidate(subscription: grant.subscription, provenance: provenance))],
+                preferredGrant: grant
+            )
+            return
+        }
+        guard token.generation == readGeneration else { return }
+        if hasAcceptedAuthority {
+            guard grant.subscription.tier == subscription.tier else { return }
+        }
+        subscription = grant.subscription
+    }
+
+    @MainActor
+    func acceptReadFailure(token: ReadToken) {
+        guard token.generation == readGeneration, !hasAcceptedAuthority else { return }
+        subscription = .free
+    }
+
+    @MainActor
+    func acceptGrant(_ subscription: Subscription) {
+        acceptGrant(SubscriptionGrant(subscription: subscription))
+    }
+
+    @MainActor
+    func acceptGrant(_ grant: SubscriptionGrant) {
+        guard grant.subscription.tier == .premium else { return }
+        invalidateReads()
+        if let provenance = grant.provenance {
+            reduce(
+                [.transaction(activeCandidate(subscription: grant.subscription, provenance: provenance))],
+                preferredGrant: grant
+            )
+        } else if hasAcceptedAuthority, subscription == grant.subscription {
+            subscription = grant.subscription
+        } else {
+            reduce([.unsignedGrant(grant.subscription)])
+        }
+    }
+
+    @MainActor
+    func beginStoreKitUpdate(_ transaction: StoreSubscriptionTransaction) -> StoreKitUpdateToken {
+        invalidateReads()
+        return StoreKitUpdateToken(transaction: transaction)
+    }
+
+    @MainActor
+    func acceptStoreKitUpdate(_ subscription: Subscription, token: StoreKitUpdateToken) {
+        acceptStoreKitUpdate(SubscriptionGrant(subscription: subscription), token: token)
+    }
+
+    @MainActor
+    func acceptStoreKitUpdate(_ grant: SubscriptionGrant, token: StoreKitUpdateToken) {
+        var candidates: [AuthorityCandidate] = []
+        if let transaction = transactionCandidate(token.transaction, asOf: Date()) {
+            candidates.append(.transaction(transaction))
+        }
+        if grant.subscription.tier == .premium, let provenance = grant.provenance {
+            candidates.append(
+                .transaction(activeCandidate(subscription: grant.subscription, provenance: provenance))
+            )
+        }
+        reduce(candidates, preferredGrant: grant.subscription.tier == .premium ? grant : nil)
+    }
+
+    @MainActor
+    private func invalidateReads() {
+        readGeneration &+= 1
+    }
+
+    private func reduce(
+        _ candidates: [AuthorityCandidate],
+        preferredGrant: SubscriptionGrant? = nil
+    ) {
+        for candidate in candidates {
+            switch candidate {
+            case .unsignedGrant(let subscription):
+                transactionsByChain.removeAll()
+                hasUnsignedAuthority = true
+                self.subscription = subscription
+            case .transaction(let transaction):
+                let chainID = transaction.provenance.originalTransactionID
+                if let current = transactionsByChain[chainID],
+                   !isNewerOrEqual(transaction, than: current) {
+                    continue
+                }
+                transactionsByChain[chainID] = transaction
+                hasUnsignedAuthority = false
+            }
+        }
+
+        guard !hasUnsignedAuthority else { return }
+        if let preferredGrant,
+           let provenance = preferredGrant.provenance,
+           let accepted = transactionsByChain[provenance.originalTransactionID],
+           accepted.provenance == provenance,
+           accepted.subscription.tier == .premium {
+            subscription = preferredGrant.subscription
+            return
+        }
+        subscription = transactionsByChain.values
+            .filter { $0.subscription.tier == .premium }
+            .max(by: { activeSortKey($0) < activeSortKey($1) })?
+            .subscription ?? .free
+    }
+
+    private func transactionCandidate(
+        _ transaction: StoreSubscriptionTransaction,
+        asOf: Date
+    ) -> TransactionCandidate? {
+        let provenance = transaction.grantProvenance
+        if transaction.isRevoked || transaction.expiresAt.map({ $0 <= asOf }) == true {
+            return TransactionCandidate(
+                subscription: .free,
+                provenance: provenance,
+                effectiveDate: transaction.revokedAt ?? transaction.expiresAt ?? transaction.purchaseDate
+            )
+        }
+        guard !transaction.isUpgraded else { return nil }
+        return activeCandidate(
+            subscription: Subscription(
+                tier: .premium,
+                provider: .apple,
+                expiresAt: transaction.expiresAt,
+                trialEndsAt: transaction.payment == .introductoryFreeTrial ? transaction.expiresAt : nil
+            ),
+            provenance: provenance
+        )
+    }
+
+    private func activeCandidate(
+        subscription: Subscription,
+        provenance: SubscriptionGrantProvenance
+    ) -> TransactionCandidate {
+        TransactionCandidate(
+            subscription: subscription,
+            provenance: provenance,
+            effectiveDate: provenance.purchasedAt
+        )
+    }
+
+    private func isNewerOrEqual(
+        _ candidate: TransactionCandidate,
+        than current: TransactionCandidate
+    ) -> Bool {
+        if candidate.provenance.purchasedAt != current.provenance.purchasedAt {
+            return candidate.provenance.purchasedAt > current.provenance.purchasedAt
+        }
+        if candidate.provenance.transactionID != current.provenance.transactionID {
+            return candidate.provenance.transactionID > current.provenance.transactionID
+        }
+        return candidate.effectiveDate >= current.effectiveDate
+    }
+
+    private func activeSortKey(_ candidate: TransactionCandidate) -> (Date, Date, UInt64) {
+        (
+            candidate.subscription.expiresAt ?? .distantFuture,
+            candidate.provenance.purchasedAt,
+            candidate.provenance.transactionID
+        )
+    }
+}
 
 /// The real StoreKit 2 subscription service (US-N04).
 ///
 /// It composes one seam - a `StoreKitFacade` (the App Store ceremony) - and owns the domain mapping
-/// from raw store entitlements/products to the app's `Subscription`/`SubscriptionPlan` types. Because
-/// the ceremony lives in the seam, the service itself is a pure, `Sendable` composition, unit-testable
-/// end to end with a stub facade.
+/// from raw store entitlements/products to the app's `Subscription`/`SubscriptionPlan` types. Keeping
+/// the ceremony behind that seam leaves the mapping and authority handoff unit-testable end to end
+/// with a stub facade.
 ///
 /// Design principles:
 /// - **Never gates the loop.** Premium only unlocks the depth layer (US-M02). Free is unlimited core
-///   workouts forever; a failure anywhere here resolves to the free tier rather than blocking anything.
-/// - **Entitlement is a local read.** `currentSubscription()` reads StoreKit's cached current
-///   entitlements, so it resolves fast and offline; it drives the US-M02 gate.
-/// - **Purchase and restore both re-resolve.** A completed purchase and an `AppStore.sync()` restore
-///   each re-read current entitlements, so the returned `Subscription` reflects the real granted state.
+///   workouts forever; an unresolved fresh process fails closed without blocking anything.
+/// - **Entitlement is a local, provenance-bearing read.** `currentSubscriptionGrant()` maps StoreKit's
+///   cached current entitlements into the subscription plus its signed transaction identity.
+/// - **Verified grants cross the paywall boundary exactly.** Purchase uses StoreKit's verified success
+///   entitlements and restore re-reads after `AppStore.sync()`; the resulting `SubscriptionGrant` is
+///   accepted by the shared session authority before a lagging reconciliation can re-lock a surface.
+/// - **Updates share that authority boundary.** The app-lifetime listener reduces verified grants,
+///   renewals, revocations, and expiries by transaction provenance instead of delivery order.
 /// - **Conversions come from transactions, not time.** The lifetime listener proves the free-trial
 ///   origin and first paid renewal from verified StoreKit history before emitting `subscribe`.
 struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
@@ -22,12 +241,14 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     private let productIDs: [String]
     private let trialConversionObserver: TrialConversionObserver
     private let restoreGate: RestoreOperationGate
+    private let premiumSessionAuthority: PremiumSessionAuthority
 
     init(
         facade: any StoreKitFacade,
         productIDs: [String] = SubscriptionPlan.ProductID.all,
         analytics: (any AnalyticsServiceProtocol)? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority()
     ) {
         self.facade = facade
         self.productIDs = productIDs
@@ -37,12 +258,17 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             userDefaults: userDefaults
         )
         self.restoreGate = RestoreOperationGate()
+        self.premiumSessionAuthority = premiumSessionAuthority
     }
 
     // MARK: - Entitlement
 
     func currentSubscription() async throws -> Subscription {
-        Self.subscription(from: await facade.currentEntitlements())
+        try await currentSubscriptionGrant().subscription
+    }
+
+    func currentSubscriptionGrant() async throws -> SubscriptionGrant {
+        Self.grant(from: await facade.currentEntitlements())
     }
 
     func refreshEntitlements() async throws -> Subscription {
@@ -63,10 +289,10 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
         switch try await facade.purchase(productID: plan.id) {
         case .success(let entitlements):
-            return .resolved(Self.subscription(from: entitlements))
+            return .resolved(Self.grant(from: entitlements))
         case .userCancelled:
             // A cancel is not an error: the entitlement is simply unchanged, so report current state.
-            return .resolved(Self.subscription(from: await facade.currentEntitlements()))
+            return .resolved(Self.grant(from: await facade.currentEntitlements()))
         case .pending:
             // Awaiting external approval (e.g. Ask to Buy). Nothing is granted yet; the paywall
             // reassures the user and the approval is picked up out-of-band by the transaction listener.
@@ -82,8 +308,8 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             throw SubscriptionError.productsUnavailable
         }
         switch try await purchase(plan) {
-        case .resolved(let subscription):
-            return subscription
+        case .resolved(let grant):
+            return grant.subscription
         case .pending:
             // Deferred: report the (unchanged) current entitlement; the approval lands out-of-band.
             return Self.subscription(from: await facade.currentEntitlements())
@@ -91,18 +317,22 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     }
 
     func restorePurchases() async throws -> Subscription {
+        try await restorePurchaseGrant().subscription
+    }
+
+    func restorePurchaseGrant() async throws -> SubscriptionGrant {
         await restoreGate.acquire()
         do {
-            let subscription = try await performRestore()
+            let grant = try await performRestore()
             await restoreGate.release()
-            return subscription
+            return grant
         } catch {
             await restoreGate.release()
             throw error
         }
     }
 
-    private func performRestore() async throws -> Subscription {
+    private func performRestore() async throws -> SubscriptionGrant {
         await trialConversionObserver.beginRestore()
         do {
             try await facade.sync()
@@ -111,7 +341,7 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             // restore window, so restoring ownership can never masquerade as a new conversion.
             let history = await facade.transactionHistory()
             await trialConversionObserver.completeRestore(history: history)
-            return Self.subscription(from: await facade.currentEntitlements())
+            return Self.grant(from: await facade.currentEntitlements())
         } catch {
             // If sync failed, an update that happened independently while it was in flight is still a
             // live transaction and must be judged normally rather than silently discarded.
@@ -125,17 +355,40 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     func startObservingTransactions() -> Task<Void, Never> {
         let facade = facade
         let observer = trialConversionObserver
+        let premiumSessionAuthority = premiumSessionAuthority
         return facade.listenForTransactions { update in
-            // No history read for an unverified update: it can neither grant access nor prove a
-            // conversion. Verified updates are processed off the core loop by the app-owned listener.
-            guard let observation = await observer.capture(update) else { return nil }
+            guard case .verified(let transaction) = update else { return nil }
+            let authorityUpdate: PremiumSessionAuthority.StoreKitUpdateToken?
+            if transaction.isAutoRenewable {
+                authorityUpdate = await premiumSessionAuthority.beginStoreKitUpdate(transaction)
+            } else {
+                authorityUpdate = nil
+            }
+            let observation = await observer.capture(update)
             return StoreTransactionProcessing(
                 operation: {
-                    let history = await facade.transactionHistory()
-                    await observer.observe(observation, history: history)
+                    if let authorityUpdate {
+                        let entitlements = await facade.currentEntitlements()
+                        if let grant = Self.sessionGrant(
+                            for: transaction,
+                            currentEntitlements: entitlements,
+                            asOf: Date()
+                        ) {
+                            await premiumSessionAuthority.acceptStoreKitUpdate(
+                                grant,
+                                token: authorityUpdate
+                            )
+                        }
+                    }
+                    if let observation {
+                        let history = await facade.transactionHistory()
+                        await observer.observe(observation, history: history)
+                    }
                 },
                 disposal: {
-                    await observer.discard(observation)
+                    if let observation {
+                        await observer.discard(observation)
+                    }
                 }
             )
         }
@@ -147,19 +400,59 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
     /// entitlement grants `.premium`; with several, the one expiring latest wins (its `expiresAt` and
     /// trial state carry through). No entitlement is the free tier.
     static func subscription(from entitlements: [StoreEntitlement]) -> Subscription {
+        grant(from: entitlements).subscription
+    }
+
+    static func grant(from entitlements: [StoreEntitlement]) -> SubscriptionGrant {
         guard let best = entitlements.max(by: { keyDate($0) < keyDate($1) }) else {
-            return .free
+            return SubscriptionGrant(subscription: .free)
         }
-        return Subscription(
-            tier: .premium,
-            provider: .apple,
-            expiresAt: best.expiresAt,
-            trialEndsAt: best.isInTrialPeriod ? best.expiresAt : nil
+        return SubscriptionGrant(
+            subscription: Subscription(
+                tier: .premium,
+                provider: .apple,
+                expiresAt: best.expiresAt,
+                trialEndsAt: best.isInTrialPeriod ? best.expiresAt : nil
+            ),
+            provenance: best.provenance
         )
     }
 
     private static func keyDate(_ entitlement: StoreEntitlement) -> Date {
         entitlement.expiresAt ?? .distantFuture
+    }
+
+    private static func sessionGrant(
+        for transaction: StoreSubscriptionTransaction,
+        currentEntitlements: [StoreEntitlement],
+        asOf: Date
+    ) -> SubscriptionGrant? {
+        guard transaction.isAutoRenewable else { return nil }
+        if transaction.isRevoked || transaction.expiresAt.map({ $0 <= asOf }) == true {
+            let invalidatedExpiry = transaction.expiresAt ?? .distantFuture
+            let currentGrant = grant(
+                from: currentEntitlements.filter {
+                    $0.productID != transaction.productID || keyDate($0) > invalidatedExpiry
+                }
+            )
+            if currentGrant.subscription.tier == .premium {
+                return currentGrant
+            }
+            return SubscriptionGrant(
+                subscription: .free,
+                provenance: transaction.grantProvenance
+            )
+        }
+        guard !transaction.isUpgraded else { return nil }
+        let fresh = StoreEntitlement(
+            productID: transaction.productID,
+            expiresAt: transaction.expiresAt,
+            isInTrialPeriod: transaction.payment == .introductoryFreeTrial,
+            provenance: transaction.grantProvenance
+        )
+        var merged = currentEntitlements
+        merged.append(fresh)
+        return grant(from: merged)
     }
 
     private static func plan(from product: StoreProduct) -> SubscriptionPlan {
@@ -780,7 +1073,14 @@ actor TrialConversionObserver {
 extension StoreKitSubscriptionService {
     /// Production wiring: the real StoreKit 2 facade. `mock()` keeps `MockSubscriptionService` so the
     /// suite and previews stay off the App Store and deterministic.
-    static func live(analytics: any AnalyticsServiceProtocol) -> StoreKitSubscriptionService {
-        StoreKitSubscriptionService(facade: LiveStoreKitFacade(), analytics: analytics)
+    static func live(
+        analytics: any AnalyticsServiceProtocol,
+        premiumSessionAuthority: PremiumSessionAuthority
+    ) -> StoreKitSubscriptionService {
+        StoreKitSubscriptionService(
+            facade: LiveStoreKitFacade(),
+            analytics: analytics,
+            premiumSessionAuthority: premiumSessionAuthority
+        )
     }
 }

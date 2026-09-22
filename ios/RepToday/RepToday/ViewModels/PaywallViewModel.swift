@@ -6,8 +6,8 @@ import Observation
 /// It loads the purchasable plans (priced by StoreKit), drives a purchase or a restore, and reflects
 /// the resulting entitlement. Nothing here gates the core loop: the paywall is a dismissible sheet, a
 /// load/purchase failure surfaces a gentle message (never a wall), and the free tier keeps working
-/// unlimited. On a successful unlock `didUnlockPremium` flips so the presenter can dismiss and refresh
-/// the US-M02 gate.
+/// unlimited. On a successful unlock `unlockedGrant` carries the exact verified subscription and
+/// transaction provenance back to the presenter, so a lagging entitlement projection cannot erase it.
 ///
 /// Like the other v6 view models it is `@Observable` and takes its service as a protocol, so previews
 /// and tests inject the mock.
@@ -28,9 +28,16 @@ final class PaywallViewModel {
     /// True while a restore is in flight.
     private(set) var isRestoring = false
 
-    /// True once a purchase or restore has granted premium. The presenter observes this to dismiss and
-    /// refresh the entitlement-gated surfaces.
-    private(set) var didUnlockPremium = false
+    /// The exact Premium subscription returned by a successful purchase or restore. The presenter
+    /// observes this to dismiss and hand the authoritative grant directly to its gate instead of
+    /// reconstructing it from an immediately repeated (and potentially lagging) entitlement read.
+    private(set) var unlockedGrant: SubscriptionGrant?
+
+    var unlockedSubscription: Subscription? { unlockedGrant?.subscription }
+
+    /// Compatibility projection used by the focused view-model tests and any non-presentational
+    /// consumers that only need the unlock decision.
+    var didUnlockPremium: Bool { unlockedSubscription?.tier == .premium }
 
     /// A gentle, user-facing message when a load/purchase/restore fails or a restore finds nothing.
     /// Never a blocking error - the sheet stays dismissible and the free tier is unaffected.
@@ -108,7 +115,8 @@ final class PaywallViewModel {
 
     /// Purchase the selected plan. A user cancel is silent (no message, no unlock); a purchase left
     /// awaiting approval (Ask to Buy) surfaces a gentle "waiting" note without unlocking; a real
-    /// failure surfaces a gentle message. On a granted entitlement `didUnlockPremium` flips.
+    /// failure surfaces a gentle message. On a granted entitlement `unlockedGrant` retains the exact
+    /// verified value and provenance for the presenter.
     func purchase(_ plan: SubscriptionPlan) async {
         guard !isBusy else { return }
         purchasingPlanID = plan.id
@@ -117,13 +125,13 @@ final class PaywallViewModel {
 
         do {
             switch try await subscriptionService.purchase(plan) {
-            case .resolved(let subscription):
-                reflect(subscription)
+            case .resolved(let grant):
+                reflect(grant)
                 // US-T12: emit the monetization event only on a real grant. A user-cancel resolves
                 // here too but with an unchanged (typically `.free`) entitlement, so keying off the
                 // granted `.premium` tier means a cancelled or failed purchase emits nothing.
-                if subscription.tier == .premium {
-                    await emitPurchaseTelemetry(for: subscription, plan: plan)
+                if grant.subscription.tier == .premium {
+                    await emitPurchaseTelemetry(for: grant.subscription, plan: plan)
                 }
             case .pending:
                 message = "This purchase needs approval before it unlocks. We'll switch on Premium as soon as it's approved - your workouts stay free in the meantime."
@@ -142,9 +150,9 @@ final class PaywallViewModel {
         defer { isRestoring = false }
 
         do {
-            let subscription = try await subscriptionService.restorePurchases()
-            reflect(subscription)
-            if subscription.tier != .premium {
+            let grant = try await subscriptionService.restorePurchaseGrant()
+            reflect(grant)
+            if grant.subscription.tier != .premium {
                 message = "No previous purchase found on this Apple ID."
             }
         } catch {
@@ -152,9 +160,9 @@ final class PaywallViewModel {
         }
     }
 
-    private func reflect(_ subscription: Subscription) {
-        if subscription.tier == .premium {
-            didUnlockPremium = true
+    private func reflect(_ grant: SubscriptionGrant) {
+        if grant.subscription.tier == .premium {
+            unlockedGrant = grant
         }
     }
 

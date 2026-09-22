@@ -179,15 +179,44 @@ struct Subscription: Codable, Equatable {
     static let free = Subscription(tier: .free, provider: .apple, expiresAt: nil, trialEndsAt: nil)
 }
 
+/// Signed StoreKit identity and lifecycle facts carried with a Premium grant. The session authority
+/// uses the original transaction id as the chain boundary and the remaining signed dates/ids to order
+/// grants and invalidations without comparing unrelated plans by expiry alone.
+struct SubscriptionGrantProvenance: Equatable, Sendable {
+    let transactionID: UInt64
+    let originalTransactionID: UInt64
+    let productID: String
+    let purchasedAt: Date
+    let expiresAt: Date?
+    let revokedAt: Date?
+}
+
+/// An entitlement plus its verified StoreKit provenance when the live service can supply it. Protocol
+/// defaults and mocks may omit provenance; production purchase, restore, and current-entitlement reads
+/// preserve it across the paywall-to-authority boundary.
+struct SubscriptionGrant: Equatable {
+    let subscription: Subscription
+    let provenance: SubscriptionGrantProvenance?
+
+    init(subscription: Subscription, provenance: SubscriptionGrantProvenance? = nil) {
+        self.subscription = subscription
+        self.provenance = provenance
+    }
+}
+
 /// The outcome of a paywall purchase attempt (US-N04), surfaced to the view model so it can tell a
 /// resolved purchase (granted, or an unchanged entitlement after a silent user-cancel) apart from a
 /// still-pending one awaiting external approval (e.g. Ask to Buy). Keeping the pending case distinct
 /// lets the paywall reassure the user instead of leaving the Buy tap looking like nothing happened.
 enum PurchaseOutcome: Equatable {
-    /// The purchase flow finished: `subscription` is the resulting entitlement (premium on success,
-    /// unchanged - typically `.free` - after a user-cancel).
-    case resolved(Subscription)
+    /// The purchase flow finished: the grant carries the resulting entitlement (Premium on success,
+    /// unchanged - typically `.free` - after a user-cancel) and any verified StoreKit provenance.
+    case resolved(SubscriptionGrant)
     /// The purchase is deferred, awaiting external approval; the entitlement is unchanged for now and
     /// will be picked up out-of-band once approved.
     case pending
+
+    static func resolved(_ subscription: Subscription) -> PurchaseOutcome {
+        .resolved(SubscriptionGrant(subscription: subscription))
+    }
 }

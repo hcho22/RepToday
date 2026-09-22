@@ -70,6 +70,7 @@ final class ProgressViewModel {
     private let consistencyService: any ConsistencyServiceProtocol
     private let exerciseService: any ExerciseServiceProtocol
     private let subscriptionService: any SubscriptionServiceProtocol
+    private let premiumSessionAuthority: PremiumSessionAuthority
     private let phaseService: any PhaseServiceProtocol
     private let now: () -> Date
     private let calendar: Calendar
@@ -79,6 +80,7 @@ final class ProgressViewModel {
         workoutLogService: any WorkoutLogServiceProtocol,
         exerciseService: any ExerciseServiceProtocol,
         subscriptionService: any SubscriptionServiceProtocol,
+        premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority(),
         consistencyService: any ConsistencyServiceProtocol = ConsistencyScoreService(),
         phaseService: (any PhaseServiceProtocol)? = nil,
         now: @escaping () -> Date = { Date() },
@@ -88,6 +90,7 @@ final class ProgressViewModel {
         self.workoutLogService = workoutLogService
         self.exerciseService = exerciseService
         self.subscriptionService = subscriptionService
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.consistencyService = consistencyService
         // Defaulted so existing call sites (previews, tests) that do not thread a phase service still
         // compile; it reads the same validated library the deterministic gate uses.
@@ -99,6 +102,7 @@ final class ProgressViewModel {
     /// Load the full history, score, and derived trend/calendar. Idempotent enough to call on every
     /// appear: a second call simply refreshes, so a session completed on the Today tab is reflected
     /// when the user swings back to Progress.
+    @MainActor
     func load() async {
         isLoading = true
         errorMessage = nil
@@ -136,7 +140,14 @@ final class ProgressViewModel {
                 calendar: calendar
             )
         }
-        isPremium = (try? await subscriptionService.currentSubscription().tier) == .premium
+        let entitlementRead = premiumSessionAuthority.beginRead()
+        do {
+            let grant = try await subscriptionService.currentSubscriptionGrant()
+            premiumSessionAuthority.acceptSnapshot(grant, token: entitlementRead)
+        } catch {
+            premiumSessionAuthority.acceptReadFailure(token: entitlementRead)
+        }
+        isPremium = premiumSessionAuthority.subscription.tier == .premium
 
         // The free "visible climb" surface (US-SP04): the component earn signals from the same
         // `PhaseEvaluator` logic that gates the phase, over the same full history. Best-effort - a

@@ -5,20 +5,23 @@ import SwiftUI
 /// carries the App Store-required auto-renewal disclosure.
 ///
 /// It never gates the core loop: it is a sheet the user can dismiss at any time, and the free tier is
-/// unlimited forever. On a successful unlock it calls `onUnlock` (so the presenter can dismiss and
-/// refresh the entitlement-gated surfaces) and dismisses itself. Every token comes from `Theme`;
+/// unlimited forever. On a successful unlock it synchronously accepts the exact verified
+/// `SubscriptionGrant` into the shared application-session authority before passing its Subscription
+/// projection to `onUnlock` and dismissing. Every token comes from `Theme`;
 /// there is no XP, no levels, no badges.
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: PaywallViewModel
-    private let onUnlock: () -> Void
+    private let premiumSessionAuthority: PremiumSessionAuthority
+    private let onUnlock: (Subscription) -> Void
 
     init(
         subscriptionService: any SubscriptionServiceProtocol,
+        premiumSessionAuthority: PremiumSessionAuthority,
         analyticsService: (any AnalyticsServiceProtocol)? = nil,
         entryPoint: EntryPoint = .progressUpsell,
-        onUnlock: @escaping () -> Void = {}
+        onUnlock: @escaping (Subscription) -> Void = { _ in }
     ) {
         _viewModel = State(
             initialValue: PaywallViewModel(
@@ -27,12 +30,18 @@ struct PaywallView: View {
                 entryPoint: entryPoint
             )
         )
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.onUnlock = onUnlock
     }
 
     /// Test/preview seam so a pre-seeded view model can be injected.
-    init(viewModel: PaywallViewModel, onUnlock: @escaping () -> Void = {}) {
+    init(
+        viewModel: PaywallViewModel,
+        premiumSessionAuthority: PremiumSessionAuthority = PremiumSessionAuthority(),
+        onUnlock: @escaping (Subscription) -> Void = { _ in }
+    ) {
         _viewModel = State(initialValue: viewModel)
+        self.premiumSessionAuthority = premiumSessionAuthority
         self.onUnlock = onUnlock
     }
 
@@ -52,11 +61,11 @@ struct PaywallView: View {
             }
         }
         .task { await viewModel.load() }
-        .onChange(of: viewModel.didUnlockPremium) { _, unlocked in
-            if unlocked {
-                onUnlock()
-                dismiss()
-            }
+        .onChange(of: viewModel.unlockedGrant) { _, grant in
+            guard let grant else { return }
+            premiumSessionAuthority.acceptGrant(grant)
+            onUnlock(grant.subscription)
+            dismiss()
         }
     }
 
@@ -249,9 +258,15 @@ private struct PaywallPlanButton: View {
 }
 
 #Preview("Plans") {
-    PaywallView(subscriptionService: MockSubscriptionService())
+    PaywallView(
+        subscriptionService: MockSubscriptionService(),
+        premiumSessionAuthority: PremiumSessionAuthority()
+    )
 }
 
 #Preview("Unavailable") {
-    PaywallView(subscriptionService: MockSubscriptionService(plans: [], simulatesPurchase: false))
+    PaywallView(
+        subscriptionService: MockSubscriptionService(plans: [], simulatesPurchase: false),
+        premiumSessionAuthority: PremiumSessionAuthority()
+    )
 }

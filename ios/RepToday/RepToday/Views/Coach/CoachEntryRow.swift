@@ -22,7 +22,10 @@ struct CoachEntryRow: View {
 
     /// Production entry: builds the gate over the container's subscription service.
     init(services: ServiceContainer) {
-        _viewModel = State(initialValue: CoachGateViewModel(subscriptionService: services.subscriptionService))
+        _viewModel = State(initialValue: CoachGateViewModel(
+            subscriptionService: services.subscriptionService,
+            premiumSessionAuthority: services.premiumSessionAuthority
+        ))
     }
 
     /// Test/preview seam: inject a pre-built gate view model (e.g. one over a Premium or free mock).
@@ -73,10 +76,14 @@ struct CoachEntryRow: View {
             // paywall itself. Nothing here blocks the core loop.
             PaywallView(
                 subscriptionService: services.subscriptionService,
+                premiumSessionAuthority: services.premiumSessionAuthority,
                 analyticsService: services.analyticsService,
                 entryPoint: .coachUpsell
-            ) {
-                Task { await viewModel.load() }
+            ) { _ in
+                // PaywallView has already accepted the exact purchase/restore grant into the shared
+                // authority. Reconcile asynchronously without allowing a lagging current-entitlements
+                // projection to immediately re-lock the Coach.
+                Task { await viewModel.reconcileAfterAuthoritativeGrant() }
             }
         }
         #endif

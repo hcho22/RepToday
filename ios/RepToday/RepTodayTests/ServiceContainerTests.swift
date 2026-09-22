@@ -11,7 +11,7 @@ final class ServiceContainerTests: XCTestCase {
 
         XCTAssertEqual(
             Mirror(reflecting: services).children.count,
-            16,
+            17,
             "a service was added to ServiceContainer - resolve it below and update this count"
         )
 
@@ -31,6 +31,7 @@ final class ServiceContainerTests: XCTestCase {
         _ = services.sessionCompletionService
         _ = try await services.healthKitService.authorizationStatus()
         _ = try await services.subscriptionService.currentSubscription()
+        XCTAssertEqual(services.premiumSessionAuthority.subscription, .free)
         _ = try await services.authService.currentUserIdentifier()
         services.analyticsService.record(AnalyticsEvent(name: .appInstall, timestampMs: 0))
         // Resolved but not exercised: running it would tear down the container's stores and mutate an

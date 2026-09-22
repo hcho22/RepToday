@@ -309,7 +309,8 @@ final class LiveStoreKitFacade: StoreKitFacade {
         return StoreEntitlement(
             productID: transaction.productID,
             expiresAt: transaction.expirationDate,
-            isInTrialPeriod: isInTrial(transaction)
+            isInTrialPeriod: isInTrial(transaction),
+            provenance: subscriptionTransaction(from: transaction).grantProvenance
         )
     }
 
@@ -328,11 +329,12 @@ final class LiveStoreKitFacade: StoreKitFacade {
             originalID: transaction.originalID,
             productID: transaction.productID,
             purchaseDate: transaction.purchaseDate,
+            expiresAt: transaction.expirationDate,
+            revokedAt: transaction.revocationDate,
             reason: reason,
             payment: payment(for: transaction),
             isAutoRenewable: transaction.productType == .autoRenewable,
             isPurchased: transaction.ownershipType == .purchased,
-            isRevoked: transaction.revocationDate != nil,
             isUpgraded: transaction.isUpgraded
         )
     }
