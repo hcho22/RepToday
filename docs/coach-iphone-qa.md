@@ -82,8 +82,8 @@ Only after the separately authorized service/signing/device prerequisites pass:
 3. Confirm an existing locally verified Premium purchase/trial. If necessary, restore an existing
    purchase through **Progress → Go deeper with Premium → Restore purchases**; never make a new
    purchase for this recipe. The QA screen does not buy or grant Premium. Local eligibility alone
-   is insufficient: each turn still requires real App Attest and fresh production StoreKit proof,
-   with independent production status verification on the server.
+   is insufficient: each turn still requires real App Attest and fresh Production or Apple Sandbox
+   StoreKit proof, with independent status verification in that same environment on the server.
 4. Read/acknowledge the existing Coach data disclosure if not already acknowledged. **Not now**
    exits without sending or recording consent. Acknowledgement uses the existing versioned
    `AppState` contract; it does not alter telemetry consent. Confirm the screen's service and

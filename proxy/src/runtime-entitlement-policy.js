@@ -24,7 +24,7 @@ function activeTransaction(transaction, environment, nowMs) {
 /**
  * Pure decision after verification. Never pass client-decoded claims, a client premium boolean,
  * a client status/fetch timestamp, or an unverified JWS here. A true result alone is not authorization:
- * production also requires App Attest request binding and atomic nonce/counter consumption.
+ * the production gateway also requires App Attest request binding and atomic nonce/counter consumption.
  * @param {Record<string, unknown> | null} presentedTransaction
  * @param {Record<string, unknown> | null} currentTransaction
  * @param {unknown} serverSubscriptionStatus

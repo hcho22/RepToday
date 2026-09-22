@@ -134,8 +134,8 @@ bundle settings:
 1. The existing Developer account's registered `com.reptoday.app` identifier supports App Attest;
    its actual App ID prefix is confirmed and the production signing profile includes the capability.
 2. The existing App Store Connect production app's numeric app ID and canonical monthly/yearly
-   auto-renewable subscription products are correct. A production purchase/trial can be restored
-   on a capable physical iPhone for positive QA.
+   auto-renewable subscription products are correct. A Production purchase/trial or TestFlight
+   Sandbox purchase/trial can be restored on a capable physical iPhone for positive QA.
 3. An existing authorized App Store Connect In-App Purchase API `.p8` private key, its key ID and
    issuer ID grant the required Production and Sandbox subscription-status operations. Do not
    create/search for credentials or a new paid account to fill an absence.
@@ -234,8 +234,9 @@ and the installed library's pinned
 [3.1.0 SDK source](https://github.com/apple/app-store-server-library-node/blob/v3.1.0/index.ts).
 The native reviewed stage/release used the supported Wrangler deployment flow as recorded above.
 Positive genuine Apple trust-chain/purchase checks remain unverified; any future server-source change
-requires a matching newly reviewed held stage and release. Generated-key signatures and trusted payload/API doubles do not
-prove a valid Apple production enrollment or purchase.
+requires a matching newly reviewed held stage and release. Generated-key signatures and trusted
+payload/API doubles do not prove a valid Apple production App Attest enrollment or Production/Sandbox
+purchase.
 
 The native migration boundary is `tools/migrate-coach-runtime.sh`, with three separate
 operations. Stage/release of `2952fab` completed as recorded above; the commands below are a runbook,
@@ -295,7 +296,8 @@ through per-configuration build settings with an empty binary secret and the pro
 mode; ordinary Debug/Release remain empty. This source/build preparation does not establish
 signed-device readiness or service/model success. Follow `docs/coach-iphone-qa.md` for the
 shared synthetic contexts, bounded local review and revision coordination. Only after separately
-cleared signing/device readiness, verify on a genuine production-purchase device. At most
+cleared signing/device readiness, verify on a genuine Production-purchase device or a genuine
+TestFlight install with Sandbox Premium, against the matching deployed revision. At most
 two paid prompts should cover why squats and pistol-squat form, using supplied non-identifying context
 without fabricating or altering a workout; inspect their semantics locally without recording replies.
 Also test copied proof/body/challenge/counter substitution, expired/revoked premium, concurrent
