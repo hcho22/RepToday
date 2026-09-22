@@ -41,12 +41,14 @@ const localAppleFixture = request => {
   try {
     // A local service double; never fetches the network. Inspect only generated test JWTs in memory.
     const url = new URL(request.url);
-    assert.equal(url.origin, 'https://api.storekit.apple.com');
+    const apiEnvironment = url.origin === 'https://api.storekit.apple.com' ? 'Production' :
+      url.origin === 'https://api.storekit-sandbox.apple.com' ? 'Sandbox' : null;
+    assert.ok(apiEnvironment);
     assert.equal(url.pathname, '/inApps/v1/subscriptions/123'); assert.equal(url.search, '');
     assert.equal(request.method, 'GET');
     if (request.headers.get('X-Local-Fixture') === 'response-only') {
       localResponseCalls++;
-      return new fixtureResponse(JSON.stringify(appleApiFixture));
+      return new fixtureResponse(JSON.stringify({...appleApiFixture,environment:apiEnvironment}));
     }
     const parts = request.headers.get('Authorization').slice(7).split('.');
     const header = JSON.parse(Buffer.from(parts[0], 'base64url'));
@@ -56,7 +58,7 @@ const localAppleFixture = request => {
     assert.ok(verify('sha256', Buffer.from(parts.slice(0,2).join('.')),
       {key:apiKey.publicKey,dsaEncoding:'ieee-p1363'}, Buffer.from(parts[2],'base64url')));
     localAppleCalls++;
-    return new fixtureResponse(JSON.stringify(appleApiFixture), {status:fixtureStatus,
+    return new fixtureResponse(JSON.stringify({...appleApiFixture,environment:apiEnvironment}), {status:fixtureStatus,
       headers:fixtureStatus === 302 ? {Location:'https://attacker.invalid/'} : {}});
   } catch {
     rejectedLocalCalls++;
@@ -131,6 +133,9 @@ try {
     assert.equal(redirectResult.status,401);
     assert.equal(localAppleCalls,2); // Original origin only; the fixture rejects any redirect-target request.
     fixtureStatus = 200;
+    const sandboxResult = await call('https://runtime-fixture.invalid/', {operation:'apple-api',
+      privateKey:apiKey.privateKey.export({type:'pkcs8',format:'pem'}),environment:'Sandbox'});
+    assert.equal(sandboxResult.status,200);assert.equal(localAppleCalls,3);
     assert.equal((await call('https://runtime-fixture.invalid/', {operation:'attest', keyId:key.keyId, attestation:'AA==', challenge:'fixture',prefix:APP_PREFIX})).status, 401);
     const ns = await m.getDurableObjectNamespace('COACH_AUTH_STATE');
     const id = ns.idFromName(VERSION + ':' + hash(key.keyId));
@@ -177,7 +182,7 @@ try {
       'X-RepToday-Coach-Auth':JSON.stringify(deniedProof)});
     assert.equal(deniedAdmission.status,401);assert.deepEqual(await deniedAdmission.json(),{error:'unauthorized'});
     assert.equal((await (await stub.fetch('https://fixture-record.invalid/')).json()).counter,3);
-    assert.equal(localAppleCalls,2);
+    assert.equal(localAppleCalls,3);
     assert.equal(rejectedLocalCalls,0);
     assert.equal(localResponseCalls,0);
     console.log('validated: installed workerd native crypto, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering and SQLite atomic replay; zero external requests');

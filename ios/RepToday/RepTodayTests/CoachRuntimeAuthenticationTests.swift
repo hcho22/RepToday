@@ -1,6 +1,7 @@
 import XCTest
 import CryptoKit
 import DeviceCheck
+import StoreKit
 @testable import RepToday
 
 private final class FixtureCoachKeyStore: CoachAuthenticationKeyStoring, @unchecked Sendable {
@@ -46,7 +47,7 @@ private actor FixtureCoachAttester: CoachAppAttesting {
 }
 private struct FixtureCoachPurchase: CoachPurchaseProofProviding {
     let proof: String?
-    func productionPremiumProof() async throws -> String {
+    func appStorePremiumProof() async throws -> String {
         guard let proof else { throw CoachAuthenticationError.unavailable }; return proof
     }
 }
@@ -114,6 +115,13 @@ final class CoachRuntimeAuthenticationTests: XCTestCase {
     private func client(_ transport: RuntimeAuthenticatedCoachTransport, timeout: Double = 30) -> CoachProxyClient {
         CoachProxyClient(endpoint:RuntimeAuthenticatedCoachTransport.origin, timeoutSeconds:timeout,
                          safetyIdentifier:testCoachSafetyIdentifier,transport:transport)
+    }
+    func testPurchaseProofAllowsOnlyAppleProductionAndSandboxEnvironments() {
+        XCTAssertTrue(StoreKitCoachPurchaseProof.serverProofEnvironmentAllowed(.production))
+        XCTAssertTrue(StoreKitCoachPurchaseProof.serverProofEnvironmentAllowed(.sandbox))
+        XCTAssertFalse(StoreKitCoachPurchaseProof.serverProofEnvironmentAllowed(.xcode))
+        XCTAssertFalse(StoreKitCoachPurchaseProof.serverProofEnvironmentAllowed(.init(rawValue: "LocalTesting")))
+        XCTAssertFalse(StoreKitCoachPurchaseProof.serverProofEnvironmentAllowed(.init(rawValue: "FutureEnvironment")))
     }
     func testProofOnlyUsesExactEmptyBodyThenIdenticalReplayWithOneSignatureAndNoBearer() async throws {
         let http = FixtureCoachHTTP(finalResponses: [

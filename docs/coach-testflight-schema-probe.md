@@ -1,9 +1,12 @@
 # TestFlight App Attest schema verification preparation
 
 This is an **unexecuted QA-only preparation**, not TestFlight Coach enablement. The assertion
-extension contract remains unresolved. The probe never admits Sandbox Premium, enrolls with the
-Worker, obtains StoreKit proof, sends training content, or calls a model. Ordinary Debug/Release
-Coach settings and the deployed authentication policy remain unchanged.
+extension contract remains unresolved. It is no longer a prerequisite or input to the runtime
+subscription boundary: current source selects Production or Sandbox only from an Apple-verified
+transaction JWS and retains the existing production App Attest verifier. The probe itself never
+admits Sandbox Premium, enrolls with the Worker, obtains StoreKit proof, sends training content, or
+calls a model. Ordinary Debug/Release Coach settings and the deployed authentication policy remain
+unchanged.
 
 The hidden panel also offers a separate [server proof-only preparation](coach-proof-only-qa.md),
 selected by **Server admission preparation**. Leave that toggle off for the schema-only operation
@@ -119,14 +122,10 @@ or the known installation channel into cryptographic TestFlight authorization, a
 availability on every supported OS, valid Premium, server admission or a model return.
 
 If the expected fields and comparisons all appear, that fully bound observation can supply empirical
-wire-format evidence for targeted implementation after acceptance and review. An exhaustive OS
-availability statement or positive hardware evidence on every supported OS is not a prerequisite
-for that scoped work. Broader positive OS-support claims require their own evidence. No app OS
-floor may be raised, and unknown/missing/unsupported signed properties must deny beta admission
-before model access through the existing unavailable/authentication handling. If a required field
-is missing, unknown, unsupported or ambiguous, the smallest further evidence dependency is primary
-clarification of that precise field/encoding/OS gap, rather than decoder aliases or opaque proof
-dumps. This preparation never silently resolves the proof-contract blocker.
+wire-format evidence for App Attest research. It must not broaden the runtime admission rule, which
+does not decode these properties. Broader positive OS-support claims require their own evidence. No
+app OS floor may be raised, and an unknown/missing/unsupported property remains non-evidence rather
+than a reason to invent decoder aliases or capture opaque proof dumps.
 
 ## Offline validation
 

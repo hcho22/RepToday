@@ -3,12 +3,13 @@
 // server-side SignedDataVerifier and a fresh authenticated App Store Server API status lookup.
 const BUNDLE = 'com.reptoday.app';
 const PRODUCTS = new Set(['com.reptoday.app.premium.monthly', 'com.reptoday.app.premium.yearly']);
+const ENVIRONMENTS = new Set(['Production', 'Sandbox']);
 const numericID = value => typeof value === 'string' && /^[0-9]{1,32}$/.test(value);
 
-/** @param {Record<string, unknown> | null} transaction @param {number} nowMs */
-function activeTransaction(transaction, nowMs) {
+/** @param {Record<string, unknown> | null} transaction @param {string} environment @param {number} nowMs */
+function activeTransaction(transaction, environment, nowMs) {
   return transaction !== null && typeof transaction === 'object' && !Array.isArray(transaction) &&
-    transaction.bundleId === BUNDLE && transaction.environment === 'Production' &&
+    transaction.bundleId === BUNDLE && transaction.environment === environment &&
     transaction.type === 'Auto-Renewable Subscription' && typeof transaction.productId === 'string' &&
     PRODUCTS.has(transaction.productId) && numericID(transaction.transactionId) && numericID(transaction.originalTransactionId) &&
     typeof transaction.expiresDate === 'number' && Number.isFinite(transaction.expiresDate) && transaction.expiresDate > nowMs &&
@@ -29,11 +30,14 @@ function activeTransaction(transaction, nowMs) {
  * @param {unknown} serverSubscriptionStatus
  * @param {number} serverStatusFetchedAtMs Timestamp measured by the server after its own API lookup.
  * @param {number} nowMs Server clock immediately before deciding; no entitlement cache in this slice.
+ * @param {unknown} environment Environment selected from a successfully Apple-verified presented JWS.
  */
 export function evaluateVerifiedPremiumEntitlement(presentedTransaction, currentTransaction,
-  serverSubscriptionStatus, serverStatusFetchedAtMs, nowMs) {
-  return Number.isFinite(nowMs) && nowMs >= 0 && Number.isFinite(serverStatusFetchedAtMs) &&
+  serverSubscriptionStatus, serverStatusFetchedAtMs, nowMs, environment) {
+  return typeof environment === 'string' && ENVIRONMENTS.has(environment) &&
+    Number.isFinite(nowMs) && nowMs >= 0 && Number.isFinite(serverStatusFetchedAtMs) &&
     serverStatusFetchedAtMs >= 0 && serverStatusFetchedAtMs <= nowMs && nowMs - serverStatusFetchedAtMs <= 5_000 &&
-    serverSubscriptionStatus === 1 && activeTransaction(presentedTransaction, nowMs) && activeTransaction(currentTransaction, nowMs) &&
+    serverSubscriptionStatus === 1 && activeTransaction(presentedTransaction, environment, nowMs) &&
+    activeTransaction(currentTransaction, environment, nowMs) &&
     presentedTransaction.originalTransactionId === currentTransaction.originalTransactionId;
 }

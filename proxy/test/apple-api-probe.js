@@ -30,7 +30,7 @@ export async function probeAppleRequest() {
   return observations;
 }
 
-export async function probeAppleAPI(privateKey, env, responseOnly = false, observeFetch = false) {
+export async function probeAppleAPI(privateKey, env, responseOnly = false, observeFetch = false, targetEnvironment = 'Production') {
   let phase = 'sdk-construction';
   const originalFetch = globalThis.fetch;
   try {
@@ -56,8 +56,11 @@ export async function probeAppleAPI(privateKey, env, responseOnly = false, obser
       return {ok: response.ok, phase: 'complete'};
     }
     const {AppStoreServerAPIClient, Environment} = await import('@apple/app-store-server-library');
+    const selectedEnvironment = targetEnvironment === 'Production' ? Environment.PRODUCTION :
+      targetEnvironment === 'Sandbox' ? Environment.SANDBOX : null;
+    if (selectedEnvironment === null) throw new Error('unsupported fixture environment');
     const client = new AppStoreServerAPIClient(privateKey, env.APP_STORE_KEY_ID, env.APP_STORE_ISSUER_ID,
-      'com.reptoday.app', Environment.PRODUCTION);
+      'com.reptoday.app', selectedEnvironment);
     // SDK 3.1.0 exposes these methods at runtime but declares them protected/private in its types.
     // Observe the pinned implementation without replacing signing, request or decoding behavior.
     const observed = /** @type {any} */ (client);
@@ -82,7 +85,7 @@ export async function probeAppleAPI(privateKey, env, responseOnly = false, obser
       return response;
     };
     const result = await client.getAllSubscriptionStatuses('123');
-    return {ok: result.environment === appleApiFixture.environment && Array.isArray(result.data) && result.data.length === 0,
+    return {ok: result.environment === targetEnvironment && Array.isArray(result.data) && result.data.length === 0,
       phase: 'complete'};
   } catch { return {ok: false, phase}; }
   finally {globalThis.fetch = originalFetch;}

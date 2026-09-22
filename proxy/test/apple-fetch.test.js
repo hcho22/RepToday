@@ -4,16 +4,18 @@ afterEach(()=>vi.unstubAllGlobals());
 describe('bounded official-verifier HTTP transport',()=>{
   it.each(['https://api.storekit.itunes.apple.com/inApps/v1/subscriptions/1',
     'https://api.storekit.apple.com/inApps/v1/subscriptions/1?foreign=1','https://attacker.invalid/','https://api.storekit.apple.com/inApps/v1/subscriptions/1/extra',
-    'https://api.storekit-sandbox.apple.com/inApps/v1/subscriptions/1',
+    'https://api.storekit-sandbox.apple.com/inApps/v1/subscriptions/1?foreign=1','https://api.storekit-sandbox.apple.com/inApps/v1/subscriptions/1/extra',
+    'https://api.storekit-sandbox.apple.com/inApps/v1/transactions/1',
     'https://user:password@api.storekit.apple.com/inApps/v1/subscriptions/1',
+    'https://user:password@api.storekit-sandbox.apple.com/inApps/v1/subscriptions/1',
     'https://api.storekit.apple.com/inApps/v1/subscriptions/1#extra'])('rejects unapproved origin/path before egress',async url=>{
     const fetch=vi.fn();vi.stubGlobal('fetch',fetch);await expect(appleFetch(url)).rejects.toThrow();expect(fetch).not.toHaveBeenCalled();
   });
-  it('restricts methods and disables redirects with a total resource deadline',async()=>{
+  it.each(['https://api.storekit.apple.com','https://api.storekit-sandbox.apple.com'])('allows only the exact status GET on %s and disables redirects with a total resource deadline',async origin=>{
     const fetch=vi.fn(async(_url,_options)=>new Response('{}'));vi.stubGlobal('fetch',fetch);
-    await appleFetch('https://api.storekit.apple.com/inApps/v1/subscriptions/1');
+    await appleFetch(origin+'/inApps/v1/subscriptions/1');
     expect(fetch.mock.calls[0][1].redirect).toBe('manual');expect(fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
-    await expect(appleFetch('https://api.storekit.apple.com/inApps/v1/subscriptions/1',{method:'POST'})).rejects.toThrow();
+    await expect(appleFetch(origin+'/inApps/v1/subscriptions/1',{method:'POST'})).rejects.toThrow();
   });
   it.each([300,301,302,303,304,305,306,307,308,399])('rejects status %i without reading or following a redirect',async status=>{
     const read=vi.fn();const cancel=vi.fn(async()=>{});
@@ -30,7 +32,9 @@ describe('bounded official-verifier HTTP transport',()=>{
     await expect(appleFetch('https://api.storekit.apple.com/inApps/v1/subscriptions/1')).rejects.toThrow();
     expect(read).not.toHaveBeenCalled();expect(cancel).toHaveBeenCalledTimes(1);
   });
-  it.each([['https://api.storekit.apple.com/inApps/v1/subscriptions/1','GET',65536],['http://ocsp.apple.com/fixture','POST',16384]])('bounds API and OCSP streamed bodies',async(url,method,max)=>{
+  it.each([['https://api.storekit.apple.com/inApps/v1/subscriptions/1','GET',65536],
+    ['https://api.storekit-sandbox.apple.com/inApps/v1/subscriptions/1','GET',65536],
+    ['http://ocsp.apple.com/fixture','POST',16384]])('bounds API and OCSP streamed bodies',async(url,method,max)=>{
     vi.stubGlobal('fetch',async()=>new Response(new Uint8Array(Number(max))));
     const result=await appleFetch(String(url),{method:String(method)});expect((await result.buffer()).length).toBe(max);
     vi.stubGlobal('fetch',async()=>new Response(new Uint8Array(Number(max)+1)));

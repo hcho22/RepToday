@@ -2,9 +2,9 @@
 
 This source prepares a bounded, hidden device-to-server verification exchange. **It has not been
 deployed or executed on a genuine device. It does not enable TestFlight Coach.** Ordinary
-Debug/Release endpoints remain empty, and both client purchase selection and server verification
-remain Production-only. The selected same-service TestFlight-only Sandbox policy cannot safely
-land until the exact authenticated assertion extension contract is established.
+Debug/Release endpoints remain empty. Current source permits StoreKit-verified Production or
+Sandbox proof and verifies the selected environment server-side; the released Worker remains
+Production-only until a separately authorized deployment.
 
 ## What the exchange proves
 
@@ -68,25 +68,22 @@ operation must be established before executing. Do not use a simulator, developm
 operator bearer, local Premium boolean or fixture as genuine evidence. Do not read protected
 credentials, change accounts/capabilities or spend the model budget to fill gaps.
 
-For the intended TestFlight audience, **first** resolve the schema dependency using the separately
-bounded [Apple-bound schema operation](coach-testflight-schema-probe.md). Apple documents category
-2 as TestFlight and different attestation/assertion property names, but does not establish the
-assertion's exact category byte encoding/flag behavior or extension availability on every supported
-OS. Its public validation fixture contains no assertion extension example. A genuine bound
-schema observation supplies empirical format evidence for that exact beta/OS; it still needs
-authoritative interpretation before server admission is implemented. No permissive aliases,
-byte-order fallback, old-enrollment classification or unsigned client flag is accepted here.
+The separately bounded [Apple-bound schema operation](coach-testflight-schema-probe.md) remains
+diagnostic research, not an authorization prerequisite or input. The runtime does not parse or
+trust a client distribution flag or guessed assertion extension. Instead, Apple's signed
+transaction selects only Production or Sandbox after server verification, and the unchanged App
+Attest boundary independently requires a production attestation/assertion. Xcode/local transaction
+proof and development App Attest continue to fail closed.
 
-After that contract supports a reviewed decoder, implement current verified TestFlight distribution,
-the matching Sandbox verifier/status API/transport/pure eligibility policy and compatible client
-proof selection together. Keep Production-only verification for production users. Configure and
-inspect the actual intended ordinary archive endpoint/mode/empty gate as part of **that complete
-enablement**, not this diagnostic preparation.
+Before an approved TestFlight proof-only run, deploy the reviewed Sandbox-capable Worker through the
+separate guarded process and inspect the intended archive's endpoint/mode/empty gate. A Production
+verifier/API failure must never trigger Sandbox; only the verified transaction environment selects
+the matching Sandbox verifier and status API.
 
 For a later approved server-proof run, use only an installed identified eligible build against the
-matched server revision. With the current policy a TestFlight Sandbox-only user fails locally
-before Apple enrollment or HTTP; no TestFlight Premium success is expected. Existing eligible
-production device/purchase QA is separate. The hidden screen cannot purchase or restore.
+matched server revision. The current client can submit Sandbox proof, but the older deployed
+Production-only revision will deny it; no TestFlight Premium success has been observed. Existing
+eligible production device/purchase QA is separate. The hidden screen cannot purchase or restore.
 
 Record only fixed results plus public-safe build/channel/server-revision facts. Never capture proof,
 JWS, identity input, credentials or raw error diagnostics. Leaving clears results. Offline workouts

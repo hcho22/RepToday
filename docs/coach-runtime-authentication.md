@@ -16,11 +16,12 @@ operator request from the device/Premium admission result. It retains an operato
 authentication. Prompt/context/reply content remains stateless; bounded device security metadata is
 persisted as documented below. The legacy helper is incompatible with this persistence binding.
 Ordinary Debug/Release Coach endpoints remain empty. `CoachDeviceQA` enables only the public origin
-for synthetic device preparation. TestFlight inclusion is being implemented separately and remains
-subject to precise verified TestFlight proof-format compatibility. The selected future policy would
-admit Apple-verified active Sandbox Premium only for cryptographically verified TestFlight
-distribution; neither side of that compatibility path is implemented, and the deployed
-production-only verifier still denies TestFlight purchases.
+for synthetic device preparation. Current source now allows an already StoreKit-verified Production
+or Sandbox entitlement JWS to enter the same server verification flow. Sandbox can authorize only
+after the server independently verifies the JWS, selects Sandbox from that verified evidence, calls
+Apple's Sandbox status API and verifies the returned current transaction in Sandbox. The released
+`2952fab` Worker remains Production-only until a separately authorized deployment, and no genuine
+TestFlight admission or model reply has been demonstrated.
 
 The hidden server-proof preparation signs only `{}` as an ordinary runtime reply, requires both
 verification gates before `400 invalid_context`, then checks exact-replay denial. Local signatures,
@@ -35,8 +36,9 @@ constructs real DeviceCheck/StoreKit authentication, never a binary-embedded pro
 
 ## Verification boundary
 
-For every user-triggered turn, the iOS transport obtains a verified production StoreKit 2 premium
-transaction JWS. A genuine App Attest key enrolls once against a server-issued 60-second HMAC
+For every user-triggered turn, the iOS transport obtains a StoreKit 2-verified Production or Apple
+Sandbox premium transaction JWS. Xcode and unknown environments are not submitted. A genuine App
+Attest key enrolls once against a server-issued 60-second HMAC
 challenge. Enrollment verifies Apple's certificate chain/current validity, nonce, public-key
 identifier, app identity, initial counter and production AAGUID. The registered key obtains a fresh
 one-time challenge and generates an assertion over this exact UTF-8 JSON array:
@@ -54,12 +56,26 @@ exactly once. The chosen App Attest library uses signed 32-bit counters, so valu
 fail closed and require a new genuine key rather than wrapping or resetting an existing counter.
 
 Apple's official App Store Server Library verifies the supplied JWS with pinned public Apple G2/G3
-roots and online certificate checks. The server independently queries **production** subscription
-status and verifies the returned latest signed transaction in the same original purchase chain.
-Known monthly/yearly products, active status, unexpired purchase, correct bundle/environment and no
-revocation/upgrade are required. Client premium booleans, locally decoded claims, assertion-only
-authentication and client-supplied status/fetch times cannot authorize a model request. Failure of
-crypto, storage, Apple verification/API or configuration stops before the provider.
+roots and online certificate checks. Selection begins with the Production verifier. Only its typed
+`INVALID_ENVIRONMENT` result can cause a second, independent verification with the Sandbox verifier;
+arbitrary verifier failures and every Production API failure stop without a Sandbox attempt. This is
+safe evidence because the installed verifier authenticates the JWS certificate/signature and bundle
+before reporting that environment mismatch. The Sandbox verifier is constructed without
+`appAppleId`, exactly as Apple's library requires; Production supplies it. The authenticated status
+response in either environment must still report the configured `appAppleId` and bundle.
+
+The selected environment is immutable for the remainder of the request: the server calls that
+environment's authenticated subscription-status API, requires the response environment to match,
+and verifies the returned latest signed transaction with the same verifier. Production uses
+`https://api.storekit.apple.com`; Sandbox uses only
+`https://api.storekit-sandbox.apple.com`; both permit the exact existing
+`GET /inApps/v1/subscriptions/{numeric-id}` path. Known monthly/yearly products, one matching chain
+row, active status, unexpired purchase, correct bundle/environment, freshness and no
+revocation/upgrade are required for both environments. Xcode, `LocalTesting`, unknown and mixed
+environments remain unauthorized. Client premium booleans, locally decoded claims,
+assertion-only authentication and client-supplied status/fetch times cannot authorize a model
+request. Failure of crypto, storage, Apple verification/API or configuration stops before the
+provider.
 
 The exact original Coach body reaches the existing model boundary only after these checks. Purchase
 proofs/App Attest data never enter the OpenAI prompt. The operator-only bearer credential is retained
@@ -121,8 +137,8 @@ bundle settings:
    auto-renewable subscription products are correct. A production purchase/trial can be restored
    on a capable physical iPhone for positive QA.
 3. An existing authorized App Store Connect In-App Purchase API `.p8` private key, its key ID and
-   issuer ID grant the required production subscription-status operation. Do not create/search for
-   credentials or a new paid account to fill an absence.
+   issuer ID grant the required Production and Sandbox subscription-status operations. Do not
+   create/search for credentials or a new paid account to fill an absence.
 4. The existing authenticated Cloudflare account permits the SQLite namespace/migration while
    preserving the approved Worker, zone, domain and WAF controls. Missing authority blocks migration.
 
@@ -144,32 +160,28 @@ the new persistence binding; **do not use it to perform or roll back this migrat
 
 ## Production, TestFlight and local QA
 
-| Distribution | App Attest | Purchase environment | This production gateway |
-| --- | --- | --- | --- |
-| App Store, genuine capable device | Production | Production | Eligible after independent active-status verification |
-| TestFlight | Production | Sandbox | Purchase denied; no production premium fallback |
-| Xcode StoreKit configuration / Simulator | Unsupported or development attestation | Local testing | Fails closed |
-| Development on a physical device | Explicit App Attest environment | Usually Sandbox | Does not prove this production purchase path |
+| Distribution | App Attest | Purchase environment | Current source | Released `2952fab` |
+| --- | --- | --- | --- | --- |
+| App Store, genuine capable device | Production | Production | Eligible after independent active-status verification | Eligible as before |
+| TestFlight | Production | Sandbox | Eligible only through the matched Sandbox verification/status flow | Denied until separately deployed |
+| Xcode StoreKit configuration / Simulator | Unsupported or development attestation | Xcode / local testing | Fails closed | Fails closed |
+| Development on a physical device | Development | Usually Sandbox | Fails the production App Attest gate | Fails closed |
 
 Apple documents [production App Attest after distribution](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.devicecheck.appattest-environment)
 and [Sandbox In-App Purchases in TestFlight](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testing-subscriptions-and-in-app-purchases-in-testflight/).
-The selected TestFlight design would use the same public service, admitting Apple-verified active
-Sandbox Premium only when production App Attest cryptographically verifies the current request's
-TestFlight distribution. Existing production purchases would retain their verification path; there
-would be no arbitrary beta-version whitelist. This compatibility code is not implemented or
-deployed: precise assertion extension encoding and supported-device availability remain
-unestablished.
-Broad production Sandbox fallback, simulator bypass, local boolean grants and operator gates in
-a binary remain prohibited.
+The source uses the same public service and the same production App Attest verification for both
+purchase environments. It does not trust a client-declared TestFlight channel and does not need a
+client distribution boolean: Apple's signed transaction selects only Production or Sandbox, while
+the existing App Attest verifier continues to reject development attestations. Broad fallback on an
+API/verifier error, simulator bypass, Xcode/local evidence, local boolean grants and operator gates
+in a binary remain prohibited. The separate schema probe remains diagnostic research and is not an
+authorization input to this transaction-environment boundary.
 
-The current primary [server validation guide](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server)
-uses different category/version labels in its attestation and assertion sections. The public
-[object validation fixture](https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide)
-has an extension map with the WebAuthn ED flag unset, and supplies no assertion extension example.
-This is fixture/schema evidence only, not genuine Apple validation. Exact signed assertion
-encoding and supported-device availability need authoritative clarification before beta admission
-is implemented; do not infer them from unsigned client flags or guessed field aliases.
- This is a beta compatibility limit and must be stated before release/QA scheduling.
+This source has only offline verifier/API doubles, actual-library negative checks and local workerd
+coverage. The Worker revision has not been staged or released, ordinary Release remains
+unconfigured, and no signed TestFlight build has proved its StoreKit JWS, production App Attest,
+fresh Sandbox status, provider ordering or end-to-end model result. Do not claim live TestFlight
+success until those distinct genuine-device checks are recorded against a matching deployed commit.
 
 Active introductory free trials remain eligible without positive price checks; expired transactions,
 billing retry and elapsed-expiry grace remain denied, consistent with the existing
@@ -216,8 +228,10 @@ foreign redirect rejection, negative Apple proofs and SQLite atomic replay. Re-r
 Node/workerd comparison with `node test/workerd-auth.mjs --diagnose-apple-api` from `proxy/` using Node
 20; output contains only observed phases and fixed local fixture counts.
 
-The production origin restriction follows
-[Apple's pinned SDK source](https://github.com/apple/app-store-server-library-node/blob/v3.1.0/index.ts).
+The two environment origins follow Apple's
+[App Store Server API documentation](https://developer.apple.com/documentation/appstoreserverapi)
+and the installed library's pinned
+[3.1.0 SDK source](https://github.com/apple/app-store-server-library-node/blob/v3.1.0/index.ts).
 The native reviewed stage/release used the supported Wrangler deployment flow as recorded above.
 Positive genuine Apple trust-chain/purchase checks remain unverified; any future server-source change
 requires a matching newly reviewed held stage and release. Generated-key signatures and trusted payload/API doubles do not

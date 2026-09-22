@@ -7,8 +7,8 @@ export const Response = globalThis.Response;
 export default async function appleFetch(input, options = {}) {
   const url = new URL(String(input).trim());
   const method = options.method ?? 'GET';
-  // Pinned official SDK 3.1.0 uses this production origin (not the legacy iTunes host).
-  const api = url.origin === 'https://api.storekit.apple.com' && !url.search &&
+  // Pinned official SDK 3.1.0 uses these two environment-specific origins (not the legacy iTunes host).
+  const api = ['https://api.storekit.apple.com', 'https://api.storekit-sandbox.apple.com'].includes(url.origin) && !url.search &&
     /^\/inApps\/v1\/subscriptions\/[0-9]{1,32}$/.test(url.pathname) && method === 'GET';
   const ocsp = ['ocsp.apple.com', 'ocsp2.apple.com'].includes(url.hostname) &&
     ['http:', 'https:'].includes(url.protocol) && !url.port && method === 'POST';
