@@ -65,12 +65,12 @@ struct CoachSyntheticQAView: View {
                     }
                     #endif
                     Group {
-                    Text("Preparation build. Runtime service is deployed. Requires an eligible signed physical iPhone and an existing production Premium purchase or trial. TestFlight proof compatibility remains incomplete; Sandbox is not supported by this production gateway.")
+                    Text("Preparation build. Requires an eligible signed physical iPhone, an existing Production or Apple Sandbox Premium purchase or trial, and a matched reviewed server revision. The currently deployed revision accepts Production only; Sandbox-capable source is undeployed and TestFlight admission remains unverified.")
                     Text("At most two model requests total: why squats, then pistol form. Each needs a tap. Stop on the first failure; never retry a timeout. This installation remembers attempts across relaunches. Reinstalling does not authorize a new budget.")
                     if !configurationEnabled || !viewModel.isAvailable {
                         Text("QA configuration unavailable. No request can be sent.")
                     }
-                    Text(viewModel.isPremium ? "Locally verified Premium: eligible. Fresh production Apple proof is still required for each request." : "Locally verified Premium: not eligible. Restore an existing eligible purchase through the app; this screen cannot grant Premium or buy it.")
+                    Text(viewModel.isPremium ? "Locally verified Premium: eligible. Fresh Apple proof in the matched Production or Sandbox environment is still required for each request." : "Locally verified Premium: not eligible. Restore an existing eligible purchase through the app; this screen cannot grant Premium or buy it.")
                     if !viewModel.hasConsent {
                         Button("Read Coach data disclosure") { showDisclosure = true }
                             .frame(minHeight: Theme.Spacing.buttonHeight)

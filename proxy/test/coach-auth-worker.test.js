@@ -21,6 +21,8 @@ describe('gateway rejects failures before paid model transport',()=>{
   const run=(r=request(),e=env)=>handleRuntimeCoach(r,e,{state,premium});
   it('passes only the original coach body to the reviewed provider path after both gates',async()=>{
     expect((await run()).status).toBe(200);expect(state).toHaveBeenCalledOnce();expect(premium).toHaveBeenCalledOnce();expect(upstream).toHaveBeenCalledOnce();
+    expect(state.mock.invocationCallOrder[0]).toBeLessThan(premium.mock.invocationCallOrder[0]);
+    expect(premium.mock.invocationCallOrder[0]).toBeLessThan(upstream.mock.invocationCallOrder[0]);
     const payload=upstream.mock.calls[0][1].body;
     expect(payload).toContain('squats');expect(payload).not.toContain('test.purchase.proof');expect(payload).not.toContain(key.keyId);
     logs.forEach(log=>expect(log).not.toHaveBeenCalled());

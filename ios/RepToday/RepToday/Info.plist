@@ -36,7 +36,8 @@
 	     `REPTODAY_COACH_ENDPOINT` build setting exactly like the analytics endpoint above. The `proxy/`
 	     Worker's runtime App Attest/StoreKit entry is deployed at https://coach.reptoday.app/coach. Ordinary Debug/Release
 	     remain empty. CoachDeviceQA enables only this public origin for synthetic QA preparation;
-	     TestFlight compatibility and genuine signed-device/model verification remain separate gates. An
+	     the Sandbox-capable server source remains undeployed and genuine signed-device/TestFlight/model
+	     verification remains separate. An
 	     empty/missing/mistyped value makes `CoachProxyClient.configured(...)` return nil, leaving the
 	     coach inert (the chat surface shows a clear "coach unavailable" state) rather than pointing at a
 	     wrong destination. Production app configuration requires `app-attest-storekit-v1` and no shared

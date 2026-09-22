@@ -104,22 +104,36 @@ export async function premiumEntitlement(jws, env, now = () => Date.now()) {
         !/^[A-Z0-9]{10}$/.test(env.APP_STORE_KEY_ID ?? '') || !issuerIDValid(env.APP_STORE_ISSUER_ID)) throw new CoachAuthFailure('auth_unavailable');
     // Apple's OCSP dependency initializes randomness. Import inside the request context;
     // workerd correctly prohibits that operation at module initialization.
-    const { AppStoreServerAPIClient, SignedDataVerifier, Environment } = await import('@apple/app-store-server-library');
-    const verifier = new SignedDataVerifier([Buffer.from(storeG2, 'base64'), Buffer.from(storeG3, 'base64')], true,
-      Environment.PRODUCTION, BUNDLE, Number(env.APP_STORE_APP_ID));
-    const presented = await verifier.verifyAndDecodeTransaction(jws);
+    const { AppStoreServerAPIClient, SignedDataVerifier, Environment, VerificationException, VerificationStatus } =
+      await import('@apple/app-store-server-library');
+    const roots = [Buffer.from(storeG2, 'base64'), Buffer.from(storeG3, 'base64')];
+    let environment = Environment.PRODUCTION;
+    let verifier = new SignedDataVerifier(roots, true, environment, BUNDLE, Number(env.APP_STORE_APP_ID));
+    let presented;
+    try {
+      presented = await verifier.verifyAndDecodeTransaction(jws);
+    } catch (error) {
+      // Apple's verifier authenticates the signature and bundle before reporting INVALID_ENVIRONMENT.
+      // Only that typed evidence permits selecting Sandbox; verifier/API/transport failures never do.
+      if (!(error instanceof VerificationException) || error.status !== VerificationStatus.INVALID_ENVIRONMENT) throw error;
+      environment = Environment.SANDBOX;
+      // The installed official SDK requires appAppleId for Production and omission for Sandbox.
+      verifier = new SignedDataVerifier(roots, true, environment, BUNDLE);
+      presented = await verifier.verifyAndDecodeTransaction(jws);
+    }
+    if (presented.environment !== environment) throw new CoachAuthFailure();
     if (!/^[0-9]{1,32}$/.test(presented.originalTransactionId ?? '')) throw new CoachAuthFailure();
-    const client = new AppStoreServerAPIClient(env.APP_STORE_PRIVATE_KEY, env.APP_STORE_KEY_ID, env.APP_STORE_ISSUER_ID, BUNDLE, Environment.PRODUCTION);
+    const client = new AppStoreServerAPIClient(env.APP_STORE_PRIVATE_KEY, env.APP_STORE_KEY_ID, env.APP_STORE_ISSUER_ID, BUNDLE, environment);
     const statuses = await client.getAllSubscriptionStatuses(presented.originalTransactionId);
     const fetchedAt = now();
-    if (statuses.bundleId !== BUNDLE || statuses.environment !== 'Production' || Number(statuses.appAppleId) !== Number(env.APP_STORE_APP_ID) ||
+    if (statuses.bundleId !== BUNDLE || statuses.environment !== environment || Number(statuses.appAppleId) !== Number(env.APP_STORE_APP_ID) ||
         !Array.isArray(statuses.data) || statuses.data.length > 8) throw new CoachAuthFailure();
     const candidates = statuses.data.flatMap(group => group.lastTransactions ?? []);
     if (candidates.length > 32) throw new CoachAuthFailure();
     const matches = candidates.filter(row => row.originalTransactionId === presented.originalTransactionId);
     if (matches.length !== 1 || matches[0].status !== 1 || typeof matches[0].signedTransactionInfo !== 'string' || matches[0].signedTransactionInfo.length > 12_000) throw new CoachAuthFailure();
     const current = await verifier.verifyAndDecodeTransaction(matches[0].signedTransactionInfo);
-    if (!evaluateVerifiedPremiumEntitlement({ ...presented }, { ...current }, matches[0].status, fetchedAt, now())) throw new CoachAuthFailure();
+    if (!evaluateVerifiedPremiumEntitlement({ ...presented }, { ...current }, matches[0].status, fetchedAt, now(), environment)) throw new CoachAuthFailure();
   } catch (error) {
     if (error instanceof CoachAuthFailure) throw error;
     // SDK exceptions may contain a signed proof/API diagnostics; never forward or log them.

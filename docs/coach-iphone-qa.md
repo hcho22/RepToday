@@ -6,14 +6,16 @@ no model request and does not grant TestFlight Premium or consume the two-model-
 The same hidden panel now also prepares a separately budgeted
 [server proof-only exchange](coach-proof-only-qa.md). It sends signed `{}` plus its exact replay,
 with no training content or provider request. Its new operator-exclusion server source is
-undeployed; Production-only purchase selection still prevents TestFlight Sandbox admission.
+undeployed. Current client/server source now carries and independently verifies Apple Sandbox
+Premium, but the released Worker is still Production-only.
 
 `CoachDeviceQA` is an explicit **preparation** configuration, not evidence of a working service.
 Ordinary Debug/Release Coach endpoints remain empty. The runtime-authentication service is deployed.
 Compatible production signing/distribution, a capable physical iPhone and an existing production
-Premium purchase/trial must be confirmed separately before sending either QA turn. No Sandbox fallback,
-operator bearer, local Premium grant or authentication bypass is provided. TestFlight proof-format compatibility implementation
-remains incomplete; TestFlight's Sandbox purchase cannot satisfy this production gateway.
+or Sandbox Premium purchase/trial must be confirmed separately before sending either QA turn. No
+arbitrary Production-error fallback, operator bearer, local Premium grant or authentication bypass
+is provided. The Sandbox-capable revision has not been deployed or exercised by a genuine
+TestFlight build, so TestFlight admission remains unverified.
 
 ## Configuration and unsigned build
 
@@ -80,8 +82,8 @@ Only after the separately authorized service/signing/device prerequisites pass:
 3. Confirm an existing locally verified Premium purchase/trial. If necessary, restore an existing
    purchase through **Progress → Go deeper with Premium → Restore purchases**; never make a new
    purchase for this recipe. The QA screen does not buy or grant Premium. Local eligibility alone
-   is insufficient: each turn still requires real App Attest and fresh production StoreKit proof,
-   with independent production status verification on the server.
+   is insufficient: each turn still requires real App Attest and fresh Production or Apple Sandbox
+   StoreKit proof, with independent status verification in that same environment on the server.
 4. Read/acknowledge the existing Coach data disclosure if not already acknowledged. **Not now**
    exits without sending or recording consent. Acknowledgement uses the existing versioned
    `AppState` contract; it does not alter telemetry consent. Confirm the screen's service and
@@ -219,5 +221,6 @@ python3 tools/test-coach-release-build-inspection.py
 ```
 
 This unsigned archive checks the real ArchiveAction/Release plist contract, not genuine signing or
-TestFlight distribution. The current Release endpoint remains empty pending precise verified TestFlight
-proof-format compatibility implementation. Never embed an operator bearer as a workaround.
+TestFlight distribution. The current Release endpoint remains empty pending a separately authorized
+Sandbox-capable server rollout and genuine-device/TestFlight validation. Never embed an operator
+bearer as a workaround.

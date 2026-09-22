@@ -12,7 +12,7 @@ protocol CoachAppAttesting: Sendable {
     func assertion(key: String, hash: Data) async throws -> Data
 }
 protocol CoachPurchaseProofProviding: Sendable {
-    func productionPremiumProof() async throws -> String
+    func appStorePremiumProof() async throws -> String
 }
 protocol CoachAuthenticationKeyStoring: Sendable {
     func load() -> String?
@@ -64,15 +64,20 @@ struct DeviceCoachAppAttester: CoachAppAttesting {
 }
 
 struct StoreKitCoachPurchaseProof: CoachPurchaseProofProviding {
-    func productionPremiumProof() async throws -> String {
+    static func serverProofEnvironmentAllowed(_ environment: AppStore.Environment) -> Bool {
+        environment == .production || environment == .sandbox
+    }
+
+    func appStorePremiumProof() async throws -> String {
         // No local premium boolean, AppState trial date, sign-in identity or restore exclusivity.
-        // Sandbox/TestFlight/Xcode transactions cannot authorize the production model endpoint.
+        // Production and Apple Sandbox JWS may be submitted; Xcode/unknown evidence never is.
+        // The server independently verifies the JWS, matching live status and production App Attest.
         let products = Set(SubscriptionPlan.ProductID.all)
         for await verification in Transaction.currentEntitlements {
             try Task.checkCancellation()
             guard case .verified(let transaction) = verification,
                   products.contains(transaction.productID), transaction.productType == .autoRenewable,
-                  transaction.environment == .production, transaction.revocationDate == nil,
+                  Self.serverProofEnvironmentAllowed(transaction.environment), transaction.revocationDate == nil,
                   !transaction.isUpgraded, let expiry = transaction.expirationDate, expiry > Date()
             else { continue }
             let proof = verification.jwsRepresentation
@@ -180,7 +185,7 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         return data.count == 32 && data.base64EncodedString() == value
     }
     private func send(body: Data, generation expected: UInt64, deadline: Double, proofOnly: Bool = false) async throws -> (data: Data, statusCode: Int) {
-        let transaction = try await purchase.productionPremiumProof()
+        let transaction = try await purchase.appStorePremiumProof()
         _ = try remaining(deadline, expected)
         guard !transaction.isEmpty, transaction.utf8.count <= 12_000 else { throw CoachAuthenticationError.unavailable }
         var key = keys.load()

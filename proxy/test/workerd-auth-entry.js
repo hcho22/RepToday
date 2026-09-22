@@ -34,7 +34,8 @@ export default { async fetch(request, env) {
       else if (input.operation === 'premium') await premiumEntitlement(input.jws, env);
       else if (input.operation === 'apple-request') return Response.json(await probeAppleRequest());
       else if (input.operation === 'apple-api' || input.operation === 'apple-response') {
-        const result = await probeAppleAPI(input.privateKey, env, input.operation === 'apple-response', input.diagnose === true);
+        const result = await probeAppleAPI(input.privateKey, env, input.operation === 'apple-response', input.diagnose === true,
+          input.environment ?? 'Production');
         return Response.json(result, {status: result.ok ? 200 : 401});
       }
       else throw new CoachAuthFailure();

@@ -3,18 +3,19 @@ import { evaluateVerifiedPremiumEntitlement } from '../src/runtime-entitlement-p
 
 // Verified-payload decision fixtures, not fabricated Apple signature proofs. No network/credentials.
 const now = 1_800_000_000_000;
-const transaction = () => ({ bundleId: 'com.reptoday.app', environment: 'Production',
+const transaction = (environment = 'Production') => ({ bundleId: 'com.reptoday.app', environment,
   type: 'Auto-Renewable Subscription', productId: 'com.reptoday.app.premium.monthly',
   transactionId: '1234', originalTransactionId: '1230', purchaseDate: now - 60_000,
   expiresDate: now + 60_000, signedDate: now - 1_000 });
-const decide = (presented = transaction(), current = transaction(), status = 1, fetched = now, clock = now) =>
-  evaluateVerifiedPremiumEntitlement(presented, current, status, fetched, clock);
+const decide = (presented = transaction(), current = transaction(), status = 1, fetched = now, clock = now,
+  environment = 'Production') => evaluateVerifiedPremiumEntitlement(presented, current, status, fetched, clock, environment);
 
 describe('verified premium decision slice (not a production authentication boundary)', () => {
   it('accepts active monthly/yearly and trial purchases without sign-in or price claims', () => {
     expect(decide()).toBe(true);
     const yearly = { ...transaction(), productId: 'com.reptoday.app.premium.yearly', offerType: 1, price: 0 };
     expect(decide(yearly, yearly)).toBe(true);
+    expect(decide(transaction('Sandbox'), transaction('Sandbox'), 1, now, now, 'Sandbox')).toBe(true);
   });
   it.each([null, {}, { isPremium: true }, [], 'signed-proof-looking-text'])('rejects absent/client-asserted/malformed claims %j', value => {
     // @ts-expect-error Intentionally adversarial shapes.
@@ -22,7 +23,7 @@ describe('verified premium decision slice (not a production authentication bound
   });
   it.each([
     ['bundleId', 'other.app'], ['environment', 'Sandbox'], ['environment', 'Xcode'],
-    ['environment', 'LocalTesting'], ['type', 'Non-Consumable'], ['productId', 'other.premium'],
+    ['environment', 'LocalTesting'], ['environment', 'Unknown'], ['type', 'Non-Consumable'], ['productId', 'other.premium'],
     ['transactionId', ''], ['transactionId', 1234], ['originalTransactionId', 'not-an-id'],
     ['expiresDate', now], ['expiresDate', now - 1], ['expiresDate', String(now + 1)],
     ['expiresDate', NaN], ['expiresDate', Infinity], ['revocationDate', now - 1],
@@ -33,10 +34,17 @@ describe('verified premium decision slice (not a production authentication bound
     expect(decide(bad)).toBe(false); expect(decide(transaction(), bad)).toBe(false);
   });
   it.each([0, 2, 3, 4, 5, 6, '1', null, undefined])('rejects missing/expired/retry/grace/revoked/unknown server status %j', status => {
-    expect(evaluateVerifiedPremiumEntitlement(transaction(), transaction(), status, now, now)).toBe(false);
+    expect(evaluateVerifiedPremiumEntitlement(transaction(), transaction(), status, now, now, 'Production')).toBe(false);
   });
   it('rejects transaction substitution across original purchase chains', () => {
     expect(decide(transaction(), { ...transaction(), originalTransactionId: '9999' })).toBe(false);
+  });
+  it('rejects mixed, local and unknown selected environments', () => {
+    expect(decide(transaction('Sandbox'), transaction('Sandbox'))).toBe(false);
+    expect(decide(transaction('Production'), transaction('Sandbox'))).toBe(false);
+    for (const environment of ['Xcode', 'LocalTesting', 'Unknown']) {
+      expect(decide(transaction(environment), transaction(environment), 1, now, now, environment)).toBe(false);
+    }
   });
   it('accepts a latest renewal in the same active chain, including an allowed product switch', () => {
     expect(decide(transaction(), { ...transaction(), transactionId: '5678', productId: 'com.reptoday.app.premium.yearly' })).toBe(true);

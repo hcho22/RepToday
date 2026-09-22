@@ -16,7 +16,7 @@ struct CoachRuntimeProofProbeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("Server proof admission — preparation only").font(Theme.Typography.headline)
-            Text("Requires separate approval for this installed build, device, Apple proof and matched reviewed server revision. Sends only signed {} and, after both gates pass, its exact replay. No workout context or model request. Current purchase selection remains Production only; this does not enable TestFlight Premium.")
+            Text("Requires separate approval for this installed build, device, Apple proof and matched reviewed server revision. Sends only signed {} and, after both gates pass, its exact replay. No workout context or model request. Purchase selection permits StoreKit-verified Production or Apple Sandbox proof; the server must independently verify that same environment. This does not enable TestFlight Premium.")
             Toggle("This exact proof-only operation is separately authorized", isOn: $confirmed)
                 .disabled(probe.running)
             Button("Verify server gates once") {

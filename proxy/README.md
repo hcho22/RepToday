@@ -13,6 +13,8 @@ The codebase supports two language routes:
 - **`POST /coach`** (US-AC01) accepts the audited derived context, message and separate Coach safety
   pseudonym, and calls OpenAI `gpt-5.6-luna`. The deployed runtime gateway requires genuine App Attest
   and independently verified production Premium proof, or its separate operator-only bearer gate.
+  Current undeployed source additionally supports Apple-verified Sandbox Premium through a matched
+  Sandbox verifier/status path for TestFlight.
 
 The runtime gateway is deployed. It persists bounded, content-free device security metadata, and
 retains no message, training summary, reply or purchase proof. Its verification/storage policy and
@@ -20,16 +22,17 @@ migration runbook are authoritative in
 [`docs/coach-runtime-authentication.md`](../docs/coach-runtime-authentication.md). A shipped binary
 never receives the operator gate. Ordinary Debug/Release Coach endpoints are still empty; the
 separate `CoachDeviceQA` preparation configuration is documented in
-[`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md). Scoped TestFlight compatibility is being prepared for verified beta distribution and active
-Apple-verified Sandbox Premium; the currently deployed verifier still denies Sandbox purchases.
+[`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md). The client now submits StoreKit-verified
+Sandbox JWS and the server source verifies them against Apple's Sandbox service, but the currently
+deployed revision still denies Sandbox purchases.
 Deployment and no-model denial probes do not establish genuine Apple/device/model success.
 Current source additionally prepares an undeployed
 [`proof-only QA exchange`](../docs/coach-proof-only-qa.md): an exact signed `{}` reaches
 `400 invalid_context` only after runtime device authentication and fresh Premium, then an exact
 replay is denied. The source gateway excludes an operator `{}` from that result. Local integration
 tests establish ordering/replay without provider dispatch; they do not establish genuine Apple
-proof, TestFlight classification or Sandbox compatibility. The historical release above remains
-separate from this diagnostic source.
+proof or live TestFlight compatibility. The historical release above remains separate from this
+source.
 
 ## What it does
 
@@ -263,7 +266,7 @@ The native result retains neither actual retry count nor serving-edge convergenc
 Standard installed Wrangler OAuth refresh recovered the unchanged local auth guard before
 this attempt; no new interactive login, credential mode/scope/account/plan change or rotation
 was needed. The captain selected **stronger runtime authentication**. Ordinary iOS Coach endpoint
-settings remain empty; genuine-device QA and verified TestFlight proof-format compatibility remain
+settings remain empty; the undeployed Sandbox-capable source and genuine-device/TestFlight QA remain
 unverified; the operator gate must never be distributed in a shipped binary.
 Provider keys remain solely on the Worker. Only `/coach` is exposed at this production hostname;
 the separate Variety Language route is not enabled by this deployment.
@@ -431,8 +434,8 @@ probe failure and requires a reviewed later retry while protection remains in pl
 
 This helper makes **zero paid model calls**. Its successful deployment message still explicitly
 says live model QA is pending. The stronger-authentication migration is now deployed as recorded in
-the current status above; actual non-empty model replies, shipped-client inclusion, verified
-TestFlight proof-format compatibility and genuine-device QA remain separate gates. The operator
+the current status above; actual non-empty model replies, shipped-client inclusion, the undeployed
+Sandbox-capable source and genuine-device/TestFlight QA remain separate gates. The operator
 gate remains a separate administration path and must never enter an app binary.
 
 Offline tests and native compilation (no Keychain access or network):
@@ -667,8 +670,9 @@ let reply = try await coach.reply(to: userMessage, context: bundle)
 blocks the free core loop. Production uses `appState.coachSafetyIdentifierProvider` through
 `ServiceContainer.live` and accepts only the exact `https://coach.reptoday.app/coach` origin with
 `app-attest-storekit-v1` and an empty binary secret; it constructs the App Attest/StoreKit transport,
-never this shared-secret example. Ordinary Debug/Release endpoints remain empty pending verified TestFlight
-proof-format compatibility; all binary Coach secrets must remain empty. The deployed operator bearer remains confined to the
+never this shared-secret example. Ordinary Debug/Release endpoints remain empty pending a separately
+authorized rollout and genuine-device/TestFlight validation; all binary Coach secrets must remain
+empty. The deployed operator bearer remains confined to the
 separate native QA path. An account deletion updates the already-built client in the same process.
 The bundle remains the single audited definition of training context - see
 `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.
