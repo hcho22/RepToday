@@ -7,7 +7,7 @@ with that paywall view model. Debug and Release retain their existing behavior a
 
 | Row | Meaning |
 | --- | --- |
-| Products: loading / loaded N plans | Catalog request in flight / usable mapped plans returned. |
+| Products: loading / loaded N plans | Initial state or catalog request in flight / usable mapped plans returned. |
 | Products: no usable products | Empty usable catalog, including `productsUnavailable`; no transport exception is established. |
 | Restore: not attempted / in progress | No restore on this model / its existing restore operation is running. |
 | Restore: Premium success | The existing restore grant is Premium; the normal grant and dismissal path still applies. |

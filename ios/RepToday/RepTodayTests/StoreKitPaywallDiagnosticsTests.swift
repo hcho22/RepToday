@@ -16,12 +16,16 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         let catalog: Catalog
         let failsSync: Bool
         let ownsPremium: Bool
+        let suspendsSync: Bool
         var calls: [String] = []
+        private var syncContinuation: CheckedContinuation<Void, Never>?
 
-        init(catalog: Catalog = .available, failsSync: Bool = false, ownsPremium: Bool = false) {
+        init(catalog: Catalog = .available, failsSync: Bool = false, ownsPremium: Bool = false,
+             suspendsSync: Bool = false) {
             self.catalog = catalog
             self.failsSync = failsSync
             self.ownsPremium = ownsPremium
+            self.suspendsSync = suspendsSync
         }
 
         func loadProducts(ids: [String]) async throws -> [StoreProduct] {
@@ -40,12 +44,19 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         }
         func sync() async throws {
             calls.append("sync")
+            if suspendsSync {
+                await withCheckedContinuation { syncContinuation = $0 }
+            }
             if failsSync {
                 throw LiveStoreKitFacade.requestFailure(NSError(
                     domain: "AMSErrorDomain", code: 202,
                     userInfo: [NSLocalizedDescriptionKey: "PRIVATE-SYNC-DESCRIPTION"]
                 ))
             }
+        }
+        func resumeSync() {
+            syncContinuation?.resume()
+            syncContinuation = nil
         }
         func currentEntitlements() async -> [StoreEntitlement] {
             calls.append("entitlements")
@@ -113,6 +124,41 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         XCTAssertNil(vm.message)
         let calls = await facade.calls
         XCTAssertEqual(calls, ["products", "purchase", "entitlements"])
+    }
+
+    func testRestoreInFlightPreservesCatalogAndBlocksDuplicateOperations() async throws {
+        let facade = Facade(suspendsSync: true)
+        let vm = model(facade)
+        await vm.load()
+        #if COACH_IPHONE_QA
+        XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
+        XCTAssertEqual(vm.restoreDiagnostic, .notAttempted)
+        #endif
+        let restore = Task { await vm.restore() }
+        let deadline = Date().addingTimeInterval(2)
+        while !(await facade.calls).contains("sync"), Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(vm.isBusy)
+        XCTAssertTrue(vm.isRestoring)
+        #if COACH_IPHONE_QA
+        XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
+        XCTAssertEqual(vm.restoreDiagnostic, .inProgress)
+        #endif
+        await vm.restore()
+        await vm.purchase(try XCTUnwrap(vm.plans.first))
+        let inFlightCalls = await facade.calls
+        XCTAssertEqual(inFlightCalls, ["products", "sync"])
+        await facade.resumeSync()
+        await restore.value
+        XCTAssertFalse(vm.isBusy)
+        XCTAssertEqual(vm.message, "No previous purchase found on this Apple ID.")
+        #if COACH_IPHONE_QA
+        XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
+        XCTAssertEqual(vm.restoreDiagnostic, .noCurrentEntitlement)
+        #endif
+        let calls = await facade.calls
+        XCTAssertEqual(calls, ["products", "sync", "history", "entitlements"])
     }
 
     #if COACH_IPHONE_QA
@@ -238,9 +284,16 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
 
     #if canImport(UIKit)
     func testHostedPaywallDiagnosticRowsFollowTheBuildConfiguration() async throws {
-        let vm = model(Facade(catalog: .failure, failsSync: true))
-        let surface = HostedSurface.host(PaywallView(viewModel: vm), size: CGSize(width: 390, height: 1800))
+        let facade = Facade(catalog: .failure, failsSync: true)
+        let vm = model(facade)
+        let surface = HostedSurface.host(PaywallView(viewModel: vm), size: CGSize(width: 390, height: 1000))
         defer { surface.window.isHidden = true }
+        // The isolated SwiftUI test host uses scenes. Attach the evidence window to its live
+        // scene so SwiftUI commits subsequent frames, not just the initial offscreen layout.
+        surface.window.windowScene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        )
+        surface.window.makeKeyAndVisible()
         // Hosting pumps layout synchronously. Yield the actor too, so the view's asynchronous
         // catalog task has completed before simulating the user's subsequent Restore tap.
         let deadline = Date().addingTimeInterval(2)
@@ -252,7 +305,26 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
             XCTFail("Paywall catalog task did not settle before Restore")
             return
         }
-        await vm.restore()
+        try await Task.sleep(nanoseconds: 700_000_000)
+        surface.host.view.setNeedsLayout()
+        surface.host.view.layoutIfNeeded()
+        #if COACH_IPHONE_QA
+        try EvidenceOutput.write(
+            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
+            named: "qa-before-restore.png", for: "coach-storekit-diagnostics"
+        )
+        #endif
+        let restore = try XCTUnwrap(AccessibilityTree.element(labeled: "Restore purchases", in: surface.host.view))
+        XCTAssertTrue(restore.accessibilityActivate(), "Drive the actual Restore control")
+        let restoreDeadline = Date().addingTimeInterval(2)
+        while vm.message != "We couldn't restore right now. Please try again later.", Date() < restoreDeadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        // Yield the main actor for SwiftUI's render transaction, then lay out the new frame.
+        // Accessibility can expose updated text before the layer tree used by capture updates.
+        try await Task.sleep(nanoseconds: 700_000_000)
+        surface.host.view.setNeedsLayout()
+        surface.host.view.layoutIfNeeded()
         HostedSurface.pump(for: 0.2)
         let labels = AccessibilityTree.labels(in: surface.host.view)
         XCTAssertTrue(labels.contains("We couldn't restore right now. Please try again later."))
@@ -263,6 +335,29 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         XCTAssertFalse(labels.contains { $0.hasPrefix("Products: ") || $0.hasPrefix("Restore: ") })
         #endif
         XCTAssertFalse(labels.joined().contains("PRIVATE"))
+        let calls = await facade.calls
+        XCTAssertEqual(calls, ["products", "sync", "history"], "One user tap adds only the existing restore sequence")
+        #if COACH_IPHONE_QA
+        try EvidenceOutput.write(
+            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
+            named: "qa-after-restore.png", for: "coach-storekit-diagnostics"
+        )
+        // Render the same live state at an accessibility text size, without rehosting/reloading.
+        surface.host.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        surface.window.frame.size.height = 2800
+        surface.host.view.frame = surface.window.bounds
+        try await Task.sleep(nanoseconds: 700_000_000)
+        surface.host.view.setNeedsLayout()
+        surface.host.view.layoutIfNeeded()
+        HostedSurface.pump(for: 0.2)
+        let largeLabels = AccessibilityTree.labels(in: surface.host.view)
+        XCTAssertTrue(largeLabels.contains("Products: unclassified — ASDErrorDomain / 101"))
+        XCTAssertTrue(largeLabels.contains("Restore: unclassified — AMSErrorDomain / 202"))
+        try EvidenceOutput.write(
+            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
+            named: "qa-accessibility-after-restore.png", for: "coach-storekit-diagnostics"
+        )
+        #endif
     }
     #endif
 }

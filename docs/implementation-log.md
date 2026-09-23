@@ -1378,12 +1378,5 @@ Coach enablement remain pending.
 
 ## Coach QA paywall StoreKit diagnostics (2026-09-23)
 
-The dedicated QA paywall now preserves independent product-load and restore results when the
-ordinary message is replaced by a restore attempt. The facade projects fixed error categories,
-allowlisted domain/code pairs and one cause before wrapping discards the original structure.
-The value contains no raw error text or payload and stays in view-model memory. The diagnostic
-case, states and rows compile only under `COACH_IPHONE_QA`; requests, Premium decisions and ordinary
-build behavior are unchanged. Focused tests use the real source with injected offline doubles.
-This improves observation, not entitlement behavior, and establishes no genuine Apple success
-or device root cause. [Contract](coach-storekit-diagnostics.md) and
-[validation](../artifacts/reports/coach-storekit-diagnostics/validation.md).
+Added QA paywall StoreKit diagnostics. See the [behavior and privacy contract](coach-storekit-diagnostics.md)
+and the [offline validation record and limits](../artifacts/reports/coach-storekit-diagnostics/validation.md).
