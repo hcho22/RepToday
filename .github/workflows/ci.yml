@@ -93,6 +93,7 @@ jobs:
         CODE_SIGN_IDENTITY=-
         DEVELOPMENT_TEAM=
         PROVISIONING_PROFILE_SPECIFIER=
+      DERIVED_DATA_PATH: ${{ github.workspace }}/build/ci-derived-data
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +106,9 @@ jobs:
       - name: Generate Xcode project from project.yml
         working-directory: ios/RepToday
         run: xcodegen generate
+
+      - name: Test app bundle metadata validator
+        run: python3 tools/test-app-bundle-metadata.py
 
       # Resolve a CONCRETE simulator UDID rather than relying on "name=iPhone 16"
       # + implicit OS:latest. The hosted macOS image co-installs several iOS
@@ -139,8 +143,14 @@ jobs:
             -scheme RepToday \
             -configuration Debug \
             -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
             $SIGNING_FLAGS \
             clean test
+
+      - name: Validate processed app bundle metadata
+        run: >-
+          python3 tools/validate-app-bundle-metadata.py
+          "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/RepToday.app/Info.plist"
 
       - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
         run: |
@@ -150,5 +160,6 @@ jobs:
             -scheme RepTodayUITests \
             -configuration Debug \
             -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
             $SIGNING_FLAGS \
             build-for-testing

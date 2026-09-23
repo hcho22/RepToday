@@ -184,8 +184,9 @@ struct ServiceContainer {
     /// the Programmer, the Ready Screen, and the completion recorder, so a written session is
     /// the same history everyone reads back - exactly as `mock()` shares its in-memory stores.
     ///
-    /// Subscription is the real StoreKit 2 service (US-N04), HealthKit is the real write-only
-    /// integration (US-N03), and auth is the real Keychain-backed Sign in with Apple (US-N01).
+    /// Subscription is the real StoreKit 2 service (US-N04), HealthKit mirrors workouts with a
+    /// metadata-filtered duplicate check (US-N03), and auth is the real Keychain-backed Sign in
+    /// with Apple (US-N01).
     ///
     /// - Parameters:
     ///   - installId: The launch-time anonymous per-install identifier (US-T05), used as the fixed
@@ -254,9 +255,9 @@ struct ServiceContainer {
         let consistencyService = ConsistencyScoreService()
         // One real phase evaluator shared by the app-open surfaces and completion bookkeeping.
         let phaseService = PhaseEvaluatorService(exerciseService: exerciseService)
-        // The real write-only HealthKit integration (US-N03): mirrors each completed session into
-        // Health, resolving MET values from the exercise catalog for the energy estimate. Shared so the
-        // completion recorder writes through the same instance exposed on the container.
+        // The real HealthKit integration (US-N03): mirrors each completed session into Health and uses a
+        // metadata-filtered query for its own prior workout to prevent duplicates. Shared so the completion
+        // recorder writes through the same instance exposed on the container.
         let healthKitService = HealthKitService(exerciseService: exerciseService)
         // The CoreData active-session store (US-K04) and the real Keychain-backed Sign in with Apple
         // (US-N01), held as locals so the account-deletion service (US-AD03) clears the very
