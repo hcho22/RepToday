@@ -1375,3 +1375,8 @@ signatures, rejection boundaries, one-attempt safety and late callbacks. The uns
 build is preparation, not a signed TestFlight install. The concrete proposal and evidence limits
 are in `docs/coach-testflight-schema-probe.md`; genuine execution, supported-OS evidence and final
 Coach enablement remain pending.
+
+## Coach QA paywall StoreKit diagnostics (2026-09-23)
+
+Added QA paywall StoreKit diagnostics. See the [behavior and privacy contract](coach-storekit-diagnostics.md)
+and the [offline validation record and limits](../artifacts/reports/coach-storekit-diagnostics/validation.md).

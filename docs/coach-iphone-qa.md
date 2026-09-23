@@ -19,6 +19,9 @@ TestFlight build, so TestFlight admission remains unverified.
 
 ## Configuration and unsigned build
 
+For the Premium paywall's **Products** and **Restore** rows in this configuration, see
+[StoreKit diagnostic interpretation, privacy boundaries and offline checks](coach-storekit-diagnostics.md).
+
 `ios/RepToday/project.yml` is authoritative. `Info.plist` expands the existing per-configuration
 build settings, and `ServiceContainer.live` resolves the actual `CoachProxyClient.configured`.
 
