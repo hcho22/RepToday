@@ -19,6 +19,12 @@ TestFlight build, so TestFlight admission remains unverified.
 
 ## Configuration and unsigned build
 
+The Premium paywall in this configuration also shows separate, memory-only **Products** and
+**Restore** results. These retain only fixed categories, allowlisted error domains and numeric
+codes, plus at most one underlying domain/code. Restore preserves the preceding catalog result;
+neither row changes entitlement decisions or initiates a request. Ordinary Debug/Release builds
+exclude both rows. See [StoreKit diagnostic interpretation and offline checks](coach-storekit-diagnostics.md).
+
 `ios/RepToday/project.yml` is authoritative. `Info.plist` expands the existing per-configuration
 build settings, and `ServiceContainer.live` resolves the actual `CoachProxyClient.configured`.
 

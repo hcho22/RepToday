@@ -82,6 +82,15 @@ struct PaywallView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel(message)
                 }
+                #if COACH_IPHONE_QA
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Products: \(viewModel.productsDiagnostic.summary)")
+                    Text("Restore: \(viewModel.restoreDiagnostic.summary)")
+                }
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                #endif
                 restoreButton
                 disclosure
                 legalLinks

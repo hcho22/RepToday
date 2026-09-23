@@ -122,7 +122,7 @@ final class LiveStoreKitFacade: StoreKitFacade {
             let products = try await Product.products(for: ids)
             return products.compactMap(Self.storeProduct(from:))
         } catch {
-            throw SubscriptionError.failed(error.localizedDescription)
+            throw Self.requestFailure(error)
         }
     }
 
@@ -178,8 +178,49 @@ final class LiveStoreKitFacade: StoreKitFacade {
         do {
             try await AppStore.sync()
         } catch {
-            throw SubscriptionError.failed(error.localizedDescription)
+            throw Self.requestFailure(error)
         }
+    }
+
+    /// Only the product-load and sync catches use this seam. Ordinary builds keep their existing
+    /// wrapping; QA projects bounded facts before the original error structure is discarded.
+    static func requestFailure(_ error: Error) -> SubscriptionError {
+        #if COACH_IPHONE_QA
+        let category: StoreKitFailureDiagnostic.Category
+        var cause: Error?
+        switch error {
+        case let storeError as StoreKitError:
+            switch storeError {
+            case .userCancelled:
+                category = .cancelled
+            case .networkError(let underlying):
+                category = .network
+                cause = underlying
+            case .systemError(let underlying):
+                category = .system
+                cause = underlying
+            default:
+                category = .storeKit
+            }
+        case let storeError as SKError where storeError.code == .paymentCancelled:
+            category = .cancelled
+        case is CancellationError:
+            category = .cancelled
+        case is URLError:
+            category = .network
+        default:
+            category = .unclassified
+        }
+        let original = error as NSError
+        if cause == nil { cause = original.userInfo[NSUnderlyingErrorKey] as? Error }
+        return .diagnosticFailure(StoreKitFailureDiagnostic(
+            category: category,
+            error: .init(original),
+            underlying: cause.map { .init($0 as NSError) }
+        ))
+        #else
+        return .failed(error.localizedDescription)
+        #endif
     }
 
     func transactionHistory() async -> StoreTransactionHistory {

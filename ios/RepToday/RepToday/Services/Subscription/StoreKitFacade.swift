@@ -10,7 +10,51 @@ enum SubscriptionError: Error, Equatable {
     case notVerified
     /// Any other StoreKit failure, message attached for logs.
     case failed(String)
+    #if COACH_IPHONE_QA
+    /// Content-free evidence for product loading and restore in the dedicated QA build only.
+    case diagnosticFailure(StoreKitFailureDiagnostic)
+    #endif
 }
+
+#if COACH_IPHONE_QA
+/// Deliberately cannot carry arbitrary error text, userInfo, receipts or account identifiers.
+struct StoreKitFailureDiagnostic: Equatable {
+    enum Category: String {
+        case cancelled, network, system, storeKit, unclassified
+    }
+
+    struct ErrorCode: Equatable {
+        enum Domain: String {
+            case storeKit = "StoreKit.StoreKitError"
+            case legacyStoreKit = "SKErrorDomain"
+            case appStore = "ASDErrorDomain"
+            case appleMediaServices = "AMSErrorDomain"
+            case url = "NSURLErrorDomain"
+            case cfNetwork = "kCFErrorDomainCFNetwork"
+            case other
+        }
+
+        let domain: Domain
+        let code: Int
+
+        init(_ error: NSError) {
+            domain = Domain(rawValue: error.domain) ?? .other
+            code = error.code
+        }
+
+        var summary: String { "\(domain.rawValue) / \(code)" }
+    }
+
+    let category: Category
+    let error: ErrorCode
+    let underlying: ErrorCode?
+
+    var summary: String {
+        "\(category.rawValue) — \(error.summary)"
+            + (underlying.map { "; underlying \($0.summary)" } ?? "")
+    }
+}
+#endif
 
 /// A purchasable product as read from StoreKit, projected to a plain value so the mapping in
 /// `StoreKitSubscriptionService` is unit-testable without a live store.
