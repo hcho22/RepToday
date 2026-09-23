@@ -5,9 +5,10 @@ import HealthKit
 /// device only, and degrades gracefully whenever Health is unavailable or the user denies access.
 ///
 /// Design:
-/// - **Write-only.** Rep Today *shares* (writes) the workout and its active-energy sample and never reads
-///   Health data, so only `NSHealthUpdateUsageDescription` is required and the authorization request asks
-///   for share access alone (`read: []`).
+/// - **Write with a bounded duplicate check.** Rep Today requests share access alone (`read: []`) and
+///   never requests general Health read authorization. Before writing, a metadata-filtered `HKSampleQuery`
+///   checks only for a workout Rep Today previously saved with the same external UUID, so both Health usage
+///   descriptions are required without exposing unrelated Health data to the app.
 /// - **Never gates the loop.** Every method is best-effort: no Health data available (e.g. iPad), a
 ///   denied authorization, or a write failure all return quietly, so a completed session is never blocked
 ///   (the completion recorder also wraps the call in `try?`).

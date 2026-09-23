@@ -57,6 +57,8 @@
 	<key>RepTodayCoachAuthMode</key>
 	<string>$(REPTODAY_COACH_AUTH_MODE)</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Rep Today writes your completed sessions to Health so your movement counts where you already track it. It only ever adds workouts and never reads your Health data.</string>
+	<string>Rep Today saves your completed sessions as workouts in Health so your movement counts where you already track it.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Rep Today checks Health for workouts it previously saved so it can avoid adding duplicate completed sessions. It does not read your other Health data.</string>
 </dict>
 </plist>

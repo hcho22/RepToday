@@ -74,6 +74,8 @@ if [[ ! -f "$archive_plist" ]]; then
     exit 1
 fi
 
+python3 "$repo_root/tools/validate-app-bundle-metadata.py" "$archive_plist"
+
 python3 "$repo_root/tools/inspect-coach-qa-build.py" \
     --app "$archive_path/Products/Applications/RepToday.app" \
     --configuration Release \

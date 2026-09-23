@@ -57,15 +57,16 @@ targets:
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # A partial Info.plist merged with the keys Xcode generates. It carries the CloudKit
-        # remote-notification background mode (US-N02) and the HealthKit write usage description
-        # (US-N03, NSHealthUpdateUsageDescription) - the privacy string shown when Rep Today first
-        # asks to write sessions to Health.
+        # remote-notification background mode (US-N02) and the HealthKit write and bounded-read usage
+        # descriptions (US-N03). Rep Today requests no general Health read authorization, but its
+        # metadata-filtered duplicate check still requires NSHealthShareUsageDescription.
         INFOPLIST_FILE: RepToday/Info.plist
         # CloudKit sync (US-N02), Sign in with Apple (US-N01), and HealthKit (US-N03) are all
         # additive: the store degrades to local-only, the sign-in falls back gracefully, and the
-        # Health write is best-effort/skipped when unavailable (e.g. an unsigned Simulator build
+        # Health integration is best-effort/skipped when unavailable (e.g. an unsigned Simulator build
         # with no provisioning), so the core loop is never gated.
         CODE_SIGN_ENTITLEMENTS: RepToday/RepToday.entitlements
       # The anonymous-telemetry deployment origin (US-T04), split per configuration and expanded
