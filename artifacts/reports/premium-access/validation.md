@@ -8,10 +8,9 @@ by a separate evidence-import system.
 
 ## Accepted contract and impact
 
-- **Intended behavior:** An onboarded user can open Profile → Account and use the official Sign in
-  with Apple control, or see an already-stored sign-in. Restore describes the absence of an active
-  Premium subscription. Catalog unavailability stays visible separately, with an accessible Retry
-  plans action. Catalog configuration is investigated read-only.
+- **Intended behavior:** User-facing account entry and Premium recovery are documented in
+  [README → Account and Premium access](../../../README.md#account-and-premium-access).
+  Catalog configuration is investigated read-only; this report owns the identity boundary and evidence.
 - **Preserved behavior:** Existing profile and `User.id`, workout history, active session, progression
   policy, preferences, onboarding completion and subscription authority remain unchanged through
   sign-in success, cancellation and failure. Free/offline workouts remain available. Apple billing

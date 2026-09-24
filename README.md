@@ -90,6 +90,16 @@ There is no XP, no levels, and no badges in the MVP.
 - **Talks, never programs** - the premium Coach explains the deterministic engine's choices, gives concise bodyweight form guidance, narrates strength-journey trends, and can offer bounded preference nudges; it never generates or directly edits a workout or safety filter.
 - **Best-effort and bounded** - Coach turns use the content-stateless Cloudflare proxy's `POST /coach` route and a source-pinned OpenAI `gpt-5.6-luna` Responses API call. The request has a 30-second timeout and 1024-token output ceiling, and any failure leaves the free core loop untouched. Premium subscribers can open Coach in ordinary Release builds; Debug remains unavailable. See the [runtime runbook](docs/coach-runtime-authentication.md) for authentication, deployment status and the separate genuine-device/TestFlight/model evidence requirements.
 
+### Account and Premium access
+
+Open **Profile → Account** to sign in with Apple after onboarding or view your stored sign-in status. Sign-in is optional and keeps your existing workouts and history; it does not unlock Premium or recover another account's data.
+
+On the free tier, open the Premium paywall from **Progress** or **Profile → Coach**. Purchases and **Restore purchases** use your App Store account independently of app sign-in. “No active Premium subscription was found” means restore found no current qualifying entitlement; it does not say you never purchased a subscription.
+
+If plans are unavailable, use **Retry plans**. The catalog notice and latest purchase/restore result stay separate, and retrying plans preserves that result. Store controls wait for any in-flight load, purchase or restore to finish. Missing plans alone do not prevent a subsequent restore, and your workouts remain free.
+
+The [Premium access validation report](artifacts/reports/premium-access/validation.md) owns the identity boundary, catalog investigation status and verification limits; the [Coach QA diagnostics guide](docs/coach-storekit-diagnostics.md) explains the diagnostic rows.
+
 ### Privacy
 
 - **Anonymous usage data, disclosed and optional** - the first onboarding screen says in one sentence what is collected and where the off switch is, and Profile -> Settings -> Privacy carries a "Share anonymous usage data" toggle that takes effect on the next event rather than the next launch. It is on by default (opt-out, not opt-in), counted against a random per-install number that is never a name, an email, or a device identifier. Turning it off leaves that number untouched; deleting the account rotates it so later events cannot be linked to the pre-deletion install identity.

@@ -1,8 +1,8 @@
 # Coach QA paywall StoreKit diagnostics
 
 In `COACH_IPHONE_QA` builds, the existing Premium paywall displays independent Products and
-Restore results beside its ordinary messages. All configurations keep catalog availability separate
-from the latest purchase/restore result and offer Retry plans. The diagnostic rows live only with
+Restore results beside its ordinary messages. For shared recovery controls and messages, see
+[Account and Premium access](../README.md#account-and-premium-access). The diagnostic rows live only with
 the QA paywall view model; ordinary Debug and Release do not display them.
 
 | Row | Meaning |
@@ -24,10 +24,7 @@ App Store, Apple Media Services and network domains; every other domain becomes 
 The value holds enums and integers, not error objects, descriptions, `userInfo`, purchase proofs
 or account identifiers. It is not persisted, exported or sent to analytics.
 
-The two operations remain independent: missing products do not by themselves prevent restore,
-and successful sync with no entitlement says “No active Premium subscription was found.” A thrown
-sync uses the generic restore error. Catalog retry never clears the restore result. Loading,
-purchase, and restore exclude one another; a busy operation disables the other store controls. The rows do not establish that the underlying failure
+The rows do not establish that the underlying failure
 is temporary, identify a product/account configuration defect, or prove a genuine Apple restore.
 Numeric codes require interpretation in their recorded domain; do not infer a cause from a code
 alone or suggest account changes, repurchasing or deleting data without further evidence.
