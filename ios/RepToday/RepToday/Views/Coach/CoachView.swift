@@ -59,10 +59,11 @@ struct CoachView: View {
         ZStack {
             Theme.Colors.background.ignoresSafeArea()
 
-            if viewModel.isAvailable {
+            switch viewModel.localAvailability {
+            case .enabled:
                 conversation
-            } else {
-                unavailableState
+            case .notEnabledInBuild:
+                buildDisabledState
             }
 
             // The pre-use data disclosure (US-AC04) rides above the chat as its own layer rather than a
@@ -352,20 +353,20 @@ struct CoachView: View {
         deliveryReservation = nil
     }
 
-    private var unavailableState: some View {
+    private var buildDisabledState: some View {
         VStack(spacing: Theme.Spacing.md) {
             Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
                 .font(.system(size: 36, weight: .semibold))
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
 
-            Text("Coach isn't available right now")
+            Text("Coach is not enabled in this build")
                 .font(Theme.Typography.title)
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .multilineTextAlignment(.center)
 
-            Text("Your workouts are unaffected - the app still builds every session on its own. "
-                 + "Check back soon.")
+            Text("Contact Rep Today support about a Coach-enabled build. "
+                 + "Your workouts are unaffected - the app still builds every session on its own.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -375,7 +376,6 @@ struct CoachView: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Coach isn't available right now. Your workouts are unaffected.")
     }
 
     // MARK: - Helpers

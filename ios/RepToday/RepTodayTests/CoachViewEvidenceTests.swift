@@ -30,11 +30,11 @@ final class CoachViewEvidenceTests: XCTestCase {
             case success(reply: String)
             case safetyRefusal
             case failure
+            case status(Int)
         }
         var outcome: Outcome
+        private(set) var callCount = 0
         init(_ outcome: Outcome) { self.outcome = outcome }
-
-        struct Boom: Error {}
 
         func post(
             to url: URL,
@@ -42,23 +42,26 @@ final class CoachViewEvidenceTests: XCTestCase {
             headers: [String: String],
             timeoutSeconds: Double
         ) async throws -> (data: Data, statusCode: Int) {
+            callCount += 1
             switch outcome {
             case let .success(reply):
                 return (Data(#"{"reply":"\#(reply)"}"#.utf8), 200)
             case .safetyRefusal:
                 return (Data(#"{"outcome":"safety_refusal"}"#.utf8), 200)
             case .failure:
-                throw Boom()
+                throw URLError(.notConnectedToInternet)
+            case let .status(code):
+                return (Data(), code)
             }
         }
     }
 
-    private func makeViewModel(transport: StubTransport) -> CoachViewModel {
+    private func makeViewModel(transport: any CoachProxyTransport) -> CoachViewModel {
         var user = MockPersistence.sampleUser
         user.phase = .discipline
         let viewModel = CoachViewModel(
             client: CoachProxyClient(
-                endpoint: URL(string: "https://proxy.example.com/coach")!,
+                endpoint: URL(string: "https://coach.reptoday.app/coach")!,
                 safetyIdentifier: testCoachSafetyIdentifier,
                 transport: transport
             ),
@@ -139,6 +142,9 @@ final class CoachViewEvidenceTests: XCTestCase {
         XCTAssertTrue(labelsContain("workout isn't affected"),
                       "the failure copy reassures the core loop is unaffected; tree reads \(labels())")
         XCTAssertTrue(labelsContain("Try again"), "the failure is retryable; tree reads \(labels())")
+        XCTAssertTrue(labelsContain("Message to the coach"))
+        XCTAssertFalse(labelsContain("Coach is not enabled in this build"))
+        XCTAssertEqual(viewModel.localAvailability, .enabled)
 
         try capture(named: "02-coach-graceful-failure.png", size: size)
         _ = host
@@ -175,12 +181,97 @@ final class CoachViewEvidenceTests: XCTestCase {
         let (host, hostedWindow) = HostedSurface.host(NavigationStack { CoachView(viewModel: viewModel) }, size: size)
         window = hostedWindow
 
-        XCTAssertTrue(labelsContain("Coach isn't available right now"),
+        XCTAssertTrue(labelsContain("Coach is not enabled in this build"),
                       "the unconfigured build shows a calm unavailable state; tree reads \(labels())")
+        XCTAssertTrue(labelsContain("Contact Rep Today support about a Coach-enabled build"))
+        XCTAssertFalse(labelsContain("Try again"))
+        XCTAssertFalse(labelsContain("Message to the coach"))
         XCTAssertTrue(labelsContain("workouts are unaffected"),
                       "the unavailable copy reassures the core loop is unaffected; tree reads \(labels())")
 
         try capture(named: "03-coach-unavailable.png", size: size)
         _ = host
+    }
+
+    // Trusted device/proof doubles exercise the real runtime transport's failure paths. They do
+    // not mint or verify Apple evidence, and no HTTP request leaves this process.
+    private struct Attester: CoachAppAttesting {
+        let isSupported: Bool
+        func generateKey() async throws -> String { throw CoachAuthenticationError.unavailable }
+        func attest(key: String, hash: Data) async throws -> Data { throw CoachAuthenticationError.unavailable }
+        func assertion(key: String, hash: Data) async throws -> Data { throw CoachAuthenticationError.unavailable }
+    }
+
+    private actor MissingProof: CoachPurchaseProofProviding {
+        private(set) var callCount = 0
+        func appStorePremiumProof() async throws -> String {
+            callCount += 1
+            throw CoachAuthenticationError.unavailable
+        }
+    }
+
+    private struct EmptyKeys: CoachAuthenticationKeyStoring {
+        func load() -> String? { nil }
+        func save(_ key: String?) {}
+    }
+
+    func testDeviceAndPurchaseProofFailuresKeepConversationAndRetry() async throws {
+        for supported in [false, true] {
+            let http = StubTransport(.success(reply: "Must never be requested"))
+            let proof = MissingProof()
+            let runtime = RuntimeAuthenticatedCoachTransport(
+                attester: Attester(isSupported: supported), purchase: proof,
+                keys: EmptyKeys(), http: http
+            )
+            let viewModel = makeViewModel(transport: runtime)
+            viewModel.draft = "Why squats today?"
+            await viewModel.send()
+            assertFailedConversation(viewModel)
+            await viewModel.retryLastMessage()
+            assertFailedConversation(viewModel)
+            let proofCalls = await proof.callCount
+            XCTAssertEqual(proofCalls, supported ? 2 : 0, "only a supported device reaches the proof gate")
+            XCTAssertEqual(http.callCount, 0, "device/proof rejection happens before HTTP")
+        }
+    }
+
+    func testNetworkAndServiceFailuresKeepConversationAndCanRecoverThroughRetry() async throws {
+        for outcome: StubTransport.Outcome in [.failure, .status(401), .status(503)] {
+            let transport = StubTransport(outcome)
+            let viewModel = makeViewModel(transport: transport)
+            viewModel.draft = "Why squats today?"
+            await viewModel.send()
+            assertFailedConversation(viewModel)
+
+            // Hosted SwiftUI combines the banner without exposing a separately activatable
+            // retry button. Exercise the same production method used by CoachView.beginRetry;
+            // this proves retry behavior and the resulting UI, not a device tap.
+            transport.outcome = .success(reply: "They were your stalest movement pattern.")
+            await viewModel.retryLastMessage()
+            HostedSurface.pump(for: HostedSurface.settleInterval)
+            XCTAssertEqual(transport.callCount, 2)
+            XCTAssertEqual(viewModel.messages.map(\.author), [.user, .coach])
+            XCTAssertNil(viewModel.errorMessage)
+            XCTAssertEqual(viewModel.localAvailability, .enabled)
+            XCTAssertTrue(labelsContain("Message to the coach"))
+            XCTAssertTrue(labelsContain("Coach said: They were your stalest movement pattern"))
+            XCTAssertFalse(labelsContain("Coach is not enabled in this build"))
+        }
+    }
+
+    private func assertFailedConversation(_ viewModel: CoachViewModel,
+                                          file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(viewModel.localAvailability, .enabled, file: file, line: line)
+        XCTAssertTrue(viewModel.canRetry, file: file, line: line)
+        XCTAssertEqual(viewModel.messages.map(\.author), [.user], file: file, line: line)
+        window?.isHidden = true
+        let (_, hostedWindow) = HostedSurface.host(
+            NavigationStack { CoachView(viewModel: viewModel) }, size: CGSize(width: 393, height: 852)
+        )
+        window = hostedWindow
+        XCTAssertTrue(labelsContain("You said: Why squats today?"), file: file, line: line)
+        XCTAssertTrue(labelsContain("Message to the coach"), file: file, line: line)
+        XCTAssertTrue(labelsContain(CoachViewModel.genericFailureMessage), file: file, line: line)
+        XCTAssertFalse(labelsContain("Coach is not enabled in this build"), file: file, line: line)
     }
 }

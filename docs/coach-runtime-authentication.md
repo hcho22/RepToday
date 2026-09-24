@@ -27,6 +27,22 @@ Release configuration change.
 production origin requires `app-attest-storekit-v1` and an empty `REPTODAY_COACH_SECRET`. The app
 constructs real DeviceCheck/StoreKit authentication, never a binary-embedded production credential.
 
+## Local availability and send-time failure
+
+`CoachViewModel.localAvailability` describes local client inclusion only. Missing or invalid
+configuration resolves to `notEnabledInBuild` and shows “Coach is not enabled in this build,”
+a support next step, and reassurance that workouts are unaffected. It does not suggest another
+purchase, restore, wait or retry can enable the build, or claim an update exists. A configured
+client stays `enabled` through device/proof/network/service failures; these preserve the
+conversation and its existing retry behavior. Neither state claims live service health.
+
+The permanent purchase/restore regressions join the production paywall's authoritative Premium
+handoff, a stale free reread, the production Profile Coach row and its production destination for
+both enabled and disabled local configurations. They use trusted subscription doubles and mount
+the destination explicitly because hosted NavigationLink activation does not reliably push.
+See [coverage and limitations](../artifacts/reports/coach-purchase-chat/validation.md); genuine
+TestFlight purchase/restore, relaunch, navigation and Apple admission remain device-only checks.
+
 ## Verification boundary
 
 For every user-triggered turn, the iOS transport obtains a StoreKit 2-verified Production or Apple

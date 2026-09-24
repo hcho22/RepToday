@@ -45,10 +45,9 @@ private final class CoachDeliveryAuthorization: SessionPolicyWriteAuthorization,
 /// - **It never sets a safety filter.** A health/injury signal raises a routing *offer* (US-AC08) that
 ///   points at the user's own injury control; the coach cannot set or clear an injury flag, and the
 ///   policy-write path it does have (US-AC07) cannot express one.
-/// - **Inert when unconfigured.** When no coach proxy is configured for the build (`client == nil` -
-///   as in ordinary builds while the locally prepared App Attest/StoreKit path awaits migration and
-///   genuine-device QA), the surface is `isAvailable == false` and shows a clear "coach unavailable"
-///   state instead of failing.
+/// - **Inert when unconfigured.** Missing or invalid local configuration (`client == nil`) shows
+///   the build-disabled screen. Release includes the approved client; ordinary Debug is unconfigured.
+///   Device, proof, network and service failures occur on send and keep the conversation open.
 ///
 /// It is `@Observable`, takes its services as protocols, and injects a clock/calendar so the derived
 /// context is deterministic under test - the same conventions as the other v6 view models. It is
@@ -92,9 +91,16 @@ final class CoachViewModel {
     /// `retryLastMessage()`; a safety refusal is not. Cleared the moment a new send starts.
     private(set) var errorMessage: String?
 
-    /// Whether the coach is configured for this build. `false` when no proxy origin is set
-    /// (`client == nil`); the view shows a clear "coach unavailable" state and disables sending.
-    var isAvailable: Bool { client != nil }
+    /// Local client inclusion only, never a claim about device authentication or service health.
+    /// Missing and invalid configuration both fail closed as build-disabled. Send-time failures
+    /// belong to `errorMessage` and cannot change this state or replace the conversation.
+    enum LocalAvailability: Equatable {
+        case enabled
+        case notEnabledInBuild
+    }
+
+    var localAvailability: LocalAvailability { client == nil ? .notEnabledInBuild : .enabled }
+    var isAvailable: Bool { localAvailability == .enabled }
 
     /// Whether the user has acknowledged the coach data disclosure (US-AC04) and the coach may send.
     /// This is the **load-bearing send gate**: it is checked in the one send path (`deliver`), not just

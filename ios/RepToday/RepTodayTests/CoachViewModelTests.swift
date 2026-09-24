@@ -528,6 +528,7 @@ final class CoachViewModelTests: XCTestCase {
     func testUnavailableWhenNoClientConfigured() async {
         let viewModel = makeUnavailableViewModel()
 
+        XCTAssertEqual(viewModel.localAvailability, .notEnabledInBuild)
         XCTAssertFalse(viewModel.isAvailable)
         XCTAssertFalse(viewModel.canSend)
 
