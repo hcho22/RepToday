@@ -46,8 +46,8 @@ private final class CoachDeliveryAuthorization: SessionPolicyWriteAuthorization,
 ///   points at the user's own injury control; the coach cannot set or clear an injury flag, and the
 ///   policy-write path it does have (US-AC07) cannot express one.
 /// - **Inert when unconfigured.** Missing or invalid local configuration (`client == nil`) shows
-///   the build-disabled screen. Release includes the approved client; ordinary Debug is unconfigured.
-///   Device, proof, network and service failures occur on send and keep the conversation open.
+///   the build-disabled screen. Device, proof, network and service failures occur on send and keep
+///   the conversation open. Build configuration is owned by `docs/coach-runtime-authentication.md`.
 ///
 /// It is `@Observable`, takes its services as protocols, and injects a clock/calendar so the derived
 /// context is deterministic under test - the same conventions as the other v6 view models. It is

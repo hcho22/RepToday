@@ -29,7 +29,7 @@ The coach only ever *talks* - it never generates, edits, or prescribes a workout
 
 ## Notes / scope
 
-- **Current configuration and deployment status:** see [`docs/coach-runtime-authentication.md`](../../../docs/coach-runtime-authentication.md). Release now includes the approved runtime client; ordinary Debug remains unconfigured and device QA is separate. These hosted surfaces use trusted doubles, not genuine Apple proof or live model answers. The [purchase-to-chat follow-up](../coach-purchase-chat/validation.md) records the current local availability/retry coverage.
+- **Current configuration and deployment status:** see [`docs/coach-runtime-authentication.md`](../../../docs/coach-runtime-authentication.md). These hosted surfaces use trusted doubles, not genuine Apple proof or live model answers. The [purchase-to-chat follow-up](../coach-purchase-chat/validation.md) records the current local availability/retry coverage.
 - **Later stories now landed:** premium gating + upsell (US-AC03), the OpenAI/provider-retention disclosure (US-AC04), Coach-sourced policy writes (US-AC05/06/07), the injury-flag routing UI (US-AC08), and premium analytics narration (US-AN01/02).
 
 ## How to regenerate

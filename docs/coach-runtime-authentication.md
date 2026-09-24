@@ -31,17 +31,15 @@ constructs real DeviceCheck/StoreKit authentication, never a binary-embedded pro
 
 `CoachViewModel.localAvailability` describes local client inclusion only. Missing or invalid
 configuration resolves to `notEnabledInBuild` and shows “Coach is not enabled in this build,”
-a support next step, and reassurance that workouts are unaffected. It does not suggest another
-purchase, restore, wait or retry can enable the build, or claim an update exists. A configured
+asks the user to contact Rep Today support about a Coach-enabled build, and reassures them that
+workouts are unaffected. The combined accessibility text includes that next step and reassurance.
+Local availability is independent of Premium eligibility and disclosure consent. The screen does
+not suggest another purchase, restore, wait or retry can enable the build, or claim an update exists. A configured
 client stays `enabled` through device/proof/network/service failures; these preserve the
 conversation and its existing retry behavior. Neither state claims live service health.
 
-The permanent purchase/restore regressions join the production paywall's authoritative Premium
-handoff, a stale free reread, the production Profile Coach row and its production destination for
-both enabled and disabled local configurations. They use trusted subscription doubles and mount
-the destination explicitly because hosted NavigationLink activation does not reliably push.
-See [coverage and limitations](../artifacts/reports/coach-purchase-chat/validation.md); genuine
-TestFlight purchase/restore, relaunch, navigation and Apple admission remain device-only checks.
+See the [purchase-to-chat regression evidence](../artifacts/reports/coach-purchase-chat/validation.md)
+for coverage, hosted navigation/retry limitations and remaining device-only checks.
 
 ## Verification boundary
 

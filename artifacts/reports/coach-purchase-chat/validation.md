@@ -5,21 +5,9 @@ presentation, tests and documentation; the current Release/Debug/CoachDeviceQA c
 contracts remain intact. Current deployment/distribution evidence belongs to
 [`docs/coach-runtime-authentication.md`](../../../docs/coach-runtime-authentication.md).
 
-## Product behavior
-
-`CoachViewModel.LocalAvailability` describes whether a local client exists: `enabled` or
-`notEnabledInBuild`. Missing and invalid local configuration both select the latter. It is
-independent of Premium eligibility, disclosure consent and send-time service health.
-
-The disabled screen says “Coach is not enabled in this build,” suggests contacting Rep Today
-support about a Coach-enabled build, and reassures the user that workouts are unaffected.
-VoiceOver receives the full next step and reassurance through combined text. The copy does not
-suggest purchasing/restoring again, waiting or retrying will enable this build and does not
-claim an update exists.
-
-Device/proof/network/service failures keep the configured conversation, its question and its
-existing retry behavior. No entitlement semantics, endpoint, authentication mode, embedded secret,
-workout logic or send-time error policy changed.
+The product contract and disabled-screen guidance are owned by the runbook's
+[local availability and send-time failure section](../../../docs/coach-runtime-authentication.md#local-availability-and-send-time-failure).
+This report records regression coverage and its evidence limits.
 
 ## Permanent regression coverage
 
