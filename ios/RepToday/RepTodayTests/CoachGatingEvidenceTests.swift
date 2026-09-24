@@ -8,8 +8,10 @@ import UIKit
 ///
 /// This drives the *production* `CoachEntryRow` in a real key window over a `CoachGateViewModel`
 /// backed by a free / Premium mock subscription, and asserts the load-bearing branch on the live
-/// accessibility tree - the free row is a Premium-tagged upsell, the Premium row navigates into the
-/// coach - then captures each state to a PNG under `artifacts/reports/US-AC03/`.
+/// accessibility tree: the free row opens the paywall and the Premium row offers the Coach link.
+/// Joined purchase/restore tests explicitly mount its production destination because the hosted
+/// NavigationLink proxy does not reliably push. Trusted grants are not real StoreKit verification.
+/// Screens are captured under `artifacts/reports/US-AC03/`.
 @MainActor
 final class CoachGatingEvidenceTests: XCTestCase {
 
@@ -117,7 +119,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
         )
         window = hostedWindow
         HostedSurface.pump(for: HostedSurface.settleInterval)
-        XCTAssertFalse(spokenContains("Coach isn't available right now"))
+        XCTAssertFalse(spokenContains("Coach is not enabled in this build"))
         XCTAssertTrue(spokenContains("I understand"), "configured Coach must present its disclosure: \(spoken())")
         XCTAssertFalse(state.hasAcknowledgedCoachDataSharing)
         try capture(named: "\(handoff)-configured-coach-disclosure.png", size: CGSize(width: 393, height: 852))
@@ -127,7 +129,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
         HostedSurface.pump(for: HostedSurface.settleInterval)
         XCTAssertTrue(state.hasAcknowledgedCoachDataSharing)
         XCTAssertTrue(spokenContains("Message to the coach"))
-        XCTAssertFalse(spokenContains("Coach isn't available right now"))
+        XCTAssertFalse(spokenContains("Coach is not enabled in this build"))
         try capture(named: "\(handoff)-configured-coach-conversation.png", size: CGSize(width: 393, height: 852))
         // No send is activated: neither Apple proofs nor a model request are needed to open Coach.
     }
@@ -149,10 +151,11 @@ final class CoachGatingEvidenceTests: XCTestCase {
     }
 
     private func presentCoachPaywall(
-        using subscriptionService: LaggingGrantSubscriptionService
+        using subscriptionService: LaggingGrantSubscriptionService,
+        enabled: Bool = true
     ) throws -> (paywall: UIView, services: ServiceContainer) {
         let services = replacingSubscription(in: .mock(), with: subscriptionService,
-                                             coachClient: try configuredReleaseClient())
+                                             coachClient: enabled ? try configuredReleaseClient() : nil)
         let (_, hostedWindow) = HostedSurface.host(
             NavigationStack { List { CoachEntryRow(services: services) } }
                 .environment(\.services, services),
@@ -247,7 +250,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
     }
 
     /// Regression for the physical-device purchase race: the exact production row opens the exact
-    /// paywall, StoreKit returns a verified Premium subscription, and the immediate entitlement-cache
+    /// paywall, a trusted subscription double returns a verified Premium grant, and the entitlement-cache
     /// read still says free. The authoritative purchase result must keep Coach unlocked.
     func testVerifiedPurchaseUnlocksCoachWhenImmediateEntitlementReadStillLags() throws {
         let subscriptionService = LaggingGrantSubscriptionService()
@@ -283,5 +286,47 @@ final class CoachGatingEvidenceTests: XCTestCase {
             size: CGSize(width: 393, height: 852)
         )
         try assertConfiguredCoachDestination(using: presented.services, handoff: "restore")
+    }
+
+    /// The same trusted verified-grant double unlocks Premium even when this build lacks a client.
+    /// Neither purchase nor restore can manufacture local Coach configuration.
+    func testVerifiedPurchaseWithDisabledBuildKeepsPremiumButShowsBuildDisabled() throws {
+        try assertDisabledDestinationAfterGrant(restoring: false)
+    }
+
+    func testVerifiedRestoreWithDisabledBuildKeepsPremiumButShowsBuildDisabled() throws {
+        try assertDisabledDestinationAfterGrant(restoring: true)
+    }
+
+    private func assertDisabledDestinationAfterGrant(restoring: Bool) throws {
+        let subscription = LaggingGrantSubscriptionService()
+        let presented = try presentCoachPaywall(using: subscription, enabled: false)
+        let grant = try XCTUnwrap(AccessibilityTree.element(whereLabel: {
+            restoring ? $0 == "Restore purchases" : $0.hasPrefix("Monthly, ")
+        }, in: presented.paywall))
+        XCTAssertTrue(grant.accessibilityActivate())
+        assertCoachUnlockedAfterLaggingReconciliation(subscription)
+        rehostCoachRow(using: presented.services)
+        assertCoachUnlockedAfterLaggingReconciliation(subscription)
+
+        let suite = "DisabledCoachDisclosure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(userDefaults: defaults)
+        window?.isHidden = true
+        // Same hosted NavigationLink limitation as the enabled path: mount its production destination.
+        let (_, hostedWindow) = HostedSurface.host(
+            NavigationStack { CoachView(services: presented.services) }
+                .environment(\.services, presented.services).environment(state),
+            size: CGSize(width: 393, height: 852)
+        )
+        window = hostedWindow
+        XCTAssertTrue(spokenContains("Coach is not enabled in this build"))
+        XCTAssertTrue(spokenContains("Contact Rep Today support about a Coach-enabled build"))
+        XCTAssertTrue(spokenContains("Your workouts are unaffected"))
+        XCTAssertFalse(spokenContains("Message to the coach"))
+        XCTAssertFalse(spokenContains("I understand"))
+        XCTAssertFalse(spokenContains("Try again"))
+        XCTAssertFalse(state.hasAcknowledgedCoachDataSharing)
     }
 }

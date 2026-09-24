@@ -105,6 +105,42 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
             }
         }
     }
+    #if os(iOS)
+    @MainActor
+    func testMissingOrInvalidLocalConfigurationSelectsBuildDisabledNotSendFailure() throws {
+        let valid = [CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,
+                     CoachProxyClient.authenticationModeInfoPlistKey: CoachProxyClient.productionAuthenticationMode]
+        var missing = valid
+        missing.removeValue(forKey: CoachProxyClient.endpointInfoPlistKey)
+        var invalidConfigurations = [missing]
+        for (key, value) in [
+            (CoachProxyClient.endpointInfoPlistKey, ""),
+            (CoachProxyClient.endpointInfoPlistKey, "https://coach.reptoday.app/wrong-path"),
+            (CoachProxyClient.authenticationModeInfoPlistKey, "bearer"),
+            (CoachProxyClient.secretInfoPlistKey, "NONSECRET_EMBEDDED_GATE_FIXTURE")
+        ] {
+            var invalid = valid
+            invalid[key] = value
+            invalidConfigurations.append(invalid)
+        }
+        for configuration in invalidConfigurations {
+            try withConfiguration(configuration) { bundle in
+                let client = CoachProxyClient.configured(
+                    safetyIdentifierProvider: { testCoachSafetyIdentifier }, bundle: bundle)
+                XCTAssertNil(client)
+                let model = CoachViewModel(
+                    client: client, userService: MockUserService(user: MockPersistence.sampleUser),
+                    workoutLogService: MockWorkoutLogService(), exerciseService: try! MockExerciseService())
+                XCTAssertEqual(model.localAvailability, .notEnabledInBuild)
+                XCTAssertFalse(model.needsDataSharingConsent)
+                XCTAssertFalse(model.canRetry)
+                XCTAssertNil(model.errorMessage)
+            }
+        }
+    }
+
+    #endif
+
     func testSyntheticQASelectionRequiresEnabledFlagExactProductionModeAndEmptySecret() throws {
         let valid: [String: Any] = ["RepTodayCoachSyntheticQA": "1",
             CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,

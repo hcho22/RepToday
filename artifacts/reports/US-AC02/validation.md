@@ -25,11 +25,11 @@ The coach only ever *talks* - it never generates, edits, or prescribes a workout
 
 - `01-coach-answered-conversation.png` - the user asks "Why did I get squats today?" and the coach answers with grounded, stalest-pattern reasoning; distinct user (accent, trailing) and coach (surface, leading) bubbles; input + send controls.
 - `02-coach-graceful-failure.png` - a transport error renders a calm, retryable banner ("The coach couldn't answer just now. Your workout isn't affected - tap to try again." + "Try again"); the question is preserved.
-- `03-coach-unavailable.png` - the unconfigured build (every shipped build today, since the proxy is deploy-ready but not deployed) shows a calm "Coach isn't available right now" state, not an error.
+- `03-coach-unavailable.png` - the unconfigured/invalid build shows “Coach is not enabled in this build,” a support next step and workout reassurance. This is local configuration, not a transient send error. Refreshed by the purchase-to-chat follow-up.
 
 ## Notes / scope
 
-- **No Coach proxy is deployed yet**, so both build configurations carry an empty Coach origin and the Coach is inert (`03-coach-unavailable.png`). Pointing it at a deployed `https://<worker>/coach` origin is a one-line `project.yml` change - the unit suite exercises the wired path through the injected transport seam. A real end-to-end OpenAI `gpt-5.6-luna` reply is captain-verifiable manual QA once the proxy ships.
+- **Current configuration and deployment status:** see [`docs/coach-runtime-authentication.md`](../../../docs/coach-runtime-authentication.md). These hosted surfaces use trusted doubles, not genuine Apple proof or live model answers. The [purchase-to-chat follow-up](../coach-purchase-chat/validation.md) records the current local availability/retry coverage.
 - **Later stories now landed:** premium gating + upsell (US-AC03), the OpenAI/provider-retention disclosure (US-AC04), Coach-sourced policy writes (US-AC05/06/07), the injury-flag routing UI (US-AC08), and premium analytics narration (US-AN01/02).
 
 ## How to regenerate
