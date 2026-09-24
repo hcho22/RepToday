@@ -232,7 +232,7 @@ payload/API doubles do not prove a valid Apple production App Attest enrollment 
 purchase.
 
 The native migration boundary is `tools/migrate-coach-runtime.sh`, with three separate
-operations. Stage/release of `2952fab` completed as recorded above; the commands below are a runbook,
+operations. Current deployment status is recorded above; the commands below are a runbook,
 not authority to repeat them. Before any future operation,
 Firstmate must confirm captain authorization, reviewed committed source, Apple/account prerequisites,
 existing Keychain items and production-device access; local compatibility checks do not grant that
@@ -286,7 +286,7 @@ and be reviewed independently. The legacy helper still rejects the persistence b
 
 The explicit `CoachDeviceQA` preparation configuration now enables the public `/coach` origin
 through per-configuration build settings with an empty binary secret and the production runtime
-mode; ordinary Debug remains empty and Release now enables the public endpoint without QA. This preparation does not establish
+mode; see the ordinary build contract above. This preparation does not establish
 signed-device readiness or service/model success. Follow `docs/coach-iphone-qa.md` for the
 shared synthetic contexts, bounded local review and revision coordination. Only after separately
 cleared signing/device readiness, verify on a genuine Production-purchase device or a genuine

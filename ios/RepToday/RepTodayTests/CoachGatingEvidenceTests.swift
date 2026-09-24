@@ -101,7 +101,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
         #endif
     }
 
-    private func assertConfiguredCoachDestination(using services: ServiceContainer) throws {
+    private func assertConfiguredCoachDestination(using services: ServiceContainer, handoff: String) throws {
         XCTAssertNotNil(services.coachClient?.transport as? RuntimeAuthenticatedCoachTransport)
         let suite = "ReleaseCoachDisclosure.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -120,6 +120,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
         XCTAssertFalse(spokenContains("Coach isn't available right now"))
         XCTAssertTrue(spokenContains("I understand"), "configured Coach must present its disclosure: \(spoken())")
         XCTAssertFalse(state.hasAcknowledgedCoachDataSharing)
+        try capture(named: "\(handoff)-configured-coach-disclosure.png", size: CGSize(width: 393, height: 852))
         let root = try XCTUnwrap(hostedWindow.rootViewController?.view)
         let acknowledge = try XCTUnwrap(AccessibilityTree.element(labeled: "I understand", in: root))
         XCTAssertTrue(acknowledge.accessibilityActivate())
@@ -127,6 +128,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
         XCTAssertTrue(state.hasAcknowledgedCoachDataSharing)
         XCTAssertTrue(spokenContains("Message to the coach"))
         XCTAssertFalse(spokenContains("Coach isn't available right now"))
+        try capture(named: "\(handoff)-configured-coach-conversation.png", size: CGSize(width: 393, height: 852))
         // No send is activated: neither Apple proofs nor a model request are needed to open Coach.
     }
 
@@ -141,7 +143,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
 
     private func capture(named fileName: String, size: CGSize) throws {
         guard let root = window?.rootViewController?.view else { return XCTFail("no hosted surface") }
-        let image = HostedSurface.capture(root, size: size)
+        let image = HostedSurface.capture(root, size: size, afterScreenUpdates: true)
         let path = try EvidenceOutput.write(image, named: fileName, for: story)
         print("US-AC03 EVIDENCE: \(fileName) -> \(path)")
     }
@@ -261,7 +263,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
             named: "03-verified-purchase-survives-lagging-entitlements.png",
             size: CGSize(width: 393, height: 852)
         )
-        try assertConfiguredCoachDestination(using: presented.services)
+        try assertConfiguredCoachDestination(using: presented.services, handoff: "purchase")
     }
 
     /// Restore uses the same authoritative handoff as purchase; it must not regress into a second,
@@ -280,6 +282,6 @@ final class CoachGatingEvidenceTests: XCTestCase {
             named: "04-verified-restore-survives-lagging-entitlements.png",
             size: CGSize(width: 393, height: 852)
         )
-        try assertConfiguredCoachDestination(using: presented.services)
+        try assertConfiguredCoachDestination(using: presented.services, handoff: "restore")
     }
 }

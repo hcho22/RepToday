@@ -1,10 +1,9 @@
 # Coach server proof-only QA preparation
 
 This source prepares a bounded, hidden device-to-server verification exchange. **It has not been
-deployed or executed on a genuine device. It does not enable TestFlight Coach.** Ordinary
-Debug/Release endpoints remain empty. Current source permits StoreKit-verified Production or
-Sandbox proof and verifies the selected environment server-side; the released Worker remains
-Production-only until a separately authorized deployment.
+executed on a genuine device. The probe does not enable TestFlight Coach.** Deployment status,
+subscription verification policy and ordinary Release configuration are owned by the
+[runtime runbook](coach-runtime-authentication.md).
 
 ## What the exchange proves
 
@@ -18,8 +17,7 @@ headers/body once more and requires `401 {"error":"unauthorized"}`. No new chall
 or purchase read occurs for that intentional replay. Neither failure is retried.
 
 The source gateway now denies the exact `{}` operator-bearer request with 401. An operator's
-body-validation error therefore cannot produce this proof-only success. This restriction is
-**new source**, not a claim about the currently deployed revision. There is no public diagnostic
+body-validation error therefore cannot produce this proof-only success. There is no public diagnostic
 route or new credential. The local integration seam in `proxy/test/workerd-auth-entry.js` is
 never a Wrangler deployment entry.
 
@@ -75,14 +73,13 @@ transaction selects only Production or Sandbox after server verification, and th
 Attest boundary independently requires a production attestation/assertion. Xcode/local transaction
 proof and development App Attest continue to fail closed.
 
-Before an approved TestFlight proof-only run, deploy the reviewed Sandbox-capable Worker through the
-separate guarded process and inspect the intended archive's endpoint/mode/empty gate. A Production
-verifier/API failure must never trigger Sandbox; only the verified transaction environment selects
+Before an approved TestFlight proof-only run, confirm the matched deployed revision using the
+[runtime runbook](coach-runtime-authentication.md) and inspect the intended archive's endpoint,
+mode and empty gate. A Production verifier/API failure must never trigger Sandbox; only the verified transaction environment selects
 the matching Sandbox verifier and status API.
 
 For a later approved server-proof run, use only an installed identified eligible build against the
-matched server revision. The current client can submit Sandbox proof, but the older deployed
-Production-only revision will deny it; no TestFlight Premium success has been observed. Existing
+matched server revision. No TestFlight Premium success has been observed. Existing
 eligible production device/purchase QA is separate. The hidden screen cannot purchase or restore.
 
 Record only fixed results plus public-safe build/channel/server-revision facts. Never capture proof,

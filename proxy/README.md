@@ -13,17 +13,16 @@ The codebase supports two language routes:
 - **`POST /coach`** (US-AC01) accepts the audited derived context, message and separate Coach safety
   pseudonym, and calls OpenAI `gpt-5.6-luna`. The deployed runtime gateway requires genuine App Attest
   and independently verified Production or matched Apple Sandbox Premium proof, or its separate
-  operator-only bearer gate. Deployment of Sandbox-capable `cad34528` was operator-confirmed
-  on 2026-09-22; genuine-device/model success remains unverified.
+  operator-only bearer gate. See the [runtime runbook](../docs/coach-runtime-authentication.md)
+  for deployment status and genuine-device/model evidence requirements.
 
 The runtime gateway is deployed. It persists bounded, content-free device security metadata, and
 retains no message, training summary, reply or purchase proof. Its verification/storage policy and
 migration runbook are authoritative in
 [`docs/coach-runtime-authentication.md`](../docs/coach-runtime-authentication.md). A shipped binary
-never receives the operator gate. Ordinary Release enables the approved public origin; Debug stays empty; the
-separate `CoachDeviceQA` preparation configuration is documented in
-[`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md). The client now submits StoreKit-verified
-Sandbox JWS and the server source verifies them against Apple's Sandbox service, matching the operator-confirmed deployed revision.
+never receives the operator gate. The runbook also owns the ordinary build contract; the separate
+`CoachDeviceQA` preparation configuration is documented in
+[`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md).
 Deployment and no-model denial probes do not establish genuine Apple/device/model success.
 Current source also includes the
 [`proof-only QA exchange`](../docs/coach-proof-only-qa.md): an exact signed `{}` reaches
@@ -235,17 +234,21 @@ Variety Language remains on `claude-opus-4-8` by default. Override only that rou
 
 Prerequisites: a Cloudflare account and [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
-### Current production Coach status (2026-09-18)
+### Production Coach status
 
-The native guarded runtime stage and release of source `2952fab` completed on 2026-09-18 at
+Current deployment and build status are owned by the
+[runtime runbook](../docs/coach-runtime-authentication.md).
+
+Historical runtime release evidence (2026-09-18): the native guarded runtime stage and release of
+source `2952fab` completed at
 Worker `reptoday-variety-language-proxy`, public origin `https://coach.reptoday.app/coach`.
 The runtime App Attest/StoreKit mode, SQLite `CoachAuthenticationState` binding, server-only credential
 binding names and disabled observability/tails/logpush/development/preview URLs were verified.
-The temporary hold is disabled; the reviewed boundary and rate protections remain enabled.
+The temporary hold was disabled; the reviewed boundary and rate protections remained enabled.
 The release no-model contract passed missing/wrong operator authorization, authorized malformed
 input and forged runtime-proof denial. No oversized live probe, genuine enrollment/purchase or
-non-empty model response has been demonstrated. Ordinary clients remain unconfigured; endpoint
-inclusion and TestFlight compatibility are separate from deployment.
+non-empty model response was demonstrated at that checkpoint. Endpoint inclusion and
+TestFlight compatibility are separate from deployment.
 
 The following 2026-09-16 record describes the earlier legacy launch, superseded by the runtime
 release above. It is historical evidence, not the current no-persistence configuration.
@@ -263,9 +266,8 @@ This proves the guarded deployment and gate path, **not live model or shipped-cl
 The native result retains neither actual retry count nor serving-edge convergence duration.
 Standard installed Wrangler OAuth refresh recovered the unchanged local auth guard before
 this attempt; no new interactive login, credential mode/scope/account/plan change or rotation
-was needed. The captain selected **stronger runtime authentication**. Ordinary iOS Coach endpoint
-settings remain empty; the undeployed Sandbox-capable source and genuine-device/TestFlight QA remain
-unverified; the operator gate must never be distributed in a shipped binary.
+was needed. The captain selected **stronger runtime authentication**; the operator gate must
+never be distributed in a shipped binary. See the runtime runbook for the current release status.
 Provider keys remain solely on the Worker. Only `/coach` is exposed at this production hostname;
 the separate Variety Language route is not enabled by this deployment.
 
@@ -431,9 +433,8 @@ disable a hold manually to get past a failure. DNS/certificate propagation can c
 probe failure and requires a reviewed later retry while protection remains in place.
 
 This helper makes **zero paid model calls**. Its successful deployment message still explicitly
-says live model QA is pending. The stronger-authentication migration is now deployed as recorded in
-the current status above; actual non-empty model replies, shipped-client inclusion, the undeployed
-Sandbox-capable source and genuine-device/TestFlight QA remain separate gates. The operator
+says live model QA is pending. See the [runtime runbook](../docs/coach-runtime-authentication.md)
+for deployment status and the separate genuine-device/TestFlight/model evidence requirements. The operator
 gate remains a separate administration path and must never enter an app binary.
 
 Offline tests and native compilation (no Keychain access or network):
@@ -668,9 +669,8 @@ let reply = try await coach.reply(to: userMessage, context: bundle)
 blocks the free core loop. Production uses `appState.coachSafetyIdentifierProvider` through
 `ServiceContainer.live` and accepts only the exact `https://coach.reptoday.app/coach` origin with
 `app-attest-storekit-v1` and an empty binary secret; it constructs the App Attest/StoreKit transport,
-never this shared-secret example. Ordinary Debug/Release endpoints remain empty pending a separately
-authorized rollout and genuine-device/TestFlight validation; all binary Coach secrets must remain
-empty. The deployed operator bearer remains confined to the
+never this shared-secret example. Ordinary build configuration and deployment status are owned by
+the [runtime runbook](../docs/coach-runtime-authentication.md). The deployed operator bearer remains confined to the
 separate native QA path. An account deletion updates the already-built client in the same process.
 The bundle remains the single audited definition of training context - see
 `ios/RepToday/RepToday/Services/Coach/CoachContextBundle.swift` and `CoachProxyClient.swift`.

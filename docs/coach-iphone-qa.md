@@ -5,17 +5,14 @@ dedicated QA surface. It requires its own concrete device/signing/Apple-operatio
 no model request and does not grant TestFlight Premium or consume the two-model-request budget.
 The same hidden panel now also prepares a separately budgeted
 [server proof-only exchange](coach-proof-only-qa.md). It sends signed `{}` plus its exact replay,
-with no training content or provider request. Its new operator-exclusion server source is
-undeployed. Current client/server source now carries and independently verifies Apple Sandbox
-Premium, but the released Worker is still Production-only.
+with no training content or provider request. Current deployment status and the ordinary Release
+contract are owned by the [runtime runbook](coach-runtime-authentication.md).
 
 `CoachDeviceQA` is an explicit **preparation** configuration, not evidence of a working service.
-Ordinary Debug/Release Coach endpoints remain empty. The runtime-authentication service is deployed.
 Compatible production signing/distribution, a capable physical iPhone and an existing production
 or Sandbox Premium purchase/trial must be confirmed separately before sending either QA turn. No
 arbitrary Production-error fallback, operator bearer, local Premium grant or authentication bypass
-is provided. The Sandbox-capable revision has not been deployed or exercised by a genuine
-TestFlight build, so TestFlight admission remains unverified.
+is provided. Deployment confirmation does not establish genuine TestFlight admission.
 
 ## Configuration and unsigned build
 
@@ -25,11 +22,8 @@ For the Premium paywall's **Products** and **Restore** rows in this configuratio
 `ios/RepToday/project.yml` is authoritative. `Info.plist` expands the existing per-configuration
 build settings, and `ServiceContainer.live` resolves the actual `CoachProxyClient.configured`.
 
-| Configuration | Public Coach endpoint | Binary Coach secret | Authentication | Synthetic QA |
-| --- | --- | --- | --- | --- |
-| Debug | empty | empty | `app-attest-storekit-v1` | disabled |
-| Release | empty | empty | `app-attest-storekit-v1` | disabled |
-| CoachDeviceQA (release type) | `https://coach.reptoday.app/coach` | empty | `app-attest-storekit-v1` | enabled |
+Use `tools/inspect-coach-qa-build.py` below to check the generated configuration against its
+expected contract.
 
 The `RepTodayCoachDeviceQA` scheme selects `CoachDeviceQA` for every action and attaches **no local
 StoreKit configuration**. This dedicated release-type configuration keeps optimized code and enables
@@ -61,7 +55,8 @@ fixed public configuration classes. It does not read Keychain, sign, install, ve
 proofs or call the service. Run `python3 tools/test-coach-qa-build-inspection.py` after the device build to exercise rejection
 of endpoint/mode/secret/flag/configuration mismatches and local StoreKit attachments against copies
 of the actual generated output contracts. For a separately built ordinary app, pass `--configuration Debug` or
-`Release` and its actual `.app` path to verify that Coach is empty/disabled.
+`Release` and its actual `.app` path to verify that configuration's contract in the
+[runtime runbook](coach-runtime-authentication.md).
 
 An unsigned arm64 `.app` is a compilation artifact, **not an installable iPhone distribution**.
 It has no valid code signature/provisioning profile. The checked-in team and entitlement source do
@@ -224,6 +219,5 @@ python3 tools/test-coach-release-build-inspection.py
 ```
 
 This unsigned archive checks the real ArchiveAction/Release plist contract, not genuine signing or
-TestFlight distribution. The current Release endpoint remains empty pending a separately authorized
-Sandbox-capable server rollout and genuine-device/TestFlight validation. Never embed an operator
-bearer as a workaround.
+TestFlight distribution. See the [runtime runbook](coach-runtime-authentication.md) for the current
+Release contract and deployment/evidence distinction. Never embed an operator bearer as a workaround.
