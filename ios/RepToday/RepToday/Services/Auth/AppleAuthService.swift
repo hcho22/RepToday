@@ -7,7 +7,8 @@ import Foundation
 /// and persistence live in those seams, the service itself is a stateless, `Sendable` composition -
 /// unit-testable end to end with an in-memory store and a stubbed authorizer.
 ///
-/// The identifier keys the user record, but sign-in is never a gate: `currentUserIdentifier()` reads
+/// Onboarding may use the identifier to key a new user. Post-onboarding sign-in stores it separately
+/// and preserves the existing User.id and all data ownership. Sign-in is never a gate: `currentUserIdentifier()` reads
 /// only local storage (no network, no iCloud account), so the core loop works fully offline whether
 /// or not the user has ever signed in.
 struct AppleAuthService: AuthServiceProtocol {

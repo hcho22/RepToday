@@ -161,3 +161,17 @@ the archive wrapper to prove forbidden Coach overrides stop before credential/ex
 Run after the offline unsigned archive described in `docs/coach-iphone-qa.md`. This verifies
 configuration boundaries only; it does not establish signing, TestFlight compatibility, Apple
 proofs or live model success.
+
+Premium access / post-onboarding account: `AccountViewModelTests` exercises credential success,
+cancellation, failure, persistence failure, signed-in and unreadable status, and duplicate callbacks.
+`AccountPreservationTests` executes the real CoreData services with in-memory storage, checks
+profile/history/policy/active session/preferences/onboarding and Premium authority, and generates
+a free workout after success/cancel/failure. `AccountAccessEvidenceTests` hosts the Account UI for
+signed-in/signed-out accessibility. `AccountAccessUITests` taps Profile → Account after onboarding
+and verifies the official Apple sign-in control is reachable without initiating authorization.
+`PaywallViewModelTests.testHostedRetryRecoversPlansAndPreservesNoActiveRestoreResult` activates the
+rendered Restore/Retry controls with a suspended fixture, checks duplicate-operation exclusion and
+disabled Restore during retry, and verifies recovered plan buttons retain the no-active-subscription
+result. `PaywallViewModelTests` and `StoreKitPaywallDiagnosticsTests`
+cover catalog × restore outcomes, explicit retry, mutual exclusion, purchase regressions, and the
+QA-only raw lookup count. Commands, executed results and limits: `artifacts/reports/premium-access/validation.md`.

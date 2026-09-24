@@ -1,13 +1,14 @@
 # Coach QA paywall StoreKit diagnostics
 
 In `COACH_IPHONE_QA` builds, the existing Premium paywall displays independent Products and
-Restore results beside its ordinary message. This addresses an observability gap: a restore
-attempt replaces the single message and can hide a preceding catalog failure. The rows live only
-with that paywall view model. Debug and Release retain their existing behavior and UI.
+Restore results beside its ordinary messages. For shared recovery controls and messages, see
+[Account and Premium access](../README.md#account-and-premium-access). The diagnostic rows live only with
+the QA paywall view model; ordinary Debug and Release do not display them.
 
 | Row | Meaning |
 | --- | --- |
 | Products: loading / loaded N plans | Initial state or catalog request in flight / usable mapped plans returned. |
+| Products: lookup returned N products; 0 usable subscriptions | The live lookup returned N raw products, but none survived subscription projection. Zero means Apple returned no products; a positive N means products were filtered. Neither establishes the App Store Connect cause. |
 | Products: no usable products | Empty usable catalog, including `productsUnavailable`; no transport exception is established. |
 | Restore: not attempted / in progress | No restore on this model / its existing restore operation is running. |
 | Restore: Premium success | The existing restore grant is Premium; the normal grant and dismissal path still applies. |
@@ -23,9 +24,7 @@ App Store, Apple Media Services and network domains; every other domain becomes 
 The value holds enums and integers, not error objects, descriptions, `userInfo`, purchase proofs
 or account identifiers. It is not persisted, exported or sent to analytics.
 
-The two operations remain independent: missing products do not by themselves prevent restore,
-and successful sync with no entitlement uses the existing no-purchase message. A thrown sync
-uses the existing generic restore error. The rows do not establish that the underlying failure
+The rows do not establish that the underlying failure
 is temporary, identify a product/account configuration defect, or prove a genuine Apple restore.
 Numeric codes require interpretation in their recorded domain; do not infer a cause from a code
 alone or suggest account changes, repurchasing or deleting data without further evidence.
@@ -47,3 +46,8 @@ It does not invoke Apple services. `StoreKitPaywallDiagnosticsTests` also includ
 accessibility check for the two rows under QA and their absence in ordinary builds. Native macOS
 execution excludes that UIKit test. See the [validation record](../artifacts/reports/coach-storekit-diagnostics/validation.md)
 for exactly which checks ran and their limits.
+
+The Premium access follow-up and its credential-only Account entry are documented in
+[the current validation report](../artifacts/reports/premium-access/validation.md). The offline
+runner now also tests Apple auth composition, account states, and CoreData data preservation;
+it loads the real model/catalog resources into an isolated native XCTest bundle.

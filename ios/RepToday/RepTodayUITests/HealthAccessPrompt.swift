@@ -26,32 +26,25 @@ extension XCTestCase {
         // The sheet only surfaces once the main tabs finish rendering, which trails the Ready Screen's
         // session generation, so on a cold or loaded machine it can appear several seconds after launch
         // returns. Poll for the dismiss control - by its stable identifier first, then by its visible
-        // label as a fallback - but stop as soon as the tab bar is reachable with nothing over it, so a
-        // container that already answered (no sheet ever comes) returns at once rather than waiting the
-        // whole window out.
+        // label as a fallback. A fresh iOS 26 simulator can expose hittable tabs before presenting
+        // Health Access, so a short clear interval is not evidence that the request has settled.
         let byIdentifier = app.buttons["UIA.Health.AuthSheet.CancelButton"]
-        let byLabel = app.buttons["Don't Allow"]
-        let anyTab = app.tabBars.buttons.firstMatch
+        // iOS 26 uses a typographic apostrophe and a different identifier; older runtimes use ASCII.
+        let byLabel = app.buttons.matching(NSPredicate(
+            format: "label IN %@", ["Don't Allow", "Don’t Allow"] as NSArray
+        )).firstMatch
+        let confirmation = app.alerts["Health Access"]
         let deadline = Date().addingTimeInterval(20)
-        var tabsBecameHittableAt: Date?
         var dontAllow: XCUIElement?
         while Date() < deadline {
+            // XCTest may already have dismissed the share sheet while handling an interruption.
+            // Its follow-up can therefore be the first Health control this helper observes.
+            if confirmation.buttons["OK"].exists {
+                confirmation.buttons["OK"].tap()
+                return
+            }
             if byIdentifier.exists { dontAllow = byIdentifier; break }
             if byLabel.exists { dontAllow = byLabel; break }
-            // A tab can become hittable just before MainTabsView's asynchronous Health request
-            // presents its remote sheet. Require a short clear interval instead of returning on that
-            // first frame; otherwise the helper can leave the prompt to race the test's first tap.
-            // A sheet standing over the tabs resets the interval by making them non-hittable.
-            if anyTab.isHittable {
-                let now = Date()
-                if let tabsBecameHittableAt,
-                   now.timeIntervalSince(tabsBecameHittableAt) >= 2 {
-                    return
-                }
-                tabsBecameHittableAt = tabsBecameHittableAt ?? now
-            } else {
-                tabsBecameHittableAt = nil
-            }
             usleep(300_000)
         }
         guard let dontAllow else { return }
@@ -60,8 +53,7 @@ extension XCTestCase {
         // Declining raises its own confirmation ("you can turn these on later in the Health app"),
         // which is one more thing standing over the screen underneath. Bounded rather than required:
         // the follow-up is the system's to keep or drop.
-        let confirmation = app.alerts["Health Access"]
-        if confirmation.waitForExistence(timeout: 3) {
+        if confirmation.waitForExistence(timeout: 5) {
             confirmation.buttons["OK"].tap()
         }
     }

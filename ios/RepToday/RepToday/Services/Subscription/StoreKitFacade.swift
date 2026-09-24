@@ -4,13 +4,15 @@ import Foundation
 /// shows a gentle message and the free tier keeps working unlimited, so a StoreKit failure never
 /// blocks a workout.
 enum SubscriptionError: Error, Equatable {
-    /// The store returned no products for the requested ids (offline, misconfigured, or under review).
+    /// No usable subscription products reached the service; this alone does not identify why.
     case productsUnavailable
     /// A purchase completed but its transaction could not be cryptographically verified.
     case notVerified
     /// Any other StoreKit failure, message attached for logs.
     case failed(String)
     #if COACH_IPHONE_QA
+    /// Only a count, never product payloads or account data. Separates raw empty lookup from filtering.
+    case diagnosticProductsUnavailable(rawProductCount: Int)
     /// Content-free evidence for product loading and restore in the dedicated QA build only.
     case diagnosticFailure(StoreKitFailureDiagnostic)
     #endif

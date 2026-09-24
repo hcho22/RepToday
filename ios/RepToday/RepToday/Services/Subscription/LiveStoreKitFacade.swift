@@ -118,12 +118,19 @@ private actor StoreTransactionProcessingQueue {
 final class LiveStoreKitFacade: StoreKitFacade {
 
     func loadProducts(ids: [String]) async throws -> [StoreProduct] {
+        let products: [Product]
         do {
-            let products = try await Product.products(for: ids)
-            return products.compactMap(Self.storeProduct(from:))
+            products = try await Product.products(for: ids)
         } catch {
             throw Self.requestFailure(error)
         }
+        let subscriptions = products.compactMap(Self.storeProduct(from:))
+        #if COACH_IPHONE_QA
+        if subscriptions.isEmpty {
+            throw SubscriptionError.diagnosticProductsUnavailable(rawProductCount: products.count)
+        }
+        #endif
+        return subscriptions
     }
 
     func currentEntitlements() async -> [StoreEntitlement] {

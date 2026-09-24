@@ -785,7 +785,7 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 - [x] A real `AuthService` implements `signInWithApple()`, `currentUserIdentifier()`, and `signOut()` via Sign in with Apple
 - [x] The core loop works offline and without an iCloud account; sign-in is not a gate to the first session
-- [x] The signed-in identifier is stored and used to key the user record
+- [x] Identity storage and user-record keying follow the [account identity boundary](../../../artifacts/reports/premium-access/validation.md#identity-boundary).
 - [x] Verify in iOS Simulator (full flow verified on device where possible)
 
 **Validation Test:**

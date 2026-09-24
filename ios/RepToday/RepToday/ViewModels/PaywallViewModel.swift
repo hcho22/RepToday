@@ -11,6 +11,7 @@ import Observation
 ///
 /// Like the other v6 view models it is `@Observable` and takes its service as a protocol, so previews
 /// and tests inject the mock.
+@MainActor
 @Observable
 final class PaywallViewModel {
 
@@ -39,19 +40,23 @@ final class PaywallViewModel {
     /// consumers that only need the unlock decision.
     var didUnlockPremium: Bool { unlockedSubscription?.tier == .premium }
 
-    /// A gentle, user-facing message when a load/purchase/restore fails or a restore finds nothing.
+    /// Catalog availability is independent of the latest purchase/restore result.
+    private(set) var catalogMessage: String?
+
+    /// A gentle, user-facing message when a purchase/restore fails or a restore finds nothing.
     /// Never a blocking error - the sheet stays dismissible and the free tier is unaffected.
     private(set) var message: String?
 
     #if COACH_IPHONE_QA
     enum ProductsDiagnostic: Equatable {
-        case loading, loaded(Int), noUsableProducts, failure(StoreKitFailureDiagnostic?)
+        case loading, loaded(Int), noUsableProducts, lookupWithoutSubscriptions(Int), failure(StoreKitFailureDiagnostic?)
 
         var summary: String {
             switch self {
             case .loading: return "loading"
             case .loaded(let count): return "loaded \(count) plans"
             case .noUsableProducts: return "no usable products"
+            case .lookupWithoutSubscriptions(let count): return "lookup returned \(count) products; 0 usable subscriptions"
             case .failure(let diagnostic): return diagnostic?.summary ?? "unclassified failure"
             }
         }
@@ -82,8 +87,8 @@ final class PaywallViewModel {
     }
     #endif
 
-    /// Whether any purchase/restore is currently in flight (drives disabling the plan buttons).
-    var isBusy: Bool { purchasingPlanID != nil || isRestoring }
+    /// All store operations share one gate, including explicit catalog retries.
+    var isBusy: Bool { isLoading || purchasingPlanID != nil || isRestoring }
 
     private let subscriptionService: any SubscriptionServiceProtocol
 
@@ -122,6 +127,7 @@ final class PaywallViewModel {
 
     /// Load the purchasable plans. Idempotent - safe to call on every appear.
     func load() async {
+        guard !isBusy else { return }
         // US-T12: `paywall_shown` fires once per paywall presentation, on the first `load()`,
         // carrying `entry_point`. Guarded like `ReadyViewModel`'s one-shots so a re-appear cannot
         // re-emit and inflate the funnel base. The sink swallows local/network failures and does not
@@ -138,7 +144,7 @@ final class PaywallViewModel {
         }
 
         isLoading = true
-        message = nil
+        catalogMessage = nil
         #if COACH_IPHONE_QA
         productsDiagnostic = .loading
         #endif
@@ -150,18 +156,21 @@ final class PaywallViewModel {
             productsDiagnostic = plans.isEmpty ? .noUsableProducts : .loaded(plans.count)
             #endif
             if plans.isEmpty {
-                message = "Plans aren't available right now. Your workouts are always free - try again later."
+                catalogMessage = "Plans aren't available right now. Your workouts are always free - try again later."
             }
         } catch {
             plans = []
             #if COACH_IPHONE_QA
             if let error = error as? SubscriptionError, error == .productsUnavailable {
                 productsDiagnostic = .noUsableProducts
+            } else if let error = error as? SubscriptionError,
+                      case .diagnosticProductsUnavailable(let rawCount) = error {
+                productsDiagnostic = .lookupWithoutSubscriptions(rawCount)
             } else {
                 productsDiagnostic = .failure(Self.diagnostic(from: error))
             }
             #endif
-            message = "We couldn't load plans right now. Your workouts are always free - try again later."
+            catalogMessage = "We couldn't load plans right now. Your workouts are always free - try again later."
         }
     }
 
@@ -211,7 +220,7 @@ final class PaywallViewModel {
             #endif
             reflect(grant)
             if grant.subscription.tier != .premium {
-                message = "No previous purchase found on this Apple ID."
+                message = "No active Premium subscription was found."
             }
         } catch {
             #if COACH_IPHONE_QA

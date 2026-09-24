@@ -3072,6 +3072,7 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
     /// analytics boundary. StoreKit's signed-update delivery remains framework-owned and is covered by
     /// the adjacent manual recipe; this scenario executes the app-owned paywall, observer, and durable
     /// dedup behavior rather than merely recording test names.
+    @MainActor
     func testTrialConversionSubscribeEvidenceTranscript() async throws {
         let monthlyPlan = try XCTUnwrap(
             SubscriptionPlan.samples.first { $0.id == SubscriptionPlan.ProductID.monthly }

@@ -10,11 +10,10 @@ import Foundation
 
 // MARK: - User
 
-/// A Rep Today user. `id` is the stable identity (the Sign in with Apple user
-/// identifier once US-N01 lands); `phase` is computed by the `PhaseEvaluator` and is
+/// A Rep Today user. `id` is the stable record identity chosen during onboarding; `phase` is computed by the `PhaseEvaluator` and is
 /// never user-selectable.
 struct User: Codable, Equatable, Identifiable {
-    /// Stable identity - the Sign in with Apple user id string in production.
+    /// Apple identifier at onboarding, or a local fallback. Later sign-in never changes this key.
     var id: String
     var displayName: String
     var createdAt: Date
