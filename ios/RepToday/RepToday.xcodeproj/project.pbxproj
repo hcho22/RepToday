@@ -1815,7 +1815,7 @@
 				REPTODAY_ANALYTICS_ENDPOINT = "https://sensible-spider-810.convex.site";
 				REPTODAY_ANALYTICS_SECRET = "";
 				REPTODAY_COACH_AUTH_MODE = "app-attest-storekit-v1";
-				REPTODAY_COACH_ENDPOINT = "";
+				REPTODAY_COACH_ENDPOINT = "https://coach.reptoday.app/coach";
 				REPTODAY_COACH_SECRET = "";
 				REPTODAY_COACH_SYNTHETIC_QA = 0;
 				SDKROOT = iphoneos;

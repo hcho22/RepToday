@@ -53,7 +53,7 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
         XCTAssertNil(CoachProxyClient.secret(fromValue: 42))
     }
 
-    // MARK: - Unconfigured build is inert
+    // MARK: - Configuration-specific client inclusion
 
     func testActualAppBundleSelectsTheIntendedConfiguration() {
         let client = CoachProxyClient.configured(safetyIdentifierProvider: { testCoachSafetyIdentifier })
@@ -63,9 +63,15 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
         XCTAssertEqual(client?.endpoint.absoluteString, CoachProxyClient.productionOrigin)
         XCTAssertNil(client?.sharedSecret)
         XCTAssertNotNil(client?.transport as? RuntimeAuthenticatedCoachTransport)
-        #else
+        #elseif DEBUG
         XCTAssertFalse(CoachSyntheticQAConfiguration.isEnabled())
         XCTAssertNil(client)
+        #else
+        XCTAssertFalse(CoachSyntheticQAConfiguration.isEnabled())
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "RepTodayBuildConfiguration") as? String, "Release")
+        XCTAssertEqual(client?.endpoint.absoluteString, CoachProxyClient.productionOrigin)
+        XCTAssertNil(client?.sharedSecret)
+        XCTAssertNotNil(client?.transport as? RuntimeAuthenticatedCoachTransport)
         #endif
     }
     private func withConfiguration(_ values:[String:Any],check:(Bundle)->Void) throws {

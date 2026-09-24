@@ -162,7 +162,7 @@ final class CoachViewEvidenceTests: XCTestCase {
     }
 
     /// The unconfigured build: no proxy origin set, so the surface shows a calm "unavailable" state
-    /// rather than an error - which is the state every shipped build is in today.
+    /// rather than an error, including ordinary Debug and invalid configurations.
     func testUnavailableStateWhenUnconfigured() async throws {
         let viewModel = CoachViewModel(
             client: nil,

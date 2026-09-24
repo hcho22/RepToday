@@ -170,9 +170,9 @@ struct CoachProxyClient {
     /// a wrong destination.
     ///
     /// The production App Attest/StoreKit gateway is deployed at
-    /// `https://coach.reptoday.app/coach`. Both ordinary build configurations remain empty pending
-    /// a separately authorized Sandbox-capable rollout and genuine-device/TestFlight QA, so this
-    /// returns `nil` by design. Production configuration requires App Attest/StoreKit mode and no
+    /// `https://coach.reptoday.app/coach`. Release enables the approved endpoint; ordinary Debug
+    /// remains empty. Deployment is operator-confirmed, while genuine-device/TestFlight/model
+    /// success remains unverified. Production configuration requires App Attest/StoreKit mode and no
     /// embedded gate. See `docs/coach-runtime-authentication.md` for the authoritative runtime status.
     ///
     /// "Unusable" is checked rather than assumed - the value must parse, carry an `https` scheme, and

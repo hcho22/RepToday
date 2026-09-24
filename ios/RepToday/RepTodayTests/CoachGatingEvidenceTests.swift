@@ -54,7 +54,8 @@ final class CoachGatingEvidenceTests: XCTestCase {
 
     private func replacingSubscription(
         in base: ServiceContainer,
-        with subscriptionService: any SubscriptionServiceProtocol
+        with subscriptionService: any SubscriptionServiceProtocol,
+        coachClient: CoachProxyClient? = nil
     ) -> ServiceContainer {
         ServiceContainer(
             exerciseService: base.exerciseService,
@@ -72,9 +73,61 @@ final class CoachGatingEvidenceTests: XCTestCase {
             authService: base.authService,
             analyticsService: base.analyticsService,
             accountDeletionService: base.accountDeletionService,
-            coachClient: base.coachClient,
+            coachClient: coachClient ?? base.coachClient,
             coachPolicyService: base.coachPolicyService
         )
+    }
+
+    /// Use the real configuration resolver and runtime transport without making a request.
+    /// Release test runs read the processed app bundle; Debug runs supply the same public contract.
+    private func configuredReleaseClient() throws -> CoachProxyClient {
+        #if !DEBUG && !COACH_IPHONE_QA
+        return try XCTUnwrap(CoachProxyClient.configured(
+            safetyIdentifierProvider: { testCoachSafetyIdentifier }))
+        #else
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ReleaseCoach-\(UUID().uuidString).bundle")
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let info = ["CFBundleIdentifier": "com.reptoday.release-coach-test",
+                    CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,
+                    CoachProxyClient.authenticationModeInfoPlistKey: CoachProxyClient.productionAuthenticationMode,
+                    CoachProxyClient.secretInfoPlistKey: ""]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: fixture.appendingPathComponent("Info.plist"))
+        let bundle = try XCTUnwrap(Bundle(url: fixture))
+        return try XCTUnwrap(CoachProxyClient.configured(
+            safetyIdentifierProvider: { testCoachSafetyIdentifier }, bundle: bundle))
+        #endif
+    }
+
+    private func assertConfiguredCoachDestination(using services: ServiceContainer) throws {
+        XCTAssertNotNil(services.coachClient?.transport as? RuntimeAuthenticatedCoachTransport)
+        let suite = "ReleaseCoachDisclosure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(userDefaults: defaults)
+        window?.isHidden = true
+        // Hosted NavigationLink activation does not push reliably; mount the exact production
+        // destination after asserting the unlocked production row. Real device navigation is QA.
+        let (_, hostedWindow) = HostedSurface.host(
+            NavigationStack { CoachView(services: services) }
+                .environment(\.services, services).environment(state),
+            size: CGSize(width: 393, height: 852)
+        )
+        window = hostedWindow
+        HostedSurface.pump(for: HostedSurface.settleInterval)
+        XCTAssertFalse(spokenContains("Coach isn't available right now"))
+        XCTAssertTrue(spokenContains("I understand"), "configured Coach must present its disclosure: \(spoken())")
+        XCTAssertFalse(state.hasAcknowledgedCoachDataSharing)
+        let root = try XCTUnwrap(hostedWindow.rootViewController?.view)
+        let acknowledge = try XCTUnwrap(AccessibilityTree.element(labeled: "I understand", in: root))
+        XCTAssertTrue(acknowledge.accessibilityActivate())
+        HostedSurface.pump(for: HostedSurface.settleInterval)
+        XCTAssertTrue(state.hasAcknowledgedCoachDataSharing)
+        XCTAssertTrue(spokenContains("Message to the coach"))
+        XCTAssertFalse(spokenContains("Coach isn't available right now"))
+        // No send is activated: neither Apple proofs nor a model request are needed to open Coach.
     }
 
     private func spoken() -> [String] {
@@ -96,7 +149,8 @@ final class CoachGatingEvidenceTests: XCTestCase {
     private func presentCoachPaywall(
         using subscriptionService: LaggingGrantSubscriptionService
     ) throws -> (paywall: UIView, services: ServiceContainer) {
-        let services = replacingSubscription(in: .mock(), with: subscriptionService)
+        let services = replacingSubscription(in: .mock(), with: subscriptionService,
+                                             coachClient: try configuredReleaseClient())
         let (_, hostedWindow) = HostedSurface.host(
             NavigationStack { List { CoachEntryRow(services: services) } }
                 .environment(\.services, services),
@@ -207,6 +261,7 @@ final class CoachGatingEvidenceTests: XCTestCase {
             named: "03-verified-purchase-survives-lagging-entitlements.png",
             size: CGSize(width: 393, height: 852)
         )
+        try assertConfiguredCoachDestination(using: presented.services)
     }
 
     /// Restore uses the same authoritative handoff as purchase; it must not regress into a second,
@@ -225,5 +280,6 @@ final class CoachGatingEvidenceTests: XCTestCase {
             named: "04-verified-restore-survives-lagging-entitlements.png",
             size: CGSize(width: 393, height: 852)
         )
+        try assertConfiguredCoachDestination(using: presented.services)
     }
 }

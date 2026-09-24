@@ -88,7 +88,7 @@ There is no XP, no levels, and no badges in the MVP.
 ### Premium AI Coach
 
 - **Talks, never programs** - the premium Coach explains the deterministic engine's choices, gives concise bodyweight form guidance, narrates strength-journey trends, and can offer bounded preference nudges; it never generates or directly edits a workout or safety filter.
-- **Best-effort and bounded** - Coach turns use the content-stateless Cloudflare proxy's `POST /coach` route and a source-pinned OpenAI `gpt-5.6-luna` Responses API call. The request has a 30-second timeout and 1024-token output ceiling, and any failure leaves the free core loop untouched. The deployed gateway accepts Production StoreKit proof; current undeployed source also verifies matched Apple Sandbox proof for TestFlight. Ordinary iOS builds keep their Coach endpoint and secret empty pending a separately authorized rollout and genuine-device/TestFlight/model QA, so those builds show the Coach as unavailable. See `docs/coach-runtime-authentication.md` for the authoritative runtime status.
+- **Best-effort and bounded** - Coach turns use the content-stateless Cloudflare proxy's `POST /coach` route and a source-pinned OpenAI `gpt-5.6-luna` Responses API call. The request has a 30-second timeout and 1024-token output ceiling, and any failure leaves the free core loop untouched. Deployment of Sandbox-capable `cad34528` is operator-confirmed. Ordinary Release enables the approved public Coach endpoint with App Attest/StoreKit and no embedded Coach secret; Debug stays unconfigured and synthetic QA remains separate. Genuine-device/TestFlight/model success remains unverified. See `docs/coach-runtime-authentication.md` for the authoritative runtime status.
 
 ### Privacy
 

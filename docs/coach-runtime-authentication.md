@@ -1,34 +1,27 @@
 # Coach runtime authentication and production migration
 
-Worker `reptoday-variety-language-proxy` is deployed at `https://coach.reptoday.app/coach`.
-The native guarded runtime stage and release of reviewed source `2952fab` completed on
-2026-09-18. The release verified the runtime configuration, SQLite security binding and
-server-only credential binding names. The temporary deployment hold is disabled; the reviewed
-hostname boundary and Free-plan zone-wide exact `/coach` path rate protection remain enabled.
-Missing/wrong operator authorization, authorized malformed input and a forged runtime proof
-passed the no-model release contract. No genuine Apple enrollment, verified device purchase,
-live model answer or shipped-client end-to-end success has yet been demonstrated.
+Worker `reptoday-variety-language-proxy` serves `https://coach.reptoday.app/coach`.
+The operator confirmed deployment of Sandbox-capable revision `cad34528` on 2026-09-22.
+This supersedes the historical Production-only `2952fab` release status. Deployment confirmation
+is not genuine-device evidence: TestFlight App Attest/StoreKit admission and a live model response
+remain unverified.
 
-`proxy/wrangler.runtime-auth.toml` describes the deployed runtime configuration; the historical
-released source is identified above. Current `proxy/src/coach-auth-worker.js` also includes the
-undeployed [proof-only QA reservation](coach-proof-only-qa.md), which excludes an exact `{}`
-operator request from the device/Premium admission result. It retains an operator-only administration gate alongside App Attest/StoreKit
-authentication. Prompt/context/reply content remains stateless; bounded device security metadata is
-persisted as documented below. The legacy helper is incompatible with this persistence binding.
-Ordinary Debug/Release Coach endpoints remain empty. `CoachDeviceQA` enables only the public origin
-for synthetic device preparation. Current source now allows an already StoreKit-verified Production
-or Sandbox entitlement JWS to enter the same server verification flow. Sandbox can authorize only
-after the server independently verifies the JWS, selects Sandbox from that verified evidence, calls
-Apple's Sandbox status API and verifies the returned current transaction in Sandbox. The released
-`2952fab` Worker remains Production-only until a separately authorized deployment, and no genuine
-TestFlight admission or model reply has been demonstrated.
+Ordinary Release now includes the approved public endpoint with `app-attest-storekit-v1`, an empty
+Coach secret and synthetic QA disabled. Ordinary Debug remains unconfigured. `CoachDeviceQA`
+retains its separate synthetic preparation route. `tools/archive-release.sh` injects only the
+existing production telemetry token and requires the Release Coach contract through
+`tools/inspect-coach-qa-build.py`: exact endpoint/mode, empty Coach secret, QA off, no bundled local
+StoreKit fixture and a Release archive action without a StoreKit attachment. The ordinary Debug
+launch scheme retains its local StoreKit fixture for simulator testing.
 
-The hidden server-proof preparation signs only `{}` as an ordinary runtime reply, requires both
-verification gates before `400 invalid_context`, then checks exact-replay denial. Local signatures,
-SQLite and Premium doubles verify this ordering without provider dispatch; genuine installed
-build/channel, Apple proof/current subscription and matched new-server admission remain unverified.
-See [the proof-only runbook](coach-proof-only-qa.md). This intermediate instrumentation is not
-ordinary beta inclusion, a deployed revision or an authoritative TestFlight decoder.
+The gateway independently verifies Production or matched Apple Sandbox subscriptions and retains
+bounded, content-free security metadata. It never trusts a local Premium boolean or a claimed
+TestFlight channel. Native credential/deployment custody remains separate; the legacy deploy
+helper cannot migrate or roll back the security binding. The hidden [proof-only preparation](coach-proof-only-qa.md)
+requires device and Premium gates before `400 invalid_context` for exact `{}`, then checks replay
+denial. Operator `{}` is excluded from that result. Its offline evidence does not prove installed
+TestFlight, genuine Apple proof or model semantics. No paid-model validation accompanies this
+Release configuration change.
 
 `REPTODAY_COACH_AUTH_MODE` passes through `Info.plist` to `CoachProxyClient.configured`; the approved
 production origin requires `app-attest-storekit-v1` and an empty `REPTODAY_COACH_SECRET`. The app
@@ -160,10 +153,10 @@ the new persistence binding; **do not use it to perform or roll back this migrat
 
 ## Production, TestFlight and local QA
 
-| Distribution | App Attest | Purchase environment | Current source | Released `2952fab` |
+| Distribution | App Attest | Purchase environment | Current source | Operator-confirmed `cad34528` |
 | --- | --- | --- | --- | --- |
 | App Store, genuine capable device | Production | Production | Eligible after independent active-status verification | Eligible as before |
-| TestFlight | Production | Sandbox | Eligible only through the matched Sandbox verification/status flow | Denied until separately deployed |
+| TestFlight | Production | Sandbox | Eligible only through the matched Sandbox verification/status flow | Same matched Sandbox policy; device QA unverified |
 | Xcode StoreKit configuration / Simulator | Unsupported or development attestation | Xcode / local testing | Fails closed | Fails closed |
 | Development on a physical device | Development | Usually Sandbox | Fails the production App Attest gate | Fails closed |
 
@@ -177,9 +170,9 @@ API/verifier error, simulator bypass, Xcode/local evidence, local boolean grants
 in a binary remain prohibited. The separate schema probe remains diagnostic research and is not an
 authorization input to this transaction-environment boundary.
 
-This source has only offline verifier/API doubles, actual-library negative checks and local workerd
-coverage. The Worker revision has not been staged or released, ordinary Release remains
-unconfigured, and no signed TestFlight build has proved its StoreKit JWS, production App Attest,
+Automated evidence uses offline verifier/API doubles, actual-library negative checks and local workerd
+coverage. Deployment is operator-confirmed and ordinary Release is configured, but no signed
+TestFlight build has proved its StoreKit JWS, production App Attest,
 fresh Sandbox status, provider ordering or end-to-end model result. Do not claim live TestFlight
 success until those distinct genuine-device checks are recorded against a matching deployed commit.
 
@@ -293,7 +286,7 @@ and be reviewed independently. The legacy helper still rejects the persistence b
 
 The explicit `CoachDeviceQA` preparation configuration now enables the public `/coach` origin
 through per-configuration build settings with an empty binary secret and the production runtime
-mode; ordinary Debug/Release remain empty. This source/build preparation does not establish
+mode; ordinary Debug remains empty and Release now enables the public endpoint without QA. This preparation does not establish
 signed-device readiness or service/model success. Follow `docs/coach-iphone-qa.md` for the
 shared synthetic contexts, bounded local review and revision coordination. Only after separately
 cleared signing/device readiness, verify on a genuine Production-purchase device or a genuine
@@ -315,7 +308,7 @@ local phase: 38 actual shared-source native client tests passed; 145 selected ap
 configured runtime-transport construction, invalid production-host variants, view-model/core/error
 behavior, context/gating/disclosure, AppState and account-deletion cleanup. 57 legacy coordinator
 checks, 37 runtime migration coordinator checks, native migration/intake/live-QA doubles and
-production-entry compilation passed. Debug app-host and Release simulator builds passed. Both built Info.plists have empty Coach endpoint
+production-entry compilation passed. Historical Debug app-host and Release simulator builds passed. At that checkpoint both built Info.plists had empty Coach endpoint
 and binary secret and the exact runtime mode. Production App Attest is declared in the checked-in
 entitlement source; signed entitlement extraction and genuine Developer account/profile authority
 remain unverified. The official API regression is retained and passes against the local service;

@@ -12,27 +12,25 @@ The codebase supports two language routes:
   falls back to the deterministic on-device template on any failure.
 - **`POST /coach`** (US-AC01) accepts the audited derived context, message and separate Coach safety
   pseudonym, and calls OpenAI `gpt-5.6-luna`. The deployed runtime gateway requires genuine App Attest
-  and independently verified production Premium proof, or its separate operator-only bearer gate.
-  Current undeployed source additionally supports Apple-verified Sandbox Premium through a matched
-  Sandbox verifier/status path for TestFlight.
+  and independently verified Production or matched Apple Sandbox Premium proof, or its separate
+  operator-only bearer gate. Deployment of Sandbox-capable `cad34528` was operator-confirmed
+  on 2026-09-22; genuine-device/model success remains unverified.
 
 The runtime gateway is deployed. It persists bounded, content-free device security metadata, and
 retains no message, training summary, reply or purchase proof. Its verification/storage policy and
 migration runbook are authoritative in
 [`docs/coach-runtime-authentication.md`](../docs/coach-runtime-authentication.md). A shipped binary
-never receives the operator gate. Ordinary Debug/Release Coach endpoints are still empty; the
+never receives the operator gate. Ordinary Release enables the approved public origin; Debug stays empty; the
 separate `CoachDeviceQA` preparation configuration is documented in
 [`docs/coach-iphone-qa.md`](../docs/coach-iphone-qa.md). The client now submits StoreKit-verified
-Sandbox JWS and the server source verifies them against Apple's Sandbox service, but the currently
-deployed revision still denies Sandbox purchases.
+Sandbox JWS and the server source verifies them against Apple's Sandbox service, matching the operator-confirmed deployed revision.
 Deployment and no-model denial probes do not establish genuine Apple/device/model success.
-Current source additionally prepares an undeployed
+Current source also includes the
 [`proof-only QA exchange`](../docs/coach-proof-only-qa.md): an exact signed `{}` reaches
 `400 invalid_context` only after runtime device authentication and fresh Premium, then an exact
 replay is denied. The source gateway excludes an operator `{}` from that result. Local integration
 tests establish ordering/replay without provider dispatch; they do not establish genuine Apple
-proof or live TestFlight compatibility. The historical release above remains separate from this
-source.
+proof or live TestFlight compatibility. Deployment confirmation remains separate from genuine-device verification.
 
 ## What it does
 
