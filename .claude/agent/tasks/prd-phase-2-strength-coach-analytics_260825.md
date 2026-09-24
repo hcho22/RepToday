@@ -17,7 +17,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 - **Strength Phase machinery is complete but empty.** `PhaseEvaluator` (`Services/Consistency/PhaseEvaluator.swift`) earns `.strength` on sustained consistency (score >= 80 over ~8 weeks) AND cleared entry tiers of push/squat/hinge/core. `ExercisePoolFilter.isPhaseAllowed` gates `phase == .strength` exercises behind it. But only **3** gated skills exist (`push_one_arm`, `squat_pistol`, `core_l_sit`), all difficulty 5, no hinge skill.
 - **The double-gate trap.** A phase-gated skill must pass `isPhaseAllowed` AND `isWithinDifficultyCap` (`difficultyCap`: beginner 1-2, intermediate 1-3, advanced 1-5). All 3 skills are difficulty 5, so today only an "advanced" user who earns the phase sees anything. Beginners/intermediates earn it and see nothing.
 - **The policy seam for the coach already exists.** `SessionPolicy` (`Models/SessionPolicy.swift`) is the single seam between the programmer and the engine; `SessionPolicy.UpdatedBy` already has a reserved `.llm` case. Live levers: `progressionRate` (clamped), `varietyWindow`. `pillarWeighting` is **inert** since US-M01. There is **no** pattern-emphasis lever today.
-- **The runtime Coach gateway is deployed; client/model QA remains unverified.** `proxy/` is a Cloudflare Worker with route-specific provider keys: Variety Language remains on Anthropic, while the premium Coach uses OpenAI `gpt-5.6-luna`; the Worker stores no request or response content. The runtime endpoint is deployed at `https://coach.reptoday.app/coach`, where missing/wrong authorization and authorized malformed-input probes passed without a model call. No real model reply or shipped-client success has been verified. The App Attest/production-StoreKit gateway is deployed with bounded content-free security metadata; ordinary endpoints remain empty pending verified TestFlight proof-format compatibility implementation and genuine-device QA. App binary Coach secrets remain empty. `Services/Language/` separately composes an optional LLM slice over a deterministic template (`VarietyLanguageResolver`, provider `nil` in MVP).
+- **The runtime Coach gateway is deployed; client/model QA remains unverified.** `proxy/` is a Cloudflare Worker with route-specific provider keys: Variety Language remains on Anthropic, while the premium Coach uses OpenAI `gpt-5.6-luna`; the Worker stores no request or response content. Build configuration, deployment status, verification/storage policy and device/model evidence are owned by [the runtime runbook](../../../docs/coach-runtime-authentication.md). `Services/Language/` separately composes an optional LLM slice over a deterministic template (`VarietyLanguageResolver`, provider `nil` in MVP).
 - **Analytics split exists.** `Services/Progress/ProgressAnalytics.swift` renders free layers (pillar balance, chain positions, personal bests) for everyone and gates `DeepAnalytics` (per-pattern balance, weekly volume, difficulty mix) behind premium at the render boundary.
 - **Monetization plumbing exists.** StoreKit 2, `SubscriptionTier { free, premium }` ("premium unlocks the depth layer (full analytics, later Strength Phase / AI)"), paywall + funnel telemetry (US-T12).
 
@@ -206,10 +206,10 @@ intermediate diagnostic preparation (`docs/coach-proof-only-qa.md`), not complet
 It sends signed `{}` and its exact replay through the existing runtime gates, with no provider
 request. Local tests prove ordering, operator exclusion and replay with trusted Apple doubles;
 genuine installed-beta distribution/App Attest and server-verified Premium remain unverified.
-Exact authenticated assertion extension encoding/availability is still unresolved. Client and
-server purchase policy stay Production-only and ordinary Debug/Release endpoints remain empty.
-The selected same-service verified-TestFlight-only Sandbox policy and complete ordinary archive
-inclusion remain pending; the prior deployed revision is historical evidence.
+Current subscription verification, ordinary Release configuration and deployment/evidence status
+are owned by [the runtime runbook](../../../docs/coach-runtime-authentication.md). The separate
+[schema-only probe](../../../docs/coach-testflight-schema-probe.md) owns the unresolved assertion
+extension contract; that contract is not an input to runtime subscription verification.
 
 **Description:** As a premium user, I want to ask the coach questions and get answers grounded in my real history and exercise science, so that I understand and stay motivated.
 
