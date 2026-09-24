@@ -98,12 +98,15 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
                     let vm = model(facade)
                     await vm.load()
                     let plans = vm.plans
+                    let catalogMessage = vm.catalogMessage
+                    XCTAssertEqual(catalogMessage == nil, catalog == .available)
                     await vm.restore()
                     XCTAssertEqual(vm.plans, plans)
+                    XCTAssertEqual(vm.catalogMessage, catalogMessage)
                     XCTAssertEqual(vm.didUnlockPremium, !failsSync && owns)
                     XCTAssertEqual(vm.message, failsSync
                         ? "We couldn't restore right now. Please try again later."
-                        : owns ? nil : "No previous purchase found on this Apple ID.")
+                        : owns ? nil : "No active Premium subscription was found.")
                     XCTAssertFalse(vm.isBusy)
                     XCTAssertFalse(vm.isLoading)
                     let calls = await facade.calls
@@ -146,13 +149,14 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         XCTAssertEqual(vm.restoreDiagnostic, .inProgress)
         #endif
         await vm.restore()
+        await vm.load()
         await vm.purchase(try XCTUnwrap(vm.plans.first))
         let inFlightCalls = await facade.calls
         XCTAssertEqual(inFlightCalls, ["products", "sync"])
         await facade.resumeSync()
         await restore.value
         XCTAssertFalse(vm.isBusy)
-        XCTAssertEqual(vm.message, "No previous purchase found on this Apple ID.")
+        XCTAssertEqual(vm.message, "No active Premium subscription was found.")
         #if COACH_IPHONE_QA
         XCTAssertEqual(vm.productsDiagnostic, .loaded(1))
         XCTAssertEqual(vm.restoreDiagnostic, .noCurrentEntitlement)
@@ -239,7 +243,7 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         await failed.load()
         XCTAssertEqual(empty.productsDiagnostic, .noUsableProducts)
         XCTAssertNotEqual(empty.productsDiagnostic, failed.productsDiagnostic)
-        XCTAssertEqual(empty.message, failed.message, "ordinary copy is deliberately unchanged")
+        XCTAssertEqual(empty.catalogMessage, failed.catalogMessage, "ordinary copy is deliberately unchanged")
     }
 
     func testSuccessfulSyncWithNoEntitlementDiffersFromThrownSync() async {
@@ -256,12 +260,28 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
     }
 
     private final class UnprojectedService: SubscriptionServiceProtocol {
+        var catalogError: SubscriptionError = .failed("PRIVATE")
         func currentSubscription() async throws -> Subscription { .free }
         func refreshEntitlements() async throws -> Subscription { .free }
-        func premiumPlans() async throws -> [SubscriptionPlan] { throw SubscriptionError.failed("PRIVATE") }
+        func premiumPlans() async throws -> [SubscriptionPlan] { throw catalogError }
         func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome { .resolved(.free) }
         func purchasePremium() async throws -> Subscription { .free }
         func restorePurchases() async throws -> Subscription { throw SubscriptionError.failed("PRIVATE") }
+    }
+
+    func testRawEmptyLookupDiffersFromProductsRejectedBySubscriptionFilter() async {
+        for rawCount in [0, 2] {
+            let service = UnprojectedService()
+            service.catalogError = .diagnosticProductsUnavailable(rawProductCount: rawCount)
+            let vm = PaywallViewModel(subscriptionService: service)
+            await vm.load()
+            XCTAssertEqual(vm.productsDiagnostic, .lookupWithoutSubscriptions(rawCount))
+            XCTAssertEqual(vm.productsDiagnostic.summary,
+                           "lookup returned \(rawCount) products; 0 usable subscriptions")
+            await vm.restore()
+            XCTAssertEqual(vm.productsDiagnostic, .lookupWithoutSubscriptions(rawCount))
+            XCTAssertNotNil(vm.catalogMessage)
+        }
     }
 
     func testUnprojectedErrorsUseFixedTextAndNewPaywallHasNoOldDiagnostics() async {
@@ -297,10 +317,10 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         // Hosting pumps layout synchronously. Yield the actor too, so the view's asynchronous
         // catalog task has completed before simulating the user's subsequent Restore tap.
         let deadline = Date().addingTimeInterval(2)
-        while (vm.isLoading || vm.message == nil) && Date() < deadline {
+        while (vm.isLoading || vm.catalogMessage == nil) && Date() < deadline {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        guard vm.message == "We couldn't load plans right now. Your workouts are always free - try again later.",
+        guard vm.catalogMessage == "We couldn't load plans right now. Your workouts are always free - try again later.",
               !vm.isLoading else {
             XCTFail("Paywall catalog task did not settle before Restore")
             return
@@ -328,6 +348,8 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
         HostedSurface.pump(for: 0.2)
         let labels = AccessibilityTree.labels(in: surface.host.view)
         XCTAssertTrue(labels.contains("We couldn't restore right now. Please try again later."))
+        XCTAssertTrue(labels.contains("We couldn't load plans right now. Your workouts are always free - try again later."))
+        XCTAssertNotNil(AccessibilityTree.element(labeled: "Retry plans", in: surface.host.view))
         #if COACH_IPHONE_QA
         XCTAssertTrue(labels.contains("Products: unclassified — ASDErrorDomain / 101"))
         XCTAssertTrue(labels.contains("Restore: unclassified — AMSErrorDomain / 202"))
@@ -358,6 +380,15 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
             named: "qa-accessibility-after-restore.png", for: "coach-storekit-diagnostics"
         )
         #endif
+        let retry = try XCTUnwrap(AccessibilityTree.element(labeled: "Retry plans", in: surface.host.view))
+        XCTAssertTrue(retry.accessibilityActivate(), "Drive the actual accessible Retry control")
+        let retryDeadline = Date().addingTimeInterval(2)
+        while (await facade.calls).filter({ $0 == "products" }).count < 2, Date() < retryDeadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        let afterRetry = await facade.calls
+        XCTAssertEqual(afterRetry.filter { $0 == "products" }.count, 2)
+        XCTAssertEqual(vm.message, "We couldn't restore right now. Please try again later.")
     }
     #endif
 }

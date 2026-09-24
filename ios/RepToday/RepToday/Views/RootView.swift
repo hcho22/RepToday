@@ -183,6 +183,14 @@ private struct ProfileTabView: View {
                     )
 
                     VStack(spacing: Theme.Spacing.md) {
+                        NavigationLink {
+                            AccountView(authService: services.authService)
+                        } label: {
+                            ProfileRowLabel(icon: "person.crop.circle", title: "Account")
+                        }
+                        .accessibilityLabel("Account")
+                        .accessibilityHint("Sign in with Apple or view your sign-in status")
+
                         // US-AC03: the premium gate + upsell entry point for the talking coach
                         // (US-AC02). A Premium subscriber navigates into `CoachView`; a free user's tap
                         // opens the existing paywall carrying the `coach_upsell` entry point. The gate

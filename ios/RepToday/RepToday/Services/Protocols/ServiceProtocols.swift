@@ -250,8 +250,8 @@ protocol AuthServiceProtocol {
     func currentUserIdentifier() async throws -> String?
     func signInWithApple() async throws -> String
     /// Persists an externally-obtained Sign in with Apple identifier (e.g. from the official
-    /// `SignInWithAppleButton`'s completion), so the identity keys the user record just as
-    /// `signInWithApple()`'s programmatic path would.
+    /// `SignInWithAppleButton`'s completion). This stores only a credential; onboarding may key a
+    /// new user by it, while post-onboarding callers must preserve the existing record identity.
     func completeSignIn(identifier: String) async throws
     func signOut() async throws
 }

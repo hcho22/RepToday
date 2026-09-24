@@ -75,6 +75,18 @@ struct PaywallView: View {
                 headline
                 benefits
                 plansSection
+                if let message = viewModel.catalogMessage {
+                    Text(message)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Retry plans") { Task { await viewModel.load() } }
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.accent)
+                        .frame(minHeight: Theme.Spacing.minTouchTarget)
+                        .disabled(viewModel.isBusy)
+                        .accessibilityHint("Loads available Premium plans from the App Store")
+                }
                 if let message = viewModel.message {
                     Text(message)
                         .font(Theme.Typography.caption)

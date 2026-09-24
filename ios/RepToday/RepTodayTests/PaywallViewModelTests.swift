@@ -9,11 +9,14 @@ import XCTest
 /// - `load()` populates plans, and surfaces a gentle message (not a wall) when none are available;
 /// - a successful purchase/restore preserves the exact Premium `Subscription` for its presenter; a
 ///   user-cancel or a nothing-owned restore does not, and a failure surfaces a gentle message.
+@MainActor
 final class PaywallViewModelTests: XCTestCase {
 
     // MARK: - Stub
 
     private final class StubService: SubscriptionServiceProtocol {
+        var calls: [String] = []
+        var beforeOperation: ((String) async -> Void)?
         var plans: [SubscriptionPlan]
         var plansError: Error?
         var purchaseOutcome: Subscription
@@ -44,11 +47,15 @@ final class PaywallViewModelTests: XCTestCase {
         func refreshEntitlements() async throws -> Subscription { .free }
 
         func premiumPlans() async throws -> [SubscriptionPlan] {
+            calls.append("load")
+            await beforeOperation?("load")
             if let plansError { throw plansError }
             return plans
         }
 
         func purchase(_ plan: SubscriptionPlan) async throws -> PurchaseOutcome {
+            calls.append("purchase")
+            await beforeOperation?("purchase")
             if let purchaseError { throw purchaseError }
             return purchaseIsPending ? .pending : .resolved(purchaseOutcome)
         }
@@ -59,6 +66,8 @@ final class PaywallViewModelTests: XCTestCase {
         }
 
         func restorePurchases() async throws -> Subscription {
+            calls.append("restore")
+            await beforeOperation?("restore")
             if let restoreError { throw restoreError }
             return restoreOutcome
         }
@@ -82,7 +91,7 @@ final class PaywallViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.plans.isEmpty)
-        XCTAssertNotNil(vm.message, "no plans shows a gentle, non-blocking message")
+        XCTAssertNotNil(vm.catalogMessage, "no plans shows a gentle, non-blocking message")
     }
 
     func testLoadFailureSurfacesGentleMessage() async {
@@ -90,8 +99,58 @@ final class PaywallViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.plans.isEmpty)
-        XCTAssertNotNil(vm.message)
+        XCTAssertNotNil(vm.catalogMessage)
         XCTAssertFalse(vm.didUnlockPremium)
+    }
+
+    func testRetryRecoversCatalogWithoutErasingRestoreOutcome() async {
+        let service = StubService(plans: [])
+        let vm = PaywallViewModel(subscriptionService: service)
+        await vm.load()
+        let unavailable = vm.catalogMessage
+        await vm.restore()
+        XCTAssertEqual(vm.catalogMessage, unavailable)
+        XCTAssertEqual(vm.message, "No active Premium subscription was found.")
+        service.plans = SubscriptionPlan.samples
+        await vm.load()
+        XCTAssertEqual(vm.plans, SubscriptionPlan.samples)
+        XCTAssertNil(vm.catalogMessage)
+        XCTAssertEqual(vm.message, "No active Premium subscription was found.")
+        XCTAssertFalse(vm.didUnlockPremium)
+    }
+
+    func testAllStoreOperationsExcludeEachOtherWhileSuspended() async throws {
+        for operation in ["load", "purchase", "restore"] {
+            let service = StubService()
+            let vm = PaywallViewModel(subscriptionService: service)
+            var continuation: CheckedContinuation<Void, Never>?
+            service.beforeOperation = { _ in
+                await withCheckedContinuation { continuation = $0 }
+            }
+            let task = Task {
+                switch operation {
+                case "load": await vm.load()
+                case "purchase": await vm.purchase(SubscriptionPlan.samples[0])
+                default: await vm.restore()
+                }
+            }
+            for _ in 0..<200 where continuation == nil {
+                try await Task.sleep(nanoseconds: 1_000_000)
+            }
+            guard let resume = continuation else {
+                task.cancel()
+                XCTFail("Operation did not reach the suspended service")
+                return
+            }
+            XCTAssertTrue(vm.isBusy)
+            await vm.load()
+            await vm.purchase(SubscriptionPlan.samples[0])
+            await vm.restore()
+            XCTAssertEqual(service.calls, [operation])
+            resume.resume()
+            await task.value
+            XCTAssertFalse(vm.isBusy)
+        }
     }
 
     // MARK: - Purchase

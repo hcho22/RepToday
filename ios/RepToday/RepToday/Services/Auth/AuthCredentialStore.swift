@@ -3,7 +3,8 @@ import Security
 
 /// Persists the Sign in with Apple user identifier (US-N01).
 ///
-/// The identifier keys the user record, so it must survive relaunch (and, in production,
+/// Onboarding can use this identifier to key a new user; later sign-in preserves an existing key.
+/// The credential must survive relaunch (and, in production,
 /// reinstall) and stay private on-device. This is the single seam behind `AppleAuthService`,
 /// so the service composes an in-memory store in tests/previews and a Keychain-backed store in
 /// the running app without any other code knowing the difference.
