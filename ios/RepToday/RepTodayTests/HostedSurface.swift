@@ -65,11 +65,19 @@ enum HostedSurface {
     /// physical screen bounds - unlike `drawHierarchy(afterScreenUpdates:)`, which is limited to what
     /// is actually on screen. `size` is the region composited: a hosted surface cropped to its measured
     /// content simply drops the empty tail below it, because nothing above the crop moves.
-    static func capture(_ view: UIView, size: CGSize) -> UIImage {
+    /// For an on-screen surface with a recent SwiftUI transition, `afterScreenUpdates` asks UIKit
+    /// to commit that transition before drawing. Keep the default layer path for offscreen content.
+    static func capture(_ view: UIView, size: CGSize, afterScreenUpdates: Bool = false) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = captureScale
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        return renderer.image { ctx in view.layer.render(in: ctx.cgContext) }
+        return renderer.image { ctx in
+            if afterScreenUpdates {
+                view.drawHierarchy(in: CGRect(origin: .zero, size: size), afterScreenUpdates: true)
+            } else {
+                view.layer.render(in: ctx.cgContext)
+            }
+        }
     }
 
     /// Spins the main run loop for `interval`.

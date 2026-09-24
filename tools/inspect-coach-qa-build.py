@@ -22,13 +22,15 @@ def inspect(app, configuration, scheme):
     qa = configuration == 'CoachDeviceQA'
     expected = {
         'RepTodayBuildConfiguration': configuration,
-        'RepTodayCoachEndpoint': EXPECTED_ORIGIN if qa else '',
+        'RepTodayCoachEndpoint': EXPECTED_ORIGIN if qa or configuration == 'Release' else '',
         'RepTodayCoachSecret': '',
         'RepTodayCoachAuthMode': EXPECTED_MODE,
         'RepTodayCoachSyntheticQA': '1' if qa else '0',
     }
     if any(info.get(key) != value for key, value in expected.items()):
         raise ValueError('configuration')
+    if configuration in ('Release', 'CoachDeviceQA') and any(app.rglob('*.storekit')):
+        raise ValueError('bundled-local-storekit')
     if configuration == 'Release':
         tree = ET.parse(scheme)
         archive = tree.getroot().find('ArchiveAction')
@@ -63,8 +65,10 @@ def main():
     except Exception:
         print('failed: built Coach configuration or QA scheme contract; no values printed', file=sys.stderr)
         return 1
-    print('verified: {} public Coach endpoint {}; binary secret empty; {}; synthetic QA {}; no local StoreKit configuration for QA'.format(
-        args.configuration, 'enabled at approved origin' if qa else 'empty', EXPECTED_MODE, 'enabled' if qa else 'disabled'))
+    print('verified: {} public Coach endpoint {}; binary secret empty; {}; synthetic QA {}'.format(
+        args.configuration, 'enabled at approved origin' if qa or args.configuration == 'Release' else 'empty', EXPECTED_MODE, 'enabled' if qa else 'disabled'))
+    if args.configuration in ('Release', 'CoachDeviceQA'):
+        print('verified: no bundled local StoreKit fixture')
     if args.configuration == 'Release':
         print('verified: archive action selects Release without a local StoreKit attachment')
     print('unverified: signing/profile, effective App Attest entitlement, physical-device installation, production purchase/service and live semantic QA')

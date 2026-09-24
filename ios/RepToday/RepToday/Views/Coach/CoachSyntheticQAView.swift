@@ -65,7 +65,7 @@ struct CoachSyntheticQAView: View {
                     }
                     #endif
                     Group {
-                    Text("Preparation build. Requires an eligible signed physical iPhone, an existing Production or Apple Sandbox Premium purchase or trial, and a matched reviewed server revision. The currently deployed revision accepts Production only; Sandbox-capable source is undeployed and TestFlight admission remains unverified.")
+                    Text("Preparation build. Requires an eligible signed physical iPhone, an existing Production or Apple Sandbox Premium purchase or trial, and a matched reviewed server revision. Deployment of the Sandbox-capable Worker revision cad34528 is operator-confirmed. Genuine-device App Attest, matched Sandbox Premium/TestFlight admission and model success remain unverified.")
                     Text("At most two model requests total: why squats, then pistol form. Each needs a tap. Stop on the first failure; never retry a timeout. This installation remembers attempts across relaunches. Reinstalling does not authorize a new budget.")
                     if !configurationEnabled || !viewModel.isAvailable {
                         Text("QA configuration unavailable. No request can be sent.")

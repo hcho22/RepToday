@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Check the actual Release archive's public plist/scheme contracts and early override denial.
 
-Build an unsigned archive at build/coach-testflight/RepToday.xcarchive first. No credential
-helper, production service, signing account or model is used by this test.
+Build a configuration-validation archive at build/coach-testflight/RepToday.xcarchive first.
+The test reads only its public configuration; it uses no credential helper, production service,
+signing account or model. Signing and production telemetry are separate release gates.
 """
 import importlib.util
 from pathlib import Path
@@ -41,7 +42,7 @@ class ReleaseInspectionTests(unittest.TestCase):
     def inspect(self):
         return inspector.inspect(self.app, 'Release', self.scheme)
 
-    def test_actual_unsigned_archive_contract_is_accepted(self):
+    def test_actual_archive_contract_is_accepted(self):
         self.assertFalse(self.inspect())  # Synthetic QA is disabled in the ordinary archive.
 
     def test_embedded_gate_wrong_mode_configuration_and_qa_fail_closed(self):
@@ -49,6 +50,7 @@ class ReleaseInspectionTests(unittest.TestCase):
                            ('RepTodayCoachAuthMode', 'bearer'),
                            ('RepTodayBuildConfiguration', 'CoachDeviceQA'),
                            ('RepTodayCoachEndpoint', 'https://fixture.invalid/coach'),
+                           ('RepTodayCoachEndpoint', ''),
                            ('RepTodayCoachSyntheticQA', '1')]:
             original = self.info[key]
             self.info[key] = value
@@ -70,6 +72,11 @@ class ReleaseInspectionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.inspect()
             del self.info[key]
+
+    def test_local_storekit_file_cannot_ship_in_release(self):
+        (self.app / "RepToday.storekit").write_text("{}")
+        with self.assertRaises(ValueError):
+            self.inspect()
 
     def test_archive_action_must_select_release(self):
         tree = ET.parse(self.scheme)

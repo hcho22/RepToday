@@ -88,10 +88,10 @@ targets:
       # must match the deployment's `ANALYTICS_SHARED_SECRET` env var (`npx convex env set`). An empty
       # value is inert exactly like an empty endpoint: `LiveAnalyticsService.configured(...)` returns
       # nil and the container falls back to `NoOpAnalyticsService`.
-      # Ordinary Debug/Release Coach endpoints stay inert. CoachDeviceQA explicitly enables the
-      # public origin through this same Info.plist path, with genuine production authentication
-      # and no binary secret. The runtime service is deployed; eligible signed-device/purchase
-      # readiness and TestFlight entitlement compatibility remain separate. See docs/coach-iphone-qa.md.
+      # Release enables the approved public Coach origin with App Attest/StoreKit and no binary
+      # secret. Debug stays inert; CoachDeviceQA retains its separate synthetic preparation lane.
+      # Deployment confirmation is separate from genuine-device/model QA; see
+      # docs/coach-runtime-authentication.md.
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
@@ -104,7 +104,7 @@ targets:
           REPTODAY_ANALYTICS_ENDPOINT: https://sensible-spider-810.convex.site
           REPTODAY_ANALYTICS_SECRET: ""
           REPTODAY_COACH_SYNTHETIC_QA: "0"
-          REPTODAY_COACH_ENDPOINT: ""
+          REPTODAY_COACH_ENDPOINT: https://coach.reptoday.app/coach
           REPTODAY_COACH_SECRET: ""
           REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
         CoachDeviceQA:
