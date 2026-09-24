@@ -83,6 +83,7 @@
 		5090E5711E1A95EAC632DA5F /* MovementPatternFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B792D7A9F21B8993AB777DC /* MovementPatternFocus.swift */; };
 		50B9E176403E9EF17CAC88D8 /* AppInstallEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAF76F03873A887FDF9F7A0 /* AppInstallEventTests.swift */; };
 		511A615D0D4270DF4CA5F229 /* CoachAnalyticsInsightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42165C8F4BCEA05B1644BFC7 /* CoachAnalyticsInsightView.swift */; };
+		52B0BD6C9043B2F3C98A7F88 /* AccountAccessUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EEF4C507DA3C1AAC827A6CD /* AccountAccessUITests.swift */; };
 		560913F9E0CD8261FDB6E7E0 /* ProgressionMapEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D223F9A07424D41EA2E41DA8 /* ProgressionMapEvidenceTests.swift */; };
 		565609F21F058AC4DF756F35 /* CoachInjuryRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C9896AB9E0A7ED53AA878C /* CoachInjuryRouting.swift */; };
 		575215208B032A64231FBF27 /* SessionAssemblyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD1E11A5E5F6BA2587259DF /* SessionAssemblyTests.swift */; };
@@ -401,6 +402,7 @@
 		896FA5008B749566E28BAC10 /* EnumsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnumsTests.swift; sourceTree = "<group>"; };
 		8BC722B26A6ABDD56648D13E /* RepToday.storekit */ = {isa = PBXFileReference; path = RepToday.storekit; sourceTree = "<group>"; };
 		8C030B57B5FF2EB8BD35970C /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		8EEF4C507DA3C1AAC827A6CD /* AccountAccessUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAccessUITests.swift; sourceTree = "<group>"; };
 		937AE065242A7FB319FADB4A /* ProgressViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressViewModelTests.swift; sourceTree = "<group>"; };
 		9461E630105BB3F65E879C62 /* ActiveSessionTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionTelemetryTests.swift; sourceTree = "<group>"; };
 		94D89D3D80A28347E233D368 /* ConsistencyTrend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsistencyTrend.swift; sourceTree = "<group>"; };
@@ -989,6 +991,7 @@
 		E5319E06450F6C0AA9E6549E /* RepTodayUITests */ = {
 			isa = PBXGroup;
 			children = (
+				8EEF4C507DA3C1AAC827A6CD /* AccountAccessUITests.swift */,
 				D9E91D2606BAA6DBCC888A77 /* AccountDeletionUITests.swift */,
 				2C54BF4144C9D49A0865E3D0 /* ContinuousCircuitUITests.swift */,
 				C3ED5CBC6B6FCC45A3C35542 /* HealthAccessPrompt.swift */,
@@ -1314,6 +1317,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				52B0BD6C9043B2F3C98A7F88 /* AccountAccessUITests.swift in Sources */,
 				7975CB09F69A769EC8E7B6D4 /* AccountDeletionUITests.swift in Sources */,
 				757E8F0744FDEF5B50C83FDB /* ContinuousCircuitUITests.swift in Sources */,
 				C130C08495D12FC5F98C5B7D /* HealthAccessPrompt.swift in Sources */,

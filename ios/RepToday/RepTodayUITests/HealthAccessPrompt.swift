@@ -30,7 +30,10 @@ extension XCTestCase {
         // container that already answered (no sheet ever comes) returns at once rather than waiting the
         // whole window out.
         let byIdentifier = app.buttons["UIA.Health.AuthSheet.CancelButton"]
-        let byLabel = app.buttons["Don't Allow"]
+        // iOS 26 uses a typographic apostrophe and a different identifier; older runtimes use ASCII.
+        let byLabel = app.buttons.matching(NSPredicate(
+            format: "label IN %@", ["Don't Allow", "Don’t Allow"] as NSArray
+        )).firstMatch
         let anyTab = app.tabBars.buttons.firstMatch
         let deadline = Date().addingTimeInterval(20)
         var tabsBecameHittableAt: Date?

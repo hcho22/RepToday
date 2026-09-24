@@ -155,3 +155,50 @@ and runnable pipeline agent, and AXI recognizes the initialized feature branch/r
 help was consulted; no shared tool upgrade or restart was performed. Implementation is handed
 back committed for the prescribed no-mistakes start. This report supplies accepted criteria and
 limits; it must not be substituted for captain intent in `--intent`.
+
+## Gate test follow-up: disposable simulator (2026-09-24)
+
+Run `01M3AK6WGSNCNQM55RRW32YPWN` received explicit permission for one disposable simulator in
+the normal device set. Created iPhone 17 Pro / installed iOS 26.5 runtime, UDID
+`88E6F927-FA16-4A42-95AD-3F63BB750F98`. All test commands target that exact UDID with
+`-sdk iphonesimulator -parallel-testing-enabled NO`, ad-hoc signing (`CODE_SIGN_IDENTITY=-`,
+empty team), worktree-local DerivedData/packages, and empty telemetry endpoint/secret overrides.
+The initial destination-settings command still failed without the explicit Simulator SDK;
+the focused `xcodebuild test` command resolved and launched the normal-set device successfully.
+
+The touch-navigation test then reproduced a separate **test setup failure**: Profile remained
+covered by Health Access, so the Account row timed out. The exported runtime accessibility tree
+shows `UIA.Health.DoNotAllow.Button`, label `Don’t Allow`; the shared helper expected the older
+`UIA.Health.AuthSheet.CancelButton` or ASCII `Don't Allow`. The fix matches both observed spellings
+in its existing label fallback. No production code changes are needed. A warm relaunch alone was
+insufficient evidence: it passed after the permission state changed, whereas a clean-state attempt
+with an early-return-only helper change still failed. That speculative helper change was removed.
+
+Evidence root (outside the worktree, explicitly authorized for this test phase):
+`/Users/hcho/.no-mistakes/evidence/01M3AK6WGSNCNQM55RRW32YPWN/premium-recovery/`.
+Logs and result bundles preserve the initial failures as well as subsequent results. The
+`navigation-clean-attachments/DCAC926A-28D7-4C64-8CC6-67877808E1FB.txt` runtime tree records
+the exact changed system control. Screenshots are supplemental evidence; assertions execute
+production views and their controls, not source-text matching.
+
+Final focused results: **5 executions passed, zero failures** (four test methods, with the existing
+hosted diagnostic method run in both configurations). Earlier diagnostic failures remain in the
+evidence root. No full suite, linter, formatter, static analysis, push, PR or CI phase was run.
+
+| Executed check | Result and evidence beneath the root above |
+| --- | --- |
+| Existing `AccountAccessEvidenceTests` (Debug) | PASS: signed-out official Apple button and signed-in status, optional/billing-independent explanation; `hosted-initial.xcresult`, `premium-access/account-*.png` |
+| Existing hosted `StoreKitPaywallDiagnosticsTests.testHostedPaywallDiagnosticRowsFollowTheBuildConfiguration` (Debug) | PASS: activate Restore/Retry, keep catalog and restore errors separate, ordinary build omits QA rows; `hosted-initial.xcresult` |
+| New `PaywallViewModelTests.testHostedRetryRecoversPlansAndPreservesNoActiveRestoreResult` (Debug) | PASS: activate real hosted controls with deterministic service fixture; no-active restore remains visible, repeated retry makes one request, Restore disabled while loading, both plan controls return without clearing restore result; `retry-control.xcresult`, `premium-access/paywall-recovered-plans-after-restore.png` |
+| Existing hosted diagnostic test (CoachDeviceQA configuration) | PASS: injected catalog/restore failures retain independent bounded QA rows, larger-text render and Retry activation; `qa-hosted.xcresult`, `coach-storekit-diagnostics/qa-*.png` |
+| New `AccountAccessUITests.testProfileReachesOptionalAppleSignInAfterOnboarding` (Debug) | PASS on a freshly erased instance of the same test-owned simulator after the selector fix. Trace taps `UIA.Health.DoNotAllow.Button`, then confirmation OK, Profile and Account; official sign-in control is hittable; `account-navigation-final.xcresult` and `navigation-final-attachments/`. Onboarded routing is supplied by the existing test launch argument; this does not repeat onboarding or perform Apple authentication. |
+
+Genuine Apple authorization, Keychain persistence through real authorization, Apple-sheet
+cancellation/retry, real StoreKit purchase/restore (including pending/canceled purchases), and the
+affected iPhone's live catalog/configuration cause remain **untested** under the scoped permission.
+No App Store Connect access or mutation was attempted. The prior 83 native test executions remain
+historical evidence; they were not rerun or substituted for device-backed verification here.
+
+Cleanup completed after evidence export: only the recorded test-owned simulator was shut down and
+deleted, and the worktree-local temporary build/package directory was removed. `cleanup.json` in
+the evidence root confirms both removals. No existing/shared simulator was modified.

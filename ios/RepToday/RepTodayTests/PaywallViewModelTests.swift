@@ -1,4 +1,8 @@
 import XCTest
+#if canImport(UIKit)
+import SwiftUI
+import UIKit
+#endif
 @testable import RepToday
 
 /// Tests the paywall view model (US-N04).
@@ -76,6 +80,78 @@ final class PaywallViewModelTests: XCTestCase {
     private let premium = Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)
 
     // MARK: - Load
+
+    #if canImport(UIKit)
+    func testHostedRetryRecoversPlansAndPreservesNoActiveRestoreResult() async throws {
+        let service = StubService(plans: [])
+        let vm = PaywallViewModel(subscriptionService: service)
+        let surface = HostedSurface.host(PaywallView(viewModel: vm), size: CGSize(width: 390, height: 1200))
+        defer { surface.window.isHidden = true }
+        surface.window.windowScene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        )
+        surface.window.makeKeyAndVisible()
+
+        func settle(until condition: () -> Bool) async throws {
+            let deadline = Date().addingTimeInterval(3)
+            while !condition(), Date() < deadline {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTAssertTrue(condition())
+            try await Task.sleep(nanoseconds: 700_000_000)
+            surface.host.view.layoutIfNeeded()
+        }
+
+        try await settle { vm.catalogMessage != nil && !vm.isBusy }
+        let unavailable = try XCTUnwrap(vm.catalogMessage)
+        let restore = try XCTUnwrap(AccessibilityTree.element(labeled: "Restore purchases", in: surface.host.view))
+        XCTAssertTrue(restore.accessibilityActivate())
+        let noActive = "No active Premium subscription was found."
+        try await settle { vm.message == noActive && !vm.isBusy }
+        let labels = AccessibilityTree.labels(in: surface.host.view)
+        XCTAssertTrue(labels.contains(unavailable))
+        XCTAssertTrue(labels.contains(noActive))
+        XCTAssertFalse(vm.didUnlockPremium)
+
+        // Keep the retry in flight so repeated activations cannot race an instant fixture response.
+        var releaseLoad: CheckedContinuation<Void, Never>?
+        service.plans = SubscriptionPlan.samples
+        service.beforeOperation = { operation in
+            if operation == "load" {
+                await withCheckedContinuation { releaseLoad = $0 }
+            }
+        }
+        defer { releaseLoad?.resume() }
+        let retry = try XCTUnwrap(AccessibilityTree.element(labeled: "Retry plans", in: surface.host.view))
+        XCTAssertTrue(retry.accessibilityActivate())
+        _ = retry.accessibilityActivate()
+        try await settle { releaseLoad != nil }
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertTrue(AccessibilityTree.labels(in: surface.host.view).contains(noActive))
+        let busyRestore = try XCTUnwrap(AccessibilityTree.element(labeled: "Restore purchases", in: surface.host.view))
+        XCTAssertTrue(busyRestore.accessibilityTraits.contains(.notEnabled))
+        _ = busyRestore.accessibilityActivate()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(service.calls, ["load", "restore", "load"])
+        releaseLoad?.resume()
+        releaseLoad = nil
+
+        try await settle { !vm.isBusy && !vm.plans.isEmpty }
+        XCTAssertEqual(vm.plans, SubscriptionPlan.samples)
+        XCTAssertEqual(vm.message, noActive)
+        XCTAssertNil(vm.catalogMessage)
+        XCTAssertNil(AccessibilityTree.element(labeled: "Retry plans", in: surface.host.view))
+        let recoveredLabels = AccessibilityTree.labels(in: surface.host.view)
+        XCTAssertTrue(recoveredLabels.contains(noActive))
+        for plan in SubscriptionPlan.samples {
+            XCTAssertTrue(recoveredLabels.contains { $0.hasPrefix("\(plan.period.displayName), \(plan.priceLine)") })
+        }
+        try EvidenceOutput.write(
+            HostedSurface.capture(surface.host.view, size: surface.host.view.bounds.size),
+            named: "paywall-recovered-plans-after-restore.png", for: "premium-access"
+        )
+    }
+    #endif
 
     func testLoadPopulatesPlans() async {
         let vm = PaywallViewModel(subscriptionService: StubService())
