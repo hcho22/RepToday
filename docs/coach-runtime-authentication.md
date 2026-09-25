@@ -120,7 +120,9 @@ local identifier and permits one fully verified fresh enrollment before a Coach 
 Generic native or server failures do not rotate the key, and a second invalid-key result fails closed.
 
 The service is **content stateless**, rather than entirely persistence free after migration. Request
-and response body logs, observability, tails, development URLs and caching remain disabled. Provider
+and response body logs, persistent observability, tail-consumer bindings, development URLs and caching
+remain disabled. Temporary content-free guard diagnostics and separately authorized transient capture
+are governed by the [diagnostic guide](coach-auth-guard-diagnostics.md). Provider
 standard abuse-monitoring retention remains as disclosed in `proxy/README.md`.
 
 SQLite Durable Objects are supported on the [Workers Free plan](https://developers.cloudflare.com/durable-objects/platform/pricing/).
@@ -269,7 +271,8 @@ match; it never creates WAF capacity, attaches a hostname, edits DNS or purchase
 and verifies the hold first, then deploys through the installed supported Wrangler flow using only
 public configuration. A public source revision binding pins subsequent release to the local
 committed head. Only the approved SQLite class/binding/migration, server secrets, mode and public
-revision are permitted. It checks the official namespace API's `class`, `script` and `use_sqlite`
+revision are permitted, plus the explicit optional binding described in the
+[diagnostic guide](coach-auth-guard-diagnostics.md). It checks the official namespace API's `class`, `script` and `use_sqlite`
 fields, exact migration tag, same namespace on repeat staging, disabled observability/tails/logpush,
 and disabled development/preview URLs. Unknown/missing API fields stop rather than guessing.
 The existing SQLite namespace was verified at stage/release. A future API/Free-quota refusal leaves
