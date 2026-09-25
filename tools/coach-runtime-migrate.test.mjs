@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { RuntimeCloudflare, runtimePacket, runtimeConfig, checkRuntimeSettings, migrateRuntime,
-  runtimeGateProbes, runtimeLines, runtimeSecretNames } from './coach-runtime-migrate.mjs';
+  runtimeGateProbes, runtimeLines, runtimeSecretNames, runtimeArguments } from './coach-runtime-migrate.mjs';
 import { DeploymentFailure, TARGET, HOLD, BOUNDARY, LIMIT, CUSTOM, RATE, checkSettings } from './coach-production-deploy.mjs';
 
 // No production entries, auth files, Keychain or network are touched by these doubles.
@@ -17,6 +17,7 @@ const stopped = code => error => error instanceof DeploymentFailure && error.cod
 function settings(rev = revision) {
   return { bindings: [{ name: 'COACH_AUTH_MODE', type: 'plain_text', text: 'app-attest-storekit-v1' },
     { name: 'COACH_AUTH_SOURCE_REV', type: 'plain_text', text: rev },
+    { name: 'COACH_AUTH_GUARD_DIAGNOSTICS', type: 'plain_text', text: '1' },
     { name: 'COACH_AUTH_STATE', type: 'durable_object_namespace', class_name: 'CoachAuthenticationState', namespace_id: namespace }],
     observability: { enabled: false }, logpush: false, tail_consumers: [] };
 }
@@ -75,7 +76,7 @@ function fixture({ runtime = false } = {}) {
     state.scripts[0].migration_tag = 'coach-security-v1';
     state.namespaces = [{ id: namespace, class: 'CoachAuthenticationState', script: TARGET.worker, use_sqlite: true }];
   };
-  const run = (operation, overrides = {}) => migrateRuntime({ cf, operation, revision,
+  const run = (operation, overrides = {}) => migrateRuntime({ cf, operation, revision, diagnostics: true,
     credentials: operation === '--stage' ? credentials : operation === '--release' ?
       { clientGate: credentials.clientGate, wafToken: credentials.wafToken } : { wafToken: credentials.wafToken },
     stageWorker, probe: async gate => { assert.equal(gate, credentials.clientGate); assert.equal(held(), false); state.probes++; },
@@ -172,15 +173,15 @@ test('runtime transport refuses DNS/domain writes, foreign secret names and name
   await assert.rejects(cf.accountRequest(worker + '/secrets','PUT',{name:'FOREIGN',type:'secret_text',text:'fixture'}),stopped('secret')); assert.equal(calls,0);
 });
 test('runtime settings require unique approved bindings, correct namespace, source and strict disabled logging', () => {
-  const good = settings(); assert.equal(checkRuntimeSettings(good, revision), namespace);
+  const good = settings(); assert.equal(checkRuntimeSettings(good, revision, false, true), namespace);
   for (const binding of [{name:'COACH_AUTH_STATE',type:'durable_object_namespace',class_name:'Foreign',namespace_id:namespace},
     {name:'COACH_AUTH_STATE',type:'durable_object_namespace',class_name:'CoachAuthenticationState',namespace_id:namespace,script_name:'foreign'},
     {name:'COACH_AUTH_STATE',type:'durable_object_namespace',class_name:'CoachAuthenticationState',namespace_id:namespace,environment:'staging'},
     {name:'FOREIGN',type:'secret_text'},good.bindings[0]]) {
-    const altered=structuredClone(good);altered.bindings.push(binding);assert.throws(()=>checkRuntimeSettings(altered,revision),DeploymentFailure);
+    const altered=structuredClone(good);altered.bindings.push(binding);assert.throws(()=>checkRuntimeSettings(altered,revision,false,true),DeploymentFailure);
   }
   for (const change of [s=>s.logpush=null,s=>s.tail_consumers={},s=>s.observability=null]) {
-    const altered=structuredClone(good);change(altered);assert.throws(()=>checkRuntimeSettings(altered,revision),DeploymentFailure);
+    const altered=structuredClone(good);change(altered);assert.throws(()=>checkRuntimeSettings(altered,revision,false,true),DeploymentFailure);
   }
   assert.throws(()=>checkSettings(good),stopped('settings')); // Legacy persistence rejection remains intact.
 });
@@ -212,4 +213,71 @@ test('release probe uses only malformed/non-identifying inputs and rejects forge
     const forged=options.headers['X-RepToday-Coach-Auth'];const valid=options.headers.Authorization === 'Bearer '+credentials.clientGate;
     return new Response(JSON.stringify({error:forged?'auth_unavailable':'unauthorized'}),{status:forged?503:valid?400:401});
   }),stopped('gate'));
+});
+
+
+test('diagnostic flag may be absent on the old pre-stage deployment and is required for a pinned candidate', () => {
+  const previous = settings(oldRevision);
+  previous.bindings = previous.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  assert.equal(checkRuntimeSettings(previous, null), namespace);
+  assert.equal(checkRuntimeSettings(previous, oldRevision), namespace);
+  assert.throws(() => checkRuntimeSettings(previous, oldRevision, false, true), stopped('settings'));
+  const candidate = settings();
+  assert.equal(checkRuntimeSettings(candidate, revision, false, true), namespace);
+  assert.equal(runtimeConfig('/fixture/repository', revision, true).vars.COACH_AUTH_GUARD_DIAGNOSTICS, '1');
+});
+for (const [name, change] of [
+  ['wrong value', binding => binding.text = '0'],
+  ['boolean value', binding => binding.text = true],
+  ['secret type', binding => binding.type = 'secret_text'],
+  ['unknown type', binding => binding.type = 'json'],
+]) test('diagnostic flag rejects ' + name + ' even during pre-stage inspection', () => {
+  const current = settings(); change(current.bindings.find(item => item.name === 'COACH_AUTH_GUARD_DIAGNOSTICS'));
+  assert.throws(() => checkRuntimeSettings(current, null), DeploymentFailure);
+});
+test('stage accepts the prior flag-free runtime and adds only the reviewed candidate flag', async () => {
+  const { state, run, held } = fixture({ runtime: true });
+  state.settings.bindings = state.settings.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  state.settings.bindings.find(item => item.name === 'COACH_AUTH_SOURCE_REV').text = oldRevision;
+  await run('--stage'); assert.equal(held(), true); assert.equal(state.stages, 1);
+  assert.equal(state.settings.bindings.find(item => item.name === 'COACH_AUTH_GUARD_DIAGNOSTICS').text, '1');
+  assert.equal(writes(state).filter(call => call.method === 'PUT').length, 0);
+});
+test('post-stage missing diagnostic flag stops before secret provisioning and leaves hold closed', async () => {
+  const { state, run, held, stageWorker } = fixture();
+  await assert.rejects(run('--stage', { stageWorker: async selected => {
+    await stageWorker(selected);
+    state.settings.bindings = state.settings.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  } }), stopped('settings'));
+  assert.equal(held(), true); assert.equal(state.probes, 0);
+  assert.equal(writes(state).filter(call => call.method === 'PUT').length, 0);
+});
+test('release without diagnostic flag refuses before any hold mutation or probe', async () => {
+  const { state, run } = fixture({ runtime: true });
+  state.settings.bindings = state.settings.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  await assert.rejects(run('--release'), stopped('settings'));
+  assert.equal(writes(state).length, 0); assert.equal(state.probes, 0);
+});
+
+test('diagnostic option is explicit, stage/release only, and absent by default', () => {
+  for (const operation of ['--stage', '--release', '--hold'])
+    assert.deepEqual(runtimeArguments([operation]), { operation, diagnostics: false });
+  for (const operation of ['--stage', '--release'])
+    assert.deepEqual(runtimeArguments([operation, '--auth-guard-diagnostics']), { operation, diagnostics: true });
+  for (const args of [[], ['--unknown'], ['--hold', '--auth-guard-diagnostics'], ['--stage', '--unknown'],
+    ['--stage', '--auth-guard-diagnostics', '--auth-guard-diagnostics']])
+    assert.throws(() => runtimeArguments(args), stopped('input'));
+  assert.equal(runtimeConfig('/fixture/repository', revision).vars.COACH_AUTH_GUARD_DIAGNOSTICS, undefined);
+  assert.throws(() => checkRuntimeSettings(settings(), revision), stopped('settings'));
+});
+test('ordinary stage and release remain flag-free without the diagnostic option', async () => {
+  const { state, run, held, stageWorker } = fixture({ runtime: true });
+  state.settings.bindings = state.settings.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  await run('--stage', { diagnostics: false, stageWorker: async selected => {
+    await stageWorker(selected);
+    state.settings.bindings = state.settings.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  } });
+  assert.equal(held(), true);
+  await run('--release', { diagnostics: false });
+  assert.equal(held(), false); assert.equal(state.probes, 1);
 });

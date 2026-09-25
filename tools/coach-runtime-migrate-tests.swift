@@ -79,13 +79,30 @@ private final class CoordinatorDouble: RuntimeMigrationCoordinator {
             let script = """
             let input = ''; for await (const chunk of process.stdin) input += chunk;
             const packet = JSON.parse(input);
-            if (process.argv[2] !== '\(operation.rawValue)' || Object.keys(packet).sort().join(',') !== '\(operation.items.map{$0.rawValue}.sorted().joined(separator: ","))') process.exit(78);
+            if (process.argv.length !== 3 || process.argv[2] !== '\(operation.rawValue)' || Object.keys(packet).sort().join(',') !== '\(operation.items.map{$0.rawValue}.sorted().joined(separator: ","))') process.exit(78);
             if (Object.values(packet).some(value => process.argv.includes(value) || Object.values(process.env).includes(value))) process.exit(78);
             for (const line of \(String(decoding: transcript, as: UTF8.self))) console.log(line);
             """
             try Data(script.utf8).write(to: entry)
             _ = try runRuntimeMigration(reader: ReaderDouble(), coordinator: coordinator, operation: operation)
         }
+        // Explicit flag travels only as a fixed nonsecret option; default command stays unchanged.
+        for operation in [RuntimeMigrationOperation.stage, .release] {
+            let coordinator = RuntimeNodeCoordinator(repository: fixture, node: node, operation: operation, diagnostics: true)
+            let transcript = try JSONSerialization.data(withJSONObject: coordinator.expected)
+            let script = """
+            let input = ''; for await (const chunk of process.stdin) input += chunk;
+            const packet = JSON.parse(input);
+            if (process.argv.length !== 4 || process.argv[2] !== '\(operation.rawValue)' || process.argv[3] !== '--auth-guard-diagnostics') process.exit(78);
+            if (Object.values(packet).some(value => process.argv.includes(value) || Object.values(process.env).includes(value))) process.exit(78);
+            for (const line of \(String(decoding: transcript, as: UTF8.self))) console.log(line);
+            """
+            try Data(script.utf8).write(to: entry)
+            _ = try runRuntimeMigration(reader: ReaderDouble(), coordinator: coordinator, operation: operation)
+        }
+        let invalidDiagnosticHold = RuntimeNodeCoordinator(repository: fixture, node: node, operation: .hold, diagnostics: true)
+        do { _ = try invalidDiagnosticHold.run([.wafToken: Data("NONSECRET_WAF_TEST_DOUBLE_123456789".utf8)]); preconditionFailure("hold cannot opt in") }
+        catch RuntimeMigrationFailure.coordinator {}
         let coordinator = RuntimeNodeCoordinator(repository: fixture, node: node, operation: .hold)
         try Data("for await(const chunk of process.stdin) {} console.log('NONSECRET_UNEXPECTED_OUTPUT');".utf8).write(to: entry)
         do { _ = try runRuntimeMigration(reader: ReaderDouble(), coordinator: coordinator, operation: .hold); preconditionFailure("must reject echo") }

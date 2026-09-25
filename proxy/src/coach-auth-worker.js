@@ -1,3 +1,4 @@
+import { emitAuthGuardDiagnostic } from './coach-auth-diagnostics.js';
 import { Buffer } from 'node:buffer';
 import legacyWorker from './worker.js';
 import { CoachAuthFailure, ORIGIN, VERSION, keyIDValid, appIDValid, issuerIDValid, hash, fromBase64, challengeToken, verifyChallenge, premiumEntitlement } from './coach-auth-crypto.js';
@@ -34,6 +35,7 @@ async function stateRequest(env, input) {
 
 // Dependencies are injectable only for local unit tests; the published fetch entry never passes them.
 export async function handleRuntimeCoach(request, env, { state = stateRequest, premium = premiumEntitlement } = {}) {
+  let challengeStage;
   try {
     const deadline = Date.now() + 20_000;
     const authorize = promise => authWithin(promise, Math.max(1, deadline - Date.now()));
@@ -53,9 +55,13 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
     const bytes = await readBounded(request, 32 * 1024);
     if (!auth) {
       let input; try { input = JSON.parse(bytes.toString('utf8')); } catch { throw new CoachAuthFailure(); }
+      if (input?.operation === 'challenge') challengeStage = 'worker_envelope';
       if (exactKeys(input, 'keyId,kind,operation') && input.operation === 'challenge' && ['enroll', 'assert'].includes(input.kind) && keyIDValid(input.keyId)) {
         const challenge = challengeToken(input.keyId, env.CLIENT_SHARED_SECRET, Date.now());
-        if (input.kind === 'assert') await authorize(state(env, { operation: 'challenge', keyId: input.keyId, challenge }));
+        if (input.kind === 'assert') {
+          challengeStage = 'worker_state';
+          await authorize(state(env, { operation: 'challenge', keyId: input.keyId, challenge }));
+        }
         return json({ challenge }); // Unknown-key enrollment challenges create no stored record.
       }
       if (exactKeys(input, 'attestation,challenge,keyId,operation') && input.operation === 'enroll' && keyIDValid(input.keyId)) {
@@ -85,6 +91,8 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
     return legacyWorker.fetch(new Request(ORIGIN, { method: 'POST', headers, body: bytes }), env);
   } catch (error) {
     const code = error instanceof CoachAuthFailure ? error.code : 'auth_unavailable';
+    if (challengeStage && code === 'unauthorized')
+      emitAuthGuardDiagnostic(env, challengeStage, challengeStage === 'worker_envelope' ? 'envelope' : 'denied');
     return json({ error: code }, code === 'payload_too_large' ? 413 : code === 'auth_unavailable' ? 503 : 401);
   }
 }

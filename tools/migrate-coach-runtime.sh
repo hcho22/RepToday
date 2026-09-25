@@ -3,8 +3,9 @@ set -euo pipefail
 set +x
 umask 077
 unset NODE_OPTIONS NODE_DEBUG NODE_DEBUG_NATIVE
-if [[ $# != 1 || ( $1 != --stage && $1 != --release && $1 != --hold ) ]]; then
-    echo 'usage: tools/migrate-coach-runtime.sh --stage|--release|--hold (never pass credentials)' >&2
+if [[ $# -lt 1 || $# -gt 2 || ( $1 != --stage && $1 != --release && $1 != --hold ) ||
+      ( $# == 2 && ( $2 != --auth-guard-diagnostics || $1 == --hold ) ) ]]; then
+    echo 'usage: tools/migrate-coach-runtime.sh --stage|--release|--hold [--auth-guard-diagnostics for stage/release only] (never pass credentials)' >&2
     exit 64
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -36,4 +37,4 @@ xcrun swiftc -parse-as-library -warnings-as-errors -D COACH_DEPLOY_TESTS -D COAC
     -module-cache-path "$private_build/module-cache" \
     tools/coach-production-deploy.swift tools/coach-runtime-key-intake.swift tools/coach-runtime-migrate.swift \
     -o "$private_build/coach-runtime-migrate"
-exec "$private_build/coach-runtime-migrate" "$1" "$repo_root" "$node_bin"
+exec "$private_build/coach-runtime-migrate" "$1" "$repo_root" "$node_bin" "${@:2}"

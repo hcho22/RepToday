@@ -86,6 +86,7 @@ func runRuntimeMigration(reader: any RuntimeMigrationReader, coordinator: any Ru
 struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
     let repository: URL, node: URL
     let operation: RuntimeMigrationOperation
+    var diagnostics = false
     static let confirmed = "confirmed: approved existing account, zone, Worker and attached origin"
     static let protected = "protected: hostname held closed; existing boundary and rate protections verified"
     static let staged = "staged: reviewed runtime source, SQLite namespace and server bindings verified; hostname held closed"
@@ -111,9 +112,10 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
         return "blocked: dedicated runtime migration stopped (\(last.dropFirst(9))); preserve the hold and inspect prerequisites without values"
     }
     func run(_ credentials: [RuntimeMigrationCredential: Data]) throws -> String {
-        guard Set(credentials.keys) == Set(operation.items) else { throw RuntimeMigrationFailure.coordinator }
+        guard Set(credentials.keys) == Set(operation.items), !diagnostics || operation != .hold else { throw RuntimeMigrationFailure.coordinator }
         let process = Process(); process.executableURL = node
         process.arguments = [repository.appendingPathComponent("tools/coach-runtime-migrate.mjs").path, operation.rawValue]
+        if diagnostics { process.arguments?.append("--auth-guard-diagnostics") }
         process.currentDirectoryURL = repository
         var environment = ProcessInfo.processInfo.environment
         for name in ["NODE_OPTIONS", "NODE_DEBUG", "NODE_DEBUG_NATIVE", "OPENAI_API_KEY", "CLIENT_SHARED_SECRET",
@@ -145,13 +147,14 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
 @main struct CoachRuntimeMigrationMain {
     @MainActor static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
-        guard args.count == 3, let operation = RuntimeMigrationOperation(rawValue: args[0]) else {
-            print("usage: launch tools/migrate-coach-runtime.sh with --stage, --release or --hold; never pass credentials"); exit(64)
+        guard (args.count == 3 || args.count == 4), let operation = RuntimeMigrationOperation(rawValue: args[0]),
+              args.count == 3 || (args[3] == "--auth-guard-diagnostics" && operation != .hold) else {
+            print("usage: launch tools/migrate-coach-runtime.sh with --stage, --release or --hold and optional --auth-guard-diagnostics for stage/release; never pass credentials"); exit(64)
         }
         do {
             let result = try runRuntimeMigration(reader: PresentedRuntimeMigrationReader(reader: NativeRuntimeMigrationReader()),
                 coordinator: RuntimeNodeCoordinator(repository: URL(fileURLWithPath: args[1], isDirectory: true),
-                    node: URL(fileURLWithPath: args[2]), operation: operation), operation: operation)
+                    node: URL(fileURLWithPath: args[2]), operation: operation, diagnostics: args.count == 4), operation: operation)
             print(result); if result.hasPrefix("blocked:") { exit(78) }
         } catch {
             print("blocked: dedicated runtime migration stopped before a verified result; preserve the hold; no credential output"); exit(78)
