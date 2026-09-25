@@ -69,24 +69,26 @@ export class RuntimeCloudflare extends Cloudflare {
   }
 }
 
-export function runtimeConfig(repository, revision) {
+export function runtimeConfig(repository, revision, diagnostics = false) {
   requireThat(revisionValid(revision), 'revision');
   return { name: TARGET.worker, main: path.join(repository, 'proxy/src/coach-auth-worker.js'),
     compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'], workers_dev: false,
     preview_urls: false, routes: [], logpush: false, observability: { enabled: false }, send_metrics: false,
-    vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision },
+    vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, ...(diagnostics ? { COACH_AUTH_GUARD_DIAGNOSTICS: '1' } : {}) },
     alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js') },
     durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }] },
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }
 
-export function checkRuntimeSettings(settings, revision, complete = false) {
+export function checkRuntimeSettings(settings, revision, complete = false, diagnostics = false) {
   requireThat(settings && Array.isArray(settings.bindings), 'settings');
   const seen = new Set(); let state;
   for (const binding of settings.bindings) {
     requireThat(binding && typeof binding.name === 'string' && !seen.has(binding.name), 'settings'); seen.add(binding.name);
     if (binding.type === 'secret_text') requireThat(runtimeSecretNames.includes(binding.name), 'settings');
     else if (binding.name === 'COACH_AUTH_MODE') requireThat(binding.type === 'plain_text' && binding.text === MODE, 'settings');
+    else if (binding.name === 'COACH_AUTH_GUARD_DIAGNOSTICS')
+      requireThat(binding.type === 'plain_text' && binding.text === '1', 'settings');
     else if (binding.name === 'COACH_AUTH_SOURCE_REV') requireThat(binding.type === 'plain_text' &&
       revisionValid(binding.text) && (!revision || binding.text === revision), 'revision');
     else if (binding.name === 'COACH_AUTH_STATE') {
@@ -96,6 +98,8 @@ export function checkRuntimeSettings(settings, revision, complete = false) {
     } else throw new DeploymentFailure('settings');
   }
   requireThat(state && seen.has('COACH_AUTH_MODE') && seen.has('COACH_AUTH_SOURCE_REV'), 'settings');
+  // Pre-stage inspection permits either approved state; a pinned release must match the explicit option.
+  if (revision) requireThat(seen.has('COACH_AUTH_GUARD_DIAGNOSTICS') === diagnostics, 'settings');
   requireThat((settings.observability === undefined || settings.observability?.enabled === false) &&
     (settings.logpush === undefined || settings.logpush === false) &&
     (settings.tail_consumers === undefined || Array.isArray(settings.tail_consumers) && !settings.tail_consumers.length), 'settings');
@@ -133,8 +137,8 @@ async function confirm(cf) {
   return `/accounts/${cf.account}/workers/scripts/${TARGET.worker}`;
 }
 
-async function verifyRuntime(cf, worker, revision, complete) {
-  const namespace = checkRuntimeSettings(await cf.accountRequest(worker + '/settings'), revision, complete);
+async function verifyRuntime(cf, worker, revision, complete, diagnostics = false) {
+  const namespace = checkRuntimeSettings(await cf.accountRequest(worker + '/settings'), revision, complete, diagnostics);
   await verifyClosedWorker(cf, worker);
   const scripts = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts`);
   requireThat(Array.isArray(scripts) && scripts.filter(script => script.id === TARGET.worker && script.migration_tag === TAG).length === 1, 'namespace');
@@ -149,7 +153,7 @@ async function verifyRuntime(cf, worker, revision, complete) {
   return namespace;
 }
 
-export async function migrateRuntime({ cf, credentials, operation, revision, stageWorker, probe, report = () => {} }) {
+export async function migrateRuntime({ cf, credentials, operation, revision, stageWorker, probe, report = () => {}, diagnostics = false }) {
   runtimePacket(credentials, operation);
   requireThat(operation === '--hold' || revisionValid(revision), 'revision');
   const worker = await confirm(cf); report(runtimeLines.confirmed);
@@ -157,7 +161,7 @@ export async function migrateRuntime({ cf, credentials, operation, revision, sta
   if (operation !== '--hold') {
     const settings = await cf.accountRequest(worker + '/settings');
     if (operation === '--stage' && !settings.bindings?.some(binding => binding.name === 'COACH_AUTH_STATE')) checkSettings(settings, true);
-    else previousNamespace = await verifyRuntime(cf, worker, operation === '--release' ? revision : null, operation === '--release');
+    else previousNamespace = await verifyRuntime(cf, worker, operation === '--release' ? revision : null, operation === '--release', diagnostics);
     checkSecrets(await cf.accountRequest(worker + '/secrets'), operation === '--release');
     await verifyClosedWorker(cf, worker);
   }
@@ -166,14 +170,14 @@ export async function migrateRuntime({ cf, credentials, operation, revision, sta
   report(runtimeLines.protected);
   if (operation === '--stage') {
     requireThat(typeof stageWorker === 'function', 'wrangler'); await stageWorker(cf.account);
-    const namespace = await verifyRuntime(cf, worker, revision, false);
+    const namespace = await verifyRuntime(cf, worker, revision, false, diagnostics);
     requireThat(!previousNamespace || namespace === previousNamespace, 'namespace');
     const configured = await cf.accountRequest(worker + '/secrets'); checkSecrets(configured);
     for (const [source, name] of Object.entries(APPLE)) if (!configured.some(secret => secret.name === name)) {
       await cf.accountRequest(worker + '/secrets', 'PUT', { name, type: 'secret_text', text: credentials[source] });
     }
     checkSecrets(await cf.accountRequest(worker + '/secrets'), true);
-    requireThat(await verifyRuntime(cf, worker, revision, true) === namespace, 'namespace');
+    requireThat(await verifyRuntime(cf, worker, revision, true, diagnostics) === namespace, 'namespace');
     await verifyProtection(cf, true); report(runtimeLines.staged); return;
   }
   const custom = await entrypoint(cf, CUSTOM), hold = custom.rules.find(rule => rule.ref === HOLD.ref);
@@ -205,9 +209,17 @@ export async function runtimeGateProbes(gate, fetchImpl = fetch) {
   } catch { throw new DeploymentFailure('gate'); }
 }
 
+export function runtimeArguments(args) {
+  requireThat(args.length >= 1 && args.length <= 2 && ['--stage', '--release', '--hold'].includes(args[0]), 'input');
+  const diagnostics = args.length === 2;
+  requireThat(!diagnostics || args[1] === '--auth-guard-diagnostics' && args[0] !== '--hold', 'input');
+  return { operation: args[0], diagnostics };
+}
+
 async function main() {
-  requireThat(process.argv.length === 3 && !process.stdin.isTTY, 'input');
-  const operation = process.argv[2], repository = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  requireThat(!process.stdin.isTTY, 'input');
+  const { operation, diagnostics } = runtimeArguments(process.argv.slice(2));
+  const repository = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   let bytes = Buffer.alloc(0), packet;
   try {
     for await (const chunk of process.stdin) { requireThat(bytes.length + chunk.length <= 12_288, 'input');
@@ -218,8 +230,8 @@ async function main() {
   try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch { throw new DeploymentFailure('revision'); }
   const oauth = await readWranglerOAuth();
-  await migrateRuntime({ cf: new RuntimeCloudflare(oauth, packet.wafToken), credentials: packet, operation, revision,
-    stageWorker: account => stageWithWrangler(repository, account, oauth, root => runtimeConfig(root, revision)),
+  await migrateRuntime({ cf: new RuntimeCloudflare(oauth, packet.wafToken), credentials: packet, operation, revision, diagnostics,
+    stageWorker: account => stageWithWrangler(repository, account, oauth, root => runtimeConfig(root, revision, diagnostics)),
     probe: gate => runtimeGateProbes(gate), report: line => process.stdout.write(line + '\n') });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -31,19 +31,31 @@ export function challengeToken(keyId, secret, nowMs, random = crypto.randomUUID(
   const mac = createHmac('sha256', secret).update(VERSION + '.' + payload).digest('base64url');
   return `${payload}.${mac}`;
 }
-export function verifyChallenge(token, keyId, secret, nowMs) {
+export function verifyChallenge(token, keyId, secret, nowMs, onDenied = (reason, deltaMs) => {}) {
+  let reason = 'token_syntax';
+  let deltaMs;
   try {
     if (typeof token !== 'string' || token.length > 512 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(token)) throw new CoachAuthFailure();
     const [payload, signature] = token.split('.');
+    reason = 'token_mac';
     const expected = createHmac('sha256', secret).update(VERSION + '.' + payload).digest();
     const provided = Buffer.from(signature, 'base64url');
     if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) throw new CoachAuthFailure();
+    reason = 'token_claims';
     const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (Object.keys(claims).sort().join(',') !== 'e,i,k,n,v' || claims.v !== VERSION || claims.k !== keyId ||
         typeof claims.n !== 'string' || !/^[0-9a-f-]{36}$/.test(claims.n) || !Number.isSafeInteger(claims.i) ||
-        claims.e !== claims.i + 60_000 || claims.i > nowMs || nowMs >= claims.e) throw new CoachAuthFailure();
+        claims.e !== claims.i + 60_000) throw new CoachAuthFailure();
+    // Emitted only after MAC and claim-shape checks, bounded and without identifiers.
+    if (Number.isSafeInteger(nowMs) && Number.isSafeInteger(claims.i - nowMs))
+      deltaMs = Math.max(-60_000, Math.min(60_000, claims.i - nowMs));
+    if (claims.i > nowMs) { reason = 'token_future'; throw new CoachAuthFailure(); }
+    if (nowMs >= claims.e) { reason = 'token_expired'; throw new CoachAuthFailure(); }
     return claims;
-  } catch { throw new CoachAuthFailure(); }
+  } catch {
+    try { onDenied(reason, deltaMs); } catch {} // Diagnostics cannot change authorization.
+    throw new CoachAuthFailure();
+  }
 }
 
 export function assertionPayload(operation, keyId, challenge, bodyHash, transactionHash) {
