@@ -33,6 +33,7 @@ private final class CoordinatorDouble: RuntimeMigrationCoordinator {
 }
 @main struct CoachRuntimeMigrationTests {
     static func main() throws {
+        try testKeychainPreflight()
         precondition(CommandLine.arguments.count == 3)
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let node = URL(fileURLWithPath: CommandLine.arguments[2])

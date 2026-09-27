@@ -599,6 +599,11 @@ is evidence that the Worker or its bindings were created.
 
 ### Legacy local/development Wrangler flow
 
+For an attended local read-access check of the full migration credential set, use the dedicated
+[`--keychain-preflight` mode](../docs/coach-runtime-authentication.md#keychain-only-preflight).
+It discards each value and exits before production prerequisites or coordinator launch. A rebuilt
+helper has its own macOS authorization identity; preflight is separate from deployment authority.
+
 The default `wrangler.toml` and `npm run deploy` target the legacy entry. They do not represent
 the deployed runtime security binding and must not redeploy the production Coach Worker.
 Production uses `wrangler.runtime-auth.toml` through the native guarded stage/release boundary

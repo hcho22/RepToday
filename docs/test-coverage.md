@@ -139,6 +139,14 @@ coverage also exercises disabled and invalid Coach configuration against the sha
 These tests provide no production bypass. Positive current Apple enrollment/purchase verification and live prompt semantics
 require the genuine production-purchase device plan in `docs/coach-runtime-authentication.md`.
 
+`tools/test-coach-runtime-migration.sh` also exercises the dedicated Keychain-only preflight with
+nonsecret injected readers: eight-item order and immediate buffer release, failure at each index,
+numeric status/unknown-error redaction, exact-boundary deadlines, pending progress, real AppKit
+presentation, panel/signal cancellation, a blocked main queue, outer kill/reap, closed output,
+invalid CLI with zero reads/effects, and wrapper routing ahead of all production prerequisites.
+It compiles the real Security entry without executing it. Live authorization is attended operator
+evidence and never a CI dependency; see `docs/coach-runtime-authentication.md#keychain-only-preflight`.
+
 `tools/test-coach-runtime-migration.sh` checks separate held staging, reviewed-source release,
 missing-only provisioning, exact SQLite namespace/migration/settings, denied DNS/foreign scope,
 fail-closed probes/re-hold and hold-only rollback with coordinator/native doubles; production entries

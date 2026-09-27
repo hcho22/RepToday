@@ -24,6 +24,9 @@ enum CoachCredential: String, CaseIterable {
 
 enum CoachDeployFailure: Error { case retrieval, format, coordinator }
 
+// Opt-in numeric status for the native-only preflight. Normal callers retain their errors.
+struct CoachCredentialReadStatus: Error { let status: OSStatus }
+
 enum CoachOperation: String {
     case deploy = "--deploy", inspect = "--inspect"
     var items: [CoachCredential] { self == .inspect ? [.wafToken] : CoachCredential.allCases }
@@ -36,6 +39,9 @@ protocol CoachCredentialReader {
 struct NativeCoachCredentialReader: CoachCredentialReader {
     func read(_ item: CoachCredential) throws -> Data {
         let context = LAContext()
+        return try read(item, context: context, preserveOSStatus: false)
+    }
+    func read(_ item: CoachCredential, context: LAContext, preserveOSStatus: Bool) throws -> Data {
         context.interactionNotAllowed = false
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -47,8 +53,11 @@ struct NativeCoachCredentialReader: CoachCredentialReader {
             kSecUseAuthenticationContext as String: context
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let bytes = result as? Data else { throw CoachDeployFailure.retrieval }
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let bytes = result as? Data else {
+            if preserveOSStatus { throw CoachCredentialReadStatus(status: status) }
+            throw CoachDeployFailure.retrieval
+        }
         return bytes
     }
 }
