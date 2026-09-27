@@ -247,8 +247,9 @@ requires a matching newly reviewed held stage and release. Generated-key signatu
 payload/API doubles do not prove a valid Apple production App Attest enrollment or Production/Sandbox
 purchase.
 
-The native migration boundary is `tools/migrate-coach-runtime.sh`, with three separate
-operations. Current deployment status is recorded above; the commands below are a runbook,
+The native migration boundary is `tools/migrate-coach-runtime.sh`, with a separate
+[Keychain-only preflight](#keychain-only-preflight) and three production operations.
+Current deployment status is recorded above; the commands below are a runbook,
 not authority to repeat them. Before any future operation,
 Firstmate must confirm captain authorization, reviewed committed source, Apple/account prerequisites,
 existing Keychain items and production-device access; local compatibility checks do not grant that
@@ -300,6 +301,73 @@ records. It can close an invalid Worker configuration without reading/uploading 
 a model call. There is no raw legacy rollback, namespace/class deletion, data export, bulk erasure,
 secret rotation or automatic fallback. A future code rollback must preserve the class/migration
 and be reviewed independently. The legacy helper still rejects the persistence binding.
+
+### Keychain-only preflight
+
+For an explicitly authorized, attended check of local credential **read access**:
+
+```sh
+./tools/migrate-coach-runtime.sh --keychain-preflight
+```
+
+`--help` describes the modes and deadlines. Preflight accepts no additional arguments; combining it
+with an operation, diagnostics, a second mode or credential arguments fails before any read.
+It routes before the production branch/clean-tree gate, Node/OAuth checks, offline proxy tests or
+coordinator construction. Only local Swift compilation and Python 3 supervision are needed.
+Compilation writes the helper/module cache under `build/coach-runtime-migration`; the running
+preflight has no persistent-write, coordinator, subprocess, network or deployment path.
+The Python supervisor launches only the native helper's `--keychain-preflight` entry.
+
+The original `RuntimeMigrationCredential.allCases` owns both selection and order. Each item goes
+through the existing native Security/LAContext reader and AppKit presenter once, in normal order:
+`openAI`, `clientGate`, `wafToken`, `appPrefix`, `appID`, `keyID`, `issuerID`, `privateKey`.
+These are fixed category labels, not Keychain account names. Each returned value is reset and
+released within a per-item autorelease pool before completion output or the next read. No bundle,
+format validation, string conversion, credential length/hash, pipe or saved value is produced.
+Best-effort reset does not establish forensic erasure of framework-managed or copy-on-write data.
+
+The informational owner panel remains **Rep Today migration Keychain access**, now with the
+preflight category and read-only purpose. macOS may separately identify the requester as
+**coach-runtime-migrate**. The operator handles native consent; the tooling never automates
+authorization, selects Always Allow, or changes credentials, ACLs or signing policy. Cancel on the
+owner panel stops the entire run. The build path and signature/code identity matter: recompiling
+or relocating this helper can change macOS's authorization decision. Success proves access only
+for that built executable at that path in that attended session. It does not establish access for
+another candidate/fallback binary, an earlier build, or a later production run.
+
+Output has a closed schema: `preflight category=<fixed label|all> event=<fixed state>` plus
+`elapsed_ms`, `read_elapsed_ms` and numeric `osstatus` or `unavailable`. Start/completion name the
+item; a pending line appears every 5 seconds. No raw errors, accounts, OS logs or child stderr are
+forwarded. A failure retains numeric Security OSStatus where available; a timeout never invents
+one. Other modes retain their existing generic retrieval errors.
+
+Native limits are **115 seconds per read and 585 seconds overall**, using monotonic time and a
+100 ms watchdog on a queue independent of AppKit. On expiry or SIGINT/SIGTERM/SIGHUP, it invalidates
+the pending LAContext, reports the stalled category, and exits even if Security has not returned.
+The outer supervisor independently stops at **118 seconds per pending read or 595 seconds from
+native launch**, sends TERM to its owned process group, waits at most 1 second, then KILL and
+reaps with a further 1-second bound. Thus cancellation cleanup fits within 120 seconds for a
+pending read and 597 seconds overall under a responsive OS. Compilation precedes these native
+access budgets. The supervisor does not signal SecurityAgent or unrelated helpers. An OS that
+cannot schedule or reap a killed process cannot offer a strict userspace wall-clock guarantee.
+Exit codes: success `0`, invalid CLI `64`, read/protocol failure `78`, timeout `124`, cancellation
+`130`. Any failure ends the run; there is no retry, fallthrough or resume into a production mode.
+
+For a coordinated run requiring an exact already-built artifact, compile without accessing the
+Keychain via `bash tools/test-coach-runtime-migration.sh`, record its source revision, executable
+path and artifact hash, then invoke the same supervisor directly with the absolute helper path:
+`python3 tools/coach-keychain-preflight.py /absolute/path/to/build/coach-runtime-migration/coach-runtime-migrate`.
+This avoids rebuilding between the readiness notice and the attended check. It accepts only one
+executable path and always supplies the single preflight flag. Keep live read outcomes in private
+operator evidence; public change review should contain only synthetic results.
+
+Synthetic verification: `bash tools/test-coach-runtime-migration.sh` exercises ordered/discarded
+reads, all failure indices, closed output with nonsecret sentinels, both deadlines, the actual
+AppKit presenter with injected readers, panel/signal cancellation, a blocked main queue, wrapper
+isolation and unchanged deployment doubles. It compiles the real native entry without running it.
+No CI test reads live credentials. Preflight does not verify credential validity at a provider,
+resolve a production authentication failure, release an existing operational hold or authorize
+deployment; those obligations retain their existing owner.
 
 The explicit `CoachDeviceQA` preparation configuration now enables the public `/coach` origin
 through per-configuration build settings with an empty binary secret and the production runtime

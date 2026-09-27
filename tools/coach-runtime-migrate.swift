@@ -25,22 +25,37 @@ enum RuntimeMigrationCredential: String, CaseIterable {
     func valid(_ bytes: Data) -> Bool { legacy?.accepts(bytes) ?? apple?.valid(bytes) ?? false }
 }
 enum RuntimeMigrationFailure: Error { case retrieval, format, coordinator }
-protocol RuntimeMigrationReader { func read(_ item: RuntimeMigrationCredential) throws -> Data }
+protocol RuntimeMigrationReader {
+    func read(_ item: RuntimeMigrationCredential) throws -> Data
+    func cancelPendingRead()
+}
+extension RuntimeMigrationReader { func cancelPendingRead() {} }
 protocol RuntimeMigrationCoordinator { func run(_ credentials: [RuntimeMigrationCredential: Data]) throws -> String }
 
 // Read only explicitly enumerated existing items. No write/search/rotation or output of values.
 struct NativeRuntimeMigrationReader: RuntimeMigrationReader {
+    var preflightAccess: RuntimePreflightAccess? = nil
+    func cancelPendingRead() { preflightAccess?.cancel() }
     func read(_ item: RuntimeMigrationCredential) throws -> Data {
-        if let legacy = item.legacy { return try NativeCoachCredentialReader().read(legacy) }
-        guard let apple = item.apple else { throw RuntimeMigrationFailure.retrieval }
+        // Normal callers still use the original legacy reader/error policy.
+        if let legacy = item.legacy, preflightAccess == nil { return try NativeCoachCredentialReader().read(legacy) }
         let context = LAContext(); context.interactionNotAllowed = false
+        try preflightAccess?.begin(context)
+        defer { preflightAccess?.end() }
+        if let legacy = item.legacy {
+            return try NativeCoachCredentialReader().read(legacy, context: context, preserveOSStatus: true)
+        }
+        guard let apple = item.apple else { throw RuntimeMigrationFailure.retrieval }
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "com.reptoday.coach.production", kSecAttrAccount as String: apple.rawValue,
             kSecAttrSynchronizable as String: false, kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true, kSecUseAuthenticationContext as String: context]
         var value: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &value) == errSecSuccess,
-              let bytes = value as? Data else { throw RuntimeMigrationFailure.retrieval }
+        let status = SecItemCopyMatching(query as CFDictionary, &value)
+        guard status == errSecSuccess, let bytes = value as? Data else {
+            if preflightAccess != nil { throw CoachCredentialReadStatus(status: status) }
+            throw RuntimeMigrationFailure.retrieval
+        }
         return bytes
     }
 }
@@ -54,19 +69,28 @@ private final class RuntimePresentedRead: @unchecked Sendable {
 }
 struct PresentedRuntimeMigrationReader: RuntimeMigrationReader {
     let reader: any RuntimeMigrationReader
+    var preflight = false
+    func cancelPendingRead() { reader.cancelPendingRead() }
     func read(_ item: RuntimeMigrationCredential) throws -> Data {
         guard Thread.isMainThread else { throw RuntimeMigrationFailure.retrieval }
         return try MainActor.assumeIsolated {
             let app = NSApplication.shared; app.setActivationPolicy(.accessory)
             let panel = NSAlert(); panel.messageText = "Rep Today migration Keychain access"
             panel.informativeText = "Reading an approved existing server configuration item. Authorize the macOS prompt for this dedicated helper if it appears. No value is displayed or re-entered."
+            if preflight {
+                panel.informativeText = "Keychain-only preflight: \(item.rawValue). Read and discard only; no deployment. Authorize the separate macOS prompt once if appropriate. Cancel stops the entire preflight."
+            }
             panel.addButton(withTitle: "Cancel"); app.activate(ignoringOtherApps: true)
             let work = RuntimePresentedRead(reader: reader, item: item)
             DispatchQueue.main.async { DispatchQueue.global(qos: .userInitiated).async {
                 work.execute(); DispatchQueue.main.async { NSApplication.shared.abortModal() }
             } }
             let response = panel.runModal(); panel.window.orderOut(nil)
-            guard response == .abort else { throw RuntimeMigrationFailure.retrieval }; return try work.take()
+            guard response == .abort else {
+                if preflight { reader.cancelPendingRead(); throw RuntimePreflightCancelled() }
+                throw RuntimeMigrationFailure.retrieval
+            }
+            return try work.take()
         }
     }
 }
@@ -147,18 +171,20 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
 @main struct CoachRuntimeMigrationMain {
     @MainActor static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
-        guard (args.count == 3 || args.count == 4), let operation = RuntimeMigrationOperation(rawValue: args[0]),
-              args.count == 3 || (args[3] == "--auth-guard-diagnostics" && operation != .hold) else {
-            print("usage: launch tools/migrate-coach-runtime.sh with --stage, --release or --hold and optional --auth-guard-diagnostics for stage/release; never pass credentials"); exit(64)
-        }
-        do {
-            let result = try runRuntimeMigration(reader: PresentedRuntimeMigrationReader(reader: NativeRuntimeMigrationReader()),
-                coordinator: RuntimeNodeCoordinator(repository: URL(fileURLWithPath: args[1], isDirectory: true),
-                    node: URL(fileURLWithPath: args[2]), operation: operation, diagnostics: args.count == 4), operation: operation)
-            print(result); if result.hasPrefix("blocked:") { exit(78) }
-        } catch {
-            print("blocked: dedicated runtime migration stopped before a verified result; preserve the hold; no credential output"); exit(78)
-        }
+        let status = routeRuntimeMigration(args: args, preflight: {
+            runNativeKeychainPreflight()
+        }, operation: { operation, repository, node, diagnostics in
+            do {
+                let result = try runRuntimeMigration(reader: PresentedRuntimeMigrationReader(reader: NativeRuntimeMigrationReader()),
+                    coordinator: RuntimeNodeCoordinator(repository: URL(fileURLWithPath: repository, isDirectory: true),
+                        node: URL(fileURLWithPath: node), operation: operation, diagnostics: diagnostics), operation: operation)
+                print(result); return result.hasPrefix("blocked:") ? 78 : 0
+            } catch {
+                print("blocked: dedicated runtime migration stopped before a verified result; preserve the hold; no credential output"); return 78
+            }
+        })
+        if status == 64 { print("usage: tools/migrate-coach-runtime.sh --keychain-preflight | --stage|--release|--hold [--auth-guard-diagnostics for stage/release only]; never pass credentials") }
+        exit(status)
     }
 }
 #endif
