@@ -28,8 +28,9 @@ The temporary flag permits internal console rows containing only:
   [`emitAuthGuardDiagnostic`](../proxy/src/coach-auth-diagnostics.js), the authoritative row schema.
 - `deltaMs`, only for temporal failure after valid MAC and claim-shape checks: issue time minus
   verification time, bounded to [-60000,60000]. Values at the bounds may be clamped.
-  `token_future` fires only when the issue time is more than the 5-second
-  `CHALLENGE_CLOCK_SKEW_MS` ahead of the verifier's clock.
+  In current source, `token_future` fires only when the issue time is more than the 5-second
+  `CHALLENGE_CLOCK_SKEW_MS` ahead of the verifier's clock. The
+  [runtime runbook](coach-runtime-authentication.md) owns deployment status.
 
 No keys, tokens, receipts, identifiers, messages, exception strings, secret values or app-prefix
 values are emitted. Diagnostics are default-off. Logger/callback failure cannot change authorization.

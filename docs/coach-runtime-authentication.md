@@ -120,10 +120,16 @@ counter. A higher counter without the current challenge also fails. Concurrent d
 exactly once. The chosen App Attest library uses signed 32-bit counters, so values above `2^31-1`
 fail closed and require a new genuine key rather than wrapping or resetting an existing counter.
 
-The Worker mints each challenge with its own clock, but the Durable Object that consumes it can run on another machine.
-Every verifier therefore accepts an issue time up to `CHALLENGE_CLOCK_SKEW_MS` (5 seconds, in [`coach-auth-crypto.js`](../proxy/src/coach-auth-crypto.js)) ahead of its own clock, while expiry stays exact.
-Without that bound, a Durable Object trailing the Worker by a few milliseconds denied every assertion challenge as `unauthorized`.
-`npm run test:runtime` pins this with the gateway and its Durable Object in separate workerd isolates.
+The Worker mints each challenge with its own clock, but the Durable Object that consumes it can run
+on another machine. Current source therefore accepts an issue time up to
+`CHALLENGE_CLOCK_SKEW_MS` (5 seconds, in
+[`coach-auth-crypto.js`](../proxy/src/coach-auth-crypto.js)) ahead of the verifier's clock, while
+expiry stays exact. Without that bound, a Durable Object trailing the Worker by a few milliseconds
+denied every assertion challenge as `unauthorized`. `npm run test:runtime` pins this with the gateway
+and its Durable Object in separate workerd isolates.
+
+This clock-skew fix is not part of the deployed `cad34528` revision recorded above; production keeps
+the prior zero-tolerance check until a separately approved deployment.
 
 Apple's official App Store Server Library verifies the supplied JWS with pinned public Apple G2/G3
 roots and online certificate checks. Selection begins with the Production verifier. Only its typed
