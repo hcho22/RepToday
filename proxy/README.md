@@ -688,3 +688,5 @@ signing/device/service boundaries are authoritative in
 from the ordinary Release archive and does not establish signed-device, genuine Apple or live-model
 evidence. The runtime gateway deployment is
 recorded separately above.
+
+Final `401 unauthorized` investigation: [fixed-label diagnostics, bounded capture, and baseline restoration](../docs/coach-final-auth-diagnostics.md). Run the offline gate with `bash tools/test-coach-final-diagnostics.sh` from the repository root. Live capture/deployment remains separately authorized.

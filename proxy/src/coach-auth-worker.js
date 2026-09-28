@@ -1,4 +1,4 @@
-import { emitAuthGuardDiagnostic } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic } from './coach-auth-diagnostics.js';
 import { Buffer } from 'node:buffer';
 import legacyWorker from './worker.js';
 import { CoachAuthFailure, ORIGIN, VERSION, keyIDValid, appIDValid, issuerIDValid, hash, fromBase64, challengeToken, verifyChallenge, premiumEntitlement } from './coach-auth-crypto.js';
@@ -36,6 +36,8 @@ async function stateRequest(env, input) {
 // Dependencies are injectable only for local unit tests; the published fetch entry never passes them.
 export async function handleRuntimeCoach(request, env, { state = stateRequest, premium = premiumEntitlement } = {}) {
   let challengeStage;
+  const finalDiagnostic = { stage: '', reason: '' };
+  const noteFinal = (stage, reason) => { finalDiagnostic.stage = stage; finalDiagnostic.reason = reason; };
   try {
     const deadline = Date.now() + 20_000;
     const authorize = promise => authWithin(promise, Math.max(1, deadline - Date.now()));
@@ -69,20 +71,29 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
         fromBase64(input.attestation, 8192);
         await authorize(state(env, input)); return json({ enrolled: true });
       }
+      if (!['challenge', 'enroll'].includes(input?.operation)) noteFinal('worker_envelope', 'missing_proof');
       throw new CoachAuthFailure();
     }
+    noteFinal('worker_envelope', 'proof_envelope');
     if (auth.length > 20_000) throw new CoachAuthFailure();
     let proof; try { proof = JSON.parse(auth); } catch { throw new CoachAuthFailure(); }
+    if (proof?.operation === 'delete') finalDiagnostic.stage = '';
     if (!exactKeys(proof, 'assertion,challenge,keyId,operation,transactionJws') || !keyIDValid(proof.keyId) ||
         !['reply', 'delete'].includes(proof.operation) || typeof proof.transactionJws !== 'string' || proof.transactionJws.length > 12_000) throw new CoachAuthFailure();
-    verifyChallenge(proof.challenge, proof.keyId, env.CLIENT_SHARED_SECRET, Date.now());
+    verifyChallenge(proof.challenge, proof.keyId, env.CLIENT_SHARED_SECRET, Date.now(),
+      reason => { if (proof.operation === 'reply') noteFinal('worker_token', reason); });
+    if (proof.operation === 'reply') noteFinal('worker_envelope', 'assertion_encoding');
     fromBase64(proof.assertion, 1024);
     if (proof.operation === 'delete' && (bytes.length !== 2 || bytes.toString('utf8') !== '{}' || proof.transactionJws !== '')) throw new CoachAuthFailure();
+    if (proof.operation === 'reply') noteFinal('worker_state', 'denied');
     const accepted = await authorize(state(env, { operation: proof.operation, keyId: proof.keyId, challenge: proof.challenge, assertion: proof.assertion,
       bodyHash: hash(bytes), transactionHash: hash(proof.transactionJws) }));
+    if (proof.operation === 'reply') noteFinal('worker_state', 'not_authorized');
     if (accepted.authorized !== true) throw new CoachAuthFailure();
     if (proof.operation === 'delete') return json({ deleted: true }); // Erasure needs key proof, not an active subscription.
-    await authorize(premium(proof.transactionJws, env)); // Fail before provider on absent/revoked/expired/invalid/unavailable purchase.
+    noteFinal('worker_premium', 'denied');
+    await authorize(premium(proof.transactionJws, env, () => Date.now(),
+      reason => noteFinal('worker_premium', reason))); // Same gates; fixed reason only on denial.
     if (Date.now() >= deadline) throw new CoachAuthFailure('auth_unavailable');
     const headers = new Headers(request.headers);
     headers.delete('X-RepToday-Coach-Auth'); headers.set('Authorization', 'Bearer ' + env.CLIENT_SHARED_SECRET);
@@ -93,6 +104,8 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
     const code = error instanceof CoachAuthFailure ? error.code : 'auth_unavailable';
     if (challengeStage && code === 'unauthorized')
       emitAuthGuardDiagnostic(env, challengeStage, challengeStage === 'worker_envelope' ? 'envelope' : 'denied');
+    if (finalDiagnostic.stage && code === 'unauthorized')
+      emitFinalAuthDiagnostic(env, finalDiagnostic.stage, finalDiagnostic.reason);
     return json({ error: code }, code === 'payload_too_large' ? 413 : code === 'auth_unavailable' ? 503 : 401);
   }
 }

@@ -65,10 +65,26 @@ const localAppleFixture = request => {
     return new fixtureResponse("local-fixture-rejected", {status:500});
   }
 };
-const m = new Miniflare({modulesRoot: root, scriptPath: resolve(output, 'runtime-tests.mjs'), modules: true,
+const diagnosticRows = [];
+function collectRuntimeOutput(stream) {
+  let pending = '';
+  stream.on('data', chunk => {
+    pending += chunk.toString(); assert.ok(pending.length <= 262144);
+    let boundary;
+    while ((boundary = pending.indexOf('\n')) !== -1) {
+      const line = pending.slice(0, boundary); pending = pending.slice(boundary + 1);
+      try { const row = JSON.parse(line);
+        if (row.event === 'coach_final_auth_guard') diagnosticRows.push(row);
+      } catch {}
+    }
+  });
+}
+const m = new Miniflare({handleRuntimeStdio: (stdout, stderr) => {
+  collectRuntimeOutput(stdout); collectRuntimeOutput(stderr);
+}, modulesRoot: root, scriptPath: resolve(output, 'runtime-tests.mjs'), modules: true,
   compatibilityDate: '2025-07-18', compatibilityFlags: ['nodejs_compat'],
   durableObjects: {COACH_AUTH_STATE: {className: 'FixtureAuthenticationState', useSQLite: true}},
-  bindings: {COACH_AUTH_MODE: 'app-attest-storekit-v1', CLIENT_SHARED_SECRET: TEST_GATE, APP_ATTEST_APP_PREFIX: APP_PREFIX,
+  bindings: {COACH_FINAL_AUTH_DIAGNOSTICS: '1', COACH_AUTH_MODE: 'app-attest-storekit-v1', CLIENT_SHARED_SECRET: TEST_GATE, APP_ATTEST_APP_PREFIX: APP_PREFIX,
     APP_STORE_APP_ID: '1', APP_STORE_KEY_ID: APP_PREFIX, APP_STORE_ISSUER_ID: '00000000-0000-4000-8000-000000000000',
     APP_STORE_PRIVATE_KEY: 'TEST-ONLY-INVALID-KEY-NO-APPLE-AUTHORITY'},
   outboundService: localAppleFixture});
@@ -182,6 +198,23 @@ try {
       'X-RepToday-Coach-Auth':JSON.stringify(deniedProof)});
     assert.equal(deniedAdmission.status,401);assert.deepEqual(await deniedAdmission.json(),{error:'unauthorized'});
     assert.equal((await (await stub.fetch('https://fixture-record.invalid/')).json()).counter,3);
+    // Real workerd/SQLite producer coverage, distinct from synthetic tail-envelope tests.
+    assert.ok(diagnosticRows.some(row => row.stage === 'do_state' && row.reason === 'pending_challenge'));
+    assert.ok(diagnosticRows.some(row => row.stage === 'worker_state' && row.reason === 'denied'));
+    assert.ok(diagnosticRows.some(row => row.stage === 'worker_premium' && row.reason === 'denied'));
+    assert.ok(diagnosticRows.every(row => Object.keys(row).sort().join(',') === 'event,reason,stage'));
+    const beforeCanary = localAppleCalls;
+    const canaryKey = Buffer.alloc(32).toString('base64');
+    const canaryChallenge = await (await call(ORIGIN, {operation:'challenge',kind:'enroll',keyId:canaryKey})).json();
+    const canaryDenied = await call(ORIGIN, {operation:'enroll',keyId:canaryKey,
+      challenge:canaryChallenge.challenge,attestation:'AA=='});
+    assert.equal(canaryDenied.status,401);
+    assert.deepEqual(await canaryDenied.json(),{error:'unauthorized'});
+    const canaryObject = ns.get(ns.idFromName(VERSION + ':' + hash(canaryKey)));
+    // Test-only record inspector: the malformed enrollment creates no security record.
+    const canaryRecord = await canaryObject.fetch('https://fixture-record.invalid/');
+    assert.equal(await canaryRecord.text(), 'null');
+    assert.equal(localAppleCalls,beforeCanary);
     assert.equal(localAppleCalls,3);
     assert.equal(rejectedLocalCalls,0);
     assert.equal(localResponseCalls,0);

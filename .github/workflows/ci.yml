@@ -1,8 +1,9 @@
 name: CI
 
-# Gates every PR into the default branch (and pushes to it) on BOTH of the repo's
-# independent toolchains, in parallel jobs. A PR is green only when both pass.
+# Gates every PR into the default branch (and pushes to it) on the repo's
+# toolchains in parallel jobs. A PR is green only when all jobs pass.
 #
+#   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
 #   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
 #                    compile of the XCUITest scheme.
@@ -21,6 +22,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  coach:
+    name: Coach diagnostics (offline runtime + operator tests)
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: proxy/package-lock.json
+      - name: Install pinned proxy dependencies
+        run: npm ci --prefix proxy
+      - name: Verify runtime, native doubles, filtering and restoration guards
+        run: bash tools/test-coach-final-diagnostics.sh
+
   # ---------------------------------------------------------------------------
   # Toolchain 1: Convex telemetry sink (repo root, TypeScript) - Linux.
   # convex-test runs in-process in edge-runtime: no network, no deployment, no

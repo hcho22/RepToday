@@ -257,6 +257,10 @@ verification can make Coach unavailable while cached on-device premium features 
 
 ## Local validation and migration plan
 
+Final-request diagnostics, bounded filtering/readiness, and active-version **plus latest-settings**
+restoration verification are covered by [the final-auth operation guide](coach-final-auth-diagnostics.md).
+That guide is preparation only and grants no production authority.
+
 Run `npm test`, `npm run typecheck` and `npm run test:runtime` inside `proxy/`, plus
 `tools/test-coach-live-qa.sh`, `tools/test-coach-production-deploy.sh` and
 `tools/test-coach-runtime-key-intake.sh`, `tools/test-coach-runtime-migration.sh` and

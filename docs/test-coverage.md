@@ -184,3 +184,7 @@ disabled Restore during retry, and verifies recovered plan buttons retain the no
 result. `PaywallViewModelTests` and `StoreKitPaywallDiagnosticsTests`
 cover catalog × restore outcomes, explicit retry, mutual exclusion, purchase regressions, and the
 QA-only raw lookup count. Commands, executed results and limits: `artifacts/reports/premium-access/validation.md`.
+
+### Final Coach authentication diagnostics (code-only preparation)
+
+`tools/test-coach-final-diagnostics.sh` runs the full proxy/typecheck/workerd gate, migration native doubles, fixed-label stream/confidentiality tests and active-version/latest-settings restoration fixtures. `proxy/test/coach-final-diagnostics.test.js` pins unchanged denials and state across off/on/invalid/disable/in-flight cases. See [candidate evidence and untested live criteria](../artifacts/reports/coach-final-auth-diagnostics/validation.md); no live authentication repair is claimed.

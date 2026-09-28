@@ -1,4 +1,4 @@
-import { emitAuthGuardDiagnostic } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic } from './coach-auth-diagnostics.js';
 import { DurableObject } from 'cloudflare:workers';
 import { Buffer } from 'node:buffer';
 import { CoachAuthFailure, VERSION, verifyChallenge, hash, keyIDValid, attestKey, assertKey, fromBase64, assertionPayload } from './coach-auth-crypto.js';
@@ -14,12 +14,14 @@ export class CoachAuthenticationState extends DurableObject {
   async fetch(request) {
     let diagnostic;
     let isChallenge = false;
+    let isReply = false;
     const note = (stage, reason, deltaMs = undefined) => { diagnostic = { stage, reason, deltaMs }; };
     try {
       if (request.method !== 'POST' || Number(request.headers.get('Content-Length')) > 24 * 1024) throw new CoachAuthFailure();
       const bytes = await readBounded(request, 24 * 1024);
       const input = JSON.parse(Buffer.from(bytes).toString('utf8'));
       isChallenge = input.operation === 'challenge';
+      isReply = input.operation === 'reply';
       if (!keyIDValid(input.keyId)) { note('do_preflight', 'key_format'); throw new CoachAuthFailure(); }
       if (!/^[A-Z0-9]{10}$/.test(this.env.APP_ATTEST_APP_PREFIX ?? '')) { note('do_preflight', 'prefix_format'); throw new CoachAuthFailure(); }
       const now = Date.now();
@@ -51,17 +53,22 @@ export class CoachAuthenticationState extends DurableObject {
         });
         return response({ ready: true });
       }
+      note('do_preflight', 'request_shape');
       if (!['reply', 'delete'].includes(input.operation) || !/^[0-9a-f]{64}$/.test(input.bodyHash) ||
           !/^[0-9a-f]{64}$/.test(input.transactionHash)) throw new CoachAuthFailure();
+      note('do_preflight', 'assertion_encoding');
       const assertion = fromBase64(input.assertion, 1024);
       await this.ctx.storage.transaction(async tx => {
         const record = /** @type {SecurityRecord} */ (await tx.get('record'));
         const commitNow = Date.now();
-        verifyChallenge(input.challenge, input.keyId, this.env.CLIENT_SHARED_SECRET, commitNow);
+        verifyChallenge(input.challenge, input.keyId, this.env.CLIENT_SHARED_SECRET, commitNow,
+          (reason, deltaMs) => note('do_token_transaction', reason, deltaMs));
         if (!record || record.v !== VERSION || !record.publicKey || record.expiresAt <= commitNow) throw new CoachAuthFailure('key_unavailable');
+        note('do_state', 'pending_challenge');
         if (record.pendingExpiresAt <= commitNow || record.pendingNonceHash !== hash(input.challenge)) throw new CoachAuthFailure();
         const payload = assertionPayload(input.operation, input.keyId, input.challenge, input.bodyHash, input.transactionHash);
-        const counter = assertKey(assertion, record.publicKey, record.counter, payload, this.env.APP_ATTEST_APP_PREFIX);
+        const counter = assertKey(assertion, record.publicKey, record.counter, payload, this.env.APP_ATTEST_APP_PREFIX,
+          reason => note('do_assertion', reason));
         if (input.operation === 'delete') {
           // Captured still-valid enrollment cannot reset a counter immediately after deletion.
           const tombstoneUntil = commitNow + 60_000;
@@ -77,6 +84,10 @@ export class CoachAuthenticationState extends DurableObject {
       if (isChallenge && code === 'unauthorized') {
         const { stage, reason, deltaMs } = diagnostic ?? { stage: 'do_state', reason: 'denied', deltaMs: undefined };
         emitAuthGuardDiagnostic(this.env, stage, reason, deltaMs);
+      }
+      if (isReply && code === 'unauthorized') {
+        const { stage, reason } = diagnostic ?? { stage: 'do_state', reason: 'denied' };
+        emitFinalAuthDiagnostic(this.env, stage, reason);
       }
       return response({ error: code }, code === 'auth_unavailable' ? 503 : 401);
     }

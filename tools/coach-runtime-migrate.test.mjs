@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { RuntimeCloudflare, runtimePacket, runtimeConfig, checkRuntimeSettings, migrateRuntime,
-  runtimeGateProbes, runtimeLines, runtimeSecretNames, runtimeArguments } from './coach-runtime-migrate.mjs';
+  runtimeGateProbes, runtimeLines, runtimeSecretNames, runtimeArguments, checkRuntimeExpectation, checkRuntimeVersion, verifyRuntimeExpectation, runtimeCoverageProbes } from './coach-runtime-migrate.mjs';
 import { DeploymentFailure, TARGET, HOLD, BOUNDARY, LIMIT, CUSTOM, RATE, checkSettings } from './coach-production-deploy.mjs';
 
 // No production entries, auth files, Keychain or network are touched by these doubles.
@@ -63,7 +63,10 @@ function fixture({ runtime = false } = {}) {
       else if (endpoint === worker + '/secrets') {
         if (options.method === 'PUT') { assert.ok(!state.settings.bindings.some(item => item.name === body.name)); state.settings.bindings.push({ name: body.name, type: body.type }); }
         result = state.settings.bindings.filter(item => item.type === 'secret_text').map(({ name, type }) => ({ name, type }));
-      } else assert.fail('Unapproved account operation');
+      } else if (endpoint === worker + '/deployments') result = state.deployments;
+      else if (endpoint === worker + '/tails') result = state.tails;
+      else if (endpoint.startsWith(worker + '/versions/')) result = state.versions?.[endpoint.slice((worker + '/versions/').length)];
+      else assert.fail('Unapproved account operation');
     }
     return new Response(JSON.stringify({ success: true, result }));
   };
@@ -105,7 +108,7 @@ test('release verifies committed source, all bindings, SQLite migration and prot
   assert.ok(writes(state).every(call => call.method === 'PATCH' && call.body.ref === HOLD.ref));
 });
 test('hold-only rollback ignores invalid Worker configuration, preserves all records and never uploads/deploys/probes', async () => {
-  const { state, run, held } = fixture({ runtime: true }); state.settings = null; await run('--hold');
+  const { state, run, held } = fixture({ runtime: true }); state.settings = null; await run('--hold', { diagnostics: false });
   assert.equal(held(), true); assert.equal(state.stages, 0); assert.equal(state.probes, 0);
   assert.deepEqual(state.reports, [runtimeLines.confirmed, runtimeLines.held]); assert.equal(writes(state).length, 1);
   assert.ok(state.calls.every(call => !call.endpoint.endsWith('/settings') && !call.endpoint.endsWith('/secrets') && !call.endpoint.endsWith('/namespaces')));
@@ -261,9 +264,9 @@ test('release without diagnostic flag refuses before any hold mutation or probe'
 
 test('diagnostic option is explicit, stage/release only, and absent by default', () => {
   for (const operation of ['--stage', '--release', '--hold'])
-    assert.deepEqual(runtimeArguments([operation]), { operation, diagnostics: false });
+    assert.deepEqual(runtimeArguments([operation]), { operation, diagnostics: false, finalDiagnostics: false });
   for (const operation of ['--stage', '--release'])
-    assert.deepEqual(runtimeArguments([operation, '--auth-guard-diagnostics']), { operation, diagnostics: true });
+    assert.deepEqual(runtimeArguments([operation, '--auth-guard-diagnostics']), { operation, diagnostics: true, finalDiagnostics: false });
   for (const args of [[], ['--unknown'], ['--hold', '--auth-guard-diagnostics'], ['--stage', '--unknown'],
     ['--stage', '--auth-guard-diagnostics', '--auth-guard-diagnostics']])
     assert.throws(() => runtimeArguments(args), stopped('input'));
@@ -280,4 +283,152 @@ test('ordinary stage and release remain flag-free without the diagnostic option'
   assert.equal(held(), true);
   await run('--release', { diagnostics: false });
   assert.equal(held(), false); assert.equal(state.probes, 1);
+});
+
+for (const diagnostic of [false, true]) for (const finalDiagnostic of [false, true]) {
+  test(`independent configuration flags challenge=${diagnostic} final=${finalDiagnostic}`, () => {
+    const config = runtimeConfig('/fixture/repository', revision, diagnostic, finalDiagnostic);
+    const actual = settings();
+    actual.bindings = actual.bindings.filter(b => b.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+    for (const name of ['COACH_AUTH_GUARD_DIAGNOSTICS', 'COACH_FINAL_AUTH_DIAGNOSTICS'])
+      if (config.vars[name]) actual.bindings.push({ name, type: 'plain_text', text: config.vars[name] });
+    assert.equal(checkRuntimeSettings(actual, revision, false, diagnostic, finalDiagnostic), namespace);
+    assert.equal(checkRuntimeSettings(actual, null), namespace);
+    const flags = [diagnostic && '--auth-guard-diagnostics', finalDiagnostic && '--final-auth-diagnostics'].filter(Boolean);
+    assert.deepEqual(runtimeArguments(['--stage', ...flags]), { operation: '--stage', diagnostics: diagnostic, finalDiagnostics: finalDiagnostic });
+  });
+}
+for (const value of [true, 1, '0', 'true', null, {}, undefined]) test(`final binding rejects non-string opt-in ${String(value)}`, () => {
+  const actual = settings(); actual.bindings.push({ name: 'COACH_FINAL_AUTH_DIAGNOSTICS', type: 'plain_text', text: value });
+  assert.throws(() => checkRuntimeSettings(actual, null), stopped('settings'));
+});
+test('final diagnostic options fail before all external effects when invalid or used on hold/inspection', async () => {
+  for (const args of [['--hold', '--final-auth-diagnostics'], ['--verify-restored', '--final-auth-diagnostics'],
+    ['--stage', '--final-auth-diagnostics', '--final-auth-diagnostics']]) assert.throws(() => runtimeArguments(args), stopped('input'));
+  const { state, run } = fixture();
+  await assert.rejects(run('--stage', { finalDiagnostics: '1' }), stopped('input'));
+  assert.equal(state.calls.length, 0);
+});
+test('final diagnostic stage, release, then flag-free stage preserve namespace and secrets', async () => {
+  const { state, run, held, stageWorker } = fixture({ runtime: true });
+  const finalStage = async account => {
+    await stageWorker(account);
+    state.settings.bindings = state.settings.bindings.filter(b => b.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+    state.settings.bindings.push({ name: 'COACH_FINAL_AUTH_DIAGNOSTICS', type: 'plain_text', text: '1' });
+  };
+  await run('--stage', { diagnostics: false, finalDiagnostics: true, stageWorker: finalStage });
+  await run('--release', { diagnostics: false, finalDiagnostics: true }); assert.equal(held(), false);
+  await run('--stage', { diagnostics: false, stageWorker: async account => {
+    await stageWorker(account);
+    state.settings.bindings = state.settings.bindings.filter(b => b.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  } });
+  assert.equal(held(), true);
+  assert.equal(checkRuntimeSettings(state.settings, revision, true), namespace);
+  assert.equal(writes(state).filter(c => c.method === 'PUT').length, 0);
+});
+
+const originalVersion = '11111111-1111-4111-8111-111111111111';
+const candidateVersion = '22222222-2222-4222-8222-222222222222';
+const baseline = { accountId: account, zoneId: zone, namespaceId: namespace, worker: TARGET.worker,
+  ownerRevision: revision, sourceRevision: oldRevision, versionId: originalVersion, held: true };
+function verificationFixture(candidate = false) {
+  const f = fixture({ runtime: true }), { state } = f;
+  const expected = { ...baseline, ...(candidate ? { sourceRevision: revision, versionId: candidateVersion } : {}) };
+  state.custom.rules[0].enabled = true;
+  state.settings = { ...settings(expected.sourceRevision), compatibility_date: '2026-01-01',
+    compatibility_flags: ['nodejs_compat'], usage_model: 'standard', placement: {}, tags: [] };
+  state.settings.bindings = state.settings.bindings.filter(b => b.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
+  state.settings.bindings.push(...runtimeSecretNames.map(name => ({ name, type: 'secret_text' })));
+  if (candidate) state.settings.bindings.push({ name: 'COACH_FINAL_AUTH_DIAGNOSTICS', type: 'plain_text', text: '1' });
+  state.deployments = { deployments: [{ id: 'synthetic-deployment', versions: [{ version_id: expected.versionId, percentage: 100 }] }] };
+  state.tails = [];
+  state.versions = { [expected.versionId]: { id: expected.versionId, resources: {
+    bindings: structuredClone(state.settings.bindings), script: { placement_mode: 'off' },
+    script_runtime: { compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'] },
+  } } };
+  const verify = overrides => verifyRuntimeExpectation({ cf: f.cf, expected, ownerRevision: revision, candidate,
+    report: line => state.reports.push(line), ...overrides });
+  return { ...f, expected, verify };
+}
+for (const candidate of [false, true]) test(`verifies both active version and latest settings, candidate=${candidate}, with zero writes`, async () => {
+  const { state, verify } = verificationFixture(candidate); await verify();
+  assert.deepEqual(state.reports, [runtimeLines.confirmed, runtimeLines.verified]); assert.equal(writes(state).length, 0);
+  for (const output of state.reports) for (const secret of [account, zone, namespace, oauth, ...Object.values(credentials)]) assert.ok(!output.includes(secret));
+});
+for (const [name, mutate, code] of [
+  ['latest still diagnostic after original-version selection', s => s.settings.bindings.find(b => b.name === 'COACH_AUTH_SOURCE_REV').text = revision, 'revision'],
+  ['flag left in latest settings', s => s.settings.bindings.push({ name: 'COACH_FINAL_AUTH_DIAGNOSTICS', type: 'plain_text', text: '1' }), 'settings'],
+  ['wrong active version', s => s.deployments.deployments[0].versions[0].version_id = candidateVersion, 'revision'],
+  ['split traffic', s => s.deployments.deployments[0].versions.push({ version_id: candidateVersion, percentage: 0 }), 'revision'],
+  ['less than 100 percent', s => s.deployments.deployments[0].versions[0].percentage = 99, 'revision'],
+  ['unreadable deployment', s => s.deployments = null, 'revision'],
+  ['wrong version metadata', s => s.versions[originalVersion].id = candidateVersion, 'revision'],
+  ['original metadata retains flag', s => s.versions[originalVersion].resources.bindings.push({ name: 'COACH_FINAL_AUTH_DIAGNOSTICS', type: 'plain_text', text: '1' }), 'settings'],
+  ['original metadata namespace mismatch', s => s.versions[originalVersion].resources.bindings.find(b => b.name === 'COACH_AUTH_STATE').namespace_id = 'f'.repeat(32), 'namespace'],
+  ['version runtime missing', s => delete s.versions[originalVersion].resources.script_runtime, 'settings'],
+  ['latest compatibility changed', s => s.settings.compatibility_flags = [], 'settings'],
+  ['latest usage model changed', s => s.settings.usage_model = 'unbound', 'settings'],
+  ['persisted traces enabled', s => s.settings.observability.traces = { enabled: true }, 'settings'],
+  ['active tail left', s => s.tails = [{ id: 'private-tail' }], 'settings'],
+  ['tail inventory unknown', s => s.tails = null, 'settings'],
+  ['hold unexpectedly open', s => s.custom.rules[0].enabled = false, 'rules'],
+  ['HTTP failure', s => s.fail = () => true, 'http'],
+]) test('restoration remains unverified: ' + name, async () => {
+  const { state, verify } = verificationFixture(); mutate(state);
+  await assert.rejects(verify(), stopped(code));
+  assert.ok(!state.reports.includes(runtimeLines.verified)); assert.equal(writes(state).length, 0);
+});
+test('exact expectation rejects wrong candidate/owner/target before a control-plane read', async () => {
+  const { state, expected, verify } = verificationFixture();
+  for (const change of [e => e.ownerRevision = oldRevision, e => e.worker = 'foreign', e => e.versionId = 'latest', e => e.extra = 'private']) {
+    const bad = { ...expected }; change(bad); await assert.rejects(verify({ expected: bad }), DeploymentFailure);
+  }
+  assert.throws(() => checkRuntimeExpectation(expected, revision, true), stopped('revision'));
+  assert.equal(state.calls.length, 0);
+  await assert.rejects(verify({ expected: { ...expected, accountId: 'f'.repeat(32) } }), stopped('target'));
+  assert.equal(writes(state).length, 0);
+});
+test('an ambiguous/timeout control-plane read stops once without retry or success', async () => {
+  const { cf, state, verify } = verificationFixture(); let attempted = 0;
+  const read = cf.accountRequest.bind(cf);
+  cf.accountRequest = async (...args) => { if (args[0].endsWith('/versions/' + originalVersion)) {
+    attempted++; throw new DeploymentFailure('http');
+  } return read(...args); };
+  await assert.rejects(verify(), stopped('http')); assert.equal(attempted, 1);
+  assert.ok(!state.reports.includes(runtimeLines.verified)); assert.equal(writes(state).length, 0);
+});
+test('traffic movement during final restoration check is not declared restored', async () => {
+  const { cf, state, verify } = verificationFixture(); let reads = 0; const read = cf.accountRequest.bind(cf);
+  cf.accountRequest = async (...args) => { if (args[0].endsWith('/deployments') && ++reads === 2) state.deployments.deployments[0].id = 'changed'; return read(...args); };
+  await assert.rejects(verify(), stopped('revision')); assert.equal(writes(state).length, 0);
+});
+test('restored original version is insufficient until original latest settings are restored too', async () => {
+  const { state, verify } = verificationFixture(); const originalSettings = structuredClone(state.settings);
+  state.settings.bindings.find(b => b.name === 'COACH_AUTH_SOURCE_REV').text = revision;
+  state.settings.bindings.push({ name: 'COACH_FINAL_AUTH_DIAGNOSTICS', type: 'plain_text', text: '1' });
+  await assert.rejects(verify(), stopped('revision')); // historical failure reproduced, guards retained
+  // Represents completion of the existing guarded flag-free bridge + original-source stage.
+  state.settings = originalSettings;
+  await verify(); assert.equal(state.reports.at(-1), runtimeLines.verified);
+  assert.equal(state.deployments.deployments[0].versions[0].version_id, originalVersion);
+});
+test('coverage probes use only malformed enrollment and keep challenge/response bytes out of output', async () => {
+  const calls = [];
+  await runtimeCoverageProbes(async (url, options) => {
+    assert.equal(url, TARGET.origin); assert.equal(options.redirect, 'error'); assert.ok(options.signal);
+    const body = JSON.parse(options.body); calls.push(body);
+    return Response.json(body.operation === 'challenge' ? { challenge: 'local.synthetic.token' } : { error: 'unauthorized' },
+      { status: body.operation === 'challenge' ? 200 : 401 });
+  });
+  assert.deepEqual(calls, [{ operation: 'challenge', kind: 'enroll', keyId: Buffer.alloc(32).toString('base64') },
+    { operation: 'enroll', keyId: Buffer.alloc(32).toString('base64'), challenge: 'local.synthetic.token', attestation: 'AA==' }]);
+  let attempts = 0;
+  await assert.rejects(runtimeCoverageProbes(async () => { attempts++; throw Error('PRIVATE-TIMEOUT'); }), stopped('gate'));
+  assert.equal(attempts, 1);
+});
+
+test('read-only inspection cannot fall through into mutation dispatcher', async () => {
+  const { state, run } = fixture();
+  await assert.rejects(run('--verify-restored', { diagnostics: false, credentials: { wafToken: credentials.wafToken } }), stopped('input'));
+  assert.equal(state.calls.length, 0);
 });
