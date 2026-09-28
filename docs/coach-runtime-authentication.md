@@ -29,6 +29,13 @@ constructs real DeviceCheck/StoreKit authentication, never a binary-embedded pro
 
 ## Local availability and send-time failure
 
+Normal Release failure diagnostics use the fixed `RepTodayCoach` Xcode console prefix, with only
+closed route/stage/error categories and bounded numeric codes. See the
+[client diagnostics contract and normal Release reproduction recipe](../artifacts/reports/coach-connection-diagnostics/validation.md).
+These lines distinguish local proof, handshake, assertion and final HTTP failures without exposing
+content or credentials; they do not establish a production root cause or repair. The ordinary scheme's
+Run default remains Debug/local StoreKit, so the normal-phone recipe explicitly selects Release/None.
+
 `CoachViewModel.localAvailability` describes local client inclusion only. Missing or invalid
 configuration resolves to `notEnabledInBuild` and shows “Coach is not enabled in this build,”
 asks the user to contact Rep Today support about a Coach-enabled build, and reassures them that

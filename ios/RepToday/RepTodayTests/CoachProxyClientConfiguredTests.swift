@@ -169,3 +169,66 @@ final class CoachProxyClientConfiguredTests: XCTestCase {
         }
     }
 }
+
+extension CoachProxyClientConfiguredTests {
+    func testDiagnosticsDisabledAndInvalidConfigurationEmitOnlyFixedCategories() throws {
+        let cases: [([String: Any], String)] = [
+            ([:], "unavailable"),
+            ([CoachProxyClient.endpointInfoPlistKey: "SECRET_INVALID_URL"], "unavailable"),
+            ([CoachProxyClient.endpointInfoPlistKey: "https://coach.reptoday.app/SECRET_PATH"], "other"),
+            ([CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,
+              CoachProxyClient.authenticationModeInfoPlistKey: "SECRET_MODE"], "production"),
+            ([CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,
+              CoachProxyClient.authenticationModeInfoPlistKey: CoachProxyClient.productionAuthenticationMode,
+              CoachProxyClient.secretInfoPlistKey: "SECRET_BEARER"], "production")
+        ]
+        for (values, endpoint) in cases {
+            let recorder = CoachDiagnosticRecorder()
+            try withConfiguration(values) { bundle in
+                let client = CoachProxyClient.configured(safetyIdentifierProvider: { testCoachSafetyIdentifier },
+                    bundle: bundle, transport: ForbiddenConfigurationHTTP(), diagnostics: recorder.diagnostics)
+                XCTAssertNil(client)
+            }
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=unavailable endpoint=\(endpoint) stage=configuration category=unavailable"])
+            XCTAssertFalse(recorder.lines.joined().contains("SECRET"))
+        }
+    }
+
+    func testDiagnosticsValidConfigurationAddsNoSuccessChatterAndDoesNotBypassFactory() throws {
+        let recorder = CoachDiagnosticRecorder()
+        try withConfiguration([CoachProxyClient.endpointInfoPlistKey: CoachProxyClient.productionOrigin,
+            CoachProxyClient.authenticationModeInfoPlistKey: CoachProxyClient.productionAuthenticationMode]) { bundle in
+            let client = CoachProxyClient.configured(safetyIdentifierProvider: { testCoachSafetyIdentifier },
+                bundle: bundle, transport: ForbiddenConfigurationHTTP(), diagnostics: recorder.diagnostics)
+            #if os(iOS)
+            XCTAssertNotNil(client?.transport as? RuntimeAuthenticatedCoachTransport)
+            XCTAssertTrue(recorder.lines.isEmpty)
+            #else
+            XCTAssertNil(client)
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=unavailable endpoint=production stage=configuration category=unavailable"])
+            #endif
+        }
+    }
+
+    func testDiagnosticsDevelopmentEndpointRemainsUnavailableInRelease() throws {
+        let recorder = CoachDiagnosticRecorder()
+        try withConfiguration([CoachProxyClient.endpointInfoPlistKey: "https://SECRET_HOST.invalid/SECRET_PATH",
+            CoachProxyClient.secretInfoPlistKey: "SECRET_BEARER"]) { bundle in
+            let client = CoachProxyClient.configured(safetyIdentifierProvider: { testCoachSafetyIdentifier },
+                bundle: bundle, transport: ForbiddenConfigurationHTTP(), diagnostics: recorder.diagnostics)
+            #if DEBUG
+            XCTAssertNotNil(client); XCTAssertTrue(recorder.lines.isEmpty)
+            #else
+            XCTAssertNil(client)
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=unavailable endpoint=other stage=configuration category=unavailable"])
+            #endif
+        }
+    }
+}
+
+private struct ForbiddenConfigurationHTTP: CoachProxyTransport {
+    func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
+        XCTFail("Configuration must never send a request")
+        throw CoachAuthenticationError.unavailable
+    }
+}

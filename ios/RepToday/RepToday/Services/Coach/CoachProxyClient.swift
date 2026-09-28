@@ -1,4 +1,82 @@
 import Foundation
+import OSLog
+
+/// Local Release diagnostics. Only closed labels and allowlisted numbers reach the sink.
+/// Never accepts a formatted error, payload, URL, header, proof or identifier for output.
+struct CoachDiagnostics: Sendable {
+    enum Transport: String { case runtime, direct, unavailable }
+    enum Endpoint: String {
+        case production, other, unavailable
+        static func category(_ url: URL) -> Self {
+            url.absoluteString == CoachProxyClient.productionOrigin ? .production : .other
+        }
+    }
+    enum Stage: String { case configuration, purchase, challenge, enrollment, assertion, transport, http, response }
+    enum Category: String { case unavailable, timeout, offline, tls, url, http, other }
+    enum ServerError: String, CaseIterable {
+        case unauthorized, keyUnavailable = "key_unavailable", authUnavailable = "auth_unavailable", other
+        static func classify(_ data: Data) -> Self {
+            guard data.count <= 256, let value = String(data: data, encoding: .utf8) else { return .other }
+            // Deliberately narrower than general JSON: rejects extra/duplicate fields, escaped
+            // labels, trailing data and malformed input rather than normalizing private payloads.
+            let space = "[ \\t\\r\\n]*"
+            for label in [Self.unauthorized, .keyUnavailable, .authUnavailable] {
+                let pattern = "\\A" + space + "\\{" + space + "\"error\"" + space + ":" + space
+                    + "\"" + label.rawValue + "\"" + space + "\\}" + space + "\\z"
+                if value.range(of: pattern, options: .regularExpression) != nil { return label }
+            }
+            return .other
+        }
+    }
+    struct Failure: Sendable {
+        let transport: Transport
+        let endpoint: Endpoint
+        var stage: Stage
+        var category: Category = .other
+        private(set) var status: Int?
+        private(set) var serverError: ServerError = .other
+        private(set) var urlCode: Int?
+        private(set) var cancelled = false
+
+        mutating func response(_ data: Data, status: Int) {
+            self.status = (100...599).contains(status) ? status : nil
+            serverError = ServerError.classify(data)
+            category = .http
+        }
+        mutating func capture(_ error: Error) {
+            if error is CancellationError { cancelled = true; return }
+            let value = error as NSError
+            if value.domain == NSURLErrorDomain {
+                switch value.code {
+                case URLError.cancelled.rawValue: cancelled = true
+                case URLError.timedOut.rawValue: category = .timeout; urlCode = value.code
+                case URLError.notConnectedToInternet.rawValue: category = .offline; urlCode = value.code
+                case -1206 ... -1200: category = .tls; urlCode = value.code
+                case -1006 ... -1003, -1008, -1002, -1000, -1018, -1019, -1020, -1022:
+                    category = .url; urlCode = value.code
+                default: category = .url // Never print an arbitrary NSError integer or userInfo.
+                }
+            } else if error as? CoachAuthenticationError == .timeout {
+                category = .timeout
+            } else if status == nil, error as? CoachAuthenticationError == .unavailable {
+                category = .unavailable
+            }
+        }
+        var line: String {
+            var value = "[RepTodayCoach] transport=\(transport.rawValue) endpoint=\(endpoint.rawValue) stage=\(stage.rawValue) category=\(category.rawValue)"
+            if let urlCode { value += " url_code=\(urlCode)" }
+            if let status { value += " status=\(status) error=\(serverError.rawValue)" }
+            return value
+        }
+    }
+    private static let logger = Logger(subsystem: "app.reptoday", category: "Coach")
+    static let live = CoachDiagnostics { line in logger.error("\(line, privacy: .public)") }
+    let emit: @Sendable (String) -> Void
+    func record(_ failure: Failure) {
+        guard !Task.isCancelled, !failure.cancelled else { return }
+        emit(failure.line)
+    }
+}
 
 /// A constrained, random Coach-only pseudonym used for provider abuse prevention. `AppState`
 /// persists it across launches and rotates it on account deletion; it is never derived from
@@ -109,6 +187,7 @@ struct CoachProxyClient {
     private let safetyIdentifierProvider: @Sendable () -> CoachSafetyIdentifier?
     /// The HTTP seam, injected so tests exercise the request/response contract without a live network.
     let transport: any CoachProxyTransport
+    private let diagnostics: CoachDiagnostics
 
     init(
         endpoint: URL,
@@ -116,7 +195,8 @@ struct CoachProxyClient {
         messageCharacterLimit: Int = CoachProxyClient.defaultMessageCharacterLimit,
         sharedSecret: String? = nil,
         safetyIdentifier: CoachSafetyIdentifier,
-        transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
+        transport: any CoachProxyTransport = URLSessionCoachProxyTransport(),
+        diagnostics: CoachDiagnostics = .live
     ) {
         self.endpoint = endpoint
         self.timeoutSeconds = timeoutSeconds
@@ -124,6 +204,7 @@ struct CoachProxyClient {
         self.sharedSecret = sharedSecret
         self.safetyIdentifierProvider = { safetyIdentifier }
         self.transport = transport
+        self.diagnostics = diagnostics
     }
 
     init(
@@ -132,7 +213,8 @@ struct CoachProxyClient {
         messageCharacterLimit: Int = CoachProxyClient.defaultMessageCharacterLimit,
         sharedSecret: String? = nil,
         safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
-        transport: any CoachProxyTransport = URLSessionCoachProxyTransport()
+        transport: any CoachProxyTransport = URLSessionCoachProxyTransport(),
+        diagnostics: CoachDiagnostics = .live
     ) {
         self.endpoint = endpoint
         self.timeoutSeconds = timeoutSeconds
@@ -140,6 +222,7 @@ struct CoachProxyClient {
         self.sharedSecret = sharedSecret
         self.safetyIdentifierProvider = safetyIdentifierProvider
         self.transport = transport
+        self.diagnostics = diagnostics
     }
 
     // MARK: - Build-configured resolution (US-AC02)
@@ -179,21 +262,28 @@ struct CoachProxyClient {
         safetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
         bundle: Bundle = .main,
         transport: any CoachProxyTransport = URLSessionCoachProxyTransport(),
-        runtimeAuthenticationKeyStore: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore()
+        runtimeAuthenticationKeyStore: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore(),
+        diagnostics: CoachDiagnostics = .live
     ) -> CoachProxyClient? {
         guard let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)) else {
+            diagnostics.record(.init(transport: .unavailable, endpoint: .unavailable, stage: .configuration, category: .unavailable))
             return nil
         }
         let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
         if endpoint.host?.lowercased() == "coach.reptoday.app" {
             guard productionConfigurationAllowed(origin: endpoint,
-                mode: bundle.object(forInfoDictionaryKey: authenticationModeInfoPlistKey), secret: secret) else { return nil }
+                mode: bundle.object(forInfoDictionaryKey: authenticationModeInfoPlistKey), secret: secret) else {
+                diagnostics.record(.init(transport: .unavailable, endpoint: .category(endpoint), stage: .configuration, category: .unavailable))
+                return nil
+            }
             #if os(iOS)
             // Production configuration always constructs the real DeviceCheck/StoreKit transport.
             // Test transports belong to explicit test clients, never a shipped configuration flag.
             return CoachProxyClient(endpoint: endpoint, safetyIdentifierProvider: safetyIdentifierProvider,
-                                    transport: RuntimeAuthenticatedCoachTransport(keys: runtimeAuthenticationKeyStore))
+                                    transport: RuntimeAuthenticatedCoachTransport(keys: runtimeAuthenticationKeyStore, diagnostics: diagnostics),
+                                    diagnostics: diagnostics)
             #else
+            diagnostics.record(.init(transport: .unavailable, endpoint: .category(endpoint), stage: .configuration, category: .unavailable))
             return nil
             #endif
         }
@@ -202,9 +292,11 @@ struct CoachProxyClient {
             endpoint: endpoint,
             sharedSecret: secret,
             safetyIdentifierProvider: safetyIdentifierProvider,
-            transport: transport
+            transport: transport,
+            diagnostics: diagnostics
         )
         #else
+        diagnostics.record(.init(transport: .unavailable, endpoint: .category(endpoint), stage: .configuration, category: .unavailable))
         return nil
         #endif
     }
@@ -260,18 +352,39 @@ struct CoachProxyClient {
             headers["Authorization"] = "Bearer \(sharedSecret)"
         }
 
-        let (data, statusCode) = try await transport.post(
-            to: endpoint,
-            jsonBody: requestBody,
-            headers: headers,
-            timeoutSeconds: timeoutSeconds
-        )
-        guard (200..<300).contains(statusCode) else { throw CoachError.badStatus(statusCode) }
+        let runtime = transport is RuntimeAuthenticatedCoachTransport
+        var diagnostic = CoachDiagnostics.Failure(transport: runtime ? .runtime : .direct,
+            endpoint: .category(endpoint), stage: .transport)
+        let data: Data, statusCode: Int
+        do {
+            (data, statusCode) = try await transport.post(
+                to: endpoint, jsonBody: requestBody, headers: headers, timeoutSeconds: timeoutSeconds)
+        } catch {
+            // Runtime owns pre-response failures, before its deadline wrapper erases the cause.
+            if !runtime { diagnostic.capture(error); diagnostics.record(diagnostic) }
+            throw error
+        }
+        diagnostic.response(data, status: statusCode)
+        guard (200..<300).contains(statusCode) else {
+            diagnostic.stage = .http
+            diagnostics.record(diagnostic)
+            throw CoachError.badStatus(statusCode)
+        }
 
-        let response = try JSONDecoder().decode(CoachResponse.self, from: data)
+        let response: CoachResponse
+        do { response = try JSONDecoder().decode(CoachResponse.self, from: data) }
+        catch {
+            diagnostic.stage = .response; diagnostic.category = .other
+            diagnostics.record(diagnostic)
+            throw error
+        }
         if response.outcome == .safetyRefusal { throw CoachError.safetyRefusal }
         let reply = response.reply?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !reply.isEmpty else { throw CoachError.emptyReply }
+        guard !reply.isEmpty else {
+            diagnostic.stage = .response; diagnostic.category = .other
+            diagnostics.record(diagnostic)
+            throw CoachError.emptyReply
+        }
         return reply
     }
 }
