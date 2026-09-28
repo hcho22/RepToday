@@ -8,7 +8,9 @@ function transform(source) {
   if (crypto.createHash('sha256').update(source).digest('hex') !== digest) throw Error();
   const needle = '    const cancelPing = startWebSocketPing();';
   if (source.split(needle).length !== 2) throw Error();
-  const changed = source.replace(needle, `    process.stdout.write("${marker}\\n");\n${needle}`);
+  const changed = source.replace(needle, `    process.stdout.write("${marker}\\n");\n${needle}`)
+    // Wrangler reassigns module.exports; the initial exports alias is stale.
+    + '\nmodule.exports.coachTailMain = main;';
   new vm.Script(changed, { filename: file });
   return changed;
 }
@@ -22,7 +24,7 @@ if (require.main === module) {
       const version = process.argv[2];
       if (process.argv.length !== 3 || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(version || '')) throw Error();
       const m = new Module(file, module); m.filename = file; m.paths = Module._nodeModulePaths(path.dirname(file));
-      m._compile(source + '\nexports.coachTailMain = main;', file);
+      m._compile(source, file);
       // No method/search/status filter: DO requests must remain observable. One exact version only.
       m.exports.coachTailMain(['tail', 'reptoday-variety-language-proxy', '--format', 'json',
         '--version-id', version, '--sampling-rate', '1']).catch(() => { process.exitCode = 78; });
