@@ -5,6 +5,37 @@ import StoreKit
 
 enum CoachAuthenticationError: Error, Equatable { case unavailable, invalidKey, timeout }
 
+/// One in-memory observation, with no request identifier or retained input. The lock covers the
+/// outer timeout racing an Apple callback; late work can never emit another failure line.
+final class CoachFailureTrace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failure = CoachDiagnostics.Failure(transport: .runtime, endpoint: .production, stage: .purchase)
+    private var captured = false
+    private var finished = false
+    func begin(_ stage: CoachDiagnostics.Stage) {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return }
+        failure = .init(transport: .runtime, endpoint: .production, stage: stage)
+        captured = false
+    }
+    func response(_ data: Data, status: Int) {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return }
+        failure.response(data, status: status)
+    }
+    func capture(_ error: Error) {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return }
+        failure.capture(error); captured = true
+    }
+    func finish(_ error: Error) -> CoachDiagnostics.Failure {
+        lock.lock(); defer { lock.unlock() }
+        if !captured || error as? CoachAuthenticationError == .timeout { failure.capture(error) }
+        finished = true
+        return failure
+    }
+}
+
 protocol CoachAppAttesting: Sendable {
     var isSupported: Bool { get }
     func generateKey() async throws -> String
@@ -98,26 +129,41 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
     private let purchase: any CoachPurchaseProofProviding
     private let keys: any CoachAuthenticationKeyStoring
     private let http: any CoachProxyTransport
+    private let diagnostics: CoachDiagnostics
     private var busy = false
     private var generation: UInt64 = 0
 
     init(attester: any CoachAppAttesting = DeviceCoachAppAttester(),
          purchase: any CoachPurchaseProofProviding = StoreKitCoachPurchaseProof(),
          keys: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore(),
-         http: any CoachProxyTransport = BoundedCoachHTTPTransport()) {
+         http: any CoachProxyTransport = BoundedCoachHTTPTransport(),
+         diagnostics: CoachDiagnostics = .live) {
         self.attester = attester; self.purchase = purchase; self.keys = keys; self.http = http
+        self.diagnostics = diagnostics
     }
 
     func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
         guard url == Self.origin, headers.isEmpty, jsonBody.count <= 32_768, timeoutSeconds.isFinite,
               timeoutSeconds > 0, timeoutSeconds <= 30, !busy, attester.isSupported else {
+            diagnostics.record(.init(transport: .runtime, endpoint: .category(url), stage: .configuration, category: .unavailable))
             throw CoachAuthenticationError.unavailable
         }
         busy = true; defer { busy = false }
         let expectedGeneration = generation
         let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
-        return try await boundedCoachOperation(seconds: timeoutSeconds) {
-            try await self.send(body: jsonBody, generation: expectedGeneration, deadline: deadline)
+        let trace = CoachFailureTrace()
+        do {
+            return try await boundedCoachOperation(seconds: timeoutSeconds) {
+                do {
+                    return try await self.send(body: jsonBody, generation: expectedGeneration, deadline: deadline, trace: trace)
+                } catch {
+                    trace.capture(error)
+                    throw error
+                }
+            }
+        } catch {
+            diagnostics.record(trace.finish(error))
+            throw error // Preserve the deadline wrapper's original error and cancellation policy.
         }
     }
 
@@ -147,15 +193,17 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         let encoder = JSONEncoder(); encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
         return try encoder.encode(value)
     }
-    private func handshake(_ input: [String: String], generation expected: UInt64, deadline: Double) async throws -> (Data, Int) {
+    private func handshake(_ input: [String: String], generation expected: UInt64, deadline: Double, trace: CoachFailureTrace? = nil) async throws -> (Data, Int) {
         let left = try remaining(deadline, expected)
         let result = try await http.post(to: Self.origin, jsonBody: Self.encode(input), headers: [:], timeoutSeconds: min(left, 10))
         _ = try remaining(deadline, expected)
+        trace?.response(result.data, status: result.statusCode)
         guard result.data.count <= 1024 else { throw CoachAuthenticationError.unavailable }
         return (result.data, result.statusCode)
     }
-    private func challenge(key: String, kind: String, generation expected: UInt64, deadline: Double) async throws -> String {
-        let (data, status) = try await handshake(["operation": "challenge", "kind": kind, "keyId": key], generation: expected, deadline: deadline)
+    private func challenge(key: String, kind: String, generation expected: UInt64, deadline: Double, trace: CoachFailureTrace? = nil) async throws -> String {
+        trace?.begin(.challenge)
+        let (data, status) = try await handshake(["operation": "challenge", "kind": kind, "keyId": key], generation: expected, deadline: deadline, trace: trace)
         if status == 401, (try? JSONDecoder().decode(AuthError.self, from: data).error) == "key_unavailable" {
             throw KeyUnavailable()
         }
@@ -165,16 +213,18 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         else { throw CoachAuthenticationError.unavailable }
         return challenge
     }
-    private func enroll(generation expected: UInt64, deadline: Double) async throws -> String {
+    private func enroll(generation expected: UInt64, deadline: Double, trace: CoachFailureTrace? = nil) async throws -> String {
+        trace?.begin(.enrollment)
         let key = try await attester.generateKey()
         _ = try remaining(deadline, expected)
         guard Self.validKey(key) else { throw CoachAuthenticationError.unavailable }
-        let token = try await challenge(key: key, kind: "enroll", generation: expected, deadline: deadline)
+        let token = try await challenge(key: key, kind: "enroll", generation: expected, deadline: deadline, trace: trace)
+        trace?.begin(.enrollment)
         let attestation = try await attester.attest(key: key, hash: Self.digest(Data(token.utf8)))
         _ = try remaining(deadline, expected)
         guard !attestation.isEmpty, attestation.count <= 8192 else { throw CoachAuthenticationError.unavailable }
         let (data, status) = try await handshake(["operation": "enroll", "keyId": key, "challenge": token,
-                                                "attestation": attestation.base64EncodedString()], generation: expected, deadline: deadline)
+                                                "attestation": attestation.base64EncodedString()], generation: expected, deadline: deadline, trace: trace)
         guard status == 200, (try? JSONDecoder().decode(Enrollment.self, from: data).enrolled) == true else { throw CoachAuthenticationError.unavailable }
         _ = try remaining(deadline, expected)
         keys.save(key) // Only persist an enrolled key; a failed/ambiguous enrollment uses a fresh key next time.
@@ -184,44 +234,46 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         guard let data = Data(base64Encoded: value) else { return false }
         return data.count == 32 && data.base64EncodedString() == value
     }
-    private func send(body: Data, generation expected: UInt64, deadline: Double, proofOnly: Bool = false) async throws -> (data: Data, statusCode: Int) {
+    private func send(body: Data, generation expected: UInt64, deadline: Double, proofOnly: Bool = false, trace: CoachFailureTrace? = nil) async throws -> (data: Data, statusCode: Int) {
+        trace?.begin(.purchase)
         let transaction = try await purchase.appStorePremiumProof()
         _ = try remaining(deadline, expected)
         guard !transaction.isEmpty, transaction.utf8.count <= 12_000 else { throw CoachAuthenticationError.unavailable }
         var key = keys.load()
         var enrolledFreshly = false
         if key.map(Self.validKey) != true {
-            key = try await enroll(generation: expected, deadline: deadline)
+            key = try await enroll(generation: expected, deadline: deadline, trace: trace)
             enrolledFreshly = true
         }
         guard var enrolled = key else { throw CoachAuthenticationError.unavailable }
         var token: String
-        do { token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline) }
+        do { token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline, trace: trace) }
         catch is KeyUnavailable {
             _ = try remaining(deadline, expected); keys.save(nil)
-            enrolled = try await enroll(generation: expected, deadline: deadline)
+            enrolled = try await enroll(generation: expected, deadline: deadline, trace: trace)
             enrolledFreshly = true
-            token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline)
+            token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline, trace: trace)
         }
         let headers: [String: String]
         do {
             headers = try await proof(operation: "reply", key: enrolled, challenge: token, body: body,
-                                      transaction: transaction, generation: expected, deadline: deadline)
+                                      transaction: transaction, generation: expected, deadline: deadline, trace: trace)
         } catch CoachAuthenticationError.invalidKey {
             _ = try remaining(deadline, expected)
             keys.save(nil)
             guard !enrolledFreshly else { throw CoachAuthenticationError.unavailable }
-            enrolled = try await enroll(generation: expected, deadline: deadline)
-            token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline)
+            enrolled = try await enroll(generation: expected, deadline: deadline, trace: trace)
+            token = try await challenge(key: enrolled, kind: "assert", generation: expected, deadline: deadline, trace: trace)
             do {
                 headers = try await proof(operation: "reply", key: enrolled, challenge: token, body: body,
-                                          transaction: transaction, generation: expected, deadline: deadline)
+                                          transaction: transaction, generation: expected, deadline: deadline, trace: trace)
             } catch CoachAuthenticationError.invalidKey {
                 _ = try remaining(deadline, expected)
                 keys.save(nil)
                 throw CoachAuthenticationError.unavailable
             }
         }
+        trace?.begin(.transport)
         let left = try remaining(deadline, expected)
         let result = try await http.post(to: Self.origin, jsonBody: body, headers: headers, timeoutSeconds: left)
         _ = try remaining(deadline, expected)
@@ -243,7 +295,8 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         return value == ["error": expected]
     }
     private func proof(operation: String, key: String, challenge: String, body: Data, transaction: String,
-                       generation expected: UInt64, deadline: Double) async throws -> [String: String] {
+                       generation expected: UInt64, deadline: Double, trace: CoachFailureTrace? = nil) async throws -> [String: String] {
+        trace?.begin(.assertion)
         let payload = try Self.encode([Self.protocolVersion, "POST", Self.origin.absoluteString, operation,
                                        key, challenge, Self.hex(body), Self.hex(Data(transaction.utf8))])
         let assertion = try await attester.assertion(key: key, hash: Self.digest(payload))

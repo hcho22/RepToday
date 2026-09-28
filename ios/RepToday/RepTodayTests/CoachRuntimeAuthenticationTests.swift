@@ -56,15 +56,22 @@ private actor FixtureCoachHTTP: CoachProxyTransport {
     private(set) var calls = [Call]()
     var failureAt: Int?; var expireFirstKey: Bool; var finalStatus: Int
     var finalResponses: [(Data, Int)]?
+    var injectedError: NSError?
+    var injectedResponse: (Data, Int)?
     let challenge = "eA." + String(repeating: "A", count: 43) // Shape fixture; never a valid server HMAC.
-    init(failureAt: Int? = nil, expireFirstKey: Bool = false, finalStatus: Int = 200, finalResponses: [(Data, Int)]? = nil) {
+    init(failureAt: Int? = nil, expireFirstKey: Bool = false, finalStatus: Int = 200, finalResponses: [(Data, Int)]? = nil, injectedError: NSError? = nil, injectedResponse: (Data, Int)? = nil) {
         self.failureAt = failureAt; self.expireFirstKey = expireFirstKey; self.finalStatus = finalStatus
         self.finalResponses = finalResponses
+        self.injectedError = injectedError; self.injectedResponse = injectedResponse
     }
     func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
         guard url == RuntimeAuthenticatedCoachTransport.origin else { throw CoachAuthenticationError.unavailable }
         calls.append(Call(body: jsonBody, headers: headers, timeout: timeoutSeconds))
-        if failureAt == calls.count { throw CoachAuthenticationError.unavailable }
+        if failureAt == calls.count {
+            if let injectedResponse { return injectedResponse }
+            if let injectedError { throw injectedError }
+            throw CoachAuthenticationError.unavailable
+        }
         if !headers.isEmpty {
             if finalResponses != nil {
                 guard !finalResponses!.isEmpty else { throw CoachAuthenticationError.unavailable }
@@ -112,9 +119,9 @@ final class CoachRuntimeAuthenticationTests: XCTestCase {
         CoachContextBundle(phase:"discipline",requestedMinutes:20,chainPositions:[],recentPatterns:["push"],
                            consistency:.init(currentScore:63,direction:.rising),strengthJourney:[])
     }
-    private func client(_ transport: RuntimeAuthenticatedCoachTransport, timeout: Double = 30) -> CoachProxyClient {
+    private func client(_ transport: RuntimeAuthenticatedCoachTransport, timeout: Double = 30, diagnostics: CoachDiagnostics = .live) -> CoachProxyClient {
         CoachProxyClient(endpoint:RuntimeAuthenticatedCoachTransport.origin, timeoutSeconds:timeout,
-                         safetyIdentifier:testCoachSafetyIdentifier,transport:transport)
+                         safetyIdentifier:testCoachSafetyIdentifier,transport:transport,diagnostics:diagnostics)
     }
     func testPurchaseProofAllowsOnlyAppleProductionAndSandboxEnvironments() {
         XCTAssertTrue(StoreKitCoachPurchaseProof.serverProofEnvironmentAllowed(.production))
@@ -362,5 +369,301 @@ final class CoachRuntimeAuthenticationTests: XCTestCase {
         RuntimeHTTPFixture.state.set(.init(data:Data("{".utf8),finish:false));let started=ProcessInfo.processInfo.systemUptime
         do {_ = try await boundedHTTP().post(to:RuntimeAuthenticatedCoachTransport.origin,jsonBody:Data("{}".utf8),headers:[:],timeoutSeconds:0.05);XCTFail("must time out")} catch {}
         XCTAssertLessThan(ProcessInfo.processInfo.systemUptime-started,1)
+    }
+}
+
+/// Captures the exact string passed to the production OSLog sink, not intermediate enums.
+final class CoachDiagnosticRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+    var lines: [String] { lock.lock(); defer { lock.unlock() }; return storage }
+    var diagnostics: CoachDiagnostics { CoachDiagnostics { self.append($0) } }
+    private func append(_ line: String) { lock.lock(); storage.append(line); lock.unlock() }
+}
+
+extension CoachRuntimeAuthenticationTests {
+    func testDiagnosticsSeparateHandshake401FromFinal401WithoutChangingErrorsOrKey() async {
+        for handshake in [true, false] {
+            let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester()
+            let keys = FixtureCoachKeyStore(attester.key)
+            let http = FixtureCoachHTTP(failureAt: handshake ? 1 : 2,
+                injectedResponse: (Data(#"{"error":"unauthorized"}"#.utf8), 401))
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                keys: keys, http: http, diagnostics: recorder.diagnostics)
+            do {
+                _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "SECRET_USER_TEXT", context: context())
+                XCTFail("must fail")
+            } catch {
+                if handshake { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+                else { XCTAssertEqual(error as? CoachProxyClient.CoachError, .badStatus(401)) }
+            }
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=\(handshake ? "challenge" : "http") category=http status=401 error=unauthorized"])
+            let calls = await http.calls, appleCalls = await attester.calls
+            XCTAssertEqual(calls.count, handshake ? 1 : 2)
+            XCTAssertEqual(appleCalls, handshake ? [] : ["assert"])
+            XCTAssertEqual(keys.load(), attester.key)
+        }
+    }
+
+    func testDiagnosticsOnlyClassifyStrictBoundedFinalErrorsAndNeverLeakSentinels() async {
+        let cases: [(Data, String)] = [
+            (Data(#"{"error":"unauthorized"}"#.utf8), "unauthorized"),
+            (Data(" \n{ \"error\" : \"key_unavailable\" }\t".utf8), "key_unavailable"),
+            (Data(#"{"error":"auth_unavailable"}"#.utf8), "auth_unavailable"),
+            (Data(#"{"error":"SECRET_TOKEN"}"#.utf8), "other"),
+            (Data(#"{"error":"unauthorized","private":"SECRET_JWS"}"#.utf8), "other"),
+            (Data(#"{"error":"unauthorized","error":"unauthorized"}"#.utf8), "other"),
+            (Data(#"{"error":"unauthorized"} SECRET_BODY"#.utf8), "other"),
+            (Data(#"{"error":"unauthorized""#.utf8), "other"),
+            (Data(#"["unauthorized","SECRET_ACCOUNT"]"#.utf8), "other"),
+            (Data(#"{"error":{"token":"SECRET_HEADER"}}"#.utf8), "other"),
+            (Data([0xff, 0xfe]), "other"),
+            (Data((#"{"error":"unauthorized"}"# + String(repeating: " ", count: 257)).utf8), "other"),
+            (Data((#"{"error":"unauthorized"}"# + String(repeating: " ", count: 232)).utf8), "unauthorized")
+        ]
+        for (payload, classification) in cases {
+            let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester()
+            let status = classification == "auth_unavailable" ? 503 : 401
+            let http = FixtureCoachHTTP(finalResponses: [(payload, status)])
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: "SECRET_JWS"),
+                keys: FixtureCoachKeyStore(attester.key), http: http, diagnostics: recorder.diagnostics)
+            do {
+                _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "SECRET_USER_TEXT", context: context())
+                XCTFail("must fail")
+            } catch { XCTAssertEqual(error as? CoachProxyClient.CoachError, .badStatus(status)) }
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=http category=http status=\(status) error=\(classification)"])
+            for secret in ["SECRET", attester.key, http.challenge, testCoachSafetyIdentifier.rawValue,
+                           RuntimeAuthenticatedCoachTransport.origin.absoluteString] {
+                XCTAssertFalse(recorder.lines.joined().contains(secret))
+            }
+            XCTAssertTrue(recorder.lines.allSatisfy { $0.utf8.count < 200 })
+            let calls = await http.calls; XCTAssertEqual(calls.count, 2) // Final 401 never reenrolls/retries.
+        }
+    }
+
+    func testDiagnosticsURLFailuresSurviveRuntimeErasureWithSafeCodesOnly() async {
+        for (code, category) in [(-1001, "timeout"), (-1009, "offline"), (-1200, "tls"), (-1003, "url"), (987654321, "url")] {
+            for failureAt in [1, 2] {
+                let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester()
+                let error = NSError(domain: NSURLErrorDomain, code: code,
+                    userInfo: [NSLocalizedDescriptionKey: "SECRET_DESCRIPTION", NSURLErrorFailingURLErrorKey: URL(string: "https://secret.invalid/SECRET_URL")!,
+                               NSUnderlyingErrorKey: NSError(domain: "SECRET_DOMAIN", code: 123)])
+                let http = FixtureCoachHTTP(failureAt: failureAt, injectedError: error)
+                let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                    keys: FixtureCoachKeyStore(attester.key), http: http, diagnostics: recorder.diagnostics)
+                do {
+                    _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+                    XCTFail("must fail")
+                } catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+                let suffix = code == 987654321 ? "" : " url_code=\(code)"
+                XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=\(failureAt == 1 ? "challenge" : "transport") category=\(category)\(suffix)"])
+                let calls = await http.calls; XCTAssertEqual(calls.count, failureAt)
+            }
+        }
+    }
+
+    func testDiagnosticsLocalProofAndUnsupportedDeviceFailBeforeHTTP() async {
+        for supported in [true, false] {
+            let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester(supported: supported)
+            let http = FixtureCoachHTTP(), keys = FixtureCoachKeyStore(attester.key)
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: nil),
+                keys: keys, http: http, diagnostics: recorder.diagnostics)
+            do {
+                _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+                XCTFail("must fail")
+            } catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=\(supported ? "purchase" : "configuration") category=unavailable"])
+            let calls = await http.calls, appleCalls = await attester.calls
+            XCTAssertTrue(calls.isEmpty); XCTAssertTrue(appleCalls.isEmpty)
+            XCTAssertEqual(keys.load(), attester.key)
+        }
+    }
+
+    func testDiagnosticsEnrollmentAndAssertionFailuresHaveDistinctStages() async {
+        for enrollment in [true, false] {
+            let recorder = CoachDiagnosticRecorder()
+            let attester = FixtureCoachAttester(assertionFailures: enrollment ? [] : [.unavailable])
+            let keys = FixtureCoachKeyStore(enrollment ? nil : attester.key)
+            let http = FixtureCoachHTTP(failureAt: enrollment ? 2 : nil,
+                injectedResponse: (Data(#"{"error":"auth_unavailable"}"#.utf8), 503))
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                keys: keys, http: http, diagnostics: recorder.diagnostics)
+            do {
+                _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+                XCTFail("must fail")
+            } catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+            XCTAssertEqual(recorder.lines, [enrollment
+                ? "[RepTodayCoach] transport=runtime endpoint=production stage=enrollment category=http status=503 error=auth_unavailable"
+                : "[RepTodayCoach] transport=runtime endpoint=production stage=assertion category=unavailable"])
+            XCTAssertEqual(keys.load(), enrollment ? nil : attester.key)
+            let calls = await http.calls; XCTAssertEqual(calls.count, enrollment ? 2 : 1)
+        }
+    }
+
+    func testDiagnosticsMalformedAndOversizedHandshakeNeverLeak() async {
+        for data in [Data(#"{"error":"unauthorized","private":"SECRET_KEY"}"#.utf8),
+                     Data((#"{"error":"unauthorized"}"# + String(repeating: " ", count: 1025)).utf8)] {
+            let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester()
+            let http = FixtureCoachHTTP(failureAt: 1, injectedResponse: (data, 401))
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                keys: FixtureCoachKeyStore(attester.key), http: http, diagnostics: recorder.diagnostics)
+            do {
+                _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+                XCTFail("must fail")
+            } catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+            XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=challenge category=http status=401 error=other"])
+        }
+    }
+
+    func testDiagnosticsCancellationIsSilentAndDoesNotChangeErrorOrLateState() async {
+        let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester(hangKey: true)
+        let http = FixtureCoachHTTP(), keys = FixtureCoachKeyStore()
+        let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+            keys: keys, http: http, diagnostics: recorder.diagnostics)
+        let task = Task { try await self.client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: self.context()) }
+        for _ in 0..<1000 {
+            if await attester.calls == ["key"] { break }
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        let before = await attester.calls; XCTAssertEqual(before, ["key"])
+        task.cancel()
+        do { _ = try await task.value; XCTFail("must cancel") }
+        catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+        await attester.releaseKey()
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertTrue(recorder.lines.isEmpty); XCTAssertNil(keys.load())
+        let calls = await http.calls; XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testDiagnosticsURLCancellationIsSilentAtHandshakeAndFinalTransport() async {
+        for failureAt in [1, 2] {
+            let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester()
+            let http = FixtureCoachHTTP(failureAt: failureAt, injectedError: NSError(domain: NSURLErrorDomain, code: -999))
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                keys: FixtureCoachKeyStore(attester.key), http: http, diagnostics: recorder.diagnostics)
+            do {
+                _ = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+                XCTFail("must cancel")
+            } catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
+            XCTAssertTrue(recorder.lines.isEmpty)
+        }
+    }
+
+    func testDiagnosticsDeadlineOverridesWorkerCancellationBeforeOrAfterFinalization() {
+        let stages: [CoachDiagnostics.Stage] = [.purchase, .challenge, .enrollment, .assertion, .transport]
+        let cancellations: [Error] = [CancellationError(), URLError(.cancelled)]
+        for stage in stages {
+            for cancellation in cancellations {
+                for cancellationFirst in [true, false] {
+                    let recorder = CoachDiagnosticRecorder(), trace = CoachFailureTrace()
+                    trace.begin(stage)
+                    if cancellationFirst { trace.capture(cancellation) }
+                    let failure = trace.finish(CoachAuthenticationError.timeout)
+                    if !cancellationFirst { trace.capture(cancellation) }
+                    recorder.diagnostics.record(failure)
+                    XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=\(stage.rawValue) category=timeout"])
+                }
+            }
+        }
+    }
+
+    func testDiagnosticsCallerCancellationSuppressesWinningDeadline() async {
+        let stages: [CoachDiagnostics.Stage] = [.purchase, .challenge, .enrollment, .assertion, .transport]
+        let cancellations: [Error] = [CancellationError(), URLError(.cancelled)]
+        for stage in stages {
+            for cancellation in cancellations {
+                let recorder = CoachDiagnosticRecorder()
+                let task = Task {
+                    let trace = CoachFailureTrace()
+                    trace.begin(stage)
+                    trace.capture(cancellation)
+                    let failure = trace.finish(CoachAuthenticationError.timeout)
+                    XCTAssertFalse(failure.cancelled)
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    recorder.diagnostics.record(failure)
+                }
+                await task.value
+                XCTAssertTrue(recorder.lines.isEmpty)
+            }
+        }
+    }
+
+    func testDiagnosticsDeadlineIsOneFailureAndLateCallbackStaysSilent() async {
+        let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester(hangKey: true)
+        let http = FixtureCoachHTTP(), keys = FixtureCoachKeyStore()
+        let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+            keys: keys, http: http, diagnostics: recorder.diagnostics)
+        do {
+            _ = try await client(runtime, timeout: 0.1, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+            XCTFail("must time out")
+        } catch { XCTAssertEqual(error as? CoachAuthenticationError, .timeout) }
+        let before = await attester.calls; XCTAssertEqual(before, ["key"])
+        await attester.releaseKey()
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=enrollment category=timeout"])
+        XCTAssertNil(keys.load()); let calls = await http.calls; XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testDiagnosticsSuccessfulRepliesAndExistingKeyRecoveryStaySilent() async throws {
+        for recovery in [false, true] {
+            let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester()
+            let http = FixtureCoachHTTP(expireFirstKey: recovery), keys = FixtureCoachKeyStore(recovery ? attester.key : nil)
+            let runtime = RuntimeAuthenticatedCoachTransport(attester: attester, purchase: FixtureCoachPurchase(proof: purchase),
+                keys: keys, http: http, diagnostics: recorder.diagnostics)
+            let reply = try await client(runtime, diagnostics: recorder.diagnostics).reply(to: "fixture", context: context())
+            XCTAssertEqual(reply, "Fixture supplied-context reply"); XCTAssertTrue(recorder.lines.isEmpty)
+            XCTAssertEqual(keys.load(), attester.key)
+            let calls = await http.calls; XCTAssertEqual(calls.count, recovery ? 5 : 4)
+        }
+    }
+}
+
+private struct DirectDiagnosticHTTP: CoachProxyTransport {
+    let error: NSError?
+    let data: Data
+    let status: Int
+    func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
+        if let error { throw error }
+        return (data, status)
+    }
+}
+
+extension CoachRuntimeAuthenticationTests {
+    func testDiagnosticsDirectTransportPreservesURLErrorIdentityAndCancellationSilence() async {
+        for code in [-1009, -999] {
+            let recorder = CoachDiagnosticRecorder()
+            let original = NSError(domain: NSURLErrorDomain, code: code, userInfo: [NSLocalizedDescriptionKey: "SECRET_DESCRIPTION"])
+            let direct = DirectDiagnosticHTTP(error: original, data: Data(), status: 200)
+            let client = CoachProxyClient(endpoint: URL(string: "https://SECRET_HOST.invalid/SECRET_PATH")!,
+                sharedSecret: "SECRET_BEARER", safetyIdentifier: testCoachSafetyIdentifier, transport: direct, diagnostics: recorder.diagnostics)
+            do { _ = try await client.reply(to: "SECRET_MESSAGE", context: context()); XCTFail("must fail") }
+            catch { XCTAssertTrue(error as NSError === original) }
+            XCTAssertEqual(recorder.lines, code == -999 ? [] : ["[RepTodayCoach] transport=direct endpoint=other stage=transport category=offline url_code=-1009"])
+        }
+    }
+
+    func testDiagnosticsMalformedSuccessfulResponsePreservesDecodeErrorWithoutPayload() async {
+        let recorder = CoachDiagnosticRecorder()
+        let direct = DirectDiagnosticHTTP(error: nil, data: Data("SECRET_RESPONSE".utf8), status: 200)
+        let client = CoachProxyClient(endpoint: URL(string: "https://SECRET_HOST.invalid/SECRET_PATH")!,
+            safetyIdentifier: testCoachSafetyIdentifier, transport: direct, diagnostics: recorder.diagnostics)
+        do { _ = try await client.reply(to: "SECRET_MESSAGE", context: context()); XCTFail("must fail") }
+        catch { XCTAssertTrue(error is DecodingError) }
+        XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=direct endpoint=other stage=response category=other status=200 error=other"])
+    }
+}
+
+extension CoachRuntimeAuthenticationTests {
+    func testDiagnosticsEmptyReplyAndRefusalKeepTheirOriginalSemantics() async {
+        for refusal in [true, false] {
+            let recorder = CoachDiagnosticRecorder()
+            let data = Data((refusal ? #"{"outcome":"safety_refusal","reply":"SECRET_REFUSAL"}"# : #"{"reply":"  "}"#).utf8)
+            let client = CoachProxyClient(endpoint: URL(string: "https://fixture.invalid/coach")!,
+                safetyIdentifier: testCoachSafetyIdentifier,
+                transport: DirectDiagnosticHTTP(error: nil, data: data, status: 200), diagnostics: recorder.diagnostics)
+            do { _ = try await client.reply(to: "fixture", context: context()); XCTFail("must fail") }
+            catch { XCTAssertEqual(error as? CoachProxyClient.CoachError, refusal ? .safetyRefusal : .emptyReply) }
+            XCTAssertEqual(recorder.lines, refusal ? [] : ["[RepTodayCoach] transport=direct endpoint=other stage=response category=other status=200 error=other"])
+        }
     }
 }
