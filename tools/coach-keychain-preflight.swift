@@ -4,13 +4,14 @@ import Darwin
 
 // Parsing finishes before constructing readers, UI, a coordinator or any prerequisites.
 func routeRuntimeMigration(args: [String], preflight: () -> Int32,
-    operation: (RuntimeMigrationOperation, String, String, Bool) -> Int32) -> Int32 {
+    operation: (RuntimeMigrationOperation, String, String, Bool, Bool) -> Int32) -> Int32 {
     if args == ["--keychain-preflight"] { return preflight() }
-    guard args.count == 3 || args.count == 4,
+    guard (3...5).contains(args.count),
           let selected = RuntimeMigrationOperation(rawValue: args[0]),
           args[1].hasPrefix("/"), args[2].hasPrefix("/"),
-          args.count == 3 || (args[3] == "--auth-guard-diagnostics" && selected != .hold) else { return 64 }
-    return operation(selected, args[1], args[2], args.count == 4)
+          args.count == 3 || ((selected == .stage || selected == .release) && Set(args.dropFirst(3)).count == args.count - 3 &&
+            args.dropFirst(3).allSatisfy { ["--auth-guard-diagnostics", "--final-auth-diagnostics"].contains($0) }) else { return 64 }
+    return operation(selected, args[1], args[2], args.contains("--auth-guard-diagnostics"), args.contains("--final-auth-diagnostics"))
 }
 
 struct RuntimePreflightCancelled: Error {}

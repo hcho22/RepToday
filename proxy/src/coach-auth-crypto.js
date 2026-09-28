@@ -95,21 +95,30 @@ export async function attestKey(attestation, keyId, challenge, appPrefix, nowMs)
   } catch { throw new CoachAuthFailure(); }
 }
 
-export function assertKey(assertion, publicKey, previousCounter, payload, appPrefix) {
+export function assertKey(assertion, publicKey, previousCounter, payload, appPrefix, onDenied = reason => {}) {
+  let reason = 'assertion_cbor';
   try {
     const decoded = decodeObject(assertion, 'authenticatorData,signature');
+    reason = 'assertion_shape';
     if (!Buffer.isBuffer(decoded.authenticatorData) || decoded.authenticatorData.length !== 37 ||
         !Buffer.isBuffer(decoded.signature) || decoded.signature.length > 80) throw new CoachAuthFailure();
     // node-app-attest uses a signed 32-bit counter; fail closed at that ceiling, requiring fresh enrollment.
+    reason = 'assertion_counter';
     const counter = decoded.authenticatorData.readUInt32BE(33);
     if (counter > 0x7fffffff || !Number.isInteger(previousCounter) || previousCounter < 0 || counter <= previousCounter) throw new CoachAuthFailure();
+    reason = 'assertion_signature';
     const verified = verifyAssertion({ assertion, payload, publicKey, bundleIdentifier: BUNDLE, teamIdentifier: appPrefix, signCount: previousCounter });
+    reason = 'assertion_result';
     if (verified.signCount !== counter) throw new CoachAuthFailure();
     return counter;
-  } catch { throw new CoachAuthFailure(); }
+  } catch {
+    try { onDenied(reason); } catch {} // Cannot replace or weaken the existing rejection.
+    throw new CoachAuthFailure();
+  }
 }
 
-export async function premiumEntitlement(jws, env, now = () => Date.now()) {
+export async function premiumEntitlement(jws, env, now = () => Date.now(), onDenied = reason => {}) {
+  let reason = 'denied';
   try {
     if (typeof jws !== 'string' || jws.length > 12_000 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jws) ||
         !appIDValid(env.APP_STORE_APP_ID) || !env.APP_STORE_PRIVATE_KEY ||
@@ -133,21 +142,30 @@ export async function premiumEntitlement(jws, env, now = () => Date.now()) {
       verifier = new SignedDataVerifier(roots, true, environment, BUNDLE);
       presented = await verifier.verifyAndDecodeTransaction(jws);
     }
+    reason = 'presented_environment';
     if (presented.environment !== environment) throw new CoachAuthFailure();
+    reason = 'presented_chain';
     if (!/^[0-9]{1,32}$/.test(presented.originalTransactionId ?? '')) throw new CoachAuthFailure();
     const client = new AppStoreServerAPIClient(env.APP_STORE_PRIVATE_KEY, env.APP_STORE_KEY_ID, env.APP_STORE_ISSUER_ID, BUNDLE, environment);
     const statuses = await client.getAllSubscriptionStatuses(presented.originalTransactionId);
     const fetchedAt = now();
+    reason = 'status_identity';
     if (statuses.bundleId !== BUNDLE || statuses.environment !== environment || Number(statuses.appAppleId) !== Number(env.APP_STORE_APP_ID) ||
         !Array.isArray(statuses.data) || statuses.data.length > 8) throw new CoachAuthFailure();
     const candidates = statuses.data.flatMap(group => group.lastTransactions ?? []);
+    reason = 'status_count';
     if (candidates.length > 32) throw new CoachAuthFailure();
     const matches = candidates.filter(row => row.originalTransactionId === presented.originalTransactionId);
+    reason = 'status_match';
     if (matches.length !== 1 || matches[0].status !== 1 || typeof matches[0].signedTransactionInfo !== 'string' || matches[0].signedTransactionInfo.length > 12_000) throw new CoachAuthFailure();
     const current = await verifier.verifyAndDecodeTransaction(matches[0].signedTransactionInfo);
+    reason = 'premium_policy';
     if (!evaluateVerifiedPremiumEntitlement({ ...presented }, { ...current }, matches[0].status, fetchedAt, now(), environment)) throw new CoachAuthFailure();
   } catch (error) {
-    if (error instanceof CoachAuthFailure) throw error;
+    if (error instanceof CoachAuthFailure) {
+      if (error.code === 'unauthorized') { try { onDenied(reason); } catch {} }
+      throw error;
+    }
     // SDK exceptions may contain a signed proof/API diagnostics; never forward or log them.
     throw new CoachAuthFailure('auth_unavailable');
   }

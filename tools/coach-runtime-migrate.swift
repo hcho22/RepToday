@@ -3,12 +3,12 @@ import AppKit
 import Security
 import LocalAuthentication
 
-enum RuntimeMigrationOperation: String { case stage = "--stage", release = "--release", hold = "--hold"
+enum RuntimeMigrationOperation: String { case stage = "--stage", release = "--release", hold = "--hold", verifyCandidate = "--verify-candidate", verifyRestored = "--verify-restored"
     var items: [RuntimeMigrationCredential] {
         switch self {
         case .stage: return RuntimeMigrationCredential.allCases
         case .release: return [.clientGate, .wafToken]
-        case .hold: return [.wafToken]
+        case .hold, .verifyCandidate, .verifyRestored: return [.wafToken]
         }
     }
 }
@@ -111,15 +111,18 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
     let repository: URL, node: URL
     let operation: RuntimeMigrationOperation
     var diagnostics = false
+    var finalDiagnostics = false
     static let confirmed = "confirmed: approved existing account, zone, Worker and attached origin"
     static let protected = "protected: hostname held closed; existing boundary and rate protections verified"
     static let staged = "staged: reviewed runtime source, SQLite namespace and server bindings verified; hostname held closed"
     static let released = "released: reptoday-variety-language-proxy https://coach.reptoday.app/coach; genuine Apple and live model QA pending"
     static let held = "held: hostname closed; Worker, server bindings and security records preserved"
+    static let verified = "verified: exact active version and latest settings, namespace, secrets, privacy, protections and zero tails"
     static let failures = Set(["input", "auth", "account", "zone", "target", "scope", "rules", "route", "settings",
         "secret", "wrangler", "http", "gate", "rate-plan", "namespace", "revision", "rehold", "unexpected"])
     var expected: [String] {
         if operation == .hold { return [Self.confirmed, Self.held] }
+        if operation == .verifyCandidate || operation == .verifyRestored { return [Self.confirmed, Self.verified] }
         return [Self.confirmed, Self.protected, operation == .stage ? Self.staged : Self.released]
     }
     // Exact complete transcript, including newline/order: partial, duplicate and arbitrary output fail.
@@ -136,10 +139,11 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
         return "blocked: dedicated runtime migration stopped (\(last.dropFirst(9))); preserve the hold and inspect prerequisites without values"
     }
     func run(_ credentials: [RuntimeMigrationCredential: Data]) throws -> String {
-        guard Set(credentials.keys) == Set(operation.items), !diagnostics || operation != .hold else { throw RuntimeMigrationFailure.coordinator }
+        guard Set(credentials.keys) == Set(operation.items), (!diagnostics && !finalDiagnostics) || operation == .stage || operation == .release else { throw RuntimeMigrationFailure.coordinator }
         let process = Process(); process.executableURL = node
         process.arguments = [repository.appendingPathComponent("tools/coach-runtime-migrate.mjs").path, operation.rawValue]
         if diagnostics { process.arguments?.append("--auth-guard-diagnostics") }
+        if finalDiagnostics { process.arguments?.append("--final-auth-diagnostics") }
         process.currentDirectoryURL = repository
         var environment = ProcessInfo.processInfo.environment
         for name in ["NODE_OPTIONS", "NODE_DEBUG", "NODE_DEBUG_NATIVE", "OPENAI_API_KEY", "CLIENT_SHARED_SECRET",
@@ -173,17 +177,17 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
         let args = Array(CommandLine.arguments.dropFirst())
         let status = routeRuntimeMigration(args: args, preflight: {
             runNativeKeychainPreflight()
-        }, operation: { operation, repository, node, diagnostics in
+        }, operation: { operation, repository, node, diagnostics, finalDiagnostics in
             do {
                 let result = try runRuntimeMigration(reader: PresentedRuntimeMigrationReader(reader: NativeRuntimeMigrationReader()),
                     coordinator: RuntimeNodeCoordinator(repository: URL(fileURLWithPath: repository, isDirectory: true),
-                        node: URL(fileURLWithPath: node), operation: operation, diagnostics: diagnostics), operation: operation)
+                        node: URL(fileURLWithPath: node), operation: operation, diagnostics: diagnostics, finalDiagnostics: finalDiagnostics), operation: operation)
                 print(result); return result.hasPrefix("blocked:") ? 78 : 0
             } catch {
                 print("blocked: dedicated runtime migration stopped before a verified result; preserve the hold; no credential output"); return 78
             }
         })
-        if status == 64 { print("usage: tools/migrate-coach-runtime.sh --keychain-preflight | --stage|--release|--hold [--auth-guard-diagnostics for stage/release only]; never pass credentials") }
+        if status == 64 { print("usage: tools/migrate-coach-runtime.sh --keychain-preflight | --stage|--release|--hold|--verify-candidate|--verify-restored [--auth-guard-diagnostics] [--final-auth-diagnostics] (stage/release only); never pass credentials") }
         exit(status)
     }
 }

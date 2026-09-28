@@ -37,7 +37,7 @@ private final class CoordinatorDouble: RuntimeMigrationCoordinator {
         precondition(CommandLine.arguments.count == 3)
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let node = URL(fileURLWithPath: CommandLine.arguments[2])
-        for operation in [RuntimeMigrationOperation.stage, .release, .hold] {
+        for operation in [RuntimeMigrationOperation.stage, .release, .hold, .verifyCandidate, .verifyRestored] {
             let reader = ReaderDouble(), mockCoordinator = CoordinatorDouble(operation)
             _ = try runRuntimeMigration(reader: reader, coordinator: mockCoordinator, operation: operation)
             precondition(reader.reads == operation.items && mockCoordinator.calls == 1)
@@ -74,7 +74,7 @@ private final class CoordinatorDouble: RuntimeMigrationCoordinator {
         let tools = fixture.appendingPathComponent("tools"); try FileManager.default.createDirectory(at: tools, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixture) }
         let entry = tools.appendingPathComponent("coach-runtime-migrate.mjs")
-        for operation in [RuntimeMigrationOperation.stage, .release, .hold] {
+        for operation in [RuntimeMigrationOperation.stage, .release, .hold, .verifyCandidate, .verifyRestored] {
             let coordinator = RuntimeNodeCoordinator(repository: fixture, node: node, operation: operation)
             let transcript = try JSONSerialization.data(withJSONObject: coordinator.expected)
             let script = """
@@ -100,6 +100,24 @@ private final class CoordinatorDouble: RuntimeMigrationCoordinator {
             """
             try Data(script.utf8).write(to: entry)
             _ = try runRuntimeMigration(reader: ReaderDouble(), coordinator: coordinator, operation: operation)
+        }
+        for flags in [["--final-auth-diagnostics"], ["--auth-guard-diagnostics", "--final-auth-diagnostics"]] {
+            let coordinator = RuntimeNodeCoordinator(repository: fixture, node: node, operation: .stage,
+                diagnostics: flags.count == 2, finalDiagnostics: true)
+            let transcript = try JSONSerialization.data(withJSONObject: coordinator.expected)
+            let expectedArgs = try JSONSerialization.data(withJSONObject: ["--stage"] + flags)
+            let script = """
+            for await (const chunk of process.stdin) {}
+            if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(\(String(decoding: expectedArgs, as: UTF8.self)))) process.exit(78);
+            for (const line of \(String(decoding: transcript, as: UTF8.self))) console.log(line);
+            """
+            try Data(script.utf8).write(to: entry)
+            _ = try runRuntimeMigration(reader: ReaderDouble(), coordinator: coordinator, operation: .stage)
+        }
+        for selected in [RuntimeMigrationOperation.hold, .verifyCandidate, .verifyRestored] {
+            let rejected = RuntimeNodeCoordinator(repository: fixture, node: node, operation: selected, finalDiagnostics: true)
+            do { _ = try rejected.run([.wafToken: Data("NONSECRET_WAF_TEST_DOUBLE_123456789".utf8)]); preconditionFailure("invalid final flag") }
+            catch RuntimeMigrationFailure.coordinator {}
         }
         let invalidDiagnosticHold = RuntimeNodeCoordinator(repository: fixture, node: node, operation: .hold, diagnostics: true)
         do { _ = try invalidDiagnosticHold.run([.wafToken: Data("NONSECRET_WAF_TEST_DOUBLE_123456789".utf8)]); preconditionFailure("hold cannot opt in") }

@@ -12,6 +12,8 @@ import { Cloudflare, DeploymentFailure, TARGET, CUSTOM, RATE, HOLD,
 const requireThat = (condition, code) => { if (!condition) throw new DeploymentFailure(code); };
 const identifier = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
 const revisionValid = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+const versionValid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
+const inspection = operation => ['--verify-candidate', '--verify-restored'].includes(operation);
 const CLASS = 'CoachAuthenticationState', TAG = 'coach-security-v1';
 const MODE = 'app-attest-storekit-v1';
 const APPLE = Object.freeze({ appPrefix: 'APP_ATTEST_APP_PREFIX', appID: 'APP_STORE_APP_ID',
@@ -25,11 +27,12 @@ export const runtimeLines = Object.freeze({
   staged: 'staged: reviewed runtime source, SQLite namespace and server bindings verified; hostname held closed',
   released: `released: ${TARGET.worker} ${TARGET.origin}; genuine Apple and live model QA pending`,
   held: 'held: hostname closed; Worker, server bindings and security records preserved',
+  verified: 'verified: exact active version and latest settings, namespace, secrets, privacy, protections and zero tails',
 });
 
 export function runtimePacket(packet, operation) {
-  requireThat(['--stage', '--release', '--hold'].includes(operation), 'input');
-  if (operation === '--hold') return inspectionCredentialsFromPacket(packet);
+  requireThat(['--stage', '--release', '--hold'].includes(operation) || inspection(operation), 'input');
+  if (operation === '--hold' || inspection(operation)) return inspectionCredentialsFromPacket(packet);
   if (operation === '--release') {
     requireThat(packet && Object.keys(packet).sort().join(',') === 'clientGate,wafToken', 'input');
     inspectionCredentialsFromPacket({ wafToken: packet.wafToken });
@@ -54,6 +57,10 @@ export function runtimePacket(packet, operation) {
 export class RuntimeCloudflare extends Cloudflare {
   async accountRequest(endpoint, method = 'GET', body) {
     const worker = `/accounts/${this.account}/workers/scripts/${TARGET.worker}`;
+    if (method === 'GET' && body === undefined && identifier(this.account) &&
+        ([worker + '/deployments', worker + '/tails'].includes(endpoint) ||
+         endpoint.startsWith(worker + '/versions/') && versionValid(endpoint.slice((worker + '/versions/').length))))
+      return this.request(this.oauth, endpoint);
     if (method === 'GET' && identifier(this.account) &&
         endpoint === `/accounts/${this.account}/workers/durable_objects/namespaces`) {
       return this.request(this.oauth, endpoint);
@@ -69,25 +76,28 @@ export class RuntimeCloudflare extends Cloudflare {
   }
 }
 
-export function runtimeConfig(repository, revision, diagnostics = false) {
+export function runtimeConfig(repository, revision, diagnostics = false, finalDiagnostics = false) {
   requireThat(revisionValid(revision), 'revision');
+  requireThat(typeof diagnostics === 'boolean' && typeof finalDiagnostics === 'boolean', 'input');
   return { name: TARGET.worker, main: path.join(repository, 'proxy/src/coach-auth-worker.js'),
     compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'], workers_dev: false,
     preview_urls: false, routes: [], logpush: false, observability: { enabled: false }, send_metrics: false,
-    vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, ...(diagnostics ? { COACH_AUTH_GUARD_DIAGNOSTICS: '1' } : {}) },
+    vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, ...(diagnostics ? { COACH_AUTH_GUARD_DIAGNOSTICS: '1' } : {}),
+      ...(finalDiagnostics ? { COACH_FINAL_AUTH_DIAGNOSTICS: '1' } : {}) },
     alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js') },
     durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }] },
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }
 
-export function checkRuntimeSettings(settings, revision, complete = false, diagnostics = false) {
-  requireThat(settings && Array.isArray(settings.bindings), 'settings');
+export function checkRuntimeSettings(settings, revision, complete = false, diagnostics = false, finalDiagnostics = false) {
+  requireThat(typeof diagnostics === 'boolean' && typeof finalDiagnostics === 'boolean' &&
+    settings && Array.isArray(settings.bindings), 'settings');
   const seen = new Set(); let state;
   for (const binding of settings.bindings) {
     requireThat(binding && typeof binding.name === 'string' && !seen.has(binding.name), 'settings'); seen.add(binding.name);
     if (binding.type === 'secret_text') requireThat(runtimeSecretNames.includes(binding.name), 'settings');
     else if (binding.name === 'COACH_AUTH_MODE') requireThat(binding.type === 'plain_text' && binding.text === MODE, 'settings');
-    else if (binding.name === 'COACH_AUTH_GUARD_DIAGNOSTICS')
+    else if (['COACH_AUTH_GUARD_DIAGNOSTICS', 'COACH_FINAL_AUTH_DIAGNOSTICS'].includes(binding.name))
       requireThat(binding.type === 'plain_text' && binding.text === '1', 'settings');
     else if (binding.name === 'COACH_AUTH_SOURCE_REV') requireThat(binding.type === 'plain_text' &&
       revisionValid(binding.text) && (!revision || binding.text === revision), 'revision');
@@ -99,7 +109,8 @@ export function checkRuntimeSettings(settings, revision, complete = false, diagn
   }
   requireThat(state && seen.has('COACH_AUTH_MODE') && seen.has('COACH_AUTH_SOURCE_REV'), 'settings');
   // Pre-stage inspection permits either approved state; a pinned release must match the explicit option.
-  if (revision) requireThat(seen.has('COACH_AUTH_GUARD_DIAGNOSTICS') === diagnostics, 'settings');
+  if (revision) requireThat(seen.has('COACH_AUTH_GUARD_DIAGNOSTICS') === diagnostics &&
+    seen.has('COACH_FINAL_AUTH_DIAGNOSTICS') === finalDiagnostics, 'settings');
   requireThat((settings.observability === undefined || settings.observability?.enabled === false) &&
     (settings.logpush === undefined || settings.logpush === false) &&
     (settings.tail_consumers === undefined || Array.isArray(settings.tail_consumers) && !settings.tail_consumers.length), 'settings');
@@ -137,8 +148,8 @@ async function confirm(cf) {
   return `/accounts/${cf.account}/workers/scripts/${TARGET.worker}`;
 }
 
-async function verifyRuntime(cf, worker, revision, complete, diagnostics = false) {
-  const namespace = checkRuntimeSettings(await cf.accountRequest(worker + '/settings'), revision, complete, diagnostics);
+async function verifyRuntime(cf, worker, revision, complete, diagnostics = false, finalDiagnostics = false) {
+  const namespace = checkRuntimeSettings(await cf.accountRequest(worker + '/settings'), revision, complete, diagnostics, finalDiagnostics);
   await verifyClosedWorker(cf, worker);
   const scripts = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts`);
   requireThat(Array.isArray(scripts) && scripts.filter(script => script.id === TARGET.worker && script.migration_tag === TAG).length === 1, 'namespace');
@@ -153,15 +164,18 @@ async function verifyRuntime(cf, worker, revision, complete, diagnostics = false
   return namespace;
 }
 
-export async function migrateRuntime({ cf, credentials, operation, revision, stageWorker, probe, report = () => {}, diagnostics = false }) {
+export async function migrateRuntime({ cf, credentials, operation, revision, stageWorker, probe, report = () => {}, diagnostics = false, finalDiagnostics = false }) {
+  requireThat(['--stage', '--release', '--hold'].includes(operation), 'input');
   runtimePacket(credentials, operation);
+  requireThat(typeof diagnostics === 'boolean' && typeof finalDiagnostics === 'boolean' &&
+    (operation !== '--hold' || !diagnostics && !finalDiagnostics), 'input');
   requireThat(operation === '--hold' || revisionValid(revision), 'revision');
   const worker = await confirm(cf); report(runtimeLines.confirmed);
   let previousNamespace;
   if (operation !== '--hold') {
     const settings = await cf.accountRequest(worker + '/settings');
     if (operation === '--stage' && !settings.bindings?.some(binding => binding.name === 'COACH_AUTH_STATE')) checkSettings(settings, true);
-    else previousNamespace = await verifyRuntime(cf, worker, operation === '--release' ? revision : null, operation === '--release', diagnostics);
+    else previousNamespace = await verifyRuntime(cf, worker, operation === '--release' ? revision : null, operation === '--release', diagnostics, finalDiagnostics);
     checkSecrets(await cf.accountRequest(worker + '/secrets'), operation === '--release');
     await verifyClosedWorker(cf, worker);
   }
@@ -170,14 +184,14 @@ export async function migrateRuntime({ cf, credentials, operation, revision, sta
   report(runtimeLines.protected);
   if (operation === '--stage') {
     requireThat(typeof stageWorker === 'function', 'wrangler'); await stageWorker(cf.account);
-    const namespace = await verifyRuntime(cf, worker, revision, false, diagnostics);
+    const namespace = await verifyRuntime(cf, worker, revision, false, diagnostics, finalDiagnostics);
     requireThat(!previousNamespace || namespace === previousNamespace, 'namespace');
     const configured = await cf.accountRequest(worker + '/secrets'); checkSecrets(configured);
     for (const [source, name] of Object.entries(APPLE)) if (!configured.some(secret => secret.name === name)) {
       await cf.accountRequest(worker + '/secrets', 'PUT', { name, type: 'secret_text', text: credentials[source] });
     }
     checkSecrets(await cf.accountRequest(worker + '/secrets'), true);
-    requireThat(await verifyRuntime(cf, worker, revision, true, diagnostics) === namespace, 'namespace');
+    requireThat(await verifyRuntime(cf, worker, revision, true, diagnostics, finalDiagnostics) === namespace, 'namespace');
     await verifyProtection(cf, true); report(runtimeLines.staged); return;
   }
   const custom = await entrypoint(cf, CUSTOM), hold = custom.rules.find(rule => rule.ref === HOLD.ref);
@@ -191,6 +205,82 @@ export async function migrateRuntime({ cf, credentials, operation, revision, sta
     throw error;
   }
   report(runtimeLines.released);
+}
+
+// Private operation manifests contain metadata, never credentials. They pin the current
+// reviewed owner separately from the source/version being inspected (which may be older).
+export function checkRuntimeExpectation(value, ownerRevision, candidate = false) {
+  requireThat(value && Object.keys(value).sort().join(',') ===
+    'accountId,held,namespaceId,ownerRevision,sourceRevision,versionId,worker,zoneId', 'input');
+  requireThat(revisionValid(ownerRevision) && value.ownerRevision === ownerRevision &&
+    revisionValid(value.sourceRevision) && (!candidate || value.sourceRevision === ownerRevision), 'revision');
+  requireThat(value.worker === TARGET.worker && identifier(value.accountId) && identifier(value.zoneId) &&
+    identifier(value.namespaceId) && versionValid(value.versionId) && typeof value.held === 'boolean', 'target');
+  return value;
+}
+
+function checkRuntimeCompatibility(runtime) {
+  requireThat(runtime?.compatibility_date === '2026-01-01' &&
+    JSON.stringify(runtime.compatibility_flags) === '["nodejs_compat"]', 'settings');
+}
+
+export function checkRuntimeVersion(version, expected, finalDiagnostics = false) {
+  requireThat(version?.id === expected.versionId, 'revision');
+  checkRuntimeCompatibility(version.resources?.script_runtime);
+  requireThat(checkRuntimeSettings({ bindings: version.resources?.bindings }, expected.sourceRevision,
+    true, false, finalDiagnostics) === expected.namespaceId, 'namespace');
+  // Active version metadata and latest Worker settings are separate surfaces.
+  requireThat(['off', undefined].includes(version.resources?.script?.placement_mode), 'settings');
+}
+
+export async function verifyRuntimeExpectation({ cf, expected, ownerRevision, candidate = false, report = () => {} }) {
+  checkRuntimeExpectation(expected, ownerRevision, candidate);
+  const worker = await confirm(cf);
+  requireThat(cf.account === expected.accountId && cf.zone === expected.zoneId, 'target');
+  report(runtimeLines.confirmed);
+  requireThat(await verifyRuntime(cf, worker, expected.sourceRevision, true, false, candidate) === expected.namespaceId, 'namespace');
+  const settings = await cf.accountRequest(worker + '/settings');
+  checkRuntimeCompatibility(settings);
+  requireThat(settings.usage_model === 'standard' && JSON.stringify(settings.placement ?? {}) === '{}' &&
+    Array.isArray(settings.tags ?? []) && !(settings.tags ?? []).length && settings.logpush === false, 'settings');
+  checkSecrets(await cf.accountRequest(worker + '/secrets'), true);
+  const active = await cf.accountRequest(worker + '/deployments');
+  const deployment = active?.deployments?.[0];
+  requireThat(Array.isArray(deployment?.versions) && deployment.versions.length === 1 &&
+    deployment.versions[0].percentage === 100 && deployment.versions[0].version_id === expected.versionId, 'revision');
+  checkRuntimeVersion(await cf.accountRequest(worker + '/versions/' + expected.versionId), expected, candidate);
+  await verifyProtection(cf, expected.held);
+  const tails = await cf.accountRequest(worker + '/tails');
+  requireThat(Array.isArray(tails) && tails.length === 0, 'settings');
+  // Detect traffic movement during inspection. No retry or optimistic success on drift.
+  const final = await cf.accountRequest(worker + '/deployments');
+  requireThat(JSON.stringify(final?.deployments?.[0]) === JSON.stringify(deployment), 'revision');
+  report(runtimeLines.verified);
+}
+
+// Two synthetic, no-model coverage requests. Enrollment CBOR is rejected before
+// storage or Apple verification. The returned token is kept only in this stack.
+// Call only during a separately authorized capture after its attached marker.
+export async function runtimeCoverageProbes(fetchImpl = fetch) {
+  const keyId = Buffer.alloc(32).toString('base64');
+  async function post(body, status) {
+    try {
+      const response = await fetchImpl(TARGET.origin, { method: 'POST', redirect: 'error',
+        signal: AbortSignal.timeout(5000), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      requireThat(response.status === status && response.redirected === false && response.body, 'gate');
+      let bytes = Buffer.alloc(0);
+      const reader = response.body.getReader();
+      try { while (true) { const part = await reader.read(); if (part.done) break;
+        requireThat(bytes.length + part.value.length <= 1024, 'gate'); bytes = Buffer.concat([bytes, part.value]); } }
+      finally { await reader.cancel().catch(() => {}); }
+      return JSON.parse(bytes.toString('utf8'));
+    } catch { throw new DeploymentFailure('gate'); }
+  }
+  const challenge = await post({ operation: 'challenge', kind: 'enroll', keyId }, 200);
+  requireThat(Object.keys(challenge).join(',') === 'challenge' && typeof challenge.challenge === 'string' &&
+    challenge.challenge.length <= 512, 'gate');
+  const denied = await post({ operation: 'enroll', keyId, challenge: challenge.challenge, attestation: 'AA==' }, 401);
+  requireThat(Object.keys(denied).join(',') === 'error' && denied.error === 'unauthorized', 'gate');
 }
 
 export async function runtimeGateProbes(gate, fetchImpl = fetch) {
@@ -210,15 +300,23 @@ export async function runtimeGateProbes(gate, fetchImpl = fetch) {
 }
 
 export function runtimeArguments(args) {
-  requireThat(args.length >= 1 && args.length <= 2 && ['--stage', '--release', '--hold'].includes(args[0]), 'input');
-  const diagnostics = args.length === 2;
-  requireThat(!diagnostics || args[1] === '--auth-guard-diagnostics' && args[0] !== '--hold', 'input');
-  return { operation: args[0], diagnostics };
+  requireThat(args.length >= 1 && args.length <= 3 && (['--stage', '--release', '--hold'].includes(args[0]) || inspection(args[0])), 'input');
+  const options = args.slice(1);
+  requireThat(new Set(options).size === options.length && options.every(option =>
+    ['--auth-guard-diagnostics', '--final-auth-diagnostics'].includes(option)) &&
+    (['--stage', '--release'].includes(args[0]) || !options.length), 'input');
+  return { operation: args[0], diagnostics: options.includes('--auth-guard-diagnostics'),
+    finalDiagnostics: options.includes('--final-auth-diagnostics') };
 }
 
 async function main() {
+  if (process.argv.length === 3 && process.argv[2] === '--coverage-probes') {
+    await runtimeCoverageProbes();
+    process.stdout.write('coverage: synthetic Worker and malformed-enrollment probes completed; tail coverage still required\n');
+    return;
+  }
   requireThat(!process.stdin.isTTY, 'input');
-  const { operation, diagnostics } = runtimeArguments(process.argv.slice(2));
+  const { operation, diagnostics, finalDiagnostics } = runtimeArguments(process.argv.slice(2));
   const repository = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   let bytes = Buffer.alloc(0), packet;
   try {
@@ -229,9 +327,25 @@ async function main() {
   let revision;
   try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch { throw new DeploymentFailure('revision'); }
+  // Parse the bounded manifest before Wrangler OAuth access. Never print its identifiers.
+  let expected;
+  if (inspection(operation)) {
+    try {
+      const file = path.join(repository, 'build/coach-runtime-migration',
+        operation === '--verify-candidate' ? 'candidate.json' : 'baseline.json');
+      const info = await fs.lstat(file);
+      requireThat(info.isFile() && !info.isSymbolicLink() && info.size <= 2048, 'input');
+      const contents = await fs.readFile(file);
+      requireThat(contents.length <= 2048, 'input');
+      expected = checkRuntimeExpectation(JSON.parse(contents.toString('utf8')), revision, operation === '--verify-candidate');
+    } catch (error) { if (error instanceof DeploymentFailure) throw error; throw new DeploymentFailure('input'); }
+  }
   const oauth = await readWranglerOAuth();
-  await migrateRuntime({ cf: new RuntimeCloudflare(oauth, packet.wafToken), credentials: packet, operation, revision, diagnostics,
-    stageWorker: account => stageWithWrangler(repository, account, oauth, root => runtimeConfig(root, revision, diagnostics)),
+  if (inspection(operation)) return verifyRuntimeExpectation({
+    cf: new RuntimeCloudflare(oauth, packet.wafToken), expected, ownerRevision: revision,
+    candidate: operation === '--verify-candidate', report: line => process.stdout.write(line + '\n') });
+  await migrateRuntime({ cf: new RuntimeCloudflare(oauth, packet.wafToken), credentials: packet, operation, revision, diagnostics, finalDiagnostics,
+    stageWorker: account => stageWithWrangler(repository, account, oauth, root => runtimeConfig(root, revision, diagnostics, finalDiagnostics)),
     probe: gate => runtimeGateProbes(gate), report: line => process.stdout.write(line + '\n') });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

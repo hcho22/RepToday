@@ -4,19 +4,27 @@ set +x
 umask 077
 unset NODE_OPTIONS NODE_DEBUG NODE_DEBUG_NATIVE
 usage() {
-    echo 'usage: tools/migrate-coach-runtime.sh --keychain-preflight | --stage|--release|--hold [--auth-guard-diagnostics for stage/release only] (never pass credentials)'
+    echo 'usage: tools/migrate-coach-runtime.sh --keychain-preflight | --stage|--release|--hold|--verify-candidate|--verify-restored [--auth-guard-diagnostics] [--final-auth-diagnostics] (stage/release only) (never pass credentials)'
 }
 if [[ $# == 1 && $1 == --help ]]; then
     usage
     echo 'Keychain preflight: eight sequential reads, discard each value; no coordinator or network. Native limits: 115s/read, 585s overall. Outer limits: 118s/read, 595s overall, at most 2s cleanup. No retries.'
     exit 0
 fi
-if [[ $# -lt 1 || $# -gt 2 ||
-      ( $1 != --keychain-preflight && $1 != --stage && $1 != --release && $1 != --hold ) ||
-      ( $# == 2 && ( $2 != --auth-guard-diagnostics || $1 == --hold || $1 == --keychain-preflight ) ) ]]; then
-    usage >&2
-    exit 64
+if [[ $# -lt 1 || $# -gt 3 ||
+      ( $1 != --keychain-preflight && $1 != --stage && $1 != --release && $1 != --hold && $1 != --verify-candidate && $1 != --verify-restored ) ]]; then
+    usage >&2; exit 64
 fi
+seen_guard=0
+seen_final=0
+for option in "${@:2}"; do
+    if [[ $1 != --stage && $1 != --release ]]; then usage >&2; exit 64; fi
+    case "$option" in
+      --auth-guard-diagnostics) [[ $seen_guard == 0 ]] || { usage >&2; exit 64; }; seen_guard=1 ;;
+      --final-auth-diagnostics) [[ $seen_final == 0 ]] || { usage >&2; exit 64; }; seen_final=1 ;;
+      *) usage >&2; exit 64 ;;
+    esac
+done
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$repo_root"
 # This branch precedes every production prerequisite, including git/Node/offline runtime

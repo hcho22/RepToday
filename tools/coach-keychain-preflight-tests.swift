@@ -89,7 +89,7 @@ func testKeychainPreflight() throws {
     var preflights = 0, operations = 0
     func route(_ args: [String]) -> Int32 {
         routeRuntimeMigration(args: args, preflight: { preflights += 1; return 0 },
-            operation: { _, _, _, _ in operations += 1; return 0 })
+            operation: { _, _, _, _, _ in operations += 1; return 0 })
     }
     let invalid: [[String]] = [[], ["--unknown"], ["--keychain-preflight", "--keychain-preflight"],
         ["--keychain-preflight", "/repo", "/node"], ["--keychain-preflight", "--auth-guard-diagnostics"],
@@ -101,11 +101,15 @@ func testKeychainPreflight() throws {
         precondition(route(["--keychain-preflight", flag]) == 64)
         precondition(route([flag, "--keychain-preflight"]) == 64)
     }
+    for selected in ["--hold", "--verify-candidate", "--verify-restored"] {
+        precondition(route([selected, "/repo", "/node", "--final-auth-diagnostics"]) == 64)
+    }
+    precondition(route(["--stage", "/repo", "/node", "--final-auth-diagnostics", "--final-auth-diagnostics"]) == 64)
     precondition(preflights == 0 && operations == 0)
     precondition(route(["--keychain-preflight"]) == 0 && preflights == 1 && operations == 0)
     for operation in [RuntimeMigrationOperation.stage, .release, .hold] {
         precondition(route([operation.rawValue, "/repo", "/node"]) == 0)
-        if operation != .hold { precondition(route([operation.rawValue, "/repo", "/node", "--auth-guard-diagnostics"]) == 0) }
+        if operation == .stage || operation == .release { precondition(route([operation.rawValue, "/repo", "/node", "--auth-guard-diagnostics"]) == 0) }
     }
     precondition(preflights == 1 && operations == 5)
     print("passed: preflight eight-item order/discard, all failure indices, closed output, deadlines and CLI isolation")

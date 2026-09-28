@@ -10,7 +10,7 @@ export class FixtureAuthenticationState extends CoachAuthenticationState {
       return new Response('seeded');
     }
     if (request.url === 'https://fixture-record.invalid/')
-      return Response.json(await this.ctx.storage.get('record'));
+      return Response.json((await this.ctx.storage.get('record')) ?? null);
     return super.fetch(request);
   }
 }

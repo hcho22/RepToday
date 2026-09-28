@@ -180,7 +180,8 @@ Generic native or server failures do not rotate the key, and a second invalid-ke
 The service is **content stateless**, rather than entirely persistence free after migration. Request
 and response body logs, persistent observability, tail-consumer bindings, development URLs and caching
 remain disabled. Temporary content-free guard diagnostics and separately authorized transient capture
-are governed by the [diagnostic guide](coach-auth-guard-diagnostics.md). Provider
+are governed by the [challenge diagnostic guide](coach-auth-guard-diagnostics.md) and
+[final-request operation guide](coach-final-auth-diagnostics.md). Provider
 standard abuse-monitoring retention remains as disclosed in `proxy/README.md`.
 
 SQLite Durable Objects are supported on the [Workers Free plan](https://developers.cloudflare.com/durable-objects/platform/pricing/).
@@ -257,6 +258,10 @@ verification can make Coach unavailable while cached on-device premium features 
 
 ## Local validation and migration plan
 
+Final-request diagnostics, bounded filtering/readiness, and active-version **plus latest-settings**
+restoration verification are covered by [the final-auth operation guide](coach-final-auth-diagnostics.md).
+That guide is preparation only and grants no production authority.
+
 Run `npm test`, `npm run typecheck` and `npm run test:runtime` inside `proxy/`, plus
 `tools/test-coach-live-qa.sh`, `tools/test-coach-production-deploy.sh` and
 `tools/test-coach-runtime-key-intake.sh`, `tools/test-coach-runtime-migration.sh` and
@@ -330,8 +335,9 @@ match; it never creates WAF capacity, attaches a hostname, edits DNS or purchase
 and verifies the hold first, then deploys through the installed supported Wrangler flow using only
 public configuration. A public source revision binding pins subsequent release to the local
 committed head. Only the approved SQLite class/binding/migration, server secrets, mode and public
-revision are permitted, plus the explicit optional binding described in the
-[diagnostic guide](coach-auth-guard-diagnostics.md). It checks the official namespace API's `class`, `script` and `use_sqlite`
+revision are permitted, plus the explicit optional bindings described in the
+[challenge diagnostic guide](coach-auth-guard-diagnostics.md) and
+[final-request operation guide](coach-final-auth-diagnostics.md). It checks the official namespace API's `class`, `script` and `use_sqlite`
 fields, exact migration tag, same namespace on repeat staging, disabled observability/tails/logpush,
 and disabled development/preview URLs. Unknown/missing API fields stop rather than guessing.
 The existing SQLite namespace was verified at stage/release. A future API/Free-quota refusal leaves
