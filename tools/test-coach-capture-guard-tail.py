@@ -7,6 +7,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -192,8 +193,14 @@ class ProcessTests(unittest.TestCase):
             self.assertEqual(options['stderr'], subprocess.DEVNULL)
             return original([sys.executable, '-c', script], **options)
         output = io.StringIO()
-        with patch.object(module.subprocess, 'Popen', spawn), contextlib.redirect_stdout(output):
-            status = module.capture(VERSION, seconds=1)
+        with tempfile.TemporaryDirectory(prefix='capture-test-', dir=Path(__file__).resolve().parents[1]) as directory:
+            root = Path(directory)
+            self.assertFalse((root / 'build').exists())
+            with patch.object(module, '__file__', str(root / 'tools/coach-capture-guard-tail.py')), \
+                    patch.object(module.subprocess, 'Popen', spawn), contextlib.redirect_stdout(output):
+                status = module.capture(VERSION, seconds=1)
+            self.assertTrue((root / 'build').is_dir())
+            self.assertEqual(list((root / 'build').iterdir()), [])
         self.assertNotIn(PRIVATE, output.getvalue())
         return status, [json.loads(line) for line in output.getvalue().splitlines()]
 

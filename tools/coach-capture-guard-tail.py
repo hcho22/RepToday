@@ -158,6 +158,7 @@ def capture(version, seconds=120):
     if not node:
         return 78
     root = Path(__file__).resolve().parents[1]
+    (root / 'build').mkdir(exist_ok=True)
     # Dedicated empty cwd prevents inherited Wrangler config. Logger disk sink is /dev/null.
     with tempfile.TemporaryDirectory(prefix='coach-tail-', dir=root / 'build') as directory:
         sink = Path(directory) / 'discard.log'
