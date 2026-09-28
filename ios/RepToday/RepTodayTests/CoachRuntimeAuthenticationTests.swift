@@ -549,6 +549,45 @@ extension CoachRuntimeAuthenticationTests {
         }
     }
 
+    func testDiagnosticsDeadlineOverridesWorkerCancellationBeforeOrAfterFinalization() {
+        let stages: [CoachDiagnostics.Stage] = [.purchase, .challenge, .enrollment, .assertion, .transport]
+        let cancellations: [Error] = [CancellationError(), URLError(.cancelled)]
+        for stage in stages {
+            for cancellation in cancellations {
+                for cancellationFirst in [true, false] {
+                    let recorder = CoachDiagnosticRecorder(), trace = CoachFailureTrace()
+                    trace.begin(stage)
+                    if cancellationFirst { trace.capture(cancellation) }
+                    let failure = trace.finish(CoachAuthenticationError.timeout)
+                    if !cancellationFirst { trace.capture(cancellation) }
+                    recorder.diagnostics.record(failure)
+                    XCTAssertEqual(recorder.lines, ["[RepTodayCoach] transport=runtime endpoint=production stage=\(stage.rawValue) category=timeout"])
+                }
+            }
+        }
+    }
+
+    func testDiagnosticsCallerCancellationSuppressesWinningDeadline() async {
+        let stages: [CoachDiagnostics.Stage] = [.purchase, .challenge, .enrollment, .assertion, .transport]
+        let cancellations: [Error] = [CancellationError(), URLError(.cancelled)]
+        for stage in stages {
+            for cancellation in cancellations {
+                let recorder = CoachDiagnosticRecorder()
+                let task = Task {
+                    let trace = CoachFailureTrace()
+                    trace.begin(stage)
+                    trace.capture(cancellation)
+                    let failure = trace.finish(CoachAuthenticationError.timeout)
+                    XCTAssertFalse(failure.cancelled)
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    recorder.diagnostics.record(failure)
+                }
+                await task.value
+                XCTAssertTrue(recorder.lines.isEmpty)
+            }
+        }
+    }
+
     func testDiagnosticsDeadlineIsOneFailureAndLateCallbackStaysSilent() async {
         let recorder = CoachDiagnosticRecorder(), attester = FixtureCoachAttester(hangKey: true)
         let http = FixtureCoachHTTP(), keys = FixtureCoachKeyStore()

@@ -57,6 +57,7 @@ struct CoachDiagnostics: Sendable {
                 default: category = .url // Never print an arbitrary NSError integer or userInfo.
                 }
             } else if error as? CoachAuthenticationError == .timeout {
+                cancelled = false
                 category = .timeout
             } else if status == nil, error as? CoachAuthenticationError == .unavailable {
                 category = .unavailable

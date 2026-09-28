@@ -7,7 +7,7 @@ enum CoachAuthenticationError: Error, Equatable { case unavailable, invalidKey, 
 
 /// One in-memory observation, with no request identifier or retained input. The lock covers the
 /// outer timeout racing an Apple callback; late work can never emit another failure line.
-private final class CoachFailureTrace: @unchecked Sendable {
+final class CoachFailureTrace: @unchecked Sendable {
     private let lock = NSLock()
     private var failure = CoachDiagnostics.Failure(transport: .runtime, endpoint: .production, stage: .purchase)
     private var captured = false

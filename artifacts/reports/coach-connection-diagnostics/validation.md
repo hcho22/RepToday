@@ -38,7 +38,7 @@ No new real-device, Apple credential, production HTTP, model, deployment or key-
 | Safe error categories | `unavailable/timeout/offline/tls/url/http/other`; numeric URL codes only from a closed list. Unknown domains/descriptions/userInfo/URL codes are never emitted. HTTP status is restricted to 100–599. |
 | Strict HTTP classification | At most 256 bytes, valid UTF-8, exact one-field unescaped JSON with optional JSON whitespace. Only `unauthorized/key_unavailable/auth_unavailable` accepted. Unknown, extra or duplicate fields, escaped labels, malformed/trailing data, invalid UTF-8 and oversized input produce `other`. This diagnostic parser never makes an authentication decision. |
 | Privacy | No body, header, JWS, token, key identifier, user text, hash, account, URL or arbitrary error description reaches output. No generated correlation identifier, persistent app storage or server logging. OSLog may retain these fixed local lines under OS policy. |
-| Preserve behavior | Runtime logs once after its existing bounded wrapper fails; captured causes do not replace errors. Late callbacks cannot emit. Existing invalid-key recovery and final-request no-retry behavior remain. Successful replies, recovered intermediate failures and cancellation produce no line. Provider safety refusals stay silent with their original non-retryable error. |
+| Preserve behavior | Runtime logs once after its existing bounded wrapper fails; captured causes do not replace errors. Late callbacks cannot emit. Existing invalid-key recovery and final-request no-retry behavior remain. Successful replies, recovered intermediate failures and caller cancellation produce no line. A winning outer deadline overrides worker-cancellation suppression. Provider safety refusals stay silent with their original non-retryable error. |
 | Unavailable client | Configuration rejection emits a fixed line and returns nil as before; no HTTP or Apple proof read. Debug development routing stays Debug-only. |
 
 A response rejected by the existing HTTP transport's own redirect/origin/16 KiB guards does not
@@ -48,8 +48,9 @@ Challenge and enrollment failures whose response is returned retain its bounded 
 
 ## Validation mapping
 
-All added behavior tests execute `CoachProxyClient.configured` or `CoachProxyClient.reply` through
-injected, nonsecret dependencies. They capture the exact rendered line sent to the OSLog sink.
+Client behavior tests execute `CoachProxyClient.configured` or `CoachProxyClient.reply` through
+injected, nonsecret dependencies. The review regressions also execute the shared failure trace
+directly to force cancellation before or after deadline finalization without scheduler timing. They capture the exact rendered line sent to the OSLog sink.
 They do not inspect source strings as a substitute for execution.
 
 | Scenario | Expected / observed evidence |
@@ -61,7 +62,7 @@ They do not inspect source strings as a substitute for execution.
 | Enrollment / assertion | `testDiagnosticsEnrollmentAndAssertionFailuresHaveDistinctStages`: enrollment HTTP 503 vs native assertion unavailable; original errors/key policy. |
 | Private / oversized handshake | `testDiagnosticsMalformedAndOversizedHandshakeNeverLeak`: category other, original failure. |
 | Cancellation | `testDiagnosticsCancellationIsSilentAndDoesNotChangeErrorOrLateState`, `testDiagnosticsURLCancellationIsSilentAtHandshakeAndFinalTransport`: no line, no late HTTP/key write, original error. |
-| Deadline | `testDiagnosticsDeadlineIsOneFailureAndLateCallbackStaysSilent`: one enrollment timeout line, original timeout, no late HTTP/key write. |
+| Deadline | `testDiagnosticsDeadlineIsOneFailureAndLateCallbackStaysSilent`: one enrollment timeout line, original timeout, no late HTTP/key write. `testDiagnosticsDeadlineOverridesWorkerCancellationBeforeOrAfterFinalization`: both cancellation types, both orderings, all five runtime stages; exactly one fixed timeout line. `testDiagnosticsCallerCancellationSuppressesWinningDeadline`: cancelled caller stays silent even after worker suppression is cleared. |
 | Success / existing recovery | `testDiagnosticsSuccessfulRepliesAndExistingKeyRecoveryStaySilent`: original reply, enrollment and key_unavailable recovery call counts, no output. Existing auth suite covers bounded invalid-key recovery separately. |
 | Disabled/invalid/configured route | Three `CoachProxyClientConfiguredTests.testDiagnostics…` methods: exact fixed categories, nil/restricted Release routes, iOS runtime selection with no request; macOS factory remains unavailable. |
 | Direct transport / content handling | Remaining diagnostic tests preserve NSError identity, URL cancellation silence, decoding error, empty reply and safety refusal. |
@@ -71,7 +72,10 @@ Apple purchase, device App Attest, Xcode's attached-phone console and a successf
 are **not tested**. Simulator and native doubles cannot establish those facts. There is no runtime
 feature flag: enable-then-disable testing is inapplicable; recovery is a code revert, not a state reset.
 
-## Local results
+## Historical pre-review results
+
+These results and blob IDs describe the candidate before the R1 correction below; they are not
+claims that the simulator build or sink smoke was rerun after that correction.
 
 Xcode 26.5 (17F42), Swift toolchain on macOS, 2026-09-28. All network and Apple calls in tests
 use injected fixtures. Build uses the checked-in project, with no scheme/project regeneration.
@@ -113,8 +117,46 @@ Evidence is bound to these Git blob IDs (repository-relative files), independent
 
 Application files above are under `ios/RepToday/RepToday/`; tests are under `ios/RepToday/`.
 One initial optimized build was invalidated by a concurrent local source edit; it was discarded
-and the complete optimized diagnostic suite was rerun successfully against these final files.
+and the complete optimized diagnostic suite was rerun successfully against those pre-review files.
 There was no remaining runtime/resource blocker.
+
+## R1 review correction
+
+The winning deadline now clears worker-cancellation suppression in the shared diagnostic capture.
+The caller's `Task.isCancelled` check remains at emission. The trace has internal visibility for
+ordered behavioral tests; its locking, deadline wrapper, original errors, authentication, purchase,
+key state, recovery and request ordering are unchanged. No output field or accepted label was added.
+
+Focused Release verification on 2026-09-28 used the native package generated by the setup portion
+of `tools/test-coach-runtime-client.sh`, then one test invocation:
+
+```sh
+CLANG_MODULE_CACHE_PATH="$PWD/build/coach-runtime-client/module-cache" \
+xcrun swift test --package-path build/coach-runtime-client --configuration release \
+  --cache-path build/coach-runtime-client/cache --scratch-path build/coach-runtime-client/scratch \
+  -Xswiftc -module-cache-path -Xswiftc "$PWD/build/coach-runtime-client/module-cache" \
+  --filter 'CoachRuntimeAuthenticationTests|CoachProxyClientConfiguredTests'
+```
+
+Result: **52 of 53 tests passed**. All **38 runtime authentication tests** and all **18 diagnostic
+tests**, including both new regressions, passed. The command exited 1 because the existing
+`testActualAppBundleSelectsTheIntendedConfiguration` made three failing assertions: the native
+Swift package has no iOS Release app-bundle configuration, endpoint or runtime transport.
+This is not a passing app-bundle validation; that check requires the app-hosted test environment.
+The focused run did not rerun the simulator build or production-sink smoke. No pre-fix test run
+was performed in this review round.
+
+The correction's tested source blobs are:
+
+| File | Tested blob |
+| --- | --- |
+| `ios/RepToday/RepToday/Services/Coach/CoachProxyClient.swift` | `5b2a7e8c378084ae529673f47406bcc9933dbd2e` |
+| `ios/RepToday/RepToday/Services/Coach/CoachRuntimeAuthentication.swift` | `07b5885044473af3cfed4ed6a4ca8c661105be01` |
+| `ios/RepToday/RepTodayTests/CoachRuntimeAuthenticationTests.swift` | `9ddce4602829092013d0cd656e400f140dd0ed97` |
+
+`CoachProxyClientConfiguredTests.swift` retains its pre-review blob above. Full test/lint gates
+and publication remain owned by the outer executor. No device or production experiment is part
+of this correction; the phone connection cause remains unproven.
 
 ## Build and one-message reproduction after merge
 
