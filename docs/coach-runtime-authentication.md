@@ -29,13 +29,6 @@ constructs real DeviceCheck/StoreKit authentication, never a binary-embedded pro
 
 ## Local availability and send-time failure
 
-Normal Release failure diagnostics use the fixed `RepTodayCoach` Xcode console prefix, with only
-closed route/stage/error categories and bounded numeric codes. See the
-[client diagnostics contract and normal Release reproduction recipe](../artifacts/reports/coach-connection-diagnostics/validation.md).
-These lines distinguish local proof, handshake, assertion and final HTTP failures without exposing
-content or credentials; they do not establish a production root cause or repair. The ordinary scheme's
-Run default remains Debug/local StoreKit, so the normal-phone recipe explicitly selects Release/None.
-
 `CoachViewModel.localAvailability` describes local client inclusion only. Missing or invalid
 configuration resolves to `notEnabledInBuild` and shows “Coach is not enabled in this build,”
 asks the user to contact Rep Today support about a Coach-enabled build, and reassures them that
@@ -47,6 +40,64 @@ conversation and its existing retry behavior. Neither state claims live service 
 
 See the [purchase-to-chat regression evidence](../artifacts/reports/coach-purchase-chat/validation.md)
 for coverage, hosted navigation/retry limitations and remaining device-only checks.
+
+## Local connection diagnostics
+
+Normal Coach failures emit a fixed `[RepTodayCoach]` prefix through OSLog `Logger.error`,
+including in Release builds. The production factory shares the sink between the client and runtime
+transport. These lines distinguish configuration, local purchase proof, challenge, enrollment,
+assertion, final transport/HTTP and response failures; they do not establish a production root cause
+or repair. Generic `nw_connection` endpoint/metadata warnings do not identify that cause.
+
+[`CoachDiagnostics`](../ios/RepToday/RepToday/Services/Coach/CoachProxyClient.swift) owns the exact
+closed output vocabulary, numeric allowlists and rendering. Route labels describe the selected
+transport and configured endpoint, not proof of the responding server's identity. HTTP error
+classification accepts only bounded, strict single-field JSON with an allowlisted error label;
+unknown, malformed, extra-field or oversized content becomes `other`. This parser never makes an
+authentication decision. A response rejected by the HTTP transport's redirect/origin/size guards
+remains a transport failure with no invented HTTP status. A returned challenge/enrollment response
+retains its bounded status/category; `unauthorized` does not identify which server guard rejected it.
+
+No body, header, JWS, token, key identifier, user text, hash, account, URL or arbitrary error
+description reaches output. Diagnostics add no correlation identifier, persistent app storage or
+server logging. OSLog may retain the fixed local lines under OS policy. Runtime failures emit once
+after the existing bounded wrapper fails, without changing outward errors, deadlines, recovery,
+request ordering or key state. Late callbacks cannot emit another line. A winning outer deadline
+overrides worker-cancellation suppression, while the caller's cancellation check still suppresses
+output. Successful replies, recovered intermediate failures and provider safety refusals stay silent.
+Configuration rejection emits a fixed line and returns no client without HTTP or Apple proof reads;
+development routing remains Debug-only.
+
+The [validation record](../artifacts/reports/coach-connection-diagnostics/validation.md) maps these
+invariants to regression coverage and records execution limits. Removing diagnostics requires a
+code revert, not a state reset; a revert cannot erase fixed lines already retained by the OS.
+
+### Normal Release reproduction
+
+Compile the ordinary Release app without launching it or reading signing credentials:
+
+```sh
+xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
+  -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath "$PWD/build/connection-diagnostics/release-ios" CODE_SIGNING_ALLOWED=NO build
+python3 tools/inspect-coach-qa-build.py \
+  --app build/connection-diagnostics/release-ios/Build/Products/Release-iphonesimulator/RepToday.app \
+  --configuration Release
+```
+
+This command compiles only: no StoreKit launch attachment is consumed. The processed bundle check
+confirms ordinary Release configuration, QA off and no bundled local StoreKit fixture. It does not
+assert that the scheme's Run action is already Release/None.
+
+For an authorized phone reproduction: open `ios/RepToday/RepToday.xcodeproj`, select **RepToday**,
+then **Product → Scheme → Edit Scheme → Run → Info → Build Configuration: Release** and
+**Run → Options → StoreKit Configuration: None**. Keep the existing signing/entitlement and real
+purchase state. Do not regenerate schemes. Run on the phone, enter the normal Coach conversation,
+show Xcode's debug console with all message types, filter `RepTodayCoach`, and send **one** message.
+Return only the matching fixed failure line and whether a reply arrived. No line plus no reply is
+inconclusive, not evidence of service health. Do not switch to `RepTodayCoachDeviceQA`: it presents
+a synthetic preparation screen and is not this reproduction. A simulator can compile/run injected
+failures but cannot validate the real App Attest/purchase exchange.
 
 ## Verification boundary
 

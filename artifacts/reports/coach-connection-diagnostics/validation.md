@@ -3,16 +3,14 @@
 Base: `7c97fa71e43bd541d9706b4825b6f6e52911a321`. Local observation date: 2026-09-28.
 This is a client-only diagnostic change for the ordinary Coach conversation. It does not establish
 or repair the production phone failure. The selected no-mistakes run owns subsequent review,
-tests, documentation, lint, push, PR and CI; this report supplies its public-safe specification
-and evidence mapping. Scenario linkage is reviewed by that owner, not machine-enforced by Firstmate.
+tests, documentation, lint, push, PR and CI; this report supplies its public-safe
+evidence mapping. Scenario linkage is reviewed by that owner, not machine-enforced by Firstmate.
 
 ## Evidence and scope
 
-The current normal factory requires the exact production origin, runtime authentication mode and
-no embedded Coach secret. It constructs the actual App Attest/StoreKit transport on iOS; missing or
-invalid configuration stays unavailable. The normal Release build has synthetic QA disabled.
-The checked-in normal scheme's **Run default is Debug with a local StoreKit fixture**. Choosing the
-normal scheme alone is insufficient for the Release reproduction described below.
+The [runtime runbook](../../../docs/coach-runtime-authentication.md#local-connection-diagnostics)
+owns the client diagnostic contract and normal Release reproduction recipe; its build configuration
+section owns the ordinary versus synthetic QA route distinction.
 
 `CoachViewModel.send` calls `CoachProxyClient.reply`, which calls the runtime transport. Before
 returning a final HTTP response, that transport obtains eligible local purchase proof, enrolls if
@@ -27,24 +25,6 @@ They are distinct boundaries and do not establish this current binary's failure 
 `nw_connection` endpoint/metadata warnings do not identify the Coach cause. Previously identified
 backend response-mapping and capture limitations remain separate work; this change touches neither.
 No new real-device, Apple credential, production HTTP, model, deployment or key-reset experiment ran.
-
-## Accepted requirements and implementation
-
-| Requirement | Implementation / preservation |
-| --- | --- |
-| Normal Release diagnostics | `CoachDiagnostics.live` uses OSLog `Logger.error`, outside any Debug flag, fixed `[RepTodayCoach]` prefix. Production factory passes the same sink through client and runtime transport. |
-| Selected route without URLs | Each failure includes `transport=runtime/direct/unavailable` and `endpoint=production/other/unavailable`. Production means exact configured public origin, not proof of the responding server's identity. |
-| Distinguish failure stages | `configuration`, `purchase`, `challenge`, `enrollment`, `assertion`, `transport` (final network exchange), `http` (returned non-2xx), `response` (malformed or empty successful reply). |
-| Safe error categories | `unavailable/timeout/offline/tls/url/http/other`; numeric URL codes only from a closed list. Unknown domains/descriptions/userInfo/URL codes are never emitted. HTTP status is restricted to 100–599. |
-| Strict HTTP classification | At most 256 bytes, valid UTF-8, exact one-field unescaped JSON with optional JSON whitespace. Only `unauthorized/key_unavailable/auth_unavailable` accepted. Unknown, extra or duplicate fields, escaped labels, malformed/trailing data, invalid UTF-8 and oversized input produce `other`. This diagnostic parser never makes an authentication decision. |
-| Privacy | No body, header, JWS, token, key identifier, user text, hash, account, URL or arbitrary error description reaches output. No generated correlation identifier, persistent app storage or server logging. OSLog may retain these fixed local lines under OS policy. |
-| Preserve behavior | Runtime logs once after its existing bounded wrapper fails; captured causes do not replace errors. Late callbacks cannot emit. Existing invalid-key recovery and final-request no-retry behavior remain. Successful replies, recovered intermediate failures and caller cancellation produce no line. A winning outer deadline overrides worker-cancellation suppression. Provider safety refusals stay silent with their original non-retryable error. |
-| Unavailable client | Configuration rejection emits a fixed line and returns nil as before; no HTTP or Apple proof read. Debug development routing stays Debug-only. |
-
-A response rejected by the existing HTTP transport's own redirect/origin/16 KiB guards does not
-return its status/body to the client; that remains a transport failure with no invented HTTP status.
-Challenge and enrollment failures whose response is returned retain its bounded status/category.
-`unauthorized` is a public service classification, not a diagnosis of which server guard rejected it.
 
 ## Validation mapping
 
@@ -158,33 +138,6 @@ The correction's tested source blobs are:
 and publication remain owned by the outer executor. No device or production experiment is part
 of this correction; the phone connection cause remains unproven.
 
-## Build and one-message reproduction after merge
-
-Compile the ordinary Release app without launching it or reading signing credentials:
-
-```sh
-xcodebuild -project ios/RepToday/RepToday.xcodeproj -scheme RepToday \
-  -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath "$PWD/build/connection-diagnostics/release-ios" CODE_SIGNING_ALLOWED=NO build
-python3 tools/inspect-coach-qa-build.py \
-  --app build/connection-diagnostics/release-ios/Build/Products/Release-iphonesimulator/RepToday.app \
-  --configuration Release
-```
-
-This command compiles only: no StoreKit launch attachment is consumed. The processed bundle check
-confirms ordinary Release configuration, QA off and no bundled local StoreKit fixture. It does not
-assert that the scheme's Run action is already Release/None.
-
-For the later authorized phone reproduction: open `ios/RepToday/RepToday.xcodeproj`, select **RepToday**,
-then **Product → Scheme → Edit Scheme → Run → Info → Build Configuration: Release** and
-**Run → Options → StoreKit Configuration: None**. Keep the existing signing/entitlement and real
-purchase state. Do not regenerate schemes. Run on the phone, enter the normal Coach conversation,
-show Xcode's debug console with all message types, filter `RepTodayCoach`, and send **one** message.
-Return only the matching fixed failure line and whether a reply arrived. No line plus no reply is
-inconclusive, not evidence of service health. Do not switch to `RepTodayCoachDeviceQA`: it presents
-a synthetic preparation screen and is not this reproduction. A simulator can compile/run injected
-failures but cannot validate the real App Attest/purchase exchange.
-
 ## Risk, recovery and remaining judgment
 
 Shipped authentication diagnostics are high-risk until privacy and unchanged behavior are reviewed.
@@ -194,6 +147,5 @@ side-effect evidence is the unchanged request counts, original errors and key-st
 Human review must assess the closed output vocabulary, cancellation races and actual phone evidence
 before attributing the incident. A future service repair needs that additional evidence.
 
-Revert this code-only commit to remove the diagnostics. There is no new persistent app/server state
-to restore; a revert cannot erase fixed lines already retained by the OS. No deployment/release is
-included. The original production incident retains its separate reproduction and release obligations.
+No deployment/release is included; diagnostic recovery is documented in the runtime runbook.
+The original production incident retains its separate reproduction and release obligations.
