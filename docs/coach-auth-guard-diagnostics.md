@@ -14,8 +14,9 @@ tools/migrate-coach-runtime.sh --release --auth-guard-diagnostics
 
 Both operations retain the prerequisites and protection checks in the
 [runtime migration runbook](coach-runtime-authentication.md#local-validation-and-migration-plan).
-The flag is invalid for `--hold`. With the option omitted, ordinary
-stage/release retain their prior flag-free configuration. Pre-stage inspection accepts the exact
+The flag is valid only for stage/release. Omitting it disables challenge diagnostics;
+the independent final-request option and flag-free configuration are described in the
+[final-auth operation guide](coach-final-auth-diagnostics.md#existing-guarded-owners). Pre-stage inspection accepts the exact
 approved diagnostic flag or its absence; post-stage and release require configuration matching the
 explicit option and committed source revision. Only `COACH_AUTH_GUARD_DIAGNOSTICS=1` is permitted;
 unknown values, types and bindings remain rejected.
