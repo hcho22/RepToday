@@ -187,4 +187,6 @@ QA-only raw lookup count. Commands, executed results and limits: `artifacts/repo
 
 ### Final Coach authentication diagnostics (code-only preparation)
 
+`tools/test-coach-tail-ready.cjs` evaluates the actual hash-pinned transformed Wrangler module and checks `m.exports.coachTailMain` is a function. Synthetic auth avoids eager credential-file lookup; file/network/child/write guards reject side effects, including caught attempts. The stale CommonJS export fails this regression. It is part of the offline gate; main/tail and live attachment remain untested. See [export regression evidence](../artifacts/reports/coach-tail-export/validation.md).
+
 `tools/test-coach-final-diagnostics.sh` runs the full proxy/typecheck/workerd gate, migration native doubles, fixed-label stream/confidentiality tests and active-version/latest-settings restoration fixtures. `proxy/test/coach-final-diagnostics.test.js` pins unchanged denials and state across off/on/invalid/disable/in-flight cases. See [candidate evidence and untested live criteria](../artifacts/reports/coach-final-auth-diagnostics/validation.md); no live authentication repair is claimed.

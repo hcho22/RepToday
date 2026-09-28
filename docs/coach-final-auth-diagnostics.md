@@ -91,6 +91,12 @@ The private investigation filter has therefore been ported as
 [`coach-capture-guard-tail.py`](../tools/coach-capture-guard-tail.py), with a source-pinned,
 in-memory adapter for installed Wrangler **3.114.17**. It changes no installed package.
 Dependency drift makes the adapter refuse; review it again instead of bypassing the hash.
+The adapter attaches its entrypoint to the final `module.exports` object because the
+pinned bundle replaces CommonJS's original `exports` alias. The offline gate evaluates
+that exact transformed module with synthetic auth and blocked IO, and checks the export
+the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing;
+neither check invokes `main` or establishes live attachment. See the
+[export regression evidence](../artifacts/reports/coach-tail-export/validation.md).
 
 There are three different facts:
 
