@@ -10,6 +10,10 @@ import { evaluateVerifiedPremiumEntitlement } from './runtime-entitlement-policy
 export const BUNDLE = 'com.reptoday.app';
 export const ORIGIN = 'https://coach.reptoday.app/coach';
 export const VERSION = 'reptoday-coach-auth-v1';
+// The Worker mints a challenge with its own clock and the Durable Object verifies it with the
+// clock of whichever machine hosts it; a trailing verifier must not see a fresh token as future.
+// Far above synchronized-host skew, and small beside the 60s lifetime and the client's 30s deadline.
+export const CHALLENGE_CLOCK_SKEW_MS = 5_000;
 export class CoachAuthFailure extends Error {
   constructor(code = 'unauthorized') { super('Coach authentication failed'); this.code = code; }
 }
@@ -49,7 +53,10 @@ export function verifyChallenge(token, keyId, secret, nowMs, onDenied = (reason,
     // Emitted only after MAC and claim-shape checks, bounded and without identifiers.
     if (Number.isSafeInteger(nowMs) && Number.isSafeInteger(claims.i - nowMs))
       deltaMs = Math.max(-60_000, Math.min(60_000, claims.i - nowMs));
-    if (claims.i > nowMs) { reason = 'token_future'; throw new CoachAuthFailure(); }
+    // Expiry stays exact: trailing within the bound lengthens real lifetime by at most the bound, a
+    // verifier leading by as much still leaves 55s (past the client's 30s deadline), and the pending
+    // nonce stays single-use.
+    if (claims.i > nowMs + CHALLENGE_CLOCK_SKEW_MS) { reason = 'token_future'; throw new CoachAuthFailure(); }
     if (nowMs >= claims.e) { reason = 'token_expired'; throw new CoachAuthFailure(); }
     return claims;
   } catch {

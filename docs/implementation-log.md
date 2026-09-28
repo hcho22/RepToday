@@ -1376,3 +1376,12 @@ Coach enablement remain pending.
 
 Added QA paywall StoreKit diagnostics. See the [behavior and privacy contract](coach-storekit-diagnostics.md)
 and the [offline validation record and limits](../artifacts/reports/coach-storekit-diagnostics/validation.md).
+
+## Coach assertion challenge tolerates Worker/Durable Object clock skew (2026-09-28)
+
+The Worker mints each Coach challenge token with its own clock, and the Durable Object that records the pending challenge verifies it with the clock of the machine hosting it.
+`verifyChallenge` rejected any issue time later than the verifier's clock, so a Durable Object trailing the Worker by more than the Worker-to-object transit time answered every assertion challenge with `401 unauthorized`, before any record lookup.
+Enrollment still passed because its token is seconds old by the time either side checks it, which matches the device evidence (enrollment succeeds, `key_unavailable` never appears, every assertion challenge is `unauthorized`).
+Every verifier now accepts an issue time up to `CHALLENGE_CLOCK_SKEW_MS` (5 seconds) ahead of its own clock; MAC, claim shape, key binding, exact 60-second expiry, the single-use pending nonce and the counter are unchanged, and so is the token format.
+`npm run test:runtime` reproduces the failure with the gateway and its Durable Object in separate workerd isolates (a 25 ms lag gave `do_token_entry`/`token_future`, `deltaMs` 24, before the fix) and now pins acceptance within the bound and denial beyond it.
+Live production clocks were not observed, so this is the only offline-reproducible cause consistent with the evidence rather than a captured production row; the fix reaches devices only after a separately approved Worker deployment.
