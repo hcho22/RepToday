@@ -12,6 +12,7 @@ configs:
   Debug: debug
   Release: release
   CoachDeviceQA: release
+  CoachStaging: release
 
 settings:
   base:
@@ -22,6 +23,9 @@ settings:
       # Keep optimized release behavior while allowing this dedicated lane's @testable XCTest bundle.
       ENABLE_TESTABILITY: YES
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COACH_IPHONE_QA"
+    # Release-optimized Coach staging lane; its client code exists only under COACH_STAGING.
+    CoachStaging:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COACH_STAGING"
 
 # Lottie powers the exercise demo animations (US-O01). The app ships on SF-Symbol demos and each
 # exercise lights up as its bundled animation file is added; no animation files ship yet, so the
@@ -46,6 +50,9 @@ targets:
         buildPhase: none
     dependencies:
       - package: Lottie
+    # Supplies REPTODAY_COACH_STAGING_SUBDOMAIN from an untracked local file; no other configuration reads it.
+    configFiles:
+      CoachStaging: Config/CoachStaging.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.reptoday.app
@@ -115,6 +122,16 @@ targets:
           REPTODAY_COACH_SECRET: ""
           REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
           REPTODAY_COACH_SYNTHETIC_QA: "1"
+        # The separate staging Worker (tools/coach-staging.sh). Same App Attest mode and no secret; the
+        # client accepts only this exact workers.dev URL and only when compiled with COACH_STAGING.
+        CoachStaging:
+          INFOPLIST_KEY_CFBundleDisplayName: "Rep Today Coach Staging"
+          REPTODAY_ANALYTICS_ENDPOINT: ""
+          REPTODAY_ANALYTICS_SECRET: ""
+          REPTODAY_COACH_ENDPOINT: "https://reptoday-coach-staging.$(REPTODAY_COACH_STAGING_SUBDOMAIN).workers.dev/coach"
+          REPTODAY_COACH_SECRET: ""
+          REPTODAY_COACH_AUTH_MODE: "app-attest-storekit-v1"
+          REPTODAY_COACH_SYNTHETIC_QA: "0"
     # The generated RepToday scheme runs the tests and attaches the local StoreKit configuration
     # (US-N04), so premium purchases/restores can be exercised in the Simulator without App Store
     # Connect. The paywall never gates the core loop; the free tier is unlimited forever.
@@ -192,6 +209,21 @@ schemes:
       config: CoachDeviceQA
     archive:
       config: CoachDeviceQA
+  # Coach staging lane: release-optimized CoachStaging build with no local StoreKit file, so a real
+  # Sandbox purchase and App Attest reach the separate staging Worker. Archiving always produces
+  # Release, so a staging build can never be archived for distribution.
+  RepTodayCoachStaging:
+    build:
+      targets:
+        RepToday: all
+    run:
+      config: CoachStaging
+    profile:
+      config: CoachStaging
+    analyze:
+      config: CoachStaging
+    archive:
+      config: Release
   RepTodayUITests:
     build:
       targets:

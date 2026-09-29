@@ -11,12 +11,12 @@ import { Cloudflare, DeploymentFailure, TARGET, CUSTOM, RATE, HOLD,
 
 const requireThat = (condition, code) => { if (!condition) throw new DeploymentFailure(code); };
 const identifier = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
-const revisionValid = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+export const revisionValid = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const versionValid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
 const inspection = operation => ['--verify-candidate', '--verify-restored'].includes(operation);
-const CLASS = 'CoachAuthenticationState', TAG = 'coach-security-v1';
-const MODE = 'app-attest-storekit-v1';
-const APPLE = Object.freeze({ appPrefix: 'APP_ATTEST_APP_PREFIX', appID: 'APP_STORE_APP_ID',
+export const CLASS = 'CoachAuthenticationState', TAG = 'coach-security-v1';
+export const MODE = 'app-attest-storekit-v1';
+export const APPLE = Object.freeze({ appPrefix: 'APP_ATTEST_APP_PREFIX', appID: 'APP_STORE_APP_ID',
   keyID: 'APP_STORE_KEY_ID', issuerID: 'APP_STORE_ISSUER_ID', privateKey: 'APP_STORE_PRIVATE_KEY' });
 export const runtimeSecretNames = Object.freeze(['OPENAI_API_KEY', 'CLIENT_SHARED_SECRET', ...Object.values(APPLE)]);
 export const runtimeFailures = Object.freeze(['input', 'auth', 'account', 'zone', 'target', 'scope',
@@ -42,7 +42,13 @@ export function runtimePacket(packet, operation) {
   requireThat(packet && Object.keys(packet).sort().join(',') ===
     'appID,appPrefix,clientGate,issuerID,keyID,openAI,privateKey,wafToken', 'input');
   credentialsFromPacket({ openAI: packet.openAI, clientGate: packet.clientGate, wafToken: packet.wafToken });
-  requireThat(/^[A-Z0-9]{10}$/.test(packet.appPrefix ?? '') && /^[A-Z0-9]{10}$/.test(packet.keyID ?? '') &&
+  checkAppleCredentials(packet);
+  return packet;
+}
+
+// The five App Attest/App Store items, shared by the runtime stage and the separate staging deploy.
+export function checkAppleCredentials(packet) {
+  requireThat(packet && /^[A-Z0-9]{10}$/.test(packet.appPrefix ?? '') && /^[A-Z0-9]{10}$/.test(packet.keyID ?? '') &&
     typeof packet.appID === 'string' && /^[1-9][0-9]{0,15}$/.test(packet.appID) && Number.isSafeInteger(Number(packet.appID)) &&
     typeof packet.issuerID === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(packet.issuerID) &&
     typeof packet.privateKey === 'string' && packet.privateKey.length <= 4096 &&
@@ -51,7 +57,6 @@ export function runtimePacket(packet, operation) {
     const key = createPrivateKey(packet.privateKey);
     requireThat(key.asymmetricKeyType === 'ec' && key.asymmetricKeyDetails.namedCurve === 'prime256v1', 'input');
   } catch { throw new DeploymentFailure('input'); }
-  return packet;
 }
 
 export class RuntimeCloudflare extends Cloudflare {

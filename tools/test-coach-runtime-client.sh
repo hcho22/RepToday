@@ -17,9 +17,9 @@ for directory in ['Models','Services/Engine','Services/Consistency']:
  sources+=list((app/directory).glob('*.swift'))
 sources+=[app/p for p in ['Services/Protocols/ServiceProtocols.swift','Services/Progress/ProgressAnalytics.swift',
  'Services/Coach/CoachAnalyticsInsight.swift','Services/Coach/CoachContextBundle.swift',
- 'Services/Coach/CoachProxyClient.swift','Services/Coach/CoachRuntimeAuthentication.swift','Services/Coach/CoachProofSchemaProbe.swift','Services/Coach/CoachRuntimeProofProbe.swift',
+ 'Services/Coach/CoachProxyClient.swift','Services/Coach/CoachRuntimeAuthentication.swift','Services/Coach/CoachStaging.swift','Services/Coach/CoachProofSchemaProbe.swift','Services/Coach/CoachRuntimeProofProbe.swift',
  'Services/Coach/CoachSyntheticFixtures.swift','ViewModels/CoachSyntheticQAViewModel.swift','Utilities/AppState.swift']]
-tests=[root/'ios/RepToday/RepTodayTests'/p for p in ['CoachProxyClientTests.swift','CoachProxyClientConfiguredTests.swift','CoachRuntimeAuthenticationTests.swift','CoachSyntheticQAViewModelTests.swift','CoachContextBundleTests.swift','CoachProofSchemaProbeTests.swift','CoachRuntimeProofProbeTests.swift']]
+tests=[root/'ios/RepToday/RepTodayTests'/p for p in ['CoachProxyClientTests.swift','CoachProxyClientConfiguredTests.swift','CoachRuntimeAuthenticationTests.swift','CoachStagingTests.swift','CoachSyntheticQAViewModelTests.swift','CoachContextBundleTests.swift','CoachProofSchemaProbeTests.swift','CoachRuntimeProofProbeTests.swift']]
 for directory,files in [('Sources',sources),('Tests',tests)]:
  for source in files:
   link=package/directory/source.name
@@ -33,5 +33,9 @@ let package=Package(name:"RepTodayCoachRuntime",platforms:[.macOS(.v14)],targets
  .testTarget(name:"RepTodayTests",dependencies:["RepToday"],path:"Tests")])
 ''')
 PY
+export COACH_STAGING_LABELS_CONTRACT
+COACH_STAGING_LABELS_CONTRACT=$(node --input-type=module -e \
+    "import { allDiagnosticLabels } from './proxy/src/coach-auth-diagnostics.js'; process.stdout.write(JSON.stringify(allDiagnosticLabels()))")
 xcrun swift test --package-path "$private_build" --cache-path "$private_build/cache" \
-    --scratch-path "$private_build/scratch" -Xswiftc -module-cache-path -Xswiftc "$private_build/module-cache"
+    --scratch-path "$private_build/scratch" -Xswiftc -D -Xswiftc COACH_STAGING \
+    -Xswiftc -module-cache-path -Xswiftc "$private_build/module-cache"

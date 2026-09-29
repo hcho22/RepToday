@@ -9,13 +9,18 @@ enum CoachAuthenticationError: Error, Equatable { case unavailable, invalidKey, 
 /// outer timeout racing an Apple callback; late work can never emit another failure line.
 final class CoachFailureTrace: @unchecked Sendable {
     private let lock = NSLock()
-    private var failure = CoachDiagnostics.Failure(transport: .runtime, endpoint: .production, stage: .purchase)
+    private let endpoint: CoachDiagnostics.Endpoint
+    private var failure: CoachDiagnostics.Failure
     private var captured = false
     private var finished = false
+    init(endpoint: CoachDiagnostics.Endpoint = .production) {
+        self.endpoint = endpoint
+        failure = .init(transport: .runtime, endpoint: endpoint, stage: .purchase)
+    }
     func begin(_ stage: CoachDiagnostics.Stage) {
         lock.lock(); defer { lock.unlock() }
         guard !finished else { return }
-        failure = .init(transport: .runtime, endpoint: .production, stage: stage)
+        failure = .init(transport: .runtime, endpoint: endpoint, stage: stage)
         captured = false
     }
     func response(_ data: Data, status: Int) {
@@ -55,8 +60,9 @@ protocol CoachAuthenticationKeyStoring: Sendable {
 final class DefaultsCoachAuthenticationKeyStore: CoachAuthenticationKeyStoring, @unchecked Sendable {
     private let defaults: UserDefaults
     private let lock = NSLock()
-    private let name = "coachProductionAppAttestKeyV1"
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    private let name: String
+    /// Only the staging lane passes a different name, so its enrollment never replaces the production key.
+    init(defaults: UserDefaults = .standard, name: String = "coachProductionAppAttestKeyV1") { self.defaults = defaults; self.name = name }
     func load() -> String? { lock.lock(); defer { lock.unlock() }; return defaults.string(forKey: name) }
     func save(_ key: String?) { lock.lock(); defer { lock.unlock() }; defaults.set(key, forKey: name) }
 }
@@ -130,6 +136,8 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
     private let keys: any CoachAuthenticationKeyStoring
     private let http: any CoachProxyTransport
     private let diagnostics: CoachDiagnostics
+    /// Where requests go. The signed payload always names `origin`; only the staging lane changes this.
+    private let destination: URL
     private var busy = false
     private var generation: UInt64 = 0
 
@@ -137,13 +145,14 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
          purchase: any CoachPurchaseProofProviding = StoreKitCoachPurchaseProof(),
          keys: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore(),
          http: any CoachProxyTransport = BoundedCoachHTTPTransport(),
-         diagnostics: CoachDiagnostics = .live) {
+         diagnostics: CoachDiagnostics = .live,
+         destination: URL = RuntimeAuthenticatedCoachTransport.origin) {
         self.attester = attester; self.purchase = purchase; self.keys = keys; self.http = http
-        self.diagnostics = diagnostics
+        self.diagnostics = diagnostics; self.destination = destination
     }
 
     func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
-        guard url == Self.origin, headers.isEmpty, jsonBody.count <= 32_768, timeoutSeconds.isFinite,
+        guard url == destination, headers.isEmpty, jsonBody.count <= 32_768, timeoutSeconds.isFinite,
               timeoutSeconds > 0, timeoutSeconds <= 30, !busy, attester.isSupported else {
             diagnostics.record(.init(transport: .runtime, endpoint: .category(url), stage: .configuration, category: .unavailable))
             throw CoachAuthenticationError.unavailable
@@ -151,7 +160,7 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         busy = true; defer { busy = false }
         let expectedGeneration = generation
         let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
-        let trace = CoachFailureTrace()
+        let trace = CoachFailureTrace(endpoint: .category(destination))
         do {
             return try await boundedCoachOperation(seconds: timeoutSeconds) {
                 do {
@@ -195,7 +204,7 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
     }
     private func handshake(_ input: [String: String], generation expected: UInt64, deadline: Double, trace: CoachFailureTrace? = nil) async throws -> (Data, Int) {
         let left = try remaining(deadline, expected)
-        let result = try await http.post(to: Self.origin, jsonBody: Self.encode(input), headers: [:], timeoutSeconds: min(left, 10))
+        let result = try await http.post(to: destination, jsonBody: Self.encode(input), headers: [:], timeoutSeconds: min(left, 10))
         _ = try remaining(deadline, expected)
         trace?.response(result.data, status: result.statusCode)
         guard result.data.count <= 1024 else { throw CoachAuthenticationError.unavailable }
@@ -275,13 +284,13 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         }
         trace?.begin(.transport)
         let left = try remaining(deadline, expected)
-        let result = try await http.post(to: Self.origin, jsonBody: body, headers: headers, timeoutSeconds: left)
+        let result = try await http.post(to: destination, jsonBody: body, headers: headers, timeoutSeconds: left)
         _ = try remaining(deadline, expected)
         if proofOnly {
             guard body == Data("{}".utf8), result.statusCode == 400,
                   Self.fixedError(result.data, equals: "invalid_context") else { throw CoachAuthenticationError.unavailable }
             // Deliberately identical proof/body; no new challenge, signature, purchase or content.
-            let replay = try await http.post(to: Self.origin, jsonBody: body, headers: headers,
+            let replay = try await http.post(to: destination, jsonBody: body, headers: headers,
                                              timeoutSeconds: remaining(deadline, expected))
             _ = try remaining(deadline, expected)
             guard replay.statusCode == 401, Self.fixedError(replay.data, equals: "unauthorized")
@@ -329,7 +338,7 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         let token = try await challenge(key: key, kind: "assert", generation: expected, deadline: deadline)
         let body = Data("{}".utf8)
         let headers = try await proof(operation: "delete", key: key, challenge: token, body: body, transaction: "", generation: expected, deadline: deadline)
-        _ = try await http.post(to: Self.origin, jsonBody: body, headers: headers, timeoutSeconds: remaining(deadline, expected))
+        _ = try await http.post(to: destination, jsonBody: body, headers: headers, timeoutSeconds: remaining(deadline, expected))
     }
     private struct Challenge: Decodable { let challenge: String }
     private struct Enrollment: Decodable { let enrolled: Bool }
@@ -403,11 +412,21 @@ private final class CoachNoRedirects: NSObject, URLSessionTaskDelegate, @uncheck
 }
 struct BoundedCoachHTTPTransport: CoachProxyTransport {
     private let makeConfiguration: @Sendable () -> URLSessionConfiguration
-    init(configuration: @escaping @Sendable () -> URLSessionConfiguration = { .ephemeral }) {
-        makeConfiguration = configuration
+    private let destination: URL
+    #if COACH_STAGING
+    private let labels: CoachStagingLabels?
+    /// Staging lane only: a separate destination, and the rejection label from each response.
+    init(configuration: @escaping @Sendable () -> URLSessionConfiguration = { .ephemeral },
+         destination: URL = RuntimeAuthenticatedCoachTransport.origin, labels: CoachStagingLabels? = nil) {
+        makeConfiguration = configuration; self.destination = destination; self.labels = labels
     }
+    #else
+    init(configuration: @escaping @Sendable () -> URLSessionConfiguration = { .ephemeral }) {
+        makeConfiguration = configuration; destination = RuntimeAuthenticatedCoachTransport.origin
+    }
+    #endif
     func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
-        guard url == RuntimeAuthenticatedCoachTransport.origin, jsonBody.count <= 32768, timeoutSeconds.isFinite,
+        guard url == destination, jsonBody.count <= 32768, timeoutSeconds.isFinite,
               timeoutSeconds > 0, timeoutSeconds <= 30,
               headers.isEmpty || Set(headers.keys) == ["X-RepToday-Coach-Auth"] else { throw CoachAuthenticationError.unavailable }
         let configuration = makeConfiguration()
@@ -424,6 +443,9 @@ struct BoundedCoachHTTPTransport: CoachProxyTransport {
         let (bytes, response) = try await session.bytes(for: request)
         guard let response = response as? HTTPURLResponse, response.url == url,
               !(300...399).contains(response.statusCode), response.expectedContentLength <= 16384 else { throw CoachAuthenticationError.unavailable }
+        #if COACH_STAGING
+        labels?.record(response.value(forHTTPHeaderField: CoachStagingLabels.header))
+        #endif
         var body = Data()
         for try await byte in bytes {
             guard body.count < 16384 else { throw CoachAuthenticationError.unavailable }; body.append(byte)

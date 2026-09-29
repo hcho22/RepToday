@@ -41,3 +41,5 @@ node_modules/
 # Python
 __pycache__/
 *.py[cod]
+# Coach staging lane: the account's workers.dev subdomain stays local.
+ios/RepToday/Config/CoachStaging.local.xcconfig

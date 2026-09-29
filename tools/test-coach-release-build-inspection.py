@@ -8,6 +8,7 @@ signing account or model. Signing and production telemetry are separate release 
 import importlib.util
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -30,6 +31,7 @@ class ReleaseInspectionTests(unittest.TestCase):
             self.info = plistlib.load(stream)
         self.scheme = self.app / 'release.xcscheme'
         self.scheme.write_bytes(SCHEME.read_bytes())
+        shutil.copy(APP / self.info['CFBundleExecutable'], self.app / self.info['CFBundleExecutable'])
         self.write_info()
 
     def tearDown(self):
@@ -91,6 +93,47 @@ class ReleaseInspectionTests(unittest.TestCase):
         tree.write(self.scheme)
         with self.assertRaises(ValueError):
             self.inspect()
+
+
+class StagingSeparationTests(unittest.TestCase):
+    """No archive needed: a synthetic Release-shaped bundle checks the staging-lane separation."""
+    def setUp(self):
+        (ROOT / 'build').mkdir(exist_ok=True)
+        self.directory = tempfile.TemporaryDirectory(dir=ROOT / 'build')
+        self.app = Path(self.directory.name)
+        self.info = {'CFBundleExecutable': 'RepToday', 'RepTodayBuildConfiguration': 'Release',
+                     'RepTodayCoachEndpoint': inspector.EXPECTED_ORIGIN, 'RepTodayCoachSecret': '',
+                     'RepTodayCoachAuthMode': inspector.EXPECTED_MODE, 'RepTodayCoachSyntheticQA': '0'}
+        self.scheme = self.app / 'release.xcscheme'
+        self.scheme.write_bytes(SCHEME.read_bytes())
+        self.write(b'release executable fixture')
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def write(self, executable):
+        with (self.app / 'Info.plist').open('wb') as stream:
+            plistlib.dump(self.info, stream)
+        (self.app / 'RepToday').write_bytes(executable)
+
+    def test_release_without_staging_code_is_accepted(self):
+        self.assertFalse(inspector.inspect(self.app, 'Release', self.scheme))
+
+    def test_staging_code_or_missing_executable_fails_release(self):
+        for executable in [b'x reptoday-coach-staging x', b'x coachStagingAppAttestKeyV1 x']:
+            self.write(executable)
+            with self.assertRaises(ValueError):
+                inspector.inspect(self.app, 'Release', self.scheme)
+        (self.app / 'RepToday').unlink()
+        with self.assertRaises(ValueError):
+            inspector.inspect(self.app, 'Release', self.scheme)
+
+    def test_a_staging_bundle_presented_as_release_is_rejected(self):
+        self.info.update({'RepTodayBuildConfiguration': 'CoachStaging',
+                          'RepTodayCoachEndpoint': 'https://reptoday-coach-staging.fixture-account.workers.dev/coach'})
+        self.write(b'release executable fixture')
+        with self.assertRaises(ValueError):
+            inspector.inspect(self.app, 'Release', self.scheme)
 
 
 class ArchiveOverrideTests(unittest.TestCase):

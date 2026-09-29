@@ -311,6 +311,20 @@ test('runtime failure output adds only the fixed probe line, and only for a diag
   assert.equal(runtimeFailureOutput(forged), 'blocked: gate\n');
 });
 
+test('production configuration never carries, and its verifier always rejects, the staging-only bindings', () => {
+  for (const [guard, final] of [[false, false], [true, false], [false, true], [true, true]]) {
+    const config = runtimeConfig('/fixture/repository', revision, guard, final);
+    assert.ok(!Object.keys(config.vars).some(name => name.startsWith('COACH_STAGING')));
+  }
+  for (const name of ['COACH_STAGING_ORIGIN', 'COACH_STAGING_LABELS']) {
+    for (const pinned of [revision, null]) {
+      const candidate = settings();
+      candidate.bindings.push({ name, type: 'plain_text', text: name === 'COACH_STAGING_LABELS' ? '1' : 'https://reptoday-coach-staging.x.workers.dev/coach' });
+      assert.throws(() => checkRuntimeSettings(candidate, pinned, false, true), stopped('settings'));
+    }
+  }
+});
+
 test('diagnostic flag may be absent on the old pre-stage deployment and is required for a pinned candidate', () => {
   const previous = settings(oldRevision);
   previous.bindings = previous.bindings.filter(item => item.name !== 'COACH_AUTH_GUARD_DIAGNOSTICS');
