@@ -532,9 +532,11 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 
 **Assertion digests:**
 When staging rejects a final request at `do_assertion/*`, it also returns `X-RepToday-Coach-Assertion-Digest: payload=<16 hex> body=<16 hex> transaction=<16 hex> challenge=<8>`.
-These are prefixes of SHA-256 of the payload the server rebuilt, the body and transaction hashes it received, and the challenge's first characters; they are prefixes because the Durable Object reply is bounded to 256 bytes.
+The payload value is a prefix of SHA-256 of the payload the server rebuilt; the body and transaction values are prefixes of the full SHA-256 digests received in the assertion envelope; and the challenge value is its first eight characters.
+The values are shortened because the Durable Object reply is bounded to 256 bytes.
 The staging app logs the matching line of what it signed (`[RepTodayCoach] staging signed ...`), the full `clientDataHash`, the assertion, and the enrollment attestation in chunks of at most 800 characters.
 Comparing the two lines names the differing input; the assertion and attestation allow the signature to be checked offline.
-All of it is non-secret and single-use, exists only with `COACH_STAGING_LABELS=1` on the server and under `COACH_STAGING` in the app, and a Release or Debug executable containing the digest header fails inspection.
+The server header contains only non-secret digest prefixes and exists only with `COACH_STAGING_LABELS=1`; the device evidence exists only under `COACH_STAGING` and is emitted for the captain's offline check.
+Ordinary Debug and Release builds omit this code by compilation condition, and Release inspection rejects an executable containing the staging digest marker.
 
 Offline gate: `bash tools/test-coach-staging.sh` (coordinator doubles, native reader scope, closed transcript and credential-only-on-stdin pipe), run inside `tools/test-coach-final-diagnostics.sh`.
