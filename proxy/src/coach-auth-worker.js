@@ -1,11 +1,17 @@
-import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel, parseDiagnosticLabel } from './coach-auth-diagnostics.js';
 import { Buffer } from 'node:buffer';
 import legacyWorker from './worker.js';
 import { CoachAuthFailure, ORIGIN, VERSION, keyIDValid, appIDValid, issuerIDValid, hash, fromBase64, challengeToken, verifyChallenge, premiumEntitlement } from './coach-auth-crypto.js';
 import { CoachAuthenticationState, readBounded } from './coach-auth-state.js';
 export { CoachAuthenticationState };
 
-const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+const json = (data, status = 200, extra = {}) => new Response(JSON.stringify(data),
+  { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra } });
+// A separate staging Worker answers only at its own workers.dev URL; production has no such binding,
+// and a present but unexpected value serves nothing.
+const STAGING_ORIGIN = /^https:\/\/reptoday-coach-staging\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev\/coach$/;
+const servedOrigin = env => env.COACH_STAGING_ORIGIN === undefined ? ORIGIN :
+  typeof env.COACH_STAGING_ORIGIN === 'string' && STAGING_ORIGIN.test(env.COACH_STAGING_ORIGIN) ? env.COACH_STAGING_ORIGIN : null;
 const exactKeys = (object, keys) => object && Object.keys(object).sort().join(',') === keys;
 
 function ready(env) {
@@ -29,7 +35,9 @@ async function stateRequest(env, input) {
     body: JSON.stringify(input), signal: AbortSignal.timeout(10_000) });
   const bytes = await readBounded(result, 256);
   const data = JSON.parse(Buffer.from(bytes).toString('utf8'));
-  if (!result.ok) throw new CoachAuthFailure(['unauthorized', 'key_unavailable'].includes(data.error) ? data.error : 'auth_unavailable');
+  // A staging Durable Object may add its inner label; it is validated before any use.
+  if (!result.ok) throw Object.assign(new CoachAuthFailure(['unauthorized', 'key_unavailable'].includes(data.error) ? data.error : 'auth_unavailable'),
+    typeof data.label === 'string' ? { label: data.label } : {});
   return data;
 }
 
@@ -41,7 +49,7 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
   try {
     const deadline = Date.now() + 20_000;
     const authorize = promise => authWithin(promise, Math.max(1, deadline - Date.now()));
-    if (request.url !== ORIGIN) return json({ error: 'not_found' }, 404);
+    if (request.url !== servedOrigin(env)) return json({ error: 'not_found' }, 404);
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     if (!ready(env)) throw new CoachAuthFailure('auth_unavailable');
     // Retained operator-only administration/QA credential; never distributed to an iOS app.
@@ -106,7 +114,12 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
       emitAuthGuardDiagnostic(env, challengeStage, challengeStage === 'worker_envelope' ? 'envelope' : 'denied');
     if (finalDiagnostic.stage && code === 'unauthorized')
       emitFinalAuthDiagnostic(env, finalDiagnostic.stage, finalDiagnostic.reason);
-    return json({ error: code }, code === 'payload_too_large' ? 413 : code === 'auth_unavailable' ? 503 : 401);
+    // Staging only: name the rejecting guard, preferring the Durable Object's inner label.
+    const label = code === 'unauthorized' && stagingLabelsEnabled(env) ? parseDiagnosticLabel(error?.label) ??
+      (finalDiagnostic.stage ? diagnosticLabel(finalDiagnostic.stage, finalDiagnostic.reason) :
+        challengeStage ? diagnosticLabel(challengeStage, challengeStage === 'worker_envelope' ? 'envelope' : 'denied') : null) : null;
+    return json({ error: code }, code === 'payload_too_large' ? 413 : code === 'auth_unavailable' ? 503 : 401,
+      label ? { 'X-RepToday-Coach-Diagnostic': label } : {});
   }
 }
 

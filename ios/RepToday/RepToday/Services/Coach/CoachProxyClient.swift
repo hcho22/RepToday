@@ -271,6 +271,17 @@ struct CoachProxyClient {
             return nil
         }
         let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
+        #if COACH_STAGING
+        // Staging lane only: the separate workers.dev Worker, same App Attest mode, no embedded secret.
+        if let staging = CoachStaging.endpoint(endpoint) {
+            guard bundle.object(forInfoDictionaryKey: authenticationModeInfoPlistKey) as? String == productionAuthenticationMode,
+                  secret == nil else {
+                diagnostics.record(.init(transport: .unavailable, endpoint: .category(endpoint), stage: .configuration, category: .unavailable))
+                return nil
+            }
+            return CoachStaging.client(endpoint: staging, safetyIdentifierProvider: safetyIdentifierProvider, diagnostics: diagnostics)
+        }
+        #endif
         if endpoint.host?.lowercased() == "coach.reptoday.app" {
             guard productionConfigurationAllowed(origin: endpoint,
                 mode: bundle.object(forInfoDictionaryKey: authenticationModeInfoPlistKey), secret: secret) else {

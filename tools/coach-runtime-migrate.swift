@@ -151,38 +151,47 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
     }
     func run(_ credentials: [RuntimeMigrationCredential: Data]) throws -> String {
         guard Set(credentials.keys) == Set(operation.items), (!diagnostics && !finalDiagnostics) || operation == .stage || operation == .release else { throw RuntimeMigrationFailure.coordinator }
-        let process = Process(); process.executableURL = node
-        process.arguments = [repository.appendingPathComponent("tools/coach-runtime-migrate.mjs").path, operation.rawValue]
-        if diagnostics { process.arguments?.append("--auth-guard-diagnostics") }
-        if finalDiagnostics { process.arguments?.append("--final-auth-diagnostics") }
-        process.currentDirectoryURL = repository
-        var environment = ProcessInfo.processInfo.environment
-        for name in ["NODE_OPTIONS", "NODE_DEBUG", "NODE_DEBUG_NATIVE", "OPENAI_API_KEY", "CLIENT_SHARED_SECRET",
-                     "ANTHROPIC_API_KEY", "APP_STORE_PRIVATE_KEY"] { environment.removeValue(forKey: name) }
-        process.environment = environment
-        let input = Pipe(), output = Pipe(); process.standardInput = input; process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        var packet = try JSONSerialization.data(withJSONObject: Dictionary(uniqueKeysWithValues: credentials.map {
-            ($0.key.rawValue, String(decoding: $0.value, as: UTF8.self))
-        }))
-        defer { packet.resetBytes(in: 0..<packet.count) }
-        guard packet.count <= 12_288 else { throw RuntimeMigrationFailure.coordinator }
-        try process.run()
-        let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 700, execute: timer)
-        defer { timer.cancel() }
-        do { try input.fileHandleForWriting.write(contentsOf: packet); try input.fileHandleForWriting.close() }
-        catch { if process.isRunning { process.terminate() }; throw RuntimeMigrationFailure.coordinator }
-        var reply = Data()
-        do { while let part = try output.fileHandleForReading.read(upToCount: 4096), !part.isEmpty {
-            guard reply.count + part.count <= 8192 else {
-                if process.isRunning { process.terminate() }; throw RuntimeMigrationFailure.coordinator
-            }; reply.append(part)
-        } } catch { if process.isRunning { process.terminate() }; throw RuntimeMigrationFailure.coordinator }
-        process.waitUntilExit(); return try sanitized(reply, status: process.terminationStatus)
+        var arguments = [repository.appendingPathComponent("tools/coach-runtime-migrate.mjs").path, operation.rawValue]
+        if diagnostics { arguments.append("--auth-guard-diagnostics") }
+        if finalDiagnostics { arguments.append("--final-auth-diagnostics") }
+        let (reply, status) = try runBoundedNodeCoordinator(repository: repository, node: node, arguments: arguments, credentials: credentials)
+        return try sanitized(reply, status: status)
     }
 }
-#if !COACH_RUNTIME_MIGRATION_TESTS
+
+/// One bounded local Node child: credentials only on an anonymous stdin pipe (never argv or environment),
+/// stderr discarded, at most 8 KiB of stdout, and a hard deadline. Shared by the runtime and staging tools.
+func runBoundedNodeCoordinator(repository: URL, node: URL, arguments: [String],
+                               credentials: [RuntimeMigrationCredential: Data]) throws -> (reply: Data, status: Int32) {
+    let process = Process(); process.executableURL = node
+    process.arguments = arguments
+    process.currentDirectoryURL = repository
+    var environment = ProcessInfo.processInfo.environment
+    for name in ["NODE_OPTIONS", "NODE_DEBUG", "NODE_DEBUG_NATIVE", "OPENAI_API_KEY", "CLIENT_SHARED_SECRET",
+                 "ANTHROPIC_API_KEY", "APP_STORE_PRIVATE_KEY"] { environment.removeValue(forKey: name) }
+    process.environment = environment
+    let input = Pipe(), output = Pipe(); process.standardInput = input; process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    var packet = try JSONSerialization.data(withJSONObject: Dictionary(uniqueKeysWithValues: credentials.map {
+        ($0.key.rawValue, String(decoding: $0.value, as: UTF8.self))
+    }))
+    defer { packet.resetBytes(in: 0..<packet.count) }
+    guard packet.count <= 12_288 else { throw RuntimeMigrationFailure.coordinator }
+    try process.run()
+    let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 700, execute: timer)
+    defer { timer.cancel() }
+    do { try input.fileHandleForWriting.write(contentsOf: packet); try input.fileHandleForWriting.close() }
+    catch { if process.isRunning { process.terminate() }; throw RuntimeMigrationFailure.coordinator }
+    var reply = Data()
+    do { while let part = try output.fileHandleForReading.read(upToCount: 4096), !part.isEmpty {
+        guard reply.count + part.count <= 8192 else {
+            if process.isRunning { process.terminate() }; throw RuntimeMigrationFailure.coordinator
+        }; reply.append(part)
+    } } catch { if process.isRunning { process.terminate() }; throw RuntimeMigrationFailure.coordinator }
+    process.waitUntilExit(); return (reply, process.terminationStatus)
+}
+#if !COACH_RUNTIME_MIGRATION_TESTS && !COACH_STAGING_TOOL
 @main struct CoachRuntimeMigrationMain {
     @MainActor static func main() {
         let args = Array(CommandLine.arguments.dropFirst())

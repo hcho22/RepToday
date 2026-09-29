@@ -1,0 +1,8 @@
+// Coach staging lane only (CoachStaging configuration, RepTodayCoachStaging scheme). Never Release.
+// The account's workers.dev subdomain is not committed. After tools/coach-staging.sh --deploy prints
+// https://reptoday-coach-staging.<subdomain>.workers.dev/coach, put this one line in the untracked
+// CoachStaging.local.xcconfig beside this file:
+//   REPTODAY_COACH_STAGING_SUBDOMAIN = <subdomain>
+// Without it the endpoint is invalid and the Coach stays inert (unavailable), never pointed elsewhere.
+REPTODAY_COACH_STAGING_SUBDOMAIN =
+#include? "CoachStaging.local.xcconfig"

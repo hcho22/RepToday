@@ -1401,3 +1401,13 @@ A `--release --final-auth-diagnostics` stopped with a bare `blocked: gate`, whil
 The coordinator released the hold, verified it through the API, and probed the edge at once, but only the first probe could absorb a hold-like 403, and the probe detail was discarded.
 `tools/coach-runtime-migrate.mjs` now gives every release probe, including the forged proof, the same bounded hold-like retry under one shared deadline, and prints the fixed `gate: probe ...` line before the stop; the native wrapper accepts exactly that line, only on `--release` and only directly before `blocked: gate`.
 The [runtime authentication runbook](coach-runtime-authentication.md#local-validation-and-migration-plan) owns the contract; the legacy deploy helper keeps its first-probe-only retry.
+
+## Coach staging lane names the rejecting check (2026-09-29)
+
+After the Sandbox `appAppleId` fix the final Coach request still returned `401 unauthorized`, and the production final-auth capture could not attach.
+This change adds a separate, short-lived `reptoday-coach-staging` Worker on workers.dev.
+It has its own SQLite namespace, a fresh gate secret, the five App Store items and no model key, and every `401` carries one closed `<stage>/<reason>` label, including the Durable Object's inner guard.
+A `CoachStaging` build (`RepTodayCoachStaging` scheme) points a genuine device at it while signing the unchanged production protocol origin, with its own App Attest key id.
+`tools/coach-staging.sh --deploy|--teardown|--inspect` operates it without touching the production script, zone or domain.
+Production cannot carry the staging bindings (its generator never emits them and its verifier rejects them), production responses are byte-identical without them, and a Release executable containing the staging lane fails build inspection.
+The [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract; deploying it is a separate captain decision.

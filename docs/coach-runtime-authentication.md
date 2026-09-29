@@ -484,3 +484,49 @@ entitlement source; signed entitlement extraction and genuine Developer account/
 remain unverified. The official API regression is retained and passes against the local service;
 it is not genuine Apple/model evidence. There were no real Security/UI, control-plane, endpoint or
 paid model operations in these local continuations.
+
+## Coach staging lane
+
+The staging lane answers one question without a production outage: which server check rejects a genuine device's Coach request.
+It is a separate, short-lived Worker, `reptoday-coach-staging`, at `https://reptoday-coach-staging.<account subdomain>.workers.dev/coach`, running the same `proxy/src/coach-auth-worker.js`.
+It has no custom domain, route or WAF rule, and it never touches the production script, zone or domain.
+
+**What differs from production:**
+- **Storage:** its own SQLite `CoachAuthenticationState` namespace (same class and `coach-security-v1` migration), so production keys, counters and nonces are neither visible nor writable.
+- **Gate secret:** a freshly generated `CLIENT_SHARED_SECRET`, used only here, so a staging challenge can never verify in production or the reverse.
+- **Credentials:** only the five App Store items (`APP_ATTEST_APP_PREFIX`, `APP_STORE_APP_ID`, `APP_STORE_KEY_ID`, `APP_STORE_ISSUER_ID`, `APP_STORE_PRIVATE_KEY`), read through the existing native Keychain reader.
+- **No model key:** a request that passes every check gets `500 {"error":"not_configured"}` from the Coach handler before any model call.
+- **Rejection label:** `COACH_STAGING_LABELS=1` adds `X-RepToday-Coach-Diagnostic: <stage>/<reason>` to every `401 unauthorized`.
+  The body stays exactly `{"error":"unauthorized"}`.
+  The label is one pair from the closed final-auth and challenge vocabularies in [`coach-auth-diagnostics.js`](../proxy/src/coach-auth-diagnostics.js), and a Durable Object's inner label (for example `do_assertion/assertion_signature`) is passed back to the Worker.
+- **Origin:** `COACH_STAGING_ORIGIN` makes the Worker serve only its own workers.dev URL; an unexpected value serves nothing.
+
+**Why it cannot reach production:**
+- Production `runtimeConfig` never emits `COACH_STAGING_*`, and `checkRuntimeSettings` rejects any unknown binding during stage, release and verification (`tools/coach-runtime-migrate.test.mjs` pins both staging names).
+- Without the bindings, production responses are byte-identical (`proxy/test/coach-staging-labels.test.js`).
+
+**The iOS staging build:**
+- The `RepTodayCoachStaging` scheme builds the release-optimized `CoachStaging` configuration with no local StoreKit file, so a real Sandbox purchase and production App Attest are used.
+  Its archive action always produces Release.
+- Client code for the lane exists only under `COACH_STAGING` (and Debug, for tests).
+  It posts to the staging URL but still signs the production protocol origin, so App Attest payload bytes match production.
+  It keeps its own key id (`coachStagingAppAttestKeyV1`), so the production key is untouched.
+  It appends the label to the existing line, for example `[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=worker_premium/status_match`.
+- Release excludes all of it: `tools/archive-release.sh` archives only Release, and `tools/inspect-coach-qa-build.py` rejects a Release executable containing the staging markers.
+- The account's workers.dev subdomain is not committed.
+  After deploy, put `REPTODAY_COACH_STAGING_SUBDOMAIN = <subdomain>` in the untracked `ios/RepToday/Config/CoachStaging.local.xcconfig`.
+  Without it the staging endpoint is invalid and the Coach stays unavailable.
+
+**Operation (each run needs separate captain approval):**
+- `tools/coach-staging.sh --deploy` needs a clean committed checkout, Node 20, a Wrangler login with more than 20 minutes left, the offline proxy gate, and five Keychain approvals.
+  It prints `confirmed`, the `deployed` line with the staging URL, and `verified` after checking exact bindings, its own namespace, no custom domain, and both labelled no-model probes.
+- The captain runs `RepTodayCoachStaging` on the phone and sends one message.
+  The first send enrolls a fresh staging key.
+  The failure line then names the rejecting guard, or the send gets `500 not_configured` because every check passed.
+- `tools/coach-staging.sh --teardown` force-deletes the staging script with its namespace, data and secrets, and confirms the production script is still present.
+  `--inspect` is read-only.
+- A labelled 401 identifies the guard for this device and purchase.
+  A staging pass points instead at production-only state such as the existing production key record.
+  Staging cannot prove that production is healthy.
+
+Offline gate: `bash tools/test-coach-staging.sh` (coordinator doubles, native reader scope, closed transcript and credential-only-on-stdin pipe), run inside `tools/test-coach-final-diagnostics.sh`.

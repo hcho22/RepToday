@@ -1,4 +1,4 @@
-import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel } from './coach-auth-diagnostics.js';
 import { DurableObject } from 'cloudflare:workers';
 import { Buffer } from 'node:buffer';
 import { CoachAuthFailure, VERSION, verifyChallenge, hash, keyIDValid, attestKey, assertKey, fromBase64, assertionPayload } from './coach-auth-crypto.js';
@@ -89,7 +89,10 @@ export class CoachAuthenticationState extends DurableObject {
         const { stage, reason } = diagnostic ?? { stage: 'do_state', reason: 'denied' };
         emitFinalAuthDiagnostic(this.env, stage, reason);
       }
-      return response({ error: code }, code === 'auth_unavailable' ? 503 : 401);
+      // Staging only: the inner guard travels back to the Worker; production bodies are unchanged.
+      const inner = diagnostic ?? { stage: 'do_state', reason: 'denied' };
+      const label = code === 'unauthorized' && stagingLabelsEnabled(this.env) ? diagnosticLabel(inner.stage, inner.reason) : null;
+      return response(label ? { error: code, label } : { error: code }, code === 'auth_unavailable' ? 503 : 401);
     }
   }
 

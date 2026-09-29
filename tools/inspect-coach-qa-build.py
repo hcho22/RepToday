@@ -8,6 +8,8 @@ import xml.etree.ElementTree as ET
 
 EXPECTED_ORIGIN = 'https://coach.reptoday.app/coach'
 EXPECTED_MODE = 'app-attest-storekit-v1'
+# Present only in the COACH_STAGING / Debug staging lane; a Release executable must never contain them.
+STAGING_MARKERS = (b'reptoday-coach-staging', b'coachStagingAppAttestKeyV1')
 SERVER_CREDENTIAL_KEYS = frozenset([
     'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'CLIENT_SHARED_SECRET',
     'APP_STORE_PRIVATE_KEY', 'APP_STORE_KEY_ID', 'APP_STORE_ISSUER_ID',
@@ -32,6 +34,10 @@ def inspect(app, configuration, scheme):
     if configuration in ('Release', 'CoachDeviceQA') and any(app.rglob('*.storekit')):
         raise ValueError('bundled-local-storekit')
     if configuration == 'Release':
+        executable = app / str(info.get('CFBundleExecutable', ''))
+        if not info.get('CFBundleExecutable') or not executable.is_file() or \
+                any(marker in executable.read_bytes() for marker in STAGING_MARKERS):
+            raise ValueError('staging-code')
         tree = ET.parse(scheme)
         archive = tree.getroot().find('ArchiveAction')
         if archive is None or archive.get('buildConfiguration') != 'Release':
@@ -71,6 +77,7 @@ def main():
         print('verified: no bundled local StoreKit fixture')
     if args.configuration == 'Release':
         print('verified: archive action selects Release without a local StoreKit attachment')
+        print('verified: Release executable carries no Coach staging lane')
     print('unverified: signing/profile, effective App Attest entitlement, physical-device installation, production purchase/service and live semantic QA')
     return 0
 

@@ -15,4 +15,5 @@ node --check tools/coach-runtime-migrate.mjs
   npm run test:runtime
 )
 bash tools/test-coach-runtime-migration.sh
+bash tools/test-coach-staging.sh
 git diff --check
