@@ -9,7 +9,8 @@ private let stagingKey = Data(repeating: 7, count: 32).base64EncodedString()
 private let stagingChallenge = "eA." + String(repeating: "A", count: 43) // Shape fixture; never a valid server HMAC.
 
 private final class StagingKeyStore: CoachAuthenticationKeyStoring, @unchecked Sendable {
-    private let lock = NSLock(); private var key: String? = stagingKey
+    private let lock = NSLock(); private var key: String?
+    init(_ key: String? = stagingKey) { self.key = key }
     func load() -> String? { lock.lock(); defer { lock.unlock() }; return key }
     func save(_ key: String?) { lock.lock(); defer { lock.unlock() }; self.key = key }
 }
@@ -17,7 +18,8 @@ private actor StagingAttester: CoachAppAttesting {
     nonisolated let isSupported = true
     private(set) var hashes = [Data]()
     func generateKey() async throws -> String { stagingKey }
-    func attest(key: String, hash: Data) async throws -> Data { Data([1]) }
+    static let attestationObject = Data((0..<2000).map { UInt8($0 % 251) })
+    func attest(key: String, hash: Data) async throws -> Data { Self.attestationObject }
     func assertion(key: String, hash: Data) async throws -> Data { hashes.append(hash); return Data([2]) }
 }
 private struct StagingPurchase: CoachPurchaseProofProviding {
@@ -30,7 +32,7 @@ private final class StagingLines: @unchecked Sendable {
 }
 
 private final class StagingHTTPState: @unchecked Sendable {
-    struct Answer { var status: Int; var body: String; var label: String? }
+    struct Answer { var status: Int; var body: String; var label: String?; var digest: String? = nil }
     struct Seen { let url: URL?; let headers: [String: String]; let body: Data }
     private let lock = NSLock(); private var answers = [Answer](); private var seen = [Seen]()
     func set(_ answers: [Answer]) { lock.lock(); self.answers = answers; seen = []; lock.unlock() }
@@ -57,6 +59,7 @@ private final class StagingHTTPFixture: URLProtocol, @unchecked Sendable {
         }
         var headers = ["Content-Type": "application/json"]
         if let label = answer.label { headers[CoachStagingLabels.header] = label }
+        if let digest = answer.digest { headers[CoachStagingLabels.digestHeader] = digest }
         let response = HTTPURLResponse(url: request.url!, statusCode: answer.status, httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(answer.body.utf8))
@@ -70,10 +73,11 @@ final class CoachStagingTests: XCTestCase {
         CoachContextBundle(phase: "discipline", requestedMinutes: 20, chainPositions: [], recentPatterns: ["push"],
                            consistency: .init(currentScore: 63, direction: .rising), strengthJourney: [])
     }
-    private func stagingClient(attester: StagingAttester, lines: StagingLines) -> CoachProxyClient {
+    private func stagingClient(attester: StagingAttester, lines: StagingLines,
+                               keys: any CoachAuthenticationKeyStoring = StagingKeyStore()) -> CoachProxyClient {
         CoachStaging.client(endpoint: stagingEndpoint, safetyIdentifierProvider: { testCoachSafetyIdentifier },
                             diagnostics: CoachDiagnostics { lines.append($0) }, attester: attester, purchase: StagingPurchase(),
-                            keys: StagingKeyStore(), configuration: {
+                            keys: keys, configuration: {
                                 let configuration = URLSessionConfiguration.ephemeral
                                 configuration.protocolClasses = [StagingHTTPFixture.self]; return configuration })
     }
@@ -127,7 +131,10 @@ final class CoachStagingTests: XCTestCase {
                                           stagingKey, stagingChallenge, hex(requests[1].body), hex(Data("fixture.purchase.proof".utf8))])
         let hashes = await attester.hashes
         XCTAssertEqual(hashes, [Data(SHA256.hash(data: payload))])
-        XCTAssertEqual(lines.all, ["[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=do_assertion/assertion_signature"])
+        XCTAssertEqual(lines.all.first, "[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=do_assertion/assertion_signature")
+        // An assertion rejection also logs what was signed (no attestation: this key was already enrolled).
+        XCTAssertEqual(lines.all.dropFirst().map { $0.components(separatedBy: " ").prefix(3).joined(separator: " ") },
+                       ["[RepTodayCoach] staging signed", "[RepTodayCoach] staging clientDataHash=\(hex(payload))", "[RepTodayCoach] staging assertion=Ag=="])
     }
 
     func testStagingChallengeRejectionCarriesItsLabelAndUnknownLabelsAreDropped() async throws {
@@ -154,6 +161,31 @@ final class CoachStagingTests: XCTestCase {
         XCTAssertEqual(production.load(), "production-key")
     }
 
+    func testLegacyStagingKeyDoesNotSuppressEnrollmentOrAttestationEvidence() async throws {
+        let suite = "CoachStagingTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
+        DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: "coachStagingAppAttestKeyV1").save(stagingKey)
+        let current = DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: CoachStaging.keyStoreName)
+        let lines = StagingLines()
+        StagingHTTPFixture.state.set([challengeAnswer, .init(status: 200, body: #"{"enrolled":true}"#, label: nil), challengeAnswer,
+            .init(status: 401, body: rejected, label: "do_assertion/assertion_signature", digest: serverDigest)])
+
+        do {
+            _ = try await stagingClient(attester: StagingAttester(), lines: lines, keys: current).reply(to: "hello", context: context())
+            XCTFail("must reject")
+        } catch CoachProxyClient.CoachError.badStatus(let status) {
+            XCTAssertEqual(status, 401)
+        }
+
+        let requests = StagingHTTPFixture.state.requests
+        XCTAssertEqual(requests.count, 4)
+        let enrollment = try XCTUnwrap(JSONSerialization.jsonObject(with: requests[1].body) as? [String: String])
+        XCTAssertEqual(enrollment["operation"], "enroll")
+        XCTAssertEqual(enrollment["keyId"], stagingKey)
+        XCTAssertEqual(current.load(), stagingKey)
+        XCTAssertTrue(lines.all.contains { $0.hasPrefix("[RepTodayCoach] staging attestation part=1/") })
+    }
+
     func testProductionTransportStillRefusesAnyOtherDestination() async {
         let transport = BoundedCoachHTTPTransport(configuration: {
             let configuration = URLSessionConfiguration.ephemeral; configuration.protocolClasses = [StagingHTTPFixture.self]; return configuration })
@@ -161,6 +193,52 @@ final class CoachStagingTests: XCTestCase {
         do { _ = try await transport.post(to: stagingEndpoint, jsonBody: Data("{}".utf8), headers: [:], timeoutSeconds: 5); XCTFail("must refuse") }
         catch { XCTAssertEqual(error as? CoachAuthenticationError, .unavailable) }
         XCTAssertTrue(StagingHTTPFixture.state.requests.isEmpty)
+    }
+
+    private let serverDigest = "payload=0123456789abcdef body=0123456789abcdef transaction=0123456789abcdef challenge=eyJ2Ijoi"
+    private let rejected = #"{"error":"unauthorized"}"#
+
+    func testAssertionRejectionLogsWhatTheDeviceSignedBesideTheServerDigests() async throws {
+        let attester = StagingAttester(), lines = StagingLines()
+        StagingHTTPFixture.state.set([challengeAnswer, .init(status: 200, body: #"{"enrolled":true}"#, label: nil), challengeAnswer,
+            .init(status: 401, body: rejected, label: "do_assertion/assertion_signature", digest: serverDigest)])
+        do { _ = try await stagingClient(attester: attester, lines: lines, keys: StagingKeyStore(nil)).reply(to: "hello", context: context())
+             XCTFail("must reject") }
+        catch CoachProxyClient.CoachError.badStatus(let status) { XCTAssertEqual(status, 401) }
+        let requests = StagingHTTPFixture.state.requests
+        let hex = { (data: Data) in SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
+        let body = requests[3].body, transaction = "fixture.purchase.proof"
+        let payload = try encoder.encode(["reptoday-coach-auth-v1", "POST", "https://coach.reptoday.app/coach", "reply",
+                                          stagingKey, stagingChallenge, hex(body), hex(Data(transaction.utf8))])
+        let attestation = StagingAttester.attestationObject.base64EncodedString()
+        let parts = stride(from: 0, to: attestation.count, by: 800).map { start -> String in
+            let from = attestation.index(attestation.startIndex, offsetBy: start)
+            return String(attestation[from..<attestation.index(from, offsetBy: min(800, attestation.count - start))]) }
+        XCTAssertEqual(lines.all, [
+            "[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=do_assertion/assertion_signature server \(serverDigest)",
+            "[RepTodayCoach] staging signed payload=\(hex(payload).prefix(16)) body=\(hex(body).prefix(16)) transaction=\(hex(Data(transaction.utf8)).prefix(16)) challenge=\(stagingChallenge.prefix(8))",
+            "[RepTodayCoach] staging clientDataHash=\(hex(payload))",
+            "[RepTodayCoach] staging assertion=\(Data([2]).base64EncodedString())",
+        ] + parts.enumerated().map { "[RepTodayCoach] staging attestation part=\($0.offset + 1)/\(parts.count) \($0.element)" })
+        XCTAssertEqual(parts.count, 4)
+        let hashes = await attester.hashes
+        XCTAssertEqual(hashes, [Data(SHA256.hash(data: payload))])
+    }
+
+    func testOnlyAssertionRejectionsAddSigningDetailAndMalformedDigestsAreDropped() async throws {
+        for (label, digest, expectedSuffix) in [("worker_premium/status_match", serverDigest, " label=worker_premium/status_match"),
+                                                ("do_assertion/assertion_signature", "payload=PRIVATE", " label=do_assertion/assertion_signature")] {
+            let lines = StagingLines()
+            StagingHTTPFixture.state.set([challengeAnswer, .init(status: 401, body: rejected, label: label, digest: digest)])
+            do { _ = try await stagingClient(attester: StagingAttester(), lines: lines).reply(to: "hello", context: context()); XCTFail("must reject") }
+            catch {}
+            let first = try XCTUnwrap(lines.all.first)
+            XCTAssertTrue(first.hasSuffix(expectedSuffix), first)
+            XCTAssertFalse(first.contains("server"))
+            if label.hasPrefix("worker_") { XCTAssertEqual(lines.all.count, 1) }
+            XCTAssertFalse(lines.all.contains { $0.contains("attestation part=") })
+        }
     }
 }
 #endif

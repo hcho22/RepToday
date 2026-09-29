@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 EXPECTED_ORIGIN = 'https://coach.reptoday.app/coach'
 EXPECTED_MODE = 'app-attest-storekit-v1'
 # Present only when COACH_STAGING is defined; a Release executable must never contain them.
-STAGING_MARKERS = (b'reptoday-coach-staging', b'coachStagingAppAttestKeyV1')
+STAGING_MARKERS = (b'reptoday-coach-staging', b'coachStagingAppAttestKeyV2', b'X-RepToday-Coach-Assertion-Digest')
 SERVER_CREDENTIAL_KEYS = frozenset([
     'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'CLIENT_SHARED_SECRET',
     'APP_STORE_PRIVATE_KEY', 'APP_STORE_KEY_ID', 'APP_STORE_ISSUER_ID',

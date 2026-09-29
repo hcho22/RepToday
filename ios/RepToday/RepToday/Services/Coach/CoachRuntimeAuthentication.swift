@@ -141,6 +141,20 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
     private var busy = false
     private var generation: UInt64 = 0
 
+    #if COACH_STAGING
+    /// Staging lane only: keeps non-secret digests of what this device signs, for offline comparison.
+    private let stagingRecorder: CoachStagingLabels?
+    init(attester: any CoachAppAttesting = DeviceCoachAppAttester(),
+         purchase: any CoachPurchaseProofProviding = StoreKitCoachPurchaseProof(),
+         keys: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore(),
+         http: any CoachProxyTransport = BoundedCoachHTTPTransport(),
+         diagnostics: CoachDiagnostics = .live,
+         destination: URL = RuntimeAuthenticatedCoachTransport.origin,
+         stagingRecorder: CoachStagingLabels? = nil) {
+        self.attester = attester; self.purchase = purchase; self.keys = keys; self.http = http
+        self.diagnostics = diagnostics; self.destination = destination; self.stagingRecorder = stagingRecorder
+    }
+    #else
     init(attester: any CoachAppAttesting = DeviceCoachAppAttester(),
          purchase: any CoachPurchaseProofProviding = StoreKitCoachPurchaseProof(),
          keys: any CoachAuthenticationKeyStoring = DefaultsCoachAuthenticationKeyStore(),
@@ -150,6 +164,7 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         self.attester = attester; self.purchase = purchase; self.keys = keys; self.http = http
         self.diagnostics = diagnostics; self.destination = destination
     }
+    #endif
 
     func post(to url: URL, jsonBody: Data, headers: [String: String], timeoutSeconds: Double) async throws -> (data: Data, statusCode: Int) {
         guard url == destination, headers.isEmpty, jsonBody.count <= 32_768, timeoutSeconds.isFinite,
@@ -232,6 +247,9 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         let attestation = try await attester.attest(key: key, hash: Self.digest(Data(token.utf8)))
         _ = try remaining(deadline, expected)
         guard !attestation.isEmpty, attestation.count <= 8192 else { throw CoachAuthenticationError.unavailable }
+        #if COACH_STAGING
+        stagingRecorder?.attestation(attestation)
+        #endif
         let (data, status) = try await handshake(["operation": "enroll", "keyId": key, "challenge": token,
                                                 "attestation": attestation.base64EncodedString()], generation: expected, deadline: deadline, trace: trace)
         guard status == 200, (try? JSONDecoder().decode(Enrollment.self, from: data).enrolled) == true else { throw CoachAuthenticationError.unavailable }
@@ -309,6 +327,9 @@ actor RuntimeAuthenticatedCoachTransport: CoachProxyTransport, CoachRuntimeProof
         let payload = try Self.encode([Self.protocolVersion, "POST", Self.origin.absoluteString, operation,
                                        key, challenge, Self.hex(body), Self.hex(Data(transaction.utf8))])
         let assertion = try await attester.assertion(key: key, hash: Self.digest(payload))
+        #if COACH_STAGING
+        stagingRecorder?.signed(payload: payload, body: body, transaction: transaction, challenge: challenge, assertion: assertion)
+        #endif
         _ = try remaining(deadline, expected)
         guard !assertion.isEmpty, assertion.count <= 1024 else { throw CoachAuthenticationError.unavailable }
         let encoded = try Self.encode(["operation": operation, "keyId": key, "challenge": challenge,
@@ -444,7 +465,8 @@ struct BoundedCoachHTTPTransport: CoachProxyTransport {
         guard let response = response as? HTTPURLResponse, response.url == url,
               !(300...399).contains(response.statusCode), response.expectedContentLength <= 16384 else { throw CoachAuthenticationError.unavailable }
         #if COACH_STAGING
-        labels?.record(response.value(forHTTPHeaderField: CoachStagingLabels.header))
+        labels?.record(response.value(forHTTPHeaderField: CoachStagingLabels.header),
+                       digest: response.value(forHTTPHeaderField: CoachStagingLabels.digestHeader))
         #endif
         var body = Data()
         for try await byte in bytes {

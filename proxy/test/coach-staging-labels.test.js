@@ -2,7 +2,7 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { handleRuntimeCoach } from '../src/coach-auth-worker.js';
 import { CoachAuthenticationState, RETENTION_MS } from '../src/coach-auth-state.js';
-import { diagnosticLabel, parseDiagnosticLabel } from '../src/coach-auth-diagnostics.js';
+import { diagnosticLabel, parseDiagnosticLabel, parseAssertionDigest } from '../src/coach-auth-diagnostics.js';
 import { VERSION, ORIGIN, BUNDLE, CHALLENGE_CLOCK_SKEW_MS, hash, assertionPayload } from '../src/coach-auth-crypto.js';
 import { fixtureKey, signedAssertion, APP_PREFIX, TEST_GATE, TEST_JWS } from './auth-fixtures.js';
 const { verify, lookup } = vi.hoisted(() => ({ verify: vi.fn(), lookup: vi.fn() }));
@@ -192,5 +192,50 @@ describe('staging origin and label vocabulary fail closed', () => {
       new Response(JSON.stringify({ error: 'unauthorized', label: 'PRIVATE/SENTINEL' }), { status: 401 }) }) };
     const response = await post(STAGING, JSON.stringify({ operation: 'challenge', kind: 'assert', keyId: key.keyId }));
     expect(response.headers.get(HEADER)).toBe('worker_state/denied');
+  });
+});
+
+describe('a staging assertion rejection also returns non-secret digests of what the server verified', () => {
+  const DIGEST = 'X-RepToday-Coach-Assertion-Digest';
+  const digestOf = (token, body) => `payload=${hash(assertionPayload('reply', key.keyId, token, hash(body), hash(TEST_JWS))).slice(0, 16)} ` +
+    `body=${hash(body).slice(0, 16)} transaction=${hash(TEST_JWS).slice(0, 16)} challenge=${token.slice(0, 8)}`;
+  it('names the reconstructed payload, received body and transaction hashes and the challenge prefix', async () => {
+    build({ COACH_STAGING_ORIGIN: STAGING, COACH_STAGING_LABELS: '1' });
+    const token = await challenge(STAGING);
+    const response = await post(STAGING, '{ }', proof(token));
+    expect(response.status).toBe(401); expect(await response.text()).toBe('{"error":"unauthorized"}');
+    expect(response.headers.get(HEADER)).toBe('do_assertion/assertion_signature');
+    // The client signed '{}' but the server received '{ }': the body digest shows exactly that.
+    expect(response.headers.get(DIGEST)).toBe(digestOf(token, '{ }'));
+    expect(response.headers.get(DIGEST)).not.toContain(hash('{}').slice(0, 16));
+  });
+  it('is absent in production, on non-assertion rejections and on success', async () => {
+    let token = await challenge(ORIGIN);
+    expect((await post(ORIGIN, '{ }', proof(token))).headers.get(DIGEST)).toBeNull();
+    build({ COACH_STAGING_ORIGIN: STAGING, COACH_STAGING_LABELS: '1' });
+    token = await challenge(STAGING);
+    const replaced = proof(token); await challenge(STAGING);
+    const pending = await post(STAGING, '{}', replaced);
+    expect(pending.headers.get(HEADER)).toBe('do_state/pending_challenge'); expect(pending.headers.get(DIGEST)).toBeNull();
+    const accepted = await post(STAGING, '{}', proof(await challenge(STAGING)));
+    expect(accepted.status).toBe(400); expect(accepted.headers.get(DIGEST)).toBeNull();
+  });
+  it('the Durable Object reply stays within the Worker bound and a malformed digest never reaches the client', async () => {
+    build({ COACH_STAGING_ORIGIN: STAGING, COACH_STAGING_LABELS: '1' });
+    const token = await challenge(STAGING);
+    const assertion = signedAssertion(key, assertionPayload('reply', key.keyId, token, hash('{}'), hash(TEST_JWS)), 1).toString('base64');
+    const direct = await object.fetch(new Request('https://coach-security.invalid/', { method: 'POST', body: JSON.stringify({
+      operation: 'reply', keyId: key.keyId, challenge: token, assertion, bodyHash: hash('{ }'), transactionHash: hash(TEST_JWS) }) }));
+    const text = await direct.text();
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(256);
+    expect(JSON.parse(text).digest).toBe(digestOf(token, '{ }'));
+    const forgedToken = await challenge(STAGING);
+    env.COACH_AUTH_STATE = { idFromName: () => 'x', get: () => ({ fetch: async () => new Response(JSON.stringify({
+      error: 'unauthorized', label: 'do_assertion/assertion_signature', digest: 'payload=PRIVATE body=x' }), { status: 401 }) }) };
+    const forged = await post(STAGING, '{}', proof(forgedToken));
+    expect(forged.headers.get(HEADER)).toBe('do_assertion/assertion_signature'); expect(forged.headers.get(DIGEST)).toBeNull();
+    for (const value of ['payload=0123456789abcdef body=0123456789abcdef transaction=0123456789abcdef challenge=eyJ2Ijoi',
+      'payload=0123456789ABCDEF body=0123456789abcdef transaction=0123456789abcdef challenge=eyJ2Ijoi', null, 'x'])
+      expect(parseAssertionDigest(value)).toBe(value === null || value === 'x' || value.includes('ABCDEF') ? null : value);
   });
 });

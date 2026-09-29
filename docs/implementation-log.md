@@ -1411,3 +1411,10 @@ A `CoachStaging` build (`RepTodayCoachStaging` scheme) points a genuine device a
 `tools/coach-staging.sh --deploy|--teardown|--inspect` operates it without touching the production script, zone or domain.
 Production cannot carry the staging bindings (its generator never emits them and its verifier rejects them), production responses are byte-identical without them, and a Release executable containing the staging lane fails build inspection.
 The [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract; deployment and teardown are separate captain decisions.
+
+## Coach staging assertion digests (2026-09-29)
+
+The staging lane named the device's final-request rejection as `do_assertion/assertion_signature` on a freshly enrolled key.
+Offline, the client and server follow the App Attest contract exactly, and the real client code signs a request the real server accepts, so the difference can only be seen with data from the device.
+With `COACH_STAGING_LABELS=1`, a `do_assertion/*` rejection now returns digest prefixes of the payload, body, transaction and challenge the server checked, and the `COACH_STAGING` app logs the same for what it signed, plus the assertion and its enrollment attestation.
+Production responses and Release and Debug executables are unchanged; the [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract.

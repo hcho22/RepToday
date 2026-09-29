@@ -510,7 +510,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
   Its archive action always produces Release.
 - Client code for the lane exists only under `COACH_STAGING`; the native staging test harness sets that condition explicitly.
   It posts to the staging URL but still signs the production protocol origin, so App Attest payload bytes match production.
-  It keeps its own key id (`coachStagingAppAttestKeyV1`), so the production key is untouched.
+  It keeps its own key id (`coachStagingAppAttestKeyV2`), so the production key is untouched; this diagnostic capture version ignores the earlier V1 staging key and enrolls once before its first assertion.
   It appends the label to the existing line, for example `[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=worker_premium/status_match`.
 - Release excludes all of it: `tools/archive-release.sh` archives only Release, and `tools/inspect-coach-qa-build.py` rejects a Release executable containing the staging markers.
 - The account's workers.dev subdomain is not committed.
@@ -529,5 +529,14 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 - A labelled 401 identifies the guard for this device and purchase.
   A staging pass points instead at production-only state such as the existing production key record.
   Staging cannot prove that production is healthy.
+
+**Assertion digests:**
+When staging rejects a final request at `do_assertion/*`, it also returns `X-RepToday-Coach-Assertion-Digest: payload=<16 hex> body=<16 hex> transaction=<16 hex> challenge=<8>`.
+The payload value is a prefix of SHA-256 of the payload the server rebuilt; the body and transaction values are prefixes of the full SHA-256 digests received in the assertion envelope; and the challenge value is its first eight characters.
+The values are shortened because the Durable Object reply is bounded to 256 bytes.
+The staging app logs the matching line of what it signed (`[RepTodayCoach] staging signed ...`), the full `clientDataHash`, the assertion, and the enrollment attestation in chunks of at most 800 characters.
+Comparing the two lines names the differing input; the assertion and attestation allow the signature to be checked offline.
+The server header contains only non-secret digest prefixes and exists only with `COACH_STAGING_LABELS=1`; the device evidence exists only under `COACH_STAGING` and is emitted for the captain's offline check.
+Ordinary Debug and Release builds omit this code by compilation condition, and Release inspection rejects an executable containing the staging digest marker.
 
 Offline gate: `bash tools/test-coach-staging.sh` (coordinator doubles, native reader scope, closed transcript and credential-only-on-stdin pipe), run inside `tools/test-coach-final-diagnostics.sh`.

@@ -120,7 +120,7 @@ class StagingSeparationTests(unittest.TestCase):
         self.assertFalse(inspector.inspect(self.app, 'Release', self.scheme))
 
     def test_staging_code_or_missing_executable_fails_release(self):
-        for executable in [b'x reptoday-coach-staging x', b'x coachStagingAppAttestKeyV1 x']:
+        for executable in [b'x reptoday-coach-staging x', b'x coachStagingAppAttestKeyV2 x', b'x X-RepToday-Coach-Assertion-Digest x']:
             self.write(executable)
             with self.assertRaises(ValueError):
                 inspector.inspect(self.app, 'Release', self.scheme)
