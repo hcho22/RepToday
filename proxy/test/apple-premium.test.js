@@ -106,10 +106,29 @@ describe('independent fresh Apple premium-status workflow',()=>{
     }
   });
 
-  it.each(['bundleId','environment','appAppleId'])('rejects substituted or missing server %s in both environments',async field=>{
+  it.each(['bundleId','environment'])('rejects substituted or missing server %s in both environments',async field=>{
     for(const environment of ['Production','Sandbox']) {
       select(environment);statuses[field]=undefined;
       await expect(premiumEntitlement('presented.proof.fixture',env,()=>now)).rejects.toThrow();
+    }
+  });
+
+  it('accepts a Sandbox status response without appAppleId, which Apple omits in Sandbox',async()=>{
+    // Apple's SDK documents appAppleId as omitted in Sandbox and compares it only in Production.
+    select('Sandbox');delete statuses.appAppleId;
+    const denied=vi.fn();
+    await expect(premiumEntitlement('presented.proof.fixture',env,()=>now,denied)).resolves.toBeUndefined();
+    expect(denied).not.toHaveBeenCalled();
+  });
+
+  it('still requires the exact appAppleId in Production and never accepts a mismatched one in Sandbox',async()=>{
+    const cases=/** @type {[string, unknown][]} */ ([['Production',undefined],['Production',2],['Sandbox',2],['Sandbox',0],['Sandbox',null]]);
+    for(const [environment,appAppleId] of cases) {
+      select(environment);
+      if(appAppleId===undefined) delete statuses.appAppleId; else statuses.appAppleId=appAppleId;
+      const denied=vi.fn();
+      await expect(premiumEntitlement('presented.proof.fixture',env,()=>now,denied)).rejects.toThrow('Coach authentication failed');
+      expect(denied.mock.calls).toEqual([['status_identity']]);
     }
   });
 

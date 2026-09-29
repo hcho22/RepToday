@@ -157,7 +157,10 @@ export async function premiumEntitlement(jws, env, now = () => Date.now(), onDen
     const statuses = await client.getAllSubscriptionStatuses(presented.originalTransactionId);
     const fetchedAt = now();
     reason = 'status_identity';
-    if (statuses.bundleId !== BUNDLE || statuses.environment !== environment || Number(statuses.appAppleId) !== Number(env.APP_STORE_APP_ID) ||
+    // Apple omits appAppleId in Sandbox, and its SDK compares it only in Production. A present value must still match.
+    const appMatches = Number(statuses.appAppleId) === Number(env.APP_STORE_APP_ID) ||
+      (environment === Environment.SANDBOX && statuses.appAppleId === undefined);
+    if (statuses.bundleId !== BUNDLE || statuses.environment !== environment || !appMatches ||
         !Array.isArray(statuses.data) || statuses.data.length > 8) throw new CoachAuthFailure();
     const candidates = statuses.data.flatMap(group => group.lastTransactions ?? []);
     reason = 'status_count';
