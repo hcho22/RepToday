@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { STAGING, STAGING_SECRET_NAMES, StagingCloudflare, deployStaging, inspectStaging, teardownStaging, stagingProbes,
-  stagingWorkerConfig, stagingOrigin, stagingLines, stagingFailureOutput } from './coach-staging.mjs';
+  stagingWorkerConfig, stagingTeardownConfig, stagingOrigin, stagingLines, stagingFailureOutput } from './coach-staging.mjs';
 import { DeploymentFailure, TARGET } from './coach-production-deploy.mjs';
 
 // Cloudflare API and Worker doubles only: no auth file, Keychain, network or production resource.
 const account = 'a'.repeat(32), stagingNamespace = 'c'.repeat(32), productionNamespace = 'f'.repeat(32);
+const stagingDomain = 'b'.repeat(32), productionDomain = 'e'.repeat(32);
 const revision = 'd'.repeat(40), oauth = 'NONSECRET_OAUTH_TEST_DOUBLE', subdomain = 'fixture-account';
 const origin = `https://${STAGING}.${subdomain}.workers.dev/coach`;
 const apple = { appPrefix: 'FIXTURE001', appID: '123456', keyID: 'FIXTURE002', issuerID: '00000000-0000-0000-0000-000000000000',
@@ -16,8 +17,9 @@ const stopped = code => error => error instanceof DeploymentFailure && error.cod
 function fixture() {
   const state = { accounts: [{ id: account }], subdomain: { subdomain }, scripts: [TARGET.worker], secrets: new Map(), calls: [],
     namespaces: [{ id: productionNamespace, class: 'CoachAuthenticationState', script: TARGET.worker, use_sqlite: true }],
-    domains: [{ hostname: TARGET.hostname, service: TARGET.worker }], scriptSubdomain: { enabled: true, previews_enabled: false },
-    extraBindings: [], vars: null, deleteRemoves: true, stageWorkerCalls: 0 };
+    domains: [{ id: productionDomain, hostname: TARGET.hostname, service: TARGET.worker }],
+    scriptSubdomain: { enabled: true, previews_enabled: false }, extraBindings: [], vars: null,
+    deleteRemoves: true, stageWorkerCalls: 0, stageNamespaceDeletionCalls: 0 };
   const settings = () => ({ bindings: [
     ...Object.entries(state.vars ?? {}).map(([name, text]) => ({ name, type: 'plain_text', text })),
     { name: 'COACH_AUTH_STATE', type: 'durable_object_namespace', class_name: 'CoachAuthenticationState', namespace_id: stagingNamespace },
@@ -42,6 +44,10 @@ function fixture() {
     if (endpoint === `${script}?force=true` && init.method === 'DELETE') {
       if (state.deleteRemoves) state.scripts = state.scripts.filter(id => id !== STAGING); return ok(null);
     }
+    const domainDelete = new RegExp(`^/accounts/${account}/workers/domains/([a-f0-9]{32})$`).exec(endpoint);
+    if (domainDelete && init.method === 'DELETE') {
+      if (state.deleteRemoves) state.domains = state.domains.filter(item => item.id !== domainDelete[1]); return ok(null);
+    }
     return new Response(JSON.stringify({ success: false, errors: [{ code: 10000 }] }), { status: 404 });
   };
   const cf = (readOnly = false) => new StagingCloudflare(oauth, undefined, fetchImpl, { readOnly });
@@ -52,7 +58,16 @@ function fixture() {
     state.vars = stagingWorkerConfig('/fixture/repository', revision, stagedOrigin).vars;
     state.namespaces.push({ id: stagingNamespace, class: 'CoachAuthenticationState', script: STAGING, use_sqlite: true });
   };
-  return { state, cf, stageWorker };
+  const stageNamespaceDeletion = async stagedAccount => {
+    state.stageNamespaceDeletionCalls++;
+    assert.equal(stagedAccount, account);
+    const config = stagingTeardownConfig('/fixture/repository');
+    assert.equal(config.name, STAGING); assert.equal(config.workers_dev, false); assert.deepEqual(config.routes, []);
+    assert.deepEqual(config.migrations, [{ tag: 'coach-security-teardown-v1', deleted_classes: ['CoachAuthenticationState'] }]);
+    if (!state.scripts.includes(STAGING)) state.scripts.push(STAGING);
+    if (state.deleteRemoves) state.namespaces = state.namespaces.filter(item => item.script !== STAGING);
+  };
+  return { state, cf, stageWorker, stageNamespaceDeletion };
 }
 const deploy = (f, extra = {}) => { const reports = [];
   return { reports, run: deployStaging({ cf: f.cf(), credentials: { ...apple }, revision, stageWorker: f.stageWorker,
@@ -99,7 +114,7 @@ test('deploy requires a fully torn-down staging name before any mutation', async
     ['leftover namespace', state => state.namespaces.push({
       id: stagingNamespace, class: 'CoachAuthenticationState', script: STAGING, use_sqlite: true,
     })],
-    ['leftover custom domain', state => state.domains.push({ hostname: 'staging.example', service: STAGING })],
+    ['leftover custom domain', state => state.domains.push({ id: stagingDomain, hostname: 'staging.example', service: STAGING })],
   ]) {
     const f = fixture(); arrange(f.state);
     const secretsBefore = new Map(f.state.secrets);
@@ -139,22 +154,60 @@ test('the staging client cannot address production, zones, model secrets or muta
     [`${production}?force=true`, 'DELETE'], ['/zones', 'GET'], [`${script}/secrets`, 'PUT', { name: 'OPENAI_API_KEY', type: 'secret_text', text: 'x' }],
     [`${script}`, 'DELETE'], [`${script}/settings`, 'PATCH', {}],
   ]) await assert.rejects(cf.accountRequest(endpoint, method, body), stopped('scope'), endpoint);
+  await assert.rejects(cf.deleteStagingDomain({ id: productionDomain, hostname: TARGET.hostname, service: TARGET.worker }),
+    stopped('scope'));
   const readOnly = f.cf(true); readOnly.account = account;
   await assert.rejects(readOnly.accountRequest(`${script}?force=true`, 'DELETE'), stopped('scope'));
   assert.equal(f.state.calls.length, 0);
 });
 
-test('teardown force-deletes only staging and confirms production is untouched', async () => {
+test('teardown removes every staging artifact and confirms production identities are untouched', async () => {
   const f = fixture(); await deploy(f).run; f.state.calls.length = 0;
-  const reports = []; await teardownStaging({ cf: f.cf(), report: line => reports.push(line) });
+  f.state.domains.push({ id: stagingDomain, hostname: 'staging.example', service: STAGING });
+  const reports = []; await teardownStaging({ cf: f.cf(), stageNamespaceDeletion: f.stageNamespaceDeletion,
+    report: line => reports.push(line) });
   assert.deepEqual(reports, [stagingLines.removed]);
   assert.deepEqual(f.state.calls.filter(call => call.method === 'DELETE').map(call => call.endpoint),
-    [`/accounts/${account}/workers/scripts/${STAGING}?force=true`]);
+    [`/accounts/${account}/workers/domains/${stagingDomain}`, `/accounts/${account}/workers/scripts/${STAGING}?force=true`]);
+  assert.equal(f.state.stageNamespaceDeletionCalls, 1);
+  assert.deepEqual(f.state.namespaces, [{ id: productionNamespace, class: 'CoachAuthenticationState', script: TARGET.worker, use_sqlite: true }]);
+  assert.deepEqual(f.state.domains, [{ id: productionDomain, hostname: TARGET.hostname, service: TARGET.worker }]);
   assert.ok(f.state.scripts.includes(TARGET.worker)); noProduction(f.state);
-  const again = []; await teardownStaging({ cf: f.cf(), report: line => again.push(line) });
+  const again = []; await teardownStaging({ cf: f.cf(), stageNamespaceDeletion: f.stageNamespaceDeletion,
+    report: line => again.push(line) });
   assert.deepEqual(again, [stagingLines.absent]);
   const stuck = fixture(); await deploy(stuck).run; stuck.state.deleteRemoves = false;
-  await assert.rejects(teardownStaging({ cf: stuck.cf() }), stopped('teardown'));
+  await assert.rejects(teardownStaging({ cf: stuck.cf(), stageNamespaceDeletion: stuck.stageNamespaceDeletion }), stopped('teardown'));
+});
+
+test('teardown recovers orphaned staging namespaces and domains', async () => {
+  for (const [name, arrange] of [
+    ['namespace', state => state.namespaces.push({ id: stagingNamespace, class: 'CoachAuthenticationState', script: STAGING, use_sqlite: true })],
+    ['domain', state => state.domains.push({ id: stagingDomain, hostname: 'staging.example', service: STAGING })],
+  ]) {
+    const f = fixture(); arrange(f.state);
+    const reports = [];
+    await teardownStaging({ cf: f.cf(), stageNamespaceDeletion: f.stageNamespaceDeletion, report: line => reports.push(line) });
+    assert.deepEqual(reports, [stagingLines.removed], name);
+    assert.equal(f.state.namespaces.some(item => item.script === STAGING), false, name);
+    assert.equal(f.state.domains.some(item => item.service === STAGING), false, name);
+    assert.equal(f.state.scripts.includes(STAGING), false, name);
+    assert.equal(f.state.stageNamespaceDeletionCalls, name === 'namespace' ? 1 : 0, name);
+    noProduction(f.state);
+  }
+});
+
+test('teardown refuses production identities before any mutation', async () => {
+  for (const [name, arrange] of [
+    ['production namespace id', state => state.namespaces.push({ id: productionNamespace, class: 'CoachAuthenticationState', script: STAGING, use_sqlite: true })],
+    ['production domain id', state => state.domains.push({ id: productionDomain, hostname: 'staging.example', service: STAGING })],
+    ['production hostname', state => state.domains.push({ id: stagingDomain, hostname: TARGET.hostname, service: STAGING })],
+  ]) {
+    const f = fixture(); arrange(f.state);
+    await assert.rejects(teardownStaging({ cf: f.cf(), stageNamespaceDeletion: f.stageNamespaceDeletion }), stopped('scope'), name);
+    assert.equal(f.state.calls.some(call => call.method !== 'GET'), false, name);
+    assert.equal(f.state.stageNamespaceDeletionCalls, 0, name);
+  }
 });
 
 test('inspect is read-only and reports absent or a verified staging Worker', async () => {

@@ -17,7 +17,7 @@ export const stagingLines = Object.freeze({
   verified: 'verified: staging bindings, own SQLite namespace, no custom domain, labelled no-model probes',
   inspected: origin => `inspect: present ${origin}; staging bindings, own SQLite namespace and no custom domain verified`,
   absent: `absent: ${STAGING}`,
-  removed: `removed: ${STAGING}, its Durable Object namespace and secrets; production Worker still present`,
+  removed: `removed: ${STAGING}, its Durable Object namespace, custom domains and secrets; production identities unchanged`,
 });
 const requireThat = (condition, code) => { if (!condition) throw new DeploymentFailure(code); };
 const identifier = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -44,7 +44,14 @@ export function stagingWorkerConfig(repository, revision, origin) {
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }
 
-// Only the staging script and account-level reads; production endpoints are unreachable by construction.
+export function stagingTeardownConfig(repository) {
+  return { name: STAGING, main: path.join(repository, 'proxy/src/coach-staging-teardown-worker.js'),
+    compatibility_date: '2026-01-01', workers_dev: false, preview_urls: false, routes: [], logpush: false,
+    observability: { enabled: false }, send_metrics: false,
+    migrations: [{ tag: 'coach-security-teardown-v1', deleted_classes: [CLASS] }] };
+}
+
+// Only exact staging mutations and account-level reads; production endpoints are unreachable by construction.
 export class StagingCloudflare extends Cloudflare {
   async accountRequest(endpoint, method = 'GET', body) {
     const account = `/accounts/${this.account}`, script = `${account}/workers/scripts/${STAGING}`;
@@ -58,6 +65,12 @@ export class StagingCloudflare extends Cloudflare {
       identifier(this.account) && method === 'DELETE' && body === undefined && endpoint === `${script}?force=true`;
     requireThat(permitted, 'scope');
     return this.request(this.oauth, endpoint, method, body);
+  }
+
+  async deleteStagingDomain(domain) {
+    requireThat(identifier(this.account) && identifier(domain?.id) && domain.service === STAGING &&
+      domain.hostname !== TARGET.hostname, 'scope');
+    return this.request(this.oauth, `/accounts/${this.account}/workers/domains/${domain.id}`, 'DELETE');
   }
 }
 
@@ -85,6 +98,34 @@ async function requireStagingAbsent(cf) {
   requireThat(!scripts.staging && !namespaces.some(item => item.script === STAGING) &&
     !domains.some(item => item.service === STAGING), 'present');
 }
+
+async function stagingInventory(cf) {
+  const scripts = await cf.accountRequest(`/accounts/${cf.account}/workers/scripts`);
+  const namespaces = await cf.accountRequest(`/accounts/${cf.account}/workers/durable_objects/namespaces`);
+  const domains = await cf.accountRequest(`/accounts/${cf.account}/workers/domains`);
+  requireThat(Array.isArray(scripts) && scripts.every(item => typeof item?.id === 'string'), 'http');
+  requireThat(Array.isArray(namespaces), 'namespace');
+  requireThat(Array.isArray(domains), 'domain');
+  return { scripts, namespaces, domains };
+}
+
+function teardownTargets(inventory) {
+  const namespaces = inventory.namespaces.filter(item => item?.script === STAGING);
+  const domains = inventory.domains.filter(item => item?.service === STAGING);
+  const productionNamespaceIds = new Set(inventory.namespaces.filter(item => item?.script === TARGET.worker).map(item => item.id));
+  const productionDomainIds = new Set(inventory.domains.filter(item => item?.service === TARGET.worker).map(item => item.id));
+  requireThat(namespaces.length <= 1 && namespaces.every(item => identifier(item.id) && item.class === CLASS &&
+    !productionNamespaceIds.has(item.id)), 'scope');
+  requireThat(domains.every(item => identifier(item.id) && item.hostname !== TARGET.hostname &&
+    !productionDomainIds.has(item.id)), 'scope');
+  return { script: inventory.scripts.some(item => item.id === STAGING), namespaces, domains };
+}
+
+const productionIdentities = inventory => ({
+  scripts: inventory.scripts.filter(item => item.id === TARGET.worker).map(item => item.id).sort(),
+  namespaces: inventory.namespaces.filter(item => item.script === TARGET.worker).map(item => item.id).sort(),
+  domains: inventory.domains.filter(item => item.service === TARGET.worker).map(item => item.id).sort(),
+});
 
 // Exact staging shape: its own vars, one SQLite namespace distinct from production, six secrets and
 // no model key, no custom domain, workers.dev enabled, and no persistent logs or tail consumers.
@@ -185,13 +226,22 @@ export async function inspectStaging({ cf, report = () => {} }) {
   await verifyStaging(cf, origin); report(stagingLines.inspected(origin));
 }
 
-export async function teardownStaging({ cf, report = () => {} }) {
+export async function teardownStaging({ cf, stageNamespaceDeletion, report = () => {} }) {
   await confirmAccount(cf);
-  const before = await scriptPresent(cf);
-  if (!before.staging) { report(stagingLines.absent); return; }
-  await cf.accountRequest(`/accounts/${cf.account}/workers/scripts/${STAGING}?force=true`, 'DELETE');
-  const after = await scriptPresent(cf);
-  requireThat(!after.staging && after.production === before.production, 'teardown');
+  const before = await stagingInventory(cf);
+  const targets = teardownTargets(before);
+  if (!targets.script && !targets.namespaces.length && !targets.domains.length) { report(stagingLines.absent); return; }
+  for (const domain of targets.domains) await cf.deleteStagingDomain(domain);
+  if (targets.namespaces.length) {
+    requireThat(typeof stageNamespaceDeletion === 'function', 'wrangler');
+    await stageNamespaceDeletion(cf.account);
+  }
+  if (targets.script || targets.namespaces.length)
+    await cf.accountRequest(`/accounts/${cf.account}/workers/scripts/${STAGING}?force=true`, 'DELETE');
+  const after = await stagingInventory(cf);
+  const remaining = teardownTargets(after);
+  requireThat(!remaining.script && !remaining.namespaces.length && !remaining.domains.length &&
+    JSON.stringify(productionIdentities(after)) === JSON.stringify(productionIdentities(before)), 'teardown');
   report(stagingLines.removed);
 }
 
@@ -221,7 +271,8 @@ async function main() {
   if (operation === '--deploy') await deployStaging({ cf, credentials, revision, report,
     stageWorker: (account, origin) => stageWithWrangler(repository, account, oauth, root => stagingWorkerConfig(root, revision, origin)),
     probe: origin => stagingProbes(origin) });
-  else if (operation === '--teardown') await teardownStaging({ cf, report });
+  else if (operation === '--teardown') await teardownStaging({ cf, report,
+    stageNamespaceDeletion: account => stageWithWrangler(repository, account, oauth, stagingTeardownConfig) });
   else await inspectStaging({ cf, report });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

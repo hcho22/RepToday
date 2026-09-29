@@ -524,7 +524,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 - The captain runs `RepTodayCoachStaging` on the phone and sends one message.
   The first send enrolls a fresh staging key.
   The failure line then names the rejecting guard, or the send gets `500 not_configured` because every check passed.
-- `tools/coach-staging.sh --teardown` force-deletes the staging script with its namespace, data and secrets, and confirms the production script is still present.
+- `tools/coach-staging.sh --teardown` detaches any exact staging custom domain, removes the staging Durable Object namespace through a non-public deletion migration, force-deletes the staging script and secrets, then rechecks all three surfaces and confirms every production identity is unchanged. It also repairs an orphan namespace or domain when the staging script is already absent, and refuses any artifact that overlaps the production script, namespace or `coach.reptoday.app` before mutation.
   `--inspect` is read-only.
 - A labelled 401 identifies the guard for this device and purchase.
   A staging pass points instead at production-only state such as the existing production key record.
