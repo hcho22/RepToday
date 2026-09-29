@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Buffer } from 'node:buffer';
 import cbor from 'cbor';
-import { assertKey, attestKey, assertionPayload, challengeToken, verifyChallenge, fromBase64, premiumEntitlement, hash } from '../src/coach-auth-crypto.js';
+import { assertKey, attestKey, assertionPayload, challengeToken, verifyChallenge, fromBase64, premiumEntitlement, hash, CHALLENGE_CLOCK_SKEW_MS } from '../src/coach-auth-crypto.js';
 import { fixtureKey, signedAssertion, APP_PREFIX, TEST_GATE, TEST_BODY_HASH, TEST_TRANSACTION_HASH } from './auth-fixtures.js';
 import { storeG2, storeG3 } from '../src/apple-trust-roots.js';
 
@@ -54,10 +54,22 @@ describe('real cryptographic request binding', () => {
   });
   it('bounds challenge expiry exactly and rejects forged/substituted challenges', () => {
     expect(verifyChallenge(challenge, key.keyId, TEST_GATE, now + 59999).k).toBe(key.keyId);
-    for (const clock of [now - 1, now + 60000]) expect(() => verifyChallenge(challenge, key.keyId, TEST_GATE, clock)).toThrow();
+    for (const clock of [now - CHALLENGE_CLOCK_SKEW_MS - 1, now + 60000]) expect(() => verifyChallenge(challenge, key.keyId, TEST_GATE, clock)).toThrow();
     expect(() => verifyChallenge(challenge, fixtureKey().keyId, TEST_GATE, now)).toThrow();
     expect(() => verifyChallenge(challenge + 'x', key.keyId, TEST_GATE, now)).toThrow();
     expect(() => verifyChallenge(challenge, key.keyId, '1'.repeat(64), now)).toThrow();
+  });
+  it('accepts an issue time at most the bounded skew ahead of a trailing verifier clock', () => {
+    // The Worker mints and a Durable Object on another machine verifies; neither clock is authoritative.
+    expect(CHALLENGE_CLOCK_SKEW_MS).toBe(5000);
+    for (const lag of [1, 25, CHALLENGE_CLOCK_SKEW_MS]) expect(verifyChallenge(challenge, key.keyId, TEST_GATE, now - lag).k).toBe(key.keyId);
+    expect(() => verifyChallenge(challenge, key.keyId, TEST_GATE, now - CHALLENGE_CLOCK_SKEW_MS - 1)).toThrow();
+    // The tolerance never excuses authenticity, binding or expiry.
+    for (const lag of [1, CHALLENGE_CLOCK_SKEW_MS]) {
+      expect(() => verifyChallenge(challengeToken(key.keyId, '1'.repeat(64), now), key.keyId, TEST_GATE, now - lag)).toThrow();
+      expect(() => verifyChallenge(challenge, fixtureKey().keyId, TEST_GATE, now - lag)).toThrow();
+    }
+    expect(() => verifyChallenge(challengeToken(key.keyId, TEST_GATE, now - 60000 - CHALLENGE_CLOCK_SKEW_MS), key.keyId, TEST_GATE, now)).toThrow();
   });
   it.each(['', ' AA==', 'AB==', 'AAAA=', 'AA===', '_A==', 'A'.repeat(100)])('rejects noncanonical/oversized base64', value => {
     expect(() => fromBase64(value, 4)).toThrow();

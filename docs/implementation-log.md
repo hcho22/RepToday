@@ -1376,3 +1376,11 @@ Coach enablement remain pending.
 
 Added QA paywall StoreKit diagnostics. See the [behavior and privacy contract](coach-storekit-diagnostics.md)
 and the [offline validation record and limits](../artifacts/reports/coach-storekit-diagnostics/validation.md).
+
+## Coach assertion challenge tolerates Worker/Durable Object clock skew (2026-09-28)
+
+Current source adds a bounded Worker/Durable Object clock-skew tolerance to Coach challenge
+verification. The [runtime authentication runbook](coach-runtime-authentication.md#verification-boundary)
+owns the contract and deployment status; the
+[validation record](../artifacts/reports/coach-token-skew/validation.md) owns the local evidence and
+its limits.

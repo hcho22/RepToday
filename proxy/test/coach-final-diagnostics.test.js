@@ -4,7 +4,7 @@ import cbor from 'cbor';
 import { handleRuntimeCoach } from '../src/coach-auth-worker.js';
 import { CoachAuthenticationState, RETENTION_MS } from '../src/coach-auth-state.js';
 import { emitFinalAuthDiagnostic } from '../src/coach-auth-diagnostics.js';
-import { VERSION, ORIGIN, BUNDLE, hash, assertionPayload, assertKey, premiumEntitlement, CoachAuthFailure } from '../src/coach-auth-crypto.js';
+import { VERSION, ORIGIN, BUNDLE, CHALLENGE_CLOCK_SKEW_MS, hash, assertionPayload, assertKey, premiumEntitlement, CoachAuthFailure } from '../src/coach-auth-crypto.js';
 import { fixtureKey, signedAssertion, APP_PREFIX, TEST_GATE, TEST_JWS } from './auth-fixtures.js';
 const { verify, lookup } = vi.hoisted(() => ({ verify: vi.fn(), lookup: vi.fn() }));
 vi.mock('@apple/app-store-server-library', () => ({
@@ -90,9 +90,9 @@ describe('final diagnostic labels preserve real local Worker/DO/crypto outcomes'
       case 'missing proof': p = null; break;
       case 'extra proof field': p = Object.assign(p, { privateText: 'PRIVATE-PROMPT-SENTINEL' }); break;
       case 'invalid assertion encoding': p.assertion = '!'; break;
-      case 'worker future token': clock--; break;
-      case 'DO future token': doLag = 1; break;
-      case 'DO transaction future token': storage.lag = 1; break;
+      case 'worker future token': clock -= CHALLENGE_CLOCK_SKEW_MS + 1; break;
+      case 'DO future token': doLag = CHALLENGE_CLOCK_SKEW_MS + 1; break;
+      case 'DO transaction future token': storage.lag = CHALLENGE_CLOCK_SKEW_MS + 1; break;
       case 'replaced nonce': await challenge(); break;
       case 'expired nonce': storage.record.pendingExpiresAt = base; break;
       case 'malformed assertion': p.assertion = Buffer.from('PRIVATE-CBOR-SENTINEL').toString('base64'); break;

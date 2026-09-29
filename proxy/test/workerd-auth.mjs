@@ -9,6 +9,7 @@ import {appleApiFixture} from './apple-api-probe.js';
 import {pathToFileURL} from 'node:url';
 import { fixtureKey, signedAssertion, APP_PREFIX, TEST_GATE, TEST_BODY_HASH, TEST_TRANSACTION_HASH } from './auth-fixtures.js';
 import { VERSION, ORIGIN, hash, assertionPayload } from '../src/coach-auth-crypto.js';
+import { validateClockSkew } from './workerd-clock-skew.mjs';
 
 const root = resolve('..');
 const output = resolve('../build/coach-runtime-auth');
@@ -30,6 +31,7 @@ const options = {bundle: true, format: 'esm', platform: 'node', target: 'es2023'
 await build({...options, entryPoints: ['src/coach-auth-worker.js'], outfile: resolve(output, 'gateway-compatible.mjs')});
 await build({...options, entryPoints: ['test/workerd-auth-entry.js'], outfile: resolve(output, 'runtime-tests.mjs')});
 await build({...options, entryPoints: ['test/apple-api-probe.js'], outfile: resolve(output, 'node-api-probe.mjs')});
+await build({...options, entryPoints: ['test/workerd-skewed-state-entry.js'], outfile: resolve(output, 'skewed-state.mjs')});
 let localAppleCalls = 0;
 let localResponseCalls = 0;
 let fixtureResponse = Response;
@@ -218,6 +220,7 @@ try {
     assert.equal(localAppleCalls,3);
     assert.equal(rejectedLocalCalls,0);
     assert.equal(localResponseCalls,0);
-    console.log('validated: installed workerd native crypto, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering and SQLite atomic replay; zero external requests');
+    await validateClockSkew({root, gatewayScript: resolve(output, 'runtime-tests.mjs'), stateScript: resolve(output, 'skewed-state.mjs')});
+    console.log('validated: installed workerd native crypto, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering, SQLite atomic replay and bounded Worker/Durable Object clock skew; zero external requests');
   }
 } finally {await m.dispose();}

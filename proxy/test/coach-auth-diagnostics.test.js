@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import { handleRuntimeCoach } from '../src/coach-auth-worker.js';
 import { CoachAuthenticationState } from '../src/coach-auth-state.js';
 import { emitAuthGuardDiagnostic } from '../src/coach-auth-diagnostics.js';
-import { CoachAuthFailure, VERSION, ORIGIN, challengeToken, verifyChallenge } from '../src/coach-auth-crypto.js';
+import { CoachAuthFailure, VERSION, ORIGIN, CHALLENGE_CLOCK_SKEW_MS, challengeToken, verifyChallenge } from '../src/coach-auth-crypto.js';
 
 const base = 1_800_000_000_000;
 const keyId = Buffer.alloc(32, 7).toString('base64');
@@ -15,7 +15,10 @@ const cases = [
   { name: 'expired record', record: { ...goodRecord(), expiresAt: base }, status: 401, error: 'key_unavailable', reads: 1 },
   { name: 'old schema', record: { ...goodRecord(), v: 'old' }, status: 401, error: 'key_unavailable', reads: 1 },
   { name: 'tombstone', record: { tombstoneUntil: base + 100_000 }, status: 401, error: 'key_unavailable', reads: 1 },
-  { name: 'future by 1ms', skew: -1, status: 401, error: 'unauthorized', stage: 'do_token_entry', reason: 'token_future', deltaMs: 1 },
+  { name: 'future by 1ms', skew: -1, status: 200, reads: 1, writes: 1 },
+  { name: 'future at skew bound', skew: -CHALLENGE_CLOCK_SKEW_MS, status: 200, reads: 1, writes: 1 },
+  { name: 'future beyond skew bound', skew: -CHALLENGE_CLOCK_SKEW_MS - 1, status: 401, error: 'unauthorized',
+    stage: 'do_token_entry', reason: 'token_future', deltaMs: CHALLENGE_CLOCK_SKEW_MS + 1 },
   { name: 'clock equal', skew: 0, status: 200, reads: 1, writes: 1 },
   { name: 'clock ahead', skew: 1, status: 200, reads: 1, writes: 1 },
   { name: 'expired token', skew: 60_000, status: 401, error: 'unauthorized', stage: 'do_token_entry', reason: 'token_expired', deltaMs: -60_000 },
@@ -24,7 +27,9 @@ const cases = [
   { name: 'storage fails', storageError: true, status: 503, error: 'auth_unavailable' },
   { name: 'extra field', extra: { extra: 'PRIVATE-INPUT-SENTINEL' }, status: 401, error: 'unauthorized', stage: 'worker_envelope', reason: 'envelope' },
   { name: 'missing expiresAt remains accepted', record: { v: VERSION, publicKey: 'TEST-PUBLIC-KEY-SENTINEL', counter: 0 }, status: 200, reads: 1, writes: 1 },
-  { name: 'transaction clock reversal', commitSkew: -1, status: 401, error: 'unauthorized', reads: 1, stage: 'do_token_transaction', reason: 'token_future', deltaMs: 1 },
+  { name: 'transaction clock reversal within skew bound', commitSkew: -CHALLENGE_CLOCK_SKEW_MS, status: 200, reads: 1, writes: 1 },
+  { name: 'transaction clock reversal', commitSkew: -CHALLENGE_CLOCK_SKEW_MS - 1, status: 401, error: 'unauthorized', reads: 1,
+    stage: 'do_token_transaction', reason: 'token_future', deltaMs: CHALLENGE_CLOCK_SKEW_MS + 1 },
 ];
 
 async function exercise(testCase, enabled) {
@@ -92,7 +97,7 @@ describe('temporary auth diagnostics preserve public challenge behavior', () => 
   });
   it('console failure does not replace the public unauthorized result', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => { throw Error('PRIVATE-CONSOLE-FAILURE'); });
-    const result = await exercise(cases.find(testCase => testCase.name === 'future by 1ms'), true);
+    const result = await exercise(cases.find(testCase => testCase.name === 'future beyond skew bound'), true);
     expect(result.status).toBe(401); expect(result.data).toEqual({ error: 'unauthorized' });
   });
 });
@@ -118,7 +123,7 @@ describe('challenge diagnostic reason contains authenticated bounded metadata on
   it('successful verification emits nothing and callback failure cannot alter rejection', () => {
     const denied = vi.fn(); const token = challengeToken(keyId, secret, base);
     expect(verifyChallenge(token, keyId, secret, base, denied).k).toBe(keyId); expect(denied).not.toHaveBeenCalled();
-    expect(() => verifyChallenge(token, keyId, secret, base - 1, () => { throw Error('PRIVATE-CALLBACK'); }))
+    expect(() => verifyChallenge(token, keyId, secret, base - CHALLENGE_CLOCK_SKEW_MS - 1, () => { throw Error('PRIVATE-CALLBACK'); }))
       .toThrow(CoachAuthFailure);
   });
 });
