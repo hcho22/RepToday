@@ -544,7 +544,8 @@ export async function gateProbes(gate, fetchImpl = fetch, {
     const expected = index === 2 ? 400 : 401;
     await boundedGateProbe(fetchImpl, { stage, headers: authorization ? { Authorization: authorization } : {}, body: '{', expected,
       accept: parsed => expected === 401 ? parsed?.error === 'unauthorized' : typeof parsed?.error === 'string',
-      bodyLimit: 8192, requestTimeout: 15_000, readiness: index === 0, retry: index === 0 || retryEveryStage,
+      bodyLimit: 8192, requestTimeout: 15_000, readiness: index === 0 || retryEveryStage,
+      retry: index === 0 || retryEveryStage,
       readinessDeadline, now, wait });
   }
 }

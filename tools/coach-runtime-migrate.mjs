@@ -293,7 +293,7 @@ export async function runtimeGateProbes(gate, fetchImpl = fetch, {
   await boundedGateProbe(fetchImpl, { stage: 'forged-proof', headers: { 'X-RepToday-Coach-Auth': '{}' }, body: '{}', expected: 401,
     accept: (parsed, response) => response.redirected === false && parsed !== null && typeof parsed === 'object' &&
       Object.keys(parsed).join(',') === 'error' && parsed.error === 'unauthorized',
-    bodyLimit: 256, requestTimeout: 5_000, readiness: false, retry: true, readinessDeadline, now, wait });
+    bodyLimit: 256, requestTimeout: 5_000, readiness: true, retry: true, readinessDeadline, now, wait });
 }
 
 export function runtimeArguments(args) {

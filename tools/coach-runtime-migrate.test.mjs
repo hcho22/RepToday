@@ -288,6 +288,17 @@ test('a persistent hold-like denial stops after four attempts per probe within t
   }, late), error => stopped('gate')(error) && error.gateDiagnostic.stage === 'wrong-authorization');
   assert.equal(wrong, 1); assert.deepEqual(late.waits, []);
 });
+test('a later release probe cannot succeed after the shared readiness deadline', async () => {
+  const clock = probeClock();
+  await assert.rejects(runtimeGateProbes(credentials.clientGate, async (url, options) => {
+    const kind = probeKind(options);
+    if (kind === 'missing-authorization') { clock.advance(41_000); return expectedAnswer(kind); }
+    if (kind === 'wrong-authorization') { clock.advance(4_001); return expectedAnswer(kind); }
+    assert.fail(`unexpected probe after deadline: ${kind}`);
+  }, clock), error => stopped('gate')(error) && error.gateDiagnostic.stage === 'wrong-authorization' &&
+    error.gateDiagnostic.failure === 'timeout');
+  assert.deepEqual(clock.waits, []);
+});
 test('runtime failure output adds only the fixed probe line, and only for a diagnosed gate stop', () => {
   const gate = new DeploymentFailure('gate');
   gate.gateDiagnostic = { stage: 'forged-proof', failure: 'json', status: 403, redirected: 'no', contract: 'non-json' };
