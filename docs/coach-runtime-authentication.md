@@ -2,7 +2,10 @@
 
 Worker `reptoday-variety-language-proxy` serves `https://coach.reptoday.app/coach`.
 The operator confirmed deployment of Sandbox-capable revision `cad34528` on 2026-09-22.
-Revision `b1b1156` (the Worker/Durable Object clock-skew tolerance below) was deployed through the guarded `--stage`/`--release` on 2026-09-29 as version `4b00c88e-3214-458c-af3d-4ba67b2e66b0`, and `--verify-restored` then passed; the version it replaced was `f12edbeb-1ca1-4570-ba50-8418ae0eea46`.
+Revision `b1b1156` (the Worker/Durable Object clock-skew tolerance below) was deployed through
+the guarded `--stage`/`--release` on 2026-09-28 as version
+`4b00c88e-3214-458c-af3d-4ba67b2e66b0`, and `--verify-restored` then passed; the version it
+replaced was `f12edbeb-1ca1-4570-ba50-8418ae0eea46`.
 This supersedes the historical Production-only `2952fab` release status. Deployment confirmation
 is not genuine-device evidence: TestFlight App Attest/StoreKit admission and a live model response
 remain unverified.
@@ -138,9 +141,10 @@ arbitrary verifier failures and every Production API failure stop without a Sand
 safe evidence because the installed verifier authenticates the JWS certificate/signature and bundle
 before reporting that environment mismatch. The Sandbox verifier is constructed without
 `appAppleId`, exactly as Apple's library requires; Production supplies it. The authenticated status
-response in either environment must report the configured bundle, and in Production the configured `appAppleId`.
-In Sandbox, where Apple omits `appAppleId` and its library compares it only in Production, the field may be absent, but a present value must still match.
-This Sandbox rule is current source only; production keeps the stricter check until a separately approved deployment.
+response in either environment must report the configured bundle, and in Production the configured
+`appAppleId`. In Sandbox, where Apple omits `appAppleId` and its library compares it only in
+Production, the field may be absent, but a present value must still match. This Sandbox rule is
+current source only; production keeps the stricter check until a separately approved deployment.
 
 The selected environment is immutable for the remainder of the request: the server calls that
 environment's authenticated subscription-status API, requires the response environment to match,

@@ -1385,10 +1385,12 @@ owns the contract and deployment status; the
 [validation record](../artifacts/reports/coach-token-skew/validation.md) owns the local evidence and
 its limits.
 
-## Coach Sandbox status identity follows Apple's appAppleId convention (2026-09-29)
+## Coach Sandbox status identity follows Apple's appAppleId convention (2026-09-28)
 
 After the clock-skew deploy, the Coach assertion challenge passed but the final authenticated request from an Xcode-installed (Sandbox purchase) build still returned `401 unauthorized`.
 A device-side size check ruled out App Attest assertion extensions (`authenticatorData` was exactly 37 bytes).
 The Premium status identity check required the subscription-status response's `appAppleId` to equal the configured App ID in Sandbox too, while Apple omits that field in Sandbox and its own library compares it only in Production.
-Current source now compares `appAppleId` only in Production and, in Sandbox, accepts it absent but never mismatched; bundle, environment, status, chain and entitlement-policy checks are unchanged.
+Current source still requires the exact `appAppleId` in Production and, in Sandbox, accepts it
+absent but never mismatched; bundle, environment, status, chain and entitlement-policy checks are
+unchanged.
 The [runtime authentication runbook](coach-runtime-authentication.md#verification-boundary) owns the contract and deployment status; `proxy/test/apple-premium.test.js` holds the regression.
