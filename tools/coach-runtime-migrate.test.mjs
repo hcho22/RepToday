@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { RuntimeCloudflare, runtimePacket, runtimeConfig, checkRuntimeSettings, migrateRuntime,
+import { RuntimeCloudflare, runtimePacket, runtimeConfig, coachWorkerBuild, checkRuntimeSettings, migrateRuntime,
   runtimeGateProbes, runtimeFailureOutput, runtimeLines, runtimeSecretNames, runtimeArguments, checkRuntimeExpectation, checkRuntimeVersion, verifyRuntimeExpectation, runtimeCoverageProbes } from './coach-runtime-migrate.mjs';
 import { DeploymentFailure, TARGET, HOLD, BOUNDARY, LIMIT, CUSTOM, RATE, checkSettings } from './coach-production-deploy.mjs';
 
@@ -203,6 +203,14 @@ test('generated migration configuration contains public source only and exclusiv
   assert.deepEqual(config.migrations,[{tag:'coach-security-v1',new_sqlite_classes:['CoachAuthenticationState']}]);
   assert.equal(config.vars.COACH_AUTH_SOURCE_REV,revision);assert.equal(config.routes.length,0);
   assert.equal(config.workers_dev,false);assert.equal(config.preview_urls,false);assert.equal(config.observability.enabled,false);
+});
+test('the production bundle uses the shared Coach build: nodejs_compat with workerd native crypto', () => {
+  const build = coachWorkerBuild('/fixture/repository');
+  const nativeCrypto = '/fixture/repository/proxy/src/native-crypto.cjs';
+  assert.deepEqual(build, { compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
+    alias: { 'node-fetch': '/fixture/repository/proxy/src/apple-fetch.js', crypto: nativeCrypto, 'node:crypto': nativeCrypto } });
+  const config = runtimeConfig('/fixture/repository', revision);
+  for (const [key, value] of Object.entries(build)) assert.deepEqual(config[key], value);
 });
 test('release probe uses only malformed/non-identifying inputs and rejects forged proof before any model path', async () => {
   const requests=[];

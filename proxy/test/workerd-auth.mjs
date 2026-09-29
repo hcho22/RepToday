@@ -1,22 +1,44 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { builtinModules } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { build } from 'esbuild';
 import { Miniflare, Response as MiniflareResponse } from 'miniflare';
 import {appleApiFixture} from './apple-api-probe.js';
 import {pathToFileURL} from 'node:url';
-import { fixtureKey, signedAssertion, APP_PREFIX, TEST_GATE, TEST_BODY_HASH, TEST_TRANSACTION_HASH } from './auth-fixtures.js';
+import { fixtureKey, signedAssertion, deviceAssertionFixture, APP_PREFIX, TEST_GATE, TEST_BODY_HASH, TEST_TRANSACTION_HASH } from './auth-fixtures.js';
 import { VERSION, ORIGIN, hash, assertionPayload } from '../src/coach-auth-crypto.js';
 import { validateClockSkew } from './workerd-clock-skew.mjs';
+import { coachWorkerBuild } from '../../tools/coach-runtime-migrate.mjs';
 
 const root = resolve('..');
 const output = resolve('../build/coach-runtime-auth');
 await mkdir(output, {recursive: true});
 await writeFile(resolve(output, 'node-globals.mjs'), 'import {Buffer} from "node:buffer"; import process from "node:process"; export {Buffer,process};');
-// Matches Wrangler 3.114.17 handleRequireCallsToNodeJSBuiltins. Generic esbuild externalization
-// produces unsupported dynamic require; production Wrangler's nodejs_compat plugin supplies these.
+// Workerd scripts are bundled by the installed Wrangler with the Coach Worker's shared deploy build
+// settings, so these tests run the module graph that ships, nodejs_compat polyfills included. An
+// esbuild approximation resolved node:crypto natively and hid that Wrangler 3's preset replaces
+// createVerify/createSign with throwing stubs, which rejected every genuine device assertion.
+async function wranglerBundle(entry, name) {
+  const dir = resolve(output, name);
+  await mkdir(dir, {recursive: true});
+  const config = resolve(dir, 'wrangler.json');
+  await writeFile(config, JSON.stringify({name: 'coach-local-test', main: resolve(entry), ...coachWorkerBuild(root), workers_dev: false}));
+  // A private config home keeps the operator's Wrangler login unread; a closed local port keeps
+  // Wrangler's best-effort update check offline. --dry-run never contacts Cloudflare.
+  const env = {PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: dir, CI: 'true', NO_COLOR: '1',
+    WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: resolve(dir, 'wrangler.log'), npm_config_registry: 'http://127.0.0.1:9/'};
+  const result = spawnSync(process.execPath, [resolve('node_modules/wrangler/bin/wrangler.js'), 'deploy', '--dry-run',
+    '--outdir', resolve(dir, 'dist'), '--config', config], {env, encoding: 'utf8', timeout: 120_000});
+  assert.equal(result.status, 0, 'Wrangler could not bundle ' + entry);
+  return resolve(dir, 'dist', basename(entry));
+}
+await wranglerBundle('src/coach-auth-worker.js', 'gateway');
+const runtimeTests = await wranglerBundle('test/workerd-auth-entry.js', 'runtime-tests');
+const skewedState = await wranglerBundle('test/workerd-skewed-state-entry.js', 'skewed-state');
+// The Node-side Apple API comparison probe keeps esbuild; it never runs in workerd.
 const nativeRequire = {name: 'wrangler-native-require-equivalence', setup(b) {
   b.onResolve({filter: /^(node:)?[a-z_]+(?:\/[a-z_]+)?$/}, a => {
     if (a.kind === 'require-call' && (builtinModules.includes(a.path) || a.path.startsWith('node:')))
@@ -28,10 +50,7 @@ const nativeRequire = {name: 'wrangler-native-require-equivalence', setup(b) {
 const options = {bundle: true, format: 'esm', platform: 'node', target: 'es2023',
   alias: {'node-fetch': resolve('src/apple-fetch.js')}, external: ['cloudflare:workers', ...builtinModules, ...builtinModules.map(x => 'node:' + x)],
   inject: [resolve(output, 'node-globals.mjs')], plugins: [nativeRequire]};
-await build({...options, entryPoints: ['src/coach-auth-worker.js'], outfile: resolve(output, 'gateway-compatible.mjs')});
-await build({...options, entryPoints: ['test/workerd-auth-entry.js'], outfile: resolve(output, 'runtime-tests.mjs')});
 await build({...options, entryPoints: ['test/apple-api-probe.js'], outfile: resolve(output, 'node-api-probe.mjs')});
-await build({...options, entryPoints: ['test/workerd-skewed-state-entry.js'], outfile: resolve(output, 'skewed-state.mjs')});
 let localAppleCalls = 0;
 let localResponseCalls = 0;
 let fixtureResponse = Response;
@@ -83,7 +102,7 @@ function collectRuntimeOutput(stream) {
 }
 const m = new Miniflare({handleRuntimeStdio: (stdout, stderr) => {
   collectRuntimeOutput(stdout); collectRuntimeOutput(stderr);
-}, modulesRoot: root, scriptPath: resolve(output, 'runtime-tests.mjs'), modules: true,
+}, modulesRoot: root, scriptPath: runtimeTests, modules: true,
   compatibilityDate: '2025-07-18', compatibilityFlags: ['nodejs_compat'],
   durableObjects: {COACH_AUTH_STATE: {className: 'FixtureAuthenticationState', useSQLite: true}},
   bindings: {COACH_FINAL_AUTH_DIAGNOSTICS: '1', COACH_AUTH_MODE: 'app-attest-storekit-v1', CLIENT_SHARED_SECRET: TEST_GATE, APP_ATTEST_APP_PREFIX: APP_PREFIX,
@@ -132,6 +151,13 @@ try {
     assert.equal(rejectedLocalCalls,0);
   } else {
     assert.equal((await call(ORIGIN, {})).status, 401);
+    // A genuine device's first assertion verifies with its enrolled key in the bundled runtime.
+    const device = deviceAssertionFixture();
+    const deviceInput = {operation:'device-signature', publicKey: device.publicKey, signature: device.signature.toString('base64'),
+      authenticatorData: device.authenticatorData.toString('base64'), clientDataHash: device.clientDataHash.toString('hex')};
+    assert.equal((await call('https://runtime-fixture.invalid/', deviceInput)).status, 200, 'genuine device assertion');
+    const forgedDevice = Buffer.from(device.signature); forgedDevice[forgedDevice.length-1] ^= 1;
+    assert.equal((await call('https://runtime-fixture.invalid/', {...deviceInput, signature: forgedDevice.toString('base64')})).status, 401);
     const payload = assertionPayload('reply', key.keyId, 'fixture', TEST_BODY_HASH, TEST_TRANSACTION_HASH);
     const assertion = signedAssertion(key, payload);
     assert.equal((await call('https://runtime-fixture.invalid/', {operation:'assert', assertion: assertion.toString('base64'),
@@ -220,7 +246,7 @@ try {
     assert.equal(localAppleCalls,3);
     assert.equal(rejectedLocalCalls,0);
     assert.equal(localResponseCalls,0);
-    await validateClockSkew({root, gatewayScript: resolve(output, 'runtime-tests.mjs'), stateScript: resolve(output, 'skewed-state.mjs')});
-    console.log('validated: installed workerd native crypto, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering, SQLite atomic replay and bounded Worker/Durable Object clock skew; zero external requests');
+    await validateClockSkew({root, gatewayScript: runtimeTests, stateScript: skewedState});
+    console.log('validated: Wrangler-built bundles in installed workerd, genuine device assertion, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering, SQLite atomic replay and bounded Worker/Durable Object clock skew; zero external requests');
   }
 } finally {await m.dispose();}

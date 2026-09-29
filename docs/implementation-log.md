@@ -1418,3 +1418,15 @@ The staging lane named the device's final-request rejection as `do_assertion/ass
 Offline, the client and server follow the App Attest contract exactly, and the real client code signs a request the real server accepts, so the difference can only be seen with data from the device.
 With `COACH_STAGING_LABELS=1`, a `do_assertion/*` rejection now returns digest prefixes of the payload, body, transaction and challenge the server checked, and the `COACH_STAGING` app logs the same for what it signed, plus the assertion and its enrollment attestation.
 Production responses and Release and Debug executables are unchanged; the [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract.
+
+## Coach Worker bundles use workerd's native crypto (2026-09-29)
+
+The staging capture from a genuine device showed that the client was correct.
+The device signed the payload the server rebuilt, with the key it had enrolled, using the scheme node-app-attest checks.
+The rejection came from the deployed bundle: Wrangler 3.114.17's `nodejs_compat` preset replaces `node:crypto` `createVerify` and `createSign` with throwing stubs.
+So every production and staging Worker rejected every genuine assertion as `do_assertion/assertion_signature`, and App Store API JWT signing for the Premium check would have failed next.
+The workerd suite bundled with esbuild and resolved `node:crypto` natively, so it could not see this.
+Every Wrangler build of the Coach Worker now shares `coachWorkerBuild`, which aliases `crypto` and `node:crypto` to workerd's native module, and the workerd suite runs Wrangler-built bundles with those settings.
+The device capture is now a regression fixture.
+This is a server-only change; the fix reaches users only after a separately approved release.
+The [runtime authentication runbook](coach-runtime-authentication.md) owns the contract and the Wrangler 4 follow-up.

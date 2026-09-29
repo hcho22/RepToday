@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Cloudflare, DeploymentFailure, TARGET, readWranglerOAuth, stageWithWrangler } from './coach-production-deploy.mjs';
-import { APPLE, CLASS, TAG, MODE, checkAppleCredentials, revisionValid } from './coach-runtime-migrate.mjs';
+import { APPLE, CLASS, TAG, MODE, checkAppleCredentials, coachWorkerBuild, revisionValid } from './coach-runtime-migrate.mjs';
 
 export const STAGING = 'reptoday-coach-staging';
 export const STAGING_SECRET_NAMES = Object.freeze(['CLIENT_SHARED_SECRET', ...Object.values(APPLE)]);
@@ -36,10 +36,9 @@ export function stagingWorkerConfig(repository, revision, origin) {
   requireThat(revisionValid(revision), 'revision');
   requireThat(typeof origin === 'string' && STAGING_ORIGIN.test(origin), 'subdomain');
   return { name: STAGING, main: path.join(repository, 'proxy/src/coach-auth-worker.js'),
-    compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'], workers_dev: true,
+    ...coachWorkerBuild(repository), workers_dev: true,
     preview_urls: false, routes: [], logpush: false, observability: { enabled: false }, send_metrics: false,
     vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, COACH_STAGING_ORIGIN: origin, COACH_STAGING_LABELS: '1' },
-    alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js') },
     durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }] },
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }
