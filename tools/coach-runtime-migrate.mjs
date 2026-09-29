@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { Cloudflare, DeploymentFailure, TARGET, CUSTOM, RATE, HOLD,
   checkSettings, checkDomains, checkRoutes, ensureRule, verifyProtection, entrypoint,
   verifyClosedWorker, credentialsFromPacket, inspectionCredentialsFromPacket,
-  readWranglerOAuth, stageWithWrangler, gateProbes } from './coach-production-deploy.mjs';
+  readWranglerOAuth, stageWithWrangler, gateProbes, boundedGateProbe, gateFailureLine } from './coach-production-deploy.mjs';
 
 const requireThat = (condition, code) => { if (!condition) throw new DeploymentFailure(code); };
 const identifier = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -283,20 +283,17 @@ export async function runtimeCoverageProbes(fetchImpl = fetch) {
   requireThat(Object.keys(denied).join(',') === 'error' && denied.error === 'unauthorized', 'gate');
 }
 
-export async function runtimeGateProbes(gate, fetchImpl = fetch) {
-  await gateProbes(gate, fetchImpl);
+export async function runtimeGateProbes(gate, fetchImpl = fetch, {
+  now = () => performance.now(), wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+  // One readiness deadline covers every release probe; each may absorb the same bounded hold-like edge denial.
+  const readinessDeadline = now() + 45_000;
+  await gateProbes(gate, fetchImpl, { now, wait, readinessDeadline, retryEveryStage: true });
   // A fixed forged proof cannot reach enrollment, Apple or the provider. No real prompt/proof.
-  try {
-    const response = await fetchImpl(TARGET.origin, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
-      headers: { 'Content-Type': 'application/json', 'X-RepToday-Coach-Auth': '{}' }, body: '{}' });
-    requireThat(response.status === 401 && response.redirected === false && response.body, 'gate');
-    const reader = response.body.getReader(); let bytes = Buffer.alloc(0);
-    try { while (true) { const part = await reader.read(); if (part.done) break;
-      requireThat(bytes.length + part.value.length <= 256, 'gate'); bytes = Buffer.concat([bytes, part.value]); } }
-    finally { await reader.cancel().catch(() => {}); }
-    const result = JSON.parse(bytes.toString('utf8'));
-    requireThat(Object.keys(result).join(',') === 'error' && result.error === 'unauthorized', 'gate');
-  } catch { throw new DeploymentFailure('gate'); }
+  await boundedGateProbe(fetchImpl, { stage: 'forged-proof', headers: { 'X-RepToday-Coach-Auth': '{}' }, body: '{}', expected: 401,
+    accept: (parsed, response) => response.redirected === false && parsed !== null && typeof parsed === 'object' &&
+      Object.keys(parsed).join(',') === 'error' && parsed.error === 'unauthorized',
+    bodyLimit: 256, requestTimeout: 5_000, readiness: true, retry: true, readinessDeadline, now, wait });
 }
 
 export function runtimeArguments(args) {
@@ -348,7 +345,12 @@ async function main() {
     stageWorker: account => stageWithWrangler(repository, account, oauth, root => runtimeConfig(root, revision, diagnostics, finalDiagnostics)),
     probe: gate => runtimeGateProbes(gate), report: line => process.stdout.write(line + '\n') });
 }
+// The only failure output: an optional fixed-vocabulary probe line, then the closed stop code.
+export function runtimeFailureOutput(error) {
+  const code = error instanceof DeploymentFailure && runtimeFailures.includes(error.code) ? error.code : 'unexpected';
+  const probe = code === 'gate' ? gateFailureLine(error) : null;
+  return (probe ? probe + '\n' : '') + 'blocked: ' + code + '\n';
+}
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(error => { const code = error instanceof DeploymentFailure && runtimeFailures.includes(error.code) ? error.code : 'unexpected';
-    process.stdout.write('blocked: ' + code + '\n'); process.exitCode = 78; });
+  main().catch(error => { process.stdout.write(runtimeFailureOutput(error)); process.exitCode = 78; });
 }

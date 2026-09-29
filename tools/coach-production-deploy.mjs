@@ -34,7 +34,7 @@ export class DeploymentFailure extends Error {
 export function gateFailureLine(error) {
   const diagnostic = error instanceof DeploymentFailure && error.code === 'gate' ? error.gateDiagnostic : null;
   if (!diagnostic || Object.keys(diagnostic).sort().join(',') !== 'contract,failure,redirected,stage,status' ||
-      !['missing-authorization', 'wrong-authorization', 'correct-authorization'].includes(diagnostic.stage) ||
+      !['missing-authorization', 'wrong-authorization', 'correct-authorization', 'forged-proof'].includes(diagnostic.stage) ||
       !['request', 'timeout', 'body', 'size', 'json', 'redirect', 'status', 'contract'].includes(diagnostic.failure) ||
       !(diagnostic.status === null || Number.isInteger(diagnostic.status) && diagnostic.status >= 100 && diagnostic.status <= 599) ||
       !['unknown', 'yes', 'no'].includes(diagnostic.redirected) ||
@@ -492,50 +492,61 @@ async function confirmDomainChangeset(cf, worker) {
     change.added.every(domain => domain.hostname === TARGET.hostname), 'route');
 }
 
+// One bounded no-model probe with safe diagnostics. Only a hold-like edge denial (non-JSON 403, not
+// redirected) may repeat, and only when `retry` is set: at most four attempts, 5s apart, inside the deadline.
+export async function boundedGateProbe(fetchImpl, { stage, headers, body, expected, accept, bodyLimit, requestTimeout,
+  readiness, retry, readinessDeadline, now, wait }) {
+  for (let attempt = 1; ; attempt++) {
+    let response;
+    let failure = 'request', status = null, redirected = 'unknown', contract = 'not-read';
+    try {
+      const remaining = readiness ? readinessDeadline - now() : requestTimeout;
+      if (remaining <= 0) throw new DOMException('', 'TimeoutError');
+      response = await fetchImpl(TARGET.origin, {
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(Math.max(1, Math.min(requestTimeout, Math.floor(remaining)))),
+        headers: { 'Content-Type': 'application/json', ...headers }, body,
+      });
+      status = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : null;
+      redirected = response.redirected === true ? 'yes' : response.redirected === false ? 'no' : 'unknown';
+      failure = 'body';
+      if (!response.body) contract = 'body-unavailable';
+      const bytes = await boundedBody(response, bodyLimit, () => { failure = 'size'; contract = 'oversized'; });
+      failure = 'json'; contract = 'non-json';
+      const parsed = JSON.parse(bytes);
+      contract = parsed?.error === 'unauthorized' ? 'unauthorized' : typeof parsed?.error === 'string' ? 'string-error' : 'invalid-error';
+      failure = response.redirected ? 'redirect' : response.status !== expected ? 'status' : 'contract';
+      requireThat(!response.redirected && response.status === expected && accept(parsed, response), 'gate');
+      if (readiness && now() >= readinessDeadline) throw new DOMException('', 'TimeoutError');
+      return;
+    } catch (cause) {
+      if (cause?.name === 'TimeoutError' || cause?.name === 'AbortError') failure = 'timeout';
+      const error = new DeploymentFailure('gate');
+      // No request/response content, headers, URL, identifier or exception survives this boundary.
+      error.gateDiagnostic = Object.freeze({ stage, failure, status, redirected, contract });
+      // The observed hold-like denial is the sole retry class, never evidence of a ready edge.
+      if (!retry || failure !== 'json' || status !== 403 || redirected !== 'no' || contract !== 'non-json' ||
+          attempt >= 4 || readinessDeadline - now() <= 5_000) throw error;
+      await wait(5_000);
+      if (now() >= readinessDeadline) throw error;
+    }
+  }
+}
+
 export async function gateProbes(gate, fetchImpl = fetch, {
   now = () => performance.now(), wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  readinessDeadline = now() + 45_000, retryEveryStage = false,
 } = {}) {
-  // Operator ceilings, not a Cloudflare convergence guarantee. Only stage 1 may repeat.
-  const readinessDeadline = now() + 45_000;
-  const stages = ['missing-authorization', 'wrong-authorization', 'correct-authorization'];
-  for (const [index, authorization] of [null, 'Bearer deliberately-invalid-coach-gate', `Bearer ${gate}`].entries()) {
-    for (let attempt = 1; ; attempt++) {
-      let response;
-      let failure = 'request', status = null, redirected = 'unknown', contract = 'not-read';
-      try {
-        const remaining = index === 0 ? readinessDeadline - now() : 15_000;
-        if (remaining <= 0) throw new DOMException('', 'TimeoutError');
-        response = await fetchImpl(TARGET.origin, {
-          method: 'POST', redirect: 'error', signal: AbortSignal.timeout(Math.max(1, Math.min(15_000, Math.floor(remaining)))),
-          headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
-          body: '{',
-        });
-        status = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : null;
-        redirected = response.redirected === true ? 'yes' : response.redirected === false ? 'no' : 'unknown';
-        const expected = authorization === `Bearer ${gate}` ? 400 : 401;
-        failure = 'body';
-        if (!response.body) contract = 'body-unavailable';
-        const bytes = await boundedBody(response, 8192, () => { failure = 'size'; contract = 'oversized'; });
-        failure = 'json'; contract = 'non-json';
-        const body = JSON.parse(bytes);
-        contract = body?.error === 'unauthorized' ? 'unauthorized' : typeof body?.error === 'string' ? 'string-error' : 'invalid-error';
-        failure = response.redirected ? 'redirect' : response.status !== expected ? 'status' : 'contract';
-        requireThat(!response.redirected && response.status === expected &&
-          (expected === 401 ? body.error === 'unauthorized' : typeof body.error === 'string'), 'gate');
-        if (index === 0 && now() >= readinessDeadline) throw new DOMException('', 'TimeoutError');
-        break;
-      } catch (cause) {
-        if (cause?.name === 'TimeoutError' || cause?.name === 'AbortError') failure = 'timeout';
-        const error = new DeploymentFailure('gate');
-        // No request/response content, headers, URL, identifier or exception survives this boundary.
-        error.gateDiagnostic = Object.freeze({ stage: stages[index], failure, status, redirected, contract });
-        // The observed hold-like denial is the sole retry class, never evidence of a ready edge.
-        if (index !== 0 || failure !== 'json' || status !== 403 || redirected !== 'no' || contract !== 'non-json' ||
-            attempt >= 4 || readinessDeadline - now() <= 5_000) throw error;
-        await wait(5_000);
-        if (now() >= readinessDeadline) throw error;
-      }
-    }
+  // Operator ceilings, not a Cloudflare convergence guarantee. Only stage 1 may repeat unless a caller
+  // opts every stage into the same bounded hold-like retry under one shared deadline.
+  const stages = [['missing-authorization', null], ['wrong-authorization', 'Bearer deliberately-invalid-coach-gate'],
+    ['correct-authorization', `Bearer ${gate}`]];
+  for (const [index, [stage, authorization]] of stages.entries()) {
+    const expected = index === 2 ? 400 : 401;
+    await boundedGateProbe(fetchImpl, { stage, headers: authorization ? { Authorization: authorization } : {}, body: '{', expected,
+      accept: parsed => expected === 401 ? parsed?.error === 'unauthorized' : typeof parsed?.error === 'string',
+      bodyLimit: 8192, requestTimeout: 15_000, readiness: index === 0 || retryEveryStage,
+      retry: index === 0 || retryEveryStage,
+      readinessDeadline, now, wait });
   }
 }
 

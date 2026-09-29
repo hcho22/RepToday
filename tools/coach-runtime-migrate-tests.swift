@@ -68,6 +68,30 @@ private final class CoordinatorDouble: RuntimeMigrationCoordinator {
                 do { _ = try coordinator.sanitized(Data(transcript.utf8), status: 78); preconditionFailure("must reject unsafe failure") }
                 catch RuntimeMigrationFailure.coordinator {}
             }
+            // A release stop may carry exactly one fixed probe line, directly before its gate stop.
+            let probeLine = "gate: probe forged-proof failure json status 403 redirected no contract non-json"
+            let confirmed = RuntimeNodeCoordinator.confirmed, protected = RuntimeNodeCoordinator.protected
+            let diagnosed = [confirmed, protected, probeLine, "blocked: gate"].joined(separator: "\n") + "\n"
+            if operation == .release {
+                let stopped = try coordinator.sanitized(Data(diagnosed.utf8), status: 78)
+                precondition(stopped.hasPrefix("blocked: dedicated runtime migration stopped (gate);") && stopped.hasSuffix("\n" + probeLine) &&
+                    stopped.components(separatedBy: "\n").count == 2)
+            } else {
+                do { _ = try coordinator.sanitized(Data(diagnosed.utf8), status: 78); preconditionFailure("probe line is release-only") }
+                catch RuntimeMigrationFailure.coordinator {}
+            }
+            for transcript in [confirmed + "\n" + probeLine + "\nblocked: scope\n",
+                confirmed + "\n" + probeLine + "\n" + probeLine + "\nblocked: gate\n",
+                probeLine + "\n" + confirmed + "\nblocked: gate\n",
+                confirmed + "\n" + probeLine + "\nblocked: gate\n" + probeLine + "\n",
+                confirmed + "\ngate: probe forged failure json status 403 redirected no contract non-json\nblocked: gate\n",
+                confirmed + "\ngate: probe forged-proof failure json status 999 redirected no contract non-json\nblocked: gate\n",
+                confirmed + "\n" + probeLine + " NONSECRET_EXTRA\nblocked: gate\n"] {
+                do { _ = try coordinator.sanitized(Data(transcript.utf8), status: 78); preconditionFailure("must reject probe-line misuse") }
+                catch RuntimeMigrationFailure.coordinator {}
+            }
+            do { _ = try coordinator.sanitized(Data((success + probeLine + "\n").utf8), status: 0); preconditionFailure("success carries no probe line") }
+            catch RuntimeMigrationFailure.coordinator {}
         }
         // Exercise the real pipe, credential argument/environment exclusion and strict child contract.
         let fixture = root.appendingPathComponent("build/coach-runtime-migration/native-double")

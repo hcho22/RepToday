@@ -1394,3 +1394,10 @@ Current source still requires the exact `appAppleId` in Production and, in Sandb
 absent but never mismatched; bundle, environment, status, chain and entitlement-policy checks are
 unchanged.
 The [runtime authentication runbook](coach-runtime-authentication.md#verification-boundary) owns the contract and deployment status; `proxy/test/apple-premium.test.js` holds the regression.
+
+## Coach release probes name the failing probe and absorb hold propagation (2026-09-29)
+
+A `--release --final-auth-diagnostics` stopped with a bare `blocked: gate`, while the same probes passed flag-free 30 seconds later and offline reproduction showed identical Worker answers with the flag on and off.
+The coordinator released the hold, verified it through the API, and probed the edge at once, but only the first probe could absorb a hold-like 403, and the probe detail was discarded.
+`tools/coach-runtime-migrate.mjs` now gives every release probe, including the forged proof, the same bounded hold-like retry under one shared deadline, and prints the fixed `gate: probe ...` line before the stop; the native wrapper accepts exactly that line, only on `--release` and only directly before `blocked: gate`.
+The [runtime authentication runbook](coach-runtime-authentication.md#local-validation-and-migration-plan) owns the contract; the legacy deploy helper keeps its first-probe-only retry.

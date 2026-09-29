@@ -375,6 +375,10 @@ executes bounded **no-model** probes: missing/wrong bearer -> 401, authorized ma
 and forged runtime proof -> 401. Failure immediately re-enables/verifies the hold; a failure to
 re-hold is a distinct `rehold` blocker requiring immediate captain control-plane action. Success
 means the protected origin was released; genuine Apple/model/semantic/shipped-client QA is pending.
+Because the hold's removal can reach the edge after the API reports it, every release probe, including the forged proof, may absorb a hold-like edge denial (non-JSON 403, not redirected): at most four attempts per probe, 5 seconds apart, inside one shared 45-second deadline.
+No expected status or body is relaxed, and any other mismatch stops at once.
+A probe stop prints one fixed line before the usual stop, for example `gate: probe forged-proof failure json status 403 redirected no contract non-json`, naming the probe and safe response classes only.
+The legacy deploy helper keeps its original first-probe-only retry.
 
 `--hold` is the fail-closed rollback: read only the WAF item, reconfirm existing target/domain/rules,
 enable/verify the hold, and preserve Worker code, namespace, enrolled keys/counters, bindings and
