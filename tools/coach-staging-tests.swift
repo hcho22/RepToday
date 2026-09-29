@@ -52,9 +52,17 @@ final class StagingReaderDouble: RuntimeMigrationReader {
         }
         for code in StagingNodeCoordinator.failures {
             let early = try coordinator.sanitized(Data((StagingNodeCoordinator.confirmed + "\nblocked: " + code + "\n").utf8), status: 78)
-            precondition(early == "blocked: staging deploy stopped (\(code)); run tools/coach-staging.sh --teardown if a staging Worker was created")
-            let late = try coordinator.sanitized(Data((StagingNodeCoordinator.confirmed + "\n" + deployed + "\nblocked: " + code + "\n").utf8), status: 78)
-            precondition(late.hasPrefix("blocked: staging deploy stopped (\(code));") && late.hasSuffix("\n" + deployed))
+            let guidance = code == "present" ? "run tools/coach-staging.sh --teardown first" :
+                "run tools/coach-staging.sh --teardown if a staging Worker was created"
+            precondition(early == "blocked: staging deploy stopped (\(code)); \(guidance)")
+            let late = Data((StagingNodeCoordinator.confirmed + "\n" + deployed + "\nblocked: " + code + "\n").utf8)
+            if code == "present" {
+                do { _ = try coordinator.sanitized(late, status: 78); preconditionFailure("present must precede deploy") }
+                catch RuntimeMigrationFailure.coordinator {}
+            } else {
+                let acceptedLate = try coordinator.sanitized(late, status: 78)
+                precondition(acceptedLate.hasPrefix("blocked: staging deploy stopped (\(code));") && acceptedLate.hasSuffix("\n" + deployed))
+            }
         }
         for transcript in ["blocked: arbitrary\n", "unexpected\nblocked: probe\n", success + "blocked: probe\n"] {
             do { _ = try coordinator.sanitized(Data(transcript.utf8), status: 78); preconditionFailure("must reject failure") }

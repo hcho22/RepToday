@@ -10,7 +10,7 @@ import { APPLE, CLASS, TAG, MODE, checkAppleCredentials, revisionValid } from '.
 export const STAGING = 'reptoday-coach-staging';
 export const STAGING_SECRET_NAMES = Object.freeze(['CLIENT_SHARED_SECRET', ...Object.values(APPLE)]);
 export const stagingFailures = Object.freeze(['input', 'auth', 'account', 'subdomain', 'scope', 'http', 'wrangler',
-  'revision', 'secret', 'settings', 'namespace', 'domain', 'probe', 'teardown', 'unexpected']);
+  'revision', 'present', 'secret', 'settings', 'namespace', 'domain', 'probe', 'teardown', 'unexpected']);
 export const stagingLines = Object.freeze({
   confirmed: 'confirmed: single account and workers.dev subdomain',
   deployed: origin => `deployed: ${STAGING} ${origin}; staging only, no model key`,
@@ -75,6 +75,15 @@ async function confirmStaging(cf) {
   await confirmAccount(cf);
   const subdomain = await cf.accountRequest(`/accounts/${cf.account}/workers/subdomain`);
   return stagingOrigin(subdomain?.subdomain);
+}
+async function requireStagingAbsent(cf) {
+  const scripts = await scriptPresent(cf);
+  const namespaces = await cf.accountRequest(`/accounts/${cf.account}/workers/durable_objects/namespaces`);
+  requireThat(Array.isArray(namespaces), 'namespace');
+  const domains = await cf.accountRequest(`/accounts/${cf.account}/workers/domains`);
+  requireThat(Array.isArray(domains), 'domain');
+  requireThat(!scripts.staging && !namespaces.some(item => item.script === STAGING) &&
+    !domains.some(item => item.service === STAGING), 'present');
 }
 
 // Exact staging shape: its own vars, one SQLite namespace distinct from production, six secrets and
@@ -157,6 +166,7 @@ export async function deployStaging({ cf, credentials, revision, stageWorker, pr
   requireThat(revisionValid(revision), 'revision');
   requireThat(typeof gate === 'string' && /^[a-f0-9]{64}$/.test(gate), 'input');
   const origin = await confirmStaging(cf); report(stagingLines.confirmed);
+  await requireStagingAbsent(cf);
   requireThat(typeof stageWorker === 'function', 'wrangler'); await stageWorker(cf.account, origin);
   const script = `/accounts/${cf.account}/workers/scripts/${STAGING}`;
   for (const [source, name] of Object.entries(APPLE))

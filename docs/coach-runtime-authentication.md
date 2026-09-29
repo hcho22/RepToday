@@ -519,6 +519,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 
 **Operation (each run needs separate captain approval):**
 - `tools/coach-staging.sh --deploy` needs a clean committed checkout, Node 20, a Wrangler login with more than 20 minutes left, the offline proxy gate, and five Keychain approvals.
+  Deploy always starts from a fully torn-down staging state: before Wrangler or any secret write, it stops with `blocked: present` if the staging script, a namespace owned by it, or a custom domain targeting it already exists; run `tools/coach-staging.sh --teardown` first.
   It prints `confirmed`, the `deployed` line with the staging URL, and `verified` after checking exact bindings, its own namespace, no custom domain, and both labelled no-model probes.
 - The captain runs `RepTodayCoachStaging` on the phone and sends one message.
   The first send enrolls a fresh staging key.

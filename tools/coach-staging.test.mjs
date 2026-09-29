@@ -17,7 +17,7 @@ function fixture() {
   const state = { accounts: [{ id: account }], subdomain: { subdomain }, scripts: [TARGET.worker], secrets: new Map(), calls: [],
     namespaces: [{ id: productionNamespace, class: 'CoachAuthenticationState', script: TARGET.worker, use_sqlite: true }],
     domains: [{ hostname: TARGET.hostname, service: TARGET.worker }], scriptSubdomain: { enabled: true, previews_enabled: false },
-    extraBindings: [], vars: null, deleteRemoves: true };
+    extraBindings: [], vars: null, deleteRemoves: true, stageWorkerCalls: 0 };
   const settings = () => ({ bindings: [
     ...Object.entries(state.vars ?? {}).map(([name, text]) => ({ name, type: 'plain_text', text })),
     { name: 'COACH_AUTH_STATE', type: 'durable_object_namespace', class_name: 'CoachAuthenticationState', namespace_id: stagingNamespace },
@@ -46,6 +46,7 @@ function fixture() {
   };
   const cf = (readOnly = false) => new StagingCloudflare(oauth, undefined, fetchImpl, { readOnly });
   const stageWorker = async (stagedAccount, stagedOrigin) => {
+    state.stageWorkerCalls++;
     assert.equal(stagedAccount, account); assert.equal(stagedOrigin, origin);
     state.scripts.push(STAGING);
     state.vars = stagingWorkerConfig('/fixture/repository', revision, stagedOrigin).vars;
@@ -90,13 +91,32 @@ test('deploy provisions only staging: fresh gate, five App Store items, exact ve
   assert.notEqual(g.state.secrets.get('CLIENT_SHARED_SECRET'), f.state.secrets.get('CLIENT_SHARED_SECRET'));
 });
 
+test('deploy requires a fully torn-down staging name before any mutation', async () => {
+  for (const [name, arrange] of [
+    ['existing script with stale model secret', state => {
+      state.scripts.push(STAGING); state.secrets.set('OPENAI_API_KEY', 'STALE-NONSECRET-FIXTURE');
+    }],
+    ['leftover namespace', state => state.namespaces.push({
+      id: stagingNamespace, class: 'CoachAuthenticationState', script: STAGING, use_sqlite: true,
+    })],
+    ['leftover custom domain', state => state.domains.push({ hostname: 'staging.example', service: STAGING })],
+  ]) {
+    const f = fixture(); arrange(f.state);
+    const secretsBefore = new Map(f.state.secrets);
+    await assert.rejects(deploy(f).run, stopped('present'), name);
+    assert.equal(f.state.stageWorkerCalls, 0, name);
+    assert.deepEqual(f.state.secrets, secretsBefore, name);
+    assert.equal(f.state.calls.some(call => call.method === 'PUT'), false, name);
+    noProduction(f.state);
+  }
+});
+
 test('deploy stops on any unsafe or unexpected staging shape', async () => {
   for (const [name, arrange, code] of [
     ['two accounts', s => s.accounts.push({ id: 'b'.repeat(32) }), 'account'],
     ['no workers.dev subdomain', s => { s.subdomain = { subdomain: null }; }, 'subdomain'],
     ['model key binding', s => s.extraBindings.push({ name: 'OPENAI_API_KEY', type: 'secret_text' }), 'settings'],
     ['namespace shared with production', s => { s.namespaces[0].id = stagingNamespace; }, 'namespace'],
-    ['custom domain on staging', s => s.domains.push({ hostname: 'staging.example', service: STAGING }), 'domain'],
     ['workers.dev disabled', s => { s.scriptSubdomain = { enabled: false }; }, 'subdomain'],
   ]) {
     const f = fixture(); arrange(f.state);
@@ -174,6 +194,7 @@ test('staging probes require the exact labelled denial and only the first may wa
 
 test('failure output is one closed stop code', () => {
   assert.equal(stagingFailureOutput(new DeploymentFailure('domain')), 'blocked: domain\n');
+  assert.equal(stagingFailureOutput(new DeploymentFailure('present')), 'blocked: present\n');
   assert.equal(stagingFailureOutput(new DeploymentFailure('NONSECRET')), 'blocked: unexpected\n');
   assert.equal(stagingFailureOutput(new Error('NONSECRET')), 'blocked: unexpected\n');
 });

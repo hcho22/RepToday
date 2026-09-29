@@ -11,7 +11,7 @@ struct StagingNodeCoordinator {
     static let confirmed = "confirmed: single account and workers.dev subdomain"
     static let verified = "verified: staging bindings, own SQLite namespace, no custom domain, labelled no-model probes"
     static let failures: Set<String> = ["input", "auth", "account", "subdomain", "scope", "http", "wrangler", "revision",
-        "secret", "settings", "namespace", "domain", "probe", "teardown", "unexpected"]
+        "present", "secret", "settings", "namespace", "domain", "probe", "teardown", "unexpected"]
     static func isDeployedLine(_ line: String) -> Bool {
         let pattern = "^deployed: reptoday-coach-staging https://reptoday-coach-staging\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.workers\\.dev/coach; staging only, no model key$"
         return line.range(of: pattern, options: .regularExpression) != nil
@@ -32,7 +32,11 @@ struct StagingNodeCoordinator {
             throw RuntimeMigrationFailure.coordinator
         }
         let deployed = lines.dropLast().first(where: Self.isDeployedLine)
-        let stopped = "blocked: staging deploy stopped (\(last.dropFirst(9))); run tools/coach-staging.sh --teardown if a staging Worker was created"
+        let code = String(last.dropFirst(9))
+        guard code != "present" || deployed == nil else { throw RuntimeMigrationFailure.coordinator }
+        let guidance = code == "present" ? "run tools/coach-staging.sh --teardown first" :
+            "run tools/coach-staging.sh --teardown if a staging Worker was created"
+        let stopped = "blocked: staging deploy stopped (\(code)); \(guidance)"
         return deployed.map { stopped + "\n" + $0 } ?? stopped
     }
     func run(_ credentials: [RuntimeMigrationCredential: Data]) throws -> String {
