@@ -311,7 +311,7 @@ node-app-attest verifies every assertion with `createVerify`, so every deployed 
 The App Store Server API client signs its ES256 JWT through jwa's `createSign`, so the Premium check, which runs after the assertion, would have failed next.
 The earlier esbuild test bundle resolved `node:crypto` natively, so the suite could not see either failure.
 `coachWorkerBuild` now aliases `crypto` and `node:crypto` to [`proxy/src/native-crypto.cjs`](../proxy/src/native-crypto.cjs), which is workerd's native module through `process.getBuiltinModule`.
-A genuine device enrollment and first assertion (`proxy/test/fixtures/device-assertion-2026-09-29.json`, staging key, no content) verifies in the Wrangler-built bundle and in Node.
+The genuine-device fixture (`proxy/test/fixtures/device-assertion-2026-09-29.json`, staging key, no content) pins the enrolled certificate, credential and COSE key relationship in Node, then verifies the captured first-assertion signature primitive in both Node and the Wrangler-built bundle.
 Every Wrangler build of the Coach Worker must take its settings from `coachWorkerBuild`; `proxy/wrangler.runtime-auth.toml` mirrors them for reference.
 Moving to Wrangler 4, whose preset leaves `node:crypto` native, is a separate follow-up, because `tools/coach-tail-ready.cjs` adapts Wrangler 3.114.17 internals.
 The fix reaches a deployed Worker only through a separately approved staging redeploy or production release.
