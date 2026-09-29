@@ -125,18 +125,29 @@ struct RuntimeNodeCoordinator: RuntimeMigrationCoordinator {
         if operation == .verifyCandidate || operation == .verifyRestored { return [Self.confirmed, Self.verified] }
         return [Self.confirmed, Self.protected, operation == .stage ? Self.staged : Self.released]
     }
+    // The only extra line a stop may carry: which release probe failed, in a closed vocabulary.
+    static func isGateFailureLine(_ line: String) -> Bool {
+        let pattern = "^gate: probe (missing-authorization|wrong-authorization|correct-authorization|forged-proof) failure (request|timeout|body|size|json|redirect|status|contract) status (none|[1-5][0-9]{2}) redirected (unknown|yes|no) contract (not-read|body-unavailable|oversized|non-json|unauthorized|string-error|invalid-error)$"
+        return line.range(of: pattern, options: .regularExpression) != nil
+    }
     // Exact complete transcript, including newline/order: partial, duplicate and arbitrary output fail.
     func sanitized(_ reply: Data, status: Int32) throws -> String {
         guard reply.count <= 8192, let text = String(data: reply, encoding: .utf8), text.hasSuffix("\n") else {
             throw RuntimeMigrationFailure.coordinator
         }
-        let lines = String(text.dropLast()).components(separatedBy: "\n")
+        var lines = String(text.dropLast()).components(separatedBy: "\n")
         if status == 0 { guard lines == expected else { throw RuntimeMigrationFailure.coordinator }; return lines.joined(separator: "\n") }
+        var probe: String?
+        if operation == .release, lines.count >= 2, lines.last == "blocked: gate", Self.isGateFailureLine(lines[lines.count - 2]) {
+            probe = lines.remove(at: lines.count - 2)
+        }
         guard let last = lines.last, last.hasPrefix("blocked: "), Self.failures.contains(String(last.dropFirst(9))),
               Array(lines.dropLast()) == Array(expected.prefix(lines.count - 1)), lines.count <= expected.count else {
             throw RuntimeMigrationFailure.coordinator
         }
-        return "blocked: dedicated runtime migration stopped (\(last.dropFirst(9))); preserve the hold and inspect prerequisites without values"
+        // The stop stays first so the caller's "blocked:" exit mapping is unchanged.
+        let stopped = "blocked: dedicated runtime migration stopped (\(last.dropFirst(9))); preserve the hold and inspect prerequisites without values"
+        return probe.map { stopped + "\n" + $0 } ?? stopped
     }
     func run(_ credentials: [RuntimeMigrationCredential: Data]) throws -> String {
         guard Set(credentials.keys) == Set(operation.items), (!diagnostics && !finalDiagnostics) || operation == .stage || operation == .release else { throw RuntimeMigrationFailure.coordinator }

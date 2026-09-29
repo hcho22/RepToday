@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { RuntimeCloudflare, runtimePacket, runtimeConfig, checkRuntimeSettings, migrateRuntime,
-  runtimeGateProbes, runtimeLines, runtimeSecretNames, runtimeArguments, checkRuntimeExpectation, checkRuntimeVersion, verifyRuntimeExpectation, runtimeCoverageProbes } from './coach-runtime-migrate.mjs';
+  runtimeGateProbes, runtimeFailureOutput, runtimeLines, runtimeSecretNames, runtimeArguments, checkRuntimeExpectation, checkRuntimeVersion, verifyRuntimeExpectation, runtimeCoverageProbes } from './coach-runtime-migrate.mjs';
 import { DeploymentFailure, TARGET, HOLD, BOUNDARY, LIMIT, CUSTOM, RATE, checkSettings } from './coach-production-deploy.mjs';
 
 // No production entries, auth files, Keychain or network are touched by these doubles.
@@ -218,6 +218,87 @@ test('release probe uses only malformed/non-identifying inputs and rejects forge
   }),stopped('gate'));
 });
 
+// Release-probe doubles: an edge hold page, the expected Worker answers, and an injected clock.
+const probeKind = options => options.headers['X-RepToday-Coach-Auth'] ? 'forged-proof' :
+  options.headers.Authorization === undefined ? 'missing-authorization' :
+  options.headers.Authorization === 'Bearer ' + credentials.clientGate ? 'correct-authorization' : 'wrong-authorization';
+const holdPage = () => new Response('<html>NONSECRET_PRIVATE_EDGE_HOLD</html>', { status: 403 });
+const expectedAnswer = kind => kind === 'correct-authorization' ?
+  new Response(JSON.stringify({ error: 'invalid_json' }), { status: 400 }) :
+  new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+function probeClock() {
+  let time = 0; const waits = [];
+  return { now: () => time, wait: async ms => { waits.push(ms); time += ms; }, advance: ms => { time += ms; }, waits };
+}
+test('every release probe, including the forged proof, absorbs one hold-like edge denial with the same bounded wait', async () => {
+  const clock = probeClock(), kinds = [], held = new Set();
+  await runtimeGateProbes(credentials.clientGate, async (url, options) => {
+    const kind = probeKind(options); kinds.push(kind);
+    if (!held.has(kind)) { held.add(kind); return holdPage(); }
+    return expectedAnswer(kind);
+  }, clock);
+  assert.deepEqual(kinds, ['missing-authorization', 'missing-authorization', 'wrong-authorization', 'wrong-authorization',
+    'correct-authorization', 'correct-authorization', 'forged-proof', 'forged-proof']);
+  assert.deepEqual(clock.waits, [5000, 5000, 5000, 5000]);
+});
+test('a genuine release-probe mismatch still fails at once and names the probe with safe response classes only', async () => {
+  for (const [failing, response, diagnostic] of [
+    ['forged-proof', () => new Response(JSON.stringify({ error: 'NONSECRET_PRIVATE_ERROR' }), { status: 503 }),
+      { stage: 'forged-proof', failure: 'status', status: 503, redirected: 'no', contract: 'string-error' }],
+    ['forged-proof', () => new Response(JSON.stringify({ error: 'unauthorized', extra: 'NONSECRET_PRIVATE_FIELD' }), { status: 401 }),
+      { stage: 'forged-proof', failure: 'contract', status: 401, redirected: 'no', contract: 'unauthorized' }],
+    ['forged-proof', () => new Response('x'.repeat(257), { status: 401 }),
+      { stage: 'forged-proof', failure: 'size', status: 401, redirected: 'no', contract: 'oversized' }],
+    ['wrong-authorization', () => new Response(JSON.stringify({ error: 'invalid_json' }), { status: 400 }),
+      { stage: 'wrong-authorization', failure: 'status', status: 400, redirected: 'no', contract: 'string-error' }],
+    ['correct-authorization', () => new Response('{"error":"forbidden"}', { status: 403 }),
+      { stage: 'correct-authorization', failure: 'status', status: 403, redirected: 'no', contract: 'string-error' }],
+  ]) {
+    const clock = probeClock(); let attempts = 0;
+    await assert.rejects(runtimeGateProbes(credentials.clientGate, async (url, options) => {
+      const kind = probeKind(options);
+      if (kind !== failing) return expectedAnswer(kind);
+      attempts++; return response();
+    }, clock), error => {
+      assert.ok(stopped('gate')(error)); assert.deepEqual(error.gateDiagnostic, diagnostic);
+      assert.equal(runtimeFailureOutput(error), `gate: probe ${diagnostic.stage} failure ${diagnostic.failure} status ` +
+        `${diagnostic.status} redirected no contract ${diagnostic.contract}\nblocked: gate\n`);
+      assert.ok(!JSON.stringify(error).includes('NONSECRET_PRIVATE')); return true;
+    });
+    assert.equal(attempts, 1); assert.deepEqual(clock.waits, []);
+  }
+});
+test('a persistent hold-like denial stops after four attempts per probe within the one shared readiness deadline', async () => {
+  const clock = probeClock(); let forged = 0;
+  await assert.rejects(runtimeGateProbes(credentials.clientGate, async (url, options) => {
+    const kind = probeKind(options);
+    if (kind !== 'forged-proof') return expectedAnswer(kind);
+    forged++; return holdPage();
+  }, clock), error => {
+    assert.deepEqual(error.gateDiagnostic, { stage: 'forged-proof', failure: 'json', status: 403, redirected: 'no', contract: 'non-json' });
+    return stopped('gate')(error);
+  });
+  assert.equal(forged, 4); assert.deepEqual(clock.waits, [5000, 5000, 5000]);
+  // Time already spent by earlier probes shrinks the retries a later probe may still take.
+  const late = probeClock(); let wrong = 0;
+  await assert.rejects(runtimeGateProbes(credentials.clientGate, async (url, options) => {
+    const kind = probeKind(options);
+    if (kind === 'missing-authorization') { late.advance(41_000); return expectedAnswer(kind); }
+    wrong++; return holdPage();
+  }, late), error => stopped('gate')(error) && error.gateDiagnostic.stage === 'wrong-authorization');
+  assert.equal(wrong, 1); assert.deepEqual(late.waits, []);
+});
+test('runtime failure output adds only the fixed probe line, and only for a diagnosed gate stop', () => {
+  const gate = new DeploymentFailure('gate');
+  gate.gateDiagnostic = { stage: 'forged-proof', failure: 'json', status: 403, redirected: 'no', contract: 'non-json' };
+  assert.equal(runtimeFailureOutput(gate), 'gate: probe forged-proof failure json status 403 redirected no contract non-json\nblocked: gate\n');
+  assert.equal(runtimeFailureOutput(new DeploymentFailure('gate')), 'blocked: gate\n');
+  assert.equal(runtimeFailureOutput(new DeploymentFailure('scope')), 'blocked: scope\n');
+  assert.equal(runtimeFailureOutput(new Error('NONSECRET_PRIVATE')), 'blocked: unexpected\n');
+  const forged = new DeploymentFailure('gate');
+  forged.gateDiagnostic = { ...gate.gateDiagnostic, stage: 'NONSECRET_PRIVATE' };
+  assert.equal(runtimeFailureOutput(forged), 'blocked: gate\n');
+});
 
 test('diagnostic flag may be absent on the old pre-stage deployment and is required for a pinned candidate', () => {
   const previous = settings(oldRevision);
