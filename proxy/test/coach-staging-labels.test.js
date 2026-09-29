@@ -58,18 +58,43 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const post = (url, body, proof) => handleRuntimeCoach(new Request(url, { method: 'POST', body,
   headers: proof ? { 'X-RepToday-Coach-Auth': JSON.stringify(proof) } : {} }), env);
+const operatorPost = url => handleRuntimeCoach(new Request(url, { method: 'POST', body: JSON.stringify({ message: 'fixture' }),
+  headers: { Authorization: 'Bearer wrong-fixture' } }), env);
 const challenge = async url => {
   const result = await post(url, JSON.stringify({ operation: 'challenge', kind: 'assert', keyId: key.keyId }));
   expect(result.status).toBe(200); return (await result.json()).challenge;
 };
 const proof = (token, counter = 1) => ({ operation: 'reply', keyId: key.keyId, challenge: token, transactionJws: TEST_JWS,
   assertion: signedAssertion(key, assertionPayload('reply', key.keyId, token, hash('{}'), hash(TEST_JWS)), counter).toString('base64') });
+const enrollChallenge = async url => {
+  const result = await post(url, JSON.stringify({ operation: 'challenge', kind: 'enroll', keyId: key.keyId }));
+  expect(result.status).toBe(200); return (await result.json()).challenge;
+};
+const corrupt = token => token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
 
 // Each case arranges one real rejection through the Worker, Durable Object and crypto paths.
 const cases = [
+  { name: 'operator authorization', label: 'worker_operator/authorization', run: operatorPost },
+  { name: 'empty request body', label: 'worker_envelope/envelope',
+    run: async url => handleRuntimeCoach(new Request(url, { method: 'POST' }), env) },
   { name: 'missing proof', label: 'worker_envelope/missing_proof', run: async url => post(url, '{}') },
+  { name: 'malformed enrollment envelope', label: 'worker_envelope/enrollment_envelope',
+    run: async url => post(url, JSON.stringify({ operation: 'enroll', keyId: key.keyId })) },
+  { name: 'invalid enrollment token', label: 'worker_token/token_mac', run: async url => post(url, JSON.stringify({
+    operation: 'enroll', keyId: key.keyId, challenge: corrupt(await enrollChallenge(url)), attestation: 'AA==',
+  })) },
+  { name: 'invalid enrollment attestation encoding', label: 'worker_envelope/attestation_encoding',
+    run: async url => post(url, JSON.stringify({ operation: 'enroll', keyId: key.keyId,
+      challenge: await enrollChallenge(url), attestation: 'AB==' })) },
   { name: 'extra proof field', label: 'worker_envelope/proof_envelope',
     run: async url => post(url, '{}', { ...proof(await challenge(url)), extra: 'PRIVATE-SENTINEL' }) },
+  { name: 'invalid delete token', label: 'worker_token/token_mac', run: async url => post(url, '{}', {
+    ...proof(corrupt(await challenge(url))), operation: 'delete', transactionJws: '',
+  }) },
+  { name: 'invalid delete assertion encoding', label: 'worker_envelope/assertion_encoding',
+    run: async url => post(url, '{}', { ...proof(await challenge(url)), operation: 'delete', transactionJws: '', assertion: 'AB==' }) },
+  { name: 'invalid delete envelope', label: 'worker_envelope/delete_envelope',
+    run: async url => post(url, '{ }', { ...proof(await challenge(url)), operation: 'delete', transactionJws: '' }) },
   { name: 'future token at the Worker', label: 'worker_token/token_future',
     run: async url => { const p = proof(await challenge(url)); clock -= CHALLENGE_CLOCK_SKEW_MS + 1; return post(url, '{}', p); } },
   { name: 'altered request body', label: 'do_assertion/assertion_signature',

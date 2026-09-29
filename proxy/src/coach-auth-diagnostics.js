@@ -2,9 +2,12 @@ const GUARD_STAGES = ['worker_envelope', 'worker_state', 'do_preflight', 'do_tok
 const GUARD_REASONS = ['envelope', 'key_format', 'prefix_format', 'token_syntax', 'token_mac', 'token_claims', 'token_future', 'token_expired', 'denied'];
 const TOKEN = ['token_syntax', 'token_mac', 'token_claims', 'token_future', 'token_expired'];
 const FINAL = {
-  worker_envelope: ['missing_proof', 'proof_envelope', 'assertion_encoding'],
+  worker_envelope: ['missing_proof', 'proof_envelope', 'enrollment_envelope', 'delete_envelope',
+    'attestation_encoding', 'assertion_encoding'],
   worker_token: TOKEN,
   worker_state: ['denied', 'not_authorized'],
+  worker_operator: ['authorization', 'request_shape'],
+  worker_handler: ['authorization'],
   worker_premium: ['denied', 'presented_environment', 'presented_chain', 'status_identity',
     'status_count', 'status_match', 'premium_policy'],
   do_preflight: ['key_format', 'prefix_format', 'request_shape', 'assertion_encoding'],
