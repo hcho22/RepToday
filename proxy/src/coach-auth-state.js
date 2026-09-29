@@ -1,4 +1,4 @@
-import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel, parseAssertionDigest } from './coach-auth-diagnostics.js';
 import { DurableObject } from 'cloudflare:workers';
 import { Buffer } from 'node:buffer';
 import { CoachAuthFailure, VERSION, verifyChallenge, hash, keyIDValid, attestKey, assertKey, fromBase64, assertionPayload } from './coach-auth-crypto.js';
@@ -15,6 +15,7 @@ export class CoachAuthenticationState extends DurableObject {
     let diagnostic;
     let isChallenge = false;
     let isReply = false;
+    let assertionDigest;
     const note = (stage, reason, deltaMs = undefined) => { diagnostic = { stage, reason, deltaMs }; };
     try {
       if (request.method !== 'POST' || Number(request.headers.get('Content-Length')) > 24 * 1024) throw new CoachAuthFailure();
@@ -71,6 +72,8 @@ export class CoachAuthenticationState extends DurableObject {
         note('do_state', 'pending_challenge');
         if (record.pendingExpiresAt <= commitNow || record.pendingNonceHash !== hash(input.challenge)) throw new CoachAuthFailure();
         const payload = assertionPayload(input.operation, input.keyId, input.challenge, input.bodyHash, input.transactionHash);
+        assertionDigest = `payload=${hash(payload).slice(0, 16)} body=${input.bodyHash.slice(0, 16)} ` +
+          `transaction=${input.transactionHash.slice(0, 16)} challenge=${String(input.challenge).slice(0, 8)}`;
         const counter = assertKey(assertion, record.publicKey, record.counter, payload, this.env.APP_ATTEST_APP_PREFIX,
           reason => note('do_assertion', reason));
         if (input.operation === 'delete') {
@@ -96,7 +99,9 @@ export class CoachAuthenticationState extends DurableObject {
       // Staging only: the inner guard travels back to the Worker; production bodies are unchanged.
       const inner = diagnostic ?? { stage: 'do_state', reason: 'denied' };
       const label = code === 'unauthorized' && stagingLabelsEnabled(this.env) ? diagnosticLabel(inner.stage, inner.reason) : null;
-      return response(label ? { error: code, label } : { error: code }, code === 'auth_unavailable' ? 503 : 401);
+      // Staging assertion rejections also carry the digests the signature was checked against.
+      const digest = label?.startsWith('do_assertion/') ? parseAssertionDigest(assertionDigest) : null;
+      return response(label ? { error: code, label, ...(digest ? { digest } : {}) } : { error: code }, code === 'auth_unavailable' ? 503 : 401);
     }
   }
 

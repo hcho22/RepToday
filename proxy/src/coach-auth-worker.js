@@ -1,4 +1,4 @@
-import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel, parseDiagnosticLabel } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel, parseDiagnosticLabel, parseAssertionDigest } from './coach-auth-diagnostics.js';
 import { Buffer } from 'node:buffer';
 import legacyWorker from './worker.js';
 import { CoachAuthFailure, ORIGIN, VERSION, keyIDValid, appIDValid, issuerIDValid, hash, fromBase64, challengeToken, verifyChallenge, premiumEntitlement } from './coach-auth-crypto.js';
@@ -42,9 +42,9 @@ async function stateRequest(env, input) {
     body: JSON.stringify(input), signal: AbortSignal.timeout(10_000) });
   const bytes = await readBounded(result, 256);
   const data = JSON.parse(Buffer.from(bytes).toString('utf8'));
-  // A staging Durable Object may add its inner label; it is validated before any use.
+  // A staging Durable Object may add its inner label and assertion digest; both are validated before any use.
   if (!result.ok) throw Object.assign(new CoachAuthFailure(['unauthorized', 'key_unavailable'].includes(data.error) ? data.error : 'auth_unavailable'),
-    typeof data.label === 'string' ? { label: data.label } : {});
+    typeof data.label === 'string' ? { label: data.label } : {}, typeof data.digest === 'string' ? { digest: data.digest } : {});
   return data;
 }
 
@@ -153,8 +153,9 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
         finalDiagnostic.stage ? diagnosticLabel(finalDiagnostic.stage, finalDiagnostic.reason) :
         challengeStage ? diagnosticLabel(challengeStage, challengeStage === 'worker_envelope' ? 'envelope' : 'denied') :
           diagnosticLabel('worker_envelope', 'envelope')) : null;
+    const digest = label?.startsWith('do_assertion/') ? parseAssertionDigest(error?.digest) : null;
     return json({ error: code }, code === 'payload_too_large' ? 413 : code === 'auth_unavailable' ? 503 : 401,
-      label ? { 'X-RepToday-Coach-Diagnostic': label } : {});
+      label ? { 'X-RepToday-Coach-Diagnostic': label, ...(digest ? { 'X-RepToday-Coach-Assertion-Digest': digest } : {}) } : {});
   }
 }
 

@@ -55,3 +55,8 @@ export function allDiagnosticLabels() {
   for (const stage of GUARD_STAGES) for (const reason of GUARD_REASONS) labels.push(`${stage}/${reason}`);
   return [...new Set(labels.filter(label => parseDiagnosticLabel(label) === label))].sort();
 }
+
+// Staging only: non-secret digest prefixes of what the server verified an assertion against, so a
+// device's signed values can be compared offline. Anything outside this exact shape is dropped.
+const ASSERTION_DIGEST = /^payload=[0-9a-f]{16} body=[0-9a-f]{16} transaction=[0-9a-f]{16} challenge=[A-Za-z0-9_-]{8}$/;
+export const parseAssertionDigest = value => typeof value === 'string' && ASSERTION_DIGEST.test(value) ? value : null;
