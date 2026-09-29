@@ -69,9 +69,11 @@ export function assertionPayload(operation, keyId, challenge, bodyHash, transact
   return Buffer.from(JSON.stringify([VERSION, 'POST', ORIGIN, operation, keyId, challenge, bodyHash, transactionHash]), 'utf8');
 }
 
-function decodeObject(bytes, keys) {
+function decodeObject(bytes, keys, decoded = () => {}) {
   const objects = cbor.decodeAllSync(bytes, { max_depth: 8 });
-  if (objects.length !== 1 || !objects[0] || Object.keys(objects[0]).sort().join(',') !== keys) throw new CoachAuthFailure();
+  if (objects.length !== 1 || !objects[0]) throw new CoachAuthFailure();
+  decoded();
+  if (Object.keys(objects[0]).sort().join(',') !== keys) throw new CoachAuthFailure();
   return objects[0];
 }
 function certificate(bytes) {
@@ -86,8 +88,7 @@ export async function attestKey(attestation, keyId, challenge, appPrefix, nowMs,
   let reason = 'attestation_cbor';
   try {
     if (!/^[A-Z0-9]{10}$/.test(appPrefix) || !keyIDValid(keyId)) throw new CoachAuthFailure();
-    const decoded = decodeObject(attestation, 'attStmt,authData,fmt');
-    reason = 'attestation_shape';
+    const decoded = decodeObject(attestation, 'attStmt,authData,fmt', () => { reason = 'attestation_shape'; });
     if (decoded.fmt !== 'apple-appattest' || !Buffer.isBuffer(decoded.authData) || decoded.authData.length > 512 ||
         !Array.isArray(decoded.attStmt?.x5c) || decoded.attStmt.x5c.length !== 2 ||
         decoded.attStmt.x5c.some(cert => !Buffer.isBuffer(cert) || cert.length > 4096)) throw new CoachAuthFailure();

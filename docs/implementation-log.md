@@ -1410,4 +1410,4 @@ It has its own SQLite namespace, a fresh gate secret, the five App Store items a
 A `CoachStaging` build (`RepTodayCoachStaging` scheme) points a genuine device at it while signing the unchanged production protocol origin, with its own App Attest key id.
 `tools/coach-staging.sh --deploy|--teardown|--inspect` operates it without touching the production script, zone or domain.
 Production cannot carry the staging bindings (its generator never emits them and its verifier rejects them), production responses are byte-identical without them, and a Release executable containing the staging lane fails build inspection.
-The [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract; deploying it is a separate captain decision.
+The [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract; deployment and teardown are separate captain decisions.

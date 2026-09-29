@@ -64,13 +64,16 @@ const challenge = async url => {
   const result = await post(url, JSON.stringify({ operation: 'challenge', kind: 'assert', keyId: key.keyId }));
   expect(result.status).toBe(200); return (await result.json()).challenge;
 };
-const proof = (token, counter = 1) => ({ operation: 'reply', keyId: key.keyId, challenge: token, transactionJws: TEST_JWS,
-  assertion: signedAssertion(key, assertionPayload('reply', key.keyId, token, hash('{}'), hash(TEST_JWS)), counter).toString('base64') });
+const proof = (token, counter = 1, body = '{}') => ({ operation: 'reply', keyId: key.keyId, challenge: token, transactionJws: TEST_JWS,
+  assertion: signedAssertion(key, assertionPayload('reply', key.keyId, token, hash(body), hash(TEST_JWS)), counter).toString('base64') });
 const enrollChallenge = async url => {
   const result = await post(url, JSON.stringify({ operation: 'challenge', kind: 'enroll', keyId: key.keyId }));
   expect(result.status).toBe(200); return (await result.json()).challenge;
 };
-const corrupt = token => token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
+const corrupt = token => {
+  const [payload, mac] = token.split('.');
+  return `${payload}.${mac[0] === 'A' ? 'B' : 'A'}${mac.slice(1)}`;
+};
 
 // Each case arranges one real rejection through the Worker, Durable Object and crypto paths.
 const cases = [
@@ -118,7 +121,7 @@ describe('production responses are byte-identical without the staging bindings',
     expect(response.status).toBe(401);
     expect(await response.text()).toBe('{"error":"unauthorized"}');
     const names = []; response.headers.forEach((_, name) => names.push(name));
-    expect(names.sort()).toEqual(['cache-control', 'content-type']);
+    expect(names.sort()).toEqual(c.name === 'operator authorization' ? ['content-type'] : ['cache-control', 'content-type']);
   });
   it('the Durable Object never adds a label field and a workers.dev URL is not served', async () => {
     const direct = await object.fetch(new Request('https://coach-security.invalid/', { method: 'POST',
@@ -143,6 +146,14 @@ describe('a staging Worker labels each rejection with one closed stage/reason pa
   it('adds no label to success, key_unavailable or auth_unavailable', async () => {
     const accepted = await post(STAGING, '{}', proof(await challenge(STAGING)));
     expect(accepted.status).toBe(400); expect(accepted.headers.get(HEADER)).toBeNull();
+    const coachBody = JSON.stringify({
+      context: { phase: 'discipline', requestedMinutes: 20, chainPositions: [], recentPatterns: [],
+        consistency: { currentScore: 63, direction: 'rising' } },
+      message: 'Why did I get squats?', safetyIdentifier: 'coach-00000000-0000-4000-8000-000000000001',
+    });
+    const noModel = await post(STAGING, coachBody, proof(await challenge(STAGING), 2, coachBody));
+    expect(noModel.status).toBe(500); expect(await noModel.json()).toEqual({ error: 'not_configured' });
+    expect(noModel.headers.get(HEADER)).toBeNull();
     storage.record = undefined;
     const missing = await post(STAGING, JSON.stringify({ operation: 'challenge', kind: 'assert', keyId: key.keyId }));
     expect(await missing.json()).toEqual({ error: 'key_unavailable' }); expect(missing.headers.get(HEADER)).toBeNull();
