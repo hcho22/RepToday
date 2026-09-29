@@ -510,7 +510,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
   Its archive action always produces Release.
 - Client code for the lane exists only under `COACH_STAGING`; the native staging test harness sets that condition explicitly.
   It posts to the staging URL but still signs the production protocol origin, so App Attest payload bytes match production.
-  It keeps its own key id (`coachStagingAppAttestKeyV1`), so the production key is untouched.
+  It keeps its own key id (`coachStagingAppAttestKeyV2`), so the production key is untouched; this diagnostic capture version ignores the earlier V1 staging key and enrolls once before its first assertion.
   It appends the label to the existing line, for example `[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=worker_premium/status_match`.
 - Release excludes all of it: `tools/archive-release.sh` archives only Release, and `tools/inspect-coach-qa-build.py` rejects a Release executable containing the staging markers.
 - The account's workers.dev subdomain is not committed.

@@ -73,7 +73,8 @@ final class CoachStagingTests: XCTestCase {
         CoachContextBundle(phase: "discipline", requestedMinutes: 20, chainPositions: [], recentPatterns: ["push"],
                            consistency: .init(currentScore: 63, direction: .rising), strengthJourney: [])
     }
-    private func stagingClient(attester: StagingAttester, lines: StagingLines, keys: StagingKeyStore = StagingKeyStore()) -> CoachProxyClient {
+    private func stagingClient(attester: StagingAttester, lines: StagingLines,
+                               keys: any CoachAuthenticationKeyStoring = StagingKeyStore()) -> CoachProxyClient {
         CoachStaging.client(endpoint: stagingEndpoint, safetyIdentifierProvider: { testCoachSafetyIdentifier },
                             diagnostics: CoachDiagnostics { lines.append($0) }, attester: attester, purchase: StagingPurchase(),
                             keys: keys, configuration: {
@@ -158,6 +159,31 @@ final class CoachStagingTests: XCTestCase {
         XCTAssertNil(staging.load())
         staging.save("staging-key"); staging.save(nil)
         XCTAssertEqual(production.load(), "production-key")
+    }
+
+    func testLegacyStagingKeyDoesNotSuppressEnrollmentOrAttestationEvidence() async throws {
+        let suite = "CoachStagingTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
+        DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: "coachStagingAppAttestKeyV1").save("legacy-staging-key")
+        let current = DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: CoachStaging.keyStoreName)
+        let lines = StagingLines()
+        StagingHTTPFixture.state.set([challengeAnswer, .init(status: 200, body: #"{"enrolled":true}"#, label: nil), challengeAnswer,
+            .init(status: 401, body: rejected, label: "do_assertion/assertion_signature", digest: serverDigest)])
+
+        do {
+            _ = try await stagingClient(attester: StagingAttester(), lines: lines, keys: current).reply(to: "hello", context: context())
+            XCTFail("must reject")
+        } catch CoachProxyClient.CoachError.badStatus(let status) {
+            XCTAssertEqual(status, 401)
+        }
+
+        let requests = StagingHTTPFixture.state.requests
+        XCTAssertEqual(requests.count, 4)
+        let enrollment = try XCTUnwrap(JSONSerialization.jsonObject(with: requests[1].body) as? [String: String])
+        XCTAssertEqual(enrollment["operation"], "enroll")
+        XCTAssertEqual(enrollment["keyId"], stagingKey)
+        XCTAssertEqual(current.load(), stagingKey)
+        XCTAssertTrue(lines.all.contains { $0.hasPrefix("[RepTodayCoach] staging attestation part=1/") })
     }
 
     func testProductionTransportStillRefusesAnyOtherDestination() async {

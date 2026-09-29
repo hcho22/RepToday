@@ -7,7 +7,7 @@ import CryptoKit
 /// workers.dev, keeps its own App Attest key id, and appends the server's fixed rejection label to
 /// the existing `[RepTodayCoach]` failure line. See docs/coach-runtime-authentication.md.
 enum CoachStaging {
-    static let keyStoreName = "coachStagingAppAttestKeyV1"
+    static let keyStoreName = "coachStagingAppAttestKeyV2"
 
     /// Exactly the staging Worker's workers.dev `/coach` URL; anything else returns nil.
     static func endpoint(_ url: URL) -> URL? {
