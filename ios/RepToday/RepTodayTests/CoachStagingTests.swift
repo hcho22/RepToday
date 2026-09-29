@@ -164,7 +164,7 @@ final class CoachStagingTests: XCTestCase {
     func testLegacyStagingKeyDoesNotSuppressEnrollmentOrAttestationEvidence() async throws {
         let suite = "CoachStagingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
-        DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: "coachStagingAppAttestKeyV1").save("legacy-staging-key")
+        DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: "coachStagingAppAttestKeyV1").save(stagingKey)
         let current = DefaultsCoachAuthenticationKeyStore(defaults: defaults, name: CoachStaging.keyStoreName)
         let lines = StagingLines()
         StagingHTTPFixture.state.set([challengeAnswer, .init(status: 200, body: #"{"enrolled":true}"#, label: nil), challengeAnswer,
