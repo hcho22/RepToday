@@ -1,4 +1,4 @@
-#if DEBUG || COACH_STAGING
+#if COACH_STAGING
 import Foundation
 
 /// The Coach staging lane (`CoachStaging` build configuration and `RepTodayCoachStaging` scheme).
@@ -43,15 +43,20 @@ final class CoachStagingLabels: @unchecked Sendable {
     static let header = "X-RepToday-Coach-Diagnostic"
     private static let token: Set<String> = ["token_syntax", "token_mac", "token_claims", "token_future", "token_expired"]
     private static let final: [String: Set<String>] = [
-        "worker_envelope": ["missing_proof", "proof_envelope", "assertion_encoding"],
+        "worker_envelope": ["missing_proof", "proof_envelope", "enrollment_envelope", "delete_envelope",
+                            "attestation_encoding", "assertion_encoding"],
         "worker_token": token,
         "worker_state": ["denied", "not_authorized"],
+        "worker_operator": ["authorization", "request_shape"],
+        "worker_handler": ["authorization"],
         "worker_premium": ["denied", "presented_environment", "presented_chain", "status_identity",
                            "status_count", "status_match", "premium_policy"],
-        "do_preflight": ["key_format", "prefix_format", "request_shape", "assertion_encoding"],
+        "do_preflight": ["key_format", "prefix_format", "request_shape", "attestation_encoding", "assertion_encoding"],
         "do_token_entry": token,
         "do_token_transaction": token,
-        "do_state": ["denied", "pending_challenge"],
+        "do_state": ["denied", "pending_challenge", "enrollment_conflict"],
+        "do_attestation": ["attestation_cbor", "attestation_shape", "attestation_certificate", "attestation_chain",
+                           "attestation_result", "attestation_identity"],
         "do_assertion": ["assertion_cbor", "assertion_shape", "assertion_counter", "assertion_signature", "assertion_result"],
     ]
     private static let guardStages: Set<String> = ["worker_envelope", "worker_state", "do_preflight", "do_token_entry",
@@ -61,13 +66,17 @@ final class CoachStagingLabels: @unchecked Sendable {
     private let lock = NSLock()
     private var latest: String?
 
+    static var all: Set<String> {
+        var labels = Set(final.flatMap { stage, reasons in reasons.map { "\(stage)/\($0)" } })
+        for stage in guardStages { for reason in guardReasons { labels.insert("\(stage)/\(reason)") } }
+        return labels
+    }
     static func valid(_ value: String?) -> String? {
         guard let value, value.utf8.count <= 64 else { return nil }
         let parts = value.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2 else { return nil }
         let (stage, reason) = (parts[0], parts[1])
-        let known = final[stage]?.contains(reason) == true || guardStages.contains(stage) && guardReasons.contains(reason)
-        return known ? value : nil
+        return all.contains("\(stage)/\(reason)") ? value : nil
     }
     /// Every accepted response replaces the label, so a success never leaves a stale one behind.
     func record(_ value: String?) { lock.lock(); latest = Self.valid(value); lock.unlock() }

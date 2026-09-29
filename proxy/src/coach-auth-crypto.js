@@ -82,24 +82,33 @@ function certificate(bytes) {
 const attestRootPEM = Buffer.from(appAttest, 'base64').toString('utf8');
 const attestRootDER = Buffer.from(attestRootPEM.replace(/-----[^-]+-----|\s/g, ''), 'base64');
 
-export async function attestKey(attestation, keyId, challenge, appPrefix, nowMs) {
+export async function attestKey(attestation, keyId, challenge, appPrefix, nowMs, onDenied = reason => {}) {
+  let reason = 'attestation_cbor';
   try {
     if (!/^[A-Z0-9]{10}$/.test(appPrefix) || !keyIDValid(keyId)) throw new CoachAuthFailure();
     const decoded = decodeObject(attestation, 'attStmt,authData,fmt');
+    reason = 'attestation_shape';
     if (decoded.fmt !== 'apple-appattest' || !Buffer.isBuffer(decoded.authData) || decoded.authData.length > 512 ||
         !Array.isArray(decoded.attStmt?.x5c) || decoded.attStmt.x5c.length !== 2 ||
         decoded.attStmt.x5c.some(cert => !Buffer.isBuffer(cert) || cert.length > 4096)) throw new CoachAuthFailure();
+    reason = 'attestation_certificate';
     // The protocol library checks Apple signatures/nonces/identity. PKI.js additionally verifies
     // the full chain and current validity; the library alone omits validity-date checks.
     const chain = new pkijs.CertificateChainValidationEngine({
       trustedCerts: [certificate(attestRootDER)], certs: decoded.attStmt.x5c.map(certificate), checkDate: new Date(nowMs),
     });
+    reason = 'attestation_chain';
     if (!(await chain.verify()).result) throw new CoachAuthFailure();
+    reason = 'attestation_result';
     const verified = verifyAttestation({ attestation, challenge, keyId, bundleIdentifier: BUNDLE,
       teamIdentifier: appPrefix, allowDevelopmentEnvironment: false });
+    reason = 'attestation_identity';
     if (verified.keyId !== keyId || typeof verified.publicKey !== 'string' || Buffer.byteLength(verified.publicKey) > 1024) throw new CoachAuthFailure();
     return verified.publicKey;
-  } catch { throw new CoachAuthFailure(); }
+  } catch {
+    try { onDenied(reason); } catch {}
+    throw new CoachAuthFailure();
+  }
 }
 
 export function assertKey(assertion, publicKey, previousCounter, payload, appPrefix, onDenied = reason => {}) {

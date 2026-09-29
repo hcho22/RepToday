@@ -33,5 +33,9 @@ let package=Package(name:"RepTodayCoachRuntime",platforms:[.macOS(.v14)],targets
  .testTarget(name:"RepTodayTests",dependencies:["RepToday"],path:"Tests")])
 ''')
 PY
+export COACH_STAGING_LABELS_CONTRACT
+COACH_STAGING_LABELS_CONTRACT=$(node --input-type=module -e \
+    "import { allDiagnosticLabels } from './proxy/src/coach-auth-diagnostics.js'; process.stdout.write(JSON.stringify(allDiagnosticLabels()))")
 xcrun swift test --package-path "$private_build" --cache-path "$private_build/cache" \
-    --scratch-path "$private_build/scratch" -Xswiftc -module-cache-path -Xswiftc "$private_build/module-cache"
+    --scratch-path "$private_build/scratch" -Xswiftc -D -Xswiftc COACH_STAGING \
+    -Xswiftc -module-cache-path -Xswiftc "$private_build/module-cache"

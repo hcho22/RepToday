@@ -86,6 +86,9 @@ const cases = [
   { name: 'invalid enrollment attestation encoding', label: 'worker_envelope/attestation_encoding',
     run: async url => post(url, JSON.stringify({ operation: 'enroll', keyId: key.keyId,
       challenge: await enrollChallenge(url), attestation: 'AB==' })) },
+  { name: 'invalid enrollment attestation', label: 'do_attestation/attestation_cbor',
+    run: async url => post(url, JSON.stringify({ operation: 'enroll', keyId: key.keyId,
+      challenge: await enrollChallenge(url), attestation: 'AA==' })) },
   { name: 'extra proof field', label: 'worker_envelope/proof_envelope',
     run: async url => post(url, '{}', { ...proof(await challenge(url)), extra: 'PRIVATE-SENTINEL' }) },
   { name: 'invalid delete token', label: 'worker_token/token_mac', run: async url => post(url, '{}', {

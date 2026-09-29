@@ -508,7 +508,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 **The iOS staging build:**
 - The `RepTodayCoachStaging` scheme builds the release-optimized `CoachStaging` configuration with no local StoreKit file, so a real Sandbox purchase and production App Attest are used.
   Its archive action always produces Release.
-- Client code for the lane exists only under `COACH_STAGING` (and Debug, for tests).
+- Client code for the lane exists only under `COACH_STAGING`; the native staging test harness sets that condition explicitly.
   It posts to the staging URL but still signs the production protocol origin, so App Attest payload bytes match production.
   It keeps its own key id (`coachStagingAppAttestKeyV1`), so the production key is untouched.
   It appends the label to the existing line, for example `[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=worker_premium/status_match`.

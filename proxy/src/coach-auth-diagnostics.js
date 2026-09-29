@@ -10,10 +10,12 @@ const FINAL = {
   worker_handler: ['authorization'],
   worker_premium: ['denied', 'presented_environment', 'presented_chain', 'status_identity',
     'status_count', 'status_match', 'premium_policy'],
-  do_preflight: ['key_format', 'prefix_format', 'request_shape', 'assertion_encoding'],
+  do_preflight: ['key_format', 'prefix_format', 'request_shape', 'attestation_encoding', 'assertion_encoding'],
   do_token_entry: TOKEN,
   do_token_transaction: TOKEN,
-  do_state: ['denied', 'pending_challenge'],
+  do_state: ['denied', 'pending_challenge', 'enrollment_conflict'],
+  do_attestation: ['attestation_cbor', 'attestation_shape', 'attestation_certificate', 'attestation_chain',
+    'attestation_result', 'attestation_identity'],
   do_assertion: ['assertion_cbor', 'assertion_shape', 'assertion_counter', 'assertion_signature', 'assertion_result'],
 };
 
@@ -47,4 +49,9 @@ export function parseDiagnosticLabel(label) {
   if (typeof label !== 'string' || label.length > 64) return null;
   const parts = label.split('/');
   return parts.length === 2 ? diagnosticLabel(parts[0], parts[1]) : null;
+}
+export function allDiagnosticLabels() {
+  const labels = Object.entries(FINAL).flatMap(([stage, reasons]) => reasons.map(reason => `${stage}/${reason}`));
+  for (const stage of GUARD_STAGES) for (const reason of GUARD_REASONS) labels.push(`${stage}/${reason}`);
+  return [...new Set(labels.filter(label => parseDiagnosticLabel(label) === label))].sort();
 }

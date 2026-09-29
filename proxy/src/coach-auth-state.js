@@ -28,13 +28,17 @@ export class CoachAuthenticationState extends DurableObject {
       verifyChallenge(input.challenge, input.keyId, this.env.CLIENT_SHARED_SECRET, now,
         (reason, deltaMs) => note('do_token_entry', reason, deltaMs));
       if (input.operation === 'enroll') {
+        note('do_preflight', 'attestation_encoding');
         const attestation = fromBase64(input.attestation, 8192);
         // Full crypto verification precedes any storage allocation or enrollment write.
-        const publicKey = await attestKey(attestation, input.keyId, input.challenge, this.env.APP_ATTEST_APP_PREFIX, now);
+        const publicKey = await attestKey(attestation, input.keyId, input.challenge, this.env.APP_ATTEST_APP_PREFIX, now,
+          reason => note('do_attestation', reason));
         await this.ctx.storage.transaction(async tx => {
           const current = /** @type {SecurityRecord} */ (await tx.get('record'));
           const commitNow = Date.now();
-          verifyChallenge(input.challenge, input.keyId, this.env.CLIENT_SHARED_SECRET, commitNow);
+          verifyChallenge(input.challenge, input.keyId, this.env.CLIENT_SHARED_SECRET, commitNow,
+            (reason, deltaMs) => note('do_token_transaction', reason, deltaMs));
+          note('do_state', 'enrollment_conflict');
           if (current && (current.expiresAt > commitNow || current.tombstoneUntil > commitNow)) throw new CoachAuthFailure();
           const record = { v: VERSION, publicKey, counter: 0, expiresAt: commitNow + RETENTION_MS };
           await tx.put('record', record); await tx.setAlarm(record.expiresAt);

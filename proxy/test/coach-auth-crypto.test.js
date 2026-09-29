@@ -74,10 +74,22 @@ describe('real cryptographic request binding', () => {
   it.each(['', ' AA==', 'AB==', 'AAAA=', 'AA===', '_A==', 'A'.repeat(100)])('rejects noncanonical/oversized base64', value => {
     expect(() => fromBase64(value, 4)).toThrow();
   });
+  it.each([
+    [Buffer.from('garbage'), 'attestation_cbor'],
+    [cbor.encode({ fmt: 'apple-appattest' }), 'attestation_shape'],
+    [cbor.encode({ fmt: 'apple-appattest', authData: Buffer.alloc(100), attStmt: { x5c: [Buffer.from('bad'), Buffer.from('bad')] } }),
+      'attestation_certificate'],
+  ])('classifies a rejected App Attest check', async (attestation, reason) => {
+    const denied = [];
+    await expect(attestKey(attestation, key.keyId, challenge, APP_PREFIX, now, value => denied.push(value))).rejects.toThrow();
+    expect(denied).toEqual([reason]);
+  });
   it('rejects a non-Apple-attestation chain without trusting client certificates', async () => {
     const forged = cbor.encode({fmt:'apple-appattest', authData:Buffer.alloc(100), attStmt:{receipt:Buffer.from('fixture'),
       x5c:[Buffer.from(storeG2,'base64'),Buffer.from(storeG3,'base64')]}});
-    await expect(attestKey(forged,key.keyId,challenge,APP_PREFIX,now)).rejects.toThrow();
+    const denied = [];
+    await expect(attestKey(forged,key.keyId,challenge,APP_PREFIX,now,reason => denied.push(reason))).rejects.toThrow();
+    expect(denied).toEqual(['attestation_chain']);
   });
   it('rejects malformed purchase proof with the actual official Apple verifier', async () => {
     await expect(premiumEntitlement('a.b.c',{APP_STORE_APP_ID:'1',APP_STORE_KEY_ID:APP_PREFIX,

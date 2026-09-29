@@ -1,3 +1,4 @@
+#if COACH_STAGING
 import XCTest
 import CryptoKit
 @testable import RepToday
@@ -103,6 +104,12 @@ final class CoachStagingTests: XCTestCase {
         XCTAssertEqual(CoachStagingLabels.valid("worker_envelope/envelope"), "worker_envelope/envelope")
     }
 
+    func testClientVocabularyExactlyMatchesTheServerContract() throws {
+        let encoded = try XCTUnwrap(ProcessInfo.processInfo.environment["COACH_STAGING_LABELS_CONTRACT"])
+        let data = try XCTUnwrap(encoded.data(using: .utf8))
+        XCTAssertEqual(CoachStagingLabels.all, Set(try JSONDecoder().decode([String].self, from: data)))
+    }
+
     func testStagingSendsEveryRequestToStagingButSignsTheProductionProtocolOrigin() async throws {
         let attester = StagingAttester(), lines = StagingLines()
         StagingHTTPFixture.state.set([challengeAnswer,
@@ -156,3 +163,4 @@ final class CoachStagingTests: XCTestCase {
         XCTAssertTrue(StagingHTTPFixture.state.requests.isEmpty)
     }
 }
+#endif

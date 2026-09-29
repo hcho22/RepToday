@@ -413,7 +413,7 @@ private final class CoachNoRedirects: NSObject, URLSessionTaskDelegate, @uncheck
 struct BoundedCoachHTTPTransport: CoachProxyTransport {
     private let makeConfiguration: @Sendable () -> URLSessionConfiguration
     private let destination: URL
-    #if DEBUG || COACH_STAGING
+    #if COACH_STAGING
     private let labels: CoachStagingLabels?
     /// Staging lane only: a separate destination, and the rejection label from each response.
     init(configuration: @escaping @Sendable () -> URLSessionConfiguration = { .ephemeral },
@@ -443,7 +443,7 @@ struct BoundedCoachHTTPTransport: CoachProxyTransport {
         let (bytes, response) = try await session.bytes(for: request)
         guard let response = response as? HTTPURLResponse, response.url == url,
               !(300...399).contains(response.statusCode), response.expectedContentLength <= 16384 else { throw CoachAuthenticationError.unavailable }
-        #if DEBUG || COACH_STAGING
+        #if COACH_STAGING
         labels?.record(response.value(forHTTPHeaderField: CoachStagingLabels.header))
         #endif
         var body = Data()
