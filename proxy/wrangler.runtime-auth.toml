@@ -18,6 +18,9 @@ COACH_AUTH_MODE = "app-attest-storekit-v1"
 
 [alias]
 "node-fetch" = "./src/apple-fetch.js"
+# Workerd's native node:crypto; Wrangler 3's nodejs_compat preset stubs createVerify/createSign.
+"crypto" = "./src/native-crypto.cjs"
+"node:crypto" = "./src/native-crypto.cjs"
 
 [[durable_objects.bindings]]
 name = "COACH_AUTH_STATE"

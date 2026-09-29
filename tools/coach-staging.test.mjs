@@ -4,6 +4,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { STAGING, STAGING_SECRET_NAMES, StagingCloudflare, deployStaging, inspectStaging, teardownStaging, stagingProbes,
   stagingWorkerConfig, stagingTeardownConfig, stagingOrigin, stagingLines, stagingFailureOutput } from './coach-staging.mjs';
 import { DeploymentFailure, TARGET } from './coach-production-deploy.mjs';
+import { coachWorkerBuild } from './coach-runtime-migrate.mjs';
 
 // Cloudflare API and Worker doubles only: no auth file, Keychain, network or production resource.
 const account = 'a'.repeat(32), stagingNamespace = 'c'.repeat(32), productionNamespace = 'f'.repeat(32);
@@ -83,6 +84,8 @@ test('staging configuration is a separate workers.dev script with labels, its ow
   assert.deepEqual(config.vars, { COACH_AUTH_MODE: 'app-attest-storekit-v1', COACH_AUTH_SOURCE_REV: revision,
     COACH_STAGING_ORIGIN: origin, COACH_STAGING_LABELS: '1' });
   assert.deepEqual(config.migrations, [{ tag: 'coach-security-v1', new_sqlite_classes: ['CoachAuthenticationState'] }]);
+  // Same bundle build as production, so staging exercises the crypto that ships.
+  for (const [key, value] of Object.entries(coachWorkerBuild('/fixture/repository'))) assert.deepEqual(config[key], value);
   assert.ok(!JSON.stringify(config).includes('OPENAI') && !JSON.stringify(config).includes('coach.reptoday.app'));
   for (const bad of ['https://coach.reptoday.app/coach', `https://${STAGING}.x.workers.dev/other`, `http://${STAGING}.x.workers.dev/coach`])
     assert.throws(() => stagingWorkerConfig('/fixture/repository', revision, bad), stopped('subdomain'));

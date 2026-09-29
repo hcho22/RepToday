@@ -1,5 +1,7 @@
 // Test-only entry: never referenced by either Wrangler deployment configuration.
 import gateway, { CoachAuthenticationState, handleRuntimeCoach } from '../src/coach-auth-worker.js';
+import { Buffer } from 'node:buffer';
+import { createHash, createVerify } from 'node:crypto';
 import { assertKey, attestKey, premiumEntitlement, CoachAuthFailure } from '../src/coach-auth-crypto.js';
 import {probeAppleAPI, probeAppleRequest} from './apple-api-probe.js';
 // Tests seed a generated public key through a separate class, not a production enrollment bypass.
@@ -32,6 +34,12 @@ export default { async fetch(request, env) {
       else if (input.operation === 'attest') await attestKey(Buffer.from(input.attestation, 'base64'), input.keyId,
         input.challenge, input.prefix, Date.now());
       else if (input.operation === 'premium') await premiumEntitlement(input.jws, env);
+      else if (input.operation === 'device-signature') {
+        // node-app-attest verifyAssertion's own primitive, on genuine device bytes, in the bundled runtime.
+        const nonce = createHash('sha256').update(Buffer.concat([Buffer.from(input.authenticatorData, 'base64'),
+          Buffer.from(input.clientDataHash, 'hex')])).digest();
+        if (!createVerify('SHA256').update(nonce).verify(input.publicKey, Buffer.from(input.signature, 'base64'))) throw new CoachAuthFailure();
+      }
       else if (input.operation === 'apple-request') return Response.json(await probeAppleRequest());
       else if (input.operation === 'apple-api' || input.operation === 'apple-response') {
         const result = await probeAppleAPI(input.privateKey, env, input.operation === 'apple-response', input.diagnose === true,

@@ -81,15 +81,23 @@ export class RuntimeCloudflare extends Cloudflare {
   }
 }
 
+// Build settings shared by every Wrangler bundle of the Coach Worker: production, staging and the
+// workerd test bundles in proxy/test/workerd-auth.mjs, so the tests run the module graph that ships.
+// node:crypto resolves to workerd's native module (proxy/src/native-crypto.cjs explains why).
+export function coachWorkerBuild(repository) {
+  const nativeCrypto = path.join(repository, 'proxy/src/native-crypto.cjs');
+  return { compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
+    alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js'), crypto: nativeCrypto, 'node:crypto': nativeCrypto } };
+}
+
 export function runtimeConfig(repository, revision, diagnostics = false, finalDiagnostics = false) {
   requireThat(revisionValid(revision), 'revision');
   requireThat(typeof diagnostics === 'boolean' && typeof finalDiagnostics === 'boolean', 'input');
   return { name: TARGET.worker, main: path.join(repository, 'proxy/src/coach-auth-worker.js'),
-    compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'], workers_dev: false,
+    ...coachWorkerBuild(repository), workers_dev: false,
     preview_urls: false, routes: [], logpush: false, observability: { enabled: false }, send_metrics: false,
     vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, ...(diagnostics ? { COACH_AUTH_GUARD_DIAGNOSTICS: '1' } : {}),
       ...(finalDiagnostics ? { COACH_FINAL_AUTH_DIAGNOSTICS: '1' } : {}) },
-    alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js') },
     durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }] },
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }

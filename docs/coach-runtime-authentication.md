@@ -297,13 +297,24 @@ XCTest connects; an archived unchanged-source comparison reproduced that failure
 the CI flags. A minimal host without those entitlements passed unsigned. No app startup behavior
 was changed to resolve this harness configuration issue.
 
-Runtime tests use installed Miniflare/workerd 2025-07-18, native crypto and actual SQLite atomic
-storage. Every outbound request is intercepted by a local service; no external requests are allowed.
-The test bundler models the installed Wrangler native-require plugin and sets the documented
-`modulesRoot`; generic esbuild externalization is insufficient. Apple's verifier dependency
-initializes randomness, so it imports inside a handler, never module scope. Production configuration
-uses 2026-01-01; compatibility-date behavior beyond the installed runtime's date is not proven by
-these tests.
+Runtime tests run Wrangler-built bundles in installed Miniflare/workerd 2025-07-18 with actual SQLite atomic storage.
+`proxy/test/workerd-auth.mjs` bundles its workerd scripts with the installed Wrangler (`deploy --dry-run`) and the same `coachWorkerBuild` settings (`tools/coach-runtime-migrate.mjs`) that production and staging deploy with, so the tests run the module graph that ships, `nodejs_compat` polyfills included.
+The dry-run build uses a private Wrangler config home, so the operator login is never read, and points Wrangler's best-effort update check at a closed local port.
+Every outbound request from the runtime is intercepted by a local service; no external requests are allowed.
+Apple's verifier dependency initializes randomness, so it imports inside a handler, never module scope.
+Production configuration uses 2026-01-01; compatibility-date behavior beyond the installed runtime's date is not proven by these tests.
+
+**Native crypto in the Worker bundle.**
+Wrangler 3.114.17's `nodejs_compat` preset passes only part of `node:crypto` through to workerd.
+It replaces `createVerify`, `createSign`, `sign`, `verify` and the ciphers with stubs that throw `not implemented`.
+node-app-attest verifies every assertion with `createVerify`, so every deployed Worker rejected every genuine assertion as `do_assertion/assertion_signature`.
+The App Store Server API client signs its ES256 JWT through jwa's `createSign`, so the Premium check, which runs after the assertion, would have failed next.
+The earlier esbuild test bundle resolved `node:crypto` natively, so the suite could not see either failure.
+`coachWorkerBuild` now aliases `crypto` and `node:crypto` to [`proxy/src/native-crypto.cjs`](../proxy/src/native-crypto.cjs), which is workerd's native module through `process.getBuiltinModule`.
+A genuine device enrollment and first assertion (`proxy/test/fixtures/device-assertion-2026-09-29.json`, staging key, no content) verifies in the Wrangler-built bundle and in Node.
+Every Wrangler build of the Coach Worker must take its settings from `coachWorkerBuild`; `proxy/wrangler.runtime-auth.toml` mirrors them for reference.
+Moving to Wrangler 4, whose preset leaves `node:crypto` native, is a separate follow-up, because `tools/coach-tail-ready.cjs` adapts Wrangler 3.114.17 internals.
+The fix reaches a deployed Worker only through a separately approved staging redeploy or production release.
 
 The official SDK API regression is resolved locally. The same pinned SDK, generated signing key,
 bounded adapter and local response fixture passed in Node, while workerd initially failed before
