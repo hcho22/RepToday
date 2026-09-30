@@ -39,6 +39,14 @@ final class AppState {
     var isOnboarded: Bool {
         didSet {
             userDefaults.set(isOnboarded, forKey: Keys.isOnboarded)
+            // Finishing onboarding on this build makes the user new to the foundations, so the
+            // one-time "foundations changed" note (ADR-0006) has nothing to explain to them. This is
+            // what keeps it from reaching a brand-new install - and a user who deleted their account
+            // and started over - while an install that predates the change (already onboarded, never
+            // passing through here) still gets it once.
+            if !oldValue && isOnboarded {
+                markFoundationsUpdateNoteSeen()
+            }
         }
     }
 
@@ -127,6 +135,26 @@ final class AppState {
     /// again. Idempotent: calling it twice is a persisted no-op the second time.
     func markContinuousCircuitExplainerSeen() {
         hasSeenContinuousCircuitExplainer = true
+    }
+
+    /// One-shot flag for the one-time note that the foundations are now Push, Pull, Legs, Core
+    /// (ADR-0006): `true` once the user has been shown it, or once they onboarded on a build that
+    /// already had the new foundations (see `isOnboarded`), so it is shown at most once and never to a
+    /// brand-new user. Defaults to unseen for an install that predates the change - absent means "not
+    /// yet seen", which is exactly what `bool(forKey:)` answers for a never-written key. It gates
+    /// presentation only - it cohorts nothing and emits nothing.
+    var hasSeenFoundationsUpdateNote: Bool {
+        didSet {
+            userDefaults.set(hasSeenFoundationsUpdateNote, forKey: Keys.hasSeenFoundationsUpdateNote)
+        }
+    }
+
+    /// Whether the foundations note has not yet been shown - the read side of the one-shot flag.
+    var shouldShowFoundationsUpdateNote: Bool { !hasSeenFoundationsUpdateNote }
+
+    /// Records that the foundations note has been shown so it is never presented again. Idempotent.
+    func markFoundationsUpdateNoteSeen() {
+        hasSeenFoundationsUpdateNote = true
     }
 
     /// The highest `Phase` the user has been *congratulated for reaching* (US-SP06, the graduation
@@ -445,6 +473,8 @@ final class AppState {
         // Unseen by default: a never-written key reads `false`, which is the honest "not yet seen".
         hasSeenContinuousCircuitExplainer = userDefaults.bool(forKey: Keys.hasSeenContinuousCircuitExplainer)
 
+        hasSeenFoundationsUpdateNote = userDefaults.bool(forKey: Keys.hasSeenFoundationsUpdateNote)
+
         // Nothing celebrated by default: an absent key resolves to `.discipline`, the phase every user
         // starts in, so a fresh install has congratulated nothing and the reveal can still fire once
         // the earned phase first crosses into `.strength` (US-SP06).
@@ -531,6 +561,7 @@ final class AppState {
         static let firstLaunchUnknown = "AppState.firstLaunchUnknown"
         static let lastActiveAt = "AppState.lastActiveAt"
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
+        static let hasSeenFoundationsUpdateNote = "AppState.hasSeenFoundationsUpdateNote"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
         static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"

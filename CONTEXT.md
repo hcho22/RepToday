@@ -51,6 +51,30 @@ This resolves the **double-gate trap**: a phase-gated skill must clear *both* th
 The level-only `difficultyCap`/`isWithinDifficultyCap` remain the term for callers reasoning about the conservative band directly (e.g. the Wide Circuit depth-mismatch bound above, and cold-start Start-Seed banding, which use the discipline-phase band); the eligible pool consumes only the *effective* cap via `isWithinEffectiveDifficultyCap`. A `.discipline` user's eligible pool is byte-identical to the pre-lift behavior.
 Introduced by US-SP01 (`Services/Engine/ExercisePoolFilter.swift`); its PRD is `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` (`US-SP##`).
 
+## Foundation
+
+What the user clears to earn the Strength Phase.
+There are exactly four foundations, always listed in this order: **Push, Pull, Legs, Core** (`StrengthFoundation`, `Models/StrengthFoundation.swift`).
+A foundation is not a movement pattern.
+Movement patterns (`MovementPattern`) are the engine's staleness and variety buckets and are unchanged: squat and hinge stay separate patterns in session assembly, and pull stays an ordinary strength pattern.
+A foundation is what the *user* is asked to clear, and it is made of one or more **lines**, each a movement pattern plus the progression chains whose entry rung counts (`FoundationLine`).
+**Legs** groups two lines, a **Squat side** and a **Hinge side**, and is cleared only when both are.
+Push, Pull and Core have one line each.
+A line is cleared when a logged, non-skipped performance of the entry rung (lowest progression order) of any one of its counting chains meets that rung's advancement criteria.
+Each foundation's counting ladder:
+
+- **Push** - either push chain (horizontal or vertical).
+- **Pull** - the **horizontal chain only** (Wall Scapular Pull, Supine Floor Row, Single-Arm Supine Floor Row).
+  The postural chain (Superman Hold, Reverse Snow Angel, Prone Y-T-W Raises) stays in sessions as accessory and prehab work but never counts toward clearing Pull.
+- **Legs** - Squat side: either squat-family chain (squat or lunge).
+  Hinge side: either hinge-family chain (bridge or hip).
+- **Core** - any core chain.
+
+The Strength Phase is earned when all four foundations are cleared and the Consistency Score has been sustained above 80 for about eight weeks; an earned Strength Phase is never revoked, so a change to the foundations can only change what a Discipline user still has to clear.
+Pull's ladder ends at Single-Arm Supine Floor Row with no locked Strength-Phase rung, because a Pull top rung needs equipment and the zero-equipment rule stands until the planned Phase 2 equipment work.
+The Progress tab, the premium strength journey, the Coach's analytics insights and the Coach's requestable emphasis words all read `StrengthFoundation`, so the gate and every surface track the same five lines (Push, Pull, the Squat and Hinge sides of Legs, Core); "legs" as a Coach request nudges the Squat and Hinge lines together, while their own words still tune one side.
+The decision is recorded as [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md); the owning code is `Models/StrengthFoundation.swift`, `PhaseEvaluator`, and `ProgressAnalytics`.
+
 ## Two-Writer Policy Safety
 
 `SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).

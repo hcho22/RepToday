@@ -13,11 +13,14 @@ import Foundation
 ///   score is itself a recency-weighted rolling average, a single strong week cannot clear the bar:
 ///   the user must also have been active across the full window (`activeWeekSpan >= sustainedWeeks`),
 ///   so "sustained over ~8 weeks" is real, not a hot streak.
-/// - **Competence** - the user has cleared the **entry tier** of each foundational movement pattern
-///   (`push` / `squat` / `hinge` / `core`). "Cleared" reuses the exact `AdvancementCriteria`
+/// - **Competence** - the user has cleared every **foundation** (`StrengthFoundation`: Push, Pull,
+///   Legs, Core). A foundation clears when each of its lines does, and a line clears when the **entry
+///   tier** of one of its counting chains is cleared. "Cleared" reuses the exact `AdvancementCriteria`
 ///   mechanism Step 5 uses to advance a chain: a logged, non-skipped performance met the entry
-///   movement's advancement criteria. A pattern with several chains needs only one chain's entry
-///   cleared - demonstrating a real push / squat / hinge / core, not every variation.
+///   movement's advancement criteria. A line with several counting chains needs only one chain's entry
+///   cleared - demonstrating a real push / squat / hinge / core, not every variation. Legs has two
+///   lines (Squat and Hinge) and needs both; Pull counts only its horizontal chain, so the postural
+///   chain never clears it (ADR-0006).
 ///
 /// Consistency-only (a faithful shower-upper who has not progressed the foundations) or
 /// competence-only (a strong-but-inconsistent user) both stay `.discipline`, as does a fresh user.
@@ -40,11 +43,6 @@ enum PhaseEvaluator {
     /// Matched to the Consistency Score's own rolling window so the score reflects a full window of
     /// behavior rather than one strong week.
     static let sustainedWeeks = ConsistencyScore.recentWeeksWindow
-
-    /// The foundational movement patterns whose entry tiers gate competence. Deliberately the four
-    /// fundamentals (push / squat / hinge / core) - not mobility or locomotion, which are variety,
-    /// not strength foundations.
-    static let foundationalPatterns: [MovementPattern] = [.push, .squat, .hinge, .core]
 
     // MARK: - Evaluation
 
@@ -95,10 +93,16 @@ enum PhaseEvaluator {
             asOf: asOf,
             calendar: calendar
         ).score
-        let foundations = foundationalPatterns.map { pattern in
+        // The foundation set is `StrengthFoundation`'s alone - the gate keeps no list of its own.
+        let foundations = StrengthFoundation.displayOrder.map { foundation in
             PhaseProgress.FoundationProgress(
-                pattern: pattern,
-                isCleared: hasClearedEntryTier(of: pattern, logs: logs, library: library)
+                foundation: foundation,
+                lines: foundation.lines.map { line in
+                    PhaseProgress.LineProgress(
+                        line: line,
+                        isCleared: hasClearedEntryTier(of: line, logs: logs, library: library)
+                    )
+                }
             )
         }
         return PhaseProgress(
@@ -127,24 +131,16 @@ enum PhaseEvaluator {
 
     // MARK: - Competence signal
 
-    /// Whether the user has cleared the entry tier of at least one chain in `pattern`. A pattern may
-    /// hold several chains (e.g. push has a horizontal and a vertical chain); clearing any one
-    /// chain's entry demonstrates the fundamental, so only one is required.
+    /// Whether the user has cleared the entry tier of at least one of `line`'s counting chains. A
+    /// line may hold several chains (e.g. push has a horizontal and a vertical chain); clearing any
+    /// one chain's entry demonstrates the fundamental, so only one is required. Pull's line counts
+    /// only its horizontal chain, so a postural-chain entry never satisfies it.
     private static func hasClearedEntryTier(
-        of pattern: MovementPattern,
+        of line: FoundationLine,
         logs: [WorkoutLog],
         library: [Exercise]
     ) -> Bool {
-        let chains = Dictionary(
-            grouping: library.filter { $0.movementPattern == pattern },
-            by: \.progressionChainId
-        )
-        return chains.values.contains { members in
-            guard let entry = members.min(by: { $0.progressionOrder < $1.progressionOrder }) else {
-                return false
-            }
-            return hasCleared(entry, logs: logs)
-        }
+        line.entryExercises(in: library).contains { hasCleared($0, logs: logs) }
     }
 
     /// Whether any logged, non-skipped performance of `entry` met its advancement criteria - the
@@ -193,14 +189,30 @@ enum PhaseEvaluator {
 /// pure, `Equatable` value.
 struct PhaseProgress: Equatable {
 
-    /// Per-foundation clear state, one entry per `PhaseEvaluator.foundationalPatterns` in that order.
-    struct FoundationProgress: Equatable, Identifiable {
-        let pattern: MovementPattern
-        /// Whether the user has cleared the entry tier of at least one chain in `pattern` - the exact
-        /// `PhaseEvaluator` competence test, reused rather than recomputed.
+    /// One line of a foundation and whether its entry tier is cleared - the exact `PhaseEvaluator`
+    /// competence test, reused rather than recomputed.
+    struct LineProgress: Equatable, Identifiable {
+        let line: FoundationLine
+        /// Whether the user has cleared the entry tier of at least one of the line's counting chains.
         let isCleared: Bool
 
-        var id: MovementPattern { pattern }
+        var id: MovementPattern { line.pattern }
+    }
+
+    /// Per-foundation clear state, one entry per `StrengthFoundation` in display order (Push, Pull,
+    /// Legs, Core). A foundation is cleared only when every one of its lines is - so Legs needs both
+    /// its Squat and its Hinge line.
+    struct FoundationProgress: Equatable, Identifiable {
+        let foundation: StrengthFoundation
+        let lines: [LineProgress]
+
+        var id: StrengthFoundation { foundation }
+
+        var isCleared: Bool { lines.allSatisfy(\.isCleared) }
+
+        /// How many of this foundation's lines are cleared (Legs reads "1 of 2" until both are).
+        var clearedLineCount: Int { lines.filter(\.isCleared).count }
+        var lineCount: Int { lines.count }
     }
 
     /// Whole weeks from the user's first logged activity through now (0 for a user with no history) -
@@ -218,7 +230,7 @@ struct PhaseProgress: Equatable {
     /// The score the current score must clear for the consistency signal (`consistencyThreshold`, 80).
     let scoreThreshold: Double
 
-    /// The four foundational patterns and whether each entry tier is cleared, in evaluator order.
+    /// The four foundations and whether each is cleared, in display order (Push, Pull, Legs, Core).
     let foundations: [FoundationProgress]
 
     // MARK: Derived (the gate's own combinations)
@@ -237,7 +249,7 @@ struct PhaseProgress: Equatable {
     /// How many foundations are cleared, for the "N of 4" headline.
     var clearedFoundationCount: Int { foundations.filter(\.isCleared).count }
 
-    /// The total foundations gating competence (four: push / squat / hinge / core).
+    /// The total foundations gating competence (four: Push, Pull, Legs, Core).
     var foundationCount: Int { foundations.count }
 
     /// The competence signal exactly as the gate reads it: every foundation cleared.

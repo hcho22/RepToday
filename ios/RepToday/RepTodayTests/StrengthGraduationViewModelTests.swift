@@ -322,6 +322,52 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         XCTAssertEqual(persistedPhase, .strength, "the real evaluator's result is persisted")
     }
 
+    /// The ratchet under the new foundations (ADR-0006): a user who already *earned* Strength keeps it
+    /// even though their history, recalculated under Push/Pull/Legs/Core, no longer clears a foundation
+    /// (here Pull, which the old rules never asked for). The real evaluator, asked directly, reads the
+    /// same history as Discipline - and the persisted phase is neither re-evaluated down nor rewritten.
+    func testEarnedStrengthSurvivesTheNewFoundationsRecalculation() async throws {
+        let exerciseService = try MockExerciseService()
+        let library = try await exerciseService.exercises()
+        let logs = Self.sustainedHistory(weeks: 10) + Self.competenceLogs(library: library, excluding: [.pull])
+
+        let evaluator = PhaseEvaluatorService(exerciseService: exerciseService, now: { Self.asOf }, calendar: Self.calendar)
+        var user = MockPersistence.sampleUser
+        let recalculated = try await evaluator.phase(for: user, recentLogs: logs)
+        XCTAssertEqual(recalculated, .discipline, "under the new rules this history no longer clears Pull")
+
+        user.phase = .strength
+        let userService = CountingUserService(user: user)
+        let viewModel = StrengthGraduationViewModel(
+            userService: userService,
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            phaseService: evaluator
+        )
+
+        await viewModel.evaluate()
+
+        XCTAssertTrue(viewModel.earnedStrength, "an earned Strength Phase is never revoked by a rule change")
+        let persistedPhase = await userService.user?.phase
+        let phaseAdvanceCount = await userService.phaseAdvanceCount
+        XCTAssertEqual(persistedPhase, .strength)
+        XCTAssertEqual(phaseAdvanceCount, 0, "and it is not rewritten")
+    }
+
+    /// Real end to end: with sustained consistency, every foundation but Legs' hinge side does not
+    /// earn Strength - the gate reads the real catalog's Legs as two required sides.
+    func testRealHistoryMissingOneLegsSideDoesNotEarnStrength() async throws {
+        let exerciseService = try MockExerciseService()
+        let library = try await exerciseService.exercises()
+        let hingeLine = try XCTUnwrap(StrengthFoundation.legs.lines.last)
+        let logs = Self.sustainedHistory(weeks: 10) + Self.competenceLogs(library: library)
+            .filter { $0.exercises.first?.movementPattern != hingeLine.pattern }
+
+        let phase = try await PhaseEvaluatorService(exerciseService: exerciseService, now: { Self.asOf }, calendar: Self.calendar)
+            .phase(for: MockPersistence.sampleUser, recentLogs: logs)
+
+        XCTAssertEqual(phase, .discipline)
+    }
+
     /// The negative end-to-end control: a fresh user with no history stays Discipline through the real
     /// evaluator, so the reveal never fires - guarding against a wiring that always reports Strength.
     func testRealFreshHistoryDoesNotTriggerTheReveal() async throws {
@@ -369,18 +415,16 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         }
     }
 
-    /// One clearing log per foundational pattern, each derived from the **real** catalog: it finds the
-    /// pattern's entry tier (the lowest `progressionOrder` in one of its chains) and logs a generous,
+    /// One clearing log per foundation line (Push, Pull, both sides of Legs, Core), each derived from
+    /// the **real** catalog: it takes the line's first counting entry rung and logs a generous,
     /// non-skipped performance that clears whatever `advancementCriteria` that entry carries - so the
-    /// fixture stays correct as the catalog evolves rather than hard-coding exercise ids.
-    private static func competenceLogs(library: [Exercise]) -> [WorkoutLog] {
-        PhaseEvaluator.foundationalPatterns.compactMap { pattern in
-            let members = library.filter { $0.movementPattern == pattern }
-            let byChain = Dictionary(grouping: members, by: \.progressionChainId)
-            guard let entry = byChain.values
-                .compactMap({ $0.min(by: { $0.progressionOrder < $1.progressionOrder }) })
-                .min(by: { $0.progressionOrder < $1.progressionOrder })
-            else { return nil }
+    /// fixture stays correct as the catalog evolves rather than hard-coding exercise ids. `excluding`
+    /// leaves a foundation uncleared.
+    private static func competenceLogs(library: [Exercise], excluding: Set<StrengthFoundation> = []) -> [WorkoutLog] {
+        StrengthFoundation.allLines.compactMap { line in
+            guard !excluding.contains(line.foundation),
+                  let entry = line.entryExercises(in: library).first else { return nil }
+            let pattern = line.pattern
 
             // Five generous sets each carrying both a big rep count and a big hold, so it clears any
             // "{sets}x{target}" criteria whether the entry is rep-based or a hold.

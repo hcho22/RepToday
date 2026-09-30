@@ -1430,3 +1430,17 @@ Every Wrangler build of the Coach Worker now shares `coachWorkerBuild`, which al
 The device capture is now a regression fixture.
 This is a server-only change; the fix reaches users only after a separately approved release.
 The [runtime authentication runbook](coach-runtime-authentication.md) owns the contract and the Wrangler 4 follow-up.
+
+## Foundations are Push, Pull, Legs, Core (2026-09-30)
+
+The four strength foundations changed from push, squat, hinge and core to Push, Pull, Legs and Core, on the captain's decisions recorded in [ADR-0006](adr/0006-foundations-push-pull-legs-core.md).
+The list used to live in four places (`PhaseEvaluator`, `ProgressAnalytics`, `CoachIntentMapper`, `CoachAnalyticsInsight`).
+It is now one domain definition, `StrengthFoundation` (`Models/StrengthFoundation.swift`): the display order, each foundation's `FoundationLine`s (a movement pattern plus the chains whose entry rung counts), and the entry-rung rule.
+Legs has a Squat line and a Hinge line and clears only when both do; Pull's one line counts only the `pull_horizontal` chain; `MovementPattern` and the catalog are unchanged.
+`PhaseProgress.foundations` is now per foundation with its lines, so `evaluate` is still literally `progress(...).hasEarnedStrength`.
+`ProgressAnalytics` tracks the five lines: chain positions, the progression map (Pull's ladder is always the horizontal chain, and has no locked Strength rung) and the dated climb.
+The Progress tab shows Legs with a Squat and a Hinge sub-row in the climb card, "where you stand", the map and the journey, with the Legs header reading "1 of 2" until both sides clear.
+Foundation progress is recalculated from full history with no grandfathering, and an earned Strength Phase is untouched because the ratchet lives in the persisted phase.
+A one-time note on the climb card explains the change and where the user stands: `AppState.hasSeenFoundationsUpdateNote` is flipped when the note is decided, and finishing onboarding marks it seen so it never reaches a brand-new user; `ProgressViewModel.isFoundationsUpdateNoteEligible` limits it to a still-climbing user who has trained a foundation.
+The Coach recognizes Pull words and "legs" (squat and hinge together, with the finer words still overriding one side), the context bundle carries a Pull chain summary, and insight copy names the side of Legs and offers to emphasize exactly that pattern.
+The progression map intro and the graduation reveal no longer promise a Strength-Phase skill at the top of every foundation.

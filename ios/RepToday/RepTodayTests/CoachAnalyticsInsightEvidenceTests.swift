@@ -54,7 +54,7 @@ final class CoachAnalyticsInsightEvidenceTests: XCTestCase {
         }
         // A concrete insight, not a generic summary: it names both the climb and the stall.
         XCTAssertTrue(copy.contains("push is climbing"), "names the climbing pattern; copy was: \(copy)")
-        XCTAssertTrue(copy.contains("hinge has been flat"), "names the stalled pattern; copy was: \(copy)")
+        XCTAssertTrue(copy.contains("hinge side of your legs has been flat"), "names the stalled pattern; copy was: \(copy)")
         // It offers a preference nudge and states the app still owns the session.
         XCTAssertTrue(copy.contains("lean your sessions toward hinge"), "offers to emphasize the stall; copy was: \(copy)")
         XCTAssertTrue(copy.contains("app still builds every session"), "states the app owns the workout; copy was: \(copy)")
@@ -85,7 +85,7 @@ final class CoachAnalyticsInsightEvidenceTests: XCTestCase {
 
         XCTAssertTrue(spoken.localizedCaseInsensitiveContains("push is climbing"),
                       "the card narrates the climb; spoke: \(spoken)")
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("hinge has been flat"),
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("hinge side of your legs has been flat"),
                       "the card narrates the stall; spoke: \(spoken)")
         XCTAssertNotNil(AccessibilityTree.element(labeled: CoachAnalyticsInsightCopy.accept(for: sampleOffer), in: root),
                         "the accept control is a labeled, hittable element")
@@ -168,7 +168,7 @@ final class CoachAnalyticsInsightEvidenceTests: XCTestCase {
         let root = host.view!
         let spoken = spoken(in: root)
 
-        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("hinge has been flat"),
+        XCTAssertTrue(spoken.localizedCaseInsensitiveContains("hinge side of your legs has been flat"),
                       "the offer renders in the real conversation; spoke: \(spoken)")
         XCTAssertNotNil(
             AccessibilityTree.element(labeled: CoachAnalyticsInsightCopy.accept(for: sampleOffer), in: root),

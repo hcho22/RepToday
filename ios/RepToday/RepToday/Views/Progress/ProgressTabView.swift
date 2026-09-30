@@ -15,6 +15,15 @@ struct ProgressTabView: View {
     @State private var viewModel: ProgressViewModel
     @State private var showPaywall = false
 
+    /// Whether the one-time "foundations are now Push, Pull, Legs, Core" note (ADR-0006) is up on the
+    /// climb card. Decided once after the first load; the persisted one-shot flag is flipped the moment
+    /// it is decided (like the other first-run notes), so it never returns on a later launch.
+    @State private var showFoundationsNote = false
+
+    /// Optional so the tab still renders when hosted without an `AppState` (previews, evidence suites);
+    /// with none, the note is simply never raised.
+    @Environment(AppState.self) private var appState: AppState?
+
     /// The subscription service the paywall (US-N04) purchases through. Held separately from the view
     /// model so the upsell can present the paywall sheet; the mock keeps previews rendering.
     private let subscriptionService: any SubscriptionServiceProtocol
@@ -65,7 +74,10 @@ struct ProgressTabView: View {
                 content
             }
         }
-        .task { await viewModel.load() }
+        .task {
+            await viewModel.load()
+            presentFoundationsNoteIfNeeded()
+        }
         .sheet(isPresented: $showPaywall) {
             // The paywall accepts the exact verified grant into the shared authority before dismissal
             // and this callback, so the gated layer survives an immediately lagging entitlement read.
@@ -94,10 +106,12 @@ struct ProgressTabView: View {
                     // The free "visible climb" toward the Strength Phase (US-SP04). Shown only while
                     // the user is still earning it (`.discipline`); once earned, US-SP06's graduation
                     // moment and the strength surfaces take over. Never gated.
-                    if viewModel.phase == .discipline,
-                       let progress = viewModel.phaseProgress,
-                       !progress.hasEarnedStrength {
-                        PhaseProgressCard(progress: progress)
+                    if viewModel.showsClimbCard, let progress = viewModel.phaseProgress {
+                        PhaseProgressCard(
+                            progress: progress,
+                            showsFoundationsNote: showFoundationsNote,
+                            onDismissFoundationsNote: { showFoundationsNote = false }
+                        )
                     }
 
                     ScoreTrendCard(trend: viewModel.trend)
@@ -137,6 +151,17 @@ struct ProgressTabView: View {
         }
     }
 
+    /// Raises the one-time foundations note for an install that predates the change, once. The flag is
+    /// flipped as the note is decided, so a force-quit with it up cannot bring it back.
+    private func presentFoundationsNoteIfNeeded() {
+        guard !showFoundationsNote,
+              let appState,
+              appState.shouldShowFoundationsUpdateNote,
+              viewModel.isFoundationsUpdateNoteEligible else { return }
+        appState.markFoundationsUpdateNoteSeen()
+        showFoundationsNote = true
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("Your progress")
@@ -174,10 +199,16 @@ struct ProgressTabView: View {
 /// `longestChain` surfaced as pride (never a threat).
 private struct ConsistencyHeadlineCard: View {
     let consistency: Consistency
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .center, spacing: Theme.Spacing.md) {
+            // At accessibility sizes the score stacks under the message instead of squeezing the word
+            // "consistency" into a hyphenated column beside it.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.md))
+                : AnyLayout(HStackLayout(alignment: .center, spacing: Theme.Spacing.md))
+            layout {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("You're someone who moves.")
                         .font(Theme.Typography.headline)
@@ -187,9 +218,11 @@ private struct ConsistencyHeadlineCard: View {
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
 
-                Spacer(minLength: Theme.Spacing.md)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: Theme.Spacing.md)
+                }
 
-                VStack(spacing: 0) {
+                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .center, spacing: 0) {
                     Text("\(Int(consistency.score.rounded()))")
                         .font(Theme.Typography.largeTitle)
                         .foregroundStyle(Theme.Colors.accent)
@@ -243,6 +276,7 @@ private struct ConsistencyHeadlineCard: View {
 /// history there is no line to draw yet, so an encouraging note stands in its place.
 private struct ScoreTrendCard: View {
     let trend: [ConsistencyTrendPoint]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -307,7 +341,8 @@ private struct ScoreTrendCard: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .stride(by: .weekOfYear)) { value in
+            // At accessibility sizes the week labels are too wide to sit every week without overprinting.
+            AxisMarks(values: .stride(by: .weekOfYear, count: dynamicTypeSize.isAccessibilitySize ? 3 : 1)) { value in
                 AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: false)
             }
         }
@@ -534,10 +569,11 @@ private struct PillarBalanceCard: View {
 
 // MARK: - Chain position (US-M02, free)
 
-/// Where the user stands in each foundational pattern's active progression chain. Basic legibility,
-/// shown to everyone.
+/// Where the user stands on each foundation line's active progression chain: Push, Pull, Legs (a
+/// Squat side and a Hinge side), Core. Basic legibility, shown to everyone.
 private struct ChainPositionCard: View {
     let positions: [ChainPositionSummary]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -549,8 +585,21 @@ private struct ChainPositionCard: View {
                 .foregroundStyle(Theme.Colors.textSecondary)
 
             VStack(spacing: Theme.Spacing.sm) {
-                ForEach(positions) { position in
-                    row(position)
+                ForEach(FoundationGroup.grouping(positions, line: \.line)) { group in
+                    if group.isShared {
+                        // A shared foundation (Legs) names itself once, then shows each side.
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                            Text(group.foundation.displayName)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Colors.textPrimary)
+                                .accessibilityAddTraits(.isHeader)
+                            ForEach(group.items) { row($0) }
+                                .padding(.leading, Theme.Spacing.md)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(group.items) { row($0) }
+                    }
                 }
             }
         }
@@ -560,11 +609,17 @@ private struct ChainPositionCard: View {
     }
 
     private func row(_ position: ChainPositionSummary) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.md) {
-            Text(PatternLabels.name(for: position.pattern))
+        // A fixed name column beside the movement at normal sizes; at accessibility sizes the name sits
+        // above the movement instead, so neither is squeezed into a narrow wrapped column.
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Spacing.md))
+        return layout {
+            Text(position.line.sideLabel)
                 .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .frame(width: 88, alignment: .leading)
+                .foregroundStyle(position.line.isSideOfSharedFoundation ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
+                .frame(width: stacked ? nil : 96, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 if let exercise = position.currentExercise {
@@ -595,18 +650,19 @@ private struct ChainPositionCard: View {
 
     private func accessibilityLabel(for position: ChainPositionSummary) -> String {
         guard let exercise = position.currentExercise else {
-            return "\(PatternLabels.name(for: position.pattern)), not started yet."
+            return "\(position.line.spokenName), not started yet."
         }
-        return "\(PatternLabels.name(for: position.pattern)), \(exercise.displayName), \(subtitle(for: position))."
+        return "\(position.line.spokenName), \(exercise.displayName), \(subtitle(for: position))."
     }
 }
 
 // MARK: - Progression map (US-SP05, free)
 
-/// The progression map (US-SP05): a visual per-pattern ladder the user is climbing, from the entry
-/// tier through the Strength-Phase skill they will earn. It marks the current frontier ("you're
-/// here") and shows the still-locked Strength-Phase rungs with an "earn the Strength Phase to unlock"
-/// affordance - *previewable but never selectable*.
+/// The progression map (US-SP05): a visual per-line ladder the user is climbing, from the entry
+/// tier up the chain - to the Strength-Phase skill they will earn, on the ladders that end in one.
+/// It marks the current frontier ("you're here") and shows the still-locked Strength-Phase rungs with
+/// an "earn the Strength Phase to unlock" affordance - *previewable but never selectable*. Legs shows
+/// its Squat and Hinge ladders together; Pull's ladder is always the horizontal (row) chain.
 ///
 /// This is the visible strength journey, and it deliberately preserves the thesis: **there is no
 /// start or select control on any rung.** Every value is a pure readout from `ProgressionMap`, whose
@@ -626,14 +682,29 @@ private struct ProgressionMapCard: View {
                 Text("The ladder you're climbing")
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Each foundation's path - from where you started to the Strength-Phase skill at the top. This is the map, not a menu: the day's work is still chosen for you.")
+                Text("Each foundation's path, from where you started up the ladder. Some climbs top out in a Strength-Phase skill you earn. This is the map, not a menu: the day's work is still chosen for you.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
 
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                ForEach(map.ladders) { ladder in
-                    LadderView(ladder: ladder, phase: phase)
+                ForEach(FoundationGroup.grouping(map.ladders, line: \.line)) { group in
+                    if group.isShared {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                            Text(group.foundation.displayName)
+                                .font(Theme.Typography.headline)
+                                .foregroundStyle(Theme.Colors.textPrimary)
+                                .accessibilityAddTraits(.isHeader)
+                            ForEach(group.items) { ladder in
+                                LadderView(ladder: ladder, phase: phase)
+                            }
+                            .padding(.leading, Theme.Spacing.md)
+                        }
+                    } else {
+                        ForEach(group.items) { ladder in
+                            LadderView(ladder: ladder, phase: phase)
+                        }
+                    }
                 }
             }
         }
@@ -643,25 +714,22 @@ private struct ProgressionMapCard: View {
     }
 }
 
-/// One pattern's ladder: the pattern name, then a rung per movement (entry first, summit last).
+/// One line's ladder: the line's name, then a rung per movement (entry first, top rung last).
 private struct LadderView: View {
     let ladder: PatternLadder
     let phase: Phase
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-                Text(PatternLabels.name(for: ladder.pattern))
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: 0)
-                Text(headerNote)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
-            // The header names the pattern once for VoiceOver; each rung below reads its own state.
+            TitleNoteRow(
+                title: ladder.line.sideLabel,
+                titleFont: ladder.line.isSideOfSharedFoundation ? Theme.Typography.body : Theme.Typography.headline,
+                note: headerNote,
+                noteColor: Theme.Colors.textSecondary
+            )
+            // The header names the line once for VoiceOver; each rung below reads its own state.
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(PatternLabels.name(for: ladder.pattern)) ladder. \(headerNote).")
+            .accessibilityLabel("\(ladder.line.spokenName) ladder. \(headerNote).")
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(ladder.rungs.enumerated()), id: \.element.id) { index, rung in
@@ -863,7 +931,7 @@ private struct DeepAnalyticsSection: View {
 // MARK: - Strength journey (US-AN01, premium)
 
 /// The strength journey (US-AN01): analytics anchored on the user's climb over time rather than this
-/// week's numbers. For each foundational pattern the user has trained it shows the dated tier
+/// week's numbers. For each foundation line the user has trained it shows the dated tier
 /// advancement ("Knee Push-Up -> Standard Push-Up, over 6 weeks") read straight from real history,
 /// then the current phase-earning progress (US-SP04's signals, reused). Premium-only: it renders only
 /// inside `DeepAnalyticsSection`, which is gated at the render boundary.
@@ -894,8 +962,19 @@ private struct StrengthJourneyCard: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
             } else {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                    ForEach(journey.chains) { chain in
-                        ChainJourneyView(chain: chain)
+                    ForEach(FoundationGroup.grouping(journey.chains, line: \.line)) { group in
+                        if group.isShared {
+                            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                                Text(group.foundation.displayName)
+                                    .font(Theme.Typography.headline)
+                                    .foregroundStyle(Theme.Colors.textPrimary)
+                                    .accessibilityAddTraits(.isHeader)
+                                ForEach(group.items) { ChainJourneyView(chain: $0) }
+                                    .padding(.leading, Theme.Spacing.md)
+                            }
+                        } else {
+                            ForEach(group.items) { ChainJourneyView(chain: $0) }
+                        }
                     }
                 }
             }
@@ -911,7 +990,7 @@ private struct StrengthJourneyCard: View {
     }
 }
 
-/// One pattern's dated climb: a headline advancement line (from -> to, over N weeks) when the user has
+/// One line's dated climb: a headline advancement line (from -> to, over N weeks) when the user has
 /// advanced a tier, then a per-tier timeline with the date each tier was first reached.
 private struct ChainJourneyView: View {
     let chain: ChainJourney
@@ -924,19 +1003,14 @@ private struct ChainJourneyView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-                Text(PatternLabels.name(for: chain.pattern))
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: 0)
-                Text(headline)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.accent)
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            TitleNoteRow(
+                title: chain.line.sideLabel,
+                titleFont: chain.line.isSideOfSharedFoundation ? Theme.Typography.body : Theme.Typography.headline,
+                note: headline,
+                noteColor: Theme.Colors.accent
+            )
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(PatternLabels.name(for: chain.pattern)) journey. \(spokenHeadline)")
+            .accessibilityLabel("\(chain.line.spokenName) journey. \(spokenHeadline)")
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(chain.milestones.enumerated()), id: \.element.id) { index, milestone in
@@ -1266,6 +1340,9 @@ private struct PremiumUpsellCard: View {
 /// state of a habit being built.
 private struct PhaseProgressCard: View {
     let progress: PhaseProgress
+    /// Whether the one-time foundations note (ADR-0006) is up at the top of the card.
+    var showsFoundationsNote = false
+    var onDismissFoundationsNote: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -1276,6 +1353,10 @@ private struct PhaseProgressCard: View {
                 Text("Strength is earned, not chosen. Keep showing up and keep clearing the foundations - here's where you stand.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            if showsFoundationsNote {
+                FoundationsUpdateNote(progress: progress, onDismiss: onDismissFoundationsNote)
             }
 
             consistencySection
@@ -1290,15 +1371,13 @@ private struct PhaseProgressCard: View {
 
     private var consistencySection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Steady practice")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: Theme.Spacing.sm)
-                Text("\(progress.weeksSustained) of \(progress.requiredWeeks) weeks")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.accent)
-            }
+            TitleNoteRow(
+                title: "Steady practice",
+                titleFont: Theme.Typography.body,
+                note: "\(progress.weeksSustained) of \(progress.requiredWeeks) weeks",
+                noteColor: Theme.Colors.accent,
+                noteFont: Theme.Typography.body
+            )
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -1342,19 +1421,22 @@ private struct PhaseProgressCard: View {
 
     private var competenceSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Foundations")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer(minLength: Theme.Spacing.sm)
-                Text("\(progress.clearedFoundationCount) of \(progress.foundationCount) cleared")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.accent)
-            }
+            TitleNoteRow(
+                title: "Foundations",
+                titleFont: Theme.Typography.body,
+                note: "\(progress.clearedFoundationCount) of \(progress.foundationCount) cleared",
+                noteColor: Theme.Colors.accent,
+                noteFont: Theme.Typography.body
+            )
 
             VStack(spacing: Theme.Spacing.xs) {
                 ForEach(progress.foundations) { foundation in
                     foundationRow(foundation)
+                    // Legs is one foundation with two sides; each side shows its own tick, and the
+                    // header above reads Cleared only when both are.
+                    if foundation.lineCount > 1 {
+                        ForEach(foundation.lines) { lineRow($0) }
+                    }
                 }
             }
         }
@@ -1362,20 +1444,176 @@ private struct PhaseProgressCard: View {
     }
 
     private func foundationRow(_ foundation: PhaseProgress.FoundationProgress) -> some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: foundation.isCleared ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(foundation.isCleared ? Theme.Colors.accent : Theme.Colors.textSecondary)
-            Text(PatternLabels.name(for: foundation.pattern))
-                .font(Theme.Typography.body)
+        StatusRow(
+            isCleared: foundation.isCleared,
+            title: foundation.foundation.displayName,
+            titleColor: Theme.Colors.textPrimary,
+            status: status(of: foundation),
+            indent: 0
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(foundation.foundation.displayName), \(spokenStatus(of: foundation)).")
+    }
+
+    /// One side of a shared foundation, indented under its header.
+    private func lineRow(_ line: PhaseProgress.LineProgress) -> some View {
+        StatusRow(
+            isCleared: line.isCleared,
+            title: line.line.sideLabel,
+            titleColor: Theme.Colors.textSecondary,
+            status: line.isCleared ? "Cleared" : "In progress",
+            indent: Theme.Spacing.lg
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(line.line.spokenName), \(line.isCleared ? "cleared" : "in progress").")
+    }
+
+    /// "Cleared" for a cleared foundation; "1 of 2" for a shared one that is part-way (Legs); else
+    /// "In progress".
+    private func status(of foundation: PhaseProgress.FoundationProgress) -> String {
+        if foundation.isCleared { return "Cleared" }
+        return foundation.lineCount > 1 ? "\(foundation.clearedLineCount) of \(foundation.lineCount)" : "In progress"
+    }
+
+    private func spokenStatus(of foundation: PhaseProgress.FoundationProgress) -> String {
+        if foundation.isCleared { return "cleared" }
+        return foundation.lineCount > 1
+            ? "\(foundation.clearedLineCount) of \(foundation.lineCount) sides cleared"
+            : "in progress"
+    }
+}
+
+/// A line's title with a note beside it - or, when the note is too long for the row (a long headline, or
+/// large text), under it - so the title never wraps into a sliver next to a wrapped note.
+private struct TitleNoteRow: View {
+    let title: String
+    let titleFont: Font
+    let note: String
+    let noteColor: Color
+    var noteFont: Font = Theme.Typography.caption
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                Text(title).font(titleFont).foregroundStyle(Theme.Colors.textPrimary).lineLimit(1)
+                Spacer(minLength: Theme.Spacing.sm)
+                Text(note).font(noteFont).foregroundStyle(noteColor).lineLimit(1)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(titleFont).foregroundStyle(Theme.Colors.textPrimary)
+                Text(note).font(noteFont).foregroundStyle(noteColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// A tick, a name and a status on one line - or, when large text leaves no room for all three, the
+/// status under the name - so a status never wraps into a two-line column beside its name.
+private struct StatusRow: View {
+    let isCleared: Bool
+    let title: String
+    let titleColor: Color
+    let status: String
+    let indent: CGFloat
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Spacing.sm) {
+                tick
+                Text(title).font(Theme.Typography.body).foregroundStyle(titleColor).lineLimit(1)
+                Spacer(minLength: Theme.Spacing.sm)
+                Text(status).font(Theme.Typography.caption).foregroundStyle(Theme.Colors.textSecondary).lineLimit(1)
+            }
+            HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+                tick
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Theme.Typography.body).foregroundStyle(titleColor)
+                    Text(status).font(Theme.Typography.caption).foregroundStyle(Theme.Colors.textSecondary)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.leading, indent)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var tick: some View {
+        Image(systemName: isCleared ? "checkmark.circle.fill" : "circle")
+            .foregroundStyle(isCleared ? Theme.Colors.accent : Theme.Colors.textSecondary)
+    }
+}
+
+// MARK: - Foundations note (ADR-0006, free)
+
+/// The one-time note on the climb card that the foundations are now Push, Pull, Legs, and Core, with
+/// where the user stands after recalculating from their full history (no grandfathering). Shown at
+/// most once, to an install that predates the change and has trained a foundation; dismissed with
+/// "Got it". Identity-framed - it explains what is now looked at, never that anything was lost.
+private struct FoundationsUpdateNote: View {
+    let progress: PhaseProgress
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Your foundations are now Push, Pull, Legs, and Core")
+                .font(Theme.Typography.body.weight(.semibold))
                 .foregroundStyle(Theme.Colors.textPrimary)
-            Spacer(minLength: 0)
-            Text(foundation.isCleared ? "Cleared" : "In progress")
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onDismiss) {
+                Text("Got it")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Dismisses this note")
         }
+        .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(PatternLabels.name(for: foundation.pattern)), \(foundation.isCleared ? "cleared" : "in progress").")
+        .background(Theme.Colors.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var detail: String {
+        "Legs asks for both its Squat and Hinge sides, and Pull counts the row ladder. "
+            + "We recalculated where you stand from your full history: \(standing)."
+    }
+
+    /// "2 of 4 cleared (Push, Core)" - or the honest "none cleared yet" - from the same
+    /// `PhaseProgress` the rows below read.
+    private var standing: String {
+        let cleared = progress.foundations.filter(\.isCleared).map { $0.foundation.displayName }
+        guard !cleared.isEmpty else { return "none of the \(progress.foundationCount) cleared yet" }
+        return "\(cleared.count) of \(progress.foundationCount) cleared (\(cleared.joined(separator: ", ")))"
+    }
+}
+
+// MARK: - Foundation grouping
+
+/// Items regrouped by their foundation in display order (Push, Pull, Legs, Core), so a surface can
+/// show a shared foundation's lines (Legs' Squat and Hinge) under one header and every other
+/// foundation flat. The grouping comes from `StrengthFoundation`, so no surface keeps its own order.
+private struct FoundationGroup<Item>: Identifiable {
+    let foundation: StrengthFoundation
+    let items: [Item]
+
+    var id: StrengthFoundation { foundation }
+
+    /// Whether the foundation has several lines (only Legs) and so earns its own header.
+    var isShared: Bool { foundation.lines.count > 1 }
+
+    static func grouping(_ items: [Item], line: (Item) -> FoundationLine) -> [FoundationGroup<Item>] {
+        StrengthFoundation.displayOrder.compactMap { foundation in
+            let members = items.filter { line($0).foundation == foundation }
+            return members.isEmpty ? nil : FoundationGroup(foundation: foundation, items: members)
+        }
     }
 }
 
@@ -1387,28 +1625,50 @@ private struct ProgressAnalyticsBar: View {
     let fraction: Double
     let trailing: String
 
-    var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Text(label)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
-                .frame(width: 96, alignment: .leading)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Theme.Colors.accent.opacity(0.12))
-                    Capsule()
-                        .fill(Theme.Colors.accent)
-                        .frame(width: max(0, geo.size.width * CGFloat(min(1, max(0, fraction)))))
+    private var bar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Theme.Colors.accent.opacity(0.12))
+                Capsule()
+                    .fill(Theme.Colors.accent)
+                    .frame(width: max(0, geo.size.width * CGFloat(min(1, max(0, fraction)))))
+            }
+        }
+        .frame(height: 10)
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // No room for a label column beside the bar: the label and value share a line above it.
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(label)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                        Spacer(minLength: Theme.Spacing.sm)
+                        Text(trailing)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                    bar
+                }
+            } else {
+                HStack(spacing: Theme.Spacing.md) {
+                    Text(label)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                        .frame(width: 96, alignment: .leading)
+                    bar
+                    Text(trailing)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: 40, alignment: .trailing)
                 }
             }
-            .frame(height: 10)
-
-            Text(trailing)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .frame(width: 40, alignment: .trailing)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label), \(trailing)")

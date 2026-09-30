@@ -25,12 +25,12 @@ import Foundation
 /// sends the bundle is US-AC02.
 struct CoachContextBundle: Encodable, Equatable {
 
-    /// One foundational pattern's position on its progression chain - the same frontier the Progress
+    /// One foundation line's position on its progression chain - the same frontier the Progress
     /// tab's chain-position cards show, summarized to non-identifying catalog facts.
     struct ChainSummary: Encodable, Equatable {
-        /// The foundational pattern (push / squat / hinge / core).
+        /// The foundation line's movement pattern (push / pull / squat / hinge / core).
         let pattern: String
-        /// The frontier movement's display name, or `nil` when the pattern has never been trained.
+        /// The frontier movement's display name, or `nil` when the line has never been trained.
         /// A catalog string shared by every user - not identifying.
         let currentExercise: String?
         /// 1-based tier within the active chain; `0` when not started.
@@ -41,7 +41,7 @@ struct CoachContextBundle: Encodable, Equatable {
         let hasNextTier: Bool
     }
 
-    /// One foundational pattern's coarse strength-journey trend (US-AN02), so the coach can narrate a
+    /// One foundation line's coarse strength-journey trend (US-AN02), so the coach can narrate a
     /// concrete "your push is climbing, your hinge has been flat about 3 weeks" insight. Derived from
     /// the same dated milestones the premium strength-journey analytics (US-AN01) show the user, via
     /// `CoachStrengthJourneyReader`, so the coach's read can never disagree with the Progress tab.
@@ -49,7 +49,7 @@ struct CoachContextBundle: Encodable, Equatable {
     /// Deliberately coarse and non-identifying: a pattern, a direction, and a whole-week count - never
     /// a date, an exercise id, or a raw milestone (which, paired, would edge back toward history).
     struct JourneySummary: Encodable, Equatable {
-        /// The foundational pattern (push / squat / hinge / core).
+        /// The foundation line's movement pattern (push / pull / squat / hinge / core).
         let pattern: String
         /// Its coarse trajectory: `climbing`, `flat`, or `steady`.
         let trend: String
@@ -83,14 +83,14 @@ struct CoachContextBundle: Encodable, Equatable {
     /// The minutes the user asked for this session - lets the coach reason about "why this workout"
     /// at the requested length.
     let requestedMinutes: Int
-    /// Per-foundation chain positions, in `ProgressAnalytics.foundationalPatterns` order.
+    /// Per-line chain positions, in `StrengthFoundation.allLines` order (push, pull, squat, hinge, core).
     let chainPositions: [ChainSummary]
     /// The distinct movement patterns trained in recent sessions, most-recent-first - so the coach can
     /// reason about staleness/variety without ever seeing a raw log.
     let recentPatterns: [String]
     /// The coarse consistency summary.
     let consistency: ConsistencySummary
-    /// Per-foundation strength-journey trend (US-AN02), in `foundationalPatterns` order - so the coach
+    /// Per-line strength-journey trend (US-AN02), in `StrengthFoundation.allLines` order - so the coach
     /// can narrate a concrete "your push is climbing, your hinge has been flat" insight. Empty when
     /// there is no strength history to read yet.
     let strengthJourney: [JourneySummary]

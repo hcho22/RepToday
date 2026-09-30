@@ -58,6 +58,10 @@ final class CoachContextBundleTests: XCTestCase {
         )
     }
 
+    private func line(_ pattern: MovementPattern) -> FoundationLine {
+        StrengthFoundation.line(for: pattern)!
+    }
+
     private func trend(_ scores: [Double]) -> [ConsistencyTrendPoint] {
         scores.enumerated().map { index, score in
             ConsistencyTrendPoint(
@@ -72,13 +76,13 @@ final class CoachContextBundleTests: XCTestCase {
     func testBuildsSummaryFromComputedSources() {
         let positions = [
             ChainPositionSummary(
-                pattern: .push,
+                line: line(.push),
                 currentExercise: exercise(id: "push_standard", name: "Standard Push-Up", pattern: .push),
                 tier: 3,
                 chainLength: 7,
                 hasNextTier: true
             ),
-            ChainPositionSummary(pattern: .squat, currentExercise: nil, tier: 0, chainLength: 0, hasNextTier: false),
+            ChainPositionSummary(line: line(.squat), currentExercise: nil, tier: 0, chainLength: 0, hasNextTier: false),
         ]
 
         let bundle = CoachContextBundle.make(
@@ -170,6 +174,22 @@ final class CoachContextBundleTests: XCTestCase {
         XCTAssertEqual(bundle.consistency.direction, .new)
     }
 
+    /// The bundle carries a chain summary for every foundation line, in the Progress tab's order, so the
+    /// coach can talk about Pull and about each side of Legs without a parallel list.
+    func testCarriesEveryFoundationLineInDisplayOrder() {
+        let positions = StrengthFoundation.allLines.map {
+            ChainPositionSummary(line: $0, currentExercise: nil, tier: 0, chainLength: 0, hasNextTier: false)
+        }
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 15,
+            chainPositions: positions,
+            consistencyTrend: [],
+            recentLogs: []
+        )
+        XCTAssertEqual(bundle.chainPositions.map(\.pattern), ["push", "pull", "squat", "hinge", "core"])
+    }
+
     // MARK: - Wire shape: only non-identifying fields leave the device
 
     func testEncodedWireCarriesOnlyTheAuditedFields() throws {
@@ -178,7 +198,7 @@ final class CoachContextBundleTests: XCTestCase {
             requestedMinutes: 20,
             chainPositions: [
                 ChainPositionSummary(
-                    pattern: .push,
+                    line: line(.push),
                     currentExercise: exercise(id: "push_standard", name: "Standard Push-Up", pattern: .push),
                     tier: 3, chainLength: 7, hasNextTier: true
                 ),
@@ -230,11 +250,11 @@ final class CoachContextBundleTests: XCTestCase {
         }
 
         let journey = StrengthJourney(chains: [
-            ChainJourney(pattern: .push, chainId: "push_c", milestones: [
+            ChainJourney(line: line(.push), chainId: "push_c", milestones: [
                 milestone("push_a", tier: 1, weeksAgo: 5),
                 milestone("push_c", tier: 3, weeksAgo: 0),
             ], calendar: calendar),
-            ChainJourney(pattern: .hinge, chainId: "hinge_c", milestones: [
+            ChainJourney(line: line(.hinge), chainId: "hinge_c", milestones: [
                 milestone("hinge_b", tier: 2, weeksAgo: 4),
             ], calendar: calendar),
         ])

@@ -8,9 +8,10 @@ import UIKit
 /// earn signals computed from real logs by the *same* `PhaseEvaluator` logic that gates the phase.
 ///
 /// This drives the *production* `ProgressTabView` in a real key window over the PRD Validation Test's
-/// exact shape - five sustained weeks with push and squat cleared (hinge/core not) - and asserts the
-/// load-bearing values on the live accessibility tree ("5 of 8 weeks", "2 of 4 cleared", the two
-/// cleared foundations and the two still in progress), then captures the screen to a PNG. Because the
+/// exact shape - five sustained weeks with Push and Pull cleared and only the Squat side of Legs (Hinge
+/// and Core not) - and asserts the load-bearing values on the live accessibility tree ("5 of 8 weeks",
+/// "2 of 4 cleared", Legs part-way with its two sides, the two cleared foundations and the still in
+/// progress ones), then captures the screen to a PNG. Because the
 /// view reads through the real `PhaseEvaluatorService` over the real catalog, the numbers on screen
 /// are the gate's own - the deterministic parity is pinned in `PhaseEvaluatorTests`; this shows a
 /// reviewer the actual pixels.
@@ -72,11 +73,12 @@ final class PhaseProgressEvidenceTests: XCTestCase {
         )
     }
 
-    /// The PRD Validation Test history: five fully on-goal weeks (weekly goal 3) plus push and squat
-    /// entry tiers cleared, hinge and core untouched.
+    /// The validation history: five fully on-goal weeks (weekly goal 3) plus the push and horizontal
+    /// pull entry tiers cleared and the squat side of Legs, hinge and core untouched.
     private func validationLogs() -> [WorkoutLog] {
         var logs = (0..<5).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
         logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15))
+        logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false, value: 12))
         logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true, value: 45))
         return logs
     }
@@ -139,11 +141,15 @@ final class PhaseProgressEvidenceTests: XCTestCase {
         // The competence signal: exactly two of four foundations cleared.
         XCTAssertTrue(labelsContain("2 of 4 cleared"),
                       "the climb card should show '2 of 4 cleared'; tree reads \(labels())")
-        // Per-foundation state: push and squat cleared, hinge and core still in progress.
+        // Per-foundation state: push and pull cleared, core still in progress.
         XCTAssertTrue(labelsContain("Push, cleared"), "push should read cleared; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Squat, cleared"), "squat should read cleared; tree reads \(labels())")
-        XCTAssertTrue(labelsContain("Hinge, in progress"), "hinge should read in progress; tree reads \(labels())")
+        XCTAssertTrue(labelsContain("Pull, cleared"), "pull should read cleared; tree reads \(labels())")
         XCTAssertTrue(labelsContain("Core, in progress"), "core should read in progress; tree reads \(labels())")
+        // Legs is one foundation with two sides: part-way, each side with its own tick.
+        XCTAssertTrue(labelsContain("Legs, 1 of 2 sides cleared"), "legs should read 1 of 2; tree reads \(labels())")
+        XCTAssertTrue(labelsContain("Legs, squat side, cleared"), "the squat side should read cleared; tree reads \(labels())")
+        XCTAssertTrue(labelsContain("Legs, hinge side, in progress"), "the hinge side should read in progress; tree reads \(labels())")
+        XCTAssertFalse(labelsContain("Legs, cleared"), "Legs must not read cleared until both sides are")
 
         // Capture the whole scrolling surface, cropped to the content it laid out to.
         guard let root = window?.rootViewController?.view else { return XCTFail("no hosted surface") }

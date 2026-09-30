@@ -3,7 +3,8 @@ import XCTest
 
 /// Tests the deterministic `PhaseEvaluator` (US-H02): the rule that decides whether a user has
 /// *earned* the Strength Phase from two independent signals - sustained consistency and cleared
-/// foundational competence - and is never user-selectable.
+/// foundational competence - and is never user-selectable. The foundations are Push, Pull, Legs and
+/// Core (ADR-0006): Legs needs both its Squat and Hinge sides, and Pull counts only its horizontal chain.
 ///
 /// Coverage mirrors the PRD acceptance criteria at the unit level: consistency-only stays
 /// Discipline, competence-only stays Discipline, both-met promotes to Strength, and a fresh user is
@@ -33,10 +34,12 @@ final class PhaseEvaluatorTests: XCTestCase {
 
     // MARK: - Library fixture
 
-    /// A minimal library covering the four foundational patterns. Each foundational pattern has one
-    /// chain with an entry tier (order 0) plus a next tier, so `AdvancementCriteria` can be cleared
-    /// from a logged performance of the entry. A rep entry and a hold entry are both represented so
-    /// the `isHold` branch is exercised. Mobility is present but irrelevant to competence.
+    /// A minimal library covering the foundation lines. Each has a chain with an entry tier (order 0)
+    /// plus a next tier, so `AdvancementCriteria` can be cleared from a logged performance of the
+    /// entry. A rep entry and a hold entry are both represented so the `isHold` branch is exercised.
+    /// Squat and hinge each carry a second chain (lunge, hip) that also counts for Legs; pull carries
+    /// its counting horizontal chain and the postural chain that never counts. Mobility is present but
+    /// irrelevant to competence.
     private func exercise(
         id: String,
         pattern: MovementPattern,
@@ -81,11 +84,30 @@ final class PhaseEvaluatorTests: XCTestCase {
                  advancementCriteria: "3x45s hold", isHold: true, progressionId: "squat_sumo"),
         exercise(id: "squat_sumo", pattern: .squat, pillar: .strength, order: 1, chainId: "squat",
                  advancementCriteria: "3x20 clean reps", isHold: false),
+        // squat's second chain: a lunge entry also clears the squat side of Legs.
+        exercise(id: "lunge_reverse", pattern: .squat, pillar: .strength, order: 0, chainId: "lunge",
+                 advancementCriteria: "3x12 reps per side", isHold: false, progressionId: "lunge_split"),
+        exercise(id: "lunge_split", pattern: .squat, pillar: .strength, order: 1, chainId: "lunge",
+                 advancementCriteria: "3x12 reps per side", isHold: false),
         // hinge: rep entry "3x20".
         exercise(id: "hinge_bridge", pattern: .hinge, pillar: .strength, order: 0, chainId: "hinge_b",
                  advancementCriteria: "3x20 clean reps", isHold: false, progressionId: "hinge_slb"),
         exercise(id: "hinge_slb", pattern: .hinge, pillar: .strength, order: 1, chainId: "hinge_b",
                  advancementCriteria: "3x12 reps per side", isHold: false),
+        // hinge's second chain: a good-morning entry also clears the hinge side of Legs.
+        exercise(id: "hinge_good_morning", pattern: .hinge, pillar: .strength, order: 0, chainId: "hinge_hip",
+                 advancementCriteria: "3x15 clean reps", isHold: false, progressionId: "hinge_sl_rdl"),
+        exercise(id: "hinge_sl_rdl", pattern: .hinge, pillar: .strength, order: 1, chainId: "hinge_hip",
+                 advancementCriteria: "3x12 reps per side", isHold: false),
+        // pull: the horizontal chain counts (entry "3x12"); the postural chain never does.
+        exercise(id: "pull_scap", pattern: .pull, pillar: .strength, order: 0, chainId: "pull_horizontal",
+                 advancementCriteria: "3x12 clean reps", isHold: false, progressionId: "pull_row"),
+        exercise(id: "pull_row", pattern: .pull, pillar: .strength, order: 1, chainId: "pull_horizontal",
+                 advancementCriteria: "3x10 clean reps", isHold: false),
+        exercise(id: "pull_superman", pattern: .pull, pillar: .strength, order: 0, chainId: "pull_postural",
+                 advancementCriteria: "3x30s hold", isHold: true, progressionId: "pull_ytw"),
+        exercise(id: "pull_ytw", pattern: .pull, pillar: .strength, order: 1, chainId: "pull_postural",
+                 advancementCriteria: "3x12 clean reps", isHold: false),
         // core: hold entry "3x30s".
         exercise(id: "core_plank", pattern: .core, pillar: .strength, order: 0, chainId: "core_p",
                  advancementCriteria: "3x30s hold", isHold: true, progressionId: "core_side"),
@@ -151,10 +173,11 @@ final class PhaseEvaluatorTests: XCTestCase {
         )
     }
 
-    /// Logs clearing the entry tier of every foundational pattern (push/squat/hinge/core).
+    /// Logs clearing every foundation: push, pull (horizontal), both sides of legs, and core.
     private func competenceLogs() -> [WorkoutLog] {
         [
             clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
             clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
             clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
             clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
@@ -223,14 +246,84 @@ final class PhaseEvaluatorTests: XCTestCase {
     // MARK: - Partial competence is not enough
 
     func testThreeOfFourFoundationsIsStillDiscipline() {
-        // Clear push/squat/hinge but not core: competence requires all four.
+        // Clear push/pull/legs but not core: competence requires all four.
         let partial = [
             clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
             clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
             clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
         ]
         let logs = sustainedHistory(weeks: 8) + partial
-        XCTAssertEqual(evaluate(logs), .discipline, "missing one foundational pattern keeps the user in Discipline")
+        XCTAssertEqual(evaluate(logs), .discipline, "missing one foundation keeps the user in Discipline")
+    }
+
+    // MARK: - Legs needs both sides (ADR-0006)
+
+    /// Every foundation cleared *except* one line of Legs stays Discipline: quads alone (or hinge
+    /// alone) cannot stand in for the whole foundation.
+    func testLegsNeedsBothItsSquatAndHingeSides() throws {
+        let everythingElse = [
+            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
+            clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
+        ]
+        let squatOnly = sustainedHistory(weeks: 8) + everythingElse
+            + [clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45)]
+        let hingeOnly = sustainedHistory(weeks: 8) + everythingElse
+            + [clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20)]
+        let both = squatOnly + [clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20)]
+
+        XCTAssertEqual(evaluate(squatOnly), .discipline, "the squat side alone does not clear Legs")
+        XCTAssertEqual(evaluate(hingeOnly), .discipline, "the hinge side alone does not clear Legs")
+        XCTAssertEqual(evaluate(both), .strength, "both sides clear Legs and, with the rest, earn Strength")
+
+        let legs = try XCTUnwrap(progress(squatOnly).foundations.first { $0.foundation == .legs })
+        XCTAssertEqual(legs.lines.map(\.isCleared), [true, false])
+        XCTAssertEqual(legs.clearedLineCount, 1)
+        XCTAssertEqual(legs.lineCount, 2)
+        XCTAssertFalse(legs.isCleared, "Legs reads cleared only when both sides are")
+    }
+
+    /// Either chain of a side counts: a lunge entry clears the squat side and a hip-hinge entry clears
+    /// the hinge side, exactly as one chain of push always sufficed.
+    func testEitherChainOfALegsSideClearsIt() {
+        let logs = sustainedHistory(weeks: 8) + [
+            clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
+            clearingLog(exerciseId: "lunge_reverse", pattern: .squat, isHold: false, value: 12),
+            clearingLog(exerciseId: "hinge_good_morning", pattern: .hinge, isHold: false, value: 15),
+            clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
+        ]
+        XCTAssertEqual(evaluate(logs), .strength)
+    }
+
+    // MARK: - Pull counts only the horizontal chain (ADR-0006)
+
+    /// The postural chain stays in sessions but never clears Pull, however well it is performed.
+    func testPosturalPullNeverClearsPull() {
+        let logs = sustainedHistory(weeks: 8) + competenceLogs().filter { $0.exercises.first?.exerciseId != "pull_scap" }
+            + [clearingLog(exerciseId: "pull_superman", pattern: .pull, isHold: true, value: 30)]
+
+        XCTAssertEqual(evaluate(logs), .discipline, "a cleared postural entry does not clear Pull")
+        let pull = progress(logs).foundations.first { $0.foundation == .pull }
+        XCTAssertEqual(pull?.isCleared, false)
+    }
+
+    func testHorizontalPullClearsPull() {
+        let logs = sustainedHistory(weeks: 8) + competenceLogs()
+        let pull = progress(logs).foundations.first { $0.foundation == .pull }
+        XCTAssertEqual(pull?.isCleared, true, "the horizontal chain's entry rung clears Pull")
+        XCTAssertEqual(evaluate(logs), .strength)
+    }
+
+    /// A horizontal entry logged short of its 3x12 is not cleared, and the postural entry cannot make
+    /// up for it.
+    func testShortHorizontalPullWithClearedPosturalStaysUncleared() {
+        let logs = [
+            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 8),
+            clearingLog(exerciseId: "pull_superman", pattern: .pull, isHold: true, value: 30),
+        ]
+        XCTAssertEqual(progress(logs).foundations.first { $0.foundation == .pull }?.isCleared, false)
     }
 
     /// An entry logged but not *cleared* (fell short of the criteria) does not count as competence.
@@ -277,9 +370,11 @@ final class PhaseEvaluatorTests: XCTestCase {
             ("both met", sustainedHistory(weeks: 8) + competenceLogs()),
             ("three of four", sustainedHistory(weeks: 8) + [
                 clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+                clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
                 clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
                 clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
             ]),
+            ("legs half", sustainedHistory(weeks: 8) + competenceLogs().filter { $0.exercises.first?.exerciseId != "hinge_bridge" }),
         ]
         for scenario in scenarios {
             let earned = progress(scenario.logs).hasEarnedStrength
@@ -288,24 +383,28 @@ final class PhaseEvaluatorTests: XCTestCase {
         }
     }
 
-    /// The PRD validation shape: 5 sustained weeks with push+squat cleared (hinge/core not) surfaces
+    /// The PRD validation shape: 5 sustained weeks with push+pull cleared (legs/core not) surfaces
     /// exactly "5 of 8 weeks" and exactly 2 of 4 foundations cleared - and is *not* earned, matching
-    /// what the gate would decide.
+    /// what the gate would decide. The squat half of Legs is also cleared, and does not make Legs read
+    /// as cleared.
     func testProgressReportsFiveOfEightWeeksAndTwoOfFourFoundations() {
         let logs = sustainedHistory(weeks: 5) + [
             clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15),
+            clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
             clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
         ]
         let p = progress(logs)
 
         XCTAssertEqual(p.weeksSustained, 5, "five active weeks")
         XCTAssertEqual(p.requiredWeeks, 8, "the window is eight weeks")
-        XCTAssertEqual(p.clearedFoundationCount, 2, "push and squat cleared, hinge and core not")
+        XCTAssertEqual(p.clearedFoundationCount, 2, "push and pull cleared, legs (one side) and core not")
         XCTAssertEqual(p.foundationCount, 4)
 
-        // Per-foundation flags, in evaluator order (push / squat / hinge / core).
-        XCTAssertEqual(p.foundations.map(\.pattern), [.push, .squat, .hinge, .core])
+        // Per-foundation flags, in display order (Push / Pull / Legs / Core).
+        XCTAssertEqual(p.foundations.map(\.foundation), [.push, .pull, .legs, .core])
         XCTAssertEqual(p.foundations.map(\.isCleared), [true, true, false, false])
+        XCTAssertEqual(p.foundations.map(\.lineCount), [1, 1, 2, 1])
+        XCTAssertEqual(p.foundations[2].clearedLineCount, 1, "Legs reads 1 of 2")
 
         XCTAssertFalse(p.hasFoundationalCompetence, "two of four is not full competence")
         XCTAssertFalse(p.hasEarnedStrength, "not earned - and the gate agrees")

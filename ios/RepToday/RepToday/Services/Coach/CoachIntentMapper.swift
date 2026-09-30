@@ -34,13 +34,28 @@ enum CoachIntentMapper {
         let lessOffsets = cueOffsets(of: emphasizeLessCues, in: text).filter { offset in
             !phraseSpans.contains { $0.contains(offset) }
         }
+        // A pattern word is never read out of a phrase that only borrows it: "back off" / "cut back" /
+        // "in a row" are not asking about the back or a row, so the mention is dropped there.
+        let borrowedSpans = phraseSpans + cueSpans(of: borrowedWordPhrases, in: text)
 
         var emphasis: [MovementPattern: Double] = [:]
-        for pattern in foundationalPatterns {
-            let mentions = mentionOffsets(for: pattern, in: text)
+
+        // A foundation-wide word ("legs") nudges every line of its foundation together...
+        for foundation in StrengthFoundation.displayOrder {
+            let mentions = mentionOffsets(of: foundationKeywords(for: foundation), in: text, excluding: borrowedSpans)
+            guard !mentions.isEmpty,
+                  let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets)
+            else { continue }
+            for line in foundation.lines { emphasis[line.pattern] = value }
+        }
+
+        // ...and a line's own words ("squat", "hinge", "row") are the finer control, so they override
+        // whatever the foundation-wide word set for that one line ("more legs but less squat").
+        for line in StrengthFoundation.allLines {
+            let mentions = mentionOffsets(of: keywords(for: line.pattern), in: text, excluding: borrowedSpans)
             guard !mentions.isEmpty else { continue }
             if let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets) {
-                emphasis[pattern] = value
+                emphasis[line.pattern] = value
             }
         }
 
@@ -57,19 +72,31 @@ enum CoachIntentMapper {
 
     // MARK: - Recognized patterns
 
-    /// The foundational patterns a coach tuning request can name. Non-foundational patterns
-    /// (`pull`/`mobility`/`locomotion`) are not user-requestable levers on this surface.
-    private static let foundationalPatterns: [MovementPattern] = [.push, .squat, .hinge, .core]
+    // The requestable targets are the foundation lines (`StrengthFoundation.allLines`): push, pull,
+    // squat, hinge, core. Non-foundation patterns (`mobility`/`locomotion`) are not user-requestable
+    // levers on this surface. Emphasis is per movement pattern, so a request for Pull leans the whole
+    // pull pattern (postural work included) - the emphasis only reorders, it never filters.
 
-    /// The keywords that name each pattern in everyday language. Kept narrow to avoid false positives:
-    /// e.g. `squat` deliberately does not claim the ambiguous word "legs".
+    /// The keywords that name each pattern in everyday language. Kept narrow to avoid false positives.
+    /// `back` is the loosest of them, so it is only read outside the idioms in `borrowedWordPhrases`.
     private static func keywords(for pattern: MovementPattern) -> [String] {
         switch pattern {
         case .push: return ["push", "press", "chest", "upper body"]
+        case .pull: return ["pull", "row", "back", "upper back", "lats"]
         case .squat: return ["squat", "quad"]
         case .hinge: return ["hinge", "deadlift", "glute", "hamstring", "posterior"]
         case .core: return ["core", "abs", "midsection", "plank"]
         default: return []
+        }
+    }
+
+    /// The words that name a whole foundation rather than one of its lines. Only Legs has any: "legs"
+    /// nudges the squat and hinge lines together, and the lines' own words stay available for finer
+    /// control. Single-line foundations are named by their line's own words above.
+    private static func foundationKeywords(for foundation: StrengthFoundation) -> [String] {
+        switch foundation {
+        case .legs: return ["legs", "leg day", "lower body"]
+        case .push, .pull, .core: return []
         }
     }
 
@@ -79,6 +106,13 @@ enum CoachIntentMapper {
     private static let emphasizeLessCues = ["less ", "bored of", "tired of", "sick of", "avoid", "cut back", "ease off"]
     private static let easeCues = ["easier", "ease up", "take it easy", "go easy", "too hard", "back off", "lighter", "less intense"]
     private static let narrowVarietyCues = ["moves i know", "same moves", "familiar", "less variety", "stop changing", "keep it familiar"]
+    /// Phrases that borrow a pattern word without asking about the pattern ("back off", "cut back",
+    /// "in a row", "lower back" - an area to protect, not the pull pattern).
+    private static let borrowedWordPhrases = [
+        "cut back", "back off", "back to", "back on", "back into", "back in", "back from", "back down",
+        "get back", "getting back", "got back", "come back", "coming back", "bring back", "go back",
+        "going back", "in a row", "lower back",
+    ]
 
     // MARK: - Proposed (pre-clamp) values
 
@@ -100,12 +134,14 @@ enum CoachIntentMapper {
         needles.contains { haystack.contains($0) }
     }
 
-    /// The character offsets at which any of `pattern`'s keywords appear as a whole word, so a keyword
+    /// The character offsets at which any of `keywords` appear as a whole word, so a keyword
     /// only matches on word boundaries - `core` matches "core"/"cores" but not "score", `abs` matches
     /// "abs" but not "absolutely", `press` matches "press"/"pressing" but not "impression". A common
     /// inflectional suffix (plural/verb ending) is allowed so everyday plurals still match.
-    private static func mentionOffsets(for pattern: MovementPattern, in text: String) -> [Int] {
-        keywords(for: pattern).flatMap { wordMatchOffsets(of: $0, in: text) }
+    private static func mentionOffsets(of keywords: [String], in text: String, excluding spans: [Range<Int>]) -> [Int] {
+        keywords
+            .flatMap { wordMatchOffsets(of: $0, in: text) }
+            .filter { offset in !spans.contains { $0.contains(offset) } }
     }
 
     /// The character offsets of every occurrence of any needle, substring-based (cues include stems like

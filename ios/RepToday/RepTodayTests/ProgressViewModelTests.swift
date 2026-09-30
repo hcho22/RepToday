@@ -209,6 +209,54 @@ final class ProgressViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.analytics?.deep)
     }
 
+    // MARK: - One-time foundations note eligibility (ADR-0006)
+
+    /// A user who has trained a foundation and is still climbing is eligible for the one-time note;
+    /// whether it was already shown is `AppState`'s flag, not this.
+    func testTrainedDisciplineUserIsEligibleForTheFoundationsNote() async {
+        let vm = makeViewModel(user: onboardedUser(), logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)])
+
+        await vm.load()
+
+        XCTAssertTrue(vm.hasTrainedFoundation)
+        XCTAssertTrue(vm.showsClimbCard)
+        XCTAssertTrue(vm.isFoundationsUpdateNoteEligible)
+    }
+
+    /// History with no foundation work (show-ups only) and an empty history are never eligible - the
+    /// note explains where foundations stand, and there is nothing to stand on yet.
+    func testUntrainedUsersAreNotEligibleForTheFoundationsNote() async {
+        let showUpsOnly = makeViewModel(user: onboardedUser(), logs: week(weeksAgo: 0, count: 3))
+        await showUpsOnly.load()
+        XCTAssertFalse(showUpsOnly.hasTrainedFoundation)
+        XCTAssertFalse(showUpsOnly.isFoundationsUpdateNoteEligible)
+
+        let fresh = makeViewModel(user: onboardedUser(), logs: [])
+        await fresh.load()
+        XCTAssertFalse(fresh.isFoundationsUpdateNoteEligible)
+    }
+
+    /// A skipped foundation exercise is not training, and a Strength user has no climb card to host
+    /// the note.
+    func testSkippedWorkAndStrengthUsersAreNotEligibleForTheFoundationsNote() async {
+        var skipped = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)
+        skipped.exercises[0].skipped = true
+        let skippedVM = makeViewModel(user: onboardedUser(), logs: [skipped])
+        await skippedVM.load()
+        XCTAssertFalse(skippedVM.isFoundationsUpdateNoteEligible)
+
+        var strengthUser = onboardedUser()
+        strengthUser.phase = .strength
+        let strengthVM = makeViewModel(
+            user: strengthUser,
+            logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)]
+        )
+        await strengthVM.load()
+        XCTAssertTrue(strengthVM.hasTrainedFoundation)
+        XCTAssertFalse(strengthVM.showsClimbCard)
+        XCTAssertFalse(strengthVM.isFoundationsUpdateNoteEligible)
+    }
+
     // MARK: - US-SP04: phase-progress ("the visible climb")
 
     /// A log clearing the entry tier of `exerciseId` in the real catalog - three sets each meeting
@@ -229,12 +277,13 @@ final class ProgressViewModelTests: XCTestCase {
     }
 
     /// `load` computes the phase-progress signals from the same `PhaseEvaluator` logic that gates the
-    /// phase, over the same full history: five sustained weeks with push+squat cleared surfaces five
-    /// of eight weeks and two of four foundations - and, crucially, agrees with the gate that Strength
-    /// is not yet earned.
+    /// phase, over the same full history: five sustained weeks with push+pull cleared (and only the
+    /// squat side of Legs) surfaces five of eight weeks and two of four foundations - and, crucially,
+    /// agrees with the gate that Strength is not yet earned.
     func testLoadPopulatesPhaseProgressMatchingTheGate() async {
         var logs = (0..<5).flatMap { week(weeksAgo: $0, count: 3) }
         logs.append(clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15))
+        logs.append(clearingLog(exerciseId: "pull_wall_scapular_pull", pattern: .pull, isHold: false, value: 12))
         logs.append(clearingLog(exerciseId: "squat_wall_sit", pattern: .squat, isHold: true, value: 45))
         let vm = makeViewModel(user: onboardedUser(), logs: logs)
 
@@ -245,7 +294,9 @@ final class ProgressViewModelTests: XCTestCase {
         XCTAssertNotNil(progress)
         XCTAssertEqual(progress?.weeksSustained, 5)
         XCTAssertEqual(progress?.clearedFoundationCount, 2)
+        XCTAssertEqual(progress?.foundations.map(\.foundation), [.push, .pull, .legs, .core])
         XCTAssertEqual(progress?.foundations.map(\.isCleared), [true, true, false, false])
+        XCTAssertEqual(progress?.foundations[2].clearedLineCount, 1, "Legs reads 1 of 2 with only the squat side cleared")
         XCTAssertEqual(progress?.hasEarnedStrength, false, "the surface must agree with the gate: not earned")
 
         // And the gate itself, over the same history, resolves to Discipline - no disagreement.

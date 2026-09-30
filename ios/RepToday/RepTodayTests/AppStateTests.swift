@@ -76,6 +76,57 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(reloaded.shouldShowContinuousCircuitExplainer, "the explainer never reappears on a later session")
     }
 
+    // MARK: - Foundations-changed note one-shot (ADR-0006)
+
+    /// An install that predates the change is already onboarded and has never seen the note.
+    func testFoundationsNoteShowsToAnInstallThatPredatesTheChange() {
+        defaults.set(true, forKey: "AppState.isOnboarded")
+
+        let appState = AppState(userDefaults: defaults)
+
+        XCTAssertFalse(appState.hasSeenFoundationsUpdateNote)
+        XCTAssertTrue(appState.shouldShowFoundationsUpdateNote)
+    }
+
+    /// A brand-new install onboards on a build that already has the new foundations, so finishing
+    /// onboarding retires the note for good: there is nothing to explain to someone who never knew the
+    /// old ones.
+    func testFoundationsNoteNeverReachesABrandNewInstall() {
+        let appState = AppState(userDefaults: defaults)
+        XCTAssertFalse(appState.isOnboarded)
+
+        appState.isOnboarded = true
+
+        XCTAssertTrue(appState.hasSeenFoundationsUpdateNote, "onboarding on this build retires the note")
+        XCTAssertFalse(appState.shouldShowFoundationsUpdateNote)
+        XCTAssertFalse(AppState(userDefaults: defaults).shouldShowFoundationsUpdateNote, "and it stays retired on relaunch")
+    }
+
+    /// Someone who deletes their account and onboards again is a new user for this purpose too.
+    func testFoundationsNoteDoesNotReturnAfterAccountDeletionAndReOnboarding() {
+        defaults.set(true, forKey: "AppState.isOnboarded")
+        let appState = AppState(userDefaults: defaults)
+        XCTAssertTrue(appState.shouldShowFoundationsUpdateNote)
+
+        appState.isOnboarded = false
+        appState.isOnboarded = true
+
+        XCTAssertFalse(appState.shouldShowFoundationsUpdateNote)
+    }
+
+    func testMarkingTheFoundationsNoteSeenGatesItOffAndSurvivesRelaunch() {
+        defaults.set(true, forKey: "AppState.isOnboarded")
+        let original = AppState(userDefaults: defaults)
+
+        original.markFoundationsUpdateNoteSeen()
+        original.markFoundationsUpdateNoteSeen()
+
+        XCTAssertFalse(original.shouldShowFoundationsUpdateNote, "once seen it must not be shown again")
+        XCTAssertTrue(defaults.bool(forKey: "AppState.hasSeenFoundationsUpdateNote"), "the flag persists")
+        let reloaded = AppState(userDefaults: defaults)
+        XCTAssertFalse(reloaded.shouldShowFoundationsUpdateNote, "the note never reappears on a later session")
+    }
+
     // MARK: - Strength-Phase graduation one-shot (US-SP06)
 
     func testAFreshInstallHasCelebratedNoGraduation() {

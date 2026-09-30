@@ -19,9 +19,11 @@ import Foundation
 
 // MARK: - Per-pattern trend
 
-/// One foundational pattern's coarse trajectory on its active chain (US-AN02), classified from the
-/// dated milestones the strength-journey analytics (US-AN01) already produced. Non-identifying: it
-/// carries only a pattern, a coarse direction, and a whole-week count - no dates, ids, or history.
+/// One foundation line's coarse trajectory on its active chain (US-AN02), classified from the
+/// dated milestones the strength-journey analytics (US-AN01) already produced. The lines are the
+/// Progress tab's own: Push, Pull (horizontal chain only), the Squat and Hinge sides of Legs, and Core.
+/// Non-identifying: it carries only a pattern, a coarse direction, and a whole-week count - no dates,
+/// ids, or history.
 struct StrengthPatternTrend: Equatable {
 
     /// The coarse direction a pattern is moving. Deliberately three states so a freshly-started
@@ -38,13 +40,16 @@ struct StrengthPatternTrend: Equatable {
 
     let pattern: MovementPattern
     let trend: Trend
+    /// The foundation line this trend reads - what lets the coach say "the hinge side of your legs"
+    /// rather than a bare pattern name. `nil` only for a pattern that is no foundation's.
+    var line: FoundationLine? { StrengthFoundation.line(for: pattern) }
     /// Whole weeks the user has sat at the current frontier tier (the "flat for N weeks" number).
     let weeksAtCurrentTier: Int
     /// Whether the user has advanced at least one tier on this chain, ever.
     let hasAdvanced: Bool
 }
 
-/// Reads the strength journey into per-pattern trends (US-AN02).
+/// Reads the strength journey into per-line trends (US-AN02).
 ///
 /// Pure and deterministic (its `asOf` is injected, never a wall-clock read), so both the context
 /// bundle's wire summary and the coach's on-device offer derive from the *same* classification and
@@ -56,8 +61,8 @@ enum CoachStrengthJourneyReader {
     /// pattern trained last week is never reported as stalled.
     static let flatWeeksThreshold = 3
 
-    /// Classify every trained foundational pattern in `journey` as of `asOf`. Untrained patterns are
-    /// absent from the journey and so contribute no trend.
+    /// Classify every trained foundation line in `journey` as of `asOf`. Untrained lines are absent
+    /// from the journey and so contribute no trend.
     static func trends(from journey: StrengthJourney, asOf: Date, calendar: Calendar) -> [StrengthPatternTrend] {
         journey.chains.compactMap { chain in
             guard let current = chain.currentMilestone else { return nil }
@@ -88,20 +93,27 @@ enum CoachStrengthJourneyReader {
 // MARK: - The offer
 
 /// The coach's analytics-driven action offer (US-AN02): a bounded, preference-only nudge that
-/// **emphasizes the stalled pattern**, raised when the strength journey shows a real stall.
+/// **emphasizes the stalled line's pattern**, raised when the strength journey shows a real stall.
 ///
 /// Like `CoachInjuryRoutingProposal` it is an *offer*, not a change: it carries the pattern to lean
 /// toward and, for the narration, the pattern that is climbing - and the only action it can produce
 /// is a `CoachPolicyProposal` (the US-AC07 preference-only shape). A workout edit and a safety filter
 /// are both inexpressible on that path by construction.
 struct CoachAnalyticsInsightOffer: Equatable {
-    /// The foundational pattern that has stalled and that the offer would emphasize.
+    /// The movement pattern of the foundation line that has stalled and that the offer would
+    /// emphasize - exactly that pattern, so a stalled hinge side of Legs emphasizes hinge and not squat.
     let stalledPattern: MovementPattern
     /// How many whole weeks it has sat at its frontier tier - the "flat about N weeks" number.
     let stalledWeeks: Int
-    /// A pattern that is climbing, if any, so the coach can name the gain beside the stall ("your
+    /// A pattern (foundation line) that is climbing, if any, so the coach can name the gain beside the stall ("your
     /// push is climbing, your hinge has been flat"). `nil` when nothing is clearly climbing.
     let climbingPattern: MovementPattern?
+
+    /// The stalled foundation line, for naming its side in the narration.
+    var stalledLine: FoundationLine? { StrengthFoundation.line(for: stalledPattern) }
+
+    /// The climbing foundation line, for naming it beside the stall.
+    var climbingLine: FoundationLine? { climbingPattern.flatMap(StrengthFoundation.line(for:)) }
 
     /// The bounded, preference-only proposal accepting this offer applies - through the *same*
     /// US-AC07 write path (`CoachSessionPolicyService`), so the write is clamped, direction-safe,
@@ -124,7 +136,7 @@ enum CoachAnalyticsInsight {
     /// The offer a set of per-pattern trends maps to, or `nil` when there is no stall worth acting on.
     ///
     /// It fires only on a real stall: the most-stalled `flat` pattern (longest at its frontier; ties
-    /// resolve in foundational order - push, squat, hinge, core). A journey with nothing flat raises
+    /// resolve in foundation order - push, pull, squat, hinge, core). A journey with nothing flat raises
     /// no offer, so the surface stays quiet unless the data actually says to change something.
     static func offer(from trends: [StrengthPatternTrend]) -> CoachAnalyticsInsightOffer? {
         let flat = trends.filter { $0.trend == .flat }
@@ -170,10 +182,8 @@ enum CoachAnalyticsInsight {
 
     // MARK: - Ordering
 
-    /// The four foundational patterns, in the same display order the evaluator and analytics use.
-    private static let foundationalOrder: [MovementPattern] = [.push, .squat, .hinge, .core]
-
+    /// A line's position in the display order the evaluator and analytics use (`StrengthFoundation`'s).
     private static func foundationalIndex(_ pattern: MovementPattern) -> Int {
-        foundationalOrder.firstIndex(of: pattern) ?? foundationalOrder.count
+        StrengthFoundation.allLines.firstIndex { $0.pattern == pattern } ?? StrengthFoundation.allLines.count
     }
 }

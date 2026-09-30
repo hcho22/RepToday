@@ -33,10 +33,14 @@ enum HostedSurface {
     /// The window is handed back rather than kept here because a released window takes the hosted view
     /// down with it: the caller has to hold it for as long as the surface is read.
     static func host<V: View>(
-        _ view: V, size: CGSize, settleFor interval: TimeInterval = settleInterval
+        _ view: V, size: CGSize, settleFor interval: TimeInterval = settleInterval,
+        style: UIUserInterfaceStyle = .dark
     ) -> (host: UIHostingController<V>, window: UIWindow) {
         let host = UIHostingController(rootView: view)
-        host.overrideUserInterfaceStyle = .dark
+        // Dark by default (every committed baseline is dark). A suite that needs the other appearance
+        // asks for it here, *before* first layout: switching a hosted surface afterwards leaves layers
+        // drawn in the old appearance, which composites as a mixed image.
+        host.overrideUserInterfaceStyle = style
         host.view.frame = CGRect(origin: .zero, size: size)
 
         // A real key window is what makes the view lay out and draw its layers at all; sizing the

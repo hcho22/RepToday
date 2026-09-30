@@ -31,7 +31,7 @@ final class CoachAnalyticsInsightTests: XCTestCase {
     }
 
     private func chain(_ pattern: MovementPattern, _ milestones: [TierMilestone]) -> ChainJourney {
-        ChainJourney(pattern: pattern, chainId: "\(pattern.rawValue)_chain", milestones: milestones, calendar: calendar)
+        ChainJourney(line: StrengthFoundation.line(for: pattern)!, chainId: "\(pattern.rawValue)_chain", milestones: milestones, calendar: calendar)
     }
 
     private func trends(_ chains: [ChainJourney]) -> [StrengthPatternTrend] {
@@ -134,6 +134,56 @@ final class CoachAnalyticsInsightTests: XCTestCase {
     /// An empty journey (no strength history) raises no offer.
     func testEmptyJourneyRaisesNoOffer() {
         XCTAssertNil(CoachAnalyticsInsight.offer(from: trends([])))
+    }
+
+    // MARK: - The five lines (ADR-0006)
+
+    /// The insight tracks the Progress tab's five lines: Pull reads like any other line, and the Squat
+    /// and Hinge sides of Legs are classified independently - a flat hinge next to a climbing squat is a
+    /// hinge stall, and the offer emphasizes exactly hinge, never squat.
+    func testLegsSidesAreClassifiedAndOfferedIndependently() throws {
+        let result = trends([
+            chain(.squat, [milestone("squat_a", tier: 1, weeksAgo: 5), milestone("squat_b", tier: 2, weeksAgo: 0)]),
+            chain(.hinge, [milestone("hinge_a", tier: 1, weeksAgo: 3)]),
+        ])
+        XCTAssertEqual(result.first { $0.pattern == .squat }?.trend, .climbing)
+        XCTAssertEqual(result.first { $0.pattern == .hinge }?.trend, .flat)
+        XCTAssertEqual(result.map { $0.line?.foundation }, [.legs, .legs])
+
+        let offer = try XCTUnwrap(CoachAnalyticsInsight.offer(from: result))
+        XCTAssertEqual(offer.stalledPattern, .hinge)
+        XCTAssertEqual(offer.stalledLine?.sideLabel, "Hinge side")
+        XCTAssertEqual(Array(offer.proposal.patternEmphasis.keys), [.hinge], "exactly the stalled side, not all of Legs")
+    }
+
+    func testPullIsANamedLineTheOfferCanTarget() throws {
+        let result = trends([chain(.pull, [milestone("pull_a", tier: 1, weeksAgo: 4)])])
+        let offer = try XCTUnwrap(CoachAnalyticsInsight.offer(from: result))
+        XCTAssertEqual(offer.stalledPattern, .pull)
+        XCTAssertEqual(Array(offer.proposal.patternEmphasis.keys), [.pull])
+    }
+
+    /// Ties between equally stalled lines resolve in foundation order: Push, Pull, Squat, Hinge, Core.
+    func testTieBetweenStalledLinesResolvesInFoundationOrder() {
+        let result = trends([
+            chain(.core, [milestone("core_a", tier: 1, weeksAgo: 5)]),
+            chain(.hinge, [milestone("hinge_a", tier: 1, weeksAgo: 5)]),
+            chain(.pull, [milestone("pull_a", tier: 1, weeksAgo: 5)]),
+        ])
+        XCTAssertEqual(CoachAnalyticsInsight.offer(from: result)?.stalledPattern, .pull)
+    }
+
+    /// The copy names the side of Legs ("the hinge side of your legs") and reads plainly for a
+    /// single-line foundation ("your pull").
+    func testCopyNamesTheSideOfLegsAndPlainForOtherFoundations() {
+        let hinge = CoachAnalyticsInsightCopy.offer(for: CoachAnalyticsInsightOffer(stalledPattern: .hinge, stalledWeeks: 3, climbingPattern: nil))
+        XCTAssertTrue(hinge.hasPrefix("The hinge side of your legs has been flat about 3 weeks."), hinge)
+
+        let squat = CoachAnalyticsInsightCopy.offer(for: CoachAnalyticsInsightOffer(stalledPattern: .squat, stalledWeeks: 4, climbingPattern: .pull))
+        XCTAssertTrue(squat.hasPrefix("Your pull is climbing, but the squat side of your legs has been flat about 4 weeks."), squat)
+
+        let pull = CoachAnalyticsInsightCopy.offer(for: CoachAnalyticsInsightOffer(stalledPattern: .pull, stalledWeeks: 3, climbingPattern: .core))
+        XCTAssertTrue(pull.hasPrefix("Your core is climbing, but your pull has been flat about 3 weeks."), pull)
     }
 
     // MARK: - Progress inquiry recognition
