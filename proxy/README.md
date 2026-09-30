@@ -116,8 +116,8 @@ Content-Type: application/json
     "phase": "discipline",
     "requestedMinutes": 15,
     "chainPositions": [
-      { "pattern": "push", "foundation": "push", "currentExercise": "Standard Push-Up", "tier": 3, "chainLength": 7, "hasNextTier": true },
-      { "pattern": "hinge", "foundation": "legs", "foundationSide": "hinge", "currentExercise": "Glute Bridge", "tier": 1, "chainLength": 5, "hasNextTier": true }
+      { "pattern": "push", "currentExercise": "Standard Push-Up", "tier": 3, "chainLength": 7, "hasNextTier": true },
+      { "pattern": "hinge", "currentExercise": "Glute Bridge", "tier": 1, "chainLength": 5, "hasNextTier": true }
     ],
     "recentPatterns": ["push", "core", "squat"],
     "consistency": { "currentScore": 72, "direction": "rising" }
@@ -135,9 +135,8 @@ Content-Type: application/json
   whether it has advanced - no date, id, or identity field), requested minutes - and contains
   **no raw `WorkoutLog` history and no identity field**. The proxy validates it is present and
   object-shaped but does not otherwise constrain it (the app owns the definition).
-  Each chain/trend line retains its raw `pattern` compatibility key and adds the user-facing
-  `foundation`; the two Legs lines also carry `foundationSide` (`squat` or `hinge`). Older app
-  bundles without those labels remain accepted, and the proxy derives their meaning for the model.
+  Each chain/trend line carries its stable raw `pattern` key. The proxy prompt maps those keys to
+  Push, Pull, the Squat and Hinge sides of Legs, and Core for the model.
 - `message` (required) - the user's free-text question. Non-empty and at most **2000 characters**
   (the iOS client caps the same value; the proxy re-checks as defense in depth).
 - `safetyIdentifier` (required) - a random, app-generated `coach-<UUIDv4>` pseudonym. It is distinct

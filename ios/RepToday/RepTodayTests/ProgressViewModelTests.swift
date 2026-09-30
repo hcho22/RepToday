@@ -211,39 +211,39 @@ final class ProgressViewModelTests: XCTestCase {
 
     // MARK: - One-time foundations note eligibility (ADR-0006)
 
-    /// A user who has trained a foundation and is still climbing is eligible for the one-time note;
-    /// whether it was already shown is `AppState`'s flag, not this.
-    func testTrainedDisciplineUserIsEligibleForTheFoundationsNote() async {
+    /// A Discipline user who still has the climb card is eligible for the one-time note; whether it
+    /// was already shown is `AppState`'s flag, not this.
+    func testDisciplineUserIsEligibleForTheFoundationsNote() async {
         let vm = makeViewModel(user: onboardedUser(), logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)])
 
         await vm.load()
 
-        XCTAssertTrue(vm.hasTrainedFoundation)
         XCTAssertTrue(vm.showsClimbCard)
         XCTAssertTrue(vm.isFoundationsUpdateNoteEligible)
     }
 
-    /// History with no foundation work (show-ups only) and an empty history are never eligible - the
-    /// note explains where foundations stand, and there is nothing to stand on yet.
-    func testUntrainedUsersAreNotEligibleForTheFoundationsNote() async {
+    /// Every pre-update user with a climb card is eligible even without foundation work. A brand-new
+    /// install is excluded by `AppState` marking the one-shot seen during onboarding.
+    func testUntrainedDisciplineUsersAreEligibleForTheFoundationsNote() async {
         let showUpsOnly = makeViewModel(user: onboardedUser(), logs: week(weeksAgo: 0, count: 3))
         await showUpsOnly.load()
-        XCTAssertFalse(showUpsOnly.hasTrainedFoundation)
-        XCTAssertFalse(showUpsOnly.isFoundationsUpdateNoteEligible)
+        XCTAssertTrue(showUpsOnly.showsClimbCard)
+        XCTAssertTrue(showUpsOnly.isFoundationsUpdateNoteEligible)
 
         let fresh = makeViewModel(user: onboardedUser(), logs: [])
         await fresh.load()
-        XCTAssertFalse(fresh.isFoundationsUpdateNoteEligible)
+        XCTAssertTrue(fresh.showsClimbCard)
+        XCTAssertTrue(fresh.isFoundationsUpdateNoteEligible)
     }
 
-    /// A skipped foundation exercise is not training, and a Strength user has no climb card to host
-    /// the note.
-    func testSkippedWorkAndStrengthUsersAreNotEligibleForTheFoundationsNote() async {
+    /// Skipped work does not exclude a Discipline user; a Strength user has no climb card to host the
+    /// note.
+    func testSkippedWorkIsEligibleButStrengthUsersAreNotEligibleForTheFoundationsNote() async {
         var skipped = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)
         skipped.exercises[0].skipped = true
         let skippedVM = makeViewModel(user: onboardedUser(), logs: [skipped])
         await skippedVM.load()
-        XCTAssertFalse(skippedVM.isFoundationsUpdateNoteEligible)
+        XCTAssertTrue(skippedVM.isFoundationsUpdateNoteEligible)
 
         var strengthUser = onboardedUser()
         strengthUser.phase = .strength
@@ -252,7 +252,6 @@ final class ProgressViewModelTests: XCTestCase {
             logs: [clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 15)]
         )
         await strengthVM.load()
-        XCTAssertTrue(strengthVM.hasTrainedFoundation)
         XCTAssertFalse(strengthVM.showsClimbCard)
         XCTAssertFalse(strengthVM.isFoundationsUpdateNoteEligible)
     }

@@ -20,16 +20,16 @@ const CONTEXT = {
   phase: "discipline",
   requestedMinutes: 15,
   chainPositions: [
-    { pattern: "push", foundation: "push", currentExercise: "Standard Push-Up", tier: 3, chainLength: 7, hasNextTier: true },
-    { pattern: "pull", foundation: "pull", currentExercise: "Wall Scapular Pull", tier: 1, chainLength: 3, hasNextTier: true },
-    { pattern: "squat", foundation: "legs", foundationSide: "squat", currentExercise: "Bodyweight Squat", tier: 2, chainLength: 6, hasNextTier: true },
-    { pattern: "hinge", foundation: "legs", foundationSide: "hinge", currentExercise: "Glute Bridge", tier: 1, chainLength: 5, hasNextTier: true },
-    { pattern: "core", foundation: "core", currentExercise: "Dead Bug", tier: 2, chainLength: 5, hasNextTier: true },
+    { pattern: "push", currentExercise: "Standard Push-Up", tier: 3, chainLength: 7, hasNextTier: true },
+    { pattern: "pull", currentExercise: "Wall Scapular Pull", tier: 1, chainLength: 3, hasNextTier: true },
+    { pattern: "squat", currentExercise: "Bodyweight Squat", tier: 2, chainLength: 6, hasNextTier: true },
+    { pattern: "hinge", currentExercise: "Glute Bridge", tier: 1, chainLength: 5, hasNextTier: true },
+    { pattern: "core", currentExercise: "Dead Bug", tier: 2, chainLength: 5, hasNextTier: true },
   ],
   recentPatterns: ["push", "core", "squat"],
   consistency: { currentScore: 72, direction: "rising" },
   strengthJourney: [
-    { pattern: "hinge", foundation: "legs", foundationSide: "hinge", trend: "flat", weeksAtCurrentTier: 3, hasAdvanced: true },
+    { pattern: "hinge", trend: "flat", weeksAtCurrentTier: 3, hasAdvanced: true },
   ],
 };
 
@@ -435,39 +435,10 @@ describe("POST /coach", () => {
     expect(system).toContain("pull is tracked only on its horizontal ladder");
     expect(system).toContain("the hinge side of your legs has been flat about 3 weeks");
     expect(system).toContain("never as standalone foundations");
-    expect(context.chainPositions.map(({ pattern, foundation, foundationSide }) => ({ pattern, foundation, foundationSide }))).toEqual([
-      { pattern: "push", foundation: "push", foundationSide: undefined },
-      { pattern: "pull", foundation: "pull", foundationSide: undefined },
-      { pattern: "squat", foundation: "legs", foundationSide: "squat" },
-      { pattern: "hinge", foundation: "legs", foundationSide: "hinge" },
-      { pattern: "core", foundation: "core", foundationSide: undefined },
+    expect(system).toContain("derive foundation names and legs sides from pattern");
+    expect(context.chainPositions.map(({ pattern }) => pattern)).toEqual([
+      "push", "pull", "squat", "hinge", "core",
     ]);
-  });
-
-  it("accepts an older raw-pattern bundle and instructs the model to derive its foundation labels", async () => {
-    const legacyContext = {
-      ...CONTEXT,
-      chainPositions: CONTEXT.chainPositions.map(({ foundation, foundationSide, ...line }) => line),
-      strengthJourney: CONTEXT.strengthJourney.map(({ foundation, foundationSide, ...line }) => line),
-    };
-
-    const response = await worker.fetch(
-      coachRequest({ context: legacyContext, message: "what about my hinge?" }),
-      ENV
-    );
-
-    expect(response.status).toBe(200);
-    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
-    const context = JSON.parse(upstreamBody.input.split("\n")[1]);
-    expect(system).toContain("older bundles may omit those labels; derive them from pattern");
-    expect(context.chainPositions.find((line) => line.pattern === "hinge")).toEqual({
-      pattern: "hinge",
-      currentExercise: "Glute Bridge",
-      tier: 1,
-      chainLength: 5,
-      hasNextTier: true,
-    });
   });
 });
 

@@ -45,11 +45,6 @@ final class ProgressViewModel {
     /// there is no user, or when the library read fails.
     private(set) var phaseProgress: PhaseProgress?
 
-    /// Whether the history holds at least one worked (non-skipped) movement in a foundation's pattern
-    /// (push, pull, squat, hinge, core) - the "has trained a foundation" half of the one-time
-    /// foundations note's eligibility (ADR-0006).
-    private(set) var hasTrainedFoundation = false
-
     /// True while the first load is in flight.
     private(set) var isLoading = false
 
@@ -66,13 +61,13 @@ final class ProgressViewModel {
     }
 
     /// Whether the one-time "foundations are now Push, Pull, Legs, Core" note (ADR-0006) is *eligible*
-    /// to be shown: on the climb card, to a user who has trained a foundation. Whether it has already
-    /// been shown is `AppState`'s persisted one-shot flag, and a brand-new user is excluded there (they
-    /// onboarded on this build), so this never decides "once".
+    /// to be shown: whenever the climb card is present. Whether it has already been shown is
+    /// `AppState`'s persisted one-shot flag, and a brand-new user is excluded there (they onboarded on
+    /// this build), so this never decides "once".
     var isFoundationsUpdateNoteEligible: Bool {
         // Strength users have no climb card; their ratcheted phase stays earned, and the progression
         // map shows the recalculated foundations directly.
-        showsClimbCard && hasTrainedFoundation
+        showsClimbCard
     }
 
     /// Whether the user has any completed history at all. Drives the empty state vs. the populated
@@ -142,9 +137,6 @@ final class ProgressViewModel {
         let weeklyGoal = user.consistency.weeklyGoal
 
         completedDays = Set(logs.map { calendar.startOfDay(for: $0.completedAt) })
-        hasTrainedFoundation = logs.contains { log in
-            log.exercises.contains { !$0.skipped && StrengthFoundation.foundationPatterns.contains($0.movementPattern) }
-        }
         consistency = try? await consistencyService.consistency(for: logs, weeklyGoal: weeklyGoal)
         trend = ConsistencyTrend.trend(
             logs: logs,

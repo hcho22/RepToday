@@ -41,7 +41,7 @@ The captain wants the foundations to read the way people talk about strength: Pu
    Grandfathering would mean storing a per-user "cleared under the old rules" record, a second definition of clearing that the gate and the surfaces would both have to honour forever.
    Recalculating keeps one definition, and it is safe because an earned Strength Phase is never revoked: the ratchet lives in the persisted `User.phase` and is untouched, so the change can only affect users who have not yet earned Strength.
    A one-time note on the Progress tab's climb card says the foundations are now Push, Pull, Legs, Core and where the user stands.
-   It uses the same persisted one-shot pattern as the other first-run notes (`AppState.hasSeenFoundationsUpdateNote`) and is shown only to an install that predates the change and has trained a foundation.
+   It uses the same persisted one-shot pattern as the other first-run notes (`AppState.hasSeenFoundationsUpdateNote`) and is shown to every install that predates the change while its user still has the climb card.
    The note is intentionally limited to Discipline users who still have that climb card.
    Strength users have no climb card, keep their ratcheted phase and historical progression, and see the recalculated Push, Pull, Legs and Core foundations directly on the progression map instead of receiving the note.
    It never reaches a brand-new user: finishing onboarding on this build marks it seen, which also covers someone who deletes their account and starts over.
@@ -67,7 +67,7 @@ The captain wants the foundations to read the way people talk about strength: Pu
 - A user who only trained the postural pull chain sees Pull as "not started" on the Progress tab, even though those movements are in their sessions.
   This is the accepted cost of postural work not counting.
 - The Coach's context bundle now carries a fifth chain summary, Pull, and its strength-journey summaries can name Pull.
-  The app-to-proxy wire stays backward compatible in both directions: newer bundles retain the raw pattern keys an older proxy understands, and the newer proxy derives foundation labels when an older app omits them.
+  The app-to-proxy wire stays unchanged: the existing raw pattern keys carry all five lines, and the updated proxy prompt derives foundation names and Legs sides from those keys.
   The updated `/coach` prompt reaches users only after that proxy is separately deployed; this change does not deploy it.
 - Pull has no Strength-Phase rung, so the graduation reveal names only the Push, Legs and Core ladders as gaining Strength-Phase movements.
 

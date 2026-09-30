@@ -188,8 +188,6 @@ final class CoachContextBundleTests: XCTestCase {
             recentLogs: []
         )
         XCTAssertEqual(bundle.chainPositions.map(\.pattern), ["push", "pull", "squat", "hinge", "core"])
-        XCTAssertEqual(bundle.chainPositions.map(\.foundation), ["push", "pull", "legs", "legs", "core"])
-        XCTAssertEqual(bundle.chainPositions.compactMap(\.foundationSide), ["squat", "hinge"])
     }
 
     // MARK: - Wire shape: only non-identifying fields leave the device
@@ -225,11 +223,10 @@ final class CoachContextBundleTests: XCTestCase {
         let chain = try XCTUnwrap((object["chainPositions"] as? [[String: Any]])?.first)
         XCTAssertEqual(
             Set(chain.keys),
-            ["pattern", "foundation", "currentExercise", "tier", "chainLength", "hasNextTier"]
+            ["pattern", "currentExercise", "tier", "chainLength", "hasNextTier"]
         )
         let hinge = try XCTUnwrap((object["chainPositions"] as? [[String: Any]])?.last)
-        XCTAssertEqual(hinge["foundation"] as? String, "legs")
-        XCTAssertEqual(hinge["foundationSide"] as? String, "hinge")
+        XCTAssertEqual(hinge["pattern"] as? String, "hinge")
         let consistency = try XCTUnwrap(object["consistency"] as? [String: Any])
         XCTAssertEqual(Set(consistency.keys), ["currentScore", "direction"])
 
@@ -291,8 +288,10 @@ final class CoachContextBundleTests: XCTestCase {
         let encodedHinge = try XCTUnwrap((object["strengthJourney"] as? [[String: Any]])?.first {
             $0["pattern"] as? String == "hinge"
         })
-        XCTAssertEqual(encodedHinge["foundation"] as? String, "legs")
-        XCTAssertEqual(encodedHinge["foundationSide"] as? String, "hinge")
+        XCTAssertEqual(
+            Set(encodedHinge.keys),
+            ["pattern", "trend", "weeksAtCurrentTier", "hasAdvanced"]
+        )
     }
 
     /// With no strength history the journey summary is simply empty - never a fabricated trend.

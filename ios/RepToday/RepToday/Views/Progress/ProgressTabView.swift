@@ -1554,7 +1554,7 @@ private struct StatusRow: View {
 
 /// The one-time note on the climb card that the foundations are now Push, Pull, Legs, and Core, with
 /// where the user stands after recalculating from their full history (no grandfathering). Shown at
-/// most once, to an install that predates the change and has trained a foundation; dismissed with
+/// most once, to an install that predates the change while its user still has the climb card; dismissed with
 /// "Got it". Identity-framed - it explains what is now looked at, never that anything was lost.
 private struct FoundationsUpdateNote: View {
     let progress: PhaseProgress
