@@ -440,6 +440,49 @@ describe("POST /coach", () => {
       "push", "pull", "squat", "hinge", "core",
     ]);
   });
+
+  it("keeps internal machinery out of replies and teaches the app's own vocabulary", async () => {
+    await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
+
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
+
+    // The forbidden-terms instruction names every internal term the model must not say.
+    expect(system).toContain("never say or quote these internal terms or field names in a reply");
+    for (const term of [
+      "engine", "deterministic", "stalest", "progression chain", "frontier", "consistency signal",
+      "chainpositions", "strengthjourney", "recentpatterns", "pattern keys", "hasnexttier",
+    ]) {
+      expect(system).toContain(term);
+    }
+    expect(system).toContain("say 'rep today' or 'the app' where you would have said 'the engine'");
+
+    // The user-facing vocabulary the Progress tab already shows.
+    expect(system).toContain("'consistency', 'tier 2 of 4', 'next tier in reach', 'strength phase', and 'not started yet'");
+    expect(system).toContain("the area you've gone longest without");
+
+    // Outside the forbidden-terms list, no sentence tells the model to talk about the engine.
+    expect(system).not.toContain("the engine owns");
+    expect(system).not.toContain("explain the engine");
+    expect(system).not.toContain("say the engine handles that");
+  });
+
+  it("describes a foundation with no training yet as not started, never as missing data", async () => {
+    await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
+
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
+
+    expect(system).toContain("no current movement, tier 0, and chain length 0 means the user has not started it yet");
+    expect(system).toContain("you haven't started pull or core yet");
+    expect(system).toContain("never call it missing data, 'no progression chain shown'");
+    expect(system).toContain("never call it flat or stuck");
+    expect(system).toContain("name any foundation they have not started yet");
+    // The rule that the app owns every session survives the vocabulary change.
+    expect(system).toContain("the app builds every session");
+    expect(system).toContain("the app owns every session");
+    expect(system).toContain("talking only");
+  });
 });
 
 describe("abuse gate", () => {
