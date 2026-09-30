@@ -41,7 +41,8 @@ The captain wants the foundations to read the way people talk about strength: Pu
    Grandfathering would mean storing a per-user "cleared under the old rules" record, a second definition of clearing that the gate and the surfaces would both have to honour forever.
    Recalculating keeps one definition, and it is safe because an earned Strength Phase is never revoked: the ratchet lives in the persisted `User.phase` and is untouched, so the change can only affect users who have not yet earned Strength.
    A one-time note on the Progress tab's climb card says the foundations are now Push, Pull, Legs, Core and where the user stands.
-   It uses the same persisted one-shot pattern as the other first-run notes (`AppState.hasSeenFoundationsUpdateNote`) and is shown to every install that predates the change while its user still has the climb card.
+   It uses the same persisted one-shot pattern as the other first-run notes (`AppState.hasSeenFoundationsUpdateNote`) and is shown to every install that predates the change when its climb card is rendered.
+   An existing user with no history keeps the unseen note until their first session makes that card appear; eligibility alone never consumes it.
    The note is intentionally limited to Discipline users who still have that climb card.
    Strength users have no climb card, keep their ratcheted phase and historical progression, and see the recalculated Push, Pull, Legs and Core foundations directly on the progression map instead of receiving the note.
    It never reaches a brand-new user: finishing onboarding on this build marks it seen, which also covers someone who deletes their account and starts over.

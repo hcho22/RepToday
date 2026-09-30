@@ -16,8 +16,8 @@ struct ProgressTabView: View {
     @State private var showPaywall = false
 
     /// Whether the one-time "foundations are now Push, Pull, Legs, Core" note (ADR-0006) is up on the
-    /// climb card. Decided once after the first load; the persisted one-shot flag is flipped the moment
-    /// it is decided (like the other first-run notes), so it never returns on a later launch.
+    /// climb card. Decided when that card appears; the persisted one-shot flag is flipped when the note
+    /// itself appears, so an empty state cannot consume a note it never rendered.
     @State private var showFoundationsNote = false
 
     /// Optional so the tab still renders when hosted without an `AppState` (previews, evidence suites);
@@ -76,7 +76,6 @@ struct ProgressTabView: View {
         }
         .task {
             await viewModel.load()
-            presentFoundationsNoteIfNeeded()
         }
         .sheet(isPresented: $showPaywall) {
             // The paywall accepts the exact verified grant into the shared authority before dismissal
@@ -110,8 +109,10 @@ struct ProgressTabView: View {
                         PhaseProgressCard(
                             progress: progress,
                             showsFoundationsNote: showFoundationsNote,
+                            onShowFoundationsNote: { appState?.markFoundationsUpdateNoteSeen() },
                             onDismissFoundationsNote: { showFoundationsNote = false }
                         )
+                        .onAppear(perform: presentFoundationsNoteIfNeeded)
                     }
 
                     ScoreTrendCard(trend: viewModel.trend)
@@ -151,14 +152,13 @@ struct ProgressTabView: View {
         }
     }
 
-    /// Raises the one-time foundations note for an install that predates the change, once. The flag is
-    /// flipped as the note is decided, so a force-quit with it up cannot bring it back.
+    /// Raises the one-time foundations note for an install that predates the change, once its climb
+    /// card is on screen. The note itself persists that it was shown when it appears.
     private func presentFoundationsNoteIfNeeded() {
         guard !showFoundationsNote,
               let appState,
               appState.shouldShowFoundationsUpdateNote,
               viewModel.isFoundationsUpdateNoteEligible else { return }
-        appState.markFoundationsUpdateNoteSeen()
         showFoundationsNote = true
     }
 
@@ -1347,6 +1347,7 @@ private struct PhaseProgressCard: View {
     let progress: PhaseProgress
     /// Whether the one-time foundations note (ADR-0006) is up at the top of the card.
     var showsFoundationsNote = false
+    var onShowFoundationsNote: () -> Void = {}
     var onDismissFoundationsNote: () -> Void = {}
 
     var body: some View {
@@ -1362,6 +1363,7 @@ private struct PhaseProgressCard: View {
 
             if showsFoundationsNote {
                 FoundationsUpdateNote(progress: progress, onDismiss: onDismissFoundationsNote)
+                    .onAppear(perform: onShowFoundationsNote)
             }
 
             consistencySection

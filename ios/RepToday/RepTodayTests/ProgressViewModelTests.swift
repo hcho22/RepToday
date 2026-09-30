@@ -222,20 +222,6 @@ final class ProgressViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isFoundationsUpdateNoteEligible)
     }
 
-    /// Every pre-update user with a climb card is eligible even without foundation work. A brand-new
-    /// install is excluded by `AppState` marking the one-shot seen during onboarding.
-    func testUntrainedDisciplineUsersAreEligibleForTheFoundationsNote() async {
-        let showUpsOnly = makeViewModel(user: onboardedUser(), logs: week(weeksAgo: 0, count: 3))
-        await showUpsOnly.load()
-        XCTAssertTrue(showUpsOnly.showsClimbCard)
-        XCTAssertTrue(showUpsOnly.isFoundationsUpdateNoteEligible)
-
-        let fresh = makeViewModel(user: onboardedUser(), logs: [])
-        await fresh.load()
-        XCTAssertTrue(fresh.showsClimbCard)
-        XCTAssertTrue(fresh.isFoundationsUpdateNoteEligible)
-    }
-
     /// Skipped work does not exclude a Discipline user; a Strength user has no climb card to host the
     /// note.
     func testSkippedWorkIsEligibleButStrengthUsersAreNotEligibleForTheFoundationsNote() async {

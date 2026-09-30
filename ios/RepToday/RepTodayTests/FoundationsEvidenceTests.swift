@@ -146,9 +146,9 @@ final class FoundationsEvidenceTests: XCTestCase {
 
     /// Hosts `view` in `look`, returning the host view for reading and the cropped capture.
     ///
-    /// Async on purpose: the tab's own `.task` (its reload, and the one-time note decided after it) runs
-    /// on the main actor, which a synchronous test never yields, so the render yields between pumps.
-    /// `ready` names the state the caller wants on screen (e.g. the one-time note having been decided);
+    /// Async on purpose: the tab's own `.task` and the climb card's note presentation run on the main
+    /// actor, which a synchronous test never yields, so the render yields between pumps.
+    /// `ready` names the state the caller wants on screen (e.g. the one-time note having appeared);
     /// the render waits, bounded, for it before capturing.
     ///
     /// The appearance is set once, through `HostedSurface.host(style:)`, and never again on the window:
@@ -225,6 +225,40 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertTrue(appState.hasSeenFoundationsUpdateNote)
     }
 
+    func testExistingEmptyInstallKeepsNoteUntilClimbCardAppears() async {
+        let appState = makeAppState(existingInstall: true, suite: "FoundationsEvidence.emptyThenClimb")
+        let emptyViewModel = makeViewModel(logs: [], phase: .discipline, premium: false)
+
+        let (emptyRoot, _) = await render(
+            ProgressTabView(viewModel: emptyViewModel).environment(appState),
+            look: .light,
+            height: 1200
+        )
+
+        XCTAssertFalse(has("Your climb to Strength", in: emptyRoot))
+        XCTAssertFalse(has("Your foundations are now", in: emptyRoot))
+        XCTAssertTrue(appState.shouldShowFoundationsUpdateNote)
+
+        let historyViewModel = makeViewModel(logs: showUps(weeks: 1), phase: .discipline, premium: false)
+        let (historyRoot, _) = await render(
+            ProgressTabView(viewModel: historyViewModel).environment(appState),
+            look: .light,
+            height: 7000,
+            until: { !appState.shouldShowFoundationsUpdateNote }
+        )
+
+        XCTAssertTrue(has("Your climb to Strength", in: historyRoot))
+        XCTAssertTrue(has("Your foundations are now Push, Pull, Legs, and Core", in: historyRoot))
+        XCTAssertFalse(appState.shouldShowFoundationsUpdateNote)
+
+        let (laterRoot, _) = await render(
+            ProgressTabView(viewModel: historyViewModel).environment(appState),
+            look: .light,
+            height: 7000
+        )
+        XCTAssertFalse(has("Your foundations are now", in: laterRoot))
+    }
+
     // MARK: - Mid-climb user whose count drops
 
     func testMidClimbUserSeesTheNoteOnceAndTheRecalculatedFoundations() async throws {
@@ -248,7 +282,7 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertTrue(has("Your foundations are now Push, Pull, Legs, and Core", in: firstRoot), "\(labels(firstRoot))")
         XCTAssertTrue(has("2 of 4 cleared (Push, Core)", in: firstRoot), "the note states where the user stands")
         XCTAssertTrue(has("Got it", in: firstRoot))
-        XCTAssertFalse(appState.shouldShowFoundationsUpdateNote, "shown once: the flag flips as it is decided")
+        XCTAssertFalse(appState.shouldShowFoundationsUpdateNote, "shown once: the flag flips when the note appears")
         try EvidenceOutput.write(firstImage, named: "02-mid-climb-note-light.png", for: story)
 
         // The tab, the map, and the journey read the same recalculated standing.
