@@ -188,6 +188,8 @@ final class CoachContextBundleTests: XCTestCase {
             recentLogs: []
         )
         XCTAssertEqual(bundle.chainPositions.map(\.pattern), ["push", "pull", "squat", "hinge", "core"])
+        XCTAssertEqual(bundle.chainPositions.map(\.foundation), ["push", "pull", "legs", "legs", "core"])
+        XCTAssertEqual(bundle.chainPositions.compactMap(\.foundationSide), ["squat", "hinge"])
     }
 
     // MARK: - Wire shape: only non-identifying fields leave the device
@@ -201,6 +203,11 @@ final class CoachContextBundleTests: XCTestCase {
                     line: line(.push),
                     currentExercise: exercise(id: "push_standard", name: "Standard Push-Up", pattern: .push),
                     tier: 3, chainLength: 7, hasNextTier: true
+                ),
+                ChainPositionSummary(
+                    line: line(.hinge),
+                    currentExercise: exercise(id: "hinge_bridge", name: "Glute Bridge", pattern: .hinge),
+                    tier: 1, chainLength: 5, hasNextTier: true
                 ),
             ],
             consistencyTrend: trend([40, 72]),
@@ -218,8 +225,11 @@ final class CoachContextBundleTests: XCTestCase {
         let chain = try XCTUnwrap((object["chainPositions"] as? [[String: Any]])?.first)
         XCTAssertEqual(
             Set(chain.keys),
-            ["pattern", "currentExercise", "tier", "chainLength", "hasNextTier"]
+            ["pattern", "foundation", "currentExercise", "tier", "chainLength", "hasNextTier"]
         )
+        let hinge = try XCTUnwrap((object["chainPositions"] as? [[String: Any]])?.last)
+        XCTAssertEqual(hinge["foundation"] as? String, "legs")
+        XCTAssertEqual(hinge["foundationSide"] as? String, "hinge")
         let consistency = try XCTUnwrap(object["consistency"] as? [String: Any])
         XCTAssertEqual(Set(consistency.keys), ["currentScore", "direction"])
 
@@ -275,6 +285,14 @@ final class CoachContextBundleTests: XCTestCase {
         XCTAssertEqual(push?.trend, "climbing")
         XCTAssertEqual(hinge?.trend, "flat")
         XCTAssertEqual(hinge?.weeksAtCurrentTier, 4)
+
+        let data = try JSONEncoder().encode(bundle)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let encodedHinge = try XCTUnwrap((object["strengthJourney"] as? [[String: Any]])?.first {
+            $0["pattern"] as? String == "hinge"
+        })
+        XCTAssertEqual(encodedHinge["foundation"] as? String, "legs")
+        XCTAssertEqual(encodedHinge["foundationSide"] as? String, "hinge")
     }
 
     /// With no strength history the journey summary is simply empty - never a fabricated trend.

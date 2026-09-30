@@ -30,6 +30,10 @@ struct CoachContextBundle: Encodable, Equatable {
     struct ChainSummary: Encodable, Equatable {
         /// The foundation line's movement pattern (push / pull / squat / hinge / core).
         let pattern: String
+        /// The user-facing foundation (push / pull / legs / core).
+        var foundation: String { foundationLabels(for: pattern).foundation }
+        /// The side within Legs (`squat` / `hinge`), or `nil` for a single-line foundation.
+        var foundationSide: String? { foundationLabels(for: pattern).side }
         /// The frontier movement's display name, or `nil` when the line has never been trained.
         /// A catalog string shared by every user - not identifying.
         let currentExercise: String?
@@ -39,6 +43,21 @@ struct CoachContextBundle: Encodable, Equatable {
         let chainLength: Int
         /// Whether a harder tier exists above the frontier (the "next up" the user climbs toward).
         let hasNextTier: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case pattern, foundation, foundationSide, currentExercise, tier, chainLength, hasNextTier
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(pattern, forKey: .pattern)
+            try container.encode(foundation, forKey: .foundation)
+            try container.encodeIfPresent(foundationSide, forKey: .foundationSide)
+            try container.encodeIfPresent(currentExercise, forKey: .currentExercise)
+            try container.encode(tier, forKey: .tier)
+            try container.encode(chainLength, forKey: .chainLength)
+            try container.encode(hasNextTier, forKey: .hasNextTier)
+        }
     }
 
     /// One foundation line's coarse strength-journey trend (US-AN02), so the coach can narrate a
@@ -51,12 +70,30 @@ struct CoachContextBundle: Encodable, Equatable {
     struct JourneySummary: Encodable, Equatable {
         /// The foundation line's movement pattern (push / pull / squat / hinge / core).
         let pattern: String
+        /// The user-facing foundation (push / pull / legs / core).
+        var foundation: String { foundationLabels(for: pattern).foundation }
+        /// The side within Legs (`squat` / `hinge`), or `nil` for a single-line foundation.
+        var foundationSide: String? { foundationLabels(for: pattern).side }
         /// Its coarse trajectory: `climbing`, `flat`, or `steady`.
         let trend: String
         /// Whole weeks sat at the current frontier tier - the "flat about N weeks" number.
         let weeksAtCurrentTier: Int
         /// Whether the user has advanced at least one tier on this chain, ever.
         let hasAdvanced: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case pattern, foundation, foundationSide, trend, weeksAtCurrentTier, hasAdvanced
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(pattern, forKey: .pattern)
+            try container.encode(foundation, forKey: .foundation)
+            try container.encodeIfPresent(foundationSide, forKey: .foundationSide)
+            try container.encode(trend, forKey: .trend)
+            try container.encode(weeksAtCurrentTier, forKey: .weeksAtCurrentTier)
+            try container.encode(hasAdvanced, forKey: .hasAdvanced)
+        }
     }
 
     /// The consistency signal, summarized to a coarse current level plus a direction - never the
@@ -193,5 +230,16 @@ struct CoachContextBundle: Encodable, Equatable {
             direction = .steady
         }
         return ConsistencySummary(currentScore: current, direction: direction)
+    }
+}
+
+private func foundationLabels(for pattern: String) -> (foundation: String, side: String?) {
+    switch pattern {
+    case MovementPattern.squat.rawValue:
+        return (StrengthFoundation.legs.rawValue, MovementPattern.squat.rawValue)
+    case MovementPattern.hinge.rawValue:
+        return (StrengthFoundation.legs.rawValue, MovementPattern.hinge.rawValue)
+    default:
+        return (pattern, nil)
     }
 }
