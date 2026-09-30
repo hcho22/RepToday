@@ -105,8 +105,8 @@ struct CoachAnalyticsInsightOffer: Equatable {
     let stalledPattern: MovementPattern
     /// How many whole weeks it has sat at its frontier tier - the "flat about N weeks" number.
     let stalledWeeks: Int
-    /// A pattern (foundation line) that is climbing, if any, so the coach can name the gain beside the stall ("your
-    /// push is climbing, your hinge has been flat"). `nil` when nothing is clearly climbing.
+    /// A pattern whose foundation line is climbing, so the coach can name the gain beside the stall.
+    /// `nil` when nothing is clearly climbing.
     let climbingPattern: MovementPattern?
 
     /// The stalled foundation line, for naming its side in the narration.

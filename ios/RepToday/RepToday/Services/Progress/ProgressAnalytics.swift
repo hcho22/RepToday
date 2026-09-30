@@ -191,9 +191,9 @@ struct ProgressAnalytics: Equatable {
     /// derived it (the chain containing the frontier `currentExercise`), so the "you are here" marker
     /// reuses that logic rather than re-deriving position from the logs. A line the user has never
     /// trained (`currentExercise == nil`) has no frontier to key off, so it defaults to the line's
-    /// **canonical chain** - the counting chain that carries the phase-gated summit - so a fresh user
-    /// still previews the climb with its locked top rung; the choice is deterministic (that chain, or
-    /// the lowest counting chain id when none has a strength summit). Pull has one counting chain, so
+    /// **canonical chain**, preferring a counting chain with a phase-gated summit for the preview.
+    /// The choice is deterministic: the lowest chain id with such a summit, or the lowest counting
+    /// chain id when none has one. Pull has one counting chain and no Strength-Phase summit, so
     /// its ladder is always the horizontal chain, whatever the user has trained.
     ///
     /// A rung is **locked** iff it is a Strength-Phase skill the user has not earned, read through the

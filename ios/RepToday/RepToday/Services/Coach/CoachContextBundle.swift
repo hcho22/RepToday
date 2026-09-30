@@ -42,9 +42,9 @@ struct CoachContextBundle: Encodable, Equatable {
 
     }
 
-    /// One foundation line's coarse strength-journey trend (US-AN02), so the coach can narrate a
-    /// concrete "your push is climbing, your hinge has been flat about 3 weeks" insight. Derived from
-    /// the same dated milestones the premium strength-journey analytics (US-AN01) show the user, via
+    /// One foundation line's coarse strength-journey trend (US-AN02), for a line-specific progress
+    /// insight. Derived from the dated milestones the premium strength-journey analytics (US-AN01)
+    /// show the user, via
     /// `CoachStrengthJourneyReader`, so the coach's read can never disagree with the Progress tab.
     ///
     /// Deliberately coarse and non-identifying: a pattern, a direction, and a whole-week count - never
@@ -92,8 +92,7 @@ struct CoachContextBundle: Encodable, Equatable {
     let recentPatterns: [String]
     /// The coarse consistency summary.
     let consistency: ConsistencySummary
-    /// Per-line strength-journey trend (US-AN02), in `StrengthFoundation.allLines` order - so the coach
-    /// can narrate a concrete "your push is climbing, your hinge has been flat" insight. Empty when
+    /// Per-line strength-journey trend (US-AN02), in `StrengthFoundation.allLines` order. Empty when
     /// there is no strength history to read yet.
     let strengthJourney: [JourneySummary]
 

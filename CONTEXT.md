@@ -54,10 +54,10 @@ Introduced by US-SP01 (`Services/Engine/ExercisePoolFilter.swift`); its PRD is `
 ## Foundation
 
 What the user clears to earn the Strength Phase.
-There are exactly four foundations, always listed in this order: **Push, Pull, Legs, Core** (`StrengthFoundation`, `Models/StrengthFoundation.swift`).
+There are exactly four foundations, always listed in this order: **Push, Pull, Legs, Core**.
 A foundation is not a movement pattern.
-Movement patterns (`MovementPattern`) are the engine's staleness and variety buckets and are unchanged: squat and hinge stay separate patterns in session assembly, and pull stays an ordinary strength pattern.
-A foundation is what the *user* is asked to clear, and it is made of one or more **lines**, each a movement pattern plus the progression chains whose entry rung counts (`FoundationLine`).
+Movement patterns are the engine's staleness and variety buckets: squat and hinge stay separate patterns in session assembly, and pull stays an ordinary strength pattern.
+A foundation is what the *user* is asked to clear, and it is made of one or more **lines**, each a movement pattern plus the progression chains whose entry rung counts.
 **Legs** groups two lines, a **Squat side** and a **Hinge side**, and is cleared only when both are.
 Push, Pull and Core have one line each.
 A line is cleared when a logged, non-skipped performance of the entry rung (lowest progression order) of any one of its counting chains meets that rung's advancement criteria.
@@ -72,8 +72,7 @@ Each foundation's counting ladder:
 
 The Strength Phase is earned when all four foundations are cleared and the Consistency Score has been sustained above 80 for about eight weeks; an earned Strength Phase is never revoked, so a change to the foundations can only change what a Discipline user still has to clear.
 Pull's ladder ends at Single-Arm Supine Floor Row with no locked Strength-Phase rung, because a Pull top rung needs equipment and the zero-equipment rule stands until the planned Phase 2 equipment work.
-The Progress tab, the premium strength journey, the Coach's analytics insights and the Coach's requestable emphasis words all read `StrengthFoundation`, so the gate and every surface track the same five lines (Push, Pull, the Squat and Hinge sides of Legs, Core); "legs" as a Coach request nudges the Squat and Hinge lines together, while their own words still tune one side.
-The decision is recorded as [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md); the owning code is `Models/StrengthFoundation.swift`, `PhaseEvaluator`, and `ProgressAnalytics`.
+The rationale, presentation, Coach behavior and existing-user recalculation are recorded in [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md).
 
 ## Back injury area
 

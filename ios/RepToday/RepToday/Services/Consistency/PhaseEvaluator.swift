@@ -267,8 +267,8 @@ struct PhaseProgress: Equatable {
 /// library, delegating the entire decision to the pure, deterministic `PhaseEvaluator`.
 final class PhaseEvaluatorService: PhaseServiceProtocol {
 
-    /// Supplies the validated catalog the competence signal needs to resolve each foundational
-    /// pattern's entry tier and its advancement criteria.
+    /// Supplies the validated catalog the competence signal needs to resolve each foundation line's
+    /// counting-chain entry tiers and their advancement criteria.
     private let exerciseService: any ExerciseServiceProtocol
 
     /// A clock seam so the service stays deterministic under test; production uses `Date.init`.

@@ -226,11 +226,11 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertTrue(appState.hasSeenFoundationsUpdateNote)
     }
 
-    func testExistingEmptyInstallKeepsNoteUntilClimbCardAppears() async {
+    func testExistingEmptyInstallKeepsNoteUntilClimbCardAppears() async throws {
         let appState = makeAppState(existingInstall: true, suite: "FoundationsEvidence.emptyThenClimb")
         let emptyViewModel = makeViewModel(logs: [], phase: .discipline, premium: false)
 
-        let (emptyRoot, _) = await render(
+        let (emptyRoot, emptyImage) = await render(
             ProgressTabView(viewModel: emptyViewModel).environment(appState),
             look: .light,
             height: 1200
@@ -239,9 +239,10 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertFalse(has("Your climb to Strength", in: emptyRoot))
         XCTAssertFalse(has("Your foundations are now", in: emptyRoot))
         XCTAssertTrue(appState.shouldShowFoundationsUpdateNote)
+        try EvidenceOutput.write(emptyImage, named: "00-existing-empty-before-first-session.png", for: story)
 
         let historyViewModel = makeViewModel(logs: showUps(weeks: 1), phase: .discipline, premium: false)
-        let (historyRoot, _) = await render(
+        let (historyRoot, historyImage) = await render(
             ProgressTabView(viewModel: historyViewModel).environment(appState),
             look: .light,
             height: 7000,
@@ -251,6 +252,7 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertTrue(has("Your climb to Strength", in: historyRoot))
         XCTAssertTrue(has("Your foundations are now Push, Pull, Legs, and Core", in: historyRoot))
         XCTAssertFalse(appState.shouldShowFoundationsUpdateNote)
+        try EvidenceOutput.write(historyImage, named: "00-existing-first-climb-note.png", for: story)
 
         let (laterRoot, _) = await render(
             ProgressTabView(viewModel: historyViewModel).environment(appState),

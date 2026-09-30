@@ -49,7 +49,7 @@ The captain wants the foundations to read the way people talk about strength: Pu
 
 5. **One definition, five lines.**
    The Progress tab shows Legs as one foundation with a Squat side and a Hinge side, each with its own tick, current movement, ladder and dated climb.
-   The Legs header reads Cleared only when both sides are, and "1 of 2" before that; the headline stays "N of 4 foundations cleared" in the order Push, Pull, Legs, Core.
+   The Legs header reads Cleared only when both sides are; otherwise it shows the cleared-side count ("0 of 2" or "1 of 2"). The headline stays "N of 4 foundations cleared" in the order Push, Pull, Legs, Core.
    The premium strength journey and the Coach's analytics insights track the same five lines, and an insight names the side ("the hinge side of your legs has been flat for 3 weeks") and offers to emphasize exactly that pattern.
    The Coach recognizes Pull words (pull, row, back, upper back) and "legs" as a request that nudges squat and hinge together; the existing squat and hinge words keep working for finer control through the existing emphasis control, so the coach write path and its safety rules (ADR-0005) are unchanged.
 
@@ -61,7 +61,7 @@ The captain wants the foundations to read the way people talk about strength: Pu
 
 ## Consequences
 
-- The gate and every surface read one definition, so they cannot drift: adding or changing a foundation is a change to `StrengthFoundation` and nothing else.
+- Native foundation membership and counting chains have one definition in `StrengthFoundation`, shared by the gate and the native surfaces. The proxy's separate prompt maps the stable wire keys to this vocabulary; its contract is documented in [proxy/README.md](../../proxy/README.md).
 - `MovementPattern`, the exercise catalog, session assembly and the zero-equipment rule are unchanged.
 - Some Discipline users' foundation counts drop on update (Pull is new and Legs now needs both sides), and it can take them longer to earn Strength than it would have.
   The note explains it, and the recalculation is honest: it reflects what the user has actually demonstrated on the ladders that now count.

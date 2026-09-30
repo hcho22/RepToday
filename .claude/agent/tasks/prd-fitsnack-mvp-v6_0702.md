@@ -506,7 +506,7 @@ Discipline overrides optimization by design: a Return after a gap is served easy
 
 **Acceptance Criteria:**
 
-- [x] A real `PhaseEvaluator` replaces `MockPhaseService`: returns `.strength` only when both hold - Consistency Score sustained above threshold over a rolling window (e.g. >= 80% over ~8 weeks) and the foundational chains' entry tiers cleared (push/squat/hinge/core)
+- [x] A real `PhaseEvaluator` replaces `MockPhaseService`: returns `.strength` only when both hold - Consistency Score sustained above threshold over a rolling window (e.g. >= 80% over ~8 weeks) and the [foundations](../../../CONTEXT.md#foundation) cleared under the counting rules amended by [ADR-0006](../../../docs/adr/0006-foundations-push-pull-legs-core.md)
 - [x] Consistency-only or competence-only stays `.discipline`; a fresh user is `.discipline`
 - [x] Phase is never user-selectable; the transition is a gradual ramp, framed as honest stewardship (never failure) for a consistent-but-not-advancing user
 - [x] New `PhaseEvaluatorTests` cover: consistency-only stays Discipline, competence-only stays Discipline, both-met promotes, fresh user Discipline; build and tests pass

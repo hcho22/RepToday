@@ -124,7 +124,7 @@ struct ProgressTabView: View {
 
                     if let analytics = viewModel.analytics {
                         // The free legibility layer (US-M02): everyone sees where their training is
-                        // balanced, where they stand in each foundational pattern, and their bests.
+                        // balanced, where they stand on each foundation line, and their bests.
                         PillarBalanceCard(shares: analytics.pillarBalance)
                         ChainPositionCard(positions: analytics.chainPositions)
                         ProgressionMapCard(map: analytics.progressionMap, phase: viewModel.phase)

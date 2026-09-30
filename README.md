@@ -82,8 +82,10 @@ There is no XP, no levels, and no badges in the MVP.
 
 - **Consistency Score** - a rolling, weighted measure of showing up; a 5-minute session counts as a full show-up, and recent weeks weigh more.
 - **Longest chain** - tracked and surfaced as an earned point of pride, never as a threat.
-- **Progress tab** - the reflection surface: a calendar marking every completed day, a Consistency Score trend chart (each point the real forgiving score sampled at an earlier week's vantage, so the chart's right edge always equals the headline number), the longest chain surfaced as pride, a free "visible climb" toward the earned Strength Phase (the two real earn signals - weeks of steady practice and foundations cleared - shown to a Discipline-Phase user from the same logic that gates the phase), a free progression map (a read-only ladder for each foundation - Push, Pull, Legs with its Squat and Hinge sides, and Core - marking where you stand and which Strength-Phase rungs are still locked, previewable but never selectable), and a legibility layer (pillar balance, progression-chain position, personal bests) with deeper analytics gated behind premium - all reading real workout history.
+- **Progress tab** - the reflection surface: a calendar marking every completed day, a Consistency Score trend chart (each point the real forgiving score sampled at an earlier week's vantage, so the chart's right edge always equals the headline number), the longest chain surfaced as pride, a free "visible climb" toward the earned Strength Phase (the two real earn signals - weeks of steady practice and foundations cleared - shown to a Discipline-Phase user from the same logic that gates the phase), a free progression map (read-only ladders for the [foundations](CONTEXT.md#foundation), marking where you stand and any still-locked Strength-Phase rungs, previewable but never selectable), and a legibility layer (pillar balance, progression-chain position, personal bests) with deeper analytics gated behind premium - all reading real workout history.
 - **Identity-framed copy** - "you're someone who moves," never loss-framed.
+
+The [foundation update decision](docs/adr/0006-foundations-push-pull-legs-core.md) explains existing-user recalculation and the one-time note on the climb card.
 
 ### Premium AI Coach
 
