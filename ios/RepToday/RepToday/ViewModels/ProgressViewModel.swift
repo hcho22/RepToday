@@ -69,7 +69,11 @@ final class ProgressViewModel {
     /// to be shown: on the climb card, to a user who has trained a foundation. Whether it has already
     /// been shown is `AppState`'s persisted one-shot flag, and a brand-new user is excluded there (they
     /// onboarded on this build), so this never decides "once".
-    var isFoundationsUpdateNoteEligible: Bool { showsClimbCard && hasTrainedFoundation }
+    var isFoundationsUpdateNoteEligible: Bool {
+        // Strength users have no climb card; their ratcheted phase stays earned, and the progression
+        // map shows the recalculated foundations directly.
+        showsClimbCard && hasTrainedFoundation
+    }
 
     /// Whether the user has any completed history at all. Drives the empty state vs. the populated
     /// calendar/trend/score surfaces.
