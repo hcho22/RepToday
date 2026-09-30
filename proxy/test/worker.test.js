@@ -473,15 +473,44 @@ describe("POST /coach", () => {
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
     const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
 
-    expect(system).toContain("no current movement, tier 0, and chain length 0 means the user has not started it yet");
-    expect(system).toContain("you haven't started pull or core yet");
+    expect(system).toContain("no current movement, tier 0, and chain length 0 has no progress yet");
+    expect(system).toContain("if it does not, the user has not started that line: say so plainly - 'you haven't started pull or core yet'");
     expect(system).toContain("never call it missing data, 'no progression chain shown'");
     expect(system).toContain("never call it flat or stuck");
-    expect(system).toContain("name any foundation they have not started yet");
+    expect(system).toContain("name any foundation line with no progress yet, worded as the not-started rule above says");
     // The rule that the app owns every session survives the vocabulary change.
     expect(system).toContain("the app builds every session");
     expect(system).toContain("the app owns every session");
     expect(system).toContain("talking only");
+  });
+
+  it("acknowledges recent work on a not-started foundation line instead of saying it was never done", async () => {
+    const context = {
+      ...CONTEXT,
+      chainPositions: CONTEXT.chainPositions.map((line) =>
+        line.pattern === "pull"
+          ? { pattern: "pull", tier: 0, chainLength: 0, hasNextTier: false }
+          : line,
+      ),
+      recentPatterns: ["pull", "push", "squat"],
+    };
+    await worker.fetch(coachRequest({ context, message: "how am I doing?" }), ENV);
+
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
+    const sent = JSON.parse(upstreamBody.input.split("\n")[1]);
+
+    expect(sent.chainPositions.find(({ pattern }) => pattern === "pull")).toEqual({
+      pattern: "pull", tier: 0, chainLength: 0, hasNextTier: false,
+    });
+    expect(sent.recentPatterns).toContain("pull");
+    expect(system).toContain("how you describe it depends on whether recentpatterns includes that line's pattern");
+    expect(system).toContain(
+      "if it does, the user did some of that work recently, so never say they haven't started it or haven't done it: " +
+        "acknowledge the recent work, then say that line's progress itself has not started yet - " +
+        "'you've been doing some pull work lately, but your pull progress hasn't started yet'",
+    );
+    expect(system).toContain("for pull, that work so far has usually been supporting work that doesn't count toward pull");
   });
 });
 
