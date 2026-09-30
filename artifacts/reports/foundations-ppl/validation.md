@@ -11,7 +11,7 @@ The one-time note is driven by a real `AppState` over an isolated `UserDefaults`
 
 | Seeded user | State | Images |
 | --- | --- | --- |
-| Fresh (new install, one session) | Every foundation not started, Legs "0 of 2", no note (onboarded on this build) | `01-fresh-*.png` |
+| Fresh (new install, one short Push session) | Push started but uncleared; every other foundation not started; Legs "0 of 2"; no note (onboarded on this build) | `01-fresh-*.png` |
 | Mid-climb (existing install, 8 steady weeks) | Push and Core cleared, Legs "1 of 2" (squat side only), Pull not started (postural work only), so the count drops to 2 of 4 and the one-time note is shown once | `02-mid-climb-note-light.png`, `05-mid-climb-note-dark.png`, `04-mid-climb-note-large.png` |
 | Strength (earned, history would not clear Pull) | No climb card, no note, Strength rungs unlocked, ratchet holds | `06-strength-*.png` |
 | Graduation reveal | Names only the Push, Legs and Core ladders as gaining Strength-Phase movements | `07-graduation-*.png` |
@@ -22,7 +22,7 @@ The one-time note is driven by a real `AppState` over an isolated `UserDefaults`
 - "Where you stand": "Pull, not started yet" although the user has postural pull sessions; Squat and Hinge sides each show their own movement.
 - Map: Pull's ladder is Wall Scapular Pull, Supine Floor Row, Single-Arm Supine Floor Row, with no locked rung; Superman Hold never appears on the Pull ladder or the journey.
 - Journey (premium): a "Legs, squat side journey" and no Pull journey until the horizontal chain is worked.
-- Note: shown on first appearance with "2 of 4 cleared (Push, Core)", the one-shot flag flips as it is decided, and a later appearance over the same `AppState` does not show it again.
+- Note: shown on first appearance with "2 of 4 cleared (Push, Core)", the one-shot flag flips when the note actually appears on the climb card, and a later appearance over the same `AppState` does not show it again.
 - Strength user: no climb card and no note, although the evaluator alone reads their history as not clearing Pull; the persisted phase is what the tab reads.
 - Graduation copy no longer promises a Strength-Phase skill at the top of every foundation.
 

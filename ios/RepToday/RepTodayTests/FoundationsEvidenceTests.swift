@@ -9,8 +9,9 @@ import UIKit
 ///
 /// Three users are seeded, each rendered in light, dark and at a large Dynamic Type size:
 ///
-/// - **fresh** - a brand-new install with a first session: every foundation "not started", and no
-///   foundations note (they onboarded on this build, so there is nothing to explain);
+/// - **fresh** - a brand-new install with one short Push session: Push started but uncleared, every
+///   other foundation "not started", and no foundations note (they onboarded on this build, so there
+///   is nothing to explain);
 /// - **mid-climb** - an existing install whose count drops under the new rules: Push, Core and the
 ///   Squat side of Legs cleared under the old four, but Pull never trained on its horizontal chain (only
 ///   the postural chain, which never counts) and Legs' Hinge side still open, so 2 of 4 now and the
