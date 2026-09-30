@@ -33,10 +33,20 @@ Reviewing the large-type renders turned up text wrapping into slivers, so these 
 - Legs' side rows and statuses ("Hinge / side", "In / progress") now put the status under the name when the row is too narrow (`StatusRow`, `TitleNoteRow`).
 - "Where you stand" stacks the name above the movement at accessibility sizes.
 - The note's "Got it" button uses the primary text colour, since the accent colour was close to invisible on the dark button.
+- "Where you stand" keeps every movement in one column: a Squat or Hinge side indents only its label inside the shared name column, so "Bodyweight Squat" and "Glute Bridge" line up with "Standard Push-Up" and "Forearm Plank".
 - Unrelated but on the same screen: the consistency headline no longer hyphenates "consistency" beside the score, the consistency-over-time chart no longer overprints its week labels, and the pillar and pattern share bars stack their label above the bar instead of wrapping "Strength" into "Streng-th".
+
+## Dark-mode accent: harness artifact, not app behaviour
+
+The first dark renders showed the light-appearance accent (dark teal, about #2E4F61) on near-black.
+The real app is correct: launched in the Simulator in dark appearance it draws the lighter dark-variant accent (about #788F9E) on its Continue button, and a bare accent fill hosted through `HostedSurface.host` in dark also came out as the dark variant.
+The cause was in `FoundationsEvidenceTests`: it set `hostedWindow.overrideUserInterfaceStyle` after hosting, on top of the style `HostedSurface.host` already applies, and that left dark surfaces resolving the accent for the light appearance.
+Removing the window override (the appearance now comes only from `HostedSurface.host(style:)`) fixes it; the dark ticks, "93", "8 of 8 weeks" and "You're here" now render in the lighter accent.
+No app change was needed.
+The other checks that did not matter: the accessibility tree being read before capture, the pump loop, the previous window still being visible, and the downscale step.
 
 ## Not covered
 
 Live VoiceOver and Reduce Motion behaviour are captain-verifiable manual QA, as for the other Progress-tab surfaces.
 Hosted renders exercise the production views, not a cold launch of a real upgraded install.
-The accent colour on dark backgrounds ("You're here" notes) is low contrast across the whole app and was left alone.
+The dark-variant accent is a muted grey-blue by design, so accent text on dark surfaces is softer than body text; that is the app's palette and was left alone.

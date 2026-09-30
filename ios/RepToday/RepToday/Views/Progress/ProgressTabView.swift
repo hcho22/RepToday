@@ -594,7 +594,6 @@ private struct ChainPositionCard: View {
                                 .foregroundStyle(Theme.Colors.textPrimary)
                                 .accessibilityAddTraits(.isHeader)
                             ForEach(group.items) { row($0) }
-                                .padding(.leading, Theme.Spacing.md)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
@@ -608,6 +607,9 @@ private struct ChainPositionCard: View {
         .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
     }
 
+    /// The name column: wide enough for an indented "Squat side" beside the movement.
+    private let nameColumnWidth: CGFloat = 112
+
     private func row(_ position: ChainPositionSummary) -> some View {
         // A fixed name column beside the movement at normal sizes; at accessibility sizes the name sits
         // above the movement instead, so neither is squeezed into a narrow wrapped column.
@@ -616,10 +618,13 @@ private struct ChainPositionCard: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Theme.Spacing.md))
         return layout {
+            // A side of a shared foundation indents its *label* only, inside the same name column, so the
+            // movement column lines up down every row (Push, Pull, both sides of Legs, Core).
             Text(position.line.sideLabel)
                 .font(Theme.Typography.body)
                 .foregroundStyle(position.line.isSideOfSharedFoundation ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
-                .frame(width: stacked ? nil : 96, alignment: .leading)
+                .padding(.leading, position.line.isSideOfSharedFoundation ? Theme.Spacing.md : 0)
+                .frame(width: stacked ? nil : nameColumnWidth, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 2) {
                 if let exercise = position.currentExercise {

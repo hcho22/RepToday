@@ -148,42 +148,46 @@ final class FoundationsEvidenceTests: XCTestCase {
     ///
     /// Async on purpose: the tab's own `.task` (its reload, and the one-time note decided after it) runs
     /// on the main actor, which a synchronous test never yields, so the render yields between pumps.
-    private func render<V: View>(_ view: V, look: Look, width: CGFloat = 393, height: CGFloat) async -> (root: UIView, capture: () -> UIImage) {
+    /// `ready` names the state the caller wants on screen (e.g. the one-time note having been decided);
+    /// the render waits, bounded, for it before capturing.
+    ///
+    /// The appearance is set once, through `HostedSurface.host(style:)`, and never again on the window:
+    /// overriding the window's style after hosting left a dark surface resolving the app's accent colour
+    /// for the light appearance (dark teal on near-black), so the dark evidence was not faithful to the app.
+    private func render<V: View>(
+        _ view: V, look: Look, width: CGFloat = 393, height: CGFloat, until ready: () -> Bool = { true }
+    ) async -> (root: UIView, image: UIImage) {
         let (host, hostedWindow) = HostedSurface.host(view.dynamicTypeSize(look.typeSize), size: CGSize(width: width, height: height), settleFor: 0.5, style: look.style)
-        hostedWindow.overrideUserInterfaceStyle = look.style
-        for _ in 0..<15 {
+        var pumps = 0
+        while pumps < 15 || (!ready() && pumps < 55) {
             await Task.yield()
             HostedSurface.pump(for: 0.3)
+            pumps += 1
         }
         window?.isHidden = true
         window = hostedWindow
         let root = host.view!
-        // Captured on demand, after the caller has asserted the surface is in the state it wants to show
-        // (the tab's own `.task` may still be settling the one-time note when the pump loop ends).
-        let capture: () -> UIImage = { [self] in
-            root.setNeedsLayout()
-            root.layoutIfNeeded()
-            HostedSurface.pump(for: 0.5)
-            var captureHeight = height
-            if let scroll = firstScrollView(in: root) {
-                let bottom = scroll.convert(CGPoint(x: 0, y: scroll.contentSize.height), to: root).y + scroll.adjustedContentInset.bottom
-                if bottom > 0 { captureHeight = min(height, ceil(bottom)) }
-            }
-            // `layer.render(in:)` resolves dynamic colours against the *current* trait collection.
-            var image = UIImage()
-            UITraitCollection(userInterfaceStyle: look.style).performAsCurrent {
-                image = HostedSurface.capture(root, size: CGSize(width: width, height: captureHeight))
-            }
-            // These are full scrolling surfaces (up to ~10,000pt tall), so they are committed at 1x rather
-            // than the shared 3x to keep the repository small; text stays legible.
-            let target = CGSize(width: image.size.width, height: image.size.height)
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 1
-            return UIGraphicsImageRenderer(size: target, format: format).image { _ in
-                image.draw(in: CGRect(origin: .zero, size: target))
-            }
+        root.setNeedsLayout()
+        root.layoutIfNeeded()
+        HostedSurface.pump(for: 0.5)
+        var captureHeight = height
+        if let scroll = firstScrollView(in: root) {
+            let bottom = scroll.convert(CGPoint(x: 0, y: scroll.contentSize.height), to: root).y + scroll.adjustedContentInset.bottom
+            if bottom > 0 { captureHeight = min(height, ceil(bottom)) }
         }
-        return (root, capture)
+        // `layer.render(in:)` resolves dynamic colours against the *current* trait collection.
+        var image = UIImage()
+        UITraitCollection(userInterfaceStyle: look.style).performAsCurrent {
+            image = HostedSurface.capture(root, size: CGSize(width: width, height: captureHeight))
+        }
+        // These are full scrolling surfaces (up to ~10,000pt tall), so they are committed at 1x rather
+        // than the shared 3x to keep the repository small; text stays legible.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let committed = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+        return (root, committed)
     }
 
     private func firstScrollView(in view: UIView) -> UIScrollView? {
@@ -208,7 +212,7 @@ final class FoundationsEvidenceTests: XCTestCase {
         let appState = makeAppState(existingInstall: false, suite: "FoundationsEvidence.fresh")
 
         for look in Look.allCases {
-            let (root, capture) = await render(ProgressTabView(viewModel: viewModel).environment(appState), look: look, height: 7000)
+            let (root, image) = await render(ProgressTabView(viewModel: viewModel).environment(appState), look: look, height: 7000)
 
             XCTAssertTrue(has("0 of 4 cleared", in: root), "\(look): \(labels(root))")
             XCTAssertTrue(has("Push, in progress", in: root))
@@ -216,7 +220,7 @@ final class FoundationsEvidenceTests: XCTestCase {
             XCTAssertTrue(has("Pull, in progress", in: root))
             XCTAssertFalse(has("Your foundations are now", in: root), "a brand-new install never sees the note")
             XCTAssertTrue(has("Legs, hinge side, not started yet", in: root), "\(look)")
-            try EvidenceOutput.write(capture(), named: "01-fresh-\(look.rawValue).png", for: story)
+            try EvidenceOutput.write(image, named: "01-fresh-\(look.rawValue).png", for: story)
         }
         XCTAssertTrue(appState.hasSeenFoundationsUpdateNote)
     }
@@ -237,12 +241,15 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertTrue(appState.shouldShowFoundationsUpdateNote)
 
         // First appearance: the note is on the climb card, and the one-shot flag flips immediately.
-        let (firstRoot, firstCapture) = await render(ProgressTabView(viewModel: viewModel).environment(appState), look: .light, height: 9000)
+        let (firstRoot, firstImage) = await render(
+            ProgressTabView(viewModel: viewModel).environment(appState), look: .light, height: 9000,
+            until: { !appState.shouldShowFoundationsUpdateNote }
+        )
         XCTAssertTrue(has("Your foundations are now Push, Pull, Legs, and Core", in: firstRoot), "\(labels(firstRoot))")
         XCTAssertTrue(has("2 of 4 cleared (Push, Core)", in: firstRoot), "the note states where the user stands")
         XCTAssertTrue(has("Got it", in: firstRoot))
         XCTAssertFalse(appState.shouldShowFoundationsUpdateNote, "shown once: the flag flips as it is decided")
-        try EvidenceOutput.write(firstCapture(), named: "02-mid-climb-note-light.png", for: story)
+        try EvidenceOutput.write(firstImage, named: "02-mid-climb-note-light.png", for: story)
 
         // The tab, the map, and the journey read the same recalculated standing.
         XCTAssertTrue(has("2 of 4 cleared", in: firstRoot))
@@ -264,12 +271,18 @@ final class FoundationsEvidenceTests: XCTestCase {
 
         // The large-type render with the note up, to check the note itself at accessibility sizes.
         let noteAgain = makeAppState(existingInstall: true, suite: "FoundationsEvidence.midClimbLarge")
-        let (largeRoot, largeCapture) = await render(ProgressTabView(viewModel: viewModel).environment(noteAgain), look: .large, height: 16000)
+        let (largeRoot, largeImage) = await render(
+            ProgressTabView(viewModel: viewModel).environment(noteAgain), look: .large, height: 16000,
+            until: { !noteAgain.shouldShowFoundationsUpdateNote }
+        )
         XCTAssertTrue(has("Your foundations are now Push, Pull, Legs, and Core", in: largeRoot))
-        try EvidenceOutput.write(largeCapture(), named: "04-mid-climb-note-large.png", for: story)
+        try EvidenceOutput.write(largeImage, named: "04-mid-climb-note-large.png", for: story)
         let darkAgain = makeAppState(existingInstall: true, suite: "FoundationsEvidence.midClimbDark")
-        let (_, darkCapture) = await render(ProgressTabView(viewModel: viewModel).environment(darkAgain), look: .dark, height: 9000)
-        try EvidenceOutput.write(darkCapture(), named: "05-mid-climb-note-dark.png", for: story)
+        let (_, darkImage) = await render(
+            ProgressTabView(viewModel: viewModel).environment(darkAgain), look: .dark, height: 9000,
+            until: { !darkAgain.shouldShowFoundationsUpdateNote }
+        )
+        try EvidenceOutput.write(darkImage, named: "05-mid-climb-note-dark.png", for: story)
     }
 
     // MARK: - Strength user
@@ -287,13 +300,13 @@ final class FoundationsEvidenceTests: XCTestCase {
         XCTAssertEqual(viewModel.phase, .strength)
 
         for look in Look.allCases {
-            let (root, capture) = await render(ProgressTabView(viewModel: viewModel).environment(appState), look: look, height: 9000)
+            let (root, image) = await render(ProgressTabView(viewModel: viewModel).environment(appState), look: look, height: 9000)
             XCTAssertFalse(has("Your climb to Strength", in: root), "an earned Strength user has no climb card")
             XCTAssertFalse(has("Your foundations are now", in: root))
             XCTAssertTrue(has("Assisted One-Arm Push-Up, You're here", in: root), "\(look): \(labels(root))")
             XCTAssertTrue(has("One-Arm Push-Up, Strength skill - unlocked", in: root), "the summit reads unlocked, not locked")
             XCTAssertTrue(has("Pull ladder. Not started yet", in: root), "postural-only Pull has not started its horizontal ladder")
-            try EvidenceOutput.write(capture(), named: "06-strength-\(look.rawValue).png", for: story)
+            try EvidenceOutput.write(image, named: "06-strength-\(look.rawValue).png", for: story)
         }
     }
 
@@ -301,12 +314,12 @@ final class FoundationsEvidenceTests: XCTestCase {
 
     func testGraduationRevealNamesLaddersThatHaveAStrengthTop() async throws {
         for look in Look.allCases {
-            let (root, capture) = await render(StrengthGraduationRevealView(onDismiss: {}), look: look, height: look == .large ? 2600 : 852)
+            let (root, image) = await render(StrengthGraduationRevealView(onDismiss: {}), look: look, height: look == .large ? 2600 : 852)
             let spoken = AccessibilityTree.spokenStrings(in: root).joined(separator: " ").lowercased()
             XCTAssertTrue(spoken.contains("push, legs, and core ladders"), "\(look): \(spoken)")
             XCTAssertFalse(spoken.contains("top of each foundation"), "no copy promises a Strength top on every foundation")
             XCTAssertFalse(spoken.contains("skill at the top"), spoken)
-            try EvidenceOutput.write(capture(), named: "07-graduation-\(look.rawValue).png", for: story)
+            try EvidenceOutput.write(image, named: "07-graduation-\(look.rawValue).png", for: story)
         }
     }
 }
