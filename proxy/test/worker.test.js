@@ -500,7 +500,8 @@ describe("POST /coach", () => {
     expect(system).toContain("movement patterns that appeared in their recent sessions");
     expect(system).not.toContain("trained recently");
     expect(system).toContain("never call it missing data, 'no progression chain shown'");
-    expect(system).toContain("never call it flat or stuck");
+    expect(system).toContain("a not-started line is not a stall, so never call it flat or stuck.");
+    expect(system).not.toContain("build toward");
     expect(system).toContain("name any foundation line with no progress yet, worded as the not-started rule above says");
     expect(system).toContain("pull is tracked only on its horizontal ladder; postural pull work is accessory work");
     // The rule that the app owns every session survives the vocabulary change.
