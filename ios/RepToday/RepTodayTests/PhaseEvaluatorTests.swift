@@ -328,10 +328,11 @@ final class PhaseEvaluatorTests: XCTestCase {
 
     /// An entry logged but not *cleared* (fell short of the criteria) does not count as competence.
     func testUnclearedEntryDoesNotCountAsCompetence() {
-        // Push short of 3x15 (only 10 reps), the other three fully cleared.
+        // Push short of 3x15 (only 10 reps), every other foundation line fully cleared.
         let short = clearingLog(exerciseId: "push_wall", pattern: .push, isHold: false, value: 10)
         let logs = sustainedHistory(weeks: 8) + [short]
             + [
+                clearingLog(exerciseId: "pull_scap", pattern: .pull, isHold: false, value: 12),
                 clearingLog(exerciseId: "squat_wall", pattern: .squat, isHold: true, value: 45),
                 clearingLog(exerciseId: "hinge_bridge", pattern: .hinge, isHold: false, value: 20),
                 clearingLog(exerciseId: "core_plank", pattern: .core, isHold: true, value: 30),
