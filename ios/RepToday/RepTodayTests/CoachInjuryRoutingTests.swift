@@ -25,7 +25,10 @@ final class CoachInjuryRoutingTests: XCTestCase {
         let cases: [(String, InjuryOption)] = [
             ("my knee's cranky today", .knees),
             ("shoulder is really sore after yesterday", .shoulders),
-            ("I tweaked my lower back moving a couch", .lowerBack),
+            ("I tweaked my upper back moving a couch", .back),
+            ("my lower back is aching", .back),
+            ("low back pain today", .back),
+            ("my lumbar area is sore", .back),
             ("is planking safe with a sore wrist?", .wrists),
             ("my ankle has been aching all week", .ankles),
             ("hip flexor pain when I squat", .hips),
@@ -185,8 +188,8 @@ final class CoachInjuryRoutingTests: XCTestCase {
         }
     }
 
-    /// "back" as a direction is not the lower back, even beside a complaint about something else.
-    func testDirectionalBackIsNotTheLowerBack() {
+    /// "back" as a direction is not the body area, even beside a complaint about something else.
+    func testDirectionalBackIsNotTheBackArea() {
         XCTAssertNil(CoachInjurySignalMapper.routing(for: "can you back off the volume? nothing hurts, I'm just tired"),
                      "\"back off\" is not a body part")
         XCTAssertEqual(CoachInjurySignalMapper.routing(for: "getting back into it and my knee hurts")?.area, .knees,

@@ -62,10 +62,15 @@ final class OnboardingInjuryVocabularyTests: XCTestCase {
     /// rename that would orphan already-stored profiles fails here.
     func testInjuryTagsAreStable() {
         XCTAssertEqual(InjuryOption.knees.tag, "knees")
-        XCTAssertEqual(InjuryOption.lowerBack.tag, "lower_back")
+        XCTAssertEqual(InjuryOption.back.tag, "back")
         XCTAssertEqual(InjuryOption.shoulders.tag, "shoulders")
         XCTAssertEqual(InjuryOption.wrists.tag, "wrists")
         XCTAssertEqual(InjuryOption.ankles.tag, "ankles")
         XCTAssertEqual(InjuryOption.hips.tag, "hips")
+    }
+
+    func testBackRecognizesCurrentAndLegacyStoredTags() {
+        XCTAssertTrue(InjuryOption.back.isFlagged(in: ["back"]))
+        XCTAssertTrue(InjuryOption.back.isFlagged(in: ["lower_back"]))
     }
 }

@@ -64,7 +64,7 @@ enum CoachInjurySignalMapper {
         // deterministically.
         let mentions: [(offset: Int, area: InjuryOption)] = InjuryOption.allCases.flatMap { area in
             wordOffsets(of: keywords(for: area), in: text)
-                .filter { offset in area != .lowerBack || !directionalBackSpans.contains { $0.contains(offset) } }
+                .filter { offset in area != .back || !directionalBackSpans.contains { $0.contains(offset) } }
                 .map { (offset: $0, area: area) }
         }
         guard !mentions.isEmpty else { return nil }
@@ -103,7 +103,7 @@ enum CoachInjurySignalMapper {
     private static func keywords(for area: InjuryOption) -> [String] {
         switch area {
         case .knees: return ["knee", "kneecap"]
-        case .lowerBack: return ["lower back", "low back", "lumbar", "back"]
+        case .back: return ["upper back", "lower back", "low back", "lumbar", "back"]
         case .shoulders: return ["shoulder", "rotator cuff", "delt"]
         case .wrists: return ["wrist"]
         case .ankles: return ["ankle", "achilles"]
@@ -128,7 +128,7 @@ enum CoachInjurySignalMapper {
         "bother", "bothering", "acting up", "flaring", "flare up", "twinge",
     ]
 
-    /// Phrases where "back" is a direction, not the lower back.
+    /// Phrases where "back" is a direction, not the body area.
     private static let directionalBackPhrases = [
         "back off", "back to", "back up", "back down", "back into", "back in",
         "get back", "getting back", "come back", "coming back", "went back", "back at", "back on",

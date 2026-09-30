@@ -230,6 +230,7 @@ final class CoachPolicyWriteTests: XCTestCase {
             "can we do more rows?",
             "I want to work on my upper back",
             "more back work please",
+            "focus my lower back",
             "lean into pulling",
             "focus on my lats",
         ] {
@@ -243,9 +244,20 @@ final class CoachPolicyWriteTests: XCTestCase {
                           SessionPolicy.neutralEmphasis)
     }
 
+    func testMapperGroupsBackWithPullAndShouldersWithPush() {
+        let back = CoachIntentMapper.proposal(for: "focus my back")
+        XCTAssertGreaterThan(back?.patternEmphasis[.pull] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertNil(back?.patternEmphasis[.push])
+
+        let shoulders = CoachIntentMapper.proposal(for: "focus my shoulders")
+        XCTAssertGreaterThan(shoulders?.patternEmphasis[.push] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertNil(shoulders?.patternEmphasis[.pull])
+    }
+
     func testMapperSuppressesPatternEmphasisForActiveInjurySignals() {
         for message in [
             "my upper back hurts more today",
+            "my lower back is sore, more core please",
             "my shoulder is sore, less push please",
             "my knee hurts; focus my legs",
         ] {
@@ -260,12 +272,11 @@ final class CoachPolicyWriteTests: XCTestCase {
     }
 
     /// "back" and "row" borrowed by an idiom name no pattern: "cut back", "back off", "get back to",
-    /// "in a row", and a "lower back" (an area to protect) are not asking about Pull.
+    /// and "in a row" are not asking about Pull.
     func testMapperDoesNotReadPullOutOfIdioms() throws {
         for message in [
             "let's get back to focus on push",
             "I trained three days in a row, focus on my core",
-            "my lower back is sore, more core please",
             "bring back more push",
         ] {
             let proposal = try XCTUnwrap(CoachIntentMapper.proposal(for: message), message)

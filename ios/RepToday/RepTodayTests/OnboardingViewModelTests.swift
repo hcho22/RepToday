@@ -36,7 +36,7 @@ final class OnboardingViewModelTests: XCTestCase {
         vm.fitnessLevel = .beginner
         vm.whyStatement = "  get on the floor with my grandkids  "
         vm.sitsLong = true
-        vm.selectedInjuries = [.knees, .lowerBack]
+        vm.selectedInjuries = [.knees, .back]
         vm.durationMinutes = 15
     }
 

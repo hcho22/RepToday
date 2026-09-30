@@ -123,9 +123,10 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(InjuryContraindication.patterns(forInjury: "Knees"), [.squat])
         XCTAssertEqual(InjuryContraindication.patterns(forInjury: "knee"), [.squat])
         XCTAssertEqual(InjuryContraindication.patterns(forInjury: "knee "), [.squat])
-        // "lower_back" / "lower back" collapse to the lowerback key.
-        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower_back"), [.hinge])
-        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower back"), [.hinge])
+        // Current and legacy Back tags both protect Pull and Hinge.
+        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "back"), [.pull, .hinge])
+        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower_back"), [.pull, .hinge])
+        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower back"), [.pull, .hinge])
     }
 
     func testUnknownInjuryContraindicatesNothing() {
@@ -196,6 +197,22 @@ final class ExercisePoolFilterTests: XCTestCase {
             from: library, user: user(injuries: ["knees"]), recentLogs: []
         )
         XCTAssertEqual(pool.map(\.id), ["push1", "hinge1"])
+    }
+
+    func testBackFilterRemovesPullAndHingeForCurrentAndLegacyTags() {
+        let library = [
+            exercise(id: "push1", pattern: .push),
+            exercise(id: "pull1", pattern: .pull),
+            exercise(id: "hinge1", pattern: .hinge),
+            exercise(id: "core1", pattern: .core),
+        ]
+
+        for tag in ["back", "lower_back"] {
+            let pool = ExercisePoolFilter.eligiblePool(
+                from: library, user: user(injuries: [tag]), recentLogs: []
+            )
+            XCTAssertEqual(pool.map(\.id), ["push1", "core1"], "failed for stored tag \(tag)")
+        }
     }
 
     func testRecentSkipFilterRemovesAfterMoreThanThreeSkips() {

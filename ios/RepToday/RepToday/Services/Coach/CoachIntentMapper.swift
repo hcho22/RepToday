@@ -84,7 +84,7 @@ enum CoachIntentMapper {
     /// `back` is the loosest of them, so it is only read outside the idioms in `borrowedWordPhrases`.
     private static func keywords(for pattern: MovementPattern) -> [String] {
         switch pattern {
-        case .push: return ["push", "press", "chest", "upper body"]
+        case .push: return ["push", "press", "chest", "shoulder", "upper body"]
         case .pull: return ["pull", "row", "back", "upper back", "lats"]
         case .squat: return ["squat", "quad"]
         case .hinge: return ["hinge", "deadlift", "glute", "hamstring", "posterior"]
@@ -110,11 +110,11 @@ enum CoachIntentMapper {
     private static let easeCues = ["easier", "ease up", "take it easy", "go easy", "too hard", "back off", "lighter", "less intense"]
     private static let narrowVarietyCues = ["moves i know", "same moves", "familiar", "less variety", "stop changing", "keep it familiar"]
     /// Phrases that borrow a pattern word without asking about the pattern ("back off", "cut back",
-    /// "in a row", "lower back" - an area to protect, not the pull pattern).
+    /// "in a row").
     private static let borrowedWordPhrases = [
         "cut back", "back off", "back to", "back on", "back into", "back in", "back from", "back down",
         "get back", "getting back", "got back", "come back", "coming back", "bring back", "go back",
-        "going back", "in a row", "lower back",
+        "going back", "in a row",
     ]
 
     // MARK: - Proposed (pre-clamp) values

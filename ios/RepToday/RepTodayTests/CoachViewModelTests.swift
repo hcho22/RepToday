@@ -684,7 +684,7 @@ final class CoachViewModelTests: XCTestCase {
         viewModel.draft = "my upper back hurts more today"
         await viewModel.send()
 
-        XCTAssertEqual(viewModel.injuryRoutingOffer?.area, .lowerBack, "the coach offers to route, naming the area")
+        XCTAssertEqual(viewModel.injuryRoutingOffer?.area, .back, "the coach offers to route, naming the area")
         let injuries = try await userService.currentUser()?.profile.injuries
         XCTAssertEqual(injuries, [], "the coach never sets an injury flag")
         let stored = try await store.policy(for: "coach-injury-user")

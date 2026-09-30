@@ -105,6 +105,26 @@ final class InjuryFlagsViewModelTests: XCTestCase {
                        "no duplicate knee tag is appended; got \(stored)")
     }
 
+    func testLegacyLowerBackFlagReadsAsBackAndKeepsFullProtection() async throws {
+        let service = MockUserService(user: makeUser(injuries: ["lower_back"]))
+        let viewModel = makeViewModel(service)
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.isSelected(.back))
+        XCTAssertEqual(
+            InjuryContraindication.contraindicatedPatterns(for: ["lower_back"]),
+            [.pull, .hinge]
+        )
+
+        viewModel.toggle(.hips)
+        await viewModel.save()
+
+        let stored = try await storedInjuries(service)
+        XCTAssertTrue(stored.contains("lower_back"), "the legacy spelling is preserved")
+        XCTAssertFalse(stored.contains(InjuryOption.back.tag), "the current tag is not duplicated beside it")
+    }
+
     /// SwiftUI can run a screen's load task more than once. A second load must not wipe what the user
     /// has staged, re-stage an area they just switched back off, or - as it once did - leave the screen
     /// reading as un-loaded so its confirmation renders inert.

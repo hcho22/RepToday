@@ -75,6 +75,11 @@ Pull's ladder ends at Single-Arm Supine Floor Row with no locked Strength-Phase 
 The Progress tab, the premium strength journey, the Coach's analytics insights and the Coach's requestable emphasis words all read `StrengthFoundation`, so the gate and every surface track the same five lines (Push, Pull, the Squat and Hinge sides of Legs, Core); "legs" as a Coach request nudges the Squat and Hinge lines together, while their own words still tune one side.
 The decision is recorded as [ADR-0006](docs/adr/0006-foundations-push-pull-legs-core.md); the owning code is `Models/StrengthFoundation.swift`, `PhaseEvaluator`, and `ProgressAnalytics`.
 
+## Back injury area
+
+The single protectable **Back** area covers both upper and lower back complaints and excludes Pull and Hinge work.
+**Shoulders** is distinct and excludes Push and Pull work.
+
 ## Two-Writer Policy Safety
 
 `SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).

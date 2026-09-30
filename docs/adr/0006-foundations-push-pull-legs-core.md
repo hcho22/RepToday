@@ -52,6 +52,12 @@ The captain wants the foundations to read the way people talk about strength: Pu
    The premium strength journey and the Coach's analytics insights track the same five lines, and an insight names the side ("the hinge side of your legs has been flat for 3 weeks") and offers to emphasize exactly that pattern.
    The Coach recognizes Pull words (pull, row, back, upper back) and "legs" as a request that nudges squat and hinge together; the existing squat and hinge words keep working for finer control through the existing emphasis control, so the coach write path and its safety rules (ADR-0005) are unchanged.
 
+6. **Back is one injury area.**
+   Adding Pull makes upper-back complaints relevant to the same safety control that previously named only Lower back, so the area is now Back and covers both upper and lower back.
+   Back contraindicates Pull and Hinge; Shoulders remains distinct and contraindicates Push and Pull.
+   Previously stored `lower_back` flags and current `back` flags both receive the full Back protection, so no existing user loses a safety filter.
+   In a tuning request, back words nudge Pull and shoulder words nudge Push; a complaint routes to injury handling before either can produce an emphasis write.
+
 ## Consequences
 
 - The gate and every surface read one definition, so they cannot drift: adding or changing a foundation is a change to `StrengthFoundation` and nothing else.
