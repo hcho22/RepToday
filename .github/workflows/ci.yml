@@ -37,6 +37,11 @@ jobs:
         run: npm ci --prefix proxy
       - name: Verify runtime, native doubles, filtering and restoration guards
         run: bash tools/test-coach-final-diagnostics.sh
+      # Compiles the client with COACH_STAGING and runs the staging-only safety
+      # tests (CoachStagingTests etc.) that keep staging diagnostics and labels
+      # out of production. Offline: no Apple service, Keychain or network.
+      - name: Coach client tests with COACH_STAGING (staging safety gate)
+        run: bash tools/test-coach-runtime-client.sh
 
   # ---------------------------------------------------------------------------
   # Toolchain 1: Convex telemetry sink (repo root, TypeScript) - Linux.
