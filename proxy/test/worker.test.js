@@ -372,13 +372,13 @@ describe("POST /coach", () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "why squats today?" }), ENV);
 
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    const system = upstreamBody.instructions.toLowerCase();
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
 
     // The load-bearing safety invariant (AC3): talking only, never a generated/edited workout.
     expect(system).toContain("never generate");
     expect(system).toContain("talking only");
     // The target intents (AC2): why-this-workout, form, injury-with-flag, and boredom/variety.
-    expect(system).toContain("stalest");
+    expect(system).toContain("explain the app's reasoning from the context - the area they have gone longest without");
     expect(system).toContain("form");
     expect(system).toContain("flag that area themselves");
     expect(system).toContain("never diagnose");
@@ -441,33 +441,35 @@ describe("POST /coach", () => {
     ]);
   });
 
-  it("keeps internal machinery out of replies and teaches the app's own vocabulary", async () => {
+  it("sends instructions that forbid internal terms in replies and name the app's own vocabulary", async () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
 
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
     const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
 
-    // The forbidden-terms instruction names every internal term the model must not say.
-    expect(system).toContain("never say or quote these internal terms or field names in a reply");
-    for (const term of [
-      "engine", "deterministic", "stalest", "progression chain", "frontier", "consistency signal",
+    const forbiddenTerms = [
+      "engine", "deterministic", "stalest", "chain", "progression chain", "frontier", "consistency signal",
       "chainpositions", "strengthjourney", "recentpatterns", "pattern keys", "hasnexttier",
-    ]) {
-      expect(system).toContain(term);
-    }
-    expect(system).toContain("say 'rep today' or 'the app' where you would have said 'the engine'");
+    ];
+    expect(system).toContain(
+      `never say or quote these internal terms or field names in a reply: ${forbiddenTerms.join(", ")}, ` +
+        "or the context bundle. say 'rep today' or 'the app' where you would have said 'the engine'.",
+    );
 
     // The user-facing vocabulary the Progress tab already shows.
     expect(system).toContain("'consistency', 'tier 2 of 4', 'next tier in reach', 'strength phase', and 'not started yet'");
     expect(system).toContain("the area you've gone longest without");
 
-    // Outside the forbidden-terms list, no sentence tells the model to talk about the engine.
-    expect(system).not.toContain("the engine owns");
-    expect(system).not.toContain("explain the engine");
-    expect(system).not.toContain("say the engine handles that");
+    // Every answer instruction the model follows speaks in those plain words, never the internal ones.
+    const answerRules = system.slice(system.indexOf("rules you must follow exactly:"));
+    for (const term of [...forbiddenTerms, "pattern"]) {
+      expect(answerRules).not.toContain(term);
+    }
+    expect(answerRules).toContain("the app rotates which areas they train and avoids repeating recent ones");
+    expect(answerRules).toContain("leaning the program toward that exact line (for example the hinge side of legs)");
   });
 
-  it("sends a neutral not-started rule and never treats recent patterns as completed work", async () => {
+  it("sends a neutral not-started rule and marks recent patterns as not proof of completed work", async () => {
     const context = {
       ...CONTEXT,
       chainPositions: CONTEXT.chainPositions.map((line) =>

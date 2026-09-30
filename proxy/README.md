@@ -147,7 +147,7 @@ Content-Type: application/json
 ### Response
 
 ```json
-{ "reply": "You got squats because squat was your stalest pattern this week..." }
+{ "reply": "Squats are in today because the Squat side of Legs is the area you've gone longest without..." }
 ```
 
 A provider safety refusal is a successful, non-retryable outcome with no provider-authored text:
@@ -170,25 +170,18 @@ On any problem the proxy returns a non-2xx with `{ "error": "<code>" }`
 `upstream_unreachable`, `upstream_error`, `upstream_bad_json`, `empty_reply`). Every non-2xx and
 malformed body is handled identically by the client: surface a non-blocking error; never block the app.
 
-The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02): it covers the
-target intents - "why this workout?" (the engine's stalest-pattern reasoning), "how do I do
-<movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" / any mention of
-pain or injury (general, non-diagnostic guidance + invite the user to flag that area themselves in
-the app's injury settings), "I'm bored" (variety is built in), and "how am I doing?" - narrate a
-concrete insight from the strength-journey trend now in the context (name what is climbing and what
-has gone flat and for how long) - in the app's identity-framed, never-shaming voice. The load-bearing
-invariant it enforces first is that the coach only ever **talks**: it never generates, edits, or
-prescribes a workout (the deterministic on-device engine owns every session and all safety). US-AC08
-hardened the injury half of that boundary: the persona now states the coach **cannot set, clear, or
-read** the injury flag - only the user can, only in that screen - and must never say or imply that it
-has flagged an area, removed a movement, or changed anything (it speaks in the future tense about what
-the user can do), the model-side half of "the coach's language never implies it has already removed
-movements". US-AN02 extended the same posture to the strength-journey narration: the persona may offer
-to lean the program toward a stalled pattern but must never claim to have already changed anything
-(the app applies the preference). Changing the persona is covered by
-`test/worker.test.js` ("sends a persona that forbids generating a workout and names the target
-intents and voice", "sends a persona that forbids setting or claiming an injury filter", and "sends a
-persona that narrates the strength journey and offers only a bounded preference").
+The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02).
+It covers the target intents: "why this workout?" (the app's reasoning, such as the area the user has gone longest without), "how do I do <movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" or any mention of pain or injury (general, non-diagnostic guidance plus an invitation to flag that area themselves in the app's injury settings), "I'm bored" (variety is built in), and "how am I doing?" (a concrete insight from the strength-journey trend in the context, naming what is climbing and what has gone flat and for how long).
+It answers in the app's identity-framed, never-shaming voice.
+The load-bearing invariant it enforces first is that the coach only ever **talks**: it never generates, edits, or prescribes a workout (the deterministic on-device engine owns every session and all safety).
+US-AC08 hardened the injury half of that boundary: the persona states the coach **cannot set, clear, or read** the injury flag (only the user can, only in that screen) and must never say or imply that it has flagged an area, removed a movement, or changed anything, speaking in the future tense about what the user can do.
+That is the model-side half of "the coach's language never implies it has already removed movements".
+US-AN02 extended the same posture to the strength-journey narration: the persona may offer to lean the program toward a stalled line but must never claim to have already changed anything (the app applies the preference).
+Replies use the app's own plain words.
+The persona forbids internal terms and field names in a reply (among them "engine", "stalest", "chain", "consistency signal" and the context field names) and points the model at the words the Progress tab shows ("Consistency", "Tier 2 of 4", "next tier in reach", "Strength Phase", "Not started yet").
+A foundation line with no tracked progress is described as its progress not having started yet, never as missing data or a stall.
+That wording is a statement about tracked progress only: `recentPatterns` lists the patterns that appeared in recent sessions, which can include skipped steps, so the model is told never to treat it as proof of completed work.
+Changing the persona is covered by `test/worker.test.js` ("sends a persona that forbids generating a workout and names the target intents and voice", "sends a persona that forbids setting or claiming an injury filter", "sends a persona that narrates the strength journey and offers only a bounded preference", "teaches the four foundations and side-aware Legs narration in the emitted model request", "sends instructions that forbid internal terms in replies and name the app's own vocabulary", and "sends a neutral not-started rule and marks recent patterns as not proof of completed work").
 
 ## Tests and typecheck
 
