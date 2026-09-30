@@ -175,15 +175,18 @@ async function boundedText(response, maximum) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-// Two no-model probes. A fresh workers.dev script may need a moment before it answers, so only the
-// first probe may wait (404, 5xx or no response), bounded; every answer must carry its exact label.
+// Two no-model probes. A fresh workers.dev script may need a moment before it answers, so either
+// probe may wait (404, 5xx or no response) under one shared deadline and attempt budget for the whole phase, so
+// worst-case time stays bounded; every answer must carry its exact label.
 export async function stagingProbes(origin, fetchImpl = fetch, {
   now = () => performance.now(), wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
 } = {}) {
   const deadline = now() + 60_000;
   const probes = [[{}, 'worker_envelope/missing_proof'], [{ 'X-RepToday-Coach-Auth': '{}' }, 'worker_envelope/proof_envelope']];
-  for (const [index, [headers, label]] of probes.entries()) {
-    for (let attempt = 1; ; attempt++) {
+  let attempts = 0;
+  for (const [headers, label] of probes) {
+    while (true) {
+      attempts++;
       let status = null, text = null, observed = null, redirected = true;
       try {
         const response = await fetchImpl(origin, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
@@ -192,7 +195,7 @@ export async function stagingProbes(origin, fetchImpl = fetch, {
         observed = response.headers.get(LABEL_HEADER); text = await boundedText(response, 256);
       } catch {} // Classified below by what was observed; nothing from the failure is kept.
       if (status === 401 && !redirected && text === '{"error":"unauthorized"}' && observed === label) break;
-      requireThat(index === 0 && attempt < 6 && (status === null || status === 404 || status >= 500) &&
+      requireThat(attempts < 12 && (status === null || status === 404 || status >= 500) &&
         deadline - now() > 5_000, 'probe');
       await wait(5_000);
     }
