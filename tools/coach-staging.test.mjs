@@ -222,7 +222,7 @@ test('inspect is read-only and reports absent or a verified staging Worker', asy
   assert.ok(f.state.calls.every(call => call.method === 'GET'));
 });
 
-test('staging probes require the exact labelled denial and only the first may wait for a new workers.dev route', async () => {
+test('staging probes require the exact labelled denial and both may wait, under one shared bound, for a new workers.dev route', async () => {
   const clock = () => { let t = 0; const waits = []; return { now: () => t, wait: async ms => { waits.push(ms); t += ms; }, waits }; };
   const answer = (options, label) => new Response('{"error":"unauthorized"}', { status: 401,
     headers: { 'X-RepToday-Coach-Diagnostic': label ?? (options.headers['X-RepToday-Coach-Auth'] ? 'worker_envelope/proof_envelope' : 'worker_envelope/missing_proof') } });
@@ -237,15 +237,29 @@ test('staging probes require the exact labelled denial and only the first may wa
     ['wrong label', async options => answer(options, 'worker_state/denied')],
     ['missing label', async () => new Response('{"error":"unauthorized"}', { status: 401 })],
     ['extra body', async options => new Response('{"error":"unauthorized","x":1}', { status: 401, headers: answer(options).headers })],
-    ['second probe unavailable', async options => options.headers['X-RepToday-Coach-Auth'] ? new Response('', { status: 503 }) : answer(options)],
   ]) {
     c = clock();
     await assert.rejects(stagingProbes(origin, async (url, options) => impl(options), c), stopped('probe'), name);
-    if (name !== 'second probe unavailable') assert.deepEqual(c.waits, [], name);
+    assert.deepEqual(c.waits, [], name);
   }
+  // A slow-starting Worker whose second probe does not answer at first passes within the shared window.
+  c = clock(); let slow = 0;
+  await stagingProbes(origin, async (url, options) => options.headers['X-RepToday-Coach-Auth'] && ++slow <= 3 ?
+    new Response('', { status: 503 }) : answer(options), c);
+  assert.deepEqual(c.waits, [5000, 5000, 5000]);
+  // The window is shared: a slow first probe leaves the second only what remains.
+  c = clock(); let a = 0, b = 0;
+  await assert.rejects(stagingProbes(origin, async (url, options) => options.headers['X-RepToday-Coach-Auth'] ?
+    (++b, new Response('', { status: 503 })) : ++a <= 5 ? new Response('', { status: 404 }) : answer(options), c), stopped('probe'));
+  assert.ok(c.waits.length < 12 && c.waits.length >= 6);
+  // A second probe that never answers still fails with the named line, bounded.
+  c = clock();
+  await assert.rejects(stagingProbes(origin, async (url, options) => options.headers['X-RepToday-Coach-Auth'] ?
+    new Response('', { status: 503 }) : answer(options), c), stopped('probe'));
+  assert.ok(c.waits.length <= 11);
   c = clock();
   await assert.rejects(stagingProbes(origin, async () => new Response('', { status: 404 }), c), stopped('probe'));
-  assert.equal(c.waits.length, 5);
+  assert.equal(c.waits.length, 11); // bounded by the shared 60s window
 });
 
 test('failure output is one closed stop code', () => {
