@@ -336,7 +336,7 @@ Output: Workout ready to play. Latency target < 100ms.
 A `PhaseEvaluator` (deterministic) decides the user's phase. A user is in the **Strength Phase** only when **both** hold:
 
 1. **Consistency:** Consistency Score sustained above a threshold over a rolling window (e.g. ≥80% over ~8 recent weeks).
-2. **Competence:** the user has advanced through the foundational progression chains (e.g. cleared the entry tiers of push, squat, hinge, core).
+2. **Competence:** the user has cleared the [foundations](../../../CONTEXT.md#foundation), under the counting rules amended by [ADR-0006](../../../docs/adr/0006-foundations-push-pull-legs-core.md).
 
 Because consistent attendance plus Adaptive Overload produces the competence, the two converge naturally over ~6–12 months. The transition is a gradual ramp (difficulty and available exercises expand), not a one-time event. A perfectly consistent user who never advances her movements stays in the Discipline Phase, with the engine actively nudging her up the chains — honest stewardship, never framed as failure (ADR-0006).
 

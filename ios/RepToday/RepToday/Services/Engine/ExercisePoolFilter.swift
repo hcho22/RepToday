@@ -39,7 +39,7 @@ import Foundation
 /// The mapping is deliberately at *pattern* granularity: the exercise model carries no
 /// per-movement contraindication data (US-A03), so the engine reasons about the pattern a
 /// movement belongs to. A knee injury rules out the `squat` pattern (deep knee flexion), a
-/// lower-back injury rules out `hinge` (loaded spinal flexion), and so on. This is coarse by
+/// back injury rules out `pull` and `hinge`, and so on. This is coarse by
 /// design - a finer per-exercise contraindication tag is a future refinement; the structured
 /// pattern map is the honest signal available today.
 ///
@@ -61,8 +61,8 @@ enum InjuryContraindication {
     /// de-pluralized (singular) form because `normalize` strips a trailing `s` (see its note).
     private static let patternsByInjury: [String: Set<MovementPattern>] = [
         "knee": [.squat],
-        "back": [.hinge],
-        "lowerback": [.hinge],
+        "back": [.pull, .hinge],
+        "lowerback": [.pull, .hinge],
         "shoulder": [.push, .pull],
         "wrist": [.push],
         "ankle": [.locomotion],

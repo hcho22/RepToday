@@ -12,6 +12,8 @@ Three surfaces, one tier structure:
 
 This PRD is the durable record of the Phase 2 design settled with the captain on 2026-08-25. Stories are ordered **retention-first**; the AI Coach's *tuning* half sits **below an explicit cut line** and is deferred if the ~Nov 3 PMF decision date tightens.
 
+The foundation rules and related surfaces in this dated plan are amended by [ADR-0006](../../../docs/adr/0006-foundations-push-pull-legs-core.md). [Foundation](../../../CONTEXT.md#foundation) owns the current vocabulary and counting ladders.
+
 ## Background: what already exists (do not rebuild)
 
 - **Strength Phase machinery is complete but empty.** `PhaseEvaluator` (`Services/Consistency/PhaseEvaluator.swift`) earns `.strength` on sustained consistency (score >= 80 over ~8 weeks) AND cleared entry tiers of push/squat/hinge/core. `ExercisePoolFilter.isPhaseAllowed` gates `phase == .strength` exercises behind it. But only **3** gated skills exist (`push_one_arm`, `squat_pistol`, `core_l_sit`), all difficulty 5, no hinge skill.
@@ -100,7 +102,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 **Acceptance Criteria:**
 
 - [x] Add at least one `phase == .strength` hinge skill (e.g. a single-leg / advanced hinge progression) to `Resources/Exercises.json` on a valid hinge `progressionChainId`, zero-equipment, load-validated, with mid-tier and top-tier rungs consistent with US-SP02.
-- [x] `PhaseEvaluator.foundationalPatterns` still resolves hinge competence correctly (no change needed, but assert it).
+- [x] Hinge competence remains covered by `HingeStrengthSkillTests`; current foundation membership is defined in [Foundation](../../../CONTEXT.md#foundation).
 - [x] Test asserts a hinge skill is reachable by a Strength-Phase user. `docs/test-coverage.md` row added.
 - [x] Build and unit suite pass.
 
@@ -117,7 +119,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [x] A read-only surface computes and shows, from real logs, the two earn signals: consistency progress (e.g. "sustained 80+ for 5 of 8 weeks") and competence progress ("2 of 4 foundations cleared: push [x], squat [x], hinge [ ], core [ ]").
+- [x] A read-only surface computes and shows, from real logs, the two earn signals: consistency progress (e.g. "sustained 80+ for 5 of 8 weeks") and competence progress. The current fixture and rendered result are owned by the [US-SP04 validation report](../../../artifacts/reports/US-SP04/validation.md).
 - [x] Values come from the exact same logic `PhaseEvaluator` uses (no re-derivation that could disagree with the actual gate).
 - [x] Copy is identity-framed, never loss-framed; no gamification (no XP/badges/streak-to-break).
 - [x] Surface is free (not premium-gated).
@@ -127,7 +129,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Validation Test:**
 
-- **Setup:** A user with 5 sustained weeks and push+squat cleared (hinge/core not).
+- **Setup:** Use the current fixture in the [US-SP04 validation report](../../../artifacts/reports/US-SP04/validation.md#validation-test-prd).
 - **Steps:** Open the phase-progress surface.
 - **Expected Result:** Shows "5 of 8 weeks" (or equivalent) and exactly 2 of 4 foundations cleared, matching what `PhaseEvaluator` would gate on.
 - **Failure Indicator:** Numbers disagree with `PhaseEvaluator`, or a user who has NOT earned the phase is shown as earned (or vice versa).
@@ -138,7 +140,7 @@ This PRD is the durable record of the Phase 2 design settled with the captain on
 
 **Acceptance Criteria:**
 
-- [x] A visual per-pattern ladder (push/squat/hinge/core) shows the chain from entry tier through the Strength-Phase skill, marking the user's current frontier and what is still locked.
+- [x] The progression map shows the counting ladders defined in [Foundation](../../../CONTEXT.md#foundation), marking the user's current frontier and any still-locked Strength-Phase rungs.
 - [x] Locked Strength-Phase rungs are shown as "earn the Strength Phase to unlock," previewable but not selectable.
 - [x] The map never lets the user pick or start a specific movement (thesis preserved: no browsing/choosing the workout).
 - [x] Current position is derived from real logs via existing chain-position logic (reuse `ProgressAnalytics` chain positions; do not re-derive).

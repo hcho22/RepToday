@@ -1430,3 +1430,9 @@ Every Wrangler build of the Coach Worker now shares `coachWorkerBuild`, which al
 The device capture is now a regression fixture.
 This is a server-only change; the fix reaches users only after a separately approved release.
 The [runtime authentication runbook](coach-runtime-authentication.md) owns the contract and the Wrangler 4 follow-up.
+
+## Foundations are Push, Pull, Legs, Core (2026-09-30)
+
+[ADR-0006](adr/0006-foundations-push-pull-legs-core.md) owns the updated foundation rules, recalculation and note behavior, Coach vocabulary, and wire compatibility.
+The preceding story entries record their original landing state; their foundation terminology is superseded by that decision and the [Foundation glossary entry](../CONTEXT.md#foundation).
+Current rendered evidence is recorded in the [foundations validation report](../artifacts/reports/foundations-ppl/validation.md).

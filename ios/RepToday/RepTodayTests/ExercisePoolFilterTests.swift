@@ -123,9 +123,10 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(InjuryContraindication.patterns(forInjury: "Knees"), [.squat])
         XCTAssertEqual(InjuryContraindication.patterns(forInjury: "knee"), [.squat])
         XCTAssertEqual(InjuryContraindication.patterns(forInjury: "knee "), [.squat])
-        // "lower_back" / "lower back" collapse to the lowerback key.
-        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower_back"), [.hinge])
-        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower back"), [.hinge])
+        // Current and legacy Back tags both protect Pull and Hinge.
+        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "back"), [.pull, .hinge])
+        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower_back"), [.pull, .hinge])
+        XCTAssertEqual(InjuryContraindication.patterns(forInjury: "lower back"), [.pull, .hinge])
     }
 
     func testUnknownInjuryContraindicatesNothing() {
@@ -196,6 +197,22 @@ final class ExercisePoolFilterTests: XCTestCase {
             from: library, user: user(injuries: ["knees"]), recentLogs: []
         )
         XCTAssertEqual(pool.map(\.id), ["push1", "hinge1"])
+    }
+
+    func testBackFilterRemovesPullAndHingeForCurrentAndLegacyTags() {
+        let library = [
+            exercise(id: "push1", pattern: .push),
+            exercise(id: "pull1", pattern: .pull),
+            exercise(id: "hinge1", pattern: .hinge),
+            exercise(id: "core1", pattern: .core),
+        ]
+
+        for tag in ["back", "lower_back"] {
+            let pool = ExercisePoolFilter.eligiblePool(
+                from: library, user: user(injuries: [tag]), recentLogs: []
+            )
+            XCTAssertEqual(pool.map(\.id), ["push1", "core1"], "failed for stored tag \(tag)")
+        }
     }
 
     func testRecentSkipFilterRemovesAfterMoreThanThreeSkips() {
@@ -451,7 +468,7 @@ final class ExercisePoolFilterTests: XCTestCase {
 
     /// PRD US-SP01 validation, end-to-end over the real bundled catalog: a synthetic
     /// `FitnessLevel.intermediate` user with a log history that *earns* `.strength` (8 fully on-goal
-    /// weeks + all four foundation entry tiers cleared) sees `push_one_arm` (difficulty 5,
+    /// weeks + all four foundations cleared - push, pull, both sides of legs, core) sees `push_one_arm` (difficulty 5,
     /// `phase == .strength`) in the eligible push pool; the same user forced to `.discipline` never
     /// does. Failure indicator: an intermediate Strength-Phase user still cannot reach any
     /// difficulty-5 skill (the double gate still binds).
@@ -476,7 +493,7 @@ final class ExercisePoolFilterTests: XCTestCase {
                 perceivedDifficulty: nil, exercises: []
             )
         }
-        // Competence: clear one entry tier of each foundational pattern from the real catalog.
+        // Competence: clear an entry tier of each foundation line from the real catalog.
         func clearing(_ exerciseId: String, pattern: MovementPattern, isHold: Bool, value: Int) -> WorkoutLog {
             let sets = (0..<3).map { _ in CompletedSet(reps: isHold ? nil : value, durationSeconds: isHold ? value : nil) }
             return WorkoutLog(
@@ -491,6 +508,7 @@ final class ExercisePoolFilterTests: XCTestCase {
             (0..<8).flatMap { w in (0..<3).map { showUp(weeksAgo: w, dayOffset: $0) } }
             + [
                 clearing("push_wall", pattern: .push, isHold: false, value: 15),        // "3x15 clean reps"
+                clearing("pull_wall_scapular_pull", pattern: .pull, isHold: false, value: 12), // "3x12 clean reps"
                 clearing("squat_wall_sit", pattern: .squat, isHold: true, value: 45),    // "3x45s hold"
                 clearing("hinge_glute_bridge", pattern: .hinge, isHold: false, value: 20),// "3x20 clean reps"
                 clearing("core_forearm_plank", pattern: .core, isHold: true, value: 45),  // "3x45s hold"

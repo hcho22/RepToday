@@ -192,10 +192,12 @@ final class HingeStrengthSkillTests: XCTestCase {
 
     /// US-SP03 changes no evaluator logic, but the story asks us to pin that `PhaseEvaluator` still
     /// resolves hinge competence as one of the four foundations - so an added hinge skill can never
-    /// silently drop hinge out of the Strength-Phase competence gate.
+    /// silently drop hinge out of the Strength-Phase competence gate. Since ADR-0006 hinge is the
+    /// Hinge side of the Legs foundation, and Legs is cleared only when both its sides are.
     func testPhaseEvaluatorStillTreatsHingeAsAFoundation() {
-        XCTAssertEqual(PhaseEvaluator.foundationalPatterns, [.push, .squat, .hinge, .core])
-        XCTAssertTrue(PhaseEvaluator.foundationalPatterns.contains(.hinge),
-                      "hinge must remain one of the foundations the Strength Phase gates on")
+        XCTAssertEqual(StrengthFoundation.allLines.map(\.pattern), [.push, .pull, .squat, .hinge, .core])
+        XCTAssertEqual(StrengthFoundation.legs.lines.map(\.pattern), [.squat, .hinge])
+        XCTAssertTrue(StrengthFoundation.foundationPatterns.contains(.hinge),
+                      "hinge must remain part of a foundation the Strength Phase gates on")
     }
 }

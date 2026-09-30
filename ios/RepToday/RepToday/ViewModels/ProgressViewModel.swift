@@ -52,6 +52,23 @@ final class ProgressViewModel {
     /// encouraging state, not an error).
     private(set) var errorMessage: String?
 
+    /// Phase eligibility for the free "climb to Strength" card. The view also requires `hasHistory`
+    /// before rendering the card; this value alone does not mean the card is on screen.
+    var showsClimbCard: Bool {
+        guard phase == .discipline, let progress = phaseProgress else { return false }
+        return !progress.hasEarnedStrength
+    }
+
+    /// Whether the one-time "foundations are now Push, Pull, Legs, Core" note (ADR-0006) is *eligible*
+    /// to be shown. Presentation waits for the card's `onAppear`, and only the note's own `onAppear`
+    /// consumes `AppState`'s persisted one-shot flag. Empty history therefore retains the unseen note;
+    /// onboarding on this build excludes a brand-new user through that flag.
+    var isFoundationsUpdateNoteEligible: Bool {
+        // Strength users have no climb card; their ratcheted phase stays earned, and the progression
+        // map shows the recalculated foundations directly.
+        showsClimbCard
+    }
+
     /// Whether the user has any completed history at all. Drives the empty state vs. the populated
     /// calendar/trend/score surfaces.
     var hasHistory: Bool { !completedDays.isEmpty }

@@ -19,12 +19,12 @@ struct ProgressAnalytics: Equatable {
     /// Share of training across the three pillars (free layer).
     let pillarBalance: [PillarShare]
 
-    /// Where the user stands in each foundational movement pattern's active chain (free layer).
+    /// Where the user stands on each foundation line's active chain (free layer): Push, Pull, the
+    /// Squat and Hinge sides of Legs, and Core - `StrengthFoundation.allLines`, in that order.
     let chainPositions: [ChainPositionSummary]
 
-    /// The full per-pattern ladder (US-SP05, free layer): every rung from the entry tier through the
-    /// Strength-Phase skill, with the user's current frontier and the still-locked Strength rungs
-    /// marked. Built *from* `chainPositions` (the frontier is the same one derived there), so the
+    /// The full per-line ladder (US-SP05, free layer): every rung from the entry tier up the line's
+    /// chain, with the user's current frontier and any still-locked Strength rungs marked. Built *from* `chainPositions` (the frontier is the same one derived there), so the
     /// map's "you are here" can never disagree with the chain-position surface above it.
     let progressionMap: ProgressionMap
 
@@ -33,10 +33,6 @@ struct ProgressAnalytics: Equatable {
 
     /// The deeper analytics layer, gated behind premium at the render boundary (US-N04).
     let deep: DeepAnalytics
-
-    /// The foundational patterns whose chain position the free layer surfaces, in display order.
-    /// These mirror the four patterns the `PhaseEvaluator` gates competence on (US-H02).
-    static let foundationalPatterns: [MovementPattern] = [.push, .squat, .hinge, .core]
 
     /// Builds the full analytics from the user's history and the exercise library.
     ///
@@ -118,9 +114,9 @@ struct ProgressAnalytics: Equatable {
 
     // MARK: - Chain position (free)
 
-    /// For each foundational pattern, the user's standing in the chain they are *actively* working -
-    /// the frontier tier (highest-order worked) within the most recently worked chain for that
-    /// pattern. A pattern the user has never trained reports "not started" (`currentExercise == nil`).
+    /// For each foundation line, the user's standing in the chain they are *actively* working -
+    /// the frontier tier (highest-order worked) within the most recently worked counting chain of that
+    /// line. A line the user has never trained reports "not started" (`currentExercise == nil`).
     ///
     /// The reported tier/length/next-tier are counted only over the tiers this `phase` can actually
     /// reach: a Discipline user reaches only `.discipline` tiers, so a chain that tops
@@ -139,15 +135,17 @@ struct ProgressAnalytics: Equatable {
             exercise.phase == .discipline || phase == .strength
         }
 
-        return foundationalPatterns.map { pattern in
+        return StrengthFoundation.allLines.map { line in
+            // Only movements on the line's counting chains: Pull is its horizontal chain alone, so
+            // postural pull work never becomes Pull's "current movement".
             let inPattern = worked.compactMap { instance -> (WorkedInstance, Exercise)? in
                 guard let exercise = exercisesById[instance.logged.exerciseId],
-                      exercise.movementPattern == pattern else { return nil }
+                      line.counts(exercise) else { return nil }
                 return (instance, exercise)
             }
 
             guard !inPattern.isEmpty else {
-                return ChainPositionSummary(pattern: pattern, currentExercise: nil, tier: 0, chainLength: 0, hasNextTier: false)
+                return ChainPositionSummary(line: line, currentExercise: nil, tier: 0, chainLength: 0, hasNextTier: false)
             }
 
             // The active chain: the one containing the most recently worked movement in this pattern
@@ -175,7 +173,7 @@ struct ProgressAnalytics: Equatable {
             let hasNextTier = reachableTiers.contains { $0.progressionOrder > frontier.progressionOrder }
 
             return ChainPositionSummary(
-                pattern: pattern,
+                line: line,
                 currentExercise: frontier,
                 tier: tier,
                 chainLength: chainLength,
@@ -186,17 +184,17 @@ struct ProgressAnalytics: Equatable {
 
     // MARK: - Progression map (free, US-SP05)
 
-    /// The per-pattern ladder: for each foundational pattern, the full chain the user is climbing -
-    /// entry tier through the Strength-Phase summit - with the user's frontier and the locked
-    /// Strength rungs marked.
+    /// The per-line ladder: for each foundation line, the full chain the user is climbing - entry
+    /// tier up to its top rung - with the user's frontier and any locked Strength rungs marked.
     ///
-    /// The ladder shown for a pattern is the **active chain** exactly as `makeChainPositions` already
+    /// The ladder shown for a line is the **active chain** exactly as `makeChainPositions` already
     /// derived it (the chain containing the frontier `currentExercise`), so the "you are here" marker
-    /// reuses that logic rather than re-deriving position from the logs. A pattern the user has never
-    /// trained (`currentExercise == nil`) has no frontier to key off, so it defaults to the pattern's
-    /// **canonical strength chain** - the chain that carries the phase-gated summit - so a fresh user
-    /// still previews the climb with its locked top rung; the choice is deterministic (that chain, or
-    /// the lowest chain id when a pattern has no strength summit).
+    /// reuses that logic rather than re-deriving position from the logs. A line the user has never
+    /// trained (`currentExercise == nil`) has no frontier to key off, so it defaults to the line's
+    /// **canonical chain**, preferring a counting chain with a phase-gated summit for the preview.
+    /// The choice is deterministic: the lowest chain id with such a summit, or the lowest counting
+    /// chain id when none has one. Pull has one counting chain and no Strength-Phase summit, so
+    /// its ladder is always the horizontal chain, whatever the user has trained.
     ///
     /// A rung is **locked** iff it is a Strength-Phase skill the user has not earned, read through the
     /// engine's own `ExercisePoolFilter.isPhaseAllowed(_:phase:)` gate so the map cannot mark a rung
@@ -210,14 +208,14 @@ struct ProgressAnalytics: Equatable {
         let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
         let positionByPattern = Dictionary(chainPositions.map { ($0.pattern, $0) }, uniquingKeysWith: { first, _ in first })
 
-        let ladders = foundationalPatterns.map { pattern -> PatternLadder in
-            let position = positionByPattern[pattern]
+        let ladders = StrengthFoundation.allLines.map { line -> PatternLadder in
+            let position = positionByPattern[line.pattern]
             let frontier = position?.currentExercise
 
             // The chain to show: the active one (containing the frontier) when the user has trained
-            // this pattern, else the pattern's canonical strength chain for a preview.
+            // this line, else the line's canonical chain for a preview.
             let chainId = frontier?.progressionChainId
-                ?? canonicalChainId(for: pattern, tiersByChain: tiersByChain, exercisesById: exercisesById)
+                ?? canonicalChainId(for: line, tiersByChain: tiersByChain, exercisesById: exercisesById)
 
             let members = chainId.flatMap { tiersByChain[$0] } ?? []
             // Entry tier first, up to the summit; id break keeps a stable order if two share an order.
@@ -247,21 +245,22 @@ struct ProgressAnalytics: Equatable {
                 )
             }
 
-            return PatternLadder(pattern: pattern, rungs: rungs, hasStarted: frontier != nil)
+            return PatternLadder(line: line, rungs: rungs, hasStarted: frontier != nil)
         }
 
         return ProgressionMap(ladders: ladders)
     }
 
-    /// The pattern's canonical chain for a fresh-user preview: the chain carrying a Strength-Phase
-    /// summit (deterministically the lowest such chain id), or the lowest chain id overall when the
-    /// pattern has no strength summit. Only used when the user has no frontier in the pattern.
+    /// The line's canonical chain for a fresh-user preview: the counting chain carrying a
+    /// Strength-Phase summit (deterministically the lowest such chain id), or the lowest counting
+    /// chain id overall when none has a strength summit. Only used when the user has no frontier on
+    /// the line.
     private static func canonicalChainId(
-        for pattern: MovementPattern,
+        for line: FoundationLine,
         tiersByChain: [String: [Exercise]],
         exercisesById: [String: Exercise]
     ) -> String? {
-        let chainIds = Set(exercisesById.values.filter { $0.movementPattern == pattern }.map(\.progressionChainId))
+        let chainIds = Set(exercisesById.values.filter(line.counts).map(\.progressionChainId))
         guard !chainIds.isEmpty else { return nil }
         let withStrengthSummit = chainIds.filter { id in
             (tiersByChain[id] ?? []).contains { $0.phase == .strength }
@@ -391,7 +390,7 @@ struct ProgressAnalytics: Equatable {
 
     // MARK: - Deep: strength journey (premium, US-AN01)
 
-    /// The dated climb through each foundational pattern's active chain (US-AN01): per-pattern
+    /// The dated climb through each foundation line's active chain (US-AN01): per-line
     /// tier-advancement milestones read straight from the real `WorkoutLog` history, so the surface
     /// tells the "Knee Push-Up -> Standard Push-Up in 6 weeks" story anchored on actual dates rather
     /// than this week's numbers.
@@ -406,8 +405,8 @@ struct ProgressAnalytics: Equatable {
     /// Only **reachable** tiers can be milestones - the same `exercise.phase == .discipline || phase ==
     /// .strength` reachability the chain-position surface uses - so a still-locked Strength tier is
     /// never reported as reached even in the (engine-impossible) case that one appeared in the logs.
-    /// A pattern the user has never trained (`currentExercise == nil`) contributes no journey, so an
-    /// empty `chains` means no strength history yet.
+    /// A line the user has never trained (`currentExercise == nil`) contributes no journey, so an
+    /// empty `chains` means no strength history yet. Pull's journey is its horizontal chain only.
     private static func makeStrengthJourney(
         worked: [WorkedInstance],
         exercisesById: [String: Exercise],
@@ -434,9 +433,9 @@ struct ProgressAnalytics: Equatable {
 
         let positionByPattern = Dictionary(chainPositions.map { ($0.pattern, $0) }, uniquingKeysWith: { first, _ in first })
 
-        let chains: [ChainJourney] = foundationalPatterns.compactMap { pattern in
-            // Only patterns the user has actually trained have a frontier to anchor the journey on.
-            guard let frontier = positionByPattern[pattern]?.currentExercise else { return nil }
+        let chains: [ChainJourney] = StrengthFoundation.allLines.compactMap { line in
+            // Only lines the user has actually trained have a frontier to anchor the journey on.
+            guard let frontier = positionByPattern[line.pattern]?.currentExercise else { return nil }
             let activeChainId = frontier.progressionChainId
 
             // The reachable tiers of the active chain, entry-first; a milestone's 1-based tier is its
@@ -463,7 +462,7 @@ struct ProgressAnalytics: Equatable {
             // guard defends the (unexpected) empty case rather than emitting a chain with no climb.
             guard !milestones.isEmpty else { return nil }
 
-            return ChainJourney(pattern: pattern, chainId: activeChainId, milestones: milestones, calendar: calendar)
+            return ChainJourney(line: line, chainId: activeChainId, milestones: milestones, calendar: calendar)
         }
 
         return StrengthJourney(chains: chains)
@@ -482,12 +481,12 @@ struct PillarShare: Equatable, Identifiable {
     var id: String { pillar.rawValue }
 }
 
-/// The user's standing in a foundational pattern's active progression chain (US-M02).
+/// The user's standing on a foundation line's active progression chain (US-M02).
 struct ChainPositionSummary: Equatable, Identifiable {
-    /// The foundational pattern (push/squat/hinge/core).
-    let pattern: MovementPattern
+    /// The foundation line (Push, Pull, Squat or Hinge side of Legs, Core).
+    let line: FoundationLine
     /// The frontier movement the user is currently on, or `nil` when they have never trained this
-    /// pattern ("not started yet").
+    /// line ("not started yet").
     let currentExercise: Exercise?
     /// 1-based tier within the active chain (`progressionOrder + 1`); 0 when not started.
     let tier: Int
@@ -496,28 +495,32 @@ struct ChainPositionSummary: Equatable, Identifiable {
     /// Whether a harder tier exists above the frontier - the "next up" the user is climbing toward.
     let hasNextTier: Bool
 
+    var pattern: MovementPattern { line.pattern }
+
     var id: String { pattern.rawValue }
 
-    /// Whether the user has trained this pattern at all.
+    /// Whether the user has trained this line at all.
     var hasStarted: Bool { currentExercise != nil }
 }
 
-/// The per-pattern progression map (US-SP05, free): one ladder per foundational pattern, in
-/// `PhaseEvaluator.foundationalPatterns` order (push / squat / hinge / core).
+/// The per-line progression map (US-SP05, free): one ladder per foundation line, in
+/// `StrengthFoundation.allLines` order (Push / Pull / Squat / Hinge / Core).
 struct ProgressionMap: Equatable {
     let ladders: [PatternLadder]
 }
 
-/// One foundational pattern's ladder - the chain the user is climbing, entry tier first through the
-/// Strength-Phase summit last.
+/// One foundation line's ladder - the chain the user is climbing, entry tier first through the top
+/// rung last (a Strength-Phase skill on the lines that have one).
 struct PatternLadder: Equatable, Identifiable {
-    /// The foundational pattern (push / squat / hinge / core).
-    let pattern: MovementPattern
-    /// The rungs, entry tier first. Empty only if the catalog somehow has no chain for the pattern.
+    /// The foundation line (Push, Pull, Squat or Hinge side of Legs, Core).
+    let line: FoundationLine
+    /// The rungs, entry tier first. Empty only if the catalog somehow has no chain for the line.
     let rungs: [LadderRung]
-    /// Whether the user has trained this pattern at all - drives "not started yet" framing without a
+    /// Whether the user has trained this line at all - drives "not started yet" framing without a
     /// current-position marker.
     let hasStarted: Bool
+
+    var pattern: MovementPattern { line.pattern }
 
     var id: MovementPattern { pattern }
 
@@ -594,9 +597,9 @@ struct DeepAnalytics: Equatable {
     let strengthJourney: StrengthJourney
 }
 
-/// The premium strength journey (US-AN01): one dated climb per foundational pattern the user has
-/// trained, in `foundationalPatterns` order. A pattern never trained is omitted, so an empty
-/// `chains` means there is no strength history yet.
+/// The premium strength journey (US-AN01): one dated climb per foundation line the user has trained,
+/// in `StrengthFoundation.allLines` order (Push, Pull, Squat, Hinge, Core). A line never trained is
+/// omitted, so an empty `chains` means there is no strength history yet.
 struct StrengthJourney: Equatable {
     let chains: [ChainJourney]
 
@@ -604,13 +607,13 @@ struct StrengthJourney: Equatable {
     var isEmpty: Bool { chains.isEmpty }
 }
 
-/// One foundational pattern's dated climb through its active progression chain (US-AN01): the tiers
+/// One foundation line's dated climb through its active progression chain (US-AN01): the tiers
 /// the user has actually reached, entry-first, each stamped with the date it was first performed. The
 /// span between the first and current milestone is the "in N weeks" story; nothing is fabricated - a
 /// tier the user never worked is simply absent, and a still-locked Strength tier is never a milestone.
 struct ChainJourney: Equatable, Identifiable {
-    /// The foundational pattern (push / squat / hinge / core).
-    let pattern: MovementPattern
+    /// The foundation line (Push, Pull, Squat or Hinge side of Legs, Core).
+    let line: FoundationLine
     /// The active chain id (the chain carrying the frontier `ChainPositionSummary.currentExercise`).
     let chainId: String
     /// The reached tiers, entry-first (each `tier` is its 1-based rank among the chain's reachable
@@ -621,12 +624,14 @@ struct ChainJourney: Equatable, Identifiable {
     /// the analytics were derived rather than reaching for `Calendar.current`.
     private let calendar: Calendar
 
-    init(pattern: MovementPattern, chainId: String, milestones: [TierMilestone], calendar: Calendar) {
-        self.pattern = pattern
+    init(line: FoundationLine, chainId: String, milestones: [TierMilestone], calendar: Calendar) {
+        self.line = line
         self.chainId = chainId
         self.milestones = milestones
         self.calendar = calendar
     }
+
+    var pattern: MovementPattern { line.pattern }
 
     var id: MovementPattern { pattern }
 
@@ -653,7 +658,7 @@ struct ChainJourney: Equatable, Identifiable {
     // equal regardless of the calendar instance they carry (calendars used here differ only by time
     // zone/first-weekday, which the milestone dates already encode).
     static func == (lhs: ChainJourney, rhs: ChainJourney) -> Bool {
-        lhs.pattern == rhs.pattern && lhs.chainId == rhs.chainId && lhs.milestones == rhs.milestones
+        lhs.line == rhs.line && lhs.chainId == rhs.chainId && lhs.milestones == rhs.milestones
     }
 }
 

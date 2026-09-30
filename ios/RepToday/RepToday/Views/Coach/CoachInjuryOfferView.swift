@@ -26,7 +26,7 @@ enum CoachInjuryOfferCopy {
     private static func clause(for area: InjuryOption) -> String {
         switch area {
         case .knees: return "your knees are bothering you"
-        case .lowerBack: return "your lower back is bothering you"
+        case .back: return "your back is bothering you"
         case .shoulders: return "your shoulders are bothering you"
         case .wrists: return "your wrists are bothering you"
         case .ankles: return "your ankles are bothering you"

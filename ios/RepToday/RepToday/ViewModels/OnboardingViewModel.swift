@@ -357,7 +357,7 @@ final class OnboardingViewModel {
 /// to a non-empty contraindication set, so the gap can never reopen unnoticed.
 enum InjuryOption: String, CaseIterable, Identifiable, Hashable {
     case knees
-    case lowerBack
+    case back
     case shoulders
     case wrists
     case ankles
@@ -369,7 +369,7 @@ enum InjuryOption: String, CaseIterable, Identifiable, Hashable {
     var tag: String {
         switch self {
         case .knees: return "knees"
-        case .lowerBack: return "lower_back"
+        case .back: return "back"
         case .shoulders: return "shoulders"
         case .wrists: return "wrists"
         case .ankles: return "ankles"
@@ -381,7 +381,7 @@ enum InjuryOption: String, CaseIterable, Identifiable, Hashable {
     var label: String {
         switch self {
         case .knees: return "Knees"
-        case .lowerBack: return "Lower back"
+        case .back: return "Back"
         case .shoulders: return "Shoulders"
         case .wrists: return "Wrists"
         case .ankles: return "Ankles"
@@ -397,7 +397,7 @@ enum InjuryOption: String, CaseIterable, Identifiable, Hashable {
     /// canonical tag beside it. Every "is this area already on?" question in the app - the coach's
     /// routing offer and the injury control's toggles - goes through here, so there is one answer.
     func isFlagged(in injuries: [String]) -> Bool {
-        let key = InjuryContraindication.normalizedTag(tag)
-        return injuries.contains { InjuryContraindication.normalizedTag($0) == key }
+        let keys: Set<String> = self == .back ? ["back", "lowerback"] : [InjuryContraindication.normalizedTag(tag)]
+        return injuries.contains { keys.contains(InjuryContraindication.normalizedTag($0)) }
     }
 }

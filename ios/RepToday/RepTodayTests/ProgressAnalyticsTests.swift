@@ -40,6 +40,12 @@ final class ProgressAnalyticsTests: XCTestCase {
             Self.ex("push_c", .discipline, .push, chain: "pushc", order: 2, prog: "push_d", name: "Standard Push-up"),
             Self.ex("push_d", .strength, .push, chain: "pushc", order: 3, prog: nil, name: "One-Arm Push-up"),
             Self.ex("squat_a", .discipline, .squat, chain: "squatc", order: 0, prog: nil, name: "Bodyweight Squat"),
+            // Pull: the horizontal chain counts (its id is the one `FoundationLine` names); the postural
+            // chain is accessory work that never does.
+            Self.ex("pull_a", .discipline, .pull, chain: "pull_horizontal", order: 0, prog: "pull_b", name: "Wall Scapular Pull"),
+            Self.ex("pull_b", .discipline, .pull, chain: "pull_horizontal", order: 1, prog: nil, name: "Supine Floor Row"),
+            Self.ex("postural_a", .discipline, .pull, chain: "pull_postural", order: 0, prog: "postural_b", isHold: true, name: "Superman Hold"),
+            Self.ex("postural_b", .discipline, .pull, chain: "pull_postural", order: 1, prog: nil, name: "Reverse Snow Angel"),
             Self.ex("plank_a", .discipline, .core, chain: "corec", order: 0, prog: "plank_b", isHold: true, name: "Forearm Plank"),
             Self.ex("plank_b", .strength, .core, chain: "corec", order: 1, prog: nil, isHold: true, name: "L-Sit"),
             Self.ex("mob_a", .discipline, .mobility, chain: "mobc", order: 0, prog: nil, isHold: true, name: "Cat-Cow"),
@@ -251,11 +257,13 @@ final class ProgressAnalyticsTests: XCTestCase {
         XCTAssertEqual(core!.rungs.first { $0.exerciseId == "plank_b" }?.isLocked, true)
     }
 
-    /// One ladder per foundational pattern, in `PhaseEvaluator.foundationalPatterns` order, even when
-    /// the catalog has no chain for a pattern (that ladder is simply empty rather than missing).
+    /// One ladder per foundation line, in `StrengthFoundation.allLines` order (Push, Pull, the Squat and
+    /// Hinge sides of Legs, Core), even when the catalog has no chain for a line (that ladder is simply
+    /// empty rather than missing).
     func testProgressionMapHasOneLadderPerFoundationInOrder() {
         let map = analytics([]).progressionMap
-        XCTAssertEqual(map.ladders.map(\.pattern), [.push, .squat, .hinge, .core])
+        XCTAssertEqual(map.ladders.map(\.pattern), [.push, .pull, .squat, .hinge, .core])
+        XCTAssertEqual(map.ladders.map(\.line.foundation), [.push, .pull, .legs, .legs, .core])
         // The fixture has no hinge chain, so its ladder is present but empty.
         XCTAssertEqual(map.ladders.first { $0.pattern == .hinge }?.rungs.isEmpty, true)
     }
@@ -272,6 +280,69 @@ final class ProgressAnalyticsTests: XCTestCase {
         let currentRungId = result.progressionMap.ladders.first { $0.pattern == .push }?.currentRung?.exerciseId
         XCTAssertEqual(currentRungId, frontierId)
         XCTAssertEqual(currentRungId, "push_c")
+    }
+
+    // MARK: - Pull counts only the horizontal chain (ADR-0006)
+
+    /// Postural pull work is accessory: it never becomes Pull's current movement, and Pull reads "not
+    /// started" until the horizontal chain is worked.
+    func testPosturalPullNeverBecomesPullsCurrentMovement() {
+        let posturalOnly = analytics([log(weeksAgo: 0, [logged("postural_b", .strength, .pull, reps: [12])])])
+        XCTAssertFalse(posturalOnly.chainPositions.first { $0.pattern == .pull }!.hasStarted)
+
+        // Worked more recently than the horizontal chain, the postural chain still does not win it.
+        let mixed = analytics([
+            log(weeksAgo: 1, [logged("pull_a", .strength, .pull, reps: [12])]),
+            log(weeksAgo: 0, [logged("postural_b", .strength, .pull, reps: [12])]),
+        ])
+        XCTAssertEqual(mixed.chainPositions.first { $0.pattern == .pull }?.currentExercise?.id, "pull_a")
+    }
+
+    /// Pull's ladder is the horizontal chain whatever the user has trained - fresh, postural-only, or
+    /// horizontal - and it carries no locked rung (no Strength-Phase top until Phase 2 equipment).
+    func testPullLadderIsAlwaysTheHorizontalChain() {
+        let scenarios: [[WorkoutLog]] = [
+            [],
+            [log(weeksAgo: 0, [logged("postural_a", .strength, .pull, holds: [30])])],
+            [log(weeksAgo: 0, [logged("pull_a", .strength, .pull, reps: [12])])],
+        ]
+        for logs in scenarios {
+            let pull = analytics(logs).progressionMap.ladders.first { $0.pattern == .pull }
+            XCTAssertEqual(pull?.rungs.map(\.exerciseId), ["pull_a", "pull_b"])
+            XCTAssertEqual(pull?.rungs.contains { $0.isLocked || $0.isStrengthSkill }, false)
+        }
+        let trained = analytics([log(weeksAgo: 0, [logged("pull_b", .strength, .pull, reps: [10])])])
+            .progressionMap.ladders.first { $0.pattern == .pull }
+        XCTAssertEqual(trained?.currentRung?.exerciseId, "pull_b")
+    }
+
+    /// The Squat and Hinge sides of Legs are independent lines: training one leaves the other "not
+    /// started", each with its own position and ladder.
+    func testLegsSidesAreIndependentLines() {
+        let result = analytics([log(weeksAgo: 0, [logged("squat_a", .strength, .squat, reps: [20])])])
+
+        XCTAssertTrue(result.chainPositions.first { $0.pattern == .squat }!.hasStarted)
+        XCTAssertFalse(result.chainPositions.first { $0.pattern == .hinge }!.hasStarted)
+        XCTAssertEqual(result.chainPositions.map(\.line.foundation), [.push, .pull, .legs, .legs, .core])
+        XCTAssertEqual(result.progressionMap.ladders.first { $0.pattern == .squat }?.hasStarted, true)
+        XCTAssertEqual(result.progressionMap.ladders.first { $0.pattern == .hinge }?.hasStarted, false)
+    }
+
+    /// The dated climb tracks Pull from the horizontal chain only: postural work leaves no Pull journey
+    /// and never appears as a milestone on it.
+    func testStrengthJourneyTracksPullFromTheHorizontalChainOnly() {
+        let posturalOnly = analytics([log(weeksAgo: 3, [logged("postural_a", .strength, .pull, holds: [30])])])
+        XCTAssertNil(posturalOnly.deep.strengthJourney.chains.first { $0.pattern == .pull })
+
+        let mixed = analytics([
+            log(weeksAgo: 4, [logged("pull_a", .strength, .pull, reps: [12])]),
+            log(weeksAgo: 2, [logged("postural_b", .strength, .pull, reps: [12])]),
+            log(weeksAgo: 1, [logged("pull_b", .strength, .pull, reps: [10])]),
+        ])
+        let pull = mixed.deep.strengthJourney.chains.first { $0.pattern == .pull }
+        XCTAssertEqual(pull?.chainId, "pull_horizontal")
+        XCTAssertEqual(pull?.milestones.map(\.exerciseId), ["pull_a", "pull_b"])
+        XCTAssertEqual(mixed.deep.strengthJourney.chains.map(\.line.foundation), [.pull])
     }
 
     // MARK: - Personal bests
@@ -453,7 +524,7 @@ final class ProgressAnalyticsTests: XCTestCase {
 
         XCTAssertEqual(result.pillarBalance.count, 3)
         XCTAssertTrue(result.pillarBalance.allSatisfy { $0.exerciseCount == 0 && $0.fraction == 0 })
-        XCTAssertEqual(result.chainPositions.count, ProgressAnalytics.foundationalPatterns.count)
+        XCTAssertEqual(result.chainPositions.count, StrengthFoundation.allLines.count)
         XCTAssertTrue(result.chainPositions.allSatisfy { !$0.hasStarted })
         XCTAssertTrue(result.deep.patternBalance.isEmpty)
         XCTAssertTrue(result.deep.weeklyVolume.isEmpty)

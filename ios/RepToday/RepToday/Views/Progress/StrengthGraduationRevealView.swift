@@ -8,7 +8,7 @@ import SwiftUI
 /// honest: the milestone lands as **stewardship of a habit the user built**, never a gamified reward
 /// or something withheld and now handed over. It never says "you unlocked" or "reward"; it says
 /// "you're someone who moves - here's what you've earned." It names what actually changes now
-/// (harder work is available; new Strength-Phase skills join the ladder) and points to the
+/// (harder work is available; new Strength-Phase skills join the ladders that have them) and points to the
 /// progression map on the Progress tab - the map, never a menu.
 ///
 /// Presentation is owned by `RootView`, which layers this over the main tabs as its own overlay
@@ -43,12 +43,12 @@ struct StrengthGraduationRevealView: View {
         Point(
             symbol: "figure.stairs",
             title: "New skills join your ladder",
-            detail: "The Strength-Phase movements at the top of each foundation are unlocked. They'll show up as you're ready for them."
+            detail: "The Strength-Phase movements that finish the Push, Legs, and Core ladders are unlocked. They'll show up as you're ready for them."
         ),
         Point(
             symbol: "map",
             title: "See the whole climb",
-            detail: "Open the progression map on the Progress tab to see every foundation's ladder, from where you started to the skill at the top."
+            detail: "Open the progression map on the Progress tab to see every foundation's ladder, from where you started to the top rung."
         )
     ]
 

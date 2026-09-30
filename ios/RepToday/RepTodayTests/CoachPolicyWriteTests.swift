@@ -221,6 +221,107 @@ final class CoachPolicyWriteTests: XCTestCase {
         XCTAssertLessThan(proposal.patternEmphasis[.core] ?? 2, SessionPolicy.neutralEmphasis)
     }
 
+    // MARK: - Foundations: Pull and Legs vocabulary (ADR-0006)
+
+    /// Pull is a requestable emphasis in everyday words: pull, row, back, upper back, lats.
+    func testMapperRecognizesPullVocabulary() {
+        for message in [
+            "focus my pull for a while",
+            "can we do more rows?",
+            "I want to work on my upper back",
+            "more back work please",
+            "focus my lower back",
+            "lean into pulling",
+            "focus on my lats",
+        ] {
+            XCTAssertGreaterThan(
+                CoachIntentMapper.proposal(for: message)?.patternEmphasis[.pull] ?? 0,
+                SessionPolicy.neutralEmphasis,
+                "should lean toward pull: \(message)"
+            )
+        }
+        XCTAssertLessThan(CoachIntentMapper.proposal(for: "I'm bored of rows")?.patternEmphasis[.pull] ?? 2,
+                          SessionPolicy.neutralEmphasis)
+    }
+
+    func testMapperGroupsBackWithPullAndShouldersWithPush() {
+        let back = CoachIntentMapper.proposal(for: "focus my back")
+        XCTAssertGreaterThan(back?.patternEmphasis[.pull] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertNil(back?.patternEmphasis[.push])
+
+        let shoulders = CoachIntentMapper.proposal(for: "focus my shoulders")
+        XCTAssertGreaterThan(shoulders?.patternEmphasis[.push] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertNil(shoulders?.patternEmphasis[.pull])
+    }
+
+    func testMapperSuppressesPatternEmphasisForActiveInjurySignals() {
+        for message in [
+            "my upper back hurts more today",
+            "my lower back is sore, more core please",
+            "my shoulder is sore, less push please",
+            "my knee hurts; focus my legs",
+        ] {
+            XCTAssertNotNil(CoachInjurySignalMapper.routing(for: message), message)
+            XCTAssertNil(CoachIntentMapper.proposal(for: message), message)
+        }
+
+        XCTAssertGreaterThan(
+            CoachIntentMapper.proposal(for: "focus my pull")?.patternEmphasis[.pull] ?? 0,
+            SessionPolicy.neutralEmphasis
+        )
+    }
+
+    /// "back" and "row" borrowed by an idiom name no pattern: "cut back", "back off", "get back to",
+    /// and "in a row" are not asking about Pull.
+    func testMapperDoesNotReadPullOutOfIdioms() throws {
+        for message in [
+            "let's get back to focus on push",
+            "I trained three days in a row, focus on my core",
+            "bring back more push",
+        ] {
+            let proposal = try XCTUnwrap(CoachIntentMapper.proposal(for: message), message)
+            XCTAssertNil(proposal.patternEmphasis[.pull], "no pull emphasis from: \(message)")
+        }
+        let cutBack = try XCTUnwrap(CoachIntentMapper.proposal(for: "cut back on push"))
+        XCTAssertLessThan(cutBack.patternEmphasis[.push] ?? 2, SessionPolicy.neutralEmphasis)
+        XCTAssertNil(cutBack.patternEmphasis[.pull])
+
+        let backOff = try XCTUnwrap(CoachIntentMapper.proposal(for: "back off a bit, I need it easier"))
+        XCTAssertTrue(backOff.patternEmphasis.isEmpty, "ease-up words tune pace, never a pattern")
+        XCTAssertEqual(backOff.easedProgressionRate, SessionPolicy.minProgressionRate)
+
+        XCTAssertNil(CoachIntentMapper.proposal(for: "How do I do a proper row?"), "a form question tunes nothing")
+    }
+
+    /// "legs" nudges the squat and hinge lines together.
+    func testMapperLegsNudgesSquatAndHingeTogether() throws {
+        let more = try XCTUnwrap(CoachIntentMapper.proposal(for: "focus my legs"))
+        XCTAssertGreaterThan(more.patternEmphasis[.squat] ?? 0, SessionPolicy.neutralEmphasis)
+        XCTAssertEqual(more.patternEmphasis[.squat], more.patternEmphasis[.hinge])
+        XCTAssertEqual(Set(more.patternEmphasis.keys), [.squat, .hinge])
+
+        let less = try XCTUnwrap(CoachIntentMapper.proposal(for: "I'm tired of leg day"))
+        XCTAssertLessThan(less.patternEmphasis[.squat] ?? 2, SessionPolicy.neutralEmphasis)
+        XCTAssertEqual(less.patternEmphasis[.squat], less.patternEmphasis[.hinge])
+
+        let lowerBody = try XCTUnwrap(CoachIntentMapper.proposal(for: "more lower body"))
+        XCTAssertEqual(Set(lowerBody.patternEmphasis.keys), [.squat, .hinge])
+
+        XCTAssertNil(CoachIntentMapper.proposal(for: "why do my legs shake on wall sits?"),
+                     "a question that names legs tunes nothing")
+    }
+
+    /// The finer words keep working under a "legs" request: an explicit squat or hinge word overrides
+    /// the foundation-wide nudge for just that side.
+    func testMapperSquatAndHingeWordsRemainFinerControlUnderLegs() throws {
+        let proposal = try XCTUnwrap(CoachIntentMapper.proposal(for: "more legs but less squat"))
+        XCTAssertLessThan(proposal.patternEmphasis[.squat] ?? 2, SessionPolicy.neutralEmphasis, "squat has its own, lower nudge")
+        XCTAssertGreaterThan(proposal.patternEmphasis[.hinge] ?? 0, SessionPolicy.neutralEmphasis, "hinge follows legs")
+
+        let hingeOnly = try XCTUnwrap(CoachIntentMapper.proposal(for: "focus my hinge"))
+        XCTAssertEqual(Set(hingeOnly.patternEmphasis.keys), [.hinge], "a finer word leans only its own side")
+    }
+
     func testMapperMultiWordLessPhrasesDoNotDeemphasizeANearbyPattern() {
         // The bare "less " emphasis cue is a substring of "less variety" / "less intense"; a request to
         // reduce variety or intensity must not silently de-emphasize a pattern it merely names nearby.

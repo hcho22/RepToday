@@ -9,16 +9,16 @@ import SwiftUI
 /// "swapped", "removed" and their kin are deliberately absent from the offer, and a test asserts it.
 enum CoachAnalyticsInsightCopy {
 
-    /// The insight + offer, naming the climbing pattern (when there is one), the stalled pattern, and
-    /// how long it has been flat. The pattern clauses are exhaustive switches, so a new foundational
-    /// pattern cannot be added without deciding how the coach says it out loud.
+    /// The insight + offer, naming the climbing line (when there is one), the stalled line, and how
+    /// long it has been flat. A line inside Legs names its side ("the hinge side of your legs"), so the
+    /// user hears exactly which line the offer would lean toward.
     static func offer(for offer: CoachAnalyticsInsightOffer) -> String {
-        let stall = "your \(name(offer.stalledPattern)) has been flat \(weeksPhrase(offer.stalledWeeks))"
+        let stall = "\(subject(offer.stalledPattern)) has been flat \(weeksPhrase(offer.stalledWeeks))"
         let insight: String
         if let climbing = offer.climbingPattern {
-            insight = "Your \(name(climbing)) is climbing, but \(stall)."
+            insight = "\(capitalized(subject(climbing))) is climbing, but \(stall)."
         } else {
-            insight = "\(stall.prefix(1).uppercased() + stall.dropFirst())."
+            insight = "\(capitalized(stall))."
         }
         return insight
             + " Want me to lean your sessions toward \(name(offer.stalledPattern)) for a while? "
@@ -42,6 +42,19 @@ enum CoachAnalyticsInsightCopy {
     /// What declining does, for VoiceOver.
     static let declineHint = "Dismisses this suggestion and changes nothing"
 
+    /// The subject of a sentence about a line: "your push", "your pull", "the hinge side of your legs".
+    /// A shared foundation's lines name their side; a single-line foundation reads as itself.
+    private static func subject(_ pattern: MovementPattern) -> String {
+        guard let line = StrengthFoundation.line(for: pattern), line.isSideOfSharedFoundation else {
+            return "your \(name(pattern))"
+        }
+        return "the \(name(pattern)) side of your \(line.foundation.displayName.lowercased())"
+    }
+
+    private static func capitalized(_ text: String) -> String {
+        text.prefix(1).uppercased() + text.dropFirst()
+    }
+
     /// A whole-week phrase, kept approximate so a coarse week count never reads as false precision.
     private static func weeksPhrase(_ weeks: Int) -> String {
         switch weeks {
@@ -51,8 +64,9 @@ enum CoachAnalyticsInsightCopy {
         }
     }
 
-    /// The plain, lowercase movement-pattern name used in coach copy, kept local so a wording tweak
-    /// never touches the wire-stable `MovementPattern.rawValue`.
+    /// The plain, lowercase movement-pattern name used in coach copy (and on the accept button: "Lean
+    /// into hinge"), kept local so a wording tweak never touches the wire-stable
+    /// `MovementPattern.rawValue`.
     private static func name(_ pattern: MovementPattern) -> String {
         switch pattern {
         case .push: return "push"

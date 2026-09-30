@@ -678,13 +678,13 @@ final class CoachViewModelTests: XCTestCase {
     func testInjuryMessageOffersRoutingAndChangesNothing() async throws {
         let userService = MockUserService(user: injuryUser())
         let store = InMemorySessionPolicyStore()
-        let transport = StubTransport(.success(reply: "Knees don't love deep flexion when they're sore.", status: 200))
+        let transport = StubTransport(.success(reply: "A sore back deserves caution and an easier option.", status: 200))
         let viewModel = makeInjuryViewModel(transport: transport, userService: userService, store: store)
 
-        viewModel.draft = "my knee hurts on squats"
+        viewModel.draft = "my upper back hurts more today"
         await viewModel.send()
 
-        XCTAssertEqual(viewModel.injuryRoutingOffer?.area, .knees, "the coach offers to route, naming the area")
+        XCTAssertEqual(viewModel.injuryRoutingOffer?.area, .back, "the coach offers to route, naming the area")
         let injuries = try await userService.currentUser()?.profile.injuries
         XCTAssertEqual(injuries, [], "the coach never sets an injury flag")
         let stored = try await store.policy(for: "coach-injury-user")
