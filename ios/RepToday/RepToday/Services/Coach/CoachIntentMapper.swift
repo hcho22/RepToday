@@ -21,6 +21,7 @@ enum CoachIntentMapper {
     /// that merely mentions a pattern ("how do I do a pistol squat?") never triggers a write.
     static func proposal(for message: String) -> CoachPolicyProposal? {
         let text = message.lowercased()
+        let hasActiveInjurySignal = CoachInjurySignalMapper.routing(for: message) != nil
 
         // Cue positions are found once and each named pattern takes the *nearest* cue's direction, so a
         // mixed request ("more push but less core") honors each pattern's own direction rather than
@@ -40,22 +41,24 @@ enum CoachIntentMapper {
 
         var emphasis: [MovementPattern: Double] = [:]
 
-        // A foundation-wide word ("legs") nudges every line of its foundation together...
-        for foundation in StrengthFoundation.displayOrder {
-            let mentions = mentionOffsets(of: foundationKeywords(for: foundation), in: text, excluding: borrowedSpans)
-            guard !mentions.isEmpty,
-                  let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets)
-            else { continue }
-            for line in foundation.lines { emphasis[line.pattern] = value }
-        }
+        if !hasActiveInjurySignal {
+            // A foundation-wide word ("legs") nudges every line of its foundation together...
+            for foundation in StrengthFoundation.displayOrder {
+                let mentions = mentionOffsets(of: foundationKeywords(for: foundation), in: text, excluding: borrowedSpans)
+                guard !mentions.isEmpty,
+                      let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets)
+                else { continue }
+                for line in foundation.lines { emphasis[line.pattern] = value }
+            }
 
-        // ...and a line's own words ("squat", "hinge", "row") are the finer control, so they override
-        // whatever the foundation-wide word set for that one line ("more legs but less squat").
-        for line in StrengthFoundation.allLines {
-            let mentions = mentionOffsets(of: keywords(for: line.pattern), in: text, excluding: borrowedSpans)
-            guard !mentions.isEmpty else { continue }
-            if let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets) {
-                emphasis[line.pattern] = value
+            // ...and a line's own words ("squat", "hinge", "row") are the finer control, so they override
+            // whatever the foundation-wide word set for that one line ("more legs but less squat").
+            for line in StrengthFoundation.allLines {
+                let mentions = mentionOffsets(of: keywords(for: line.pattern), in: text, excluding: borrowedSpans)
+                guard !mentions.isEmpty else { continue }
+                if let value = nearestEmphasis(forMentionsAt: mentions, moreAt: moreOffsets, lessAt: lessOffsets) {
+                    emphasis[line.pattern] = value
+                }
             }
         }
 

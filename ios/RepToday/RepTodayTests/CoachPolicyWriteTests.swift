@@ -243,6 +243,22 @@ final class CoachPolicyWriteTests: XCTestCase {
                           SessionPolicy.neutralEmphasis)
     }
 
+    func testMapperSuppressesPatternEmphasisForActiveInjurySignals() {
+        for message in [
+            "my upper back hurts more today",
+            "my shoulder is sore, less push please",
+            "my knee hurts; focus my legs",
+        ] {
+            XCTAssertNotNil(CoachInjurySignalMapper.routing(for: message), message)
+            XCTAssertNil(CoachIntentMapper.proposal(for: message), message)
+        }
+
+        XCTAssertGreaterThan(
+            CoachIntentMapper.proposal(for: "focus my pull")?.patternEmphasis[.pull] ?? 0,
+            SessionPolicy.neutralEmphasis
+        )
+    }
+
     /// "back" and "row" borrowed by an idiom name no pattern: "cut back", "back off", "get back to",
     /// "in a row", and a "lower back" (an area to protect) are not asking about Pull.
     func testMapperDoesNotReadPullOutOfIdioms() throws {

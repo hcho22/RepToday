@@ -60,7 +60,9 @@ The captain wants the foundations to read the way people talk about strength: Pu
   The note explains it, and the recalculation is honest: it reflects what the user has actually demonstrated on the ladders that now count.
 - A user who only trained the postural pull chain sees Pull as "not started" on the Progress tab, even though those movements are in their sessions.
   This is the accepted cost of postural work not counting.
-- The Coach's context bundle now carries a fifth chain summary, Pull, and its strength-journey summaries can name Pull; the wire is otherwise unchanged and the proxy needs no change.
+- The Coach's context bundle now carries a fifth chain summary, Pull, and its strength-journey summaries can name Pull.
+  The app-to-proxy wire stays backward compatible in both directions: newer bundles retain the raw pattern keys an older proxy understands, and the newer proxy derives foundation labels when an older app omits them.
+  The updated `/coach` prompt reaches users only after that proxy is separately deployed; this change does not deploy it.
 - Pull has no Strength-Phase rung, so the graduation reveal names only the Push, Legs and Core ladders as gaining Strength-Phase movements.
 
 ## Alternatives considered
