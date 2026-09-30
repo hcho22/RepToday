@@ -259,7 +259,7 @@ test('staging probes require the exact labelled denial and both may wait, under 
   assert.ok(c.waits.length <= 11);
   c = clock();
   await assert.rejects(stagingProbes(origin, async () => new Response('', { status: 404 }), c), stopped('probe'));
-  assert.equal(c.waits.length, 5);
+  assert.equal(c.waits.length, 11); // bounded by the shared 60s window
 });
 
 test('failure output is one closed stop code', () => {
