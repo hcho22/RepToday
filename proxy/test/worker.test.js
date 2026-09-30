@@ -467,24 +467,7 @@ describe("POST /coach", () => {
     expect(system).not.toContain("say the engine handles that");
   });
 
-  it("describes a foundation with no training yet as not started, never as missing data", async () => {
-    await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
-
-    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
-
-    expect(system).toContain("no current movement, tier 0, and chain length 0 has no progress yet");
-    expect(system).toContain("if it does not, the user has not started that line: say so plainly - 'you haven't started pull or core yet'");
-    expect(system).toContain("never call it missing data, 'no progression chain shown'");
-    expect(system).toContain("never call it flat or stuck");
-    expect(system).toContain("name any foundation line with no progress yet, worded as the not-started rule above says");
-    // The rule that the app owns every session survives the vocabulary change.
-    expect(system).toContain("the app builds every session");
-    expect(system).toContain("the app owns every session");
-    expect(system).toContain("talking only");
-  });
-
-  it("acknowledges recent work on a not-started foundation line instead of saying it was never done", async () => {
+  it("sends a neutral not-started rule and never treats recent patterns as completed work", async () => {
     const context = {
       ...CONTEXT,
       chainPositions: CONTEXT.chainPositions.map((line) =>
@@ -504,13 +487,26 @@ describe("POST /coach", () => {
       pattern: "pull", tier: 0, chainLength: 0, hasNextTier: false,
     });
     expect(sent.recentPatterns).toContain("pull");
-    expect(system).toContain("how you describe it depends on whether recentpatterns includes that line's pattern");
     expect(system).toContain(
-      "if it does, the user did some of that work recently, so never say they haven't started it or haven't done it: " +
-        "acknowledge the recent work, then say that line's progress itself has not started yet - " +
-        "'you've been doing some pull work lately, but your pull progress hasn't started yet'",
+      "no current movement, tier 0, and chain length 0 has no tracked progress yet: " +
+        "say its progress hasn't started yet - 'your pull and core progress hasn't started yet'. " +
+        "that is a statement about tracked progress only, never a claim about whether the user did or did not do related work.",
     );
-    expect(system).toContain("for pull, that work so far has usually been supporting work that doesn't count toward pull");
+    expect(system).toContain(
+      "recentpatterns contains engine movement patterns, not foundation names: " +
+        "the patterns that appeared in recent sessions, which can include skipped steps. " +
+        "never assert from it that the user completed specific work.",
+    );
+    expect(system).toContain("movement patterns that appeared in their recent sessions");
+    expect(system).not.toContain("trained recently");
+    expect(system).toContain("never call it missing data, 'no progression chain shown'");
+    expect(system).toContain("never call it flat or stuck");
+    expect(system).toContain("name any foundation line with no progress yet, worded as the not-started rule above says");
+    expect(system).toContain("pull is tracked only on its horizontal ladder; postural pull work is accessory work");
+    // The rule that the app owns every session survives the vocabulary change.
+    expect(system).toContain("the app builds every session");
+    expect(system).toContain("the app owns every session");
+    expect(system).toContain("talking only");
   });
 });
 
