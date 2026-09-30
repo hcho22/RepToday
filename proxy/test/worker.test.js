@@ -372,13 +372,13 @@ describe("POST /coach", () => {
     await worker.fetch(coachRequest({ context: CONTEXT, message: "why squats today?" }), ENV);
 
     const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
-    const system = upstreamBody.instructions.toLowerCase();
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
 
     // The load-bearing safety invariant (AC3): talking only, never a generated/edited workout.
     expect(system).toContain("never generate");
     expect(system).toContain("talking only");
     // The target intents (AC2): why-this-workout, form, injury-with-flag, and boredom/variety.
-    expect(system).toContain("stalest");
+    expect(system).toContain("explain the app's reasoning from the context - the area they have gone longest without");
     expect(system).toContain("form");
     expect(system).toContain("flag that area themselves");
     expect(system).toContain("never diagnose");
@@ -439,6 +439,77 @@ describe("POST /coach", () => {
     expect(context.chainPositions.map(({ pattern }) => pattern)).toEqual([
       "push", "pull", "squat", "hinge", "core",
     ]);
+  });
+
+  it("sends instructions that forbid internal terms in replies and name the app's own vocabulary", async () => {
+    await worker.fetch(coachRequest({ context: CONTEXT, message: "how am I doing?" }), ENV);
+
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
+
+    const forbiddenTerms = [
+      "engine", "deterministic", "stalest", "chain", "progression chain", "frontier", "consistency signal",
+      "chainpositions", "strengthjourney", "recentpatterns", "pattern keys", "hasnexttier",
+    ];
+    expect(system).toContain(
+      `never say or quote these internal terms or field names in a reply: ${forbiddenTerms.join(", ")}, ` +
+        "or the context bundle. say 'rep today' or 'the app' where you would have said 'the engine'.",
+    );
+
+    // The user-facing vocabulary the Progress tab already shows.
+    expect(system).toContain("'consistency', 'tier 2 of 4', 'next tier in reach', 'strength phase', and 'not started yet'");
+    expect(system).toContain("the area you've gone longest without");
+
+    // Every answer instruction the model follows speaks in those plain words, never the internal ones.
+    const answerRules = system.slice(system.indexOf("rules you must follow exactly:"));
+    for (const term of [...forbiddenTerms, "pattern"]) {
+      expect(answerRules).not.toContain(term);
+    }
+    expect(answerRules).toContain("the app rotates which areas they train and avoids repeating recent ones");
+    expect(answerRules).toContain("leaning the program toward that exact line (for example the hinge side of legs)");
+  });
+
+  it("sends a neutral not-started rule and marks recent patterns as not proof of completed work", async () => {
+    const context = {
+      ...CONTEXT,
+      chainPositions: CONTEXT.chainPositions.map((line) =>
+        line.pattern === "pull"
+          ? { pattern: "pull", tier: 0, chainLength: 0, hasNextTier: false }
+          : line,
+      ),
+      recentPatterns: ["pull", "push", "squat"],
+    };
+    await worker.fetch(coachRequest({ context, message: "how am I doing?" }), ENV);
+
+    const upstreamBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const system = upstreamBody.instructions.toLowerCase().replace(/\s+/g, " ");
+    const sent = JSON.parse(upstreamBody.input.split("\n")[1]);
+
+    expect(sent.chainPositions.find(({ pattern }) => pattern === "pull")).toEqual({
+      pattern: "pull", tier: 0, chainLength: 0, hasNextTier: false,
+    });
+    expect(sent.recentPatterns).toContain("pull");
+    expect(system).toContain(
+      "no current movement, tier 0, and chain length 0 has no tracked progress yet: " +
+        "say its progress hasn't started yet - 'your pull and core progress hasn't started yet'. " +
+        "that is a statement about tracked progress only, never a claim about whether the user did or did not do related work.",
+    );
+    expect(system).toContain(
+      "recentpatterns contains engine movement patterns, not foundation names: " +
+        "the patterns that appeared in recent sessions, which can include skipped steps. " +
+        "never assert from it that the user completed specific work.",
+    );
+    expect(system).toContain("movement patterns that appeared in their recent sessions");
+    expect(system).not.toContain("trained recently");
+    expect(system).toContain("never call it missing data, 'no progression chain shown'");
+    expect(system).toContain("a not-started line is not a stall, so never call it flat or stuck.");
+    expect(system).not.toContain("build toward");
+    expect(system).toContain("name any foundation line with no progress yet, worded as the not-started rule above says");
+    expect(system).toContain("pull is tracked only on its horizontal ladder; postural pull work is accessory work");
+    // The rule that the app owns every session survives the vocabulary change.
+    expect(system).toContain("the app builds every session");
+    expect(system).toContain("the app owns every session");
+    expect(system).toContain("talking only");
   });
 });
 
