@@ -79,8 +79,8 @@ All hold, with the additions and differences marked **(new)**.
 - `UserProfile.sex` is `Sex` (`male`/`female`/`other`, `Models/Enums.swift`), captured by the onboarding `SexPicker`; no post-onboarding editor exists.
 - `docs/asset-attribution.md` rule: no bundled third-party asset ships without a source/license row first.
 - "Coach" is the premium AI chat; the word "trainer" appears nowhere in app code, `CONTEXT.md` or `AGENTS.md` today, so the new term collides with nothing.
-- **(new)** Beyond the places the interview listed, Lottie is also referenced in: the `packages:` entry, its comment and the target dependency in `ios/RepToday/project.yml`; the committed generated project `ios/RepToday/RepToday.xcodeproj/project.pbxproj` (the `lottie-ios` package reference and the `Lottie` product dependency); `import Lottie` in `ActiveSessionView.swift`; the `Exercise.animationName` doc comment; a comment in `.github/workflows/ci.yml` ("Lottie stays the app's only dependency"); a comment in the root `vitest.config.ts` ("Lottie remains its only one"); the AGENTS.md CI paragraph; and the intro sentence of `docs/asset-attribution.md` ("holding an asset back costs nothing but the animation itself").
-  US-TP12's grep guards, not this list, are the completeness check.
+- **(new)** Beyond the places the interview listed, Lottie is also referenced in: the `packages:` entry, its comment and the target dependency in `ios/RepToday/project.yml`; the committed generated project `ios/RepToday/RepToday.xcodeproj/project.pbxproj` (the `lottie-ios` package reference and the `Lottie` product dependency); `import Lottie` in `ActiveSessionView.swift`; the `Exercise.animationName` doc comment; a comment in `.github/workflows/ci.yml` ("Lottie stays the app's only dependency"); a comment in the root `vitest.config.ts` ("Lottie remains its only one"); the AGENTS.md CI paragraph, its Project Structure note "(no demo animation ships yet)" and this PRD's own pointer entry ("Until it lands, the Lottie language elsewhere in this file describes current code"); the README.md Project Structure note "(no demo animation ships yet - see docs/asset-attribution.md)"; in `docs/asset-attribution.md`, the intro sentence ("holding an asset back costs nothing but the animation itself") and the closing lines of the "Removed assets" entry, which still describe `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` as gating "any future `animationName`" and expect "the next animation to land"; and in `docs/test-coverage.md`, the `ExerciseLibraryTests` row (its `animationName` resolution clause) and the US-CC11 row (its "US-O01 Lottie seam" and per-movement clip fast-follow wording).
+  For code and config, US-TP12's grep guards are the completeness check; for docs (`AGENTS.md`, `CONTEXT.md`, `README.md` and `docs/`), US-TP12's edit list is, and it names every current-state reference found on `main`.
   Beyond `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile`, two more tests depend on the field: `ModelsTests.testExerciseRoundTripWithAnimationName` and `ModelsTests.testExerciseDecodesWithoutAnimationName`.
   `VisualWorkWindowEvidenceTests` asserts the label "Push-up demonstration" inside the work window.
 - **(new)** `Exercise` uses synthesized `Codable` (no custom `init(from:)` or `CodingKeys`), so removing `animationName` leaves any persisted record that still carries the key decodable; `JSONDecoder` ignores unknown keys.
@@ -381,7 +381,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] Once a choice is stored (made here or in Settings), the prompt never appears again.
 - [ ] Users whose sex answer is male or female never see the prompt.
 - [ ] If the US-CC13 continuous-circuit explainer is also due on the same arrival, the Trainer choice shows first and the explainer follows once a Trainer is chosen; the two are never stacked (decision 15).
-- [ ] Unit tests cover show/no-show gating and the session's handling while the choice is up, per Open Question 3; a hosted-surface test covers the overlay's labels.
+- [ ] Unit tests cover show/no-show gating, the session's handling while the choice is up per Open Question 3, and a failed write per Open Question 8; a hosted-surface test covers the overlay's labels.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator.
 
@@ -393,8 +393,9 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   2. Choose the female Trainer.
   3. End the session, start another.
   4. Repeat with a male-onboarded install.
-- **Expected Result:** Step 1 shows the choice, with the session handled as Open Question 3 settles; step 2 shows the female poses; step 3 shows no prompt; the male install never sees it.
-- **Failure Indicator:** The prompt repeats after a choice, appears for a male or female answer, handles the session other than as Open Question 3 settles, or stacks over the explainer.
+  5. In a unit test with an "other" user and a user service whose save fails, choose a Trainer, then arrive at the player again.
+- **Expected Result:** Step 1 shows the choice, with the session handled as Open Question 3 settles; step 2 shows the female poses; step 3 shows no prompt; the male install never sees it; step 5 behaves as Open Question 8 settles, on the choice and on the next arrival.
+- **Failure Indicator:** The prompt repeats after a stored choice, appears for a male or female answer, handles the session other than as Open Question 3 settles, handles a failed save other than as Open Question 8 settles, or stacks over the explainer.
 
 ### US-TP11: Trainer row in Settings
 
@@ -407,6 +408,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] Selecting a Trainer persists it as the explicit choice immediately, through the US-TP03 Trainer write function (FR-5); the next exercise card or rest preview uses it.
 - [ ] If that write fails, the row behaves per Open Question 8.
 - [ ] Choosing in Settings satisfies the US-TP10 one-time choice.
+- [ ] Unit tests cover the write through the US-TP03 function and a failed write per Open Question 8.
 - [ ] VoiceOver reads the row's label and current value; the control works at the largest Dynamic Type size.
 - [ ] No other Settings section changes.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
@@ -419,8 +421,9 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   1. Open Profile -> Settings and read the Trainer row.
   2. Switch to the female Trainer and start a session.
   3. Relaunch the app and reopen Settings.
-- **Expected Result:** Step 1 shows the male Trainer; step 2 shows the female poses; step 3 still shows the female Trainer.
-- **Failure Indicator:** The row shows nothing for a defaulted user, the change needs a relaunch, or it reverts after relaunch.
+  4. In a unit test with a user service whose save fails, switch the Trainer from the row.
+- **Expected Result:** Step 1 shows the male Trainer; step 2 shows the female poses; step 3 still shows the female Trainer; step 4 behaves as Open Question 8 settles.
+- **Failure Indicator:** The row shows nothing for a defaulted user, the change needs a relaunch, it reverts after relaunch, or a failed save behaves other than as Open Question 8 settles.
 
 ### US-TP12: Retire the Lottie demo path
 
@@ -433,8 +436,14 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] `import Lottie`, `LottieDemoView`, the Lottie branch of `ExerciseIllustration`, `Exercise.animationName` and its doc comment are removed.
 - [ ] `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` and `ModelsTests.testExerciseRoundTripWithAnimationName` are removed.
 - [ ] `ModelsTests.testExerciseDecodesWithoutAnimationName` is replaced by a legacy-decode test: an `Exercise` JSON **carrying** `"animationName"` still decodes, and an `ActiveSessionState` snapshot fixture whose exercises carry the key decodes and resumes.
-- [ ] The US-O01 "Lottie fast-follow" language is removed or rewritten in `ActiveSessionView.swift` comments, `AGENTS.md` (the US-CC11 passage and the CI paragraph), `CONTEXT.md` (the US-CC11 story text), `docs/asset-attribution.md` (the intro sentence ending "costs nothing but the animation itself" and the "Exercise demo animations (US-O01)" section; the "Removed assets" history stays), the `.github/workflows/ci.yml` comment, and the root `vitest.config.ts` comment.
-- [ ] Historical records (`docs/implementation-log.md` entries, older PRDs) stay as point-in-time records; `docs/test-coverage.md` rows for removed tests are updated.
+- [ ] The US-O01 "Lottie fast-follow" language and every other current-state Lottie, `animationName` or demo-animation reference is removed or rewritten in:
+  - `ActiveSessionView.swift` comments, the `.github/workflows/ci.yml` comment, and the root `vitest.config.ts` comment;
+  - `AGENTS.md`: the US-CC11 passage, the CI paragraph, the Project Structure note "(no demo animation ships yet)", and this PRD's pointer entry ("Until it lands, the Lottie language elsewhere in this file describes current code");
+  - `CONTEXT.md`: the US-CC11 story text;
+  - `README.md`: the Project Structure note "(no demo animation ships yet - see docs/asset-attribution.md)";
+  - `docs/asset-attribution.md`: the intro sentence ending "costs nothing but the animation itself", the "Exercise demo animations (US-O01)" section, and the closing lines of the "Removed assets" entry, whose history stays while its present-tense claims (that `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` still gates any future `animationName`, and that "the next animation to land" must arrive with a row) are corrected to describe the removed test and path;
+  - `docs/test-coverage.md`: the `ExerciseLibraryTests` row's `animationName` clause, the US-CC11 row's "US-O01 Lottie seam" and clip fast-follow wording, and any row for a removed test.
+- [ ] Historical records (`docs/implementation-log.md` entries, older PRDs, `artifacts/reports/`) stay as point-in-time records.
 - [ ] `grep -rni lottie ios .github vitest.config.ts` returns nothing, and `grep -rn animationName ios/RepToday/RepToday` returns nothing.
 - [ ] Typecheck, lint, the `RepToday` unit suite, and the `RepTodayUITests` build-for-testing pass.
 
