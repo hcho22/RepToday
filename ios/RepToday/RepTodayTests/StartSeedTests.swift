@@ -404,21 +404,23 @@ final class StartSeedTests: XCTestCase {
     }
 
     /// The floor is a training-load lever, so mobility - the warm-up and cooldown bookend pool - is
-    /// never banded: gating there is identical at every fitness level.
+    /// never banded: the only gate on a level's stretches is the staples rule (`MovementAccess`,
+    /// ADR-0007), so the banded pool carries exactly the stretches the level is offered, no fewer.
     func testBandedPoolNeverFloorsMobility() async throws {
         let library = try await library()
 
-        let mobilityIds: (FitnessLevel) -> [String] = { level in
+        for level in FitnessLevel.allCases {
             let user = self.freshUser(level: level)
             let policy = SessionPolicy.seeded(forFitnessLevel: level)
-            return self.bandedPool(user: user, policy: policy, library: library)
+            let banded = self.bandedPool(user: user, policy: policy, library: library)
                 .filter { $0.pillar == .mobility }
                 .map(\.id)
+            let offered = MovementAccess.available(in: library, level: level, phase: .discipline)
+                .filter { $0.pillar == .mobility }
+                .map(\.id)
+            XCTAssertFalse(banded.isEmpty)
+            XCTAssertEqual(banded, offered, "\(level): banding must not touch the stretches")
         }
-
-        XCTAssertFalse(mobilityIds(.advanced).isEmpty)
-        XCTAssertEqual(mobilityIds(.advanced), mobilityIds(.beginner))
-        XCTAssertEqual(mobilityIds(.advanced), mobilityIds(.intermediate))
     }
 
     /// The band never empties a movement pattern: when the library offers nothing as hard as the floor,
@@ -1435,12 +1437,18 @@ final class StartSeedTests: XCTestCase {
         XCTAssertEqual(beginner.reps, beginner.exercise.defaultReps)
         XCTAssertEqual(beginner.sets, AdaptiveOverload.defaultSets)
 
-        // Warm-up and mobility gating is identical for both.
+        // The bookends are never seeded: the same number of movements for both levels, one set each at the
+        // movement's own default (which stretches fill them differs by level now - ADR-0007 gives
+        // beginners staple stretches only - but the Start Seed never reaches them).
         for category in [ExerciseCategory.warmup, .mobility, .cooldown] {
             let beginnerBlock = beginnerBlocks.first { $0.category == category }
             let advancedBlock = advancedBlocks.first { $0.category == category }
-            XCTAssertEqual(beginnerBlock?.items, advancedBlock?.items, "\(category) must not be seeded")
-            XCTAssertEqual(beginnerBlock?.reserve, advancedBlock?.reserve, "\(category) must not be seeded")
+            XCTAssertEqual(beginnerBlock?.items.count, advancedBlock?.items.count, "\(category) must not be seeded")
+            for item in (beginnerBlock?.items ?? []) + (advancedBlock?.items ?? []) {
+                XCTAssertEqual(item.sets, 1, "\(category) stays one set each")
+                XCTAssertEqual(item.reps, item.exercise.defaultReps, "\(category) is not volume-seeded")
+                XCTAssertEqual(item.durationSeconds, item.exercise.defaultDurationSeconds, "\(category) is not volume-seeded")
+            }
         }
     }
 

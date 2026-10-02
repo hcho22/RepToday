@@ -40,25 +40,29 @@ struct ProgressAnalytics: Equatable {
     ///   - logs: the full `WorkoutLog` history (the Progress tab reads everything, not the engine's
     ///     bounded recent window, so all-time bests and every logged week are represented).
     ///   - library: the validated exercise catalog, needed to resolve chains, hold-vs-rep, and names.
-    ///   - phase: the user's earned phase; chain position only counts tiers this phase can reach, so
-    ///     a Discipline user's chain is never reported against a still-locked Strength tier (US-H02).
+    ///   - level: the user's self-reported fitness level, which with `phase` is everything
+    ///     `MovementAccess` needs to say which tiers this user may get (ADR-0007).
+    ///   - phase: the user's earned phase; chain position only counts tiers this user can reach, so
+    ///     a Discipline user's chain is never reported against a still-locked tier (US-H02, ADR-0007).
     ///   - asOf: the vantage for week bucketing (weekly volume), injected for determinism.
     ///   - calendar: the calendar whose week boundaries match the Consistency Score's.
     static func from(
         logs: [WorkoutLog],
         library: [Exercise],
+        level: FitnessLevel,
         phase: Phase,
         asOf: Date,
         calendar: Calendar = .current
     ) -> ProgressAnalytics {
         let exercisesById = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let worked = workedInstances(in: logs)
-        let chainPositions = makeChainPositions(worked: worked, exercisesById: exercisesById, phase: phase)
+        let access = Access(level: level, phase: phase)
+        let chainPositions = makeChainPositions(worked: worked, exercisesById: exercisesById, access: access)
 
         return ProgressAnalytics(
             pillarBalance: makePillarBalance(worked: worked),
             chainPositions: chainPositions,
-            progressionMap: makeProgressionMap(chainPositions: chainPositions, exercisesById: exercisesById, phase: phase),
+            progressionMap: makeProgressionMap(chainPositions: chainPositions, exercisesById: exercisesById, access: access),
             personalBests: makePersonalBests(logs: logs, worked: worked, exercisesById: exercisesById, calendar: calendar),
             deep: DeepAnalytics(
                 patternBalance: makePatternBalance(worked: worked),
@@ -68,11 +72,24 @@ struct ProgressAnalytics: Equatable {
                     worked: worked,
                     exercisesById: exercisesById,
                     chainPositions: chainPositions,
-                    phase: phase,
+                    access: access,
                     calendar: calendar
                 )
             )
         )
+    }
+
+    // MARK: - Movement access
+
+    /// The user's level and earned phase, bound once so every surface below asks `MovementAccess` -
+    /// the engine's own rule - rather than re-deriving who gets which movement.
+    private struct Access {
+        let level: FitnessLevel
+        let phase: Phase
+
+        func allows(_ exercise: Exercise) -> Bool {
+            MovementAccess.isAvailable(exercise, level: level, phase: phase)
+        }
     }
 
     // MARK: - Worked instances
@@ -118,29 +135,29 @@ struct ProgressAnalytics: Equatable {
     /// the frontier tier (highest-order worked) within the most recently worked counting chain of that
     /// line. A line the user has never trained reports "not started" (`currentExercise == nil`).
     ///
-    /// The reported tier/length/next-tier are counted only over the tiers this `phase` can actually
-    /// reach: a Discipline user reaches only `.discipline` tiers, so a chain that tops
-    /// out in a still-locked Strength movement (push_one_arm, pistol, the L-sit) is never reported as
-    /// "next tier in reach" and its length never counts the unreachable tier, mirroring the
-    /// `PhaseEvaluator` principle that Strength movements never surface until earned (US-H02).
+    /// Everything is read through the user's `MovementAccess`. The reported tier/length/next-tier count
+    /// only the tiers this user can actually get: a Discipline user never sees a Strength tier as "next
+    /// tier in reach" (US-H02), and a beginner or intermediate user never sees a tier beyond their
+    /// staples (ADR-0007). A frontier the user *worked* but no longer gets (a Cossack Squat for an
+    /// intermediate, say) is reported as the closest rung they do get on the same chain
+    /// (`MovementAccess.closestAvailableRung`), and a chain with no rung they get at all is never the
+    /// active chain - the line falls back to another counting chain they worked, or "not started".
     private static func makeChainPositions(
         worked: [WorkedInstance],
         exercisesById: [String: Exercise],
-        phase: Phase
+        access: Access
     ) -> [ChainPositionSummary] {
         // Chain -> its tiers, for reachable-length and next-tier lookups.
         let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
 
-        func isReachable(_ exercise: Exercise) -> Bool {
-            exercise.phase == .discipline || phase == .strength
-        }
-
         return StrengthFoundation.allLines.map { line in
             // Only movements on the line's counting chains: Pull is its horizontal chain alone, so
-            // postural pull work never becomes Pull's "current movement".
+            // postural pull work never becomes Pull's "current movement". Chains this user gets nothing
+            // from are set aside.
             let inPattern = worked.compactMap { instance -> (WorkedInstance, Exercise)? in
                 guard let exercise = exercisesById[instance.logged.exerciseId],
-                      line.counts(exercise) else { return nil }
+                      line.counts(exercise),
+                      (tiersByChain[exercise.progressionChainId] ?? []).contains(where: access.allows) else { return nil }
                 return (instance, exercise)
             }
 
@@ -156,16 +173,24 @@ struct ProgressAnalytics: Equatable {
                 return lhs.1.id > rhs.1.id
             }!
             let activeChainId = mostRecent.1.progressionChainId
+            let chain = tiersByChain[activeChainId] ?? []
 
-            // The frontier within that active chain: the highest-order worked tier.
-            let frontier = inPattern
+            // The frontier within that active chain: the highest-order worked tier, moved down to the
+            // closest rung this user gets when the tier they worked is no longer theirs.
+            let workedFrontier = inPattern
                 .filter { $0.1.progressionChainId == activeChainId }
                 .max { $0.1.progressionOrder < $1.1.progressionOrder }!
                 .1
+            let frontier = MovementAccess.closestAvailableRung(
+                in: chain,
+                atOrBelow: workedFrontier.progressionOrder,
+                level: access.level,
+                phase: access.phase
+            ) ?? workedFrontier
 
-            // Report against only the reachable tiers of the active chain, so a locked Strength tier
-            // never inflates the length or claims to be "in reach".
-            let reachableTiers = (tiersByChain[activeChainId] ?? []).filter(isReachable)
+            // Report against only the reachable tiers of the active chain, so a locked tier never
+            // inflates the length or claims to be "in reach".
+            let reachableTiers = chain.filter(access.allows)
             let chainLength = max(reachableTiers.count, 1)
             // Frontier's 1-based rank among the reachable tiers; `max(_, 1)` defends the case (which
             // shouldn't occur) where the frontier itself is not reachable, keeping tier valid.
@@ -191,19 +216,21 @@ struct ProgressAnalytics: Equatable {
     /// derived it (the chain containing the frontier `currentExercise`), so the "you are here" marker
     /// reuses that logic rather than re-deriving position from the logs. A line the user has never
     /// trained (`currentExercise == nil`) has no frontier to key off, so it defaults to the line's
-    /// **canonical chain**, preferring a counting chain with a phase-gated summit for the preview.
-    /// The choice is deterministic: the lowest chain id with such a summit, or the lowest counting
-    /// chain id when none has one. Pull has one counting chain and no Strength-Phase summit, so
-    /// its ladder is always the horizontal chain, whatever the user has trained.
+    /// **canonical chain** for the preview, chosen among the counting chains this user gets at least one
+    /// rung of and preferring one with a Strength-Phase summit. The choice is deterministic: the lowest
+    /// chain id with such a summit, or the lowest chain id when none has one. Pull has one counting chain
+    /// and no Strength-Phase summit, so its ladder is always the horizontal chain, whatever the user has
+    /// trained.
     ///
-    /// A rung is **locked** iff it is a Strength-Phase skill the user has not earned, read through the
-    /// engine's own `ExercisePoolFilter.isPhaseAllowed(_:phase:)` gate so the map cannot mark a rung
-    /// locked (or free) in a way the engine would filter differently. The map carries no start/select
-    /// affordance: it is a pure readout, and the view renders it without any tappable rung.
+    /// A rung is **locked** iff this user does not get it - a Strength-Phase skill they have not earned,
+    /// or a movement beyond the staples for their level until the Strength Phase lifts that (ADR-0007) -
+    /// read through the engine's own `MovementAccess` gate so the map cannot mark a rung locked (or free)
+    /// in a way the engine would filter differently. The map carries no start/select affordance: it is a
+    /// pure readout, and the view renders it without any tappable rung.
     private static func makeProgressionMap(
         chainPositions: [ChainPositionSummary],
         exercisesById: [String: Exercise],
-        phase: Phase
+        access: Access
     ) -> ProgressionMap {
         let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
         let positionByPattern = Dictionary(chainPositions.map { ($0.pattern, $0) }, uniquingKeysWith: { first, _ in first })
@@ -215,7 +242,7 @@ struct ProgressAnalytics: Equatable {
             // The chain to show: the active one (containing the frontier) when the user has trained
             // this line, else the line's canonical chain for a preview.
             let chainId = frontier?.progressionChainId
-                ?? canonicalChainId(for: line, tiersByChain: tiersByChain, exercisesById: exercisesById)
+                ?? canonicalChainId(for: line, tiersByChain: tiersByChain, exercisesById: exercisesById, access: access)
 
             let members = chainId.flatMap { tiersByChain[$0] } ?? []
             // Entry tier first, up to the summit; id break keeps a stable order if two share an order.
@@ -240,7 +267,7 @@ struct ProgressAnalytics: Equatable {
                     displayName: exercise.displayName,
                     difficulty: exercise.difficulty,
                     isStrengthSkill: exercise.phase == .strength,
-                    isLocked: !ExercisePoolFilter.isPhaseAllowed(exercise, phase: phase),
+                    isLocked: !access.allows(exercise),
                     state: state
                 )
             }
@@ -251,17 +278,17 @@ struct ProgressAnalytics: Equatable {
         return ProgressionMap(ladders: ladders)
     }
 
-    /// The line's canonical chain for a fresh-user preview: the counting chain carrying a
-    /// Strength-Phase summit (deterministically the lowest such chain id), or the lowest counting
-    /// chain id overall when none has a strength summit. Only used when the user has no frontier on
-    /// the line.
+    /// The line's canonical chain for a fresh-user preview: among the counting chains this user gets at
+    /// least one rung of, the one carrying a Strength-Phase summit (deterministically the lowest such
+    /// chain id), or the lowest of those chain ids when none has a strength summit. Only used when the
+    /// user has no frontier on the line.
     private static func canonicalChainId(
         for line: FoundationLine,
         tiersByChain: [String: [Exercise]],
-        exercisesById: [String: Exercise]
+        exercisesById: [String: Exercise],
+        access: Access
     ) -> String? {
-        let chainIds = Set(exercisesById.values.filter(line.counts).map(\.progressionChainId))
-        guard !chainIds.isEmpty else { return nil }
+        let chainIds = Set(exercisesById.values.filter { line.counts($0) && access.allows($0) }.map(\.progressionChainId))
         let withStrengthSummit = chainIds.filter { id in
             (tiersByChain[id] ?? []).contains { $0.phase == .strength }
         }
@@ -402,23 +429,25 @@ struct ProgressAnalytics: Equatable {
     /// is the earliest `completedAt` across every worked instance of that tier); a tier never worked is
     /// simply absent, so nothing is fabricated.
     ///
-    /// Only **reachable** tiers can be milestones - the same `exercise.phase == .discipline || phase ==
-    /// .strength` reachability the chain-position surface uses - so a still-locked Strength tier is
-    /// never reported as reached even in the (engine-impossible) case that one appeared in the logs.
+    /// The journey's current position is that same frontier - the rung the user is served - and it is
+    /// current only from the first time they worked it after their last work on any rung of the chain
+    /// they first reached after it: the rungs beyond it in their own history, wherever those sit on the
+    /// ladder now. A user moved to the closest rung they get (ADR-0007), or whose rungs were reordered,
+    /// therefore has no current milestone until they work the served rung again, so time spent on a rung
+    /// they moved on to is never read as time on it, while a session back on a rung reached earlier never
+    /// interrupts a real stall. The rungs they worked stay in the timeline as genuine history. A
+    /// Strength-Phase skill the user has not earned is never a milestone, even when it appears in their
+    /// logs (`MovementAccess.isPhaseEarned`).
     /// A line the user has never trained (`currentExercise == nil`) contributes no journey, so an
     /// empty `chains` means no strength history yet. Pull's journey is its horizontal chain only.
     private static func makeStrengthJourney(
         worked: [WorkedInstance],
         exercisesById: [String: Exercise],
         chainPositions: [ChainPositionSummary],
-        phase: Phase,
+        access: Access,
         calendar: Calendar
     ) -> StrengthJourney {
         let tiersByChain = Dictionary(grouping: exercisesById.values) { $0.progressionChainId }
-
-        func isReachable(_ exercise: Exercise) -> Bool {
-            exercise.phase == .discipline || phase == .strength
-        }
 
         // Earliest logged completion per exercise id - the honest "first reached" date for a tier.
         var firstReachedById: [String: Date] = [:]
@@ -438,31 +467,48 @@ struct ProgressAnalytics: Equatable {
             guard let frontier = positionByPattern[line.pattern]?.currentExercise else { return nil }
             let activeChainId = frontier.progressionChainId
 
-            // The reachable tiers of the active chain, entry-first; a milestone's 1-based tier is its
-            // rank among *these* (matching `ChainPositionSummary.tier`), so a locked tier never shifts
-            // or inflates a reported rank.
-            let reachableTiers = (tiersByChain[activeChainId] ?? [])
-                .filter(isReachable)
+            // Every worked tier of the active chain, entry-first.
+            let milestones: [TierMilestone] = (tiersByChain[activeChainId] ?? [])
+                .filter { MovementAccess.isPhaseEarned($0, phase: access.phase) }
                 .sorted {
                     if $0.progressionOrder != $1.progressionOrder { return $0.progressionOrder < $1.progressionOrder }
                     return $0.id < $1.id
                 }
+                .compactMap { exercise -> TierMilestone? in
+                    guard let firstReachedAt = firstReachedById[exercise.id] else { return nil }
+                    return TierMilestone(
+                        exerciseId: exercise.id,
+                        displayName: exercise.displayName,
+                        tier: exercise.progressionOrder + 1,
+                        firstReachedAt: firstReachedAt
+                    )
+                }
 
-            let milestones: [TierMilestone] = reachableTiers.enumerated().compactMap { index, exercise in
-                guard let firstReachedAt = firstReachedById[exercise.id] else { return nil }
-                return TierMilestone(
-                    exerciseId: exercise.id,
-                    displayName: exercise.displayName,
-                    tier: index + 1,
-                    firstReachedAt: firstReachedAt
-                )
-            }
-
-            // The frontier is a worked, reachable tier, so there is always at least one milestone; the
-            // guard defends the (unexpected) empty case rather than emitting a chain with no climb.
+            // The active chain holds a worked tier, but when the only one is an unearned Strength skill
+            // there is no climb to show.
             guard !milestones.isEmpty else { return nil }
 
-            return ChainJourney(line: line, chainId: activeChainId, milestones: milestones, calendar: calendar)
+            let currentSince = milestones.first { $0.exerciseId == frontier.id }.flatMap { served -> Date? in
+                let reachedLaterIds = Set(milestones.filter { $0.firstReachedAt > served.firstReachedAt }.map(\.exerciseId))
+                let lastLaterWork = worked.filter { reachedLaterIds.contains($0.logged.exerciseId) }.map(\.completedAt).max()
+                return worked
+                    .filter { instance in
+                        instance.logged.exerciseId == served.exerciseId
+                            && (lastLaterWork.map { instance.completedAt > $0 } ?? true)
+                    }
+                    .map(\.completedAt)
+                    .min()
+            }
+
+            return ChainJourney(
+                line: line,
+                chainId: activeChainId,
+                milestones: milestones,
+                currentExerciseId: frontier.id,
+                currentDisplayName: frontier.displayName,
+                currentSince: currentSince,
+                calendar: calendar
+            )
         }
 
         return StrengthJourney(chains: chains)
@@ -541,8 +587,9 @@ struct LadderRung: Equatable, Identifiable {
     /// Whether this rung is a `phase == .strength` skill (locked or not - a strength user's summit is
     /// a strength skill that is no longer locked).
     let isStrengthSkill: Bool
-    /// Locked iff it is a Strength-Phase skill the user has not earned - `!isPhaseAllowed`, the
-    /// engine's own gate, so this can never disagree with what the engine would filter.
+    /// Locked iff this user does not get the movement - `!MovementAccess.isAvailable`, the engine's own
+    /// gate (an unearned Strength-Phase skill, or a movement beyond their level's staples), so this can
+    /// never disagree with what the engine would filter.
     let isLocked: Bool
     /// Where this rung sits relative to the user's frontier.
     let state: State
@@ -608,26 +655,46 @@ struct StrengthJourney: Equatable {
 }
 
 /// One foundation line's dated climb through its active progression chain (US-AN01): the tiers
-/// the user has actually reached, entry-first, each stamped with the date it was first performed. The
-/// span between the first and current milestone is the "in N weeks" story; nothing is fabricated - a
-/// tier the user never worked is simply absent, and a still-locked Strength tier is never a milestone.
+/// the user has actually reached, entry-first, each stamped with the date it was first performed, and
+/// the rung they are served now. The span between the first and current milestone is the "in N weeks"
+/// story; nothing is fabricated - a tier the user never worked is simply absent, and a still-locked
+/// Strength tier is never a milestone.
 struct ChainJourney: Equatable, Identifiable {
     /// The foundation line (Push, Pull, Squat or Hinge side of Legs, Core).
     let line: FoundationLine
     /// The active chain id (the chain carrying the frontier `ChainPositionSummary.currentExercise`).
     let chainId: String
-    /// The reached tiers, entry-first (each `tier` is its 1-based rank among the chain's reachable
-    /// tiers). Never empty - a pattern with no reached tier contributes no journey.
+    /// The reached tiers, entry-first. A rung the user no longer gets (ADR-0007) stays here as the
+    /// history it is. Never empty - a pattern with no reached tier contributes no journey.
     let milestones: [TierMilestone]
+    /// The rung the user is served on this chain now: the chain position's frontier
+    /// (`ChainPositionSummary.currentExercise`), which they may not have worked yet.
+    let currentExerciseId: String
+    /// That rung's name, so the journey can say where the user is before they have worked it.
+    let currentDisplayName: String
+    /// When the user started on that rung: the first time they worked it after their last work on any
+    /// rung of this chain they first reached after it, `nil` until they have.
+    let currentSince: Date?
 
     /// The calendar the duration read-outs bucket weeks in, so a view renders the span the same way
     /// the analytics were derived rather than reaching for `Calendar.current`.
     private let calendar: Calendar
 
-    init(line: FoundationLine, chainId: String, milestones: [TierMilestone], calendar: Calendar) {
+    init(
+        line: FoundationLine,
+        chainId: String,
+        milestones: [TierMilestone],
+        currentExerciseId: String,
+        currentDisplayName: String,
+        currentSince: Date?,
+        calendar: Calendar
+    ) {
         self.line = line
         self.chainId = chainId
         self.milestones = milestones
+        self.currentExerciseId = currentExerciseId
+        self.currentDisplayName = currentDisplayName
+        self.currentSince = currentSince
         self.calendar = calendar
     }
 
@@ -638,12 +705,28 @@ struct ChainJourney: Equatable, Identifiable {
     /// The entry tier the climb started from.
     var startMilestone: TierMilestone? { milestones.first }
 
-    /// The user's current frontier tier on this chain.
-    var currentMilestone: TierMilestone? { milestones.last }
+    /// The rung the user is served now as a milestone dated `currentSince`, `nil` until they have worked
+    /// it there - so a rung they were moved to is never reported as reached, and the time they spent on
+    /// a rung they moved on to is never read as time on this one. Its row in `milestones` keeps the date
+    /// they first reached it.
+    var currentMilestone: TierMilestone? {
+        guard let currentSince, let served = milestones.first(where: { $0.exerciseId == currentExerciseId }) else {
+            return nil
+        }
+        return TierMilestone(
+            exerciseId: served.exerciseId,
+            displayName: served.displayName,
+            tier: served.tier,
+            firstReachedAt: currentSince
+        )
+    }
 
-    /// Whether the user has advanced at least one tier on this chain (a real "climb", not a single
-    /// worked tier), which is what makes a from -> to advancement line meaningful.
-    var hasAdvanced: Bool { milestones.count >= 2 }
+    /// Whether the user has climbed from their entry tier to the rung they are on now (a real "climb",
+    /// not a single worked tier), which is what makes a from -> to advancement line meaningful.
+    var hasAdvanced: Bool {
+        guard let start = startMilestone, let current = currentMilestone else { return false }
+        return start.exerciseId != current.exerciseId
+    }
 
     /// Whole weeks between the first reached tier and the current frontier, `nil` until there is an
     /// advancement to measure. Bucketed in the analytics' own calendar so it matches every other
@@ -659,16 +742,17 @@ struct ChainJourney: Equatable, Identifiable {
     // zone/first-weekday, which the milestone dates already encode).
     static func == (lhs: ChainJourney, rhs: ChainJourney) -> Bool {
         lhs.line == rhs.line && lhs.chainId == rhs.chainId && lhs.milestones == rhs.milestones
+            && lhs.currentExerciseId == rhs.currentExerciseId && lhs.currentSince == rhs.currentSince
     }
 }
 
-/// A single reached tier on a chain journey (US-AN01): the movement, its 1-based tier rank among the
-/// chain's reachable tiers, and the date it was first performed in a real logged session.
+/// A single reached tier on a chain journey (US-AN01): the movement, its 1-based place on the chain,
+/// and the date it was first performed in a real logged session.
 struct TierMilestone: Equatable, Identifiable {
     /// The catalog id, for stable diffing and evidence only.
     let exerciseId: String
     let displayName: String
-    /// 1-based rank among the active chain's reachable tiers (matches `ChainPositionSummary.tier`).
+    /// 1-based place on the active chain (`progressionOrder + 1`).
     let tier: Int
     /// The earliest `WorkoutLog.completedAt` at which this tier was performed - the honest date the
     /// user first reached it.

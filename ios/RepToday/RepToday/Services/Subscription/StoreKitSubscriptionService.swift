@@ -850,7 +850,7 @@ actor TrialConversionObserver {
         retainAsEmitted(orderedTransactions, referenceTransactions: referenceTransactions)
 
         for transaction in newTransactions {
-            await analytics.record(
+            analytics.record(
                 AnalyticsEvent(
                     name: .subscribe,
                     timestampMs: Int(transaction.purchaseDate.timeIntervalSince1970 * 1_000),

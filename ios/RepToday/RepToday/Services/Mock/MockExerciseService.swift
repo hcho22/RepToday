@@ -23,6 +23,15 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
     /// bookend selection reads (US-M02). Every mobility stretch must carry it (an empty `[]` is
     /// valid - "complements no pattern"); a *missing* key is a tagging omission, not "no matches".
     case mobilityMissingComplements(exerciseId: String)
+    /// An exercise carries no `audience`, so the access rule (`MovementAccess`, ADR-0007) would have to
+    /// guess who gets it. Every catalog movement must say.
+    case missingAudience(exerciseId: String)
+    /// A chain is not a clean doubly-linked ladder: `exerciseId`'s `progressionId`/`regressionId` does
+    /// not point at the adjacent `progressionOrder` in the same chain, or the neighbour does not link back.
+    case chainNotDoublyLinked(exerciseId: String, linkedId: String)
+    /// A movement offered to users links into one withdrawn until version 2, so withdrawing it would
+    /// leave a hole in a live ladder. A withdrawn movement must sit in a chain wholly withdrawn.
+    case withdrawnMovementInLiveChain(exerciseId: String, withdrawnId: String)
 
     var errorDescription: String? {
         switch self {
@@ -40,6 +49,12 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
             return "Progression chain '\(chainId)' is not contiguous: progressionOrder values \(orders) must be 0..<\(orders.count)."
         case .mobilityMissingComplements(let id):
             return "Mobility movement '\(id)' is missing the 'complements' field (US-M02): every stretch must be tagged (use [] for none)."
+        case .missingAudience(let id):
+            return "Exercise '\(id)' is missing the 'audience' field (ADR-0007): every movement must say who is offered it."
+        case .chainNotDoublyLinked(let id, let linkedId):
+            return "Exercise '\(id)' and '\(linkedId)' are not adjacent, mutually linked rungs of one progression chain."
+        case .withdrawnMovementInLiveChain(let id, let withdrawnId):
+            return "Exercise '\(id)' is offered to users but links to '\(withdrawnId)', which is withdrawn until version 2."
         }
     }
 }
@@ -54,9 +69,16 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
 /// Construction validates the library and throws an `ExerciseLibraryError` on the first
 /// violation (`init(library:)` is the validating core that the data/bundle inits funnel
 /// through), making a malformed library a loud startup failure rather than a silent one.
+///
+/// The file also carries the movements **withdrawn until version 2** (`audience == .version2`,
+/// ADR-0007). They are validated with everything else so they stay recoverable in the file, but the
+/// service never serves them: `exercises()` and every query below read the *offered* library only.
+/// That is what keeps them out of every session, swap, progress surface and Coach context by
+/// construction - nothing downstream has to remember to filter them.
 final class MockExerciseService: ExerciseServiceProtocol {
+    /// The movements offered to users (everything except the version-2 withdrawals).
     private let library: [Exercise]
-    /// `id -> Exercise`, for O(1) id lookups and chain-link resolution.
+    /// `id -> Exercise` over the offered library, for O(1) id lookups and chain-link resolution.
     private let byId: [String: Exercise]
 
     /// Validates and caches an already-decoded library, throwing on the first integrity
@@ -64,8 +86,8 @@ final class MockExerciseService: ExerciseServiceProtocol {
     /// exercise each rule.
     init(library: [Exercise]) throws {
         try Self.validate(library)
-        self.library = library
-        self.byId = Dictionary(uniqueKeysWithValues: library.map { ($0.id, $0) })
+        self.library = library.filter { !MovementAccess.isWithdrawn($0) }
+        self.byId = Dictionary(uniqueKeysWithValues: self.library.map { ($0.id, $0) })
     }
 
     /// Decodes a JSON library payload, then validates and caches it.
@@ -151,6 +173,11 @@ final class MockExerciseService: ExerciseServiceProtocol {
             throw ExerciseLibraryError.mobilityMissingComplements(exerciseId: exercise.id)
         }
 
+        // Every movement says who is offered it (ADR-0007).
+        for exercise in library where exercise.audience == nil {
+            throw ExerciseLibraryError.missingAudience(exerciseId: exercise.id)
+        }
+
         // Chain links resolve: no dangling regression/progression references.
         for exercise in library {
             if let regressionId = exercise.regressionId, byId[regressionId] == nil {
@@ -172,6 +199,35 @@ final class MockExerciseService: ExerciseServiceProtocol {
             let orders = members.map(\.progressionOrder).sorted()
             guard orders == Array(0..<members.count) else {
                 throw ExerciseLibraryError.chainNotContiguous(chainId: chainId, orders: orders)
+            }
+        }
+
+        // Every chain is a clean doubly-linked ladder: a rung's progression is the next order in the same
+        // chain and links back as that rung's regression. Reordering a chain (ADR-0007 moved Sumo Squat
+        // behind Bodyweight Squat) must rewire both directions or this fails loudly at load.
+        for exercise in library.sorted(by: { $0.id < $1.id }) {
+            if let nextId = exercise.progressionId, let next = byId[nextId] {
+                guard next.progressionChainId == exercise.progressionChainId,
+                      next.progressionOrder == exercise.progressionOrder + 1,
+                      next.regressionId == exercise.id else {
+                    throw ExerciseLibraryError.chainNotDoublyLinked(exerciseId: exercise.id, linkedId: nextId)
+                }
+            }
+            if let previousId = exercise.regressionId, let previous = byId[previousId] {
+                guard previous.progressionChainId == exercise.progressionChainId,
+                      previous.progressionOrder == exercise.progressionOrder - 1,
+                      previous.progressionId == exercise.id else {
+                    throw ExerciseLibraryError.chainNotDoublyLinked(exerciseId: exercise.id, linkedId: previousId)
+                }
+            }
+        }
+
+        // A withdrawn movement sits in a chain withdrawn whole: no offered movement may link into one.
+        for exercise in library.sorted(by: { $0.id < $1.id }) where !MovementAccess.isWithdrawn(exercise) {
+            for linkedId in [exercise.regressionId, exercise.progressionId].compactMap({ $0 }) {
+                if let linked = byId[linkedId], MovementAccess.isWithdrawn(linked) {
+                    throw ExerciseLibraryError.withdrawnMovementInLiveChain(exerciseId: exercise.id, withdrawnId: linkedId)
+                }
             }
         }
     }

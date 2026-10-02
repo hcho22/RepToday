@@ -22,6 +22,10 @@ final class StrengthGraduationViewModel {
     /// first evaluation, when there is no user, or when the library read the evaluator needs fails.
     private(set) var earnedStrength = false
 
+    /// The evaluated user's self-reported fitness level, which decides what the reveal says the earned
+    /// phase opens up (ADR-0007). `nil` before the first evaluation or when there is no user.
+    private(set) var fitnessLevel: FitnessLevel?
+
     private let userService: any UserServiceProtocol
     private let workoutLogService: any WorkoutLogServiceProtocol
     private let phaseService: any PhaseServiceProtocol
@@ -58,6 +62,7 @@ final class StrengthGraduationViewModel {
             earnedStrength = false
             return
         }
+        fitnessLevel = user.profile.fitnessLevel
 
         guard user.phase == .discipline else {
             earnedStrength = true

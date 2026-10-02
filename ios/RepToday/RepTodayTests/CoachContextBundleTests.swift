@@ -260,10 +260,10 @@ final class CoachContextBundleTests: XCTestCase {
             ChainJourney(line: line(.push), chainId: "push_c", milestones: [
                 milestone("push_a", tier: 1, weeksAgo: 5),
                 milestone("push_c", tier: 3, weeksAgo: 0),
-            ], calendar: calendar),
+            ], currentExerciseId: "push_c", currentDisplayName: "push_c", currentSince: date(weeksAgo: 0), calendar: calendar),
             ChainJourney(line: line(.hinge), chainId: "hinge_c", milestones: [
                 milestone("hinge_b", tier: 2, weeksAgo: 4),
-            ], calendar: calendar),
+            ], currentExerciseId: "hinge_b", currentDisplayName: "hinge_b", currentSince: date(weeksAgo: 4), calendar: calendar),
         ])
 
         let bundle = CoachContextBundle.make(

@@ -687,7 +687,7 @@ private struct ProgressionMapCard: View {
                 Text("The ladder you're climbing")
                     .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Each foundation's path, from where you started up the ladder. Some climbs top out in a Strength-Phase skill you earn. This is the map, not a menu: the day's work is still chosen for you.")
+                Text("Each foundation's path, from where you started up the ladder. \(lockedRungsSentence) This is the map, not a menu: the day's work is still chosen for you.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
@@ -716,6 +716,18 @@ private struct ProgressionMapCard: View {
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Colors.surface, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+    }
+
+    /// Names what this map still holds locked: rungs beyond the classics for a user held to the staple
+    /// movements (ADR-0007), for whom the Strength Phase opens every movement, otherwise only the
+    /// Strength-Phase skills.
+    private var lockedRungsSentence: String {
+        let locksBeyondStrengthSkills = map.ladders.contains { ladder in
+            ladder.rungs.contains { $0.isLocked && !$0.isStrengthSkill }
+        }
+        return locksBeyondStrengthSkills
+            ? "Rungs beyond the classics open when you earn the Strength Phase."
+            : "Some climbs top out in a Strength-Phase skill you earn."
     }
 }
 
@@ -1023,6 +1035,7 @@ private struct ChainJourneyView: View {
                         milestone: milestone,
                         dateText: dateFormatter.string(from: milestone.firstReachedAt),
                         isFirst: index == 0,
+                        isLast: index == chain.milestones.count - 1,
                         isCurrent: milestone.id == chain.currentMilestone?.id
                     )
                 }
@@ -1030,12 +1043,12 @@ private struct ChainJourneyView: View {
         }
     }
 
-    /// The seen advancement headline: "Knee Push-Up -> Standard Push-Up, 6 weeks" when climbed, else a
-    /// gentle "just started" note keyed off the single reached tier.
+    /// The seen advancement headline: "Knee Push-Up -> Standard Push-Up, 6 weeks" when climbed, a
+    /// gentle "just started" note on a single reached tier, and the rung the user is on when they have
+    /// not worked it yet.
     private var headline: String {
-        guard chain.hasAdvanced, let start = chain.startMilestone, let current = chain.currentMilestone else {
-            return "Getting started"
-        }
+        guard let current = chain.currentMilestone else { return "You're on \(chain.currentDisplayName)" }
+        guard chain.hasAdvanced, let start = chain.startMilestone else { return "Getting started" }
         return "\(start.displayName) -> \(current.displayName)" + durationSuffix
     }
 
@@ -1046,8 +1059,9 @@ private struct ChainJourneyView: View {
     }
 
     private var spokenHeadline: String {
-        guard chain.hasAdvanced, let start = chain.startMilestone, let current = chain.currentMilestone else {
-            return "Getting started at \(chain.currentMilestone?.displayName ?? "your first tier")."
+        guard let current = chain.currentMilestone else { return "You're on \(chain.currentDisplayName)." }
+        guard chain.hasAdvanced, let start = chain.startMilestone else {
+            return "Getting started at \(current.displayName)."
         }
         let span: String
         if let weeks = chain.weeksClimbed {
@@ -1065,6 +1079,7 @@ private struct MilestoneRow: View {
     let milestone: TierMilestone
     let dateText: String
     let isFirst: Bool
+    let isLast: Bool
     let isCurrent: Bool
 
     var body: some View {
@@ -1095,7 +1110,7 @@ private struct MilestoneRow: View {
             Image(systemName: isCurrent ? "location.circle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(Theme.Colors.accent)
             Rectangle()
-                .fill(isCurrent ? Color.clear : Theme.Colors.accent.opacity(0.5))
+                .fill(isLast ? Color.clear : Theme.Colors.accent.opacity(0.5))
                 .frame(width: 2)
                 .frame(maxHeight: .infinity)
         }

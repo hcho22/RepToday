@@ -54,7 +54,9 @@ final class PerSideSwapEvidenceTests: XCTestCase {
             createdAt: date(daysAgo: 120),
             profile: UserProfile(
                 age: 34, sex: .female, heightCm: 168.5, weightKg: 62.0,
-                fitnessLevel: .intermediate, primaryGoal: .stayActive,
+                // Advanced: this fixture needs the whole discipline-phase catalog (the per-side holds and
+                // rep movements it pins sit beyond an intermediate's staples - ADR-0007).
+                fitnessLevel: .advanced, primaryGoal: .stayActive,
                 sitsLong: true, injuries: [], typicalAvailableMinutes: requestedMinutes
             ),
             phase: .discipline,
@@ -654,7 +656,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// mock container uses, with a user whose learned default is the 30 minutes the transcripts use.
     func testRenderReadyScreenWithPerSideRows() throws {
         try render(
-            ReadyView(services: try readyServices()),
+            ReadyView(services: try readyServices(), now: { self.asOf }),
             size: CGSize(width: 393, height: 1420),
             fileName: "ready-screen-per-side-rows.png", story: Evidence.perSideSwap
         )
@@ -783,7 +785,7 @@ final class PerSideSwapEvidenceTests: XCTestCase {
     /// screen, not re-derived from the formatter, so they are what VoiceOver would actually announce.
     func testReadyScreenRowsSpeakTheNounsRatherThanTheGlyph() throws {
         let slots = try generate().blocks.flatMap(\.exercises)
-        let host = hosted(ReadyView(services: try readyServices()), size: CGSize(width: 393, height: 1420))
+        let host = hosted(ReadyView(services: try readyServices(), now: { self.asOf }), size: CGSize(width: 393, height: 1420))
         let labels = AccessibilityTree.labels(in: host.view)
 
         print("=== Rep Today - Ready Screen lineup, accessibility labels read off the live view tree ===")

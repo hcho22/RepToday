@@ -1436,3 +1436,26 @@ The [runtime authentication runbook](coach-runtime-authentication.md) owns the c
 [ADR-0006](adr/0006-foundations-push-pull-legs-core.md) owns the updated foundation rules, recalculation and note behavior, Coach vocabulary, and wire compatibility.
 The preceding story entries record their original landing state; their foundation terminology is superseded by that decision and the [Foundation glossary entry](../CONTEXT.md#foundation).
 Current rendered evidence is recorded in the [foundations validation report](../artifacts/reports/foundations-ppl/validation.md).
+
+## Staple movements for beginner and intermediate users (2026-10-01)
+
+[ADR-0007](adr/0007-staple-movements-for-beginner-and-intermediate.md) owns the decision: beginner and intermediate users in the Discipline Phase get staple movements only, advanced users keep the full variety, earning the Strength Phase lifts the restriction, and Gorilla Walk, Lizard Crawl and Underswitch are withdrawn until version 2.
+The vocabulary is the [Staple movement glossary entry](../CONTEXT.md#staple-movement).
+The preceding story entries record their original landing state; their fitness-level difficulty-band language (US-SP01's effective cap, ADR-0004's depth-mismatch bound) is superseded by that decision.
+
+What landed:
+
+- **One owner.** `Services/Engine/MovementAccess.swift` answers "may this user get this movement" from the self-reported `FitnessLevel` plus the earned `Phase`, reading each movement's `audience` in `Exercises.json` (`beginner`/`intermediate`/`advanced`/`version2`, a `MovementAudience`).
+  `ExercisePoolFilter` routes through it as a hard filter, replacing the difficulty cap (`difficultyCap`, `effectiveDifficultyCap` and the `isWithin*`/`isPhaseAllowed` rules are gone); the eligible pool therefore feeds progression-chain selection, the wide-circuit reserve, the primal block, the bookend stretches and in-session swap unchanged.
+  The Start Seed's withheld set bands over the movements the user can get, and `ProgressAnalytics` (chain positions, progression map locked marking, strength journey - and through them the Coach context bundle) reads the same rule, so `ProgressAnalytics.from` now takes the `level`.
+- **Catalog.** Every movement carries an `audience` (load-validated; a missing one fails load), Sumo Squat moves behind Bodyweight Squat in the `squat` chain, and the service also validates that every chain is a clean doubly-linked ladder and that no offered movement links into a withdrawn one.
+  The three crawls stay in the file, recoverable for version 2, but `MockExerciseService` serves only the other 73 movements.
+- **Existing users.** A user whose logged frontier is a movement they no longer get is served, and shown on Progress, the highest rung they do get at or below it on the same chain (`MovementAccess.closestAvailableRung`, and the clamp `selectInChain` already applied).
+  Nothing is rewritten; foundations clear from entry rungs, which are unchanged.
+  The premium strength journey keeps every rung the user worked as a milestone, including one they no longer get, and anchors its current position on the served rung, current only from the first time it is worked after the last work on any rung the user first reached after it (`ChainJourney.currentSince`), judged by their own history rather than the reordered ladder; until then the line raises no Coach trend, so time on a rung they moved on to never reads as a stall, while a session back on a rung reached earlier never hides a real one.
+  An untrained line's map preview is the lowest-id counting chain the user gets a rung of, preferring one with a Strength-Phase summit, so a beginner's Core preview is Forearm Plank then Side Plank.
+- **One-time note.** `AppState.hasSeenClassicsUpdateNote` (the `hasSeenFoundationsUpdateNote` precedent), marked seen when onboarding completes, gates `ClassicsUpdateNote` on the Ready Screen; `ReadyViewModel.isClassicsUpdateNoteEligible` is `MovementAccess.isRestrictedToStaples` (beginner or intermediate, Discipline Phase).
+- **Copy.** The graduation reveal and the progression map intro name what earning the phase opens for each audience: every movement beyond the classics for a beginner or intermediate user, only the Strength-Phase skills for an advanced user.
+
+Rendered evidence is recorded in the [staple movements validation report](../artifacts/reports/staple-movements/validation.md).
+Physical-device behavior is untested; this is simulator-only validation of an on-device engine.

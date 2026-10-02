@@ -152,6 +152,7 @@ final class ProgressViewModel {
             analytics = ProgressAnalytics.from(
                 logs: logs,
                 library: library,
+                level: user.profile.fitnessLevel,
                 phase: user.phase,
                 asOf: now(),
                 calendar: calendar

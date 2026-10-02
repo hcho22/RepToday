@@ -452,9 +452,9 @@ extension SessionPolicy.ColdStartContract {
     /// The provisional cold-start Starting Difficulty cap seeded from the user's self-reported
     /// fitness level (US-G01): **beginner 2, intermediate 3, advanced 4**.
     ///
-    /// This is a deliberately conservative band, at or below the steady-state difficulty cap the
-    /// pool filter applies (`ExercisePoolFilter.difficultyCap`: beginner 1-2, intermediate 1-3,
-    /// advanced 1-5) - it tightens only the advanced user (5 -> 4), and matches the others.
+    /// This is a deliberately conservative band, equal to the hardest training movement each level is
+    /// offered in the Discipline Phase (`MovementAccess`, ADR-0007: beginner and intermediate staples,
+    /// the full discipline catalog for advanced) - it never withholds a staple.
     /// The point is not the ceiling alone: the engine serves the *gentle end* of the eligible
     /// band first (US-E04, via Step 5's no-history entry-tier selection), where since US-O02 that
     /// band starts at `startingDifficultyFloor` rather than at the chain's absolute entry tier - so
