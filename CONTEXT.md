@@ -83,6 +83,13 @@ The rationale, presentation, Coach behavior and existing-user recalculation are 
 The single protectable **Back** area covers both upper and lower back complaints and excludes Pull and Hinge work.
 **Shoulders** is distinct and excludes Push and Pull work.
 
+## Trainer
+
+The illustrated person who demonstrates movements during a session: a male Trainer and a female Trainer, each drawn in a start pose and an end pose for a movement.
+The Trainer only demonstrates; it never talks, advises, or changes a session, and it is distinct from the **Coach**, the premium AI chat.
+A user's Trainer defaults from their onboarding answer, a user who answered "other" chooses once, and anyone can switch in Settings.
+Planned and not yet built: the spec is `.claude/agent/tasks/prd-trainer-pose-art_261002.md` (`US-TP##`) and the decision is [ADR-0008](docs/adr/0008-static-trainer-pose-art-replaces-lottie-demo.md).
+
 ## Two-Writer Policy Safety
 
 `SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).

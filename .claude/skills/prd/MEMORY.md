@@ -35,6 +35,10 @@ _Recurring preferences the user has confirmed, and conventions specific to how P
 - **PRD doubles as a progress tracker.** As each task/user story from a generated PRD is completed, mark its acceptance-criteria checkboxes `[ ]` → `[x]` in the PRD file (`.claude/agent/tasks/prd-*.md`), so done vs. remaining is visible at a glance.
 - **Post-implementation archive PRDs** - a PRD authored outside the repo (e.g. from a design grill) and shipped before it was committed gets archived into `.claude/agent/tasks/prd-*_<YYMMDD>.md` after the fact; keep the source text faithful and add a `**Status:** Complete - shipped` header line citing the stories/PRs, rather than re-checking the acceptance boxes here.
 - **For rename/refactor/infra PRDs** (no new feature behavior), Validation Tests lean on **grep guards** ("`grep -rn OLD` returns nothing"), the full `xcodebuild` test suite, and a Simulator boot check - not feature interactions. Order stories by dependency and call out irreversible-after-publish fields (bundle id, CloudKit container, StoreKit ids) explicitly.
+- **Filename and prefix:** save as `.claude/agent/tasks/prd-<slug>_<YYMMDD>.md` (the date the PRD is written), and pick a `US-XX##` story prefix only after grepping existing PRDs and docs for collisions (`US-T##` is telemetry, so a new prefix starting with T needs a second letter that no story uses).
+- **Interview-to-PRD traceability:** when a PRD is built from a recorded design interview, include a decision table mapping each numbered captain decision to the stories and FRs that carry it, and route anything the interview did not settle to Open Questions (with a marked recommendation) instead of deciding it in an acceptance criterion.
+- **Re-verify inherited facts:** re-check every code fact a grill record states against current `main` before relying on it, and list the results in a "Verified facts" section that marks additions and discrepancies rather than silently correcting the record.
+- **External inputs (art, data, assets) outside the repo:** re-run any coverage or inventory check read-only at PRD time and put reproducible numbers (counts, bytes, gaps) in the PRD, without copying private paths into it.
 - Engine / session-shape PRDs are often **engine-only**: the continuous-circuit player (US-CC02 onward) renders stations and round counts data-drivenly, so a new session shape usually needs no player/UI story.
   Verify the player already handles it before scoping any UI work.
 
@@ -46,4 +50,4 @@ _(none yet)_
 
 ---
 
-_Last updated: 2026-06-25_
+_Last updated: 2026-10-02_
