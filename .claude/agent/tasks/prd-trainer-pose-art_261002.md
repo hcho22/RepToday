@@ -1,7 +1,8 @@
 # PRD: Trainer Pose Art in the Active Session
 
 - Status: **Planned - not yet authorized for implementation.**
-  Every product decision below was settled with the captain in a design interview on 2026-10-02, and the seven follow-up questions this PRD raised were settled the same day ("go with your recommendations").
+  Every decision in the table below was settled with the captain in a design interview on 2026-10-02, and the seven follow-up questions this PRD raised were settled the same day ("go with your recommendations").
+  The product choices the interview did not settle are listed under Open Questions, each with a marked recommendation.
   The captain asked to discuss before implementing, so no story may start until the captain confirms the go.
 - Story prefix: `US-TP##` (Trainer Pose).
 - Related decisions: [ADR-0008](../../../docs/adr/0008-static-trainer-pose-art-replaces-lottie-demo.md) (static Trainer pose art replaces the Lottie demo seam, and the countdown ring leaves the exercise card).
@@ -36,7 +37,8 @@ The deterministic engine, session timing, completion logging, cue vocabulary, pe
 
 Each numbered decision is the captain's answer from the 2026-10-02 interview.
 Decisions 11-17 are the captain's answers to the follow-up questions the first draft of this PRD raised (captain, 2026-10-02: "go with your recommendations").
-This PRD invents no further product decisions; the only items still open are listed under Open Questions.
+This PRD invents no further product decisions.
+Any product choice the interview did not settle is listed under Open Questions with a marked recommendation, and every acceptance criterion that depends on one says "per Open Question N".
 
 | # | Decision (captain's answer) | Carried by |
 | --- | --- | --- |
@@ -47,7 +49,7 @@ This PRD invents no further product decisions; the only items still open are lis
 | 5 | **Per-side movements (B):** art shown as drawn, no mirroring for side 2; the "Switch sides" beat and "Side 2 of 2" text carry the side change. | FR-11; Non-Goals |
 | 6 | **Incomplete art (A):** pair side by side, single pose centered, no usable art keeps the SF-Symbol fallback (currently Prone Y-T-W Raises); missing art later is a file drop with no code change; a build-time check lists every served movement lacking a full pair for either Trainer. | US-TP04, US-TP05, US-TP06; FR-3, FR-4, FR-20 to FR-22 |
 | 7 | **Animation support (B):** retire Lottie (package, `Exercise.animationName`, `LottieDemoView`, Lottie test and docs); illustration resolves Trainer art else the SF-Symbol fallback; old snapshots keep decoding; any future motion is designed separately. | US-TP12; FR-26 to FR-29; ADR-0008 |
-| 8 | **Art provenance:** ChatGPT image generation (OpenAI), reference Trainers also generated with it from text only; ledger row names the source, cites OpenAI's terms for generated output, and points to the per-folder provenance files. | US-TP01; FR-1 |
+| 8 | **Art provenance:** ChatGPT image generation (OpenAI), reference Trainers also generated with it from text only; ledger row names the source, cites OpenAI's terms for generated output, and points to the per-folder provenance files. | US-TP01; FR-1; Open Question 7 |
 | 9 | **Bundling:** all Trainer art ships inside the app binary (asset catalog); no on-demand download; roughly 15-20 MB added. | US-TP02; FR-2 |
 | 10 | **VoiceOver:** each pose pair is one element labeled with the exercise name and what the Trainer shows; single pose names the pose; individual images hidden; no per-pose descriptions. | US-TP09; FR-23 to FR-25 |
 | 11 | **Switch-sides beat:** keep showing the same stretch's poses on the per-side "Switch sides" beat. | US-TP08; FR-18 |
@@ -133,9 +135,9 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 - [ ] `docs/asset-attribution.md` gains a "Trainer pose art" section with a cleared row covering every Trainer image set, landed in the same change as, or before, the first bundled image (US-TP02).
 - [ ] The row's source states, in the captain's wording: trainer characters and pose art generated with ChatGPT image generation (OpenAI) from text prompts for RepToday; no third-party artwork or real-person likeness used; OpenAI's terms for generated output apply; provenance retained in each art folder's generation log and manifest.
+  The core folder, which has no `generation-log.json`, is handled per Open Question 7.
 - [ ] The license/terms column cites OpenAI's Terms of Use section on ownership of output (`https://openai.com/policies/terms-of-use/`), re-read at implementation time so the citation matches the current text.
 - [ ] The row uses the captain's wording only and does not mention the public exercise-technique pages the art folders' READMEs list as form references (decision 17).
-- [ ] The provenance pointer names the per-folder files as they actually exist: `generation-log.json`, `manifest.json` and `verification.json` in the back, leg, mobility and primal folders; `prompts.json`, `manifest.json` and `verification.json` in the core folder (it has no `generation-log.json`); and per-Trainer `generation-log.json`, `manifest.json` and `verification.json` inside the push folder's `Male`/`Female` subfolders.
 - [ ] The row names no private filesystem path, account, or personal data, and the provenance files themselves stay in the captain's workspace: no generation log, prompt file, manifest or verification file is committed to this public repository (decision 17).
 - [ ] Markdown renders and every link in the section resolves.
 
@@ -147,8 +149,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   2. Compare the source text with the captain's wording in decision 8.
   3. Open the cited OpenAI terms URL.
   4. Check `git log` for the asset catalog: the first commit adding a Trainer image set must not predate this row.
-- **Expected Result:** The row is present, matches the captain's wording, cites the live terms page, and points to the provenance files by their real names.
-- **Failure Indicator:** A Trainer image is in the bundle with no row, the row paraphrases away "no third-party artwork or real-person likeness", or it points to a provenance file that does not exist.
+- **Expected Result:** The row is present, matches the captain's wording (with the core folder handled per Open Question 7), and cites the live terms page.
+- **Failure Indicator:** A Trainer image is in the bundle with no row, the row paraphrases away "no third-party artwork or real-person likeness", or it adds wording or file names beyond the captain's.
 
 ### US-TP02: Bundle the Trainer art in the asset catalog, keyed by exercise id
 
@@ -188,19 +190,24 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] One pure function resolves the effective Trainer: the explicit choice if present; else `male` for `Sex.male` and `female` for `Sex.female`; else unresolved for `Sex.other`.
 - [ ] A profile persisted before this field existed decodes unchanged with the choice absent, so an existing user resolves from their stored sex answer with no migration.
 - [ ] An explicit choice wins over the sex default in every case (a male user who picks the female Trainer sees the female Trainer).
+- [ ] One write function sets the explicit choice (FR-5): it re-reads the stored user immediately before saving and changes only `profile.trainer`, so a write from a stale snapshot never rolls back another writer's progress or a CloudKit import (the `InjuryFlagsViewModel`/`SessionCompletionService` precedent).
+  US-TP10 and US-TP11 both write through it, and nothing else writes `profile.trainer`.
 - [ ] Account deletion removes the choice along with the profile, so a fresh onboarding resolves from the new answer.
-- [ ] Unit tests cover all six combinations of sex x {no choice, male, female} plus the legacy-decode case.
+- [ ] Unit tests cover all nine combinations of sex (male, female, other) x {no choice, male, female} plus the legacy-decode case.
+- [ ] A unit test proves the write function keeps a field another writer changed after the caller loaded the user.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 
 **Validation Test:**
 
-- **Setup:** Unit test with JSON fixtures for `UserProfile`.
+- **Setup:** Unit test with JSON fixtures for `UserProfile` and an in-memory user service.
 - **Steps:**
   1. Decode a profile without the new key for each `Sex` and resolve.
   2. Set an explicit choice opposite to the sex default and resolve.
-  3. Round-trip a profile with an explicit choice.
-- **Expected Result:** male -> male, female -> female, other -> unresolved; the explicit choice always wins; the round trip preserves it; the legacy JSON decodes.
-- **Failure Indicator:** A legacy profile fails to decode, "other" silently defaults to a Trainer, or the sex default overrides an explicit choice.
+  3. On an `other` profile, set an explicit male choice and resolve, then an explicit female choice and resolve.
+  4. Round-trip a profile with an explicit choice.
+  5. Load a user, change its consistency through a second writer, then set the Trainer through the write function from the first load.
+- **Expected Result:** male -> male, female -> female, other -> unresolved; the explicit choice always wins, including on an `other` profile; the round trip preserves it; the legacy JSON decodes; the second writer's change survives the Trainer write.
+- **Failure Indicator:** A legacy profile fails to decode, "other" silently defaults to a Trainer, an explicit choice on an `other` profile still resolves as unresolved, the sex default overrides an explicit choice, or the Trainer write rolls back the second writer's change.
 
 ### US-TP04: Pose resolver
 
@@ -365,13 +372,14 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 - [ ] When the effective Trainer is unresolved (US-TP03), arriving at the player shows a choice between the two Trainers before any Trainer art is shown.
 - [ ] The choice offers exactly two options, one per Trainer, with no "decide later", skip, or dismiss-without-choosing path (decision 15).
-- [ ] The choice previews each Trainer (recommended: the current movement's start pose for each), is a modal overlay layer in the style of the US-CC13 explainer, meets the 60 pt active-screen touch target, and supports VoiceOver, Dynamic Type and Reduce Motion.
-- [ ] While the choice is up, the session is held on a US-CC06 user pause, as the US-CC13 explainer does, and resumes from the exact remainder once chosen.
-- [ ] The choice persists the moment it is made, and the art appears for the chosen Trainer immediately.
+- [ ] Each option is presented per Open Question 4.
+- [ ] The choice is a modal overlay layer in the style of the US-CC13 explainer, meets the 60 pt active-screen touch target, and supports VoiceOver, Dynamic Type and Reduce Motion.
+- [ ] While the choice is up, the session is handled per Open Question 3.
+- [ ] The choice is written through the US-TP03 Trainer write function (FR-5) the moment it is made, and the art appears for the chosen Trainer immediately.
 - [ ] Once a choice exists (made here or in Settings), the prompt never appears again.
 - [ ] Users whose sex answer is male or female never see the prompt.
 - [ ] If the US-CC13 continuous-circuit explainer is also due on the same arrival, the Trainer choice shows first and the explainer follows once a Trainer is chosen; the two are never stacked (decision 15).
-- [ ] Unit tests cover show/no-show gating and pause/resume; a hosted-surface test covers the overlay's labels.
+- [ ] Unit tests cover show/no-show gating and the session's handling while the choice is up, per Open Question 3; a hosted-surface test covers the overlay's labels.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator.
 
@@ -383,8 +391,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   2. Choose the female Trainer.
   3. End the session, start another.
   4. Repeat with a male-onboarded install.
-- **Expected Result:** Step 1 shows the choice with the countdown frozen; step 2 shows the female poses and resumes the countdown; step 3 shows no prompt; the male install never sees it.
-- **Failure Indicator:** The prompt repeats after a choice, appears for a male or female answer, lets the countdown run behind it, or stacks over the explainer.
+- **Expected Result:** Step 1 shows the choice, with the session handled as Open Question 3 settles; step 2 shows the female poses; step 3 shows no prompt; the male install never sees it.
+- **Failure Indicator:** The prompt repeats after a choice, appears for a male or female answer, handles the session other than as Open Question 3 settles, or stacks over the explainer.
 
 ### US-TP11: Trainer row in Settings
 
@@ -392,11 +400,10 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] `SettingsView` gains a new section with a Trainer row, placed above the destructive Account section, in the existing section style (header, `Theme` tokens, `minTouchTarget`, `listRowBackground(Theme.Colors.surface)`).
-- [ ] The row shows the effective Trainer (the sex default when no explicit choice exists) and, for an unresolved "other" user, a neutral "not chosen yet" state.
-- [ ] Selecting a Trainer persists it as the explicit choice immediately; the next exercise card or rest preview uses it.
+- [ ] `SettingsView` gains a Trainer row, placed per Open Question 5, styled like the existing Settings rows (`Theme` tokens, `minTouchTarget`, `listRowBackground(Theme.Colors.surface)`).
+- [ ] The row shows the effective Trainer (the sex default when no explicit choice exists); for an unresolved "other" user it shows the state set per Open Question 6.
+- [ ] Selecting a Trainer persists it as the explicit choice immediately, through the US-TP03 Trainer write function (FR-5); the next exercise card or rest preview uses it.
 - [ ] Choosing in Settings satisfies the US-TP10 one-time choice.
-- [ ] The write re-reads the stored user before saving (the `InjuryFlagsViewModel`/`SessionCompletionService` precedent) so it never rolls back another writer's progress.
 - [ ] VoiceOver reads the row's label and current value; the control works at the largest Dynamic Type size.
 - [ ] No other Settings section changes.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
@@ -475,10 +482,11 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 **Trainer selection**
 
 - FR-5: The system must store an optional explicit Trainer choice per user in the synced `UserProfile`, so it follows the user and is erased with the account.
+  Every write of the choice (the US-TP10 overlay and the US-TP11 Settings row) must go through one write function that re-reads the stored user immediately before saving and changes only `profile.trainer`, so it never rolls back another writer's progress.
 - FR-6: The effective Trainer must be the explicit choice if present, else male for a male sex answer, else female for a female sex answer, else unresolved.
 - FR-7: Existing users must resolve by the same rule from their stored answer, with no data migration.
-- FR-8: An unresolved user must be asked once, on first arrival at the player, before any Trainer art is shown, with exactly two options and no "decide later", the session held on a user pause until they choose, and the choice shown before the US-CC13 explainer when both are due.
-- FR-9: Settings must offer a Trainer row that shows the effective Trainer and sets the explicit choice immediately.
+- FR-8: An unresolved user must be asked once, on first arrival at the player, before any Trainer art is shown, with exactly two options and no "decide later", and the choice shown before the US-CC13 explainer when both are due; the options' presentation and the session's handling while the choice is up follow Open Questions 4 and 3.
+- FR-9: Settings must offer a Trainer row that shows the effective Trainer and sets the explicit choice immediately; its placement and its unresolved state follow Open Questions 5 and 6.
 
 **Display**
 
@@ -539,14 +547,16 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   Rest-overlay art sits in the same card chrome so it is judged on the same color.
 - **Rest overlay on small phones.** The rest ring and the poses shrink as needed so a 375x667 pt screen shows everything with both controls visible; sizes are settled from screenshots during the build (decision 12).
 - **Ring on the screen background.** Out of the card, the ring's `Theme.Colors.surface` track becomes visible on `systemBackground`; check it in both appearances.
-- **Copy.** All new strings (Trainer names, the choice overlay, the Settings row and footer, accessibility labels) live in one copy source each, identity-framed and plain, never loss-framed.
-- **Reuse.** The choice overlay follows `ContinuousCircuitExplainerView` (overlay layer, `.isModal`, Reduce Motion stilling, user pause while shown); the Settings section follows the existing sections in `SettingsView`.
+- **Copy.** All new strings (Trainer names, the choice overlay, the Settings row, accessibility labels) live in one copy source each, identity-framed and plain, never loss-framed.
+- **Reuse.** The choice overlay follows `ContinuousCircuitExplainerView` (overlay layer, `.isModal`, Reduce Motion stilling); whether it also holds a user pause while shown is Open Question 3.
+  The Settings row follows the existing rows in `SettingsView`.
 
 ## Technical Considerations
 
 - **Storage of the choice (decision 14).** `UserProfile.trainer: Trainer?` keeps the choice with the user's other onboarding answers, so it follows them across devices through the CloudKit-mirrored Cloud store and is erased by account deletion with no separate reset.
   It decodes as `nil` from every existing profile, which is exactly "derive from the sex answer".
   A device-local `AppState` key was rejected because it would need its own reset on account deletion and would not follow the user.
+  Because `UserServiceProtocol.save(_:)` writes the whole `User` aggregate, both choice surfaces write through the one FR-5 function that re-reads the stored user and changes only `profile.trainer`.
 - **Asset catalog.** Single-scale universal image sets avoid 1x/2x/3x duplication; the 600 px source covers about 150 pt at 3x (450 px).
   `actool` may recompress, so measure the archived size rather than assuming the raw 16.7 MB.
 - **Memory.** At most four 600x600 images are on screen at once (about 1.4 MB decoded each); no caching layer is needed beyond the system's.
@@ -570,10 +580,23 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 ## Open Questions
 
 Questions 1-7 of the first draft were settled by the captain on 2026-10-02 and are now decisions 11-17 above.
-Two items remain open:
+The items below remain open.
+Items 3-7 are product choices the interview did not settle; each carries a marked recommendation, the acceptance criteria that depend on one say "per Open Question N", and the captain's answer is needed before the story that depends on it starts.
 
 1. **Captain action before release (recommended, not confirmed done).** Re-export the back folder (README lists 32 files, 22 present), which likely closes Wall Scapular Pull (a beginner staple and the Pull foundation's entry rung) and Reverse Snow Angel, and supplies Y, T and W pairs for the deferred Prone Y-T-W decision.
 2. **Go-ahead.** Implementation is not authorized; the captain confirms the go before any story starts.
+3. **The session while the Trainer choice is up (US-TP10, FR-8).** Decision 15 settles the options and the order relative to the US-CC13 explainer, but not what happens to the session behind the choice.
+   The player has already started by then, so the first work window or hold would otherwise count down behind an overlay that cannot be dismissed without choosing.
+   **Recommendation:** hold the session on a US-CC06 user pause while the choice is up, as the US-CC13 explainer does, and resume from the exact remainder once a Trainer is chosen.
+4. **What each Trainer option shows (US-TP10, FR-8).** Decision 15 settles exactly two options but not how each is presented.
+   **Recommendation:** show each Trainer's start pose for the current movement (its single available pose if the start is missing, or the Trainer's name alone if it has none), so the user picks the demonstrator they are about to see.
+5. **Where the Trainer row sits in Settings (US-TP11, FR-9).** Decision 1 adds a Settings row but does not place it.
+   **Recommendation:** a new Trainer section above the destructive Account section, so the destructive action stays last, in the existing section style.
+6. **What the Settings row shows before an "other" user chooses (US-TP11, FR-9).** Decision 1 gives that user no default, so the row has no effective Trainer to show.
+   **Recommendation:** a neutral "Not chosen yet" value, never a guessed Trainer.
+7. **The core folder's provenance file names (US-TP01).** The captain's ledger wording (decision 8, kept by decision 17) says provenance is "retained in each art folder's generation log and manifest".
+   The core folder holds `prompts.json`, `manifest.json` and `verification.json` and no `generation-log.json`, while the back, leg, mobility and primal folders and the push folder's `Male`/`Female` subfolders each hold a `generation-log.json`.
+   **Recommendation:** keep the captain's wording verbatim with no file names added to the public row, and have the captain confirm that the core folder's `prompts.json` counts as its generation log; otherwise the captain amends the wording for the core folder or adds a `generation-log.json` to it.
 
 ## Appendix: per-movement coverage (2026-10-02)
 
