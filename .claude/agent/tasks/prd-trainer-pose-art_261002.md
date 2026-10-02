@@ -1,7 +1,7 @@
 # PRD: Trainer Pose Art in the Active Session
 
 - Status: **Planned - not yet authorized for implementation.**
-  Every product decision below was settled with the captain in a design interview on 2026-10-02.
+  Every product decision below was settled with the captain in a design interview on 2026-10-02, and the seven follow-up questions this PRD raised were settled the same day ("go with your recommendations").
   The captain asked to discuss before implementing, so no story may start until the captain confirms the go.
 - Story prefix: `US-TP##` (Trainer Pose).
 - Related decisions: [ADR-0008](../../../docs/adr/0008-static-trainer-pose-art-replaces-lottie-demo.md) (static Trainer pose art replaces the Lottie demo seam, and the countdown ring leaves the exercise card).
@@ -35,7 +35,8 @@ The deterministic engine, session timing, completion logging, cue vocabulary, pe
 ## Interview decisions and where this PRD carries them
 
 Each numbered decision is the captain's answer from the 2026-10-02 interview.
-This PRD invents no further product decisions; anything the interview did not settle is listed under Open Questions.
+Decisions 11-17 are the captain's answers to the follow-up questions the first draft of this PRD raised (captain, 2026-10-02: "go with your recommendations").
+This PRD invents no further product decisions; the only items still open are listed under Open Questions.
 
 | # | Decision (captain's answer) | Carried by |
 | --- | --- | --- |
@@ -49,6 +50,13 @@ This PRD invents no further product decisions; anything the interview did not se
 | 8 | **Art provenance:** ChatGPT image generation (OpenAI), reference Trainers also generated with it from text only; ledger row names the source, cites OpenAI's terms for generated output, and points to the per-folder provenance files. | US-TP01; FR-1 |
 | 9 | **Bundling:** all Trainer art ships inside the app binary (asset catalog); no on-demand download; roughly 15-20 MB added. | US-TP02; FR-2 |
 | 10 | **VoiceOver:** each pose pair is one element labeled with the exercise name and what the Trainer shows; single pose names the pose; individual images hidden; no per-pose descriptions. | US-TP09; FR-23 to FR-25 |
+| 11 | **Switch-sides beat:** keep showing the same stretch's poses on the per-side "Switch sides" beat. | US-TP08; FR-18 |
+| 12 | **Rest overlay on small phones:** shrink the ring and poses until everything fits on a 375x667 pt screen with both controls visible; exact sizes settled from screenshots during the build. | US-TP08, US-TP13; FR-18 |
+| 13 | **Card color:** keep the app's card color (`.secondarySystemBackground`) and verify legibility on real screenshots; add a dedicated card color only if a pose reads poorly. | US-TP06, US-TP13; FR-19; Design Considerations |
+| 14 | **Choice storage:** the explicit Trainer choice lives in the synced `UserProfile`, alongside the onboarding sex answer, so it follows the user and is erased with the account. | US-TP03, US-TP11; FR-5; Technical Considerations |
+| 15 | **"Other" choice overlay:** exactly two options, no "decide later"; when the US-CC13 continuous-circuit explainer is due on the same arrival, the Trainer choice shows first. | US-TP10; FR-8 |
+| 16 | **`version2` crawl art:** not bundled now; added by file drop when version 2 restores those movements. | US-TP02; FR-4; Non-Goals |
+| 17 | **Attribution:** keep the captain's ledger wording; do not mention the public technique pages; keep the provenance files out of the public repository. | US-TP01; FR-1; Non-Goals |
 
 ## Verified facts on current main (2026-10-02)
 
@@ -75,7 +83,7 @@ All hold, with the additions and differences marked **(new)**.
 - **(new)** `Exercise` uses synthesized `Codable` (no custom `init(from:)` or `CodingKeys`), so removing `animationName` leaves any persisted record that still carries the key decodable; `JSONDecoder` ignores unknown keys.
   Because the field was always `nil` and synthesized encoding omits `nil` optionals, existing snapshots almost certainly do not carry the key at all.
 - **(new)** The art was reviewed against card colors `#202226` (dark) and `#EBEDF0` (light), but the card renders `.secondarySystemBackground`, which is `#1C1C1E` (dark) and `#F2F2F7` (light) in the standard appearance.
-  The colors are close; see Open Question 3.
+  The colors are close; per decision 13 the card keeps its color and legibility is verified on real screenshots (US-TP13).
 - **(new)** The countdown ring's track is drawn in `Theme.Colors.surface`, the same color as the card, so today the track is invisible inside the card; once the ring sits on the screen background its track becomes visible.
 
 ## Art inventory and coverage (re-run 2026-10-02, read-only)
@@ -86,7 +94,8 @@ The coverage check matched each catalog movement's display-name slug (for exampl
   Each start/end pair shares one frame, so the two poses sit in one fixed square without jumping; the art notes say to display the full 600 px square aspect-fit and never trim transparency.
 - **Volume:** 302 PNGs, 17,784,576 bytes in total (151 per Trainer).
   Six of them (the Prone Y, T and W raise variants) map to no catalog movement; the 296 that map to a movement total 17,498,123 bytes.
-  The 12 files for the three `version2` crawls total 759,895 bytes.
+  The 12 files for the three `version2` crawls total 759,895 bytes and are not bundled now (decision 16).
+  The bundled set is therefore 284 PNGs (142 per Trainer, covering the 73 served movements), 16,738,228 bytes of raw PNG.
 - **Coverage:** 75 of 76 catalog movements were found by name; the exception is Prone Y-T-W Raises.
 
 | Coverage per Trainer | Male | Female |
@@ -125,8 +134,9 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] `docs/asset-attribution.md` gains a "Trainer pose art" section with a cleared row covering every Trainer image set, landed in the same change as, or before, the first bundled image (US-TP02).
 - [ ] The row's source states, in the captain's wording: trainer characters and pose art generated with ChatGPT image generation (OpenAI) from text prompts for RepToday; no third-party artwork or real-person likeness used; OpenAI's terms for generated output apply; provenance retained in each art folder's generation log and manifest.
 - [ ] The license/terms column cites OpenAI's Terms of Use section on ownership of output (`https://openai.com/policies/terms-of-use/`), re-read at implementation time so the citation matches the current text.
+- [ ] The row uses the captain's wording only and does not mention the public exercise-technique pages the art folders' READMEs list as form references (decision 17).
 - [ ] The provenance pointer names the per-folder files as they actually exist: `generation-log.json`, `manifest.json` and `verification.json` in the back, leg, mobility and primal folders; `prompts.json`, `manifest.json` and `verification.json` in the core folder (it has no `generation-log.json`); and per-Trainer `generation-log.json`, `manifest.json` and `verification.json` inside the push folder's `Male`/`Female` subfolders.
-- [ ] The row names no private filesystem path, account, or personal data.
+- [ ] The row names no private filesystem path, account, or personal data, and the provenance files themselves stay in the captain's workspace: no generation log, prompt file, manifest or verification file is committed to this public repository (decision 17).
 - [ ] Markdown renders and every link in the section resolves.
 
 **Validation Test:**
@@ -149,10 +159,11 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] Each mapped PNG becomes one image set in `Resources/Assets.xcassets`, inside a namespaced `Trainer` folder, named by **exercise id**, Trainer and pose (for example `Trainer/female/hinge_glute_bridge-start`), never by display-name slug, so the two "Cossack Squat" entries cannot collide.
 - [ ] Image sets are single-scale, universal, rendered as original (not template), and keep the full 600x600 canvas untrimmed.
 - [ ] The repository carries a repeatable import step (recommended: a script under `tools/` with an explicit slug-to-id map, run against a copy of the art root) that names every file it skipped; documented in `docs/implementation-log.md`.
-- [ ] Art for every catalog movement that has art ships, including the three `version2` crawls, so it is ready when version 2 restores them (Open Question 6 can reverse this).
+- [ ] Art ships for every **served** movement that has art (284 PNGs today).
+  The three `version2` crawls' art (12 files) is not bundled now; it is added by file drop, with no code change, when version 2 restores those movements (decision 16).
   The six Prone Y/T/W variant files map to no movement and are not bundled (decision 6 defers their presentation).
 - [ ] No Trainer image is tagged for On-Demand Resources or downloaded at runtime.
-- [ ] The app-size delta is measured (Release build for a generic iOS device, `.app` size and `Assets.car` size before and after) and recorded in `artifacts/reports/US-TP02/validation.md`; the expected raw PNG payload is about 17.5 MB.
+- [ ] The app-size delta is measured (Release build for a generic iOS device, `.app` size and `Assets.car` size before and after) and recorded in `artifacts/reports/US-TP02/validation.md`; the expected raw PNG payload is about 16.7 MB (16,738,228 bytes).
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 
 **Validation Test:**
@@ -173,7 +184,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 **Acceptance Criteria:**
 
 - [ ] A closed `Trainer` enum (`male`, `female`) exists, `Codable`, `CaseIterable` and `Identifiable`, with display copy in one source.
-- [ ] The user's explicit choice is stored as an optional field (recommended: `UserProfile.trainer: Trainer?`, see Technical Considerations and Open Question 4), absent by default.
+- [ ] The user's explicit choice is stored as an optional field on the synced `UserProfile` (`UserProfile.trainer: Trainer?`), beside the onboarding sex answer, absent by default (decision 14).
 - [ ] One pure function resolves the effective Trainer: the explicit choice if present; else `male` for `Sex.male` and `female` for `Sex.female`; else unresolved for `Sex.other`.
 - [ ] A profile persisted before this field existed decodes unchanged with the choice absent, so an existing user resolves from their stored sex answer with no migration.
 - [ ] An explicit choice wins over the sex default in every case (a male user who picks the female Trainer sees the female Trainer).
@@ -303,9 +314,10 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 - [ ] On a transition beat (every `.transition` rest: between stations, between warm-up/cooldown stretches, and at block boundaries) the upcoming movement's poses appear under "Next: <exercise>".
 - [ ] On a between-round rest the upcoming movement's poses appear under the "Next up" text.
-- [ ] The poses use the same resolver, Trainer, pair/single/fallback rules and card chrome as the exercise card, so they render on the card color the art was reviewed against.
-- [ ] The switch-sides beat follows Open Question 1's answer; until it is answered it keeps today's text-only "Same stretch" preview.
-- [ ] On a 375x667 pt screen at default Dynamic Type the heading, ring, next-up text, poses, and both controls (+15s, Skip rest) are all visible without clipping or overlap, with the controls still pinned at the bottom; exact sizes follow Open Question 2.
+- [ ] On the per-side "Switch sides" beat the same stretch's poses appear under the "Same stretch ... Side 2 of 2" text (decision 11), drawn as-is with no mirroring.
+- [ ] The poses use the same resolver, Trainer, pair/single/fallback rules and card chrome as the exercise card, so they render on the app's card color.
+- [ ] On a 375x667 pt screen at default Dynamic Type the heading, ring, next-up text, poses, and both controls (+15s, Skip rest) are all visible without clipping or overlap, with the controls still pinned at the bottom; the rest ring and the poses shrink as needed to achieve this (decision 12).
+- [ ] The exact ring and pose sizes are settled from the US-TP13 screenshots during the build and recorded in `docs/implementation-log.md`.
 - [ ] Rest behavior is unchanged: countdown, auto-advance, +15s, Skip rest, Pause/Resume, and cues.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark).
@@ -316,8 +328,9 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - **Steps:**
   1. Finish the first station's work window and look at the transition beat.
   2. Finish the round and look at the between-round rest.
-  3. Repeat on iPhone SE (3rd generation).
-- **Expected Result:** Both rests show the next movement's poses under the existing text, and everything fits with the controls reachable.
+  3. Reach a per-side warm-up stretch and let side 1 end on the "Switch sides" beat.
+  4. Repeat on iPhone SE (3rd generation).
+- **Expected Result:** The transition beat and the between-round rest show the next movement's poses, the switch-sides beat shows the same stretch's poses, and on the small phone the ring and poses shrink so everything fits with both controls reachable.
 - **Failure Indicator:** The poses show the movement just finished, the overlay clips or overlaps on the small phone, or the controls move.
 
 ### US-TP09: VoiceOver for the pose art
@@ -351,12 +364,13 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 **Acceptance Criteria:**
 
 - [ ] When the effective Trainer is unresolved (US-TP03), arriving at the player shows a choice between the two Trainers before any Trainer art is shown.
+- [ ] The choice offers exactly two options, one per Trainer, with no "decide later", skip, or dismiss-without-choosing path (decision 15).
 - [ ] The choice previews each Trainer (recommended: the current movement's start pose for each), is a modal overlay layer in the style of the US-CC13 explainer, meets the 60 pt active-screen touch target, and supports VoiceOver, Dynamic Type and Reduce Motion.
 - [ ] While the choice is up, the session is held on a US-CC06 user pause, as the US-CC13 explainer does, and resumes from the exact remainder once chosen.
 - [ ] The choice persists the moment it is made, and the art appears for the chosen Trainer immediately.
 - [ ] Once a choice exists (made here or in Settings), the prompt never appears again.
 - [ ] Users whose sex answer is male or female never see the prompt.
-- [ ] If the US-CC13 explainer is also due on the same arrival, the two overlays appear one after the other, never stacked (order per Open Question 5).
+- [ ] If the US-CC13 continuous-circuit explainer is also due on the same arrival, the Trainer choice shows first and the explainer follows once a Trainer is chosen; the two are never stacked (decision 15).
 - [ ] Unit tests cover show/no-show gating and pause/resume; a hosted-surface test covers the overlay's labels.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator.
@@ -433,6 +447,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] Covered states: rep work window (pair), running hold (pair), idle training hold, rep-based stretch, single-pose movement (Wall Scapular Pull), no-art fallback (Prone Y-T-W Raises), transition beat, between-round rest, the US-TP10 choice overlay, and the US-TP11 Settings row.
 - [ ] The suite asserts the US-TP09 labels and the compact ring labels on the live accessibility tree.
 - [ ] Committed PNGs and a `validation.md` live under `artifacts/reports/US-TP13/`, regenerated with `REPTODAY_WRITE_EVIDENCE=1`.
+- [ ] Covered rest states also include the per-side switch-sides beat, and the 375x667 pt captures are the screenshots that settle the rest-overlay ring and pose sizes (decision 12).
+- [ ] Pose legibility on the app's card color (`.secondarySystemBackground`) is judged from these screenshots in light and dark; a dedicated card color is added only if a pose reads poorly, and that finding is recorded in `validation.md` (decision 13).
 - [ ] Manual QA recorded in `validation.md`: art legibility on a real device from about 2 m on the floor, light and dark; live VoiceOver focus order; Reduce Motion ring stilling.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator.
@@ -451,17 +467,17 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Provenance and bundling**
 
-- FR-1: `docs/asset-attribution.md` must carry the Trainer art row (decision 8 wording, OpenAI terms citation, provenance pointer) before any Trainer image is bundled.
+- FR-1: `docs/asset-attribution.md` must carry the Trainer art row (decision 8 wording, OpenAI terms citation, provenance pointer) before any Trainer image is bundled, without mentioning the public technique pages, and the provenance files must stay out of this repository.
 - FR-2: All Trainer art must ship inside the app binary in the asset catalog, with no On-Demand Resources and no runtime download.
 - FR-3: Trainer image sets must be named by exercise id, Trainer and pose, so adding a missing pose is a file drop with no Swift change.
-- FR-4: Files that map to no catalog movement (today the Prone Y, T and W variants) must not be bundled.
+- FR-4: Files that map to no catalog movement (today the Prone Y, T and W variants) and art for `version2` movements must not be bundled; `version2` art is added by file drop when version 2 restores those movements.
 
 **Trainer selection**
 
-- FR-5: The system must store an optional explicit Trainer choice per user.
+- FR-5: The system must store an optional explicit Trainer choice per user in the synced `UserProfile`, so it follows the user and is erased with the account.
 - FR-6: The effective Trainer must be the explicit choice if present, else male for a male sex answer, else female for a female sex answer, else unresolved.
 - FR-7: Existing users must resolve by the same rule from their stored answer, with no data migration.
-- FR-8: An unresolved user must be asked once, on first arrival at the player, before any Trainer art is shown, with the session held on a user pause until they choose.
+- FR-8: An unresolved user must be asked once, on first arrival at the player, before any Trainer art is shown, with exactly two options and no "decide later", the session held on a user pause until they choose, and the choice shown before the US-CC13 explainer when both are due.
 - FR-9: Settings must offer a Trainer row that shows the effective Trainer and sets the explicit choice immediately.
 
 **Display**
@@ -474,8 +490,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - FR-15: The full-size hold ring must no longer replace the art.
 - FR-16: The ring's labels, `.updatesFrequently` trait and Reduce Motion behavior must be unchanged.
 - FR-17: On a 375x667 pt screen at default Dynamic Type nothing visible without scrolling today may move below the fold.
-- FR-18: The rest overlay must show the upcoming movement's art on transition beats and between-round rests, fitting a 375x667 pt screen with both controls visible.
-- FR-19: Art must render on the card color in both light and dark appearance.
+- FR-18: The rest overlay must show the upcoming movement's art on transition beats and between-round rests, and the same stretch's art on the switch-sides beat, shrinking the ring and poses as needed to fit a 375x667 pt screen with both controls visible.
+- FR-19: Art must render on the app's card color (`.secondarySystemBackground`) in both light and dark appearance; a dedicated card color is added only if screenshots show a pose reading poorly.
 
 **Incomplete art**
 
@@ -503,6 +519,9 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - No presentation for Prone Y-T-W Raises beyond the SF-Symbol fallback; one pair versus three variants is decided once its art exists.
 - No motion: no flipbook, cross-fade, rep-synced animation, video, or Lottie replacement; any future motion is designed on its own.
 - No on-demand or remote art download.
+- No bundled art for the `version2` crawls (Gorilla Walk, Lizard Crawl, Underswitch) until version 2 restores them.
+- No dedicated card color for the art unless a pose reads poorly on the app's card color.
+- No mention of the public exercise-technique pages in the attribution ledger, and no provenance files (generation logs, prompts, manifests, verification files) in this repository.
 - No per-pose written descriptions or spoken pose instructions.
 - No editor for the onboarding sex answer, and no change to what the sex answer is used for elsewhere.
 - No more than two Trainers.
@@ -516,19 +535,20 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - **Card first.** The poses own the card at its current 220 pt height; the countdown moves next to the exercise name, as ADR-0008 records.
   The state tones (US-CC10) already mark every transition, so the ring no longer needs the card.
 - **Full canvas, no trimming.** Display the full 600x600 square aspect-fit; trimming transparency or fitting each pose's bounds separately breaks the shared framing and makes poses jump.
-- **Card color.** The art is drawn for `#202226`/`#EBEDF0`; the card renders `.secondarySystemBackground`; review evidence on the real card (Open Question 3).
-  Rest-overlay art sits in the same card chrome for the same reason.
+- **Card color.** The art is drawn for `#202226`/`#EBEDF0`; the card keeps the app's `.secondarySystemBackground` (decision 13), and legibility is judged from the US-TP13 screenshots; a dedicated card color is added only if a pose reads poorly.
+  Rest-overlay art sits in the same card chrome so it is judged on the same color.
+- **Rest overlay on small phones.** The rest ring and the poses shrink as needed so a 375x667 pt screen shows everything with both controls visible; sizes are settled from screenshots during the build (decision 12).
 - **Ring on the screen background.** Out of the card, the ring's `Theme.Colors.surface` track becomes visible on `systemBackground`; check it in both appearances.
 - **Copy.** All new strings (Trainer names, the choice overlay, the Settings row and footer, accessibility labels) live in one copy source each, identity-framed and plain, never loss-framed.
 - **Reuse.** The choice overlay follows `ContinuousCircuitExplainerView` (overlay layer, `.isModal`, Reduce Motion stilling, user pause while shown); the Settings section follows the existing sections in `SettingsView`.
 
 ## Technical Considerations
 
-- **Storage of the choice (recommendation).** `UserProfile.trainer: Trainer?` keeps the choice with the user's other onboarding answers, so it follows them across devices through the CloudKit-mirrored Cloud store and is erased by account deletion with no separate reset.
+- **Storage of the choice (decision 14).** `UserProfile.trainer: Trainer?` keeps the choice with the user's other onboarding answers, so it follows them across devices through the CloudKit-mirrored Cloud store and is erased by account deletion with no separate reset.
   It decodes as `nil` from every existing profile, which is exactly "derive from the sex answer".
-  The alternative, a device-local `AppState` key, would need its own reset on account deletion and would not follow the user; see Open Question 4.
+  A device-local `AppState` key was rejected because it would need its own reset on account deletion and would not follow the user.
 - **Asset catalog.** Single-scale universal image sets avoid 1x/2x/3x duplication; the 600 px source covers about 150 pt at 3x (450 px).
-  `actool` may recompress, so measure the archived size rather than assuming the raw 17.5 MB.
+  `actool` may recompress, so measure the archived size rather than assuming the raw 16.7 MB.
 - **Memory.** At most four 600x600 images are on screen at once (about 1.4 MB decoded each); no caching layer is needed beyond the system's.
 - **Resolver lookup.** Use an injectable "does this image set exist" lookup (`UIImage(named:in:with:)` in production) so unit tests do not depend on the bundle.
 - **Build phase.** Declare `inputFiles` for `Exercises.json` and the asset catalog so the phase runs under `ENABLE_USER_SCRIPT_SANDBOXING`; use only tools available on stock macOS and the CI runner.
@@ -542,36 +562,23 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - 70 of 73 served movements show a full pair for both Trainers at launch; all 73 once the back folder is re-exported and Prone Y-T-W is presented.
 - The build-time report lists exactly the known gaps (six warnings today) and nothing unexpected.
 - Zero layout regressions: on a 375x667 pt screen nothing visible without scrolling today moves below the fold, confirmed by the US-TP13 evidence.
-- The measured app-size increase stays within the 15-20 MB the captain was told; any excess is reported, not silently shipped.
+- The measured app-size increase stays within the 15-20 MB the captain was told (about 16.7 MB of raw PNG is bundled); any excess is reported, not silently shipped.
 - Third-party Swift packages drop from one to zero.
 - Every saved active-session snapshot from before the change still resumes.
 - The captain signs off the US-TP13 evidence as pixel-correct in both appearances and both phone sizes.
 
 ## Open Questions
 
-1. **Switch-sides beat.** Decision 4 names the transition beat and the between-round rest; it does not say whether the per-side "Switch sides" beat shows the same stretch's poses under "Same stretch".
-   Recommendation: show them, consistent with "every state", but this needs the captain's call.
-2. **Rest-overlay sizing on small phones.** Decision 3 fixes the exercise card's size, not the rest overlay's.
-   The overlay already holds a 200 pt ring; adding a 220 pt pose card cannot fit a 375x667 pt screen with both controls.
-   US-TP08 fixes the constraint (everything visible, controls pinned); the exact pose and ring sizes should be confirmed from the US-TP13 evidence.
-3. **Card color mismatch.** The art was reviewed on `#202226`/`#EBEDF0`, while the card renders `#1C1C1E`/`#F2F2F7`.
-   Recommendation: confirm legibility on the real card in the US-TP13 evidence before considering a dedicated `Theme` card token.
-4. **Where the choice is stored.** The recommendation is the synced `UserProfile` (follows the user, erased with the account); a device-local `AppState` key is the alternative.
-5. **Choice overlay details.** The recommendation is exactly two options with no "decide later" (a skipped choice would leave no art to show), shown before the US-CC13 explainer when both are due.
-   Confirm both.
-6. **`version2` crawl art.** Decision 9 bundles all Trainer art, which includes 0.76 MB for three movements no one is offered until version 2.
-   US-TP02 bundles them by default; holding them back until version 2 is the alternative.
-7. **Provenance details for the ledger.** The back folder's build notes name "Codex's built-in image-generation tool"; the others name the built-in `image_gen` tool or "the built-in image generator"; the captain names ChatGPT image generation (all OpenAI).
-   The generation logs list only the project's own generated sources and the uploaded female Trainer reference image as image inputs, and contain no web URLs.
-   The folders' READMEs also list public exercise-technique pages (ACE, NASM, GMB and others) as form references for pose planning.
-   The captain's ledger wording stands; confirm whether the row should also say that public technique pages informed pose planning, and whether a sanitized copy of the provenance files should be archived anywhere beyond the captain's workspace (they contain local paths, so they should not enter this public repository as-is).
-8. **Captain actions before release (recommended, not confirmed done).** Re-export the back folder (README lists 32 files, 22 present), which likely closes Wall Scapular Pull (a beginner staple and the Pull foundation's entry rung) and Reverse Snow Angel, and supplies Y, T and W pairs for the deferred Prone Y-T-W decision.
-9. **Go-ahead.** Implementation is not authorized; the captain confirms the go before any story starts.
+Questions 1-7 of the first draft were settled by the captain on 2026-10-02 and are now decisions 11-17 above.
+Two items remain open:
+
+1. **Captain action before release (recommended, not confirmed done).** Re-export the back folder (README lists 32 files, 22 present), which likely closes Wall Scapular Pull (a beginner staple and the Pull foundation's entry rung) and Reverse Snow Angel, and supplies Y, T and W pairs for the deferred Prone Y-T-W decision.
+2. **Go-ahead.** Implementation is not authorized; the captain confirms the go before any story starts.
 
 ## Appendix: per-movement coverage (2026-10-02)
 
 "pair" = start and end present; "end only" = only the end pose; "none" = no file matches the movement.
-`version2` movements are withheld from every user and excluded from the build-time gap report.
+`version2` movements are withheld from every user, excluded from the build-time gap report, and their art is not bundled now (decision 16).
 
 | Art folder | Exercise id | Display name | Audience | Male | Female |
 | --- | --- | --- | --- | --- | --- |

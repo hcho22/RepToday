@@ -38,6 +38,8 @@ Showing two poses side by side needs room the card does not have while it also h
 
 - The app has no third-party Swift package.
 - Missing art degrades per movement and per Trainer: a full pair, a single centered pose, or the SF-Symbol glyph; a build-time report lists every served movement lacking a full pair, so gaps stay visible.
-- The app binary grows by roughly 15-20 MB of bundled PNGs, accepted because the core loop is on-device and offline with no download path.
+- The app binary grows by roughly 15-20 MB of bundled PNGs (about 16.7 MB raw for the served movements; art for movements withheld until version 2 is added by file drop when they return), accepted because the core loop is on-device and offline with no download path.
+- The rest overlay also shows the upcoming movement's poses, so on small phones its ring and poses shrink until everything fits with both controls visible.
+- The card keeps the app's card color; a dedicated card color is added only if a pose reads poorly on it.
 - Reintroducing motion later is a fresh design, not a data drop into an existing seam.
 - Evidence suites that asserted the ring inside the card (US-CC11) are updated to the new layout; the ring's accessibility contract (US-CC14) is unchanged.
