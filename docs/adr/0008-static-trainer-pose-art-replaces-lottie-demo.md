@@ -11,7 +11,7 @@
 
 The player's demo slot was built in US-O01 around a bundled Lottie clip per movement, with a per-pattern SF Symbol as the fallback.
 No clip ever shipped, so every movement shows the generic glyph, and the Lottie package is the app's only third-party dependency while rendering nothing.
-US-CC11 kept that seam on purpose ("dropping in per-movement clips lights them up at once").
+US-CC11 kept that seam on purpose (the `ExerciseIllustration` comment: "dropping in ~71 per-movement clips lights them up in both hosts at once, no rewrite").
 
 The captain has now produced illustrated art for two Trainers, a male and a female demonstrator, with a static start pose and end pose for almost every movement.
 Showing two poses side by side needs room the card does not have while it also holds a countdown ring: inside today's work window each pose would be about 60 pt wide, and a running hold hides the illustration entirely behind a 200 pt ring.
