@@ -146,16 +146,11 @@ final class ModelsTests: XCTestCase {
         assertRoundTrip(makeExercise(isHold: true, hasRegression: false, hasProgression: false))
     }
 
-    func testExerciseRoundTripWithAnimationName() {
-        // US-O01: the optional animationName survives a round-trip when present.
-        var ex = makeExercise(isHold: false, hasRegression: true, hasProgression: true)
-        ex.animationName = "push_standard"
-        assertRoundTrip(ex)
-    }
-
-    func testExerciseDecodesWithoutAnimationName() {
-        // US-O01: a pre-O01 record (no animationName key) decodes with animationName == nil,
-        // so existing Exercises.json and persisted records are backward-compatible.
+    func testExerciseCarryingTheRetiredAnimationNameKeyStillDecodes() {
+        // US-TP12: `animationName` (the retired US-O01 animation seam) is gone from `Exercise`, but an
+        // exercise persisted while it existed - inside an active-session snapshot - may still carry the
+        // key. Synthesized `Codable` ignores unknown keys, so the record decodes with every real field
+        // intact.
         let legacy = """
         {
           "id": "push_standard", "displayName": "Standard Push-Up",
@@ -163,15 +158,17 @@ final class ModelsTests: XCTestCase {
           "difficulty": 2, "phase": "discipline", "equipment": [], "isHold": false,
           "defaultReps": 10, "estimatedTimePerSetSeconds": 45, "metValue": 3.8,
           "progressionChainId": "push", "progressionOrder": 2,
-          "advancementCriteria": "3x15 clean reps", "apartmentFriendly": true
+          "advancementCriteria": "3x15 clean reps", "apartmentFriendly": true,
+          "animationName": "push_standard"
         }
         """.data(using: .utf8)!
         do {
             let decoded = try decoder.decode(Exercise.self, from: legacy)
-            XCTAssertNil(decoded.animationName)
             XCTAssertEqual(decoded.id, "push_standard")
+            XCTAssertEqual(decoded.defaultReps, 10)
+            XCTAssertEqual(decoded.progressionOrder, 2)
         } catch {
-            XCTFail("legacy Exercise without animationName should decode: \(error)")
+            XCTFail("an Exercise carrying the retired animationName key must still decode: \(error)")
         }
     }
 

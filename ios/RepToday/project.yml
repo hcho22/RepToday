@@ -27,14 +27,6 @@ settings:
     CoachStaging:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COACH_STAGING"
 
-# Lottie powers the exercise demo animations (US-O01). The app ships on SF-Symbol demos and each
-# exercise lights up as its bundled animation file is added; no animation files ship yet, so the
-# dependency is the seam + graceful fallback only.
-packages:
-  Lottie:
-    url: https://github.com/airbnb/lottie-ios
-    from: "4.5.0"
-
 targets:
   RepToday:
     type: application
@@ -48,8 +40,21 @@ targets:
           - Resources/RepToday.storekit
       - path: RepToday/Resources/RepToday.storekit
         buildPhase: none
-    dependencies:
-      - package: Lottie
+    # US-TP05: every build lists each served movement lacking a full Trainer start/end pose pair (and
+    # any Trainer image set whose name maps to nothing) as Xcode warnings. Gaps never fail the build -
+    # the player degrades per movement on its own - but an unreadable input does, so a broken check
+    # cannot pass silently. It always runs (no outputs to compare against), so the warnings show on
+    # every build, CI's `ios` job included; the inputs are declared so it runs under script sandboxing.
+    preBuildScripts:
+      - name: Report Trainer art gaps
+        script: |
+          /usr/bin/python3 "${SRCROOT}/../../tools/check-trainer-art.py" "${SRCROOT}/RepToday/Resources/Exercises.json" "${SRCROOT}/RepToday/Resources/Assets.xcassets"
+        inputFiles:
+          - $(SRCROOT)/../../tools/check-trainer-art.py
+          - $(SRCROOT)/RepToday/Resources/Exercises.json
+          - $(SRCROOT)/RepToday/Resources/Assets.xcassets
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
     # Supplies REPTODAY_COACH_STAGING_SUBDOMAIN from an untracked local file; no other configuration reads it.
     configFiles:
       CoachStaging: Config/CoachStaging.xcconfig

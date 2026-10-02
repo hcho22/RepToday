@@ -10,8 +10,7 @@ import { defineConfig } from "vitest/config";
  * any of the behaviour three review rounds established.
  *
  * This is `convex/`'s toolchain only - `npm run test` here has nothing to do with the iOS suites,
- * which run under `xcodebuild`. The iOS side still carries **no** new third-party package; Lottie
- * remains its only one.
+ * which run under `xcodebuild`. The iOS app carries **no** third-party Swift package.
  */
 export default defineConfig({
   test: {

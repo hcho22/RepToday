@@ -1,0 +1,15 @@
+{
+  "images": [
+    {
+      "filename": "mobility_worlds_greatest-start.png",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "original"
+  }
+}

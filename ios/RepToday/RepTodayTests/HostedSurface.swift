@@ -32,9 +32,14 @@ enum HostedSurface {
     ///
     /// The window is handed back rather than kept here because a released window takes the hosted view
     /// down with it: the caller has to hold it for as long as the surface is read.
+    ///
+    /// `emulatingSafeArea` hosts the surface with exactly those safe-area insets instead of the running
+    /// Simulator's own, so a smaller phone can be rendered faithfully on whatever device the suite runs
+    /// on - a 375x667 pt iPhone SE has a 20 pt status bar, not the iPhone 16's taller top inset. The
+    /// hosting controller's `additionalSafeAreaInsets` absorbs the difference between the two.
     static func host<V: View>(
         _ view: V, size: CGSize, settleFor interval: TimeInterval = settleInterval,
-        style: UIUserInterfaceStyle = .dark
+        style: UIUserInterfaceStyle = .dark, emulatingSafeArea safeArea: UIEdgeInsets? = nil
     ) -> (host: UIHostingController<V>, window: UIWindow) {
         let host = UIHostingController(rootView: view)
         // Dark by default (every committed baseline is dark). A suite that needs the other appearance
@@ -51,6 +56,20 @@ enum HostedSurface {
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
+
+        if let safeArea {
+            // The device's insets are only known once the hosted view has laid out on screen. Adding
+            // the difference (negative where the device's inset is larger) leaves exactly the emulated
+            // insets, before the surface settles.
+            pump(for: 0.2)
+            let device = host.view.safeAreaInsets
+            host.additionalSafeAreaInsets = UIEdgeInsets(
+                top: safeArea.top - device.top, left: safeArea.left - device.left,
+                bottom: safeArea.bottom - device.bottom, right: safeArea.right - device.right
+            )
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+        }
 
         pump(for: interval)
 

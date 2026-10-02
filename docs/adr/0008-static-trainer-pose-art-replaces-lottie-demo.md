@@ -1,6 +1,6 @@
 # ADR-0008: Static Trainer pose art replaces the Lottie demo, and the countdown ring leaves the exercise card
 
-- Status: Accepted (decided 2026-10-02); **not yet implemented** - the captain has not yet authorized implementation.
+- Status: Accepted (decided 2026-10-02); implemented 2026-10-02 (`US-TP01`...`US-TP13`).
 - Date: 2026-10-02
 - Deciders: captain, via the Trainer pose art design interview (2026-10-02)
 - Spec: `.claude/agent/tasks/prd-trainer-pose-art_261002.md` (`US-TP##`)

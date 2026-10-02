@@ -204,7 +204,7 @@ RepToday/
 │   ├── ViewModels/          # @Observable view models
 │   ├── Views/               # SwiftUI screens (Onboarding, Ready, ActiveSession, Progress, Paywall, Settings, plus RootView)
 │   ├── Utilities/           # AppState (routing, telemetry identity/consent, and the separate Coach safety pseudonym), LegalLinks, and shared helpers
-│   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (no demo animation ships yet - see docs/asset-attribution.md)
+│   └── Resources/           # Exercises.json, Assets.xcassets, RepToday.storekit (Trainer pose art under Assets.xcassets/Trainer - see docs/asset-attribution.md)
 ├── ios/RepToday/RepTodayTests/     # The default suite (XCTestCase + @testable import), plus the shared seams every suite is expected to use instead of its own copy: EvidenceOutput, HostedSurface/AccessibilityTree, DefaultsSnapshot
 ├── ios/RepToday/RepTodayUITests/   # The out-of-process XCUITest bundle under its own scheme, for the few things only a real touch can exercise; HealthAccessPrompt is its shared helper
 ├── convex/                  # Anonymous-telemetry sink only (idempotent inserts into an immutable events table, US-T14's ephemeral rateLimits helper, internal indexed reconciliation read); no core-loop backend

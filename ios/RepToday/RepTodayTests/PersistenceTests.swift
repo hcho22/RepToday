@@ -451,6 +451,42 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(decoded, legacy, "the old snapshot round-trips to the same value, no field lost")
     }
 
+    /// US-TP12: a snapshot saved while `Exercise.animationName` existed (the retired US-O01 animation
+    /// seam) carries that key on every exercise. It must still decode - to the same value, nothing
+    /// lost - and resume at its saved position.
+    func testActiveSessionStateWhoseExercisesCarryTheRetiredAnimationNameStillDecodesAndResumes() throws {
+        let saved = makeActiveSessionState()
+        var json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: PersistenceCoder.encoder.encode(saved)) as? [String: Any]
+        )
+        func addAnimationName(_ value: Any) -> Any {
+            if var object = value as? [String: Any] {
+                for (key, child) in object { object[key] = addAnimationName(child) }
+                // An exercise is the only object carrying both of these keys.
+                if object["progressionChainId"] != nil, object["displayName"] != nil {
+                    object["animationName"] = "\(object["id"] ?? "")_demo"
+                }
+                return object
+            }
+            if let array = value as? [Any] { return array.map(addAnimationName) }
+            return value
+        }
+        json = try XCTUnwrap(addAnimationName(json) as? [String: Any])
+        let data = try JSONSerialization.data(withJSONObject: json)
+        XCTAssertTrue(
+            String(decoding: data, as: UTF8.self).contains("\"animationName\""),
+            "the fixture must actually carry the retired key"
+        )
+
+        let decoded = try PersistenceCoder.decoder.decode(ActiveSessionState.self, from: data)
+        XCTAssertEqual(decoded, saved, "the old snapshot decodes to the same value, no field lost")
+
+        let resumed = ActiveSessionViewModel(state: decoded)
+        XCTAssertEqual(resumed.currentStepIndex, saved.currentStepIndex)
+        XCTAssertEqual(resumed.currentSet, saved.currentSet)
+        XCTAssertEqual(resumed.currentStep?.prescription.exercise.id, "plank")
+    }
+
     /// Persisting again overwrites the user's single in-progress session in place, never accumulating.
     func testUpdatingActiveSessionOverwritesInPlace() throws {
         try insert(makeActiveSessionState(), userId: "u")

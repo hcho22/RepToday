@@ -1459,3 +1459,38 @@ What landed:
 
 Rendered evidence is recorded in the [staple movements validation report](../artifacts/reports/staple-movements/validation.md).
 Physical-device behavior is untested; this is simulator-only validation of an on-device engine.
+
+## Trainer pose art in the active session (US-TP01 to US-TP13, 2026-10-02)
+
+[ADR-0008](adr/0008-static-trainer-pose-art-replaces-lottie-demo.md) owns the decision and the [Trainer glossary entry](../CONTEXT.md#trainer) the vocabulary; the spec is `.claude/agent/tasks/prd-trainer-pose-art_261002.md`.
+The US-O01 and US-CC11 entries above record their landing state; their Lottie seam and ring-in-the-card layout are superseded here.
+
+What landed:
+
+- **Art and provenance (US-TP01, US-TP02).** `docs/asset-attribution.md` carries the cleared Trainer art row in the captain's wording.
+  `tools/import-trainer-art.py <copy of the art root>` rebuilds `Resources/Assets.xcassets/Trainer/` from scratch: one single-scale, universal, render-as-original image set per exercise id, Trainer and pose (`Trainer/female/hinge_glute_bridge-start`), copied byte-for-byte at the untrimmed 600x600 canvas, through an explicit (family folder, slug) -> id map so the two Cossack Squats cannot collide.
+  It names every file it skips: today the six Prone Y/T/W variant files (no catalog movement) and the twelve `version2` crawl files.
+  The run on 2026-10-02 imported 284 image sets (142 per Trainer), 16,738,228 bytes of PNG; the back folder was re-checked first and still holds 11 files per Trainer.
+  The leg and mobility folders' Cossack Squat drawings are byte-identical copies; each id still resolves to its own image set.
+- **Trainer (US-TP03).** `Models/Trainer.swift`: the closed `Trainer` enum, `Trainer.effective(for:)` (explicit choice, else male/female from the sex answer, else unresolved for "other") and the one write `UserServiceProtocol.saveTrainerChoice(_:)`, which re-reads the stored user and changes only `profile.trainer`.
+  `UserProfile.trainer` is optional with a `nil` default, so older profiles decode with no migration and a build without the field ignores the key.
+- **Resolver and gap report (US-TP04, US-TP05).** `Services/Trainer/TrainerPoseResolver.swift` answers pair / single start / single end / none per exercise id and Trainer through an injectable "image set exists" lookup.
+  The RepToday target's `Report Trainer art gaps` build phase runs `tools/check-trainer-art.py`, printing one `warning:` per served movement and Trainer lacking a full pair (six today) and per misnamed image set; only unreadable inputs fail the build.
+  CI also runs it, with `tools/test-check-trainer-art.py`, as its own step.
+- **Exercise card and ring (US-TP06, US-TP07, US-TP09).** `Views/ActiveSession/ExerciseIllustration.swift` holds `ExerciseDemoView` (the 220 pt card) and `ExerciseIllustration`, the one source for every host: a pair start-left/end-right in equal squares, a single pose centered at the same size, else the pattern glyph; one VoiceOver element per group ("<name>, trainer showing start and end positions"), images hidden, copy in `TrainerPoseCopy`.
+  The session's Trainer travels down the player as the `\.trainer` environment value.
+  The card shows the poses in every state; the work window and a running hold show an 80 pt compact `CountdownRing` beside the exercise name (`ActiveSessionView.exerciseHeadline`), and the full-card hold ring is gone.
+  The ring's stroke is now inset inside its frame, so a ring is exactly its diameter (the rest ring draws 12 pt smaller than before).
+- **Rest overlay (US-TP08).** `RestView` shows `currentStep`'s poses under the next-up text on transition beats, between-round rests and the switch-sides beat.
+  Sizes settled from the US-TP13 captures: the ring is flexible within 96-200 pt and the pose card within 110-220 pt, and the middle of the overlay takes the height before its spacers do.
+  On a 375x667 pt iPhone SE the ring lands at 141-151 pt and the pose group at 125-135 pt with both controls on screen; on a 393x852 pt iPhone 16 the ring reaches its 200 pt maximum.
+- **Choice and Settings (US-TP10, US-TP11).** `TrainerSessionModel` resolves the session's Trainer from the player's snapshot, then re-reads the stored user on arrival.
+  An unresolved user is held on a US-CC06 user pause while that read runs and, if still unresolved, sees `TrainerChoiceView` (two options showing each Trainer's start pose for the current movement) before any art and before the US-CC13 explainer, which follows the choice.
+  A choice shows at once and is saved in the background; a failed save keeps it for the session and the next arrival asks again.
+  Settings gains a Trainer section above Account (`TrainerSettingsViewModel`): the effective Trainer or "Not chosen yet", a menu of the two Trainers, and a failure line that keeps the stored Trainer.
+  `ReadyView` now hands the player `services.userService`.
+- **Lottie retired (US-TP12).** The package, `LottieDemoView`, the Lottie branch, `Exercise.animationName` and its two tests are gone; the project resolves no Swift package.
+  `ModelsTests` and `PersistenceTests` prove an exercise and an active-session snapshot carrying `animationName` still decode, and the snapshot resumes at its saved position.
+
+Evidence and the app-size measurement are in `artifacts/reports/US-TP13/validation.md` and `artifacts/reports/US-TP02/validation.md`.
+Physical-device behavior (art legibility from the floor, live VoiceOver, Reduce Motion) is the captain's manual QA.
