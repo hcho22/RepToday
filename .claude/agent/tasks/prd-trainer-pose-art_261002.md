@@ -300,6 +300,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] Nothing visible without scrolling today moves below the fold on a 375x667 pt screen at default Dynamic Type, and the ring is visible without scrolling there.
 - [ ] Every timer behavior is unchanged: auto-start, auto-advance, Done, + More time, Pause/Resume, the halfway and done cues, and the switch-sides beat.
 - [ ] `VisualWorkWindowEvidenceTests` and any other suite asserting the ring inside the card are updated to the new layout, keeping their intent (illustration present, ring present, labels exact).
+- [ ] The current-state descriptions of the ring's location are rewritten to the compact ring beside the exercise name (ADR-0008): the `AGENTS.md` US-CC11 passage (the compact ring "in the fixed `exerciseSlotCard`", and the hold ring in "the hold/rest rings keep the full-size defaults"), the `CONTEXT.md` US-CC11 story text, and the `docs/test-coverage.md` US-CC11 row.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark, default and largest accessibility Dynamic Type).
 
@@ -326,6 +327,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] The poses use the same resolver, Trainer, pair/single/fallback rules and card chrome as the exercise card, so they render on the app's card color.
 - [ ] On a 375x667 pt screen at default Dynamic Type the heading, ring, next-up text, poses, and both controls (+15s, Skip rest) are all visible without clipping or overlap, with the controls still pinned at the bottom; the rest ring and the poses shrink as needed to achieve this (decision 12).
 - [ ] The exact ring and pose sizes are settled from the US-TP13 screenshots during the build and recorded in `docs/implementation-log.md`.
+- [ ] If the rest ring no longer uses the full-size default, the rest-ring half of the `AGENTS.md` US-CC11 wording "the hold/rest rings keep the full-size defaults" is updated with it.
 - [ ] Rest behavior is unchanged: countdown, auto-advance, +15s, Skip rest, Pause/Resume, and cues.
 - [ ] Typecheck, lint, and the `RepToday` unit suite pass.
 - [ ] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark).
