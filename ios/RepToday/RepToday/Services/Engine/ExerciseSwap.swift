@@ -146,8 +146,8 @@ enum ExerciseSwap {
     ) -> SwapOutcome {
         let target = prescription.exercise
 
-        // Draw substitutes from the eligible pool: that single filter already guarantees phase,
-        // injury, difficulty-cap, recent-skip, and Zero-Equipment-Floor safety, so the swap step
+        // Draw substitutes from the eligible pool: that single filter already guarantees movement-access
+        // (`MovementAccess`), injury, recent-skip, and Zero-Equipment-Floor safety, so the swap step
         // never has to (and never gets to) relax any of them.
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: user, recentLogs: recentLogs)
 

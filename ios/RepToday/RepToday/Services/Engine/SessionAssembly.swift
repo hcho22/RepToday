@@ -1245,9 +1245,9 @@ private struct Builder {
     /// the primal `locomotion` chain at its Step 6 capacity-relative target, sets adjustable for
     /// timing - plus, since US-RC01, `locomotion`'s own further chain as a reserve accessory exactly
     /// like a strength pattern's. Draws only `pillar == .primal` movements from the eligible pool, so
-    /// the Zero-Equipment Floor and difficulty gating still hold. `nil` when the pool has no eligible
-    /// primal movement (e.g. a difficulty cap or injury filtered them out) - the session then degrades
-    /// gracefully to strength + mobility rather than emitting an empty block.
+    /// the Zero-Equipment Floor and movement access (`MovementAccess`) still hold. `nil` when the pool
+    /// has no eligible primal movement (e.g. movement access or an injury filtered them out) - the
+    /// session then degrades gracefully to strength + mobility rather than emitting an empty block.
     ///
     /// The PRD's default was primal staying single-movement (strength carries all the widening),
     /// revisited only if the primal block itself lands short under the round cap - and it does: a
@@ -1256,6 +1256,10 @@ private struct Builder {
     /// targets leave. Enabling this one further chain here is that revisit; it changes nothing when the
     /// depth-first fit does not need it (locomotion's second chain never gets promoted at a length the
     /// round cap alone already carries), exactly like a strength pattern's own accessory.
+    ///
+    /// Since ADR-0007 withdrew that second chain (`primal_ground_flow`) until version 2, locomotion offers
+    /// one chain, so the block is a single station and the strength block absorbs the shortfall. The
+    /// `selectAll` path stays, so a returning chain rejoins as an accessory with no change here.
     private mutating func primalBlock() -> PlannedBlock? {
         let selections = ProgressionChainSelection.selectAll(
             pattern: .locomotion,

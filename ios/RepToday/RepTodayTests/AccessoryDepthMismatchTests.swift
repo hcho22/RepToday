@@ -3,7 +3,7 @@ import XCTest
 
 /// US-RC04 (Accept and pin the bounded depth mismatch): going wider (US-RC01) draws a pattern's
 /// **second progression chain** as an accessory, and the two chains can have different depths - the
-/// shipped push pattern's horizontal chain runs seven tiers (wall -> ... -> one-arm) while its vertical
+/// shipped push pattern's horizontal chain runs eight tiers (wall -> ... -> one-arm) while its vertical
 /// chain runs two (floor-dips -> pike). So an advanced user maxed on horizontal push works a primary
 /// that is *harder* than the deepest the vertical accessory can reach. That mismatch is **deliberately
 /// accepted, not gated** (ADR-0004): the accessory stays an honest frontier of its own chain rather
@@ -109,8 +109,8 @@ final class AccessoryDepthMismatchTests: XCTestCase {
 
     /// Every training station the strength block seeds (its active stations plus its whole reserve),
     /// read straight off `planBlocks` *before* the timing fit decides which to promote. Every accessory
-    /// lives here regardless of the fit, and the difficulty cap that bounds the mismatch has already been
-    /// applied by `eligiblePool` inside `planBlocks`.
+    /// lives here regardless of the fit, and the movement access that bounds the mismatch has already
+    /// been applied by `eligiblePool` inside `planBlocks`.
     private func strengthStations(
         minutes: Int,
         level: FitnessLevel,
@@ -199,10 +199,10 @@ final class AccessoryDepthMismatchTests: XCTestCase {
 
     // MARK: - Advanced: the maxed mismatch is bounded to one tier, and stays honest
 
-    /// Advanced (difficulty cap 1-5), maxed on the deep horizontal chain: the primary is archer
-    /// (difficulty 4 - one-arm push-up, difficulty 5, is Strength-phase-gated so a discipline user tops
-    /// out at archer) and the maxed vertical accessory is pike (difficulty 3). The accepted mismatch is
-    /// therefore exactly **one** difficulty tier, and the test pins that it never exceeds one.
+    /// Advanced (the whole discipline-phase catalog), maxed on the deep horizontal chain: the primary is
+    /// archer (difficulty 4 - one-arm push-up, difficulty 5, is Strength-phase-gated so a discipline user
+    /// tops out at archer) and the maxed vertical accessory is pike (difficulty 3). The accepted mismatch
+    /// is therefore exactly **one** difficulty tier, and the test pins that it never exceeds one.
     ///
     /// This is the whole point of ADR-0004: the vertical accessory is *not* nudged up to difficulty 4 to
     /// match the primary; it stays the honest top of its own shallower chain, one tier below.

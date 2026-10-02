@@ -21,7 +21,8 @@ protocol ExerciseServiceProtocol {
     func exercises(for pillar: Pillar) async throws -> [Exercise]
     func exercises(for movementPattern: MovementPattern) async throws -> [Exercise]
     func exercises(for phase: Phase) async throws -> [Exercise]
-    /// Movements whose `difficulty` falls inside `range` (used to apply a fitness-level cap).
+    /// Movements whose `difficulty` falls inside `range`. Not an access rule: who may get a movement is
+    /// `MovementAccess` (ADR-0007).
     func exercises(inDifficultyRange range: ClosedRange<Int>) async throws -> [Exercise]
     /// The next movement up the progression chain from the exercise with `id`, or `nil` when
     /// `id` is unknown or already sits at the top of its chain.

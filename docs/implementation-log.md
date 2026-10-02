@@ -1459,4 +1459,3 @@ What landed:
 
 Rendered evidence is recorded in the [staple movements validation report](../artifacts/reports/staple-movements/validation.md).
 Physical-device behavior is untested; this is simulator-only validation of an on-device engine.
-
