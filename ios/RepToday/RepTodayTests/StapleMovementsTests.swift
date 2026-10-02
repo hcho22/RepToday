@@ -595,7 +595,7 @@ final class StapleMovementsTests: XCTestCase {
     func testExistingBeginnerMovedOffSumoSquatKeepsTheHistoryWithoutAFalseStall() async throws {
         let library = try await offeredLibrary()
         let history = [workLog("squat_wall_sit", pattern: .squat, seconds: 30, daysAgo: 70)]
-            + (0...9).map { week in workLog("squat_sumo", pattern: .squat, reps: 15, daysAgo: 63 - week * 7) }
+            + (0...9).map { week in workLog("squat_sumo", pattern: .squat, reps: 15, daysAgo: 64 - week * 7) }
 
         func journey(_ logs: [WorkoutLog], level: FitnessLevel) throws -> (ProgressAnalytics, ChainJourney) {
             let analytics = ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
@@ -611,7 +611,7 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertEqual(squat.currentDisplayName, "Bodyweight Squat")
         XCTAssertEqual(squat.milestones.map(\.exerciseId), ["squat_wall_sit", "squat_sumo"],
                        "both rungs the user really worked stay as past milestones")
-        XCTAssertEqual(squat.milestones.first { $0.exerciseId == "squat_sumo" }?.firstReachedAt, date(daysAgo: 63))
+        XCTAssertEqual(squat.milestones.first { $0.exerciseId == "squat_sumo" }?.firstReachedAt, date(daysAgo: 64))
         XCTAssertNil(squat.currentMilestone, "Bodyweight Squat is never reported as reached before it is worked")
         XCTAssertFalse(squat.hasAdvanced)
         XCTAssertNil(squat.weeksClimbed)
@@ -631,6 +631,7 @@ final class StapleMovementsTests: XCTestCase {
         )
         XCTAssertEqual(worked.milestones.map(\.exerciseId), ["squat_wall_sit", "squat_bodyweight", "squat_sumo"])
         XCTAssertEqual(worked.currentMilestone?.exerciseId, "squat_bodyweight")
+        XCTAssertEqual(worked.currentMilestone?.firstReachedAt, date(daysAgo: 0))
         XCTAssertEqual(worked.startMilestone?.exerciseId, "squat_wall_sit")
         XCTAssertTrue(worked.hasAdvanced)
         XCTAssertEqual(trends(workedAnalytics).first { $0.pattern == .squat }?.trend, .climbing)
@@ -639,7 +640,54 @@ final class StapleMovementsTests: XCTestCase {
         let (intermediate, intermediateSquat) = try journey(history, level: .intermediate)
         XCTAssertEqual(intermediate.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_sumo")
         XCTAssertEqual(intermediateSquat.currentMilestone?.exerciseId, "squat_sumo")
-        XCTAssertEqual(intermediateSquat.currentMilestone?.firstReachedAt, date(daysAgo: 63))
+        XCTAssertEqual(intermediateSquat.currentMilestone?.firstReachedAt, date(daysAgo: 64))
+    }
+
+    /// An existing beginner who did Bird Dog from ten to six weeks ago, then Dead Bug weekly until
+    /// yesterday, is moved back down to Bird Dog - a rung they worked before climbing past it. The weeks
+    /// on Dead Bug are not read as weeks on Bird Dog: until they work Bird Dog again it has no current
+    /// milestone and no Coach trend, and once they do it is current from that session, a fresh start
+    /// rather than a ten-week stall. Both rungs keep the dates they were first reached as history.
+    func testExistingBeginnerMovedBackToBirdDogIsNotReadAsAStall() async throws {
+        let library = try await offeredLibrary()
+        let history = [70, 63, 56, 49, 42].map { workLog("core_bird_dog", pattern: .core, reps: 10, daysAgo: $0) }
+            + [35, 28, 21, 14, 7, 1].map { workLog("core_dead_bug", pattern: .core, reps: 10, daysAgo: $0) }
+
+        func analytics(_ logs: [WorkoutLog], level: FitnessLevel = .beginner) -> ProgressAnalytics {
+            ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
+        }
+        func core(_ analytics: ProgressAnalytics) throws -> ChainJourney {
+            try XCTUnwrap(analytics.deep.strengthJourney.chains.first { $0.pattern == .core })
+        }
+        func trends(_ analytics: ProgressAnalytics) -> [StrengthPatternTrend] {
+            CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
+        }
+
+        let moved = analytics(history)
+        XCTAssertEqual(moved.chainPositions.first { $0.pattern == .core }?.currentExercise?.id, "core_bird_dog")
+        let journey = try core(moved)
+        XCTAssertEqual(journey.currentExerciseId, "core_bird_dog")
+        XCTAssertEqual(journey.milestones.map(\.exerciseId), ["core_bird_dog", "core_dead_bug"])
+        XCTAssertEqual(journey.milestones.map(\.firstReachedAt), [date(daysAgo: 70), date(daysAgo: 35)],
+                       "both rungs keep the date they were first reached")
+        XCTAssertNil(journey.currentMilestone, "Bird Dog is not current again until it is worked after Dead Bug")
+        XCTAssertFalse(journey.hasAdvanced)
+        XCTAssertFalse(trends(moved).contains { $0.pattern == .core }, "weeks on Dead Bug are not read as a stall on Bird Dog")
+        XCTAssertNil(CoachAnalyticsInsight.offer(from: trends(moved)), "the Coach raises no stall offer for core")
+
+        let returned = analytics(history + [workLog("core_bird_dog", pattern: .core, reps: 10, daysAgo: 0)])
+        let returnedJourney = try core(returned)
+        XCTAssertEqual(returnedJourney.currentMilestone?.exerciseId, "core_bird_dog")
+        XCTAssertEqual(returnedJourney.currentMilestone?.firstReachedAt, date(daysAgo: 0), "current from the first session back on it")
+        XCTAssertEqual(returnedJourney.milestones.first?.firstReachedAt, date(daysAgo: 70))
+        let coreTrend = try XCTUnwrap(trends(returned).first { $0.pattern == .core })
+        XCTAssertEqual(coreTrend.trend, .steady)
+        XCTAssertEqual(coreTrend.weeksAtCurrentTier, 0)
+
+        // An intermediate still gets Dead Bug and has genuinely sat on it for five weeks.
+        let intermediate = try core(analytics(history, level: .intermediate))
+        XCTAssertEqual(intermediate.currentMilestone?.exerciseId, "core_dead_bug")
+        XCTAssertEqual(intermediate.currentMilestone?.firstReachedAt, date(daysAgo: 35))
     }
 
     func testDeadBugUserKeepsItAsAnIntermediateAndMovesToBirdDogAsABeginner() async throws {

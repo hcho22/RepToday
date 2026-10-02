@@ -30,7 +30,8 @@ final class CoachAnalyticsInsightTests: XCTestCase {
         TierMilestone(exerciseId: id, displayName: id, tier: tier, firstReachedAt: date(weeksAgo: weeksAgo))
     }
 
-    /// A journey whose served rung is its highest milestone, unless `current` names another rung.
+    /// A journey whose served rung is its highest milestone, current since it was first reached, unless
+    /// `current` names another rung the user has not worked since being moved there.
     private func chain(_ pattern: MovementPattern, _ milestones: [TierMilestone], current: String? = nil) -> ChainJourney {
         let currentId = current ?? milestones.last!.exerciseId
         return ChainJourney(
@@ -39,6 +40,7 @@ final class CoachAnalyticsInsightTests: XCTestCase {
             milestones: milestones,
             currentExerciseId: currentId,
             currentDisplayName: currentId,
+            currentSince: current == nil ? milestones.last!.firstReachedAt : nil,
             calendar: calendar
         )
     }
@@ -73,18 +75,25 @@ final class CoachAnalyticsInsightTests: XCTestCase {
         XCTAssertEqual(hingeTrend?.hasAdvanced, true) // climbed once, then stalled
     }
 
-    /// A line whose served rung the user has not worked yet - moved there from a rung they no longer
-    /// get (ADR-0007) - has no time on that rung to read, so it raises no trend at all rather than
-    /// reading the weeks spent on the old rung as a stall.
+    /// A line whose served rung the user has not worked since being moved there from a rung they no
+    /// longer get (ADR-0007) has no time on that rung to read, so it raises no trend at all rather than
+    /// reading the weeks spent on the old rung as a stall - whether the served rung is new to them or one
+    /// they worked before climbing past it.
     func testServedRungNotYetWorkedRaisesNoTrend() {
         let squat = chain(.squat, [
             milestone("squat_wall_sit", tier: 1, weeksAgo: 10),
             milestone("squat_sumo", tier: 3, weeksAgo: 9),
         ], current: "squat_bodyweight")
+        let core = chain(.core, [
+            milestone("core_bird_dog", tier: 1, weeksAgo: 10),
+            milestone("core_dead_bug", tier: 2, weeksAgo: 5),
+        ], current: "core_bird_dog")
 
-        XCTAssertNil(squat.currentMilestone)
-        XCTAssertFalse(squat.hasAdvanced)
-        XCTAssertTrue(trends([squat]).isEmpty, "no stall is read off a rung the user has not worked")
+        for journey in [squat, core] {
+            XCTAssertNil(journey.currentMilestone)
+            XCTAssertFalse(journey.hasAdvanced)
+        }
+        XCTAssertTrue(trends([squat, core]).isEmpty, "no stall is read off a rung the user has not worked since the move")
     }
 
     /// A pattern trained recently but not advanced is *steady* - never reported as a stall just for
