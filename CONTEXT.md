@@ -38,18 +38,22 @@ How a **longer** session is filled: by going **wider** (more distinct movements)
 Every training-block exercise is capped at **2-4 rounds** (`SessionAssembly.minTrainingSets = 2`, `maxTrainingSets = 4`; was `1...8`), so no movement is ever prescribed more than four times.
 Once every active station sits at the 4-round cap, the timing fit fills the rest of a long session by promoting an **accessory** - the frontier tier of a strength pattern's *further* progression chain (push's vertical chain alongside its horizontal, squat's lunge alongside squat, etc.) - drawn from the block reserve **depth-first** (all stations reach the cap before any accessory is promoted, so short and medium sessions stay one-movement-per-pattern and only long sessions go wide).
 Each accessory is an honest frontier of its own chain and is progressed, variety-windowed, and dosed by Adaptive Overload exactly like a primary station (no separate accessory path); it joins the block at the block's uniform round count, so the circuit stays even (ADR-0003).
-The accepted **depth mismatch** (a maxed primary can be harder than its shallower accessory chain reaches) is bounded by the difficulty cap - zero tiers for beginner/intermediate, at most one for advanced - and an untouched chain is never seeded above the tier the user has earned.
+The accepted **depth mismatch** (a maxed primary can be harder than its shallower accessory chain reaches) is bounded by the user's **staple movements** - zero tiers for a beginner, at most one for an intermediate or advanced user - and an untouched chain is never seeded above the tier the user has earned.
 This is an engine-only change; the continuous-circuit player renders the reshaped block (more stations, fewer rounds) unchanged.
 The decision is recorded as [ADR-0004](docs/adr/0004-round-cap-wide-circuit.md) (which supersedes ADR-0003's 45-minute "8 rounds x 4 stations" consequence); its PRD is `.claude/agent/tasks/prd-round-cap-wide-circuits.md` (`US-RC##`).
 The owning code is `Services/Engine/SessionAssembly.swift` (round rails, reserve generation, depth-first fit, `blockSeconds`) and `Services/Engine/ProgressionChainSelection.swift` (the per-pattern multi-chain frontier via `selectAll`/`selectInChain`).
 
-## Effective Difficulty Cap
+## Staple movement
 
-The difficulty band the exercise-pool filter actually gates on - the **single source of truth** for the "too hard" filter (`ExercisePoolFilter.effectiveDifficultyCap(for level:phase:)`).
-It is the conservative onboarding `FitnessLevel` band (`difficultyCap`: beginner 1-2, intermediate 1-3, advanced 1-5) while the user is in the **Discipline Phase**, lifted to the full `1...5` catalog range (`strengthPhaseDifficultyCap`) once the user has **earned the Strength Phase** - so demonstrated competence overrides a conservative self-report.
-This resolves the **double-gate trap**: a phase-gated skill must clear *both* the phase gate (`isPhaseAllowed`) and the difficulty cap, and because every shipped `.strength` skill is difficulty 4-5 (the mid-tier bridges US-SP02 added plus the difficulty-5 summits), a beginner/intermediate who earned the phase used to see nothing. Keying the lift off `user.phase` (the `PhaseEvaluator`'s output) means the difficulty gate can never disagree with the phase gate about who has graduated.
-The level-only `difficultyCap`/`isWithinDifficultyCap` remain the term for callers reasoning about the conservative band directly (e.g. the Wide Circuit depth-mismatch bound above, and cold-start Start-Seed banding, which use the discipline-phase band); the eligible pool consumes only the *effective* cap via `isWithinEffectiveDifficultyCap`. A `.discipline` user's eligible pool is byte-identical to the pre-lift behavior.
-Introduced by US-SP01 (`Services/Engine/ExercisePoolFilter.swift`); its PRD is `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` (`US-SP##`).
+A movement most people already know by name - a push-up, a squat, a plank, a glute bridge - and the only kind a beginner or intermediate user is offered while they are in the **Discipline Phase**.
+Every catalog movement says who it is a staple for: beginners and up, intermediates and up, or advanced users only.
+An advanced user keeps the full variety; earning the **Strength Phase** lifts the restriction for everyone, so every movement opens at once.
+A few movements are withdrawn until version 2 and are offered to nobody.
+The gate is the self-reported fitness level picked at onboarding, there is no setting to change it, and it is decided in one place for every session, swap, progression map and Coach surface.
+A user partway up a progression on a movement they no longer get is served the closest movement they do get on the same progression; their logged history is never rewritten.
+It supersedes the **Effective Difficulty Cap** (US-SP01), which gated the pool by a difficulty band from the same fitness level; that term is retired.
+Pull is the one exception to "familiar only": it keeps its current equipment-free movements.
+The decision is recorded as [ADR-0007](docs/adr/0007-staple-movements-for-beginner-and-intermediate.md).
 
 ## Foundation
 

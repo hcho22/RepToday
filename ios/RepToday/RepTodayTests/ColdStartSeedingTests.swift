@@ -62,15 +62,20 @@ final class ColdStartSeedingTests: XCTestCase {
         XCTAssertEqual(SessionPolicy.ColdStartContract.cappedMaxDifficulty(for: .advanced), 4)
     }
 
-    /// The capped band never exceeds the steady-state difficulty cap the pool filter applies, so the
-    /// cold-start cap can only ever be as tight or tighter than the eventual band.
-    func testCappedBandNeverExceedsSteadyStateCap() {
+    /// The cold-start cap sits exactly at the hardest discipline-phase movement the level is offered
+    /// (`MovementAccess`, ADR-0007), so it never withholds a staple a level gets and never reaches past
+    /// what that level is served in steady state.
+    func testCappedBandMatchesTheHardestMovementTheLevelIsOffered() async throws {
+        let library = try await MockExerciseService().exercises()
         for level in FitnessLevel.allCases {
             let coldCap = SessionPolicy.ColdStartContract.cappedMaxDifficulty(for: level)
-            let steadyTop = ExercisePoolFilter.difficultyCap(for: level).upperBound
-            XCTAssertLessThanOrEqual(
-                coldCap, steadyTop,
-                "\(level) cold-start cap \(coldCap) must not exceed the steady-state cap \(steadyTop)"
+            let hardestOffered = MovementAccess.available(in: library, level: level, phase: .discipline)
+                .filter { $0.pillar != .mobility }
+                .map(\.difficulty)
+                .max()
+            XCTAssertEqual(
+                coldCap, hardestOffered,
+                "\(level) cold-start cap \(coldCap) must equal the hardest training movement the level is offered"
             )
         }
     }

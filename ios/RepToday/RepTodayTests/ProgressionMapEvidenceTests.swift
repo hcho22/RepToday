@@ -75,6 +75,9 @@ final class ProgressionMapEvidenceTests: XCTestCase {
     private func disciplineUser() -> User {
         var user = MockPersistence.sampleUser
         user.phase = .discipline
+        // Advanced, so the harder discipline tiers (Archer, Hollow Hold) are ahead rather than locked behind
+        // an intermediate's staples (ADR-0007); `StapleMovementsEvidenceTests` shows the beginner's map.
+        user.profile.fitnessLevel = .advanced
         return user
     }
 

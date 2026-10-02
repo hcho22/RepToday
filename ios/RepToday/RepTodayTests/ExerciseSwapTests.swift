@@ -302,10 +302,10 @@ final class ExerciseSwapTests: XCTestCase {
         // the loop tolerates `.noAlternative`, but exactly *how many* decline has to hold at every growth
         // level, not just at the defaults where the budget check is a no-op. Before the set-count lever,
         // x1.5 dropped to 18/42 of the strength/primal catalog and x2.0 to 3/42. The x1.5/x2.0 counts sit
-        // below the full catalog because the hard phase-gated skills (US-SP02's one-arm push-up /
+        // below the offered catalog (73 since ADR-0007 withdrew the three version-2 crawls) because the hard phase-gated skills (US-SP02's one-arm push-up /
         // pistol / L-sit bridges and US-SP03's Nordic-curl hinge ladder) have no in-band peer once
         // grown that far - the honest answer is to decline, and the count records it.
-        for (growth, expectedSwapped) in [(1.0, 76), (1.25, 76), (1.5, 75), (2.0, 55)] {
+        for (growth, expectedSwapped) in [(1.0, 73), (1.25, 73), (1.5, 72), (2.0, 53)] {
             var swapped = 0
             for movement in library {
                 let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10

@@ -100,14 +100,52 @@ enum Equipment: String, Codable, CaseIterable, Identifiable, Hashable {
 
 // MARK: - FitnessLevel
 
-/// Self-reported fitness level from onboarding. Caps the difficulty band the engine
-/// will draw from (beginner 1-2, intermediate 1-3, advanced 1-5).
+/// Self-reported fitness level from onboarding. Decides which movements the engine offers while the
+/// user is in the Discipline Phase: beginner and intermediate users get staples only, advanced users
+/// the whole catalog (`MovementAccess`, ADR-0007).
 enum FitnessLevel: String, Codable, CaseIterable, Identifiable, Hashable {
     case beginner
     case intermediate
     case advanced
 
     var id: String { rawValue }
+
+    /// Position on the beginner < intermediate < advanced scale.
+    var rank: Int {
+        switch self {
+        case .beginner: return 0
+        case .intermediate: return 1
+        case .advanced: return 2
+        }
+    }
+}
+
+// MARK: - MovementAudience
+
+/// Who a catalog movement is offered to while the user is still in the Discipline Phase (ADR-0007).
+///
+/// The raw value is the `Exercises.json` wire form. The first three are the **lowest** self-reported
+/// `FitnessLevel` for which the movement is a *staple* (one most people already know by name):
+/// `.beginner` movements go to every level, `.intermediate` to intermediate and advanced users, and
+/// `.advanced` ones to advanced users only. `.version2` marks a movement withdrawn from the app for
+/// every user until version 2 - it stays in the catalog file so it is recoverable, and is never offered,
+/// whatever the level or earned phase. Earning the Strength Phase lifts the level restriction entirely
+/// (see `MovementAccess`), but never the `.version2` withdrawal.
+enum MovementAudience: String, Codable, CaseIterable, Hashable {
+    case beginner
+    case intermediate
+    case advanced
+    case version2
+
+    /// The lowest fitness level this audience is a staple for, or `nil` for `.version2` (nobody).
+    var minimumLevel: FitnessLevel? {
+        switch self {
+        case .beginner: return .beginner
+        case .intermediate: return .intermediate
+        case .advanced: return .advanced
+        case .version2: return nil
+        }
+    }
 }
 
 // MARK: - PrimaryGoal

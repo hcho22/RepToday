@@ -42,6 +42,16 @@ final class ReadyViewModel {
     /// in-force policy, so it can only claim a change the sessions reflect.
     var policyNote: SessionPolicy.Note? { policy.note }
 
+    /// Whether the one-time "your sessions now focus on the classics" note (ADR-0007) is *eligible* for
+    /// this user: they are held to staple movements - a beginner or intermediate user still in the
+    /// Discipline Phase, the only people whose sessions changed. Eligibility alone consumes nothing;
+    /// `AppState`'s one-shot flag records that the note was shown and keeps a brand-new install, an
+    /// advanced user and a Strength-Phase user from ever seeing it.
+    var isClassicsUpdateNoteEligible: Bool {
+        guard let user else { return false }
+        return MovementAccess.isRestrictedToStaples(level: user.profile.fitnessLevel, phase: user.phase)
+    }
+
     /// An abandoned in-progress session the user can resume or discard (US-K04), or `nil` when none
     /// is saved. Read from the `ActiveSessionStore` on open and after the player closes, so a session
     /// the user backgrounded out of - or that a relaunch interrupted - is offered back rather than

@@ -11,11 +11,11 @@ import Foundation
 ///   and sit within `difficultyBandWidth` of its `difficulty`, so the session keeps the same shape
 ///   and the slot stays "the same kind of work" rather than turning a push slot into a stretch.
 /// - **Safety** - candidates are drawn from `ExercisePoolFilter.eligiblePool`, so every substitute
-///   already respects the user's phase, injuries, effective difficulty cap (the fitness-level band,
-///   lifted to the full catalog once the Strength Phase is earned - US-SP01), recent-skip history,
-///   and the Zero-Equipment Floor. The swap step never re-derives those rules and never relaxes
-///   them: if the only same-pattern options are gated, over-cap, or hard on an injury, there is no
-///   safe substitute and the step says so rather than reaching for an unsafe pick.
+///   already respects the user's movement access (`MovementAccess`: the earned phase, staples for their
+///   fitness level until the Strength Phase lifts it, movements withdrawn until version 2 - ADR-0007),
+///   injuries, recent-skip history, and the Zero-Equipment Floor. The swap step never re-derives those
+///   rules and never relaxes them: if the only same-pattern options are not the user's to get, or hard on
+///   an injury, there is no safe substitute and the step says so rather than reaching for an unsafe pick.
 /// - **Timing fidelity** - a substitute's slot must land within the slot's tolerance (see
 ///   `slotTolerance`) of the slot it replaces, both sides priced through
 ///   `SessionAssembly.workSecondsPerSet` at the target each movement actually carries - the same

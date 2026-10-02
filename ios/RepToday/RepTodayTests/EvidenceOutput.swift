@@ -32,6 +32,7 @@ enum EvidenceOutput {
     /// never lands among the ones another story's acceptance notes point a reviewer at.
     enum Story {
         static let perSideSwap = "per-side-swap"
+        static let stapleMovements = "staple-movements"
         static let sessionTimer = "us-o03"
         static let progressAnalytics = "us-m02"
         static let trialConversionSubscribe = "trial-conversion-subscribe"

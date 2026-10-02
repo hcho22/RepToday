@@ -85,8 +85,12 @@ final class ProgressAnalyticsTests: XCTestCase {
         )
     }
 
-    private func analytics(_ logs: [WorkoutLog], phase: Phase = .discipline) -> ProgressAnalytics {
-        ProgressAnalytics.from(logs: logs, library: library, phase: phase, asOf: asOf, calendar: calendar)
+    private func analytics(
+        _ logs: [WorkoutLog],
+        level: FitnessLevel = .advanced,
+        phase: Phase = .discipline
+    ) -> ProgressAnalytics {
+        ProgressAnalytics.from(logs: logs, library: library, level: level, phase: phase, asOf: asOf, calendar: calendar)
     }
 
     // MARK: - Pillar balance
@@ -221,7 +225,7 @@ final class ProgressAnalyticsTests: XCTestCase {
 
     /// The locked marking is the engine's own phase gate, not a parallel re-derivation: the same summit
     /// that is locked for a Discipline user is unlocked for a user who has earned the Strength Phase,
-    /// exactly as `ExercisePoolFilter.isPhaseAllowed` would decide.
+    /// exactly as `MovementAccess` would decide.
     func testLockedRungAgreesWithPhaseGate() {
         let logs = [log(weeksAgo: 0, [logged("push_c", .strength, .push, reps: [15])])]
 
@@ -236,7 +240,7 @@ final class ProgressAnalyticsTests: XCTestCase {
         for phase in [Phase.discipline, .strength] {
             for rung in ladder(logs, phase: phase, .push)!.rungs {
                 let exercise = library.first { $0.id == rung.exerciseId }!
-                XCTAssertEqual(rung.isLocked, !ExercisePoolFilter.isPhaseAllowed(exercise, phase: phase),
+                XCTAssertEqual(rung.isLocked, !MovementAccess.isAvailable(exercise, level: .advanced, phase: phase),
                                "rung \(rung.exerciseId) at phase \(phase) disagreed with the gate")
             }
         }

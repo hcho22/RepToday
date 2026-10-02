@@ -5,9 +5,10 @@ import XCTest
 /// safe, level-appropriate pool.
 ///
 /// Two halves: `InjuryContraindication` tests pin the injury-tag -> pattern mapping (including tag
-/// normalization); the `ExercisePoolFilter` tests pin each removal rule independently (phase,
-/// difficulty cap, injury, recent-skip, equipment floor), the combined validation-test case, and
-/// the per-pattern fallback paths (relaxed soft filters vs. no safe option).
+/// normalization); the `ExercisePoolFilter` tests pin each removal rule independently (movement
+/// access - phase gate and staples, ADR-0007 - injury, recent-skip, equipment floor), the combined
+/// validation-test case, and the per-pattern fallback paths (relaxed soft filters vs. no safe
+/// option). `StapleMovementsTests` pins the exact per-level pool contents over the real catalog.
 final class ExercisePoolFilterTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -30,7 +31,8 @@ final class ExercisePoolFilterTests: XCTestCase {
         phase: Phase = .discipline,
         pillar: Pillar = .strength,
         order: Int = 0,
-        equipment: [Equipment] = []
+        equipment: [Equipment] = [],
+        audience: MovementAudience? = .beginner
     ) -> Exercise {
         Exercise(
             id: id,
@@ -40,6 +42,7 @@ final class ExercisePoolFilterTests: XCTestCase {
             category: .strength,
             difficulty: difficulty,
             phase: phase,
+            audience: audience,
             equipment: equipment,
             isHold: false,
             defaultReps: 10,
@@ -140,14 +143,6 @@ final class ExercisePoolFilterTests: XCTestCase {
         )
     }
 
-    // MARK: - Difficulty cap
-
-    func testDifficultyCapsByLevel() {
-        XCTAssertEqual(ExercisePoolFilter.difficultyCap(for: .beginner), 1...2)
-        XCTAssertEqual(ExercisePoolFilter.difficultyCap(for: .intermediate), 1...3)
-        XCTAssertEqual(ExercisePoolFilter.difficultyCap(for: .advanced), 1...5)
-    }
-
     // MARK: - Individual rules
 
     func testPhaseFilterRemovesStrengthPhaseForDisciplineUser() {
@@ -171,20 +166,41 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(pool.map(\.id), ["disc", "str"])
     }
 
-    func testDifficultyCapRemovesTooHardExercises() {
+    func testStapleFilterKeepsOnlyMovementsTheLevelGetsWhileInDiscipline() {
         let library = [
-            exercise(id: "d1", pattern: .push, difficulty: 1),
-            exercise(id: "d2", pattern: .push, difficulty: 2),
-            exercise(id: "d3", pattern: .push, difficulty: 3),
+            exercise(id: "everyone", pattern: .push, audience: .beginner),
+            exercise(id: "intermediate_up", pattern: .push, audience: .intermediate),
+            exercise(id: "advanced_only", pattern: .push, audience: .advanced),
+            exercise(id: "version2", pattern: .push, audience: .version2),
         ]
         XCTAssertEqual(
             ExercisePoolFilter.eligiblePool(from: library, user: user(level: .beginner), recentLogs: []).map(\.id),
-            ["d1", "d2"]
+            ["everyone"]
         )
         XCTAssertEqual(
             ExercisePoolFilter.eligiblePool(from: library, user: user(level: .intermediate), recentLogs: []).map(\.id),
-            ["d1", "d2", "d3"]
+            ["everyone", "intermediate_up"]
         )
+        XCTAssertEqual(
+            ExercisePoolFilter.eligiblePool(from: library, user: user(level: .advanced), recentLogs: []).map(\.id),
+            ["everyone", "intermediate_up", "advanced_only"],
+            "an advanced user keeps the full variety, minus what is withdrawn until version 2"
+        )
+    }
+
+    func testStrengthPhaseLiftsTheStaplesRestrictionButNotTheVersionTwoWithdrawal() {
+        let library = [
+            exercise(id: "everyone", pattern: .push, audience: .beginner),
+            exercise(id: "advanced_only", pattern: .push, audience: .advanced),
+            exercise(id: "version2", pattern: .push, audience: .version2),
+        ]
+        for level in FitnessLevel.allCases {
+            XCTAssertEqual(
+                ExercisePoolFilter.eligiblePool(from: library, user: user(level: level, phase: .strength), recentLogs: []).map(\.id),
+                ["everyone", "advanced_only"],
+                "an earned Strength Phase opens every movement at \(level), except those withdrawn"
+            )
+        }
     }
 
     func testInjuryFilterRemovesContraindicatedPattern() {
@@ -254,12 +270,12 @@ final class ExercisePoolFilterTests: XCTestCase {
 
     // MARK: - Combined (US-C04 validation test)
 
-    /// Beginner, discipline phase, `injuries: ["knees"]`: no strength-phase, no difficulty 3+, and
+    /// Beginner, discipline phase, `injuries: ["knees"]`: no strength-phase, no non-staple, and
     /// no knee-flagged (squat) exercises survive; everything left is bodyweight.
     func testEligiblePoolCombinesEveryRule() {
         let library = [
             exercise(id: "push_easy", pattern: .push, difficulty: 1),
-            exercise(id: "push_hard", pattern: .push, difficulty: 3),          // over beginner cap
+            exercise(id: "push_hard", pattern: .push, difficulty: 3, audience: .advanced), // not a beginner staple
             exercise(id: "squat_easy", pattern: .squat, difficulty: 1),         // knee-flagged
             exercise(id: "core_strength", pattern: .core, difficulty: 1, phase: .strength), // gated
             exercise(id: "hinge_ok", pattern: .hinge, difficulty: 2),
@@ -269,7 +285,7 @@ final class ExercisePoolFilterTests: XCTestCase {
         )
         XCTAssertEqual(pool.map(\.id), ["push_easy", "hinge_ok"])
         XCTAssertFalse(pool.contains { $0.phase == .strength })
-        XCTAssertFalse(pool.contains { $0.difficulty > 2 })
+        XCTAssertFalse(pool.contains { $0.audience == .advanced })
         XCTAssertFalse(pool.contains { $0.movementPattern == .squat })
         XCTAssertTrue(pool.allSatisfy { $0.equipment.isEmpty })
     }
@@ -287,19 +303,33 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertNil(pool.fallback)
     }
 
-    func testPatternPoolFallsBackToSafestWhenSoftFiltersEmptyPattern() {
-        // Every push option is above the beginner cap, so the normal pool for push is empty; the
-        // fallback relaxes the cap and offers the single safest (lowest-difficulty) option.
+    func testPatternPoolFallsBackToSafestWhenSkipFilterEmptiesPattern() {
+        // Every push option was skipped past the threshold, so the normal pool for push is empty; the
+        // fallback relaxes the skip filter and offers the single safest (lowest-difficulty) option.
         let library = [
             exercise(id: "push_d4", pattern: .push, difficulty: 4, order: 2),
             exercise(id: "push_d3", pattern: .push, difficulty: 3, order: 1),
             exercise(id: "push_d5", pattern: .push, difficulty: 5, order: 3),
         ]
+        let skipped = (0..<4).map { skipLog(skippedIds: ["push_d4", "push_d3", "push_d5"], daysAgo: $0 + 1) }
         let pool = ExercisePoolFilter.pool(
-            forPattern: .push, from: library, user: user(level: .beginner), recentLogs: []
+            forPattern: .push, from: library, user: user(level: .beginner), recentLogs: skipped
         )
         XCTAssertEqual(pool.exercises.map(\.id), ["push_d3"])
         XCTAssertEqual(pool.fallback, .relaxedSoftFilters)
+    }
+
+    func testPatternPoolFallbackNeverReturnsAMovementTheUserDoesNotGet() {
+        // The only push option is advanced only, so a beginner's pattern has no safe option rather than
+        // leaking the non-staple through the fallback: movement access is a hard filter.
+        let library = [
+            exercise(id: "push_adv", pattern: .push, difficulty: 3, audience: .advanced),
+        ]
+        let pool = ExercisePoolFilter.pool(
+            forPattern: .push, from: library, user: user(level: .beginner), recentLogs: []
+        )
+        XCTAssertTrue(pool.exercises.isEmpty)
+        XCTAssertEqual(pool.fallback, .noSafeOption)
     }
 
     func testPatternPoolReportsNoSafeOptionWhenInjuryRemovesWholePattern() {
@@ -331,11 +361,11 @@ final class ExercisePoolFilterTests: XCTestCase {
     // MARK: - Real bundled library (PRD US-C04 validation test, over the shipped data)
 
     /// The PRD's own validation test, run end-to-end over the real bundled `Exercises.json` (the
-    /// 42 movements an end user actually receives) rather than a synthetic fixture:
+    /// movements an end user actually receives) rather than a synthetic fixture:
     ///
     ///   Setup:  Beginner user in discipline phase with `injuries: ["knees"]`
     ///   Steps:  Run the filter over the full library
-    ///   Expect: No strength-phase exercises, no difficulty 3+ exercises, and no knee-flagged
+    ///   Expect: No strength-phase exercises, nothing beyond a beginner's staples, and no knee-flagged
     ///           (squat-pattern) exercises remain in the pool.
     ///   Fail:   A gated exercise survives the filter, or the pool becomes empty without a fallback.
     ///
@@ -343,7 +373,7 @@ final class ExercisePoolFilterTests: XCTestCase {
     /// reviewable as a product-level artifact, not just an assertion.
     func testPRDValidationOverRealBundledLibrary() async throws {
         let library = try await MockExerciseService().exercises()
-        XCTAssertEqual(library.count, 76, "should run over the full shipped library")
+        XCTAssertEqual(library.count, 73, "should run over the full offered library (76 minus the 3 version-2 crawls)")
 
         let validationUser = user(level: .beginner, phase: .discipline, injuries: ["knees"])
         let pool = ExercisePoolFilter.eligiblePool(from: library, user: validationUser, recentLogs: [])
@@ -351,7 +381,7 @@ final class ExercisePoolFilterTests: XCTestCase {
         // PRD expected result.
         XCTAssertFalse(pool.isEmpty, "pool must not be empty (failure indicator)")
         XCTAssertFalse(pool.contains { $0.phase == .strength }, "no strength-phase exercise survives")
-        XCTAssertFalse(pool.contains { $0.difficulty > 2 }, "no difficulty 3+ exercise survives (beginner cap)")
+        XCTAssertTrue(pool.allSatisfy { $0.audience == .beginner }, "only a beginner's staples survive")
         XCTAssertFalse(pool.contains { $0.movementPattern == .squat }, "no knee-flagged (squat) exercise survives")
         XCTAssertTrue(pool.allSatisfy { $0.equipment.isEmpty }, "Zero-Equipment Floor holds")
 
@@ -359,9 +389,8 @@ final class ExercisePoolFilterTests: XCTestCase {
         let kept = Set(pool.map(\.id))
         func reasons(_ e: Exercise) -> [String] {
             var r: [String] = []
-            if !ExercisePoolFilter.isPhaseAllowed(e, for: validationUser) { r.append("phase-gated(strength)") }
+            if !MovementAccess.isAvailable(e, for: validationUser) { r.append("not-a-staple-or-gated(\(e.audience?.rawValue ?? "none"), \(e.phase.rawValue))") }
             if !ExercisePoolFilter.isInjurySafe(e, injuries: validationUser.profile.injuries) { r.append("injury(knees->\(e.movementPattern.rawValue))") }
-            if !ExercisePoolFilter.isWithinDifficultyCap(e, for: .beginner) { r.append("over-cap(d\(e.difficulty)>2)") }
             if !ExercisePoolFilter.isBodyweight(e) { r.append("non-bodyweight") }
             return r
         }
@@ -404,56 +433,30 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(first, ["a", "b", "c"]) // order follows the input library
     }
 
-    // MARK: - Effective difficulty cap (US-SP01: earned Strength Phase lifts the cap)
+    // MARK: - Movement access (ADR-0007; subsumes US-SP01's cap lift)
 
-    /// A `.discipline` user's effective cap is byte-identical to the level-only band at every level,
-    /// so their eligible pool is unchanged (scope-discipline: neutral behavior stays exactly as-is).
-    func testEffectiveCapForDisciplineUserEqualsLevelBand() {
-        for level in FitnessLevel.allCases {
-            XCTAssertEqual(
-                ExercisePoolFilter.effectiveDifficultyCap(for: level, phase: .discipline),
-                ExercisePoolFilter.difficultyCap(for: level),
-                "a discipline user's cap must be the untouched fitness-level band"
-            )
-        }
-    }
-
-    /// An *earned* Strength-Phase user's effective cap is lifted to the full `1...5` catalog range at
-    /// every onboarding level, so a conservative self-report can no longer hide the hardest skills.
-    func testEffectiveCapForStrengthUserIsLiftedToFullRangeAtEveryLevel() {
-        for level in FitnessLevel.allCases {
-            XCTAssertEqual(
-                ExercisePoolFilter.effectiveDifficultyCap(for: level, phase: .strength),
-                1...5,
-                "a strength-phase user's cap must be lifted regardless of onboarding level"
-            )
-        }
-    }
-
-    /// The boundary sits exactly at the phase transition: for one fixed user (intermediate, whose
-    /// level band tops out at difficulty 3) a difficulty-5 exercise is out-of-cap in `.discipline`
-    /// and in-cap in `.strength` - flipping only the phase flips eligibility of the harder skill,
-    /// while an in-band difficulty-3 exercise is eligible in both.
-    func testDifficultyFiveCrossesTheCapExactlyAtThePhaseTransition() {
-        let hard = exercise(id: "hard_d5", pattern: .push, difficulty: 5)
-        let mid = exercise(id: "mid_d3", pattern: .push, difficulty: 3)
+    /// The boundary sits exactly at the phase transition: for one fixed intermediate user a
+    /// phase-gated, advanced-only skill is out of reach in `.discipline` and in reach in `.strength` -
+    /// flipping only the phase flips eligibility of the harder skill, while a staple is eligible in both.
+    func testAdvancedSkillCrossesTheGateExactlyAtThePhaseTransition() {
+        let hard = exercise(id: "hard_d5", pattern: .push, difficulty: 5, audience: .advanced)
+        let staple = exercise(id: "mid_d3", pattern: .push, difficulty: 3, audience: .intermediate)
 
         let disciplineUser = user(level: .intermediate, phase: .discipline)
-        XCTAssertFalse(ExercisePoolFilter.isWithinEffectiveDifficultyCap(hard, for: disciplineUser))
-        XCTAssertTrue(ExercisePoolFilter.isWithinEffectiveDifficultyCap(mid, for: disciplineUser))
+        XCTAssertFalse(MovementAccess.isAvailable(hard, for: disciplineUser))
+        XCTAssertTrue(MovementAccess.isAvailable(staple, for: disciplineUser))
 
         let strengthUser = user(level: .intermediate, phase: .strength)
-        XCTAssertTrue(ExercisePoolFilter.isWithinEffectiveDifficultyCap(hard, for: strengthUser))
-        XCTAssertTrue(ExercisePoolFilter.isWithinEffectiveDifficultyCap(mid, for: strengthUser))
+        XCTAssertTrue(MovementAccess.isAvailable(hard, for: strengthUser))
+        XCTAssertTrue(MovementAccess.isAvailable(staple, for: strengthUser))
     }
 
-    /// A phase-gated difficulty-5 skill becomes reachable for a Strength-Phase user (it clears both
-    /// the phase gate *and* the lifted difficulty cap), while the same intermediate user in
-    /// `.discipline` never sees it - the double-gate trap resolved, on synthetic exercises.
+    /// A phase-gated difficulty-5 skill becomes reachable for a Strength-Phase user, while the same
+    /// intermediate user in `.discipline` never sees it - on synthetic exercises.
     func testPhaseGatedDifficultyFiveSkillBecomesReachableForStrengthUser() {
         let library = [
             exercise(id: "push_easy", pattern: .push, difficulty: 1),
-            exercise(id: "push_skill", pattern: .push, difficulty: 5, phase: .strength),
+            exercise(id: "push_skill", pattern: .push, difficulty: 5, phase: .strength, audience: .advanced),
         ]
         let disciplinePool = ExercisePoolFilter.eligiblePool(
             from: library, user: user(level: .intermediate, phase: .discipline), recentLogs: []
@@ -466,12 +469,12 @@ final class ExercisePoolFilterTests: XCTestCase {
         XCTAssertEqual(strengthPool.map(\.id), ["push_easy", "push_skill"], "the gated d5 skill is reachable in strength")
     }
 
-    /// PRD US-SP01 validation, end-to-end over the real bundled catalog: a synthetic
+    /// The Strength-Phase reachability validation, end-to-end over the real bundled catalog: a synthetic
     /// `FitnessLevel.intermediate` user with a log history that *earns* `.strength` (8 fully on-goal
     /// weeks + all four foundations cleared - push, pull, both sides of legs, core) sees `push_one_arm` (difficulty 5,
     /// `phase == .strength`) in the eligible push pool; the same user forced to `.discipline` never
     /// does. Failure indicator: an intermediate Strength-Phase user still cannot reach any
-    /// difficulty-5 skill (the double gate still binds).
+    /// difficulty-5 skill.
     func testStrengthPhaseIntermediateUserReachesDifficultyFivePushOverRealCatalog() async throws {
         let library = try await MockExerciseService().exercises()
 
@@ -538,24 +541,5 @@ final class ExercisePoolFilterTests: XCTestCase {
                        "push_one_arm must be hidden from a discipline-phase user")
         XCTAssertFalse(disciplinePush.contains { $0.phase == .strength },
                        "no strength-gated push survives for a discipline user")
-    }
-
-    /// Scope-discipline pin: a `.discipline` user's eligible pool over the real bundled catalog is
-    /// byte-identical to the pre-US-SP01 behavior (the level-only difficulty cap), so lifting the
-    /// cap for Strength users changed nothing for everyone else.
-    func testDisciplineUserPoolMatchesLevelOnlyCapOverRealCatalog() async throws {
-        let library = try await MockExerciseService().exercises()
-        for level in FitnessLevel.allCases {
-            let disciplineUser = user(level: level, phase: .discipline)
-            let actual = ExercisePoolFilter.eligiblePool(from: library, user: disciplineUser, recentLogs: []).map(\.id)
-            // Recompute the pool using the level-only cap, exactly the pre-change logic.
-            let expected = library.filter { e in
-                ExercisePoolFilter.isBodyweight(e)
-                    && ExercisePoolFilter.isPhaseAllowed(e, for: disciplineUser)
-                    && ExercisePoolFilter.isInjurySafe(e, injuries: disciplineUser.profile.injuries)
-                    && ExercisePoolFilter.isWithinDifficultyCap(e, for: level)
-            }.map(\.id)
-            XCTAssertEqual(actual, expected, "discipline pool at \(level) must be unchanged by US-SP01")
-        }
     }
 }

@@ -44,8 +44,12 @@ final class AppState {
             // what keeps it from reaching a brand-new install - and a user who deleted their account
             // and started over - while an install that predates the change (already onboarded, never
             // passing through here) still gets it once.
+            //
+            // The same holds for the one-time "your sessions now focus on the classics" note
+            // (ADR-0007): a user who onboards on this build never had the wider list taken away.
             if !oldValue && isOnboarded {
                 markFoundationsUpdateNoteSeen()
+                markClassicsUpdateNoteSeen()
             }
         }
     }
@@ -155,6 +159,27 @@ final class AppState {
     /// Records that the foundations note has been shown so it is never presented again. Idempotent.
     func markFoundationsUpdateNoteSeen() {
         hasSeenFoundationsUpdateNote = true
+    }
+
+    /// One-shot flag for the one-time note that sessions now focus on the classics (ADR-0007): `true`
+    /// once the user has been shown it, or once they onboarded on a build that already had the staples
+    /// restriction (see `isOnboarded`), so it is shown at most once and never to a brand-new user.
+    /// Defaults to unseen for an install that predates the change. Whether a given user is *eligible*
+    /// (a beginner or intermediate user still in the Discipline Phase, the only ones whose sessions
+    /// changed) is the Ready Screen's question; this flag only records that it was shown. It gates
+    /// presentation only - it cohorts nothing and emits nothing.
+    var hasSeenClassicsUpdateNote: Bool {
+        didSet {
+            userDefaults.set(hasSeenClassicsUpdateNote, forKey: Keys.hasSeenClassicsUpdateNote)
+        }
+    }
+
+    /// Whether the classics note has not yet been shown - the read side of the one-shot flag.
+    var shouldShowClassicsUpdateNote: Bool { !hasSeenClassicsUpdateNote }
+
+    /// Records that the classics note has been shown so it is never presented again. Idempotent.
+    func markClassicsUpdateNoteSeen() {
+        hasSeenClassicsUpdateNote = true
     }
 
     /// The highest `Phase` the user has been *congratulated for reaching* (US-SP06, the graduation
@@ -475,6 +500,8 @@ final class AppState {
 
         hasSeenFoundationsUpdateNote = userDefaults.bool(forKey: Keys.hasSeenFoundationsUpdateNote)
 
+        hasSeenClassicsUpdateNote = userDefaults.bool(forKey: Keys.hasSeenClassicsUpdateNote)
+
         // Nothing celebrated by default: an absent key resolves to `.discipline`, the phase every user
         // starts in, so a fresh install has congratulated nothing and the reveal can still fire once
         // the earned phase first crosses into `.strength` (US-SP06).
@@ -562,6 +589,7 @@ final class AppState {
         static let lastActiveAt = "AppState.lastActiveAt"
         static let hasSeenContinuousCircuitExplainer = "AppState.hasSeenContinuousCircuitExplainer"
         static let hasSeenFoundationsUpdateNote = "AppState.hasSeenFoundationsUpdateNote"
+        static let hasSeenClassicsUpdateNote = "AppState.hasSeenClassicsUpdateNote"
         static let lastCelebratedPhase = "AppState.lastCelebratedPhase"
         static let hasAcknowledgedCoachDataSharing = "AppState.hasAcknowledgedCoachDataSharing"
         static let coachSafetyIdentifier = "AppState.coachSafetyIdentifier"

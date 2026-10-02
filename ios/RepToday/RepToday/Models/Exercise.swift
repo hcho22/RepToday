@@ -25,12 +25,21 @@ struct Exercise: Codable, Equatable, Identifiable {
     /// ever chosen by the general mobility pool ordering.
     var complements: [MovementPattern]? = nil
     var category: ExerciseCategory
-    /// Difficulty band 1...5; the engine caps by fitness level (beginner 1-2,
-    /// intermediate 1-3, advanced 1-5).
+    /// Difficulty band 1...5, the tier's relative hardness. Who may *get* the movement is not derived
+    /// from it (`audience` and `MovementAccess` own that); the cold-start and Return rails still read it.
     var difficulty: Int
     /// `.discipline` for launch movements; `.strength` for gated skills (L-sit, pistol
     /// squat, one-arm push-up) that only appear once the user has earned the Strength Phase.
     var phase: Phase
+    /// Who is offered this movement while still in the Discipline Phase (ADR-0007): the lowest
+    /// self-reported `FitnessLevel` for which it is a **staple** (`.beginner` = every level,
+    /// `.intermediate` = intermediate and advanced, `.advanced` = advanced only), or `.version2` for a
+    /// movement withdrawn from the app for everyone until version 2. Every movement in `Exercises.json`
+    /// carries it (load-validated); it is optional with a `nil` default so an `Exercise` persisted
+    /// before it existed (an active session snapshot) decodes unchanged, and a `nil` reads as a staple
+    /// for everyone. Never read directly: `MovementAccess` is the one owner of "may this user get this
+    /// movement", keyed on this plus the earned phase.
+    var audience: MovementAudience? = nil
     /// Always `[]` in the MVP (Zero-Equipment Floor).
     var equipment: [Equipment]
     /// Holds are timed; everything else is rep-based.

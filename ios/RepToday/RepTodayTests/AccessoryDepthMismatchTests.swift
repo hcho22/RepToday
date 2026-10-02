@@ -12,15 +12,15 @@ import XCTest
 /// This suite is a **standing guard** on the two facts that keep the mismatch bounded and honest - it
 /// added no production code, because both are already structural from US-RC01:
 ///
-/// - **Bounded by the difficulty cap.** Every chain's prescribable frontier is clamped to the user's
-///   level band (`ExercisePoolFilter.difficultyCap`: beginner 1-2, intermediate 1-3, advanced 1-5),
-///   applied to *both* the primary and the accessory by the one `eligiblePool` pass inside `planBlocks`.
-///   For a beginner and an intermediate the two push chains both top out *at the cap ceiling* (beginner:
-///   standard and floor-dips, both difficulty 2; intermediate: diamond and pike, both difficulty 3), so
-///   the maxed mismatch is **zero**. For an advanced user in the discipline phase the horizontal chain
-///   tops out at archer (difficulty 4; one-arm is phase-gated to Strength) while the vertical tops out at
-///   pike (difficulty 3), so the maxed mismatch is exactly **one** difficulty tier - and can never widen
-///   past the cap band.
+/// - **Bounded by the user's staples.** Every chain's prescribable frontier is clamped to the movements
+///   the user gets (`MovementAccess`, ADR-0007: beginner and intermediate users get staples only, an
+///   advanced user the discipline-phase catalog), applied to *both* the primary and the accessory by the
+///   one `eligiblePool` pass inside `planBlocks`. For a beginner the two push chains both top out at
+///   difficulty 2 (standard push-up and floor-dips), so the maxed mismatch is **zero**. For an
+///   intermediate the horizontal chain tops out at diamond (difficulty 3) while the vertical tops out at
+///   floor-dips (difficulty 2, pike is advanced only), and for an advanced user in the discipline phase at
+///   archer (difficulty 4; one-arm is phase-gated to Strength) against pike (difficulty 3): the maxed
+///   mismatch is exactly **one** difficulty tier in both - and can never widen past what the user gets.
 /// - **Never seeded above an earned tier.** An *untouched* second chain is entered at its gentlest
 ///   eligible tier (`selectInChain`'s no-history entry, `progressionOrder` 0 when the Start-Seed band
 ///   withheld nothing), never seeded up to the pattern frontier the user cleared on the *other* chain.
@@ -28,7 +28,7 @@ import XCTest
 ///   earned-progression invariant holding for accessories exactly as for primaries.
 ///
 /// All fixtures use the real bundled `Exercises.json` (via `MockExerciseService`) and read stations off
-/// the fit-independent `planBlocks` reserve, so the difficulty cap is exercised end-to-end (the pool
+/// the fit-independent `planBlocks` reserve, so movement access is exercised end-to-end (the pool
 /// filter that enforces it runs inside `planBlocks`) and the proof does not depend on which stations the
 /// timing fit happens to promote. Sibling of `AccessoryProgressionParityTests` (US-RC03).
 final class AccessoryDepthMismatchTests: XCTestCase {
@@ -147,19 +147,14 @@ final class AccessoryDepthMismatchTests: XCTestCase {
 
     // MARK: - Beginner / intermediate: accessory frontier sits in the primary's band (zero mismatch)
 
-    /// Beginner (difficulty cap 1-2): with both push chains worked to their cap-limited frontier, the
-    /// primary (horizontal, standard, difficulty 2) and the accessory (vertical, floor-dips, difficulty 2)
-    /// land in the **same** band and the mismatch is **zero** - the vertical chain's harder pike tier
-    /// (difficulty 3) is outside a beginner's cap, so both chains top out at 2.
-    ///
-    /// The band bound is asserted against `ExercisePoolFilter.difficultyCap(for:)` directly, so this
-    /// tracks the real cap rather than a copied literal; the mismatch-is-zero equality is the negligible
-    /// part of "zero-to-negligible."
+    /// Beginner (staples only): with both push chains worked to their staple frontier, the primary
+    /// (horizontal, standard, difficulty 2) and the accessory (vertical, floor-dips, difficulty 2) land at
+    /// the **same** difficulty and the mismatch is **zero** - the vertical chain's harder pike tier is
+    /// advanced only, and diamond is not a beginner staple, so both chains top out at 2.
     func testBeginnerAccessoryFrontierMatchesPrimaryBandWithZeroMismatch() async throws {
         let library = try await library()
-        let band = ExercisePoolFilter.difficultyCap(for: .beginner) // 1...2
-        // Horizontal worked at standard (order 3, difficulty 2 - the beginner cap ceiling); vertical
-        // worked at floor-dips (order 0, difficulty 2 - the vertical chain's only beginner-eligible tier).
+        // Horizontal worked at standard (order 3, difficulty 2 - the top of a beginner's staples); vertical
+        // worked at floor-dips (order 0, difficulty 2 - the vertical chain's only beginner staple).
         let logs = [
             repsLog(id: "push_standard", reps: [8, 8, 8], daysAgo: 2),
             repsLog(id: "push_floor_dips", reps: [8, 8, 8], daysAgo: 1),
@@ -170,36 +165,35 @@ final class AccessoryDepthMismatchTests: XCTestCase {
         XCTAssertEqual(primary.exercise.id, "push_standard", "fixture sanity: horizontal is at its beginner-cap frontier")
         XCTAssertEqual(accessory.exercise.id, "push_floor_dips", "fixture sanity: vertical is at its beginner-cap frontier")
 
-        // Both draw from the very same difficulty band, so neither the primary nor the accessory can be
-        // out-of-band relative to the other.
-        XCTAssertTrue(band.contains(primary.exercise.difficulty), "the primary sits inside the beginner difficulty band")
-        XCTAssertTrue(band.contains(accessory.exercise.difficulty), "the accessory sits inside the same band as the primary")
+        // Both draw from the very same set of staples, so neither can be out of reach relative to the other.
+        XCTAssertTrue(MovementAccess.isAvailable(primary.exercise, level: .beginner, phase: .discipline), "the primary is a beginner staple")
+        XCTAssertTrue(MovementAccess.isAvailable(accessory.exercise, level: .beginner, phase: .discipline), "the accessory is a beginner staple too")
         XCTAssertEqual(
             accessory.exercise.difficulty, primary.exercise.difficulty,
-            "at a beginner's cap both chains top out at the same difficulty - the depth mismatch is zero"
+            "at a beginner's staples both chains top out at the same difficulty - the depth mismatch is zero"
         )
     }
 
-    /// Intermediate (difficulty cap 1-3): horizontal tops out at diamond (difficulty 3) and vertical at
-    /// pike (difficulty 3), so again both chains reach the cap ceiling and the maxed mismatch is **zero**.
-    func testIntermediateAccessoryFrontierMatchesPrimaryBandWithZeroMismatch() async throws {
+    /// Intermediate (staples plus the intermediate ones): horizontal tops out at diamond (difficulty 3)
+    /// while vertical tops out at floor-dips (difficulty 2 - pike is advanced only), so the maxed
+    /// mismatch is exactly **one** tier: bounded, honest, and the accessory is never seeded up to match.
+    func testIntermediateAccessoryFrontierIsAtMostOneTierBelowPrimary() async throws {
         let library = try await library()
-        let band = ExercisePoolFilter.difficultyCap(for: .intermediate) // 1...3
         let logs = [
             repsLog(id: "push_diamond", reps: [8, 8, 8], daysAgo: 2),
-            repsLog(id: "push_pike", reps: [8, 8, 8], daysAgo: 1),
+            repsLog(id: "push_floor_dips", reps: [8, 8, 8], daysAgo: 1),
         ]
         let stations = strengthStations(minutes: 60, level: .intermediate, library: library, logs: logs)
         let (primary, accessory) = try pushChains(in: stations)
 
-        XCTAssertEqual(primary.exercise.id, "push_diamond", "fixture sanity: horizontal is at its intermediate-cap frontier")
-        XCTAssertEqual(accessory.exercise.id, "push_pike", "fixture sanity: vertical is at its intermediate-cap frontier")
+        XCTAssertEqual(primary.exercise.id, "push_diamond", "fixture sanity: horizontal is at its intermediate frontier")
+        XCTAssertEqual(accessory.exercise.id, "push_floor_dips", "fixture sanity: vertical is at its intermediate frontier (pike is advanced only)")
 
-        XCTAssertTrue(band.contains(primary.exercise.difficulty), "the primary sits inside the intermediate difficulty band")
-        XCTAssertTrue(band.contains(accessory.exercise.difficulty), "the accessory sits inside the same band as the primary")
+        XCTAssertTrue(MovementAccess.isAvailable(primary.exercise, level: .intermediate, phase: .discipline))
+        XCTAssertTrue(MovementAccess.isAvailable(accessory.exercise, level: .intermediate, phase: .discipline))
         XCTAssertEqual(
-            accessory.exercise.difficulty, primary.exercise.difficulty,
-            "at an intermediate's cap both chains top out at the same difficulty - the depth mismatch is zero"
+            primary.exercise.difficulty - accessory.exercise.difficulty, 1,
+            "an intermediate's maxed mismatch is exactly one difficulty tier"
         )
     }
 
@@ -273,17 +267,15 @@ final class AccessoryDepthMismatchTests: XCTestCase {
     }
 
     /// A broad standing guard for AC3 across every level and both long lengths: **no** strength station -
-    /// active or reserve, primary or accessory - is ever prescribed above the user's difficulty cap. This
-    /// is what bounds the depth mismatch structurally: since both chains are clamped to the same band, an
-    /// accessory can never sit above where the primary's band allows.
+    /// active or reserve, primary or accessory - is ever a movement the user does not get. This is what
+    /// bounds the depth mismatch structurally: since both chains are clamped to the same set of staples,
+    /// an accessory can never sit above where the user's access allows.
     ///
-    /// Non-vacuity: bound to `ExercisePoolFilter.difficultyCap(for:)`, so were the cap ever removed or an
-    /// accessory path added that skipped it, a beginner would draw a difficulty-3+ tier (pike, diamond)
-    /// and this guard would fail.
-    func testNoAccessoryIsEverSeededAboveTheUsersDifficultyCap() async throws {
+    /// Non-vacuity: bound to `MovementAccess`, so were the gate ever removed or an accessory path added
+    /// that skipped it, a beginner would draw a non-staple tier (pike, diamond) and this guard would fail.
+    func testNoAccessoryIsEverSeededBeyondTheUsersStaples() async throws {
         let library = try await library()
         for level in FitnessLevel.allCases {
-            let band = ExercisePoolFilter.difficultyCap(for: level)
             for minutes in [45, 60] {
                 // Give a rich push history so both chains are populated and near their frontier, exercising
                 // the widest set of accessory candidates the reserve can hold.
@@ -295,8 +287,8 @@ final class AccessoryDepthMismatchTests: XCTestCase {
                 XCTAssertFalse(stations.isEmpty, "a \(minutes)-min \(level) session must plan strength stations")
                 for station in stations {
                     XCTAssertTrue(
-                        band.contains(station.exercise.difficulty),
-                        "\(level) \(minutes)min: station \(station.exercise.id) (difficulty \(station.exercise.difficulty)) must sit within the cap band \(band)"
+                        MovementAccess.isAvailable(station.exercise, level: level, phase: .discipline),
+                        "\(level) \(minutes)min: station \(station.exercise.id) is not a movement a \(level) user gets"
                     )
                 }
             }

@@ -2,18 +2,16 @@ import Foundation
 
 /// Pipeline Step 4 of the deterministic engine (US-C04): narrow the full library down to the
 /// pool of exercises that are *safe and appropriate* for this user, so later steps never even
-/// see something above the user's level, gated behind the Strength Phase, hard on an injury, or
-/// repeatedly skipped.
+/// see something the user should not get, hard on an injury, or repeatedly skipped.
 ///
 /// Steps 1-3 chose the session's shape, pillar(s), and lead pattern; Step 4 decides *which
 /// exercises are eligible* to fill them. It removes, from the full library:
-/// - **phase-gated** movements - `phase == .strength` while the user is still in `.discipline`;
+/// - **movements this user does not get** - `MovementAccess`, the one owner of that question: a
+///   Strength-Phase skill before the phase is earned, a movement withdrawn until version 2, and - while
+///   the user is in the Discipline Phase - any movement that is not a staple for their self-reported
+///   fitness level (ADR-0007). Earning the Strength Phase lifts the level restriction;
 /// - **injury-contraindicated** movements - whose `movementPattern` is hard on one of the user's
 ///   declared injuries (see `InjuryContraindication`);
-/// - **too-hard** movements - `difficulty` above the user's *effective* cap: the fitness-level band
-///   (beginner 1-2, intermediate 1-3, advanced 1-5) lifted to the full `1...5` range once the user
-///   has earned the `.strength` phase, so demonstrated competence overrides a conservative
-///   onboarding estimate (US-SP01, `effectiveDifficultyCap(for:phase:)`);
 /// - **repeatedly-skipped** movements - skipped more than `recentSkipThreshold` times across
 ///   `recentLogs`;
 /// and enforces the Zero-Equipment Floor (`equipment == []`) as a final guarantee even though the
@@ -25,8 +23,8 @@ import Foundation
 ///
 /// `pool(forPattern:)` answers the per-pattern question the assembly step asks ("give me the
 /// eligible exercises for this needed pattern"), and handles the case where filtering empties a
-/// needed pattern: it relaxes the *soft* filters (difficulty cap, recent-skip) - never the *hard*
-/// safety filters (phase, injury, equipment) - to offer the single safest available bodyweight
+/// needed pattern: it relaxes the *soft* filter (recent-skip) - never the *hard*
+/// filters (movement access, injury, equipment) - to offer the single safest available bodyweight
 /// option, and records that a fallback happened (`FallbackReason`). If even the hard-safety pool
 /// is empty, the pattern simply cannot be trained safely and is reported as such rather than the
 /// engine reaching for an unsafe pick.
@@ -111,82 +109,7 @@ enum ExercisePoolFilter {
     /// pool (so 4+ skips removes it). Tunable.
     static let recentSkipThreshold = 3
 
-    // MARK: Difficulty cap
-
-    /// The difficulty band a fitness level may draw from: beginner 1-2, intermediate 1-3,
-    /// advanced 1-5. Anything above the cap is filtered out.
-    ///
-    /// This is the band derived from the self-reported onboarding `FitnessLevel` *alone*. The
-    /// eligible-pool check does not consume it directly - it goes through `effectiveDifficultyCap`,
-    /// which layers the earned phase on top (US-SP01).
-    static func difficultyCap(for level: FitnessLevel) -> ClosedRange<Int> {
-        switch level {
-        case .beginner: return 1...2
-        case .intermediate: return 1...3
-        case .advanced: return 1...5
-        }
-    }
-
-    /// The full catalog difficulty range an *earned* Strength-Phase user may draw from, lifting the
-    /// conservative onboarding-`FitnessLevel` band so the hardest phase-gated skills become
-    /// reachable. `1...5` is the whole shipped difficulty spectrum (the same ceiling `.advanced`
-    /// already sees), so competence-earned access never depends on how the user self-reported.
-    static let strengthPhaseDifficultyCap: ClosedRange<Int> = 1...5
-
-    /// The **effective** difficulty band - the single source of truth for the eligible-pool cap
-    /// check (US-SP01). For a `.discipline` user it is exactly `difficultyCap(for:)`, the
-    /// conservative band from the onboarding `FitnessLevel`. For a user who has *earned* the
-    /// `.strength` phase, demonstrated competence overrides that estimate: the cap is lifted to the
-    /// full catalog range so a phase-gated difficulty-5 skill is reachable regardless of the
-    /// onboarding level.
-    ///
-    /// This resolves the "double-gate trap": a phase-gated skill must clear *both* `isPhaseAllowed`
-    /// and the difficulty cap, yet the two gates were derived from independent signals (earned phase
-    /// vs. self-reported level), so a beginner/intermediate user who earned Strength still saw
-    /// nothing. Keying the cap lift off `user.phase` - the `PhaseEvaluator`'s own output - means the
-    /// difficulty gate can never disagree with the phase gate about who has graduated.
-    ///
-    /// A `.discipline` user's band is byte-identical to `difficultyCap(for:)`, so their eligible
-    /// pool is entirely unchanged.
-    static func effectiveDifficultyCap(for level: FitnessLevel, phase: Phase) -> ClosedRange<Int> {
-        switch phase {
-        case .discipline: return difficultyCap(for: level)
-        case .strength: return strengthPhaseDifficultyCap
-        }
-    }
-
     // MARK: Individual rules (each independently testable)
-
-    /// Strength-Phase skills stay hidden until the user has earned the Strength Phase; discipline
-    /// movements are always allowed.
-    static func isPhaseAllowed(_ exercise: Exercise, for user: User) -> Bool {
-        isPhaseAllowed(exercise, phase: user.phase)
-    }
-
-    /// The phase-only core of the gate above, taking the earned `phase` directly. The `for user:`
-    /// overload delegates here, so a read-only surface that must mark a rung "locked until the
-    /// Strength Phase is earned" (the progression map, US-SP05) reads the *same* rule the engine
-    /// filters on rather than a parallel re-derivation - `!isPhaseAllowed(_:phase:)` is exactly
-    /// "this rung is a Strength-Phase skill and the user has not earned it."
-    static func isPhaseAllowed(_ exercise: Exercise, phase: Phase) -> Bool {
-        exercise.phase == .discipline || phase == .strength
-    }
-
-    /// Whether the exercise's difficulty sits within the user's level cap (the onboarding
-    /// `FitnessLevel` band alone, ignoring earned phase). The eligible-pool check uses
-    /// `isWithinEffectiveDifficultyCap` instead; this stays the level-only rule for callers that
-    /// reason about the conservative band directly.
-    static func isWithinDifficultyCap(_ exercise: Exercise, for level: FitnessLevel) -> Bool {
-        difficultyCap(for: level).contains(exercise.difficulty)
-    }
-
-    /// Whether the exercise's difficulty sits within the user's **effective** cap - the onboarding
-    /// `FitnessLevel` band lifted by the earned phase (US-SP01). This is what the eligible pool
-    /// gates on, so an earned Strength-Phase user reaches the harder catalog their competence unlocked.
-    static func isWithinEffectiveDifficultyCap(_ exercise: Exercise, for user: User) -> Bool {
-        effectiveDifficultyCap(for: user.profile.fitnessLevel, phase: user.phase)
-            .contains(exercise.difficulty)
-    }
 
     /// Whether the exercise's pattern is clear of every injury the user declared.
     static func isInjurySafe(_ exercise: Exercise, injuries: [String]) -> Bool {
@@ -223,7 +146,6 @@ enum ExercisePoolFilter {
     ) -> [Exercise] {
         library.filter { exercise in
             passesHardSafety(exercise, for: user)
-                && isWithinEffectiveDifficultyCap(exercise, for: user)
                 && isWithinSkipLimit(exercise, recentLogs: recentLogs)
         }
     }
@@ -234,8 +156,8 @@ enum ExercisePoolFilter {
     /// empty.
     ///
     /// Normally this is just `eligiblePool` restricted to `pattern`. When that is empty, the soft
-    /// filters (difficulty cap, recent-skip) are relaxed - but never the hard safety filters
-    /// (phase, injury, equipment) - and the single safest available bodyweight option is offered,
+    /// filter (recent-skip) is relaxed - but never the hard safety filters (movement access, injury,
+    /// equipment) - and the single safest available bodyweight option is offered,
     /// with `fallback == .relaxedSoftFilters`. If even the hard-safety pool for the pattern is
     /// empty (e.g. an injury rules out the whole pattern), no safe option exists and the pattern
     /// is reported with `fallback == .noSafeOption` and no exercises, so the caller can choose a
@@ -263,10 +185,11 @@ enum ExercisePoolFilter {
 
     // MARK: Helpers
 
-    /// The hard safety filters that are never relaxed: bodyweight, phase-allowed, injury-safe.
+    /// The hard filters that are never relaxed: bodyweight, a movement this user gets
+    /// (`MovementAccess`), injury-safe.
     private static func passesHardSafety(_ exercise: Exercise, for user: User) -> Bool {
         isBodyweight(exercise)
-            && isPhaseAllowed(exercise, for: user)
+            && MovementAccess.isAvailable(exercise, for: user)
             && isInjurySafe(exercise, injuries: user.profile.injuries)
     }
 
@@ -298,10 +221,10 @@ struct PatternPool: Equatable {
 /// Why `ExercisePoolFilter.pool(forPattern:)` had to fall back, recorded so the assembly step (and
 /// later diagnostics) can explain a needed pattern that the filters emptied.
 enum FallbackReason: Equatable {
-    /// The soft filters (difficulty cap, recent-skip) emptied the pattern, so they were relaxed
+    /// The soft filter (recent-skip) emptied the pattern, so it was relaxed
     /// and the safest hard-safe bodyweight option was offered instead.
     case relaxedSoftFilters
-    /// No bodyweight option for the pattern clears the hard safety filters (phase/injury), so the
+    /// No bodyweight option for the pattern clears the hard filters (access/injury), so the
     /// pattern cannot be trained safely and must be replaced upstream.
     case noSafeOption
 }

@@ -20,6 +20,7 @@ final class ExerciseServiceTests: XCTestCase {
         category: ExerciseCategory = .strength,
         difficulty: Int = 1,
         phase: Phase = .discipline,
+        audience: MovementAudience? = .beginner,
         equipment: [Equipment] = [],
         isHold: Bool = false,
         defaultReps: Int? = 10,
@@ -41,6 +42,7 @@ final class ExerciseServiceTests: XCTestCase {
             category: category,
             difficulty: difficulty,
             phase: phase,
+            audience: audience,
             equipment: equipment,
             isHold: isHold,
             defaultReps: defaultReps,
@@ -69,7 +71,7 @@ final class ExerciseServiceTests: XCTestCase {
     func testRealLibraryLoadsAndCaches() async throws {
         let service = try MockExerciseService()
         let all = try await service.exercises()
-        XCTAssertEqual(all.count, 76, "service should load the full bundled library")
+        XCTAssertEqual(all.count, 73, "service should load the offered library: the bundled 76 minus the 3 movements withdrawn until version 2")
     }
 
     func testExerciseByIdResolves() async throws {
@@ -107,7 +109,7 @@ final class ExerciseServiceTests: XCTestCase {
             "hinge_nordic_assisted", "hinge_nordic",
         ])
         let discipline = try await service.exercises(for: Phase.discipline)
-        XCTAssertEqual(discipline.count, 68)
+        XCTAssertEqual(discipline.count, 65, "68 discipline movements minus the 3 withdrawn until version 2")
     }
 
     func testExercisesByDifficultyRange() async throws {
@@ -201,6 +203,60 @@ final class ExerciseServiceTests: XCTestCase {
                 .chainNotContiguous(chainId: "gap", orders: [0, 2])
             )
         }
+    }
+
+    func testMissingAudienceThrows() {
+        let library = [makeExercise(id: "a", audience: nil, progressionChainId: "c", progressionOrder: 0)]
+        XCTAssertThrowsError(try MockExerciseService(library: library)) { error in
+            XCTAssertEqual(error as? ExerciseLibraryError, .missingAudience(exerciseId: "a"))
+        }
+    }
+
+    func testChainThatIsNotDoublyLinkedThrows() {
+        // `a` points up at `b`, but `b` does not link back down at `a`.
+        let library = [
+            makeExercise(id: "a", progressionChainId: "c", progressionOrder: 0, progressionId: "b"),
+            makeExercise(id: "b", progressionChainId: "c", progressionOrder: 1),
+        ]
+        XCTAssertThrowsError(try MockExerciseService(library: library)) { error in
+            XCTAssertEqual(error as? ExerciseLibraryError, .chainNotDoublyLinked(exerciseId: "a", linkedId: "b"))
+        }
+    }
+
+    func testProgressionThatSkipsARungThrows() {
+        // `a` links straight to `c`, jumping over `b`: reordering a chain must rewire it properly.
+        let library = [
+            makeExercise(id: "a", progressionChainId: "c", progressionOrder: 0, progressionId: "c"),
+            makeExercise(id: "b", progressionChainId: "c", progressionOrder: 1),
+            makeExercise(id: "c", progressionChainId: "c", progressionOrder: 2, regressionId: "a"),
+        ]
+        XCTAssertThrowsError(try MockExerciseService(library: library)) { error in
+            XCTAssertEqual(error as? ExerciseLibraryError, .chainNotDoublyLinked(exerciseId: "a", linkedId: "c"))
+        }
+    }
+
+    func testOfferedMovementLinkingIntoAWithdrawnOneThrows() {
+        let library = [
+            makeExercise(id: "a", progressionChainId: "c", progressionOrder: 0, progressionId: "b"),
+            makeExercise(id: "b", audience: .version2, progressionChainId: "c", progressionOrder: 1, regressionId: "a"),
+        ]
+        XCTAssertThrowsError(try MockExerciseService(library: library)) { error in
+            XCTAssertEqual(error as? ExerciseLibraryError, .withdrawnMovementInLiveChain(exerciseId: "a", withdrawnId: "b"))
+        }
+    }
+
+    func testWholeWithdrawnChainIsKeptButNeverServed() async throws {
+        let library = validChain() + [
+            makeExercise(id: "w1", audience: .version2, progressionChainId: "w", progressionOrder: 0, progressionId: "w2"),
+            makeExercise(id: "w2", audience: .version2, progressionChainId: "w", progressionOrder: 1, regressionId: "w1"),
+        ]
+        let service = try MockExerciseService(library: library)
+        let offered = try await service.exercises().map(\.id)
+        XCTAssertEqual(offered, ["a", "b"])
+        let kept = try await service.withdrawnExercises().map(\.id)
+        XCTAssertEqual(kept, ["w1", "w2"])
+        let found = try await service.exercise(id: "w1")
+        XCTAssertNil(found)
     }
 
     func testDescriptiveErrorNamesExerciseAndRule() {

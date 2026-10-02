@@ -25,13 +25,18 @@ struct ReadyView: View {
     /// Start, or an abandoned session resumed from the Ready Screen. The `.fullScreenCover` presents
     /// the player for it and clears it on dismiss.
     @State private var presentedPlayer: PlayerPresentation?
+    /// Whether the one-time classics note (ADR-0007) is on screen. Raised once, on the first Ready
+    /// Screen an eligible install reaches; the note itself persists that it was shown.
+    @State private var showClassicsNote = false
 
     /// Held so the active-session player can be handed the engine seam for the in-session swap
     /// (US-K03) and the store it persists to (US-K04); the user and recent logs it also needs come
     /// from the loaded `viewModel`.
     private let services: ServiceContainer
 
-    init(services: ServiceContainer) {
+    /// `now` is the view model's clock (it anchors the recent-log lookback window), injectable so a hosted
+    /// evidence surface pinned to a fixture date does not lose its history as the wall clock moves on.
+    init(services: ServiceContainer, now: @escaping () -> Date = { Date() }) {
         self.services = services
         _viewModel = State(
             initialValue: ReadyViewModel(
@@ -41,7 +46,8 @@ struct ReadyView: View {
                 workoutLogService: services.workoutLogService,
                 consistencyService: services.consistencyService,
                 activeSessionStore: services.activeSessionStore,
-                analytics: services.analyticsService
+                analytics: services.analyticsService,
+                now: now
             )
         )
     }
@@ -115,6 +121,13 @@ struct ReadyView: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     header
 
+                    if showClassicsNote {
+                        ClassicsUpdateNote(
+                            onShow: { appState?.markClassicsUpdateNoteSeen() },
+                            onDismiss: { showClassicsNote = false }
+                        )
+                    }
+
                     if let state = viewModel.resumableSession {
                         ResumeSessionCard(
                             state: state,
@@ -139,9 +152,21 @@ struct ReadyView: View {
                 }
                 .padding(Theme.Spacing.lg)
             }
+            .onAppear(perform: presentClassicsNoteIfNeeded)
 
             startBar
         }
+    }
+
+    /// Raises the one-time classics note for an install that predates the change, once its session is on
+    /// screen. Only the note's own appearance consumes `AppState`'s persisted one-shot flag, so a screen
+    /// that never reaches the note (or an advanced / Strength-Phase user) leaves it untouched.
+    private func presentClassicsNoteIfNeeded() {
+        guard !showClassicsNote,
+              let appState,
+              appState.shouldShowClassicsUpdateNote,
+              viewModel.isClassicsUpdateNoteEligible else { return }
+        showClassicsNote = true
     }
 
     private var header: some View {
@@ -256,6 +281,60 @@ private struct DurationChip: View {
         .accessibilityLabel("\(minutes) minute session")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
+}
+
+// MARK: - Classics note (ADR-0007)
+
+/// The one-time note that sessions now focus on the classics, shown on the Ready Screen - the screen
+/// whose session changed - to an install that predates the change and whose user is held to staple
+/// movements (a beginner or intermediate user in the Discipline Phase). Dismissed with "Got it".
+/// Identity-framed: it says what sessions focus on and when more opens up, never that anything was lost.
+/// The copy is the captain's, verbatim (`ClassicsUpdateNoteCopy`). Appearing is what persists that it was
+/// shown, so a force-quit while it is up does not lose it silently and it never reappears once seen.
+struct ClassicsUpdateNote: View {
+    /// Called when the note first appears, to persist the one-shot flag.
+    let onShow: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(ClassicsUpdateNoteCopy.headline)
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(ClassicsUpdateNoteCopy.detail)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(ClassicsUpdateNoteCopy.full)
+
+            Button(action: onDismiss) {
+                Text("Got it")
+                    .font(Theme.Typography.button)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .frame(minHeight: Theme.Spacing.minTouchTarget)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Dismisses this note")
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+        .accessibilityElement(children: .contain)
+        .onAppear(perform: onShow)
+    }
+}
+
+/// The classics note's copy, one source for the card and the tests that pin it verbatim.
+enum ClassicsUpdateNoteCopy {
+    static let headline = "Your sessions now focus on the classics."
+    static let detail = "More movements unlock when you earn the Strength Phase."
+    static var full: String { "\(headline) \(detail)" }
 }
 
 // MARK: - Resume session card

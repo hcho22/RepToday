@@ -399,8 +399,16 @@ enum SessionAssembly {
         // The other half of the Start Seed band: the movements it withholds accrue no history, so
         // Step 5 is told they were never on offer rather than outgrown. Without it their untouched
         // entry tiers win the freshness preference outright the moment the band lifts.
+        //
+        // Banded over the movements this user can actually get (`MovementAccess`, ADR-0007): the band's
+        // "hardest a pattern offers" clamp must read the pool the user is served from, not a catalog
+        // whose hardest rungs sit behind the staples restriction.
         let withheldByStartSeed = ColdStartOverride.withheldByStartSeed(
-            library: library,
+            library: MovementAccess.available(
+                in: library,
+                level: user.profile.fitnessLevel,
+                phase: user.phase
+            ),
             user: user,
             sessionPolicy: sessionPolicy,
             seed: startSeed
