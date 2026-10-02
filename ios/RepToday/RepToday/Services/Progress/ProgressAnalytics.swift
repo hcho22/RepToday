@@ -430,12 +430,14 @@ struct ProgressAnalytics: Equatable {
     /// simply absent, so nothing is fabricated.
     ///
     /// The journey's current position is that same frontier - the rung the user is served - and it is
-    /// current only from the first time they worked it after their last work on any higher rung of the
-    /// chain. A user moved to the closest rung they get (ADR-0007) therefore has no current milestone
-    /// until they work it there, whether or not they worked it before climbing past it, so time spent
-    /// higher up is never read as time on it; the rungs they worked stay in the timeline as genuine
-    /// history. A Strength-Phase skill the user has not earned is never a milestone, even when it appears
-    /// in their logs (`MovementAccess.isPhaseEarned`).
+    /// current only from the first time they worked it after their last work on any rung of the chain
+    /// they first reached after it: the rungs beyond it in their own history, wherever those sit on the
+    /// ladder now. A user moved to the closest rung they get (ADR-0007), or whose rungs were reordered,
+    /// therefore has no current milestone until they work the served rung again, so time spent on a rung
+    /// they moved on to is never read as time on it, while a session back on a rung reached earlier never
+    /// interrupts a real stall. The rungs they worked stay in the timeline as genuine history. A
+    /// Strength-Phase skill the user has not earned is never a milestone, even when it appears in their
+    /// logs (`MovementAccess.isPhaseEarned`).
     /// A line the user has never trained (`currentExercise == nil`) contributes no journey, so an
     /// empty `chains` means no strength history yet. Pull's journey is its horizontal chain only.
     private static func makeStrengthJourney(
@@ -465,15 +467,13 @@ struct ProgressAnalytics: Equatable {
             guard let frontier = positionByPattern[line.pattern]?.currentExercise else { return nil }
             let activeChainId = frontier.progressionChainId
 
-            let earnedTiers = (tiersByChain[activeChainId] ?? [])
+            // Every worked tier of the active chain, entry-first.
+            let milestones: [TierMilestone] = (tiersByChain[activeChainId] ?? [])
                 .filter { MovementAccess.isPhaseEarned($0, phase: access.phase) }
                 .sorted {
                     if $0.progressionOrder != $1.progressionOrder { return $0.progressionOrder < $1.progressionOrder }
                     return $0.id < $1.id
                 }
-
-            // Every worked tier of the active chain, entry-first.
-            let milestones: [TierMilestone] = earnedTiers
                 .compactMap { exercise -> TierMilestone? in
                     guard let firstReachedAt = firstReachedById[exercise.id] else { return nil }
                     return TierMilestone(
@@ -488,15 +488,17 @@ struct ProgressAnalytics: Equatable {
             // there is no climb to show.
             guard !milestones.isEmpty else { return nil }
 
-            let higherIds = Set(earnedTiers.filter { $0.progressionOrder > frontier.progressionOrder }.map(\.id))
-            let lastHigherWork = worked.filter { higherIds.contains($0.logged.exerciseId) }.map(\.completedAt).max()
-            let currentSince = worked
-                .filter { instance in
-                    instance.logged.exerciseId == frontier.id
-                        && (lastHigherWork.map { instance.completedAt > $0 } ?? true)
-                }
-                .map(\.completedAt)
-                .min()
+            let currentSince = milestones.first { $0.exerciseId == frontier.id }.flatMap { served -> Date? in
+                let reachedLaterIds = Set(milestones.filter { $0.firstReachedAt > served.firstReachedAt }.map(\.exerciseId))
+                let lastLaterWork = worked.filter { reachedLaterIds.contains($0.logged.exerciseId) }.map(\.completedAt).max()
+                return worked
+                    .filter { instance in
+                        instance.logged.exerciseId == served.exerciseId
+                            && (lastLaterWork.map { instance.completedAt > $0 } ?? true)
+                    }
+                    .map(\.completedAt)
+                    .min()
+            }
 
             return ChainJourney(
                 line: line,
@@ -671,7 +673,7 @@ struct ChainJourney: Equatable, Identifiable {
     /// That rung's name, so the journey can say where the user is before they have worked it.
     let currentDisplayName: String
     /// When the user started on that rung: the first time they worked it after their last work on any
-    /// higher rung of this chain, `nil` until they have.
+    /// rung of this chain they first reached after it, `nil` until they have.
     let currentSince: Date?
 
     /// The calendar the duration read-outs bucket weeks in, so a view renders the span the same way
@@ -705,8 +707,8 @@ struct ChainJourney: Equatable, Identifiable {
 
     /// The rung the user is served now as a milestone dated `currentSince`, `nil` until they have worked
     /// it there - so a rung they were moved to is never reported as reached, and the time they spent on
-    /// a higher rung is never read as time on this one. Its row in `milestones` keeps the date they
-    /// first reached it.
+    /// a rung they moved on to is never read as time on this one. Its row in `milestones` keeps the date
+    /// they first reached it.
     var currentMilestone: TierMilestone? {
         guard let currentSince, let served = milestones.first(where: { $0.exerciseId == currentExerciseId }) else {
             return nil

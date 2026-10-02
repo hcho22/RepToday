@@ -690,6 +690,65 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertEqual(intermediate.currentMilestone?.firstReachedAt, date(daysAgo: 35))
     }
 
+    /// An existing intermediate or advanced user who climbed the old squat ladder - Wall Sit, then Sumo
+    /// Squat, then Bodyweight Squat until yesterday - is served Sumo Squat now that it sits above
+    /// Bodyweight Squat. The five weeks on Bodyweight Squat are time on a rung they moved on to, so they
+    /// are not read as a ten-week stall on Sumo Squat: it has no current milestone or Coach trend until
+    /// they work it again, and then reads as a climb from Wall Sit.
+    func testReorderedSquatClimbIsNotReadAsAStallOnSumoSquat() async throws {
+        let library = try await offeredLibrary()
+        let history = [84, 77].map { workLog("squat_wall_sit", pattern: .squat, seconds: 45, daysAgo: $0) }
+            + [70, 63, 56, 49, 42].map { workLog("squat_sumo", pattern: .squat, reps: 20, daysAgo: $0) }
+            + [35, 28, 21, 14, 7, 1].map { workLog("squat_bodyweight", pattern: .squat, reps: 15, daysAgo: $0) }
+
+        for level in [FitnessLevel.intermediate, .advanced] {
+            func analytics(_ logs: [WorkoutLog]) -> ProgressAnalytics {
+                ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
+            }
+            func trends(_ analytics: ProgressAnalytics) -> [StrengthPatternTrend] {
+                CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
+            }
+
+            let reordered = analytics(history)
+            XCTAssertEqual(reordered.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_sumo", "\(level)")
+            let squat = try XCTUnwrap(reordered.deep.strengthJourney.chains.first { $0.pattern == .squat })
+            XCTAssertEqual(squat.milestones.map(\.exerciseId), ["squat_wall_sit", "squat_bodyweight", "squat_sumo"], "\(level)")
+            XCTAssertEqual(squat.milestones.map(\.firstReachedAt), [date(daysAgo: 84), date(daysAgo: 35), date(daysAgo: 70)],
+                           "\(level): every rung keeps the date it was first reached")
+            XCTAssertNil(squat.currentMilestone, "\(level): weeks on Bodyweight Squat are not weeks on Sumo Squat")
+            XCTAssertFalse(squat.hasAdvanced, "\(level)")
+            XCTAssertFalse(trends(reordered).contains { $0.pattern == .squat }, "\(level): no stall is read on squat")
+            XCTAssertNil(CoachAnalyticsInsight.offer(from: trends(reordered)), "\(level): the Coach raises no stall offer")
+
+            let returned = analytics(history + [workLog("squat_sumo", pattern: .squat, reps: 20, daysAgo: 0)])
+            let returnedSquat = try XCTUnwrap(returned.deep.strengthJourney.chains.first { $0.pattern == .squat })
+            XCTAssertEqual(returnedSquat.currentMilestone?.exerciseId, "squat_sumo", "\(level)")
+            XCTAssertEqual(returnedSquat.currentMilestone?.firstReachedAt, date(daysAgo: 0), "\(level)")
+            XCTAssertEqual(returnedSquat.startMilestone?.exerciseId, "squat_wall_sit", "\(level)")
+            XCTAssertEqual(trends(returned).first { $0.pattern == .squat }?.trend, .climbing, "\(level)")
+        }
+    }
+
+    /// A session back on a rung the user reached earlier does not interrupt a real stall: an intermediate
+    /// on Sumo Squat every week for ten weeks, with one Wall Sit session in between, still reads as flat
+    /// on Sumo Squat, and the Coach can offer to lean toward squat.
+    func testASessionOnAnEarlierRungDoesNotHideARealStall() async throws {
+        let library = try await offeredLibrary()
+        let logs = [workLog("squat_wall_sit", pattern: .squat, seconds: 45, daysAgo: 77)]
+            + [70, 63, 56, 49, 42, 35, 28, 21, 7, 1].map { workLog("squat_sumo", pattern: .squat, reps: 12, daysAgo: $0) }
+            + [workLog("squat_wall_sit", pattern: .squat, seconds: 45, daysAgo: 14)]
+        let analytics = ProgressAnalytics.from(logs: logs, library: library, level: .intermediate, phase: .discipline, asOf: asOf, calendar: calendar)
+        let squat = try XCTUnwrap(analytics.deep.strengthJourney.chains.first { $0.pattern == .squat })
+        XCTAssertEqual(squat.currentMilestone?.exerciseId, "squat_sumo")
+        XCTAssertEqual(squat.currentMilestone?.firstReachedAt, date(daysAgo: 70))
+
+        let trends = CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
+        let squatTrend = try XCTUnwrap(trends.first { $0.pattern == .squat })
+        XCTAssertEqual(squatTrend.trend, .flat)
+        XCTAssertEqual(squatTrend.weeksAtCurrentTier, 10)
+        XCTAssertEqual(CoachAnalyticsInsight.offer(from: trends)?.stalledPattern, .squat)
+    }
+
     func testDeadBugUserKeepsItAsAnIntermediateAndMovesToBirdDogAsABeginner() async throws {
         let library = try await offeredLibrary()
         let logs = [
