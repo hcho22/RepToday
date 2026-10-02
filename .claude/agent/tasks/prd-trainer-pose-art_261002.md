@@ -79,7 +79,8 @@ All hold, with the additions and differences marked **(new)**.
 - `UserProfile.sex` is `Sex` (`male`/`female`/`other`, `Models/Enums.swift`), captured by the onboarding `SexPicker`; no post-onboarding editor exists.
 - `docs/asset-attribution.md` rule: no bundled third-party asset ships without a source/license row first.
 - "Coach" is the premium AI chat; the word "trainer" appears nowhere in app code, `CONTEXT.md` or `AGENTS.md` today, so the new term collides with nothing.
-- **(new)** Lottie is referenced in more places than the interview listed: the `packages:` entry and its comment in `ios/RepToday/project.yml`, `import Lottie` in `ActiveSessionView.swift`, the `Exercise.animationName` doc comment, a comment in `.github/workflows/ci.yml` ("Lottie stays the app's only dependency"), and the AGENTS.md CI paragraph.
+- **(new)** Beyond the places the interview listed, Lottie is also referenced in: the `packages:` entry, its comment and the target dependency in `ios/RepToday/project.yml`; the committed generated project `ios/RepToday/RepToday.xcodeproj/project.pbxproj` (the `lottie-ios` package reference and the `Lottie` product dependency); `import Lottie` in `ActiveSessionView.swift`; the `Exercise.animationName` doc comment; a comment in `.github/workflows/ci.yml` ("Lottie stays the app's only dependency"); a comment in the root `vitest.config.ts` ("Lottie remains its only one"); the AGENTS.md CI paragraph; and the intro sentence of `docs/asset-attribution.md` ("holding an asset back costs nothing but the animation itself").
+  US-TP12's grep guards, not this list, are the completeness check.
   Beyond `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile`, two more tests depend on the field: `ModelsTests.testExerciseRoundTripWithAnimationName` and `ModelsTests.testExerciseDecodesWithoutAnimationName`.
   `VisualWorkWindowEvidenceTests` asserts the label "Push-up demonstration" inside the work window.
 - **(new)** `Exercise` uses synthesized `Codable` (no custom `init(from:)` or `CodingKeys`), so removing `animationName` leaves any persisted record that still carries the key decodable; `JSONDecoder` ignores unknown keys.
@@ -134,10 +135,10 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 **Acceptance Criteria:**
 
 - [ ] `docs/asset-attribution.md` gains a "Trainer pose art" section with a cleared row covering every Trainer image set, landed in the same change as, or before, the first bundled image (US-TP02).
-- [ ] The row's source states, in the captain's wording: trainer characters and pose art generated with ChatGPT image generation (OpenAI) from text prompts for RepToday; no third-party artwork or real-person likeness used; OpenAI's terms for generated output apply; provenance retained in each art folder's generation log and manifest.
+- [ ] The row's Source column states, in the captain's wording: trainer characters and pose art generated with ChatGPT image generation (OpenAI) from text prompts for RepToday; no third-party artwork or real-person likeness used; OpenAI's terms for generated output apply; provenance retained in each art folder's generation log and manifest.
   The core folder, which has no `generation-log.json`, is handled per Open Question 7.
 - [ ] The license/terms column cites OpenAI's Terms of Use section on ownership of output (`https://openai.com/policies/terms-of-use/`), re-read at implementation time so the citation matches the current text.
-- [ ] The row uses the captain's wording only and does not mention the public exercise-technique pages the art folders' READMEs list as form references (decision 17).
+- [ ] The Source column uses the captain's wording only, and no column mentions the public exercise-technique pages the art folders' READMEs list as form references (decision 17).
 - [ ] The row names no private filesystem path, account, or personal data, and the provenance files themselves stay in the captain's workspace: no generation log, prompt file, manifest or verification file is committed to this public repository (decision 17).
 - [ ] Markdown renders and every link in the section resolves.
 
@@ -146,11 +147,11 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - **Setup:** The branch carrying US-TP01.
 - **Steps:**
   1. Open `docs/asset-attribution.md` in a Markdown preview.
-  2. Compare the source text with the captain's wording in decision 8.
+  2. Compare the row's Source text with the captain's wording in decision 8.
   3. Open the cited OpenAI terms URL.
   4. Check `git log` for the asset catalog: the first commit adding a Trainer image set must not predate this row.
-- **Expected Result:** The row is present, matches the captain's wording (with the core folder handled per Open Question 7), and cites the live terms page.
-- **Failure Indicator:** A Trainer image is in the bundle with no row, the row paraphrases away "no third-party artwork or real-person likeness", or it adds wording or file names beyond the captain's.
+- **Expected Result:** The row is present with the ledger's usual File, Embedded name, Source, License and Cleared to ship columns; its Source text matches the captain's wording (with the core folder handled per Open Question 7), and its License column cites the live terms page.
+- **Failure Indicator:** A Trainer image is in the bundle with no row, or the Source text changes, drops or adds to the captain's wording (for example by paraphrasing away "no third-party artwork or real-person likeness" or by naming provenance files).
 
 ### US-TP02: Bundle the Trainer art in the asset catalog, keyed by exercise id
 
@@ -370,13 +371,14 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] When the effective Trainer is unresolved (US-TP03), arriving at the player shows a choice between the two Trainers before any Trainer art is shown.
+- [ ] When the effective Trainer is unresolved (US-TP03), arriving at the player shows a choice between the two Trainers before any Trainer art is shown on the exercise card or rest overlay.
 - [ ] The choice offers exactly two options, one per Trainer, with no "decide later", skip, or dismiss-without-choosing path (decision 15).
 - [ ] Each option is presented per Open Question 4.
 - [ ] The choice is a modal overlay layer in the style of the US-CC13 explainer, meets the 60 pt active-screen touch target, and supports VoiceOver, Dynamic Type and Reduce Motion.
 - [ ] While the choice is up, the session is handled per Open Question 3.
 - [ ] The choice is written through the US-TP03 Trainer write function (FR-5) the moment it is made, and the art appears for the chosen Trainer immediately.
-- [ ] Once a choice exists (made here or in Settings), the prompt never appears again.
+- [ ] If that write fails, the player behaves per Open Question 8.
+- [ ] Once a choice is stored (made here or in Settings), the prompt never appears again.
 - [ ] Users whose sex answer is male or female never see the prompt.
 - [ ] If the US-CC13 continuous-circuit explainer is also due on the same arrival, the Trainer choice shows first and the explainer follows once a Trainer is chosen; the two are never stacked (decision 15).
 - [ ] Unit tests cover show/no-show gating and the session's handling while the choice is up, per Open Question 3; a hosted-surface test covers the overlay's labels.
@@ -403,6 +405,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - [ ] `SettingsView` gains a Trainer row, placed per Open Question 5, styled like the existing Settings rows (`Theme` tokens, `minTouchTarget`, `listRowBackground(Theme.Colors.surface)`).
 - [ ] The row shows the effective Trainer (the sex default when no explicit choice exists); for an unresolved "other" user it shows the state set per Open Question 6.
 - [ ] Selecting a Trainer persists it as the explicit choice immediately, through the US-TP03 Trainer write function (FR-5); the next exercise card or rest preview uses it.
+- [ ] If that write fails, the row behaves per Open Question 8.
 - [ ] Choosing in Settings satisfies the US-TP10 one-time choice.
 - [ ] VoiceOver reads the row's label and current value; the control works at the largest Dynamic Type size.
 - [ ] No other Settings section changes.
@@ -425,13 +428,14 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] `ios/RepToday/project.yml` no longer declares the Lottie package or depends on it, and its explanatory comment is removed; the regenerated project resolves no Swift package.
+- [ ] `ios/RepToday/project.yml` no longer declares the Lottie package or depends on it, and its explanatory comment is removed.
+- [ ] The regenerated `ios/RepToday/RepToday.xcodeproj/project.pbxproj` is committed without the `lottie-ios` package reference or the `Lottie` product dependency, so the project resolves no Swift package.
 - [ ] `import Lottie`, `LottieDemoView`, the Lottie branch of `ExerciseIllustration`, `Exercise.animationName` and its doc comment are removed.
 - [ ] `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` and `ModelsTests.testExerciseRoundTripWithAnimationName` are removed.
 - [ ] `ModelsTests.testExerciseDecodesWithoutAnimationName` is replaced by a legacy-decode test: an `Exercise` JSON **carrying** `"animationName"` still decodes, and an `ActiveSessionState` snapshot fixture whose exercises carry the key decodes and resumes.
-- [ ] The US-O01 "Lottie fast-follow" language is removed or rewritten in `ActiveSessionView.swift` comments, `AGENTS.md` (the US-CC11 passage and the CI paragraph), `CONTEXT.md` (the US-CC11 story text), `docs/asset-attribution.md` (the "Exercise demo animations (US-O01)" section; the "Removed assets" history stays), and the `.github/workflows/ci.yml` comment.
+- [ ] The US-O01 "Lottie fast-follow" language is removed or rewritten in `ActiveSessionView.swift` comments, `AGENTS.md` (the US-CC11 passage and the CI paragraph), `CONTEXT.md` (the US-CC11 story text), `docs/asset-attribution.md` (the intro sentence ending "costs nothing but the animation itself" and the "Exercise demo animations (US-O01)" section; the "Removed assets" history stays), the `.github/workflows/ci.yml` comment, and the root `vitest.config.ts` comment.
 - [ ] Historical records (`docs/implementation-log.md` entries, older PRDs) stay as point-in-time records; `docs/test-coverage.md` rows for removed tests are updated.
-- [ ] `grep -rni lottie ios .github` returns nothing, and `grep -rn animationName ios/RepToday/RepToday` returns nothing.
+- [ ] `grep -rni lottie ios .github vitest.config.ts` returns nothing, and `grep -rn animationName ios/RepToday/RepToday` returns nothing.
 - [ ] Typecheck, lint, the `RepToday` unit suite, and the `RepTodayUITests` build-for-testing pass.
 
 **Validation Test:**
@@ -485,8 +489,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   Every write of the choice (the US-TP10 overlay and the US-TP11 Settings row) must go through one write function that re-reads the stored user immediately before saving and changes only `profile.trainer`, so it never rolls back another writer's progress.
 - FR-6: The effective Trainer must be the explicit choice if present, else male for a male sex answer, else female for a female sex answer, else unresolved.
 - FR-7: Existing users must resolve by the same rule from their stored answer, with no data migration.
-- FR-8: An unresolved user must be asked once, on first arrival at the player, before any Trainer art is shown, with exactly two options and no "decide later", and the choice shown before the US-CC13 explainer when both are due; the options' presentation and the session's handling while the choice is up follow Open Questions 4 and 3.
-- FR-9: Settings must offer a Trainer row that shows the effective Trainer and sets the explicit choice immediately; its placement and its unresolved state follow Open Questions 5 and 6.
+- FR-8: An unresolved user must be asked once, on first arrival at the player, before any Trainer art is shown on the exercise card or rest overlay, with exactly two options and no "decide later", and the choice shown before the US-CC13 explainer when both are due; the options' presentation, the session's handling while the choice is up, and a failed write follow Open Questions 4, 3 and 8.
+- FR-9: Settings must offer a Trainer row that shows the effective Trainer and sets the explicit choice immediately; its placement, its unresolved state and a failed write follow Open Questions 5, 6 and 8.
 
 **Display**
 
@@ -564,7 +568,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 - **Build phase.** Declare `inputFiles` for `Exercises.json` and the asset catalog so the phase runs under `ENABLE_USER_SCRIPT_SANDBOXING`; use only tools available on stock macOS and the CI runner.
 - **Snapshot compatibility.** Synthesized `Codable` ignores unknown keys, so removing `animationName` is safe; the US-TP12 legacy fixture makes that guarantee executable.
 - **Evidence.** Hosted surfaces go through `HostedSurface.host(_:size:)` and `AccessibilityTree`, and PNG paths through `EvidenceOutput.directory(for:)`, per `AGENTS.md`.
-- **Dependency.** After US-TP12 the app has no third-party Swift package; update the CI comment and the AGENTS.md CI paragraph that say Lottie is the only one.
+- **Dependency.** After US-TP12 the app has no third-party Swift package; update the CI comment, the root `vitest.config.ts` comment and the AGENTS.md CI paragraph that say Lottie is the only one.
 - **Order.** US-TP01 lands no later than US-TP02; US-TP03 and US-TP04 precede the UI stories; US-TP12 can land once US-TP06 has replaced the Lottie branch; US-TP13 closes the PRD.
 
 ## Success Metrics
@@ -581,7 +585,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 Questions 1-7 of the first draft were settled by the captain on 2026-10-02 and are now decisions 11-17 above.
 The items below remain open.
-Items 3-7 are product choices the interview did not settle; each carries a marked recommendation, the acceptance criteria that depend on one say "per Open Question N", and the captain's answer is needed before the story that depends on it starts.
+Items 3-8 are product choices the interview did not settle; each carries a marked recommendation, the acceptance criteria that depend on one say "per Open Question N", and the captain's answer is needed before the story that depends on it starts.
 
 1. **Captain action before release (recommended, not confirmed done).** Re-export the back folder (README lists 32 files, 22 present), which likely closes Wall Scapular Pull (a beginner staple and the Pull foundation's entry rung) and Reverse Snow Angel, and supplies Y, T and W pairs for the deferred Prone Y-T-W decision.
 2. **Go-ahead.** Implementation is not authorized; the captain confirms the go before any story starts.
@@ -596,7 +600,11 @@ Items 3-7 are product choices the interview did not settle; each carries a marke
    **Recommendation:** a neutral "Not chosen yet" value, never a guessed Trainer.
 7. **The core folder's provenance file names (US-TP01).** The captain's ledger wording (decision 8, kept by decision 17) says provenance is "retained in each art folder's generation log and manifest".
    The core folder holds `prompts.json`, `manifest.json` and `verification.json` and no `generation-log.json`, while the back, leg, mobility and primal folders and the push folder's `Male`/`Female` subfolders each hold a `generation-log.json`.
-   **Recommendation:** keep the captain's wording verbatim with no file names added to the public row, and have the captain confirm that the core folder's `prompts.json` counts as its generation log; otherwise the captain amends the wording for the core folder or adds a `generation-log.json` to it.
+   **Recommendation:** keep the captain's wording verbatim with no provenance file names added to the public row, and have the captain confirm that the core folder's `prompts.json` counts as its generation log; otherwise the captain amends the wording for the core folder or adds a `generation-log.json` to it.
+8. **When saving the Trainer choice fails (US-TP10, US-TP11, FR-8, FR-9).** Decisions 1, 14 and 15 do not say what happens if the FR-5 write throws.
+   The US-TP10 choice cannot be dismissed without choosing, so leaving it up after a failed write would strand the user behind it, while dismissing it with nothing stored means the prompt returns on the next arrival.
+   **Recommendation:** on the US-TP10 choice, use the chosen Trainer for this session, dismiss the choice, and re-ask on the next arrival only if nothing was persisted.
+   In Settings, keep showing the stored Trainer and say the change was not saved, as `InjuryFlagsViewModel` does for a failed save.
 
 ## Appendix: per-movement coverage (2026-10-02)
 
