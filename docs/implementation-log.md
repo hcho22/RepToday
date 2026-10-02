@@ -1449,11 +1449,13 @@ What landed:
   `ExercisePoolFilter` routes through it as a hard filter, replacing the difficulty cap (`difficultyCap`, `effectiveDifficultyCap` and the `isWithin*`/`isPhaseAllowed` rules are gone); the eligible pool therefore feeds progression-chain selection, the wide-circuit reserve, the primal block, the bookend stretches and in-session swap unchanged.
   The Start Seed's withheld set bands over the movements the user can get, and `ProgressAnalytics` (chain positions, progression map locked marking, strength journey - and through them the Coach context bundle) reads the same rule, so `ProgressAnalytics.from` now takes the `level`.
 - **Catalog.** Every movement carries an `audience` (load-validated; a missing one fails load), Sumo Squat moves behind Bodyweight Squat in the `squat` chain, and the service also validates that every chain is a clean doubly-linked ladder and that no offered movement links into a withdrawn one.
-  The three crawls stay in the file but `MockExerciseService` serves 73 movements; `withdrawnExercises()` hands the others back for version 2.
+  The three crawls stay in the file, recoverable for version 2, but `MockExerciseService` serves only the other 73 movements.
 - **Existing users.** A user whose logged frontier is a movement they no longer get is served, and shown on Progress, the highest rung they do get at or below it on the same chain (`MovementAccess.closestAvailableRung`, and the clamp `selectInChain` already applied).
   Nothing is rewritten; foundations clear from entry rungs, which are unchanged.
+  The premium strength journey keeps every rung the user worked as a milestone, including one they no longer get, and anchors its current position on the served rung, which becomes a milestone only once worked; until then the line raises no Coach trend, so time on the old rung never reads as a stall.
+  An untrained line's map preview is the lowest-id counting chain the user gets a rung of, preferring one with a Strength-Phase summit, so a beginner's Core preview is Forearm Plank then Side Plank.
 - **One-time note.** `AppState.hasSeenClassicsUpdateNote` (the `hasSeenFoundationsUpdateNote` precedent), marked seen when onboarding completes, gates `ClassicsUpdateNote` on the Ready Screen; `ReadyViewModel.isClassicsUpdateNoteEligible` is `MovementAccess.isRestrictedToStaples` (beginner or intermediate, Discipline Phase).
-- **Copy.** The graduation reveal and the progression map intro now say earning the phase opens every movement, not only the Strength-Phase skills.
+- **Copy.** The graduation reveal and the progression map intro name what earning the phase opens for each audience: every movement beyond the classics for a beginner or intermediate user, only the Strength-Phase skills for an advanced user.
 
 Rendered evidence is recorded in the [staple movements validation report](../artifacts/reports/staple-movements/validation.md).
 Physical-device behavior is untested; this is simulator-only validation of an on-device engine.

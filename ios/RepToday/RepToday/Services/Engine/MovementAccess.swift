@@ -28,10 +28,17 @@ enum MovementAccess {
     static func isAvailable(_ exercise: Exercise, level: FitnessLevel, phase: Phase) -> Bool {
         let audience = exercise.audience ?? .beginner
         guard audience != .version2 else { return false }
-        guard exercise.phase == .discipline || phase == .strength else { return false }
+        guard isPhaseEarned(exercise, phase: phase) else { return false }
         guard isRestrictedToStaples(level: level, phase: phase) else { return true }
         guard let minimum = audience.minimumLevel else { return false }
         return level.rank >= minimum.rank
+    }
+
+    /// Rule 2 on its own: a Strength-Phase skill needs the earned Strength Phase, every other movement
+    /// needs nothing. The strength journey reads this alone, so a rung the user really worked but no
+    /// longer gets stays in their history while an unearned Strength skill never counts as reached.
+    static func isPhaseEarned(_ exercise: Exercise, phase: Phase) -> Bool {
+        exercise.phase == .discipline || phase == .strength
     }
 
     /// Whether this user is held to staple movements: a beginner or intermediate user who has not

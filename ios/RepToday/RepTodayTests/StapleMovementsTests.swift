@@ -230,10 +230,12 @@ final class StapleMovementsTests: XCTestCase {
             let found = try await service.exercise(id: id)
             XCTAssertNil(found, "\(id) is not resolvable as an offered movement")
         }
-        // Recoverable: the whole chain is still in the file and the service can hand it back for version 2.
-        let archived = try await service.withdrawnExercises()
+        // Recoverable: the whole chain is still in the file, marked for version 2, and loads with the rest.
+        let archived = try fullFileLibrary().filter { $0.progressionChainId == "primal_ground_flow" }
         XCTAssertEqual(ids(archived), withdrawn)
-        XCTAssertEqual(archived.map(\.progressionChainId), Array(repeating: "primal_ground_flow", count: 3))
+        XCTAssertTrue(archived.allSatisfy { $0.audience == .version2 })
+        XCTAssertEqual(archived.sorted { $0.progressionOrder < $1.progressionOrder }.map(\.id),
+                       ["primal_gorilla_walk", "primal_lizard_crawl", "primal_underswitch"])
     }
 
     func testWithdrawnCrawlsNeverAppearInAnySessionForAnyUser() throws {
@@ -318,6 +320,36 @@ final class StapleMovementsTests: XCTestCase {
                 XCTAssertFalse(encoded.contains(term), "\(level): the Coach bundle names \(term)")
             }
         }
+    }
+
+    /// The Progress tab, read through its production view model and the real exercise service, still
+    /// shows the sessions a withdrawn crawl was logged in: the calendar marks their days and the totals
+    /// count them, while nothing on the tab names the crawl.
+    @MainActor
+    func testWithdrawnCrawlLogsStillShowInTheProgressTabHistory() async throws {
+        let logs = [
+            workLog("primal_gorilla_walk", pillar: .primal, pattern: .locomotion, reps: 20, daysAgo: 3),
+            workLog("primal_lizard_crawl", pillar: .primal, pattern: .locomotion, reps: 15, daysAgo: 2),
+            workLog("push_standard", pattern: .push, reps: 12, daysAgo: 1),
+        ]
+        let viewModel = ProgressViewModel(
+            userService: MockUserService(user: user(level: .beginner)),
+            workoutLogService: MockWorkoutLogService(logs: logs),
+            exerciseService: try MockExerciseService(),
+            subscriptionService: MockSubscriptionService(subscription: .free),
+            consistencyService: ConsistencyScoreService(now: { self.asOf }, calendar: calendar),
+            now: { self.asOf },
+            calendar: calendar
+        )
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.hasHistory)
+        XCTAssertEqual(viewModel.completedDays, Set(logs.map { calendar.startOfDay(for: $0.completedAt) }),
+                       "every logged day, crawl sessions included, is marked on the calendar")
+        let analytics = try XCTUnwrap(viewModel.analytics)
+        XCTAssertEqual(analytics.personalBests.totalSessions, 3)
+        XCTAssertEqual(analytics.pillarBalance.first { $0.pillar == .primal }?.exerciseCount, 2)
+        XCTAssertEqual(analytics.personalBests.bestReps?.exerciseId, "push_standard")
     }
 
     // MARK: - Chains stay clean ladders
@@ -555,6 +587,61 @@ final class StapleMovementsTests: XCTestCase {
         XCTAssertEqual(analytics.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_bodyweight")
     }
 
+    /// An existing beginner who did Wall Sit ten weeks ago and Sumo Squat every week since is served
+    /// Bodyweight Squat, which they have never worked. The strength journey and the Coach agree with that:
+    /// both past rungs stay in the timeline as history, the served rung is never reported as reached,
+    /// and nine weeks on Sumo Squat are not read as a stall on Bodyweight Squat. Once they work it, it
+    /// becomes their current milestone and the climb from Wall Sit reads as a recent advancement.
+    func testExistingBeginnerMovedOffSumoSquatKeepsTheHistoryWithoutAFalseStall() async throws {
+        let library = try await offeredLibrary()
+        let history = [workLog("squat_wall_sit", pattern: .squat, seconds: 30, daysAgo: 70)]
+            + (0...9).map { week in workLog("squat_sumo", pattern: .squat, reps: 15, daysAgo: 63 - week * 7) }
+
+        func journey(_ logs: [WorkoutLog], level: FitnessLevel) throws -> (ProgressAnalytics, ChainJourney) {
+            let analytics = ProgressAnalytics.from(logs: logs, library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
+            return (analytics, try XCTUnwrap(analytics.deep.strengthJourney.chains.first { $0.pattern == .squat }))
+        }
+        func trends(_ analytics: ProgressAnalytics) -> [StrengthPatternTrend] {
+            CoachStrengthJourneyReader.trends(from: analytics.deep.strengthJourney, asOf: asOf, calendar: calendar)
+        }
+
+        let (beginner, squat) = try journey(history, level: .beginner)
+        XCTAssertEqual(beginner.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_bodyweight")
+        XCTAssertEqual(squat.currentExerciseId, "squat_bodyweight", "the journey sits on the rung the user is served")
+        XCTAssertEqual(squat.currentDisplayName, "Bodyweight Squat")
+        XCTAssertEqual(squat.milestones.map(\.exerciseId), ["squat_wall_sit", "squat_sumo"],
+                       "both rungs the user really worked stay as past milestones")
+        XCTAssertEqual(squat.milestones.first { $0.exerciseId == "squat_sumo" }?.firstReachedAt, date(daysAgo: 63))
+        XCTAssertNil(squat.currentMilestone, "Bodyweight Squat is never reported as reached before it is worked")
+        XCTAssertFalse(squat.hasAdvanced)
+        XCTAssertNil(squat.weeksClimbed)
+        XCTAssertFalse(trends(beginner).contains { $0.pattern == .squat }, "no stall is read off the rung they were moved to")
+        let bundle = CoachContextBundle.make(
+            phase: .discipline, requestedMinutes: 15, chainPositions: beginner.chainPositions,
+            consistencyTrend: [], recentLogs: history, strengthJourney: beginner.deep.strengthJourney,
+            asOf: asOf, calendar: calendar
+        )
+        XCTAssertFalse(bundle.strengthJourney.contains { $0.pattern == "squat" })
+        XCTAssertEqual(bundle.chainPositions.first { $0.pattern == "squat" }?.currentExercise, "Bodyweight Squat")
+        XCTAssertNil(CoachAnalyticsInsight.offer(from: trends(beginner)), "the Coach raises no stall offer for squat")
+
+        // Working the served rung makes it the current milestone: a fresh climb from Wall Sit, not a stall.
+        let (workedAnalytics, worked) = try journey(
+            history + [workLog("squat_bodyweight", pattern: .squat, reps: 15, daysAgo: 0)], level: .beginner
+        )
+        XCTAssertEqual(worked.milestones.map(\.exerciseId), ["squat_wall_sit", "squat_bodyweight", "squat_sumo"])
+        XCTAssertEqual(worked.currentMilestone?.exerciseId, "squat_bodyweight")
+        XCTAssertEqual(worked.startMilestone?.exerciseId, "squat_wall_sit")
+        XCTAssertTrue(worked.hasAdvanced)
+        XCTAssertEqual(trends(workedAnalytics).first { $0.pattern == .squat }?.trend, .climbing)
+
+        // The same history for an intermediate, who still gets Sumo Squat, sits on Sumo Squat everywhere.
+        let (intermediate, intermediateSquat) = try journey(history, level: .intermediate)
+        XCTAssertEqual(intermediate.chainPositions.first { $0.pattern == .squat }?.currentExercise?.id, "squat_sumo")
+        XCTAssertEqual(intermediateSquat.currentMilestone?.exerciseId, "squat_sumo")
+        XCTAssertEqual(intermediateSquat.currentMilestone?.firstReachedAt, date(daysAgo: 63))
+    }
+
     func testDeadBugUserKeepsItAsAnIntermediateAndMovesToBirdDogAsABeginner() async throws {
         let library = try await offeredLibrary()
         let logs = [
@@ -605,6 +692,24 @@ final class StapleMovementsTests: XCTestCase {
         let after = try XCTUnwrap(earned.progressionMap.ladders.first { $0.pattern == .squat })
         XCTAssertEqual(before.rungs.filter { !$0.isLocked }.map(\.exerciseId), ["squat_wall_sit", "squat_bodyweight"])
         XCTAssertTrue(after.rungs.allSatisfy { !$0.isLocked }, "every rung opens at once once Strength is earned")
+    }
+
+    /// An untrained line previews the lowest-id counting chain the user gets a rung of, preferring one
+    /// that ends in a Strength-Phase skill. A beginner or intermediate user gets nothing on the Hollow
+    /// chain, so their Core preview is Forearm Plank then Side Plank; an advanced user previews the Hollow
+    /// chain up to the L-Sit.
+    func testUntrainedCorePreviewIsThePlankChainForStapleUsersAndTheHollowChainForAdvanced() async throws {
+        let library = try await offeredLibrary()
+        for (level, expected) in [
+            (FitnessLevel.beginner, ["core_forearm_plank", "core_side_plank"]),
+            (.intermediate, ["core_forearm_plank", "core_side_plank"]),
+            (.advanced, ["core_hollow_hold", "core_hollow_rock", "core_tuck_l_sit", "core_one_leg_l_sit", "core_l_sit"]),
+        ] {
+            let analytics = ProgressAnalytics.from(logs: [], library: library, level: level, phase: .discipline, asOf: asOf, calendar: calendar)
+            let core = try XCTUnwrap(analytics.progressionMap.ladders.first { $0.pattern == .core })
+            XCTAssertFalse(core.hasStarted)
+            XCTAssertEqual(core.rungs.map(\.exerciseId), expected, "\(level)")
+        }
     }
 
     // MARK: - The one-time note

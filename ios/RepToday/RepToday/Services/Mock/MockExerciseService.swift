@@ -71,16 +71,13 @@ enum ExerciseLibraryError: Error, Equatable, LocalizedError {
 /// through), making a malformed library a loud startup failure rather than a silent one.
 ///
 /// The file also carries the movements **withdrawn until version 2** (`audience == .version2`,
-/// ADR-0007). They are validated with everything else so they stay recoverable, but the service never
-/// serves them: `exercises()` and every query below read the *offered* library, and the withdrawn ones
-/// are reachable only through `withdrawnExercises()`. That is what keeps them out of every session,
-/// swap, progress surface and Coach context by construction - nothing downstream has to remember to
-/// filter them.
+/// ADR-0007). They are validated with everything else so they stay recoverable in the file, but the
+/// service never serves them: `exercises()` and every query below read the *offered* library only.
+/// That is what keeps them out of every session, swap, progress surface and Coach context by
+/// construction - nothing downstream has to remember to filter them.
 final class MockExerciseService: ExerciseServiceProtocol {
     /// The movements offered to users (everything except the version-2 withdrawals).
     private let library: [Exercise]
-    /// The version-2 withdrawals, kept whole for recovery.
-    private let withdrawn: [Exercise]
     /// `id -> Exercise` over the offered library, for O(1) id lookups and chain-link resolution.
     private let byId: [String: Exercise]
 
@@ -90,7 +87,6 @@ final class MockExerciseService: ExerciseServiceProtocol {
     init(library: [Exercise]) throws {
         try Self.validate(library)
         self.library = library.filter { !MovementAccess.isWithdrawn($0) }
-        self.withdrawn = library.filter(MovementAccess.isWithdrawn)
         self.byId = Dictionary(uniqueKeysWithValues: self.library.map { ($0.id, $0) })
     }
 
@@ -130,10 +126,6 @@ final class MockExerciseService: ExerciseServiceProtocol {
 
     func exercise(id: String) async throws -> Exercise? {
         byId[id]
-    }
-
-    func withdrawnExercises() async throws -> [Exercise] {
-        withdrawn
     }
 
     func exercises(for pillar: Pillar) async throws -> [Exercise] {

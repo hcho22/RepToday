@@ -351,7 +351,7 @@ final class FoundationsEvidenceTests: XCTestCase {
 
     func testGraduationRevealNamesLaddersThatHaveAStrengthTop() async throws {
         for look in Look.allCases {
-            let (root, image) = await render(StrengthGraduationRevealView(onDismiss: {}), look: look, height: look == .large ? 2600 : 852)
+            let (root, image) = await render(StrengthGraduationRevealView(level: .advanced, onDismiss: {}), look: look, height: look == .large ? 2600 : 852)
             let spoken = AccessibilityTree.spokenStrings(in: root).joined(separator: " ").lowercased()
             XCTAssertTrue(spoken.contains("push, legs, and core ladders"), "\(look): \(spoken)")
             XCTAssertFalse(spoken.contains("top of each foundation"), "no copy promises a Strength top on every foundation")

@@ -27,6 +27,8 @@ final class StrengthGraduationViewModelTests: XCTestCase {
         await viewModel.evaluate()
 
         XCTAssertTrue(viewModel.earnedStrength, "a user the evaluator resolves to .strength should trigger the reveal")
+        XCTAssertEqual(viewModel.fitnessLevel, MockPersistence.sampleUser.profile.fitnessLevel,
+                       "the reveal is told the user's level so it names what actually opens for them")
         let persistedPhase = await userService.user?.phase
         let phaseAdvanceCount = await userService.phaseAdvanceCount
         let saveCount = await userService.saveCount
@@ -258,6 +260,11 @@ final class StrengthGraduationViewModelTests: XCTestCase {
             "the user must see the graduation after reconciliation; spoke: \(spoken)"
         )
         XCTAssertTrue(appState.hasCelebratedStrengthGraduation, "the reveal must be one-shot before presentation")
+        XCTAssertEqual(disciplineUser.profile.fitnessLevel, .intermediate)
+        XCTAssertTrue(
+            spoken.contains(where: { $0.localizedCaseInsensitiveContains("not only the classics") }),
+            "an intermediate user, held to the staples until now, is told every movement opens; spoke: \(spoken)"
+        )
 
         let eligibleIds = ExercisePoolFilter
             .eligiblePool(from: library, user: persisted, recentLogs: logs)

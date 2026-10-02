@@ -26,40 +26,69 @@ final class StrengthGraduationEvidenceTests: XCTestCase {
     /// The reveal's copy is identity-framed and honest - it congratulates the earned habit and never
     /// frames the milestone as a reward unlocked.
     func testCopyIsIdentityFramedNotLossFramedOrGamified() {
-        let (host, window) = HostedSurface.host(
-            StrengthGraduationRevealView(onDismiss: {}), size: surfaceSize
-        )
-        defer { window.isHidden = true }
+        for level in FitnessLevel.allCases {
+            let (host, window) = HostedSurface.host(
+                StrengthGraduationRevealView(level: level, onDismiss: {}), size: surfaceSize
+            )
+            defer { window.isHidden = true }
 
-        let lower = spoken(in: host.view).lowercased()
+            let lower = spoken(in: host.view).lowercased()
 
-        XCTAssertTrue(lower.contains("earned"), "the reveal must frame the phase as earned; spoke: \(lower)")
-        XCTAssertTrue(lower.contains("someone who moves"), "the reveal must be identity-framed; spoke: \(lower)")
+            XCTAssertTrue(lower.contains("earned"), "\(level): the reveal must frame the phase as earned; spoke: \(lower)")
+            XCTAssertTrue(lower.contains("someone who moves"), "\(level): the reveal must be identity-framed; spoke: \(lower)")
 
-        // Never gamified, never loss-framed.
-        for banned in ["reward", "unlocked a", "you unlocked", "level", "badge", "xp", "prize", "congratulations you won"] {
-            XCTAssertFalse(lower.contains(banned), "graduation copy must not be gamified/loss-framed ('\(banned)'); spoke: \(lower)")
+            // Never gamified, never loss-framed.
+            for banned in ["reward", "unlocked a", "you unlocked", "level", "badge", "xp", "prize", "congratulations you won"] {
+                XCTAssertFalse(lower.contains(banned), "\(level): graduation copy must not be gamified/loss-framed ('\(banned)'); spoke: \(lower)")
+            }
         }
     }
 
     /// It explains what changes and points to the progression map.
     func testExplainsWhatChangesAndPointsToTheMap() {
-        let (host, window) = HostedSurface.host(
-            StrengthGraduationRevealView(onDismiss: {}), size: surfaceSize
-        )
-        defer { window.isHidden = true }
+        for level in FitnessLevel.allCases {
+            let (host, window) = HostedSurface.host(
+                StrengthGraduationRevealView(level: level, onDismiss: {}), size: surfaceSize
+            )
+            defer { window.isHidden = true }
 
-        let lower = spoken(in: host.view).lowercased()
+            let lower = spoken(in: host.view).lowercased()
 
-        XCTAssertTrue(lower.contains("harder"), "must say harder work is now available; spoke: \(lower)")
-        XCTAssertTrue(lower.contains("skill"), "must mention the new skills on the ladder; spoke: \(lower)")
-        XCTAssertTrue(lower.contains("progression map"), "must point to the progression map; spoke: \(lower)")
+            XCTAssertTrue(lower.contains("harder"), "\(level): must say harder work is now available; spoke: \(lower)")
+            XCTAssertTrue(lower.contains("skill"), "\(level): must mention the new skills on the ladder; spoke: \(lower)")
+            XCTAssertTrue(lower.contains("progression map"), "\(level): must point to the progression map; spoke: \(lower)")
+        }
+    }
+
+    /// What opens is true for each audience (ADR-0007): a beginner or intermediate user, held to the
+    /// staple movements until now, is told every movement beyond the classics opens as well as the
+    /// Strength-Phase skills; an advanced user, who already had every other movement, is told only the
+    /// Strength-Phase skills join.
+    func testNamesWhatOpensForEachAudience() {
+        for level in FitnessLevel.allCases {
+            let (host, window) = HostedSurface.host(
+                StrengthGraduationRevealView(level: level, onDismiss: {}), size: surfaceSize
+            )
+            defer { window.isHidden = true }
+
+            let lower = spoken(in: host.view).lowercased()
+
+            XCTAssertTrue(lower.contains("strength-phase movements that finish the push, legs, and core ladders"),
+                          "\(level): every audience gains the Strength-Phase skills; spoke: \(lower)")
+            if level == .advanced {
+                XCTAssertFalse(lower.contains("classics"), "an advanced user already had every movement beyond the classics; spoke: \(lower)")
+                XCTAssertTrue(lower.contains("new skills join your ladder"), "spoke: \(lower)")
+            } else {
+                XCTAssertTrue(lower.contains("draw from every movement, not only the classics"), "\(level): spoke: \(lower)")
+                XCTAssertTrue(lower.contains("rungs beyond the classics are open"), "\(level): spoke: \(lower)")
+            }
+        }
     }
 
     /// The one dismiss control is a labeled, hittable VoiceOver element and calls back to dismiss.
     func testDismissControlIsPresentLabeledAndCallsBack() {
         var dismissed = false
-        let view = StrengthGraduationRevealView(onDismiss: { dismissed = true })
+        let view = StrengthGraduationRevealView(level: .intermediate, onDismiss: { dismissed = true })
         let (host, window) = HostedSurface.host(view, size: surfaceSize)
         defer { window.isHidden = true }
 
@@ -80,7 +109,7 @@ final class StrengthGraduationEvidenceTests: XCTestCase {
     func testCapturesTheGraduationReveal() throws {
         let captureSize = CGSize(width: 393, height: 1180)
         let (host, window) = HostedSurface.host(
-            StrengthGraduationRevealView(onDismiss: {}), size: captureSize
+            StrengthGraduationRevealView(level: .advanced, onDismiss: {}), size: captureSize
         )
         defer { window.isHidden = true }
 

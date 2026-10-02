@@ -7,9 +7,11 @@ import SwiftUI
 /// Strength Phase (sustained consistency plus cleared foundations). The copy is identity-framed and
 /// honest: the milestone lands as **stewardship of a habit the user built**, never a gamified reward
 /// or something withheld and now handed over. It never says "you unlocked" or "reward"; it says
-/// "you're someone who moves - here's what you've earned." It names what actually changes now
-/// (every movement is now open, not only the classics; the Strength-Phase skills join the ladders that have them) and points to the
-/// progression map on the Progress tab - the map, never a menu.
+/// "you're someone who moves - here's what you've earned." It names what actually changes now for this
+/// user (ADR-0007): a beginner or intermediate user, held to the staple movements until now, gains every
+/// movement beyond the classics as well as the Strength-Phase skills; an advanced user, who already had
+/// every other movement, gains the Strength-Phase skills that finish the ladders that have them. It
+/// points to the progression map on the Progress tab - the map, never a menu.
 ///
 /// Presentation is owned by `RootView`, which layers this over the main tabs as its own overlay
 /// (never a `.sheet`, so the entrance/exit can be stilled under Reduce Motion) and persists the
@@ -17,40 +19,63 @@ import SwiftUI
 /// Every color, font, and dimension comes from `Theme`; the dismiss control meets the 60pt
 /// active-screen touch target; the surface is VoiceOver-modal and Dynamic-Type friendly.
 struct StrengthGraduationRevealView: View {
+    /// The graduating user's self-reported fitness level, which decides what the reveal says opens up.
+    let level: FitnessLevel
+
     /// Dismisses the reveal and returns the user to the app.
     let onDismiss: () -> Void
 
     /// The points the reveal makes, each an honest statement of what the earned phase means and what
     /// changes now - never a reward, always the consequence of demonstrated behavior.
     private struct Point: Identifiable {
-        let id = UUID()
         let symbol: String
         let title: String
         let detail: String
+
+        var id: String { title }
     }
 
-    private let points: [Point] = [
-        Point(
-            symbol: "figure.strengthtraining.traditional",
-            title: "You earned this",
-            detail: "Weeks of showing up and clearing the foundations got you here. Strength is earned, not chosen - and you built it."
-        ),
-        Point(
-            symbol: "arrow.up.forward",
-            title: "Harder work is ready when you are",
-            detail: "Your sessions can now draw from every movement, not only the classics - including the harder skills you've been climbing toward. The engine still picks the day's work for you - it just has more room to vary and challenge you."
-        ),
-        Point(
-            symbol: "figure.stairs",
-            title: "More movements join your ladder",
-            detail: "The rungs beyond the classics are open, and so are the Strength-Phase movements that finish the Push, Legs, and Core ladders. They'll show up as you're ready for them."
-        ),
-        Point(
-            symbol: "map",
-            title: "See the whole climb",
-            detail: "Open the progression map on the Progress tab to see every foundation's ladder, from where you started to the top rung."
-        )
-    ]
+    /// Whether this user was held to the staple movements until now (ADR-0007).
+    private var wasHeldToStaples: Bool {
+        MovementAccess.isRestrictedToStaples(level: level, phase: .discipline)
+    }
+
+    private var points: [Point] {
+        [
+            Point(
+                symbol: "figure.strengthtraining.traditional",
+                title: "You earned this",
+                detail: "Weeks of showing up and clearing the foundations got you here. Strength is earned, not chosen - and you built it."
+            ),
+            wasHeldToStaples
+                ? Point(
+                    symbol: "arrow.up.forward",
+                    title: "Harder work is ready when you are",
+                    detail: "Your sessions can now draw from every movement, not only the classics - including the harder skills you've been climbing toward. The engine still picks the day's work for you - it just has more room to vary and challenge you."
+                )
+                : Point(
+                    symbol: "arrow.up.forward",
+                    title: "Harder work is ready when you are",
+                    detail: "Your sessions can now reach the harder skills you've been climbing toward. The engine still picks the day's work for you - it just has more room to challenge you."
+                ),
+            wasHeldToStaples
+                ? Point(
+                    symbol: "figure.stairs",
+                    title: "More movements join your ladder",
+                    detail: "The rungs beyond the classics are open, and so are the Strength-Phase movements that finish the Push, Legs, and Core ladders. They'll show up as you're ready for them."
+                )
+                : Point(
+                    symbol: "figure.stairs",
+                    title: "New skills join your ladder",
+                    detail: "The Strength-Phase movements that finish the Push, Legs, and Core ladders are unlocked. They'll show up as you're ready for them."
+                ),
+            Point(
+                symbol: "map",
+                title: "See the whole climb",
+                detail: "Open the progression map on the Progress tab to see every foundation's ladder, from where you started to the top rung."
+            )
+        ]
+    }
 
     var body: some View {
         ZStack {
@@ -149,6 +174,6 @@ struct StrengthGraduationRevealView: View {
 #Preview {
     ZStack {
         Theme.Colors.background.ignoresSafeArea()
-        StrengthGraduationRevealView(onDismiss: {})
+        StrengthGraduationRevealView(level: .beginner, onDismiss: {})
     }
 }

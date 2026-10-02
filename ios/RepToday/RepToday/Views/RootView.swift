@@ -7,9 +7,11 @@ struct RootView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Drives the one-time Strength-Phase graduation reveal (US-SP06). Set once, on app open, and only
-    /// when the user has just earned the Strength Phase and has not yet been congratulated for it.
-    @State private var showGraduation = false
+    /// Drives the one-time Strength-Phase graduation reveal (US-SP06): the graduating user's fitness
+    /// level, which decides what the reveal says opens up, or `nil` while it is not shown. Set once, on
+    /// app open, and only when the user has just earned the Strength Phase and has not yet been
+    /// congratulated for it.
+    @State private var graduationLevel: FitnessLevel?
     @State private var appOpenReconciliationComplete = false
 
     var body: some View {
@@ -42,8 +44,8 @@ struct RootView: View {
             // never gates the core loop. Hosted here, at the router, because it must fire "on first app
             // open" regardless of which tab the user lands on, and this is the one surface that survives
             // tab teardown (the same reason the US-AD05 alert lives here).
-            if showGraduation {
-                StrengthGraduationRevealView(onDismiss: dismissGraduation)
+            if let graduationLevel {
+                StrengthGraduationRevealView(level: graduationLevel, onDismiss: dismissGraduation)
                     .transition(.opacity)
                     .zIndex(1)
             }
@@ -98,15 +100,16 @@ struct RootView: View {
         await viewModel.evaluate()
         guard appState.isOnboarded, !Task.isCancelled else { return }
         appOpenReconciliationComplete = true
-        guard !appState.hasCelebratedStrengthGraduation, viewModel.earnedStrength else { return }
+        guard !appState.hasCelebratedStrengthGraduation, viewModel.earnedStrength,
+              let level = viewModel.fitnessLevel else { return }
 
         // Ratchet the celebrated phase before presenting, so the reveal can never re-fire even if the
         // user force-quits while it is up.
         appState.markStrengthGraduationCelebrated()
         if reduceMotion {
-            showGraduation = true
+            graduationLevel = level
         } else {
-            withAnimation(.easeOut(duration: 0.25)) { showGraduation = true }
+            withAnimation(.easeOut(duration: 0.25)) { graduationLevel = level }
         }
     }
 
@@ -114,9 +117,9 @@ struct RootView: View {
     /// one-shot flag is already flipped (at presentation), so this only has to take the overlay down.
     private func dismissGraduation() {
         if reduceMotion {
-            showGraduation = false
+            graduationLevel = nil
         } else {
-            withAnimation(.easeIn(duration: 0.2)) { showGraduation = false }
+            withAnimation(.easeIn(duration: 0.2)) { graduationLevel = nil }
         }
     }
 }

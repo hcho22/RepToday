@@ -230,6 +230,9 @@ final class StapleMovementsEvidenceTests: XCTestCase {
         let size = CGSize(width: 393, height: 4400)
         let (host, hosted) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: size)
         window = hosted
+        XCTAssertTrue(labelsContain("Rungs beyond the classics open when you earn the Strength Phase"),
+                      "a beginner is told the Strength Phase opens more than the Strength-Phase skills; tree reads \(labels())")
+        XCTAssertFalse(labelsContain("Some climbs top out in a Strength-Phase skill you earn"))
         XCTAssertTrue(labelsContain("Standard Push-Up, You're here"), "tree reads \(labels())")
         XCTAssertTrue(labelsContain("Diamond Push-Up, Earn the Strength Phase to unlock"), "an intermediate staple is locked for a beginner")
         XCTAssertTrue(labelsContain("Archer Push-Up, Earn the Strength Phase to unlock"))

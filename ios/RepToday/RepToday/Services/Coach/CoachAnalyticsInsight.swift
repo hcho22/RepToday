@@ -62,7 +62,9 @@ enum CoachStrengthJourneyReader {
     static let flatWeeksThreshold = 3
 
     /// Classify every trained foundation line in `journey` as of `asOf`. Untrained lines are absent
-    /// from the journey and so contribute no trend.
+    /// from the journey and so contribute no trend, and so does a line whose served rung the user has
+    /// not worked yet (moved there by ADR-0007): there is no time on it to read, so it never reads as a
+    /// stall.
     static func trends(from journey: StrengthJourney, asOf: Date, calendar: Calendar) -> [StrengthPatternTrend] {
         journey.chains.compactMap { chain in
             guard let current = chain.currentMilestone else { return nil }

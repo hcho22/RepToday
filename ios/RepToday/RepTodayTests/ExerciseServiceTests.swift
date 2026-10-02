@@ -245,7 +245,7 @@ final class ExerciseServiceTests: XCTestCase {
         }
     }
 
-    func testWholeWithdrawnChainIsKeptButNeverServed() async throws {
+    func testWholeWithdrawnChainLoadsButIsNeverServed() async throws {
         let library = validChain() + [
             makeExercise(id: "w1", audience: .version2, progressionChainId: "w", progressionOrder: 0, progressionId: "w2"),
             makeExercise(id: "w2", audience: .version2, progressionChainId: "w", progressionOrder: 1, regressionId: "w1"),
@@ -253,8 +253,6 @@ final class ExerciseServiceTests: XCTestCase {
         let service = try MockExerciseService(library: library)
         let offered = try await service.exercises().map(\.id)
         XCTAssertEqual(offered, ["a", "b"])
-        let kept = try await service.withdrawnExercises().map(\.id)
-        XCTAssertEqual(kept, ["w1", "w2"])
         let found = try await service.exercise(id: "w1")
         XCTAssertNil(found)
     }

@@ -41,11 +41,12 @@ The captain wants beginner and intermediate sessions built from the movements pe
 6. **Earning the Strength Phase lifts the restriction.**
    Every movement opens at once: the advanced-only movements and the Strength-Phase skills.
    Only the version 2 withdrawal survives it.
-   The graduation reveal and the progression map copy say so.
+   The graduation reveal and the progression map copy say so for each audience: a beginner or intermediate user gains every movement beyond the staples, an advanced user only the Strength-Phase skills.
 7. **Existing users move, history stays.**
    A user partway up a progression on a movement they no longer get is served the closest movement they do get on the same progression: the highest allowed rung at or below where they were, or the lowest allowed rung if none sits below.
    This is derived from history at read time, so no logged workout is rewritten or deleted, and foundations already cleared stay cleared because clearing reads the entry rung of each counting chain and every entry rung is a staple or already logged.
    The Progress tab's chain position, progression map, strength journey and the Coach's context bundle read the same rule, so they report the rung the user is actually served.
+   The strength journey keeps every rung the user worked as a milestone, including one they no longer get, and never reports the served rung as reached before they work it; until then that line carries no Coach trend, so time spent on the old rung never reads as a stall.
    A past log of a withdrawn movement still counts in the totals that read the log's own pillar and pattern (balance, weekly volume, sessions), but no surface names it.
 8. **A one-time note.**
    Installs that predate this change, whose users are beginner or intermediate and in the Discipline Phase, see "Your sessions now focus on the classics. More movements unlock when you earn the Strength Phase." once on the Ready Screen.

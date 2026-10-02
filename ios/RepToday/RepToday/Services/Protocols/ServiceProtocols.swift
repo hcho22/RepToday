@@ -26,15 +26,6 @@ protocol ExerciseServiceProtocol {
     /// The next movement up the progression chain from the exercise with `id`, or `nil` when
     /// `id` is unknown or already sits at the top of its chain.
     func nextInChain(after id: String) async throws -> Exercise?
-    /// The movements withdrawn from the app until version 2 (`audience == .version2`, ADR-0007), kept
-    /// whole so they are recoverable. Every other query on this protocol serves the *offered* library
-    /// only, so a withdrawn movement can never reach a session, swap, progress surface or Coach context
-    /// through it; nothing in the product reads this. Defaults to none for a stub service.
-    func withdrawnExercises() async throws -> [Exercise]
-}
-
-extension ExerciseServiceProtocol {
-    func withdrawnExercises() async throws -> [Exercise] { [] }
 }
 
 /// Generates complete workouts and deterministic in-session swaps.

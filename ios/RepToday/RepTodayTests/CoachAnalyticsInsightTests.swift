@@ -30,8 +30,17 @@ final class CoachAnalyticsInsightTests: XCTestCase {
         TierMilestone(exerciseId: id, displayName: id, tier: tier, firstReachedAt: date(weeksAgo: weeksAgo))
     }
 
-    private func chain(_ pattern: MovementPattern, _ milestones: [TierMilestone]) -> ChainJourney {
-        ChainJourney(line: StrengthFoundation.line(for: pattern)!, chainId: "\(pattern.rawValue)_chain", milestones: milestones, calendar: calendar)
+    /// A journey whose served rung is its highest milestone, unless `current` names another rung.
+    private func chain(_ pattern: MovementPattern, _ milestones: [TierMilestone], current: String? = nil) -> ChainJourney {
+        let currentId = current ?? milestones.last!.exerciseId
+        return ChainJourney(
+            line: StrengthFoundation.line(for: pattern)!,
+            chainId: "\(pattern.rawValue)_chain",
+            milestones: milestones,
+            currentExerciseId: currentId,
+            currentDisplayName: currentId,
+            calendar: calendar
+        )
     }
 
     private func trends(_ chains: [ChainJourney]) -> [StrengthPatternTrend] {
@@ -62,6 +71,20 @@ final class CoachAnalyticsInsightTests: XCTestCase {
         XCTAssertEqual(hingeTrend?.trend, .flat)
         XCTAssertEqual(hingeTrend?.weeksAtCurrentTier, 4)
         XCTAssertEqual(hingeTrend?.hasAdvanced, true) // climbed once, then stalled
+    }
+
+    /// A line whose served rung the user has not worked yet - moved there from a rung they no longer
+    /// get (ADR-0007) - has no time on that rung to read, so it raises no trend at all rather than
+    /// reading the weeks spent on the old rung as a stall.
+    func testServedRungNotYetWorkedRaisesNoTrend() {
+        let squat = chain(.squat, [
+            milestone("squat_wall_sit", tier: 1, weeksAgo: 10),
+            milestone("squat_sumo", tier: 3, weeksAgo: 9),
+        ], current: "squat_bodyweight")
+
+        XCTAssertNil(squat.currentMilestone)
+        XCTAssertFalse(squat.hasAdvanced)
+        XCTAssertTrue(trends([squat]).isEmpty, "no stall is read off a rung the user has not worked")
     }
 
     /// A pattern trained recently but not advanced is *steady* - never reported as a stall just for

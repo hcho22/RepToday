@@ -127,6 +127,9 @@ final class ProgressionMapEvidenceTests: XCTestCase {
         let (host, hostedWindow) = HostedSurface.host(ProgressTabView(viewModel: viewModel), size: layoutSize)
         window = hostedWindow
 
+        // An advanced user only has Strength-Phase skills left to earn, and the caption says so.
+        XCTAssertTrue(labelsContain("Some climbs top out in a Strength-Phase skill you earn"), "tree reads \(labels())")
+        XCTAssertFalse(labelsContain("beyond the classics"), "an advanced user already has every movement beyond the classics")
         // Current position marked at the full push-up.
         XCTAssertTrue(labelsContain("Standard Push-Up, You're here"),
                       "the push ladder should mark Standard Push-Up as the current rung; tree reads \(labels())")
