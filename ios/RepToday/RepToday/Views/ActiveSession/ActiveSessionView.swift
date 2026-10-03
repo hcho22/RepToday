@@ -366,7 +366,9 @@ struct ActiveSessionView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.top, rhythm)
                     // Measured before the bottom padding: only the column's content has to show.
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { heightAroundCard = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { height in
+                        if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
+                    }
                     .padding(.bottom, Theme.Spacing.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -414,6 +416,17 @@ struct ActiveSessionView: View {
     /// Below this player height the screen is short (an iPhone SE's 647 pt under its status bar); every
     /// larger phone is laid out taller and never tightens the rhythm.
     private static let shortScreenHeight: CGFloat = 700
+
+    /// The smallest change in a measured height worth acting on: far below a pixel, far above the
+    /// floating-point noise between two layouts of the same column.
+    private static let measurementTolerance: CGFloat = 0.01
+
+    /// Whether `measured` is a real change from the `stored` height around the card. Two layouts of the
+    /// same column can measure a hair apart (iOS 18: 189.66666666666669, then 189.66666666666663), and
+    /// feeding that noise back into the card's height would relayout forever.
+    static func isMeasurementChange(_ measured: CGFloat, from stored: CGFloat) -> Bool {
+        abs(measured - stored) > measurementTolerance
+    }
 
     /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
     private func blockContext(_ step: ActiveSessionViewModel.Step) -> some View {

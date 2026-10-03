@@ -411,7 +411,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
     /// side line and the row of dots - shows above the controls without scrolling, on the small phone
     /// as on the default one (decision 24). The small phone gets there by shrinking the card, never
     /// below `ExerciseDemoView.minHeight`, with its column at the tight rhythm in every state so the
-    /// spacing never changes between stations; the default phone keeps the full card and rhythm.
+    /// spacing never changes between stations; the default phone keeps the full rhythm and, wherever
+    /// its column fits, the full card.
     func testRoundTrackerDotsStayAboveTheFoldInEveryState() throws {
         for state in try foldStates() {
             for variant in variants {
@@ -447,8 +448,13 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                     XCTAssertEqual(rhythm, Theme.Spacing.md, accuracy: 0.5,
                                    "\(state.name) \(variant.suffix): a short screen keeps the tight column rhythm")
                 } else {
-                    XCTAssertEqual(card, ExerciseDemoView.height, accuracy: 0.5,
-                                   "\(state.name) \(variant.suffix): a roomy phone keeps the full card")
+                    // A roomy phone keeps the full card unless the column cannot fit it (a Simulator
+                    // runtime with a taller top inset can leave a long name short of room), and then
+                    // the card gives up only what the tracker needs: it ends exactly at the fold.
+                    let fitsFullCard = card >= ExerciseDemoView.height - 0.5
+                    let shrankOnlyToFit = abs(tracker.maxY - visible.maxY) <= 0.5 && card >= ExerciseDemoView.minHeight - 0.5
+                    XCTAssertTrue(fitsFullCard || shrankOnlyToFit,
+                                  "\(state.name) \(variant.suffix): a roomy phone keeps the full card (card \(card) pt, tracker bottom \(tracker.maxY), fold \(visible.maxY))")
                     XCTAssertEqual(rhythm, Theme.Spacing.lg, accuracy: 0.5,
                                    "\(state.name) \(variant.suffix): a roomy phone keeps the full column rhythm")
                 }
@@ -456,6 +462,22 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 try capture("14-fold-\(state.name)", variant)
             }
         }
+    }
+
+    /// The card's fit reads back the height measured around it, so a measurement that only differs by
+    /// floating-point noise must not count as a change: on iOS 18 the 375x667 idle training hold measured
+    /// 189.66666666666669 and 189.66666666666663 in turn, and acting on each flip relaid the player out
+    /// forever. A real change, down to one pixel on a 3x screen, still counts.
+    func testCardFitIgnoresMeasurementNoiseButNotARealChange() {
+        let noisy: (CGFloat, CGFloat) = (189.66666666666669, 189.66666666666663)
+        XCTAssertNotEqual(noisy.0, noisy.1, "the iOS 18 pair must really differ, or this proves nothing")
+        XCTAssertFalse(ActiveSessionView.isMeasurementChange(noisy.1, from: noisy.0))
+        XCTAssertFalse(ActiveSessionView.isMeasurementChange(noisy.0, from: noisy.1))
+        XCTAssertFalse(ActiveSessionView.isMeasurementChange(noisy.0, from: noisy.0))
+
+        XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0, from: 0), "the first measurement counts")
+        XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 + 1.0 / 3, from: noisy.0), "one 3x pixel taller counts")
+        XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 - 1.0 / 3, from: noisy.0), "one 3x pixel shorter counts")
     }
 
     /// The idle hold's primary control: "Start hold", or its per-side spoken form.

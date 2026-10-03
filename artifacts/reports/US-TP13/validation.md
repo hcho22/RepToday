@@ -99,7 +99,7 @@ At the largest accessibility text size the headline sits below the fold on the S
 
 ### Every player state on the SE (2026-10-03)
 
-`testRoundTrackerDotsStayAboveTheFoldInEveryState` walks seven states at both sizes and appearances and fails if the tracker's dots end below the scroll area, if the SE card drops under 110 pt, if the SE column rhythm moves off 16 pt, or if the 393x852 card or column rhythm moves off 220 pt / 24 pt (PNGs `14-fold-*`).
+`testRoundTrackerDotsStayAboveTheFoldInEveryState` walks seven states at both sizes and appearances and fails if the tracker's dots end below the scroll area, if the SE card drops under 110 pt, if the SE column rhythm moves off 16 pt, if the 393x852 column rhythm moves off 24 pt, or if the 393x852 card drops below 220 pt anywhere but exactly at the fold (PNGs `14-fold-*`).
 Two states did not fit before, even with the card at its 110 pt floor (`*-before.png`): Long-Lever Single-Leg Bridge, whose name wraps three lines beside the ring (dots 33.5 pt below the fold), and Kneeling Hip-Flexor Stretch running as a per-side bookend hold, with a wrapped name plus "Side 1 of 2" (dots 15 pt below).
 On a short screen (player under 700 pt) the column now always runs at its tight rhythm: 16 pt gaps instead of 24 pt, and 4 pt instead of 8 pt between the round tracker's lines (its label, any "Side N of 2" line and its dots), so they read as one evenly spaced group.
 So the spacing between block line, card, headline and tracker never changes from one station to the next, and only the card's height follows the room left, never below 110 pt.
@@ -116,6 +116,8 @@ An earlier version tightened the rhythm only for states that would otherwise sit
 | No-art glyph (Prone Y-T-W Raises) | 16 pt | 153.5 pt | at the fold |
 
 On 393x852 every state keeps the 24 pt rhythm and the 220 pt card, and this run's 393x852 `14-fold-*` captures match the committed ones apart from one live countdown digit, so the 393x852 baselines are unchanged.
+On the iOS 18.6 Simulator runtime (CI runs iOS 18.5) the hosted 393x852 fold sits higher, so the two longest-name cards there (Long-Lever Single-Leg Bridge, Kneeling Hip-Flexor Stretch) shrink to 189.3 pt and 208 pt and end exactly at the fold, as the card fit from #189 already did on main; the test accepts a 393x852 card below 220 pt only in that shape, and never under 110 pt.
+On that runtime the height measured around the card flipped between 189.66666666666669 and 189.66666666666663 pt at 375x667, and acting on each flip relaid the player out forever (CI hung in `testIdleTrainingHoldShowsThePosesAndNoRing`); the player now ignores a measured change under 0.01 pt (`ActiveSessionView.isMeasurementChange`), pinned by `testCardFitIgnoresMeasurementNoiseButNotARealChange`.
 The 375x667 captures of the player states (01-06) and of the Trainer choice, which shows the player behind its scrim (10), were refreshed for the tight rhythm; the rest overlays (07-09) cover the player, so their captures were left as they were.
 Before the steady-rhythm change, a walk through a real 20-minute session on an iPhone SE (3rd generation) Simulator, out of process, put the dots exactly at the fold in every step it reached.
 
