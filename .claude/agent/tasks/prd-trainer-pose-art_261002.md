@@ -1,9 +1,10 @@
 # PRD: Trainer Pose Art in the Active Session
 
-- Status: **Planned - not yet authorized for implementation.**
+- Status: **Implemented (2026-10-02).**
   Every decision in the table below was settled with the captain in a design interview on 2026-10-02, and the seven follow-up questions this PRD raised were settled the same day ("go with your recommendations").
-  The product choices the interview did not settle are listed under Open Questions, each with a marked recommendation.
-  The captain asked to discuss before implementing, so no story may start until the captain confirms the go.
+  The captain authorized implementation on 2026-10-02 and, the same day, approved the recommendation for each of Open Questions 3-8 ("go with your recommendations"); they are recorded as decisions 18-23 below.
+  On 2026-10-03 the captain kept the small-phone exercise-card fit the build added ("keep the fix"); it is recorded as decision 24 below.
+  Open Question 1 (re-exporting the back art folder) remains a captain action.
 - Story prefix: `US-TP##` (Trainer Pose).
 - Related decisions: [ADR-0008](../../../docs/adr/0008-static-trainer-pose-art-replaces-lottie-demo.md) (static Trainer pose art replaces the Lottie demo seam, and the countdown ring leaves the exercise card).
   Domain term: `CONTEXT.md` -> "Trainer".
@@ -29,7 +30,7 @@ The deterministic engine, session timing, completion logging, cue vocabulary, pe
 - Show the selected Trainer's start and end poses, static and side by side, on the exercise card in every player state, and under the rest overlay's "next" preview.
 - Default the Trainer from the onboarding sex answer, ask a user who answered "other" once, and let any user switch at any time in Settings.
 - Ship with the art that exists today: full pairs where they exist, a single centered pose where only one exists, and today's SF-Symbol glyph where none is usable, with every gap listed at build time.
-- Keep today's on-screen fit: the exercise card keeps its current height, nothing else moves down, and small phones keep fitting.
+- Keep today's on-screen fit: the exercise card keeps its current height wherever the screen has room, nothing else moves down, and small phones keep fitting, with the card's pose area shrinking on a short screen (decision 24).
 - Remove the Lottie package (the app's only third-party dependency) and its dead code without breaking any persisted active-session snapshot.
 - Record the art's provenance in `docs/asset-attribution.md` before any art ships.
 
@@ -37,6 +38,8 @@ The deterministic engine, session timing, completion logging, cue vocabulary, pe
 
 Each numbered decision is the captain's answer from the 2026-10-02 interview.
 Decisions 11-17 are the captain's answers to the follow-up questions the first draft of this PRD raised (captain, 2026-10-02: "go with your recommendations").
+Decisions 18-23 are the captain's answers to Open Questions 3-8 (captain, 2026-10-02: "go with your recommendations").
+Decision 24 is the captain's amendment of decision 3 after the build showed the full card did not fit a short screen (captain, 2026-10-03: "keep the fix").
 This PRD invents no further product decisions.
 Any product choice the interview did not settle is listed under Open Questions with a marked recommendation, and every acceptance criterion that depends on one says "per Open Question N".
 
@@ -44,7 +47,7 @@ Any product choice the interview did not settle is listed under Open Questions w
 | --- | --- | --- |
 | 1 | **Trainer selection (A):** default follows the onboarding sex answer (male -> male Trainer, female -> female Trainer); an "other" answer makes a one-time choice the first time Trainer art appears; a new Settings row switches at any time; existing users follow the same rule from their stored answer. Term: **Trainer**, distinct from **Coach**. | US-TP03, US-TP10, US-TP11; FR-5 to FR-9; `CONTEXT.md` |
 | 2 | **Pose display (C):** start and end side by side, both visible, static (no flipbook, no rep-synced animation). | US-TP06; FR-10, FR-11 |
-| 3 | **Layout (B):** the two poses get the whole exercise card at its current size (`ExerciseDemoView.height`, about 150 pt per pose); the countdown ring leaves the card and becomes a compact ring beside the exercise name; timed holds use the same layout instead of today's full-card ring. | US-TP07; FR-14 to FR-17; ADR-0008 |
+| 3 | **Layout (B):** the two poses get the whole exercise card at its current size (`ExerciseDemoView.height`, about 150 pt per pose); the countdown ring leaves the card and becomes a compact ring beside the exercise name; timed holds use the same layout instead of today's full-card ring. On a short screen the card's pose area may shrink, per decision 24. | US-TP07; FR-14 to FR-17; ADR-0008 |
 | 4 | **Surfaces (B):** exercise card in every state (rep work window, timed hold, stretch, pre-hold) and the rest overlay (`RestView.nextUp`) for the between-station transition beat and the between-round rest; swap needs no surface of its own; Ready-screen preview and Progress-tab ladder out of scope. | US-TP06, US-TP07, US-TP08; FR-12, FR-13, FR-18; Non-Goals |
 | 5 | **Per-side movements (B):** art shown as drawn, no mirroring for side 2; the "Switch sides" beat and "Side 2 of 2" text carry the side change. | FR-11; Non-Goals |
 | 6 | **Incomplete art (A):** pair side by side, single pose centered, no usable art keeps the SF-Symbol fallback (currently Prone Y-T-W Raises); missing art later is a file drop with no code change; a build-time check lists every served movement lacking a full pair for either Trainer. | US-TP04, US-TP05, US-TP06; FR-3, FR-4, FR-20 to FR-22 |
@@ -59,6 +62,13 @@ Any product choice the interview did not settle is listed under Open Questions w
 | 15 | **"Other" choice overlay:** exactly two options, no "decide later"; when the US-CC13 continuous-circuit explainer is due on the same arrival, the Trainer choice shows first. | US-TP10; FR-8 |
 | 16 | **`version2` crawl art:** not bundled now; added by file drop when version 2 restores those movements. | US-TP02; FR-4; Non-Goals |
 | 17 | **Attribution:** keep the captain's ledger wording; do not mention the public technique pages; keep the provenance files out of the public repository. | US-TP01; FR-1; Non-Goals |
+| 18 | **Session behind the Trainer choice (Open Question 3):** hold the session on a US-CC06 user pause while the choice is up, as the US-CC13 explainer does, and resume from the exact remainder once a Trainer is chosen. | US-TP10; FR-8 |
+| 19 | **What each Trainer option shows (Open Question 4):** each Trainer's start pose for the current movement, its single available pose if the start is missing, or the Trainer's name alone if it has none. | US-TP10; FR-8 |
+| 20 | **Settings placement (Open Question 5):** a new Trainer section above the destructive Account section, in the existing section style. | US-TP11; FR-9 |
+| 21 | **Settings row before an "other" user chooses (Open Question 6):** a neutral "Not chosen yet" value, never a guessed Trainer. | US-TP11; FR-9 |
+| 22 | **Core folder provenance (Open Question 7):** keep the captain's ledger wording verbatim with no provenance file names added to the public row; the core folder's `prompts.json` counts as its generation log. | US-TP01; FR-1 |
+| 23 | **A failed save (Open Question 8):** on the US-TP10 choice, use the chosen Trainer for this session, dismiss the choice, and re-ask on the next arrival only if nothing was persisted; in Settings, keep showing the stored Trainer and say the change was not saved, as `InjuryFlagsViewModel` does for a failed save. | US-TP10, US-TP11; FR-8, FR-9 |
+| 24 | **Exercise card on small phones (captain, 2026-10-03: "keep the fix"):** on a short screen such as the 375x667 pt iPhone SE, the exercise card's pose area may shrink, never below 110 pt, so the exercise name, the compact ring and the round tracker stay visible above the controls; larger phones keep the full 220 pt card. Amends decision 3, the way decision 12 covers the rest overlay. | US-TP06, US-TP07, US-TP13; FR-10, FR-17; ADR-0008 |
 
 ## Verified facts on current main (2026-10-02)
 
@@ -134,13 +144,13 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] `docs/asset-attribution.md` gains a "Trainer pose art" section with a cleared row covering every Trainer image set, landed in the same change as, or before, the first bundled image (US-TP02).
-- [ ] The row's Source column states, in the captain's wording: trainer characters and pose art generated with ChatGPT image generation (OpenAI) from text prompts for RepToday; no third-party artwork or real-person likeness used; OpenAI's terms for generated output apply; provenance retained in each art folder's generation log and manifest.
+- [x] `docs/asset-attribution.md` gains a "Trainer pose art" section with a cleared row covering every Trainer image set, landed in the same change as, or before, the first bundled image (US-TP02).
+- [x] The row's Source column states, in the captain's wording: trainer characters and pose art generated with ChatGPT image generation (OpenAI) from text prompts for RepToday; no third-party artwork or real-person likeness used; OpenAI's terms for generated output apply; provenance retained in each art folder's generation log and manifest.
   The core folder, which has no `generation-log.json`, is handled per Open Question 7.
-- [ ] The license/terms column cites OpenAI's Terms of Use section on ownership of output (`https://openai.com/policies/terms-of-use/`), re-read at implementation time so the citation matches the current text.
-- [ ] The Source column uses the captain's wording only, and no column mentions the public exercise-technique pages the art folders' READMEs list as form references (decision 17).
-- [ ] The row names no private filesystem path, account, or personal data, and the provenance files themselves stay in the captain's workspace: no generation log, prompt file, manifest or verification file is committed to this public repository (decision 17).
-- [ ] Markdown renders and every link in the section resolves.
+- [x] The license/terms column cites OpenAI's Terms of Use section on ownership of output (`https://openai.com/policies/terms-of-use/`), re-read at implementation time so the citation matches the current text.
+- [x] The Source column uses the captain's wording only, and no column mentions the public exercise-technique pages the art folders' READMEs list as form references (decision 17).
+- [x] The row names no private filesystem path, account, or personal data, and the provenance files themselves stay in the captain's workspace: no generation log, prompt file, manifest or verification file is committed to this public repository (decision 17).
+- [x] Markdown renders and every link in the section resolves.
 
 **Validation Test:**
 
@@ -159,15 +169,15 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] Each mapped PNG becomes one image set in `Resources/Assets.xcassets`, inside a namespaced `Trainer` folder, named by **exercise id**, Trainer and pose (for example `Trainer/female/hinge_glute_bridge-start`), never by display-name slug, so the two "Cossack Squat" entries cannot collide.
-- [ ] Image sets are single-scale, universal, rendered as original (not template), and keep the full 600x600 canvas untrimmed.
-- [ ] The repository carries a repeatable import step (recommended: a script under `tools/` with an explicit slug-to-id map, run against a copy of the art root) that names every file it skipped; documented in `docs/implementation-log.md`.
-- [ ] Art ships for every **served** movement that has art (284 PNGs today).
+- [x] Each mapped PNG becomes one image set in `Resources/Assets.xcassets`, inside a namespaced `Trainer` folder, named by **exercise id**, Trainer and pose (for example `Trainer/female/hinge_glute_bridge-start`), never by display-name slug, so the two "Cossack Squat" entries cannot collide.
+- [x] Image sets are single-scale, universal, rendered as original (not template), and keep the full 600x600 canvas untrimmed.
+- [x] The repository carries a repeatable import step (recommended: a script under `tools/` with an explicit slug-to-id map, run against a copy of the art root) that names every file it skipped; documented in `docs/implementation-log.md`.
+- [x] Art ships for every **served** movement that has art (284 PNGs today).
   The three `version2` crawls' art (12 files) is not bundled now; it is added by file drop, with no code change, when version 2 restores those movements (decision 16).
   The six Prone Y/T/W variant files map to no movement and are not bundled (decision 6 defers their presentation).
-- [ ] No Trainer image is tagged for On-Demand Resources or downloaded at runtime.
-- [ ] The app-size delta is measured (Release build for a generic iOS device, `.app` size and `Assets.car` size before and after) and recorded in `artifacts/reports/US-TP02/validation.md`; the expected raw PNG payload is about 16.7 MB (16,738,228 bytes).
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] No Trainer image is tagged for On-Demand Resources or downloaded at runtime.
+- [x] The app-size delta is measured (Release build for a generic iOS device, `.app` size and `Assets.car` size before and after) and recorded in `artifacts/reports/US-TP02/validation.md`; the expected raw PNG payload is about 16.7 MB (16,738,228 bytes).
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
 
 **Validation Test:**
 
@@ -186,17 +196,17 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] A closed `Trainer` enum (`male`, `female`) exists, `Codable`, `CaseIterable` and `Identifiable`, with display copy in one source.
-- [ ] The user's explicit choice is stored as an optional field on the synced `UserProfile` (`UserProfile.trainer: Trainer?`), beside the onboarding sex answer, absent by default (decision 14).
-- [ ] One pure function resolves the effective Trainer: the explicit choice if present; else `male` for `Sex.male` and `female` for `Sex.female`; else unresolved for `Sex.other`.
-- [ ] A profile persisted before this field existed decodes unchanged with the choice absent, so an existing user resolves from their stored sex answer with no migration.
-- [ ] An explicit choice wins over the sex default in every case (a male user who picks the female Trainer sees the female Trainer).
-- [ ] One write function sets the explicit choice (FR-5): it re-reads the stored user immediately before saving and changes only `profile.trainer`, so a write from a stale snapshot never rolls back another writer's progress or a CloudKit import (the `InjuryFlagsViewModel`/`SessionCompletionService` precedent).
+- [x] A closed `Trainer` enum (`male`, `female`) exists, `Codable`, `CaseIterable` and `Identifiable`, with display copy in one source.
+- [x] The user's explicit choice is stored as an optional field on the synced `UserProfile` (`UserProfile.trainer: Trainer?`), beside the onboarding sex answer, absent by default (decision 14).
+- [x] One pure function resolves the effective Trainer: the explicit choice if present; else `male` for `Sex.male` and `female` for `Sex.female`; else unresolved for `Sex.other`.
+- [x] A profile persisted before this field existed decodes unchanged with the choice absent, so an existing user resolves from their stored sex answer with no migration.
+- [x] An explicit choice wins over the sex default in every case (a male user who picks the female Trainer sees the female Trainer).
+- [x] One write function sets the explicit choice (FR-5): it re-reads the stored user immediately before saving and changes only `profile.trainer`, so a write from a stale snapshot never rolls back another writer's progress or a CloudKit import (the `InjuryFlagsViewModel`/`SessionCompletionService` precedent).
   US-TP10 and US-TP11 both write through it, and nothing else writes `profile.trainer`.
-- [ ] Account deletion removes the choice along with the profile, so a fresh onboarding resolves from the new answer.
-- [ ] Unit tests cover all nine combinations of sex (male, female, other) x {no choice, male, female} plus the legacy-decode case.
-- [ ] A unit test proves the write function keeps a field another writer changed after the caller loaded the user.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Account deletion removes the choice along with the profile, so a fresh onboarding resolves from the new answer.
+- [x] Unit tests cover all nine combinations of sex (male, female, other) x {no choice, male, female} plus the legacy-decode case.
+- [x] A unit test proves the write function keeps a field another writer changed after the caller loaded the user.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
 
 **Validation Test:**
 
@@ -216,12 +226,12 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] One resolver returns, for an exercise id and a Trainer, exactly one of: a start/end pair, a single start pose, a single end pose, or no art.
-- [ ] It looks up the asset catalog by the US-TP02 naming convention through an injectable lookup, so tests run without the real bundle.
-- [ ] Each Trainer resolves independently (a movement can be a pair for one Trainer and a single pose for the other).
-- [ ] Adding a missing image set under the naming convention changes the resolver's answer with no Swift change.
-- [ ] Unit tests: `push_wall` resolves to a pair for both Trainers; `pull_wall_scapular_pull` to end only; `pull_ytw` to no art; a stubbed lookup proves per-Trainer independence and the "file drop" upgrade from end-only to pair.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] One resolver returns, for an exercise id and a Trainer, exactly one of: a start/end pair, a single start pose, a single end pose, or no art.
+- [x] It looks up the asset catalog by the US-TP02 naming convention through an injectable lookup, so tests run without the real bundle.
+- [x] Each Trainer resolves independently (a movement can be a pair for one Trainer and a single pose for the other).
+- [x] Adding a missing image set under the naming convention changes the resolver's answer with no Swift change.
+- [x] Unit tests: `push_wall` resolves to a pair for both Trainers; `pull_wall_scapular_pull` to end only; `pull_ytw` to no art; a stubbed lookup proves per-Trainer independence and the "file drop" upgrade from end-only to pair.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
 
 **Validation Test:**
 
@@ -238,13 +248,13 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] A build phase on the `RepToday` target, declared in `ios/RepToday/project.yml`, runs a checker under `tools/` that reads `Resources/Exercises.json` and the asset catalog.
-- [ ] For every **served** movement (audience not `version2`) and each Trainer lacking a full pair, it prints one Xcode `warning:` line naming the exercise id, display name, Trainer, and the missing pose(s).
-- [ ] It prints one `warning:` for any Trainer image set whose name maps to no catalog id or no valid pose, so a misnamed file drop is visible too.
-- [ ] Gaps never fail the build; the checker fails the build only if it cannot read its own inputs, so a broken check cannot pass silently.
-- [ ] The phase declares its input files so it runs under user-script sandboxing and adds no third-party tool or package.
-- [ ] Against today's art the report shows exactly six warnings: Wall Scapular Pull, Reverse Snow Angel and Prone Y-T-W Raises, once per Trainer.
-- [ ] The warnings are visible in the CI `ios` job log.
+- [x] A build phase on the `RepToday` target, declared in `ios/RepToday/project.yml`, runs a checker under `tools/` that reads `Resources/Exercises.json` and the asset catalog.
+- [x] For every **served** movement (audience not `version2`) and each Trainer lacking a full pair, it prints one Xcode `warning:` line naming the exercise id, display name, Trainer, and the missing pose(s).
+- [x] It prints one `warning:` for any Trainer image set whose name maps to no catalog id or no valid pose, so a misnamed file drop is visible too.
+- [x] Gaps never fail the build; the checker fails the build only if it cannot read its own inputs, so a broken check cannot pass silently.
+- [x] The phase declares its input files so it runs under user-script sandboxing and adds no third-party tool or package.
+- [x] Against today's art the report shows exactly six warnings: Wall Scapular Pull, Reverse Snow Angel and Prone Y-T-W Raises, once per Trainer.
+- [x] The warnings are visible in the CI `ios` job log.
 
 **Validation Test:**
 
@@ -262,17 +272,17 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] `ExerciseIllustration` resolves the effective Trainer's poses through the US-TP04 resolver and is the single source for every host (no second copy of the art logic).
-- [ ] A full pair renders start on the left and end on the right, each aspect-fit to the full 600x600 canvas, equal in size, inside the card at its current height (`ExerciseDemoView.height`, 220 pt), about 150 pt per pose.
-- [ ] A single available pose renders centered in the card.
-- [ ] No usable art (today: Prone Y-T-W Raises) renders today's per-`MovementPattern` SF-Symbol glyph with today's behavior.
-- [ ] The poses are static: no flipbook, cross-fade, rep-synced change, or pulse.
-- [ ] Per-side movements show the art as drawn on both sides (no mirroring for side 2).
-- [ ] Every card state shows the art: the rep work window, a running timed hold (US-TP07), an idle training hold before Start hold, and a rep-based warm-up/cooldown stretch.
-- [ ] After an in-session swap the card shows the substitute's art with no extra surface.
-- [ ] Art renders on the card color in both light and dark appearance.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark).
+- [x] `ExerciseIllustration` resolves the effective Trainer's poses through the US-TP04 resolver and is the single source for every host (no second copy of the art logic).
+- [x] A full pair renders start on the left and end on the right, each aspect-fit to the full 600x600 canvas, equal in size, inside the card at its current height (`ExerciseDemoView.height`, 220 pt), about 150 pt per pose; on a short screen the card may shrink, never below 110 pt, per decision 24.
+- [x] A single available pose renders centered in the card.
+- [x] No usable art (today: Prone Y-T-W Raises) renders today's per-`MovementPattern` SF-Symbol glyph with today's behavior.
+- [x] The poses are static: no flipbook, cross-fade, rep-synced change, or pulse.
+- [x] Per-side movements show the art as drawn on both sides (no mirroring for side 2).
+- [x] Every card state shows the art: the rep work window, a running timed hold (US-TP07), an idle training hold before Start hold, and a rep-based warm-up/cooldown stretch.
+- [x] After an in-session swap the card shows the substitute's art with no extra surface.
+- [x] Art renders on the card color in both light and dark appearance.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark).
 
 **Validation Test:**
 
@@ -283,8 +293,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   3. Swap the current movement.
   4. Reach Wall Scapular Pull, then Prone Y-T-W Raises.
   5. Switch the Simulator to dark appearance and repeat step 2.
-- **Expected Result:** Steps 1-3 show the female Trainer's start and end poses side by side, filling the card without changing its height; the swap shows the substitute's poses; Wall Scapular Pull shows one centered end pose; Prone Y-T-W Raises shows the SF-Symbol glyph; dark appearance renders cleanly.
-- **Failure Indicator:** The card grows or shrinks, a pose is cropped or the pair jumps between frames, the male Trainer appears, a single pose is left-aligned, or a blank card appears.
+- **Expected Result:** Steps 1-3 show the female Trainer's start and end poses side by side, filling the card without changing its height (on a short screen it may shrink to keep the headline above the controls, decision 24); the swap shows the substitute's poses; Wall Scapular Pull shows one centered end pose; Prone Y-T-W Raises shows the SF-Symbol glyph; dark appearance renders cleanly.
+- **Failure Indicator:** The card grows, the card shrinks on a screen with room for its full height or below 110 pt (decision 24), a pose is cropped or the pair jumps between frames, the male Trainer appears, a single pose is left-aligned, or a blank card appears.
 
 ### US-TP07: Compact ring beside the exercise name for work windows and holds
 
@@ -292,17 +302,17 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] During a rep work window the card shows the poses only; the countdown is a compact `CountdownRing` beside the exercise name in the headline row.
-- [ ] During a running timed hold (bookend or training) the card keeps the poses instead of today's full-card ring, and the same compact ring sits beside the exercise name.
-- [ ] When no countdown runs (idle pre-hold, rep-based stretch), the headline row has no ring and the name keeps its full width.
-- [ ] The ring keeps its accessibility contract: labels stay "Work window, N seconds remaining" and "Hold, N seconds remaining", `.updatesFrequently` stays, and the sweep stays stilled under Reduce Motion.
-- [ ] The exercise name still wraps rather than truncates at the largest Dynamic Type sizes, and the ring's clock still shrinks to fit.
-- [ ] Nothing visible without scrolling today moves below the fold on a 375x667 pt screen at default Dynamic Type, and the ring is visible without scrolling there.
-- [ ] Every timer behavior is unchanged: auto-start, auto-advance, Done, + More time, Pause/Resume, the halfway and done cues, and the switch-sides beat.
-- [ ] `VisualWorkWindowEvidenceTests` and any other suite asserting the ring inside the card are updated to the new layout, keeping their intent (illustration present, ring present, labels exact).
-- [ ] The current-state descriptions of the ring's location are rewritten to the compact ring beside the exercise name (ADR-0008): the `AGENTS.md` US-CC11 passage (the compact ring "in the fixed `exerciseSlotCard`", and the hold ring in "the hold/rest rings keep the full-size defaults"), the `CONTEXT.md` US-CC11 story text, and the `docs/test-coverage.md` US-CC11 row.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark, default and largest accessibility Dynamic Type).
+- [x] During a rep work window the card shows the poses only; the countdown is a compact `CountdownRing` beside the exercise name in the headline row.
+- [x] During a running timed hold (bookend or training) the card keeps the poses instead of today's full-card ring, and the same compact ring sits beside the exercise name.
+- [x] When no countdown runs (idle pre-hold, rep-based stretch), the headline row has no ring and the name keeps its full width.
+- [x] The ring keeps its accessibility contract: labels stay "Work window, N seconds remaining" and "Hold, N seconds remaining", `.updatesFrequently` stays, and the sweep stays stilled under Reduce Motion.
+- [x] The exercise name still wraps rather than truncates at the largest Dynamic Type sizes, and the ring's clock still shrinks to fit.
+- [x] Nothing visible without scrolling today moves below the fold on a 375x667 pt screen at default Dynamic Type, and the ring is visible without scrolling there.
+- [x] Every timer behavior is unchanged: auto-start, auto-advance, Done, + More time, Pause/Resume, the halfway and done cues, and the switch-sides beat.
+- [x] `VisualWorkWindowEvidenceTests` and any other suite asserting the ring inside the card are updated to the new layout, keeping their intent (illustration present, ring present, labels exact).
+- [x] The current-state descriptions of the ring's location are rewritten to the compact ring beside the exercise name (ADR-0008): the `AGENTS.md` US-CC11 passage (the compact ring "in the fixed `exerciseSlotCard`", and the hold ring in "the hold/rest rings keep the full-size defaults"), the `CONTEXT.md` US-CC11 story text, and the `docs/test-coverage.md` US-CC11 row.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark, default and largest accessibility Dynamic Type).
 
 **Validation Test:**
 
@@ -321,16 +331,16 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] On a transition beat (every `.transition` rest: between stations, between warm-up/cooldown stretches, and at block boundaries) the upcoming movement's poses appear under "Next: <exercise>".
-- [ ] On a between-round rest the upcoming movement's poses appear under the "Next up" text.
-- [ ] On the per-side "Switch sides" beat the same stretch's poses appear under the "Same stretch ... Side 2 of 2" text (decision 11), drawn as-is with no mirroring.
-- [ ] The poses use the same resolver, Trainer, pair/single/fallback rules and card chrome as the exercise card, so they render on the app's card color.
-- [ ] On a 375x667 pt screen at default Dynamic Type the heading, ring, next-up text, poses, and both controls (+15s, Skip rest) are all visible without clipping or overlap, with the controls still pinned at the bottom; the rest ring and the poses shrink as needed to achieve this (decision 12).
-- [ ] The exact ring and pose sizes are settled from the US-TP13 screenshots during the build and recorded in `docs/implementation-log.md`.
-- [ ] If the rest ring no longer uses the full-size default, the rest-ring half of the `AGENTS.md` US-CC11 wording "the hold/rest rings keep the full-size defaults" is updated with it.
-- [ ] Rest behavior is unchanged: countdown, auto-advance, +15s, Skip rest, Pause/Resume, and cues.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark).
+- [x] On a transition beat (every `.transition` rest: between stations, between warm-up/cooldown stretches, and at block boundaries) the upcoming movement's poses appear under "Next: <exercise>".
+- [x] On a between-round rest the upcoming movement's poses appear under the "Next up" text.
+- [x] On the per-side "Switch sides" beat the same stretch's poses appear under the "Same stretch ... Side 2 of 2" text (decision 11), drawn as-is with no mirroring.
+- [x] The poses use the same resolver, Trainer, pair/single/fallback rules and card chrome as the exercise card, so they render on the app's card color.
+- [x] On a 375x667 pt screen at default Dynamic Type the heading, ring, next-up text, poses, and both controls (+15s, Skip rest) are all visible without clipping or overlap, with the controls still pinned at the bottom; the rest ring and the poses shrink as needed to achieve this (decision 12).
+- [x] The exact ring and pose sizes are settled from the US-TP13 screenshots during the build and recorded in `docs/implementation-log.md`.
+- [x] If the rest ring no longer uses the full-size default, the rest-ring half of the `AGENTS.md` US-CC11 wording "the hold/rest rings keep the full-size defaults" is updated with it.
+- [x] Rest behavior is unchanged: countdown, auto-advance, +15s, Skip rest, Pause/Resume, and cues.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in iOS Simulator (iPhone 16 and iPhone SE (3rd generation), light and dark).
 
 **Validation Test:**
 
@@ -349,14 +359,14 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] A pose pair is one accessibility element labeled "<Exercise name>, trainer showing start and end positions" (for example "Glute Bridge, trainer showing start and end positions").
-- [ ] A single pose is one element labeled "<Exercise name>, trainer showing end position" or "<Exercise name>, trainer showing start position".
-- [ ] The individual pose images are hidden from VoiceOver.
-- [ ] No per-pose written description is added; the exercise name and the existing spoken cues carry the instruction.
-- [ ] The SF-Symbol fallback keeps today's "<Exercise name> demonstration" label.
-- [ ] The same labels apply on the exercise card and the rest overlay.
-- [ ] Label strings live in one copy source and are asserted through `AccessibilityTree.spokenStrings(in:)` in a hosted-surface test, which also asserts no element exists per individual image.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] A pose pair is one accessibility element labeled "<Exercise name>, trainer showing start and end positions" (for example "Glute Bridge, trainer showing start and end positions").
+- [x] A single pose is one element labeled "<Exercise name>, trainer showing end position" or "<Exercise name>, trainer showing start position".
+- [x] The individual pose images are hidden from VoiceOver.
+- [x] No per-pose written description is added; the exercise name and the existing spoken cues carry the instruction.
+- [x] The SF-Symbol fallback keeps today's "<Exercise name> demonstration" label.
+- [x] The same labels apply on the exercise card and the rest overlay.
+- [x] Label strings live in one copy source and are asserted through `AccessibilityTree.spokenStrings(in:)` in a hosted-surface test, which also asserts no element exists per individual image.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
 
 **Validation Test:**
 
@@ -373,19 +383,19 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] When the effective Trainer is unresolved (US-TP03), arriving at the player shows a choice between the two Trainers before any Trainer art is shown on the exercise card or rest overlay.
-- [ ] The choice offers exactly two options, one per Trainer, with no "decide later", skip, or dismiss-without-choosing path (decision 15).
-- [ ] Each option is presented per Open Question 4.
-- [ ] The choice is a modal overlay layer in the style of the US-CC13 explainer, meets the 60 pt active-screen touch target, and supports VoiceOver, Dynamic Type and Reduce Motion.
-- [ ] While the choice is up, the session is handled per Open Question 3.
-- [ ] The choice is written through the US-TP03 Trainer write function (FR-5) the moment it is made, and the art appears for the chosen Trainer immediately.
-- [ ] If that write fails, the player behaves per Open Question 8.
-- [ ] Once a choice is stored (made here or in Settings), the prompt never appears again.
-- [ ] Users whose sex answer is male or female never see the prompt.
-- [ ] If the US-CC13 continuous-circuit explainer is also due on the same arrival, the Trainer choice shows first and the explainer follows once a Trainer is chosen; the two are never stacked (decision 15).
-- [ ] Unit tests cover show/no-show gating, the session's handling while the choice is up per Open Question 3, and a failed write per Open Question 8; a hosted-surface test covers the overlay's labels.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in iOS Simulator.
+- [x] When the effective Trainer is unresolved (US-TP03), arriving at the player shows a choice between the two Trainers before any Trainer art is shown on the exercise card or rest overlay.
+- [x] The choice offers exactly two options, one per Trainer, with no "decide later", skip, or dismiss-without-choosing path (decision 15).
+- [x] Each option is presented per Open Question 4.
+- [x] The choice is a modal overlay layer in the style of the US-CC13 explainer, meets the 60 pt active-screen touch target, and supports VoiceOver, Dynamic Type and Reduce Motion.
+- [x] While the choice is up, the session is handled per Open Question 3.
+- [x] The choice is written through the US-TP03 Trainer write function (FR-5) the moment it is made, and the art appears for the chosen Trainer immediately.
+- [x] If that write fails, the player behaves per Open Question 8.
+- [x] Once a choice is stored (made here or in Settings), the prompt never appears again.
+- [x] Users whose sex answer is male or female never see the prompt.
+- [x] If the US-CC13 continuous-circuit explainer is also due on the same arrival, the Trainer choice shows first and the explainer follows once a Trainer is chosen; the two are never stacked (decision 15).
+- [x] Unit tests cover show/no-show gating, the session's handling while the choice is up per Open Question 3, and a failed write per Open Question 8; a hosted-surface test covers the overlay's labels.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in iOS Simulator.
 
 **Validation Test:**
 
@@ -405,16 +415,16 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] `SettingsView` gains a Trainer row, placed per Open Question 5, styled like the existing Settings rows (`Theme` tokens, `minTouchTarget`, `listRowBackground(Theme.Colors.surface)`).
-- [ ] The row shows the effective Trainer (the sex default when no explicit choice exists); for an unresolved "other" user it shows the state set per Open Question 6.
-- [ ] Selecting a Trainer persists it as the explicit choice immediately, through the US-TP03 Trainer write function (FR-5); the next exercise card or rest preview uses it.
-- [ ] If that write fails, the row behaves per Open Question 8.
-- [ ] Choosing in Settings satisfies the US-TP10 one-time choice.
-- [ ] Unit tests cover the write through the US-TP03 function and a failed write per Open Question 8.
-- [ ] VoiceOver reads the row's label and current value; the control works at the largest Dynamic Type size.
-- [ ] No other Settings section changes.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in iOS Simulator.
+- [x] `SettingsView` gains a Trainer row, placed per Open Question 5, styled like the existing Settings rows (`Theme` tokens, `minTouchTarget`, `listRowBackground(Theme.Colors.surface)`).
+- [x] The row shows the effective Trainer (the sex default when no explicit choice exists); for an unresolved "other" user it shows the state set per Open Question 6.
+- [x] Selecting a Trainer persists it as the explicit choice immediately, through the US-TP03 Trainer write function (FR-5); the next exercise card or rest preview uses it.
+- [x] If that write fails, the row behaves per Open Question 8.
+- [x] Choosing in Settings satisfies the US-TP10 one-time choice.
+- [x] Unit tests cover the write through the US-TP03 function and a failed write per Open Question 8.
+- [x] VoiceOver reads the row's label and current value; the control works at the largest Dynamic Type size.
+- [x] No other Settings section changes.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in iOS Simulator.
 
 **Validation Test:**
 
@@ -433,21 +443,21 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] `ios/RepToday/project.yml` no longer declares the Lottie package or depends on it, and its explanatory comment is removed.
-- [ ] The regenerated `ios/RepToday/RepToday.xcodeproj/project.pbxproj` is committed without the `lottie-ios` package reference or the `Lottie` product dependency, so the project resolves no Swift package.
-- [ ] `import Lottie`, `LottieDemoView`, the Lottie branch of `ExerciseIllustration`, `Exercise.animationName` and its doc comment are removed.
-- [ ] `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` and `ModelsTests.testExerciseRoundTripWithAnimationName` are removed.
-- [ ] `ModelsTests.testExerciseDecodesWithoutAnimationName` is replaced by a legacy-decode test: an `Exercise` JSON **carrying** `"animationName"` still decodes, and an `ActiveSessionState` snapshot fixture whose exercises carry the key decodes and resumes.
-- [ ] The US-O01 "Lottie fast-follow" language and every other current-state Lottie, `animationName` or demo-animation reference is removed or rewritten in:
+- [x] `ios/RepToday/project.yml` no longer declares the Lottie package or depends on it, and its explanatory comment is removed.
+- [x] The regenerated `ios/RepToday/RepToday.xcodeproj/project.pbxproj` is committed without the `lottie-ios` package reference or the `Lottie` product dependency, so the project resolves no Swift package.
+- [x] `import Lottie`, `LottieDemoView`, the Lottie branch of `ExerciseIllustration`, `Exercise.animationName` and its doc comment are removed.
+- [x] `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` and `ModelsTests.testExerciseRoundTripWithAnimationName` are removed.
+- [x] `ModelsTests.testExerciseDecodesWithoutAnimationName` is replaced by a legacy-decode test: an `Exercise` JSON **carrying** `"animationName"` still decodes, and an `ActiveSessionState` snapshot fixture whose exercises carry the key decodes and resumes.
+- [x] The US-O01 "Lottie fast-follow" language and every other current-state Lottie, `animationName` or demo-animation reference is removed or rewritten in:
   - `ActiveSessionView.swift` comments, the `.github/workflows/ci.yml` comment, and the root `vitest.config.ts` comment;
   - `AGENTS.md`: the US-CC11 passage, the CI paragraph, the Project Structure note "(no demo animation ships yet)", and this PRD's pointer entry ("Until it lands, the Lottie language elsewhere in this file describes current code");
   - `CONTEXT.md`: the US-CC11 story text;
   - `README.md`: the Project Structure note "(no demo animation ships yet - see docs/asset-attribution.md)";
   - `docs/asset-attribution.md`: the intro sentence ending "costs nothing but the animation itself", the "Exercise demo animations (US-O01)" section, and the closing lines of the "Removed assets" entry, whose history stays while its present-tense claims (that `ExerciseLibraryTests.testEveryAnimationNameResolvesToABundledFile` still gates any future `animationName`, and that "the next animation to land" must arrive with a row) are corrected to describe the removed test and path;
   - `docs/test-coverage.md`: the `ExerciseLibraryTests` row's `animationName` clause, the US-CC11 row's "US-O01 Lottie seam" and clip fast-follow wording, and any row for a removed test.
-- [ ] Historical records (`docs/implementation-log.md` entries, older PRDs, `artifacts/reports/`) stay as point-in-time records.
-- [ ] `grep -rni lottie ios .github vitest.config.ts` returns nothing, and `grep -rn animationName ios/RepToday/RepToday` returns nothing.
-- [ ] Typecheck, lint, the `RepToday` unit suite, and the `RepTodayUITests` build-for-testing pass.
+- [x] Historical records (`docs/implementation-log.md` entries, older PRDs, `artifacts/reports/`) stay as point-in-time records.
+- [x] `grep -rni lottie ios .github vitest.config.ts` returns nothing, and `grep -rn animationName ios/RepToday/RepToday` returns nothing.
+- [x] Typecheck, lint, the `RepToday` unit suite, and the `RepTodayUITests` build-for-testing pass.
 
 **Validation Test:**
 
@@ -465,15 +475,16 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Acceptance Criteria:**
 
-- [ ] A hosted-surface suite (for example `TrainerPoseEvidenceTests`) renders production views through `HostedSurface.host(_:size:)` at 393x852 and 375x667 pt in light and dark, writing PNGs through `EvidenceOutput.directory(for:)`.
-- [ ] Covered states: rep work window (pair), running hold (pair), idle training hold, rep-based stretch, single-pose movement (Wall Scapular Pull), no-art fallback (Prone Y-T-W Raises), transition beat, between-round rest, the US-TP10 choice overlay, and the US-TP11 Settings row.
-- [ ] The suite asserts the US-TP09 labels and the compact ring labels on the live accessibility tree.
-- [ ] Committed PNGs and a `validation.md` live under `artifacts/reports/US-TP13/`, regenerated with `REPTODAY_WRITE_EVIDENCE=1`.
-- [ ] Covered rest states also include the per-side switch-sides beat, and the 375x667 pt captures are the screenshots that settle the rest-overlay ring and pose sizes (decision 12).
-- [ ] Pose legibility on the app's card color (`.secondarySystemBackground`) is judged from these screenshots in light and dark; a dedicated card color is added only if a pose reads poorly, and that finding is recorded in `validation.md` (decision 13).
+- [x] A hosted-surface suite (for example `TrainerPoseEvidenceTests`) renders production views through `HostedSurface.host(_:size:)` at 393x852 and 375x667 pt in light and dark, writing PNGs through `EvidenceOutput.directory(for:)`.
+- [x] Covered states: rep work window (pair), running hold (pair), idle training hold, rep-based stretch, single-pose movement (Wall Scapular Pull), no-art fallback (Prone Y-T-W Raises), transition beat, between-round rest, the US-TP10 choice overlay, and the US-TP11 Settings row.
+- [x] The suite asserts the US-TP09 labels and the compact ring labels on the live accessibility tree.
+- [x] Committed PNGs and a `validation.md` live under `artifacts/reports/US-TP13/`, regenerated with `REPTODAY_WRITE_EVIDENCE=1`.
+- [x] Covered rest states also include the per-side switch-sides beat, and the 375x667 pt captures are the screenshots that settle the rest-overlay ring and pose sizes (decision 12).
+- [x] Pose legibility on the app's card color (`.secondarySystemBackground`) is judged from these screenshots in light and dark; a dedicated card color is added only if a pose reads poorly, and that finding is recorded in `validation.md` (decision 13).
 - [ ] Manual QA recorded in `validation.md`: art legibility on a real device from about 2 m on the floor, light and dark; live VoiceOver focus order; Reduce Motion ring stilling.
-- [ ] Typecheck, lint, and the `RepToday` unit suite pass.
-- [ ] Verify in iOS Simulator.
+  The checklist is recorded in `artifacts/reports/US-TP13/validation.md`; the device pass itself is the captain's manual QA.
+- [x] Typecheck, lint, and the `RepToday` unit suite pass.
+- [x] Verify in iOS Simulator.
 
 **Validation Test:**
 
@@ -505,7 +516,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Display**
 
-- FR-10: A full pair must render start left and end right, side by side, static, aspect-fit to the full untrimmed canvas, inside the exercise card at its current height.
+- FR-10: A full pair must render start left and end right, side by side, static, aspect-fit to the full untrimmed canvas, inside the exercise card at its current height; on a short screen the card may shrink, never below 110 pt, so the exercise name, the compact ring and the round tracker stay above the controls (decision 24).
 - FR-11: Art must render as drawn; no mirroring for side 2 of a per-side movement.
 - FR-12: The exercise card must show the art in the rep work window, the running timed hold, the idle pre-hold, and the rep-based stretch states.
 - FR-13: After a swap the card must show the substitute's art.
@@ -555,7 +566,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 ## Design Considerations
 
 - **One illustration seam.** `ExerciseIllustration` stays the single source for every host, now resolving Trainer art instead of Lottie; `ExerciseDemoView`, the work window, the hold, and the rest preview all render through it.
-- **Card first.** The poses own the card at its current 220 pt height; the countdown moves next to the exercise name, as ADR-0008 records.
+- **Card first.** The poses own the card at its current 220 pt height, which only a short screen shrinks, never below 110 pt (decision 24); the countdown moves next to the exercise name, as ADR-0008 records.
   The state tones (US-CC10) already mark every transition, so the ring no longer needs the card.
 - **Full canvas, no trimming.** Display the full 600x600 square aspect-fit; trimming transparency or fitting each pose's bounds separately breaks the shared framing and makes poses jump.
 - **Card color.** The art is drawn for `#202226`/`#EBEDF0`; the card keeps the app's `.secondarySystemBackground` (decision 13), and legibility is judged from the US-TP13 screenshots; a dedicated card color is added only if a pose reads poorly.
@@ -594,28 +605,13 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 ## Open Questions
 
-Questions 1-7 of the first draft were settled by the captain on 2026-10-02 and are now decisions 11-17 above.
-The items below remain open.
-Items 3-8 are product choices the interview did not settle; each carries a marked recommendation, the acceptance criteria that depend on one say "per Open Question N", and the captain's answer is needed before the story that depends on it starts.
+Questions 1-7 of the first draft were settled by the captain on 2026-10-02 and are decisions 11-17 above.
+Open Questions 3-8 of the second draft were settled by the captain on 2026-10-02 ("go with your recommendations") and are decisions 18-23 above; Open Question 2 (go-ahead) was answered the same day.
+One item remains:
 
 1. **Captain action before release (recommended, not confirmed done).** Re-export the back folder (README lists 32 files, 22 present), which likely closes Wall Scapular Pull (a beginner staple and the Pull foundation's entry rung) and Reverse Snow Angel, and supplies Y, T and W pairs for the deferred Prone Y-T-W decision.
-2. **Go-ahead.** Implementation is not authorized; the captain confirms the go before any story starts.
-3. **The session while the Trainer choice is up (US-TP10, FR-8).** Decision 15 settles the options and the order relative to the US-CC13 explainer, but not what happens to the session behind the choice.
-   The player has already started by then, so the first work window or hold would otherwise count down behind an overlay that cannot be dismissed without choosing.
-   **Recommendation:** hold the session on a US-CC06 user pause while the choice is up, as the US-CC13 explainer does, and resume from the exact remainder once a Trainer is chosen.
-4. **What each Trainer option shows (US-TP10, FR-8).** Decision 15 settles exactly two options but not how each is presented.
-   **Recommendation:** show each Trainer's start pose for the current movement (its single available pose if the start is missing, or the Trainer's name alone if it has none), so the user picks the demonstrator they are about to see.
-5. **Where the Trainer row sits in Settings (US-TP11, FR-9).** Decision 1 adds a Settings row but does not place it.
-   **Recommendation:** a new Trainer section above the destructive Account section, so the destructive action stays last, in the existing section style.
-6. **What the Settings row shows before an "other" user chooses (US-TP11, FR-9).** Decision 1 gives that user no default, so the row has no effective Trainer to show.
-   **Recommendation:** a neutral "Not chosen yet" value, never a guessed Trainer.
-7. **The core folder's provenance file names (US-TP01).** The captain's ledger wording (decision 8, kept by decision 17) says provenance is "retained in each art folder's generation log and manifest".
-   The core folder holds `prompts.json`, `manifest.json` and `verification.json` and no `generation-log.json`, while the back, leg, mobility and primal folders and the push folder's `Male`/`Female` subfolders each hold a `generation-log.json`.
-   **Recommendation:** keep the captain's wording verbatim with no provenance file names added to the public row, and have the captain confirm that the core folder's `prompts.json` counts as its generation log; otherwise the captain amends the wording for the core folder or adds a `generation-log.json` to it.
-8. **When saving the Trainer choice fails (US-TP10, US-TP11, FR-8, FR-9).** Decisions 1, 14 and 15 do not say what happens if the FR-5 write throws.
-   The US-TP10 choice cannot be dismissed without choosing, so leaving it up after a failed write would strand the user behind it, while dismissing it with nothing stored means the prompt returns on the next arrival.
-   **Recommendation:** on the US-TP10 choice, use the chosen Trainer for this session, dismiss the choice, and re-ask on the next arrival only if nothing was persisted.
-   In Settings, keep showing the stored Trainer and say the change was not saved, as `InjuryFlagsViewModel` does for a failed save.
+   Re-checked at implementation (2026-10-02): the back folder still holds 11 files per Trainer, so the three gaps ship as the build-time report lists them.
+   Re-importing after a re-export is `python3 tools/import-trainer-art.py <copy of the art root>`, with no Swift change.
 
 ## Appendix: per-movement coverage (2026-10-02)
 

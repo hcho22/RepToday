@@ -142,6 +142,12 @@ struct UserProfile: Codable, Equatable {
     var injuries: [String]
     /// The duration the user usually has, used to auto-generate today's session.
     var typicalAvailableMinutes: Int
+    /// The user's explicit Trainer choice (US-TP03), or `nil` when they never chose - which means
+    /// "derive it from `sex`" (`Trainer.effective(for:)`). Kept on the synced profile so it follows the
+    /// user across devices and is erased with the account. Optional with a `nil` default, so a profile
+    /// persisted before it existed decodes unchanged, and a build without it ignores the key.
+    /// Written only through `UserServiceProtocol.saveTrainerChoice(_:)`.
+    var trainer: Trainer? = nil
 }
 
 // MARK: - Consistency

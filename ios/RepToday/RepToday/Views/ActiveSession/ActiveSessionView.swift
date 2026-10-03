@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import Lottie
 
 /// The active-session player (US-K01) - a focused, one-exercise-at-a-time screen that walks the user
 /// through the generated session so they never lose their place.
@@ -33,9 +32,21 @@ struct ActiveSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: ActiveSessionViewModel
 
+    /// The session's Trainer (US-TP06) and whether the one-time choice must be asked first (US-TP10).
+    @State private var trainerSession: TrainerSessionModel
+
+    /// Drives the one-time Trainer choice overlay (US-TP10) for a user whose effective Trainer is
+    /// unresolved. Shown before any Trainer art and before the US-CC13 explainer, never stacked with it.
+    @State private var showTrainerChoice = false
+
     /// Drives the first-run explainer overlay (US-CC13). Set once, on first arrival at the player, and
     /// only when the persisted one-shot flag says it has never been shown.
     @State private var showExplainer = false
+
+    /// The height of the player's visible scroll area, and of everything in its column but the exercise
+    /// card, measured so the card can fit a short screen (`cardHeight`). Unmeasured, there is room.
+    @State private var scrollHeight = CGFloat.infinity
+    @State private var heightAroundCard: CGFloat = 0
 
     /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
     /// this to refresh the resumable session *without* racing the store's completion clear: a completed
@@ -43,7 +54,8 @@ struct ActiveSessionView: View {
     private let onFinish: ((Bool) -> Void)?
 
     /// Start a fresh session for `workout`. When `store` and `userId` are supplied, the player
-    /// persists its progress so it survives backgrounding and relaunch (US-K04).
+    /// persists its progress so it survives backgrounding and relaunch (US-K04). `userService` lets the
+    /// player follow the freshest stored Trainer and save the one-time Trainer choice (US-TP10).
     init(
         workout: Workout,
         workoutEngine: (any WorkoutEngineProtocol)? = nil,
@@ -54,9 +66,11 @@ struct ActiveSessionView: View {
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
+        userService: (any UserServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
+        _trainerSession = State(initialValue: TrainerSessionModel(profile: user?.profile, userService: userService))
         _viewModel = State(
             initialValue: ActiveSessionViewModel(
                 workout: workout,
@@ -84,9 +98,11 @@ struct ActiveSessionView: View {
         userId: String? = nil,
         completionService: (any SessionCompletionServiceProtocol)? = nil,
         analytics: (any AnalyticsServiceProtocol)? = nil,
+        userService: (any UserServiceProtocol)? = nil,
         onFinish: ((Bool) -> Void)? = nil
     ) {
         self.onFinish = onFinish
+        _trainerSession = State(initialValue: TrainerSessionModel(profile: user?.profile, userService: userService))
         _viewModel = State(
             initialValue: ActiveSessionViewModel(
                 state: state,
@@ -152,6 +168,56 @@ struct ActiveSessionView: View {
         viewModel.pause(asOf: Date())
     }
 
+    /// Decide, on each arrival, what to show before the session plays on (US-TP10, decision 15): the
+    /// one-time Trainer choice first when the user's Trainer is unresolved, otherwise the US-CC13
+    /// explainer when it is due - never both at once.
+    ///
+    /// A user whose snapshot is unresolved is held on a user pause (US-CC06) straight away, while the
+    /// freshest stored profile is read: a Trainer chosen in Settings or on an earlier arrival then
+    /// resolves it with no prompt, and only a still-unresolved user is asked. While the choice is up the
+    /// session stays paused (captain, Open Question 3), and choosing resumes it from the exact remainder.
+    /// Everyone else goes straight to the explainer check, and the re-read runs behind it so a Trainer
+    /// switched in Settings since the Ready Screen loaded is the one this session shows.
+    private func handleArrival() {
+        if trainerSession.needsChoice {
+            viewModel.pause(asOf: Date())
+            Task { @MainActor in
+                if await trainerSession.refreshOnArrival() {
+                    presentTrainerChoice()
+                } else {
+                    viewModel.resume(asOf: Date())
+                    presentExplainerIfNeeded()
+                }
+            }
+        } else {
+            presentExplainerIfNeeded()
+            Task { @MainActor in _ = await trainerSession.refreshOnArrival() }
+        }
+    }
+
+    /// Show the Trainer choice over the (already paused) player, stilled under Reduce Motion.
+    private func presentTrainerChoice() {
+        if reduceMotion {
+            showTrainerChoice = true
+        } else {
+            withAnimation(.easeOut(duration: 0.25)) { showTrainerChoice = true }
+        }
+    }
+
+    /// Use the chosen Trainer at once, dismiss the choice, resume the session, then let the explainer
+    /// follow if it is due. The write runs in the background: if it fails the session keeps the chosen
+    /// Trainer and, since nothing was stored, the next arrival asks again (captain, Open Question 8).
+    private func chooseTrainer(_ trainer: Trainer) {
+        trainerSession.choose(trainer)
+        viewModel.resume(asOf: Date())
+        if reduceMotion {
+            showTrainerChoice = false
+        } else {
+            withAnimation(.easeIn(duration: 0.2)) { showTrainerChoice = false }
+        }
+        presentExplainerIfNeeded()
+    }
+
     /// Dismiss the explainer, honoring Reduce Motion the same way the entrance does, and resume the
     /// session the presentation paused (US-CC06) from its exact remainder. `resume` is a no-op if
     /// nothing was frozen, so the hosted-surface path with no `AppState` (which never paused) is
@@ -197,7 +263,20 @@ struct ActiveSessionView: View {
                     .transition(.opacity)
                     .zIndex(1)
             }
+
+            // The one-time Trainer choice (US-TP10), layered the same way. `handleArrival` never shows
+            // it together with the explainer: the choice comes first and the explainer follows it.
+            if showTrainerChoice {
+                TrainerChoiceView(
+                    exerciseId: viewModel.currentStep?.prescription.exercise.id ?? "",
+                    onChoose: chooseTrainer
+                )
+                .transition(.opacity)
+                .zIndex(2)
+            }
         }
+        // Every card and rest preview below reads the session's Trainer from here (US-TP06/US-TP08).
+        .environment(\.trainer, trainerSession.trainer)
         .onAppear {
             viewModel.start()
             // A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a
@@ -212,9 +291,10 @@ struct ActiveSessionView: View {
             // pauses and resumes the leg through `scenePhase` below, which is the interruption the user
             // is actually present for.
             viewModel.resumeRest(asOf: Date())
-            // Present the first-run explainer last, after the session is fully live, so the pause it
-            // takes freezes a running countdown rather than racing `start()`/`resumeRest` to set one up.
-            presentExplainerIfNeeded()
+            // Present the Trainer choice or the first-run explainer last, after the session is fully
+            // live, so the pause either takes freezes a running countdown rather than racing
+            // `start()`/`resumeRest` to set one up.
+            handleArrival()
             // The user puts the phone down mid-plank; the screen must not lock out from under a
             // running countdown, or its cue never lands. Scoped to the session being played, and
             // released the moment it finishes or the player is dismissed.
@@ -260,38 +340,51 @@ struct ActiveSessionView: View {
                 .padding(.horizontal, Theme.Spacing.lg)
 
             if let step = viewModel.currentStep {
+                let cardHeight = cardHeight
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         blockContext(step)
-                        // While a hold runs, the countdown takes the demo's place: the user is already
-                        // in position, so what they need on screen is the time left, not the shape. A
-                        // rep-based training set differs (US-CC11): its auto-advancing work window is
-                        // *visual*-primary, pairing the movement illustration with a compact countdown
-                        // ring in the same slot so the user follows along by eye without voice.
-                        if viewModel.isHolding {
-                            HoldCountdownView(viewModel: viewModel)
-                        } else if viewModel.currentStepAutoAdvances {
-                            WorkWindowCountdownView(viewModel: viewModel, prescription: step.prescription)
-                        } else {
-                            ExerciseDemoView(prescription: step.prescription)
-                        }
+                        // The card belongs to the Trainer's poses in every state (ADR-0008): the rep
+                        // work window, a running or idle hold, a rep-based stretch. Any countdown sits
+                        // beside the exercise name below, so starting one never changes what the card
+                        // shows (on a short screen a name the ring wraps can cost it a few points,
+                        // `cardHeight`). The no-art glyph pulses only on an idle card, as the demo slot
+                        // always did.
+                        ExerciseDemoView(
+                            prescription: step.prescription,
+                            height: cardHeight,
+                            animatesGlyph: !(viewModel.isHolding || viewModel.currentStepAutoAdvances)
+                        )
                         exerciseHeadline(step)
                         setTracker(step)
                     }
-                    .padding(Theme.Spacing.lg)
+                    .padding([.horizontal, .top], Theme.Spacing.lg)
+                    // Measured before the bottom padding: only the column's content has to show.
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { heightAroundCard = $0 }
+                    .padding(.bottom, Theme.Spacing.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
             }
 
             controls
         }
         // A swap on a bookend hold ends the leg and lands on the substitute idle; re-arm the hands-free
         // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
-        // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. A no-op off
-        // the bookend-hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
-        .onChange(of: viewModel.isSwapping) { _, swapping in
-            if !swapping { viewModel.autoStartHoldIfNeeded() }
+        // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. Keyed on the
+        // settled-swap counter rather than `isSwapping`, which a fast swap toggles inside one update. A
+        // no-op off the bookend-hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
+        .onChange(of: viewModel.settledSwapCount) { _, _ in
+            viewModel.autoStartHoldIfNeeded()
         }
+    }
+
+    /// The exercise card's height: its full `ExerciseDemoView.height` while the column fits the visible
+    /// scroll area. A short screen (375x667 pt) has no room for that - a name wrapping beside the
+    /// compact ring takes more - so the card and its poses shrink (decision 24), as the rest preview's
+    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls.
+    private var cardHeight: CGFloat {
+        ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
     }
 
     /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
@@ -302,7 +395,22 @@ struct ActiveSessionView: View {
             .accessibilityLabel("\(step.blockTitle), exercise \(step.position) of \(step.total)")
     }
 
+    /// The exercise name and target, with the compact countdown ring beside them while a work window
+    /// (US-CC01) or a hold (US-O03) counts down (ADR-0008). With no countdown running (an idle
+    /// Start-hold step, a rep-based stretch) there is no ring and the name keeps the full width. The
+    /// ring is its own VoiceOver element, after the name and target.
     private func exerciseHeadline(_ step: ActiveSessionViewModel.Step) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            exerciseTitle(step)
+            if viewModel.isHolding {
+                HoldCountdownView(viewModel: viewModel)
+            } else if viewModel.currentStepAutoAdvances {
+                WorkWindowCountdownView(viewModel: viewModel)
+            }
+        }
+    }
+
+    private func exerciseTitle(_ step: ActiveSessionViewModel.Step) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text(step.prescription.exercise.displayName)
                 .font(Theme.Typography.largeTitle)
@@ -494,6 +602,10 @@ struct ActiveSessionView: View {
             } label: {
                 Text("Stop hold")
                     .font(Theme.Typography.button)
+                    // The bordered style would draw the label in the accent, which in dark mode reads at
+                    // 4.47:1 on the button's fill - under the 4.5:1 a 17 pt label needs. The primary text
+                    // color keeps it legible while the gray fill keeps it visibly secondary.
+                    .foregroundStyle(Theme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
@@ -815,21 +927,6 @@ struct ActiveSessionView: View {
 
 // MARK: - Shared session chrome
 
-/// The card that holds whatever occupies the demo slot - the exercise demonstration (US-K01) or, while
-/// a hold runs, its countdown (US-O03). One definition of the slot's size and chrome, so the two states
-/// differ only in their content and starting a hold never makes the card itself blink out.
-private extension View {
-    func exerciseSlotCard() -> some View {
-        self
-            .frame(maxWidth: .infinity)
-            .frame(height: ExerciseDemoView.height)
-            .background(
-                Theme.Colors.secondaryBackground,
-                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
-            )
-    }
-}
-
 /// The player's top bar, shared by the exercise screen and the rest overlay.
 ///
 /// It carries the close control and, since US-CC06, a quiet **Pause/Resume** toggle - one of the
@@ -885,10 +982,12 @@ private struct SessionTopBar: View {
     }
 }
 
-/// The countdown ring shared by the rest overlay (US-K02), the Hold Timer (US-O03), and the
-/// visual-primary work window (US-CC01/CC11): a track plus an accent arc that empties as the countdown
-/// runs out, with the remaining time in its centre. One implementation, so the three timers the user
-/// meets in a session read as the same object - and one place the US-CC14 accessibility contract lands.
+/// The countdown ring shared by the rest overlay (US-K02), the Hold Timer (US-O03), and the work window
+/// (US-CC01): a track plus an accent arc that empties as the countdown runs out, with the remaining
+/// time in its centre. One implementation, so the three timers the user meets in a session read as the
+/// same object - and one place the US-CC14 accessibility contract lands. The work window and the hold
+/// show it compact, beside the exercise name (ADR-0008); the rest overlay shows it larger, shrinking to
+/// share a small phone's height with the next movement's poses (US-TP08).
 ///
 /// **VoiceOver (US-CC14, AC2):** the ring is a single element carrying `.updatesFrequently`, so VoiceOver
 /// does *not* announce every per-second change or pull focus onto the drawing as it ticks; the remaining
@@ -903,21 +1002,33 @@ private struct CountdownRing: View {
     let fraction: Double
     let accessibilityLabel: String
 
-    /// The ring's size and typography. The hold (US-O03) and rest (US-K02) overlays keep the full-size
-    /// defaults, where the ring is the whole slot; the visual-primary work window (US-CC11) pairs a
-    /// compact ring beside a larger movement illustration, so it passes a smaller diameter and font.
-    var diameter: CGFloat = 200
+    /// The ring's size and typography. A fixed `diameter` draws it at exactly that size (the compact
+    /// headline ring); `nil` lets it take the largest square its container offers, between
+    /// `Self.flexibleDiameterRange`'s bounds (the rest overlay, US-TP08).
+    var diameter: CGFloat? = 200
     var lineWidth: CGFloat = 12
     var font: Font = Theme.Typography.largeTitle
+
+    /// The flexible ring's smallest and largest diameter.
+    static let flexibleDiameterRange: ClosedRange<CGFloat> = 96...200
+
+    /// The compact ring beside the exercise name (ADR-0008): small enough to sit next to the name and
+    /// target without growing the headline row, large enough to read from the floor.
+    static let compactDiameter: CGFloat = 80
+    static let compactLineWidth: CGFloat = 8
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
+            // Inset by half the line so the stroke sits inside the ring's frame: the ring is exactly
+            // `diameter` across, so the compact one never overhangs the headline it sits in.
             Circle()
+                .inset(by: lineWidth / 2)
                 .stroke(Theme.Colors.surface, lineWidth: lineWidth)
 
             Circle()
+                .inset(by: lineWidth / 2)
                 .trim(from: 0, to: fraction)
                 .stroke(Theme.Colors.accent, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
@@ -933,8 +1044,9 @@ private struct CountdownRing: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .foregroundStyle(Theme.Colors.textPrimary)
+                .padding(lineWidth)
         }
-        .frame(width: diameter, height: diameter)
+        .modifier(RingSize(diameter: diameter))
         .accessibilityElement()
         .accessibilityLabel(accessibilityLabel)
         // US-CC14 (AC2): mark the ring as frequently self-updating so VoiceOver polls it on demand
@@ -944,11 +1056,32 @@ private struct CountdownRing: View {
     }
 }
 
+/// Fixes the ring to its diameter, or lets a flexible ring fill the largest square on offer within
+/// `CountdownRing.flexibleDiameterRange`.
+private struct RingSize: ViewModifier {
+    let diameter: CGFloat?
+
+    func body(content: Content) -> some View {
+        if let diameter {
+            content.frame(width: diameter, height: diameter)
+        } else {
+            let range = CountdownRing.flexibleDiameterRange
+            content
+                .aspectRatio(1, contentMode: .fit)
+                .frame(
+                    minWidth: range.lowerBound, maxWidth: range.upperBound,
+                    minHeight: range.lowerBound, maxHeight: range.upperBound
+                )
+        }
+    }
+}
+
 // MARK: - Hold timer
 
 /// The per-exercise Hold Timer for a timed movement (US-O03).
 ///
-/// It takes the demo's place while a hold runs and counts one side of the prescribed hold down. At
+/// A compact ring beside the exercise name while a hold runs (ADR-0008: the card keeps the Trainer's
+/// poses rather than giving way to a full-size ring), counting one side of the prescribed hold down. At
 /// zero the view model fires the same accessible haptic/audio cue the rest timer uses - exactly once -
 /// and either parks on the next side (a per-side movement is two legs per set) or records the set and
 /// opens the rest. The ticker lives here rather than in the player, so it exists only while a hold is
@@ -969,11 +1102,11 @@ private struct HoldCountdownView: View {
         CountdownRing(
             remaining: remaining,
             fraction: min(1, max(0, Double(remaining) / Double(total))),
-            accessibilityLabel: "Hold, \(remaining) seconds remaining"
+            accessibilityLabel: "Hold, \(remaining) seconds remaining",
+            diameter: CountdownRing.compactDiameter,
+            lineWidth: CountdownRing.compactLineWidth,
+            font: Theme.Typography.title
         )
-        // The countdown stands in the demo's own card, so starting a hold changes what is in the slot
-        // and nothing else - not the card under it, not the exercise name and target below it.
-        .exerciseSlotCard()
         .onReceive(ticker) { date in
             currentDate = date
             viewModel.completeHoldIfElapsed(asOf: date)
@@ -983,34 +1116,21 @@ private struct HoldCountdownView: View {
 
 // MARK: - Work window (US-CC01)
 
-/// The visual-primary auto-advancing work window for a rep-based training set (US-CC01, made
-/// visual-primary in US-CC11).
-///
-/// It fills the demo slot while the set is on screen, pairing a **clear static movement illustration**
-/// (so the user can follow along by eye, since there is no voice) with a compact **countdown ring**
-/// that counts the set's planned per-set seconds down - the same number the engine budgeted
-/// (`SessionAssembly.workSecondsPerSet`, US-CC08), so the screen window can never drift from the plan.
-/// The illustration is the same `ExerciseIllustration` the standalone demo shows, so the US-O01 Lottie
-/// seam is preserved by construction: where a per-movement clip exists it plays, where none does the
-/// SF-Symbol glyph shows, and Reduce Motion stills either - a text-and-ring-only window is deliberately
-/// rejected as too bare (US-CC11 AC).
+/// The auto-advancing work window for a rep-based training set (US-CC01): a compact countdown ring
+/// beside the exercise name (ADR-0008) that counts the set's planned per-set seconds down - the same
+/// number the engine budgeted (`SessionAssembly.workSecondsPerSet`, US-CC08), so the screen window can
+/// never drift from the plan. The card above keeps the Trainer's poses, so the window stays
+/// visual-primary (US-CC11): the user follows the movement by eye while the ring times it.
 ///
 /// Unlike the Hold Timer it *auto-starts*: appearing is enough to begin the countdown, so a rep-based
 /// set is hands-free with no Start tap. At zero the view model records the set completed (identical to a
 /// tapped completion) and flows into the rest, firing the same accessible cue exactly once. The ticker
 /// lives here so it exists only while the window is on screen, and it drives a *pure* check
 /// (`completeWorkWindowIfElapsed`) that is a no-op until the deadline passes, so the cue can never fire
-/// early or per tick. A swap finishing (`isSwapping` back to false) re-arms the window for whatever slot
+/// early or per tick. A swap settling (`settledSwapCount` moving on) re-arms the window for whatever slot
 /// now occupies the position.
 private struct WorkWindowCountdownView: View {
     let viewModel: ActiveSessionViewModel
-    let prescription: PrescribedExercise
-
-    /// The compact ring's dimensions - smaller than the hold/rest ring so the movement illustration is
-    /// the hero of the slot (the window is *visual*-primary, US-CC11) while the countdown stays legible
-    /// beside it.
-    private static let ringDiameter: CGFloat = 132
-    private static let ringLineWidth: CGFloat = 10
 
     /// Drives the countdown display and the auto-advance/cue check. Kept off the view body so the
     /// mutation happens in an action closure, never during a render pass.
@@ -1024,33 +1144,20 @@ private struct WorkWindowCountdownView: View {
         let total = max(viewModel.workWindowSecondsPerSet ?? viewModel.workWindowTotalSeconds, 1)
         let remaining = viewModel.isRunningWorkWindow ? viewModel.workWindowRemaining(asOf: currentDate) : total
 
-        HStack(spacing: Theme.Spacing.lg) {
-            // The movement illustration leads - the user follows along by eye. It carries its own
-            // "<name> demonstration" label so the ring, name, and target each stay distinct to VoiceOver.
-            ExerciseIllustration(prescription: prescription, size: 132, animatesGlyph: false)
-                .frame(maxWidth: .infinity)
-                .accessibilityElement()
-                .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
-
-            CountdownRing(
-                remaining: remaining,
-                fraction: min(1, max(0, Double(remaining) / Double(total))),
-                accessibilityLabel: "Work window, \(remaining) seconds remaining",
-                diameter: Self.ringDiameter,
-                lineWidth: Self.ringLineWidth,
-                font: Theme.Typography.title
-            )
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        // Illustration and ring stand together in the demo's own card, so the visual-primary window
-        // changes what is in the slot and nothing else - not the card under it, not the exercise name
-        // and target below it.
-        .exerciseSlotCard()
+        CountdownRing(
+            remaining: remaining,
+            fraction: min(1, max(0, Double(remaining) / Double(total))),
+            accessibilityLabel: "Work window, \(remaining) seconds remaining",
+            diameter: CountdownRing.compactDiameter,
+            lineWidth: CountdownRing.compactLineWidth,
+            font: Theme.Typography.title
+        )
         // Auto-start on appear (hands-free) - and after a swap settles, where the view stays mounted so
-        // no fresh `onAppear` fires. Both are idempotent via `canStartWorkWindow`.
+        // no fresh `onAppear` fires (keyed on the settled-swap counter, which a fast swap cannot hide the
+        // way it can toggle `isSwapping` inside one update). Both are idempotent via `canStartWorkWindow`.
         .onAppear { viewModel.startWorkWindow() }
-        .onChange(of: viewModel.isSwapping) { _, swapping in
-            if !swapping { viewModel.startWorkWindow() }
+        .onChange(of: viewModel.settledSwapCount) { _, _ in
+            viewModel.startWorkWindow()
         }
         .onReceive(ticker) { date in
             currentDate = date
@@ -1100,9 +1207,9 @@ private struct RestView: View {
                 }
             )
 
-            Spacer()
+            Spacer(minLength: Theme.Spacing.sm)
 
-            VStack(spacing: Theme.Spacing.lg) {
+            VStack(spacing: Theme.Spacing.md) {
                 // A per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 hands-free
                 // (US-CC05); the beat reuses this rest overlay but names itself so the user knows to
                 // change position rather than read it as a plain between-set rest. Every other gap - a
@@ -1114,17 +1221,27 @@ private struct RestView: View {
                     .font(Theme.Typography.title)
                     .foregroundStyle(Theme.Colors.textSecondary)
 
+                // The ring and the poses below are the two flexible pieces: each takes up to its full size
+                // on a roomy phone and both shrink, evenly, until heading, ring, next-up text, poses and
+                // both controls fit a 375x667 pt screen (US-TP08, decision 12).
                 CountdownRing(
                     remaining: remaining,
                     fraction: fraction,
-                    accessibilityLabel: heading + ", \(remaining) seconds remaining"
+                    accessibilityLabel: heading + ", \(remaining) seconds remaining",
+                    diameter: nil
                 )
                 .padding(.horizontal, Theme.Spacing.lg)
 
                 nextUp
-            }
 
-            Spacer()
+                nextUpPoses
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            // The middle claims the height first; the spacers above and below only take what is left,
+            // so the ring and the poses grow before empty space does.
+            .layoutPriority(1)
+
+            Spacer(minLength: Theme.Spacing.sm)
 
             controls
         }
@@ -1187,6 +1304,22 @@ private struct RestView: View {
         }
     }
 
+    /// The upcoming movement's Trainer poses under the next-up text (US-TP08): the next station on a
+    /// transition beat, the next round's movement on a between-round rest, and the same stretch on the
+    /// switch-sides beat (decision 11) - `currentStep` is already the effort the rest paces toward. Same
+    /// illustration, Trainer, pair/single/glyph rules and card color as the exercise card, at a height
+    /// that shrinks to fit (a still glyph: this is a preview, not the live demo).
+    @ViewBuilder
+    private var nextUpPoses: some View {
+        if let step = viewModel.currentStep {
+            ExerciseDemoView(prescription: step.prescription, height: nil, animatesGlyph: false)
+                .frame(minHeight: Self.posesHeightRange.lowerBound, maxHeight: Self.posesHeightRange.upperBound)
+        }
+    }
+
+    /// The rest preview card's smallest and largest height.
+    static let posesHeightRange: ClosedRange<CGFloat> = ExerciseDemoView.minHeight...ExerciseDemoView.height
+
     /// Extend (+15s) and Skip - both meeting the 60pt active-screen touch target.
     private var controls: some View {
         HStack(spacing: Theme.Spacing.md) {
@@ -1195,6 +1328,9 @@ private struct RestView: View {
             } label: {
                 Text("+\(ActiveSessionViewModel.restExtension)s")
                     .font(Theme.Typography.button)
+                    // Primary text rather than the bordered style's accent, which reads at 4.47:1 on this
+                    // fill in dark mode (see "Stop hold").
+                    .foregroundStyle(Theme.Colors.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: Theme.Spacing.workoutTouchTarget)
             }
@@ -1215,131 +1351,6 @@ private struct RestView: View {
             .accessibilityLabel("Skip rest")
         }
         .padding(Theme.Spacing.lg)
-    }
-}
-
-// MARK: - Exercise demo
-
-/// The auto-playing exercise demonstration for the player (US-K01).
-///
-/// When the exercise names a bundled Lottie animation (US-O01) it plays that looping, auto-playing
-/// animation; otherwise it renders a large, movement-appropriate SF Symbol that pulses continuously
-/// to signal "this is the live demo". The Lottie path is the seam a richer per-exercise demo drops
-/// into as its file is added - no animation files ship yet, so every exercise currently falls back
-/// to its symbol, and a named-but-missing file falls back too, so a demo is never blank.
-/// Under Reduce Motion the animation shows a static frame and the symbol drops its pulse for a
-/// static glyph - the required accessible fallback - so the screen never animates against the
-/// user's preference. The `"<displayName> demonstration"` accessibility label is retained.
-struct ExerciseDemoView: View {
-    let prescription: PrescribedExercise
-
-    /// The height of the demo slot. Shared with the Hold Timer's countdown (US-O03) and the
-    /// visual-primary work window (US-CC11), which both stand in this same slot, so swapping between the
-    /// three shifts nothing below it.
-    static let height: CGFloat = 220
-
-    var body: some View {
-        ExerciseIllustration(prescription: prescription)
-            .exerciseSlotCard()
-            .accessibilityElement()
-            .accessibilityLabel("\(prescription.exercise.displayName) demonstration")
-    }
-}
-
-/// The movement illustration itself - the bundled Lottie clip when the exercise names one that resolves
-/// (US-O01), otherwise the movement-appropriate SF-Symbol glyph so a demonstration is never blank.
-///
-/// Carries no card chrome or accessibility of its own: `ExerciseDemoView` (US-K01) frames and labels it
-/// in the standalone demo slot, and the visual-primary work window (US-CC11) embeds the same content
-/// beside its countdown ring. Sharing one source is what keeps the Lottie fast-follow a data change -
-/// dropping in ~71 per-movement clips lights them up in both hosts at once, no rewrite.
-///
-/// Under Reduce Motion the animation holds its first frame and the glyph drops its pulse for a static
-/// glyph - the required accessible still - so the illustration never animates against the preference.
-struct ExerciseIllustration: View {
-    let prescription: PrescribedExercise
-
-    /// The intrinsic size of the illustration content. The work window passes a smaller value so the
-    /// glyph/clip sits comfortably beside its ring; the standalone demo slot keeps the roomier default.
-    var size: CGFloat = 200
-
-    /// Whether the SF-Symbol glyph pulses. The standalone demo pulses it to read as "this is the live
-    /// demo" (US-K01); the visual-primary work window (US-CC11) wants a **static illustration at launch**
-    /// (the countdown ring is the live element beside it, and the AC requires the illustration be still
-    /// where no clip exists), so it passes `false`. A bundled Lottie clip still plays where one exists -
-    /// the AC allows that - and Reduce Motion stills either regardless.
-    var animatesGlyph: Bool = true
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        if let name = prescription.exercise.animationName, LottieAnimation.named(name) != nil {
-            LottieDemoView(animationName: name, isPlaying: !reduceMotion)
-                .frame(width: size, height: size)
-        } else {
-            glyph
-        }
-    }
-
-    @ViewBuilder
-    private var glyph: some View {
-        let base = Image(systemName: symbolName)
-            .font(.system(size: size * 0.46, weight: .semibold))
-            .foregroundStyle(Theme.Colors.accent)
-
-        if reduceMotion || !animatesGlyph {
-            base // static fallback - no animation against Reduce Motion, or where a still illustration is wanted
-        } else {
-            base.symbolEffect(.pulse, options: .repeating) // auto-plays continuously
-        }
-    }
-
-    /// A movement-appropriate SF Symbol so the demo reads as the right kind of exercise.
-    private var symbolName: String {
-        switch prescription.exercise.movementPattern {
-        case .push: return "figure.strengthtraining.traditional"
-        case .squat: return "figure.cross.training"
-        case .hinge: return "figure.strengthtraining.functional"
-        case .core: return "figure.core.training"
-        case .pull: return "figure.climbing"
-        case .mobility: return "figure.flexibility"
-        case .locomotion: return "figure.run"
-        }
-    }
-}
-
-/// Plays a bundled Lottie animation for the exercise demo (US-O01), looping and auto-playing.
-///
-/// When `isPlaying` is false (Reduce Motion) it holds the first frame as a static image rather than
-/// animating, preserving the auto-play + static-fallback contract. The caller only constructs this
-/// for an `animationName` that already resolved to a bundled file, so the animation is never nil.
-private struct LottieDemoView: UIViewRepresentable {
-    let animationName: String
-    let isPlaying: Bool
-
-    func makeUIView(context: Context) -> LottieAnimationView {
-        let view = LottieAnimationView(name: animationName)
-        view.contentMode = .scaleAspectFit
-        view.loopMode = .loop
-        apply(to: view)
-        return view
-    }
-
-    func updateUIView(_ uiView: LottieAnimationView, context: Context) {
-        let next = LottieAnimation.named(animationName)
-        if uiView.animation !== next {
-            uiView.animation = next
-        }
-        apply(to: uiView)
-    }
-
-    private func apply(to view: LottieAnimationView) {
-        if isPlaying {
-            if !view.isAnimationPlaying { view.play() }
-        } else {
-            view.pause()
-            view.currentProgress = 0 // static first frame under Reduce Motion
-        }
     }
 }
 

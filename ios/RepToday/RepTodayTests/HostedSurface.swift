@@ -32,9 +32,14 @@ enum HostedSurface {
     ///
     /// The window is handed back rather than kept here because a released window takes the hosted view
     /// down with it: the caller has to hold it for as long as the surface is read.
+    ///
+    /// `emulatingSafeArea` hosts the surface with exactly those safe-area insets instead of the running
+    /// Simulator's own, so a smaller phone can be rendered faithfully on whatever device the suite runs
+    /// on - a 375x667 pt iPhone SE has a 20 pt status bar, not the iPhone 16's taller top inset. The
+    /// hosting controller's `additionalSafeAreaInsets` absorbs the difference between the two.
     static func host<V: View>(
         _ view: V, size: CGSize, settleFor interval: TimeInterval = settleInterval,
-        style: UIUserInterfaceStyle = .dark
+        style: UIUserInterfaceStyle = .dark, emulatingSafeArea safeArea: UIEdgeInsets? = nil
     ) -> (host: UIHostingController<V>, window: UIWindow) {
         let host = UIHostingController(rootView: view)
         // Dark by default (every committed baseline is dark). A suite that needs the other appearance
@@ -46,11 +51,40 @@ enum HostedSurface {
         // A real key window is what makes the view lay out and draw its layers at all; sizing the
         // window to the full content height lays out the whole of a scrolling surface rather than
         // just the screenful that would be visible.
-        let window = UIWindow(frame: host.view.frame)
+        //
+        // The window joins the app's own window scene. A window built with only a frame belongs to no
+        // scene: on its own it still draws, but once the test host's SwiftUI window is up that window
+        // keeps key status, the detached one never becomes the active scene, and a surface hosted late
+        // in a full run reads as backgrounded (paused countdowns, a frozen accessibility tree).
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow()
+        window.frame = host.view.frame
+        // The appearance goes on the scene too: SwiftUI resolves the app's accent color against the
+        // window scene, which otherwise keeps the Simulator's own appearance, so a dark capture would
+        // draw light-mode accents. Every host call sets it, so no suite inherits another's appearance.
+        window.overrideUserInterfaceStyle = style
+        scene?.traitOverrides.userInterfaceStyle = style
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
+
+        if let safeArea {
+            // The device's insets are only known once the hosted view has laid out on screen. Adding
+            // the difference (negative where the device's inset is larger) leaves exactly the emulated
+            // insets, before the surface settles.
+            pump(for: 0.2)
+            let device = host.view.safeAreaInsets
+            host.additionalSafeAreaInsets = UIEdgeInsets(
+                top: safeArea.top - device.top, left: safeArea.left - device.left,
+                bottom: safeArea.bottom - device.bottom, right: safeArea.right - device.right
+            )
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+        }
 
         pump(for: interval)
 

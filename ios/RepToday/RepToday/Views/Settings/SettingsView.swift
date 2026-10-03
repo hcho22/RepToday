@@ -6,8 +6,8 @@ import SwiftUI
 /// opt-out, and burying that control would defeat the point of an opt-out. It is deliberately a real
 /// sectioned Settings surface rather than an inline toggle on the Profile placeholder, so a later,
 /// broader Profile/Settings story **extends** it - another `Section` - rather than replacing it, which
-/// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Training safety (US-AC08), and
-/// Account (US-AD01). Nothing else about Profile changes here.
+/// is how it has grown since: Privacy (US-T06), AI Coach (US-AC04), Training safety (US-AC08), Trainer
+/// (US-TP11), and Account (US-AD01). Nothing else about Profile changes here.
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.services) private var services
@@ -16,11 +16,15 @@ struct SettingsView: View {
     /// from the environment (services + `AppState`), which a `@State` default cannot capture at init.
     @State private var deletion: AccountDeletionViewModel?
 
+    /// The Trainer row's model (US-TP11), built on first appearance from the environment's services.
+    @State private var trainerSettings: TrainerSettingsViewModel?
+
     /// Production creates the deletion model lazily from the environment. Focused hosted-surface
     /// coverage can inject the same model directly so both confirmation variants are renderable
     /// without reaching a live Sign in with Apple service.
-    init(deletion: AccountDeletionViewModel? = nil) {
+    init(deletion: AccountDeletionViewModel? = nil, trainerSettings: TrainerSettingsViewModel? = nil) {
         _deletion = State(initialValue: deletion)
+        _trainerSettings = State(initialValue: trainerSettings)
     }
 
     var body: some View {
@@ -125,6 +129,22 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.Colors.surface)
 
+            // US-TP11: the Trainer who demonstrates each movement, switchable at any time. Its own section
+            // above Account (captain, Open Question 5), so the destructive action stays last.
+            Section {
+                trainerRow
+            } header: {
+                Text(TrainerChoiceCopy.settingsTitle)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } footer: {
+                Text(trainerSettings?.errorMessage ?? TrainerChoiceCopy.settingsFooter)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(trainerSettings?.errorMessage == nil ? Theme.Colors.textSecondary : Theme.Colors.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .listRowBackground(Theme.Colors.surface)
+
             // US-AD01: the mandatory account-deletion path (App Store Guideline 5.1.1(v)). A
             // destructive, clearly-labelled row in its own section, so it is findable in one tap from
             // the Profile tab's Settings and never mistaken for a benign control.
@@ -156,6 +176,9 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.Colors.surface)
         }
+        // Every appearance re-reads: the player's one-time choice may have stored a Trainer while
+        // Settings sat open on the Profile tab.
+        .task { await trainerModel().load() }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)
@@ -197,6 +220,61 @@ struct SettingsView: View {
         } message: {
             Text(Self.deleteFailureMessage)
         }
+    }
+
+    /// The Trainer row: the effective Trainer (or "Not chosen yet") as its value, opening a menu of the
+    /// two Trainers. Choosing one writes it at once; the checkmark marks the stored Trainer.
+    private var trainerRow: some View {
+        let model = trainerSettings
+        return Menu {
+            ForEach(Trainer.allCases) { trainer in
+                Button {
+                    let model = trainerModel()
+                    Task { await model.select(trainer) }
+                } label: {
+                    if model?.trainer == trainer {
+                        Label(trainer.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(trainer.displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "figure.strengthtraining.functional")
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityHidden(true)
+                Text(TrainerChoiceCopy.settingsTitle)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer(minLength: Theme.Spacing.sm)
+                Text(model?.valueText ?? "")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: Theme.Spacing.minTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .disabled(model?.isLoaded != true || model?.isSaving == true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(TrainerChoiceCopy.settingsTitle)
+        .accessibilityValue(model?.valueText ?? "")
+        .accessibilityHint("Choose who demonstrates each movement")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// Builds the Trainer row's model on first use and caches it, like `deletionModel()`.
+    private func trainerModel() -> TrainerSettingsViewModel {
+        if let trainerSettings { return trainerSettings }
+        let model = TrainerSettingsViewModel(userService: services.userService)
+        trainerSettings = model
+        return model
     }
 
     /// Builds the deletion view model on first use and caches it. `@State` cannot capture the

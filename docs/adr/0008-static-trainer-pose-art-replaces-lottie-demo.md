@@ -1,6 +1,6 @@
 # ADR-0008: Static Trainer pose art replaces the Lottie demo, and the countdown ring leaves the exercise card
 
-- Status: Accepted (decided 2026-10-02); **not yet implemented** - the captain has not yet authorized implementation.
+- Status: Accepted (decided 2026-10-02); implemented 2026-10-02 (`US-TP01`...`US-TP13`).
 - Date: 2026-10-02
 - Deciders: captain, via the Trainer pose art design interview (2026-10-02)
 - Spec: `.claude/agent/tasks/prd-trainer-pose-art_261002.md` (`US-TP##`)
@@ -24,6 +24,7 @@ Showing two poses side by side needs room the card does not have while it also h
    The Lottie package, `Exercise.animationName` and `LottieDemoView` are removed.
    Old active-session snapshots keep decoding, because synthesized `Codable` ignores the removed key.
 2. Start and end poses show side by side, static, filling the exercise card at its current height (about 150 pt per pose), in every player state.
+   Amended 2026-10-03 (captain: "keep the fix", PRD decision 24): on a short screen the card's pose area may shrink, never below 110 pt, so the exercise name, the compact ring and the round tracker stay above the controls; larger phones keep the full 220 pt card.
 3. The countdown ring for the rep work window and the running hold leaves the card and becomes a compact ring beside the exercise name.
    The hold no longer replaces the art with a full-size ring.
 4. Any future motion (video or animation) is designed on its own when it arrives, rather than kept alive as an empty seam.
@@ -40,6 +41,7 @@ Showing two poses side by side needs room the card does not have while it also h
 - Missing art degrades per movement and per Trainer: a full pair, a single centered pose, or the SF-Symbol glyph; a build-time report lists every served movement lacking a full pair, so gaps stay visible.
 - The app binary grows by roughly 15-20 MB of bundled PNGs (about 16.7 MB raw for the served movements; art for movements withheld until version 2 is added by file drop when they return), accepted because the core loop is on-device and offline with no download path.
 - The rest overlay also shows the upcoming movement's poses, so on small phones its ring and poses shrink until everything fits with both controls visible.
+- On a short screen such as the 375x667 pt iPhone SE the player's card also gives up pose height, never below 110 pt, when a name wrapping beside the compact ring would otherwise push the ring or the round tracker below the controls; the card's height can then change by a few points as a ring arrives.
 - The card keeps the app's card color; a dedicated card color is added only if a pose reads poorly on it.
 - Reintroducing motion later is a fresh design, not a data drop into an existing seam.
 - Evidence suites that asserted the ring inside the card (US-CC11) are updated to the new layout; the ring's accessibility contract (US-CC14) is unchanged.

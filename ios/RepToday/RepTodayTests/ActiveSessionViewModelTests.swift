@@ -1196,8 +1196,15 @@ final class ActiveSessionViewModelTests: XCTestCase {
         /// Runs inside `swapExercise` before the outcome returns, so a test can mutate the view model
         /// mid-await (e.g. advance off the exercise) and exercise the stale-result guard.
         var onSwap: (() -> Void)?
+        /// When set, `swapExercise` throws it instead of returning `outcome` (an engine failure).
+        var error: Error?
 
         init(outcome: SwapOutcome) { self.outcome = outcome }
+
+        init(error: Error) {
+            self.outcome = .noAlternative
+            self.error = error
+        }
 
         func generateWorkout(
             requestedMinutes: Int, user: User, recentLogs: [WorkoutLog], sessionPolicy: SessionPolicy
@@ -1218,6 +1225,7 @@ final class ActiveSessionViewModelTests: XCTestCase {
             lastSnapshot = workout
             lastSessionPolicy = sessionPolicy
             onSwap?()
+            if let error { throw error }
             return outcome
         }
     }
@@ -2748,6 +2756,29 @@ final class ActiveSessionViewModelTests: XCTestCase {
         vm.startWorkWindow()
         XCTAssertTrue(vm.isRunningWorkWindow, "a fresh window starts for the substitute")
         XCTAssertEqual(vm.workWindowSecondsPerSet, SessionAssembly.workSecondsPerSet(of: substitute))
+    }
+
+    /// The player re-arms the work window and the bookend hold when `settledSwapCount` moves, so every
+    /// finished swap - substituted, no alternative, or an engine failure - must move it exactly once,
+    /// even when the engine answers before the view would ever see `isSwapping` change.
+    func testEverySettledSwapAdvancesTheSettledSwapCount() async {
+        struct Failure: Error {}
+        let substitute = substitutePrescription("dips", sets: 3, reps: 10, rest: 45)
+        for (engine, label) in [
+            (StubSwapEngine(outcome: .substituted(substitute)), "substituted"),
+            (StubSwapEngine(outcome: .noAlternative), "no alternative"),
+            (StubSwapEngine(error: Failure()), "engine failure"),
+        ] {
+            let vm = ActiveSessionViewModel(
+                workout: strengthWorkout(sets: 2, reps: 12), swapEngine: engine, user: makeUser(),
+                recentLogs: [], sessionPolicy: .default, now: { self.start }
+            )
+            vm.start()
+            XCTAssertEqual(vm.settledSwapCount, 0)
+            await vm.swapCurrentExercise()
+            XCTAssertEqual(vm.settledSwapCount, 1, "\(label): the swap settled once")
+            XCTAssertFalse(vm.isSwapping, label)
+        }
     }
 
     // MARK: - Non-verbal state cues (US-CC10)
