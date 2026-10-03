@@ -3,6 +3,7 @@
 - Status: **Implemented (2026-10-02).**
   Every decision in the table below was settled with the captain in a design interview on 2026-10-02, and the seven follow-up questions this PRD raised were settled the same day ("go with your recommendations").
   The captain authorized implementation on 2026-10-02 and, the same day, approved the recommendation for each of Open Questions 3-8 ("go with your recommendations"); they are recorded as decisions 18-23 below.
+  On 2026-10-03 the captain kept the small-phone exercise-card fit the build added ("keep the fix"); it is recorded as decision 24 below.
   Open Question 1 (re-exporting the back art folder) remains a captain action.
 - Story prefix: `US-TP##` (Trainer Pose).
 - Related decisions: [ADR-0008](../../../docs/adr/0008-static-trainer-pose-art-replaces-lottie-demo.md) (static Trainer pose art replaces the Lottie demo seam, and the countdown ring leaves the exercise card).
@@ -29,7 +30,7 @@ The deterministic engine, session timing, completion logging, cue vocabulary, pe
 - Show the selected Trainer's start and end poses, static and side by side, on the exercise card in every player state, and under the rest overlay's "next" preview.
 - Default the Trainer from the onboarding sex answer, ask a user who answered "other" once, and let any user switch at any time in Settings.
 - Ship with the art that exists today: full pairs where they exist, a single centered pose where only one exists, and today's SF-Symbol glyph where none is usable, with every gap listed at build time.
-- Keep today's on-screen fit: the exercise card keeps its current height, nothing else moves down, and small phones keep fitting.
+- Keep today's on-screen fit: the exercise card keeps its current height wherever the screen has room, nothing else moves down, and small phones keep fitting, with the card's pose area shrinking on a short screen (decision 24).
 - Remove the Lottie package (the app's only third-party dependency) and its dead code without breaking any persisted active-session snapshot.
 - Record the art's provenance in `docs/asset-attribution.md` before any art ships.
 
@@ -38,6 +39,7 @@ The deterministic engine, session timing, completion logging, cue vocabulary, pe
 Each numbered decision is the captain's answer from the 2026-10-02 interview.
 Decisions 11-17 are the captain's answers to the follow-up questions the first draft of this PRD raised (captain, 2026-10-02: "go with your recommendations").
 Decisions 18-23 are the captain's answers to Open Questions 3-8 (captain, 2026-10-02: "go with your recommendations").
+Decision 24 is the captain's amendment of decision 3 after the build showed the full card did not fit a short screen (captain, 2026-10-03: "keep the fix").
 This PRD invents no further product decisions.
 Any product choice the interview did not settle is listed under Open Questions with a marked recommendation, and every acceptance criterion that depends on one says "per Open Question N".
 
@@ -45,7 +47,7 @@ Any product choice the interview did not settle is listed under Open Questions w
 | --- | --- | --- |
 | 1 | **Trainer selection (A):** default follows the onboarding sex answer (male -> male Trainer, female -> female Trainer); an "other" answer makes a one-time choice the first time Trainer art appears; a new Settings row switches at any time; existing users follow the same rule from their stored answer. Term: **Trainer**, distinct from **Coach**. | US-TP03, US-TP10, US-TP11; FR-5 to FR-9; `CONTEXT.md` |
 | 2 | **Pose display (C):** start and end side by side, both visible, static (no flipbook, no rep-synced animation). | US-TP06; FR-10, FR-11 |
-| 3 | **Layout (B):** the two poses get the whole exercise card at its current size (`ExerciseDemoView.height`, about 150 pt per pose); the countdown ring leaves the card and becomes a compact ring beside the exercise name; timed holds use the same layout instead of today's full-card ring. | US-TP07; FR-14 to FR-17; ADR-0008 |
+| 3 | **Layout (B):** the two poses get the whole exercise card at its current size (`ExerciseDemoView.height`, about 150 pt per pose); the countdown ring leaves the card and becomes a compact ring beside the exercise name; timed holds use the same layout instead of today's full-card ring. On a short screen the card's pose area may shrink, per decision 24. | US-TP07; FR-14 to FR-17; ADR-0008 |
 | 4 | **Surfaces (B):** exercise card in every state (rep work window, timed hold, stretch, pre-hold) and the rest overlay (`RestView.nextUp`) for the between-station transition beat and the between-round rest; swap needs no surface of its own; Ready-screen preview and Progress-tab ladder out of scope. | US-TP06, US-TP07, US-TP08; FR-12, FR-13, FR-18; Non-Goals |
 | 5 | **Per-side movements (B):** art shown as drawn, no mirroring for side 2; the "Switch sides" beat and "Side 2 of 2" text carry the side change. | FR-11; Non-Goals |
 | 6 | **Incomplete art (A):** pair side by side, single pose centered, no usable art keeps the SF-Symbol fallback (currently Prone Y-T-W Raises); missing art later is a file drop with no code change; a build-time check lists every served movement lacking a full pair for either Trainer. | US-TP04, US-TP05, US-TP06; FR-3, FR-4, FR-20 to FR-22 |
@@ -66,6 +68,7 @@ Any product choice the interview did not settle is listed under Open Questions w
 | 21 | **Settings row before an "other" user chooses (Open Question 6):** a neutral "Not chosen yet" value, never a guessed Trainer. | US-TP11; FR-9 |
 | 22 | **Core folder provenance (Open Question 7):** keep the captain's ledger wording verbatim with no provenance file names added to the public row; the core folder's `prompts.json` counts as its generation log. | US-TP01; FR-1 |
 | 23 | **A failed save (Open Question 8):** on the US-TP10 choice, use the chosen Trainer for this session, dismiss the choice, and re-ask on the next arrival only if nothing was persisted; in Settings, keep showing the stored Trainer and say the change was not saved, as `InjuryFlagsViewModel` does for a failed save. | US-TP10, US-TP11; FR-8, FR-9 |
+| 24 | **Exercise card on small phones (captain, 2026-10-03: "keep the fix"):** on a short screen such as the 375x667 pt iPhone SE, the exercise card's pose area may shrink, never below 110 pt, so the exercise name, the compact ring and the round tracker stay visible above the controls; larger phones keep the full 220 pt card. Amends decision 3, the way decision 12 covers the rest overlay. | US-TP06, US-TP07, US-TP13; FR-10, FR-17; ADR-0008 |
 
 ## Verified facts on current main (2026-10-02)
 
@@ -270,7 +273,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 **Acceptance Criteria:**
 
 - [x] `ExerciseIllustration` resolves the effective Trainer's poses through the US-TP04 resolver and is the single source for every host (no second copy of the art logic).
-- [x] A full pair renders start on the left and end on the right, each aspect-fit to the full 600x600 canvas, equal in size, inside the card at its current height (`ExerciseDemoView.height`, 220 pt), about 150 pt per pose.
+- [x] A full pair renders start on the left and end on the right, each aspect-fit to the full 600x600 canvas, equal in size, inside the card at its current height (`ExerciseDemoView.height`, 220 pt), about 150 pt per pose; on a short screen the card may shrink, never below 110 pt, per decision 24.
 - [x] A single available pose renders centered in the card.
 - [x] No usable art (today: Prone Y-T-W Raises) renders today's per-`MovementPattern` SF-Symbol glyph with today's behavior.
 - [x] The poses are static: no flipbook, cross-fade, rep-synced change, or pulse.
@@ -290,8 +293,8 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
   3. Swap the current movement.
   4. Reach Wall Scapular Pull, then Prone Y-T-W Raises.
   5. Switch the Simulator to dark appearance and repeat step 2.
-- **Expected Result:** Steps 1-3 show the female Trainer's start and end poses side by side, filling the card without changing its height; the swap shows the substitute's poses; Wall Scapular Pull shows one centered end pose; Prone Y-T-W Raises shows the SF-Symbol glyph; dark appearance renders cleanly.
-- **Failure Indicator:** The card grows or shrinks, a pose is cropped or the pair jumps between frames, the male Trainer appears, a single pose is left-aligned, or a blank card appears.
+- **Expected Result:** Steps 1-3 show the female Trainer's start and end poses side by side, filling the card without changing its height (on a short screen it may shrink to keep the headline above the controls, decision 24); the swap shows the substitute's poses; Wall Scapular Pull shows one centered end pose; Prone Y-T-W Raises shows the SF-Symbol glyph; dark appearance renders cleanly.
+- **Failure Indicator:** The card grows, the card shrinks on a screen with room for its full height or below 110 pt (decision 24), a pose is cropped or the pair jumps between frames, the male Trainer appears, a single pose is left-aligned, or a blank card appears.
 
 ### US-TP07: Compact ring beside the exercise name for work windows and holds
 
@@ -513,7 +516,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 
 **Display**
 
-- FR-10: A full pair must render start left and end right, side by side, static, aspect-fit to the full untrimmed canvas, inside the exercise card at its current height.
+- FR-10: A full pair must render start left and end right, side by side, static, aspect-fit to the full untrimmed canvas, inside the exercise card at its current height; on a short screen the card may shrink, never below 110 pt, so the exercise name, the compact ring and the round tracker stay above the controls (decision 24).
 - FR-11: Art must render as drawn; no mirroring for side 2 of a per-side movement.
 - FR-12: The exercise card must show the art in the rep work window, the running timed hold, the idle pre-hold, and the rep-based stretch states.
 - FR-13: After a swap the card must show the substitute's art.
@@ -563,7 +566,7 @@ Each story adds a row to `docs/test-coverage.md` and an entry to `docs/implement
 ## Design Considerations
 
 - **One illustration seam.** `ExerciseIllustration` stays the single source for every host, now resolving Trainer art instead of Lottie; `ExerciseDemoView`, the work window, the hold, and the rest preview all render through it.
-- **Card first.** The poses own the card at its current 220 pt height; the countdown moves next to the exercise name, as ADR-0008 records.
+- **Card first.** The poses own the card at its current 220 pt height, which only a short screen shrinks, never below 110 pt (decision 24); the countdown moves next to the exercise name, as ADR-0008 records.
   The state tones (US-CC10) already mark every transition, so the ring no longer needs the card.
 - **Full canvas, no trimming.** Display the full 600x600 square aspect-fit; trimming transparency or fitting each pose's bounds separately breaks the shared framing and makes poses jump.
 - **Card color.** The art is drawn for `#202226`/`#EBEDF0`; the card keeps the app's `.secondarySystemBackground` (decision 13), and legibility is judged from the US-TP13 screenshots; a dedicated card color is added only if a pose reads poorly.

@@ -381,8 +381,8 @@ struct ActiveSessionView: View {
 
     /// The exercise card's height: its full `ExerciseDemoView.height` while the column fits the visible
     /// scroll area. A short screen (375x667 pt) has no room for that - a name wrapping beside the
-    /// compact ring takes more - so the card and its poses shrink, as the rest preview's do (decision
-    /// 12), until the name, the ring and the whole round tracker clear the controls.
+    /// compact ring takes more - so the card and its poses shrink (decision 24), as the rest preview's
+    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls.
     private var cardHeight: CGFloat {
         ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
     }
