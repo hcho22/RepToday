@@ -1481,7 +1481,8 @@ What landed:
   The session's Trainer travels down the player as the `\.trainer` environment value.
   The card shows the poses in every state; the work window and a running hold show an 80 pt compact `CountdownRing` beside the exercise name (`ActiveSessionView.exerciseHeadline`), and the full-card hold ring is gone.
   The ring's stroke is now inset inside its frame, so a ring is exactly its diameter (the rest ring draws 12 pt smaller than before).
-  On a short screen the player's card fits down (`ExerciseDemoView.fittedHeight`, never below 110 pt) so the name, the ring and the whole round tracker stay above the controls: on a 375x667 pt iPhone SE a name wrapping beside the ring costs the poses a few points, while a 393x852 pt iPhone 16 keeps the full 220 pt card.
+  On a short screen (player under 700 pt) the column runs at a tight rhythm at every station (`ActiveSessionView.isCompactColumn`) and the card takes the room left (`ExerciseDemoView.fittedHeight`, never below 110 pt), so the name, the ring and the whole round tracker stay above the controls; a 393x852 pt iPhone 16 keeps the full rhythm and the full 220 pt card.
+  `artifacts/reports/US-TP13/validation.md` records the per-state card heights on a 375x667 pt iPhone SE.
 - **Rest overlay (US-TP08).** `RestView` shows `currentStep`'s poses under the next-up text on transition beats, between-round rests and the switch-sides beat.
   Sizes settled from the US-TP13 captures: the ring is flexible within 96-200 pt and the pose card within 110-220 pt, and the middle of the overlay takes the height before its spacers do.
   On a 375x667 pt iPhone SE the ring lands at 141-151 pt and the pose group at 125-135 pt with both controls on screen; on a 393x852 pt iPhone 16 the ring reaches its 200 pt maximum.
