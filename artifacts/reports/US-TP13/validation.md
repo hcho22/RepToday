@@ -97,6 +97,25 @@ A name that wraps beside the ring makes the headline row taller, so on the SE th
 Starting a training hold on the SE brings the ring in beside the name, so the poses can shrink a few points as the hold starts (8.5 pt for Forearm Plank).
 At the largest accessibility text size the headline sits below the fold on the SE, exactly as the name did before (the controls grow too); it remains reachable by scrolling.
 
+### Every player state on the SE (2026-10-03)
+
+`testRoundTrackerDotsStayAboveTheFoldInEveryState` walks seven states at both sizes and appearances and fails if the tracker's dots end below the scroll area, if the SE card drops under 110 pt, or if the 393x852 card or column rhythm moves off 220 pt / 24 pt (PNGs `14-fold-*`).
+Two states did not fit before, even with the card at its 110 pt floor (`*-before.png`): Long-Lever Single-Leg Bridge, whose name wraps three lines beside the ring (dots 33.5 pt below the fold), and Kneeling Hip-Flexor Stretch running as a per-side bookend hold, with a wrapped name plus "Side 1 of 2" (dots 15 pt below).
+On a short screen (player under 700 pt) whose card would otherwise sit at its floor, the column now tightens its gaps from 24 to 16 pt and the tracker's label-to-dots gap from 8 to 4 pt, and the card takes back whatever that frees.
+
+| State, 375x667 | Rhythm | Card | Dots bottom vs fold |
+|---|---|---|---|
+| Rep work window, 3-line name (Long-Lever Single-Leg Bridge) | 16 pt | 112.5 pt | at the fold (was 33.5 pt below) |
+| Running per-side bookend hold (Kneeling Hip-Flexor Stretch) | 16 pt | 131 pt | at the fold (was 15 pt below) |
+| Idle per-side training hold (Side Plank) | 24 pt | 136 pt | at the fold |
+| Running per-side training hold (Side Plank) | 24 pt | 127.5 pt | at the fold |
+| Rep-based stretch (Cat-Cow Flow) | 24 pt | 158.5 pt | at the fold |
+| Single pose (Wall Scapular Pull) | 24 pt | 117.5 pt | at the fold |
+| No-art glyph (Prone Y-T-W Raises) | 24 pt | 117.5 pt | at the fold |
+
+Rendered on the same Simulator before and after the change, every 393x852 capture in this suite is pixel-identical apart from the live countdown digits.
+A walk through a real 20-minute session on an iPhone SE (3rd generation) Simulator, out of process, put the dots exactly at the fold in every step it reached.
+
 ## Manual QA for the captain (not run here)
 
 Physical-device checks this suite cannot make, left for the captain:
