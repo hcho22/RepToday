@@ -1492,8 +1492,9 @@ What landed:
 - **Lottie retired (US-TP12).** The package, `LottieDemoView`, the Lottie branch, `Exercise.animationName` and its two tests are gone; the project resolves no Swift package.
   `ModelsTests` and `PersistenceTests` prove an exercise and an active-session snapshot carrying `animationName` still decode, and the snapshot resumes at its saved position.
 
-- **Control contrast.** The player's two `.bordered` buttons ("+15s" on the rest overlay, "Stop hold") drew their label in the accent, 4.47:1 on the button fill in dark mode; they now use `Theme.Colors.textPrimary` (15.09:1 dark, 17.32:1 light).
-  The same pattern on four screens outside the player, and white on the dark accent in `.borderedProminent` buttons (3.38:1), are recorded for the captain in `artifacts/reports/US-TP13/validation.md`.
+- **Control contrast.** Three `.bordered` buttons drew their label in the accent, 4.47:1 on the button fill in dark mode: "+15s" on the rest overlay, "Stop hold" in the player, and "Back" in onboarding.
+  All three now use `Theme.Colors.textPrimary` (15.09:1 dark, 17.32:1 light); the app's other `.bordered` buttons already set their own label color.
+  White on the dark accent in `.borderedProminent` buttons (3.38:1) is not changed: those 17 pt semibold labels are WCAG large text only from the xLarge Dynamic Type size up, so at the default size they fall below 4.5:1, an open brand-color question recorded in `artifacts/reports/US-TP13/validation.md`.
 - **Swap re-arm race.** The work window and the hands-free bookend hold re-armed after a swap from `.onChange(of: isSwapping)`; when the engine answered before SwiftUI's next update, `isSwapping` went true and back to false inside one transaction, the handler never fired, and the substitute sat with a frozen, full countdown.
   `ActiveSessionViewModel.settledSwapCount` now counts every settled swap and both re-arms observe it (`ActiveSessionViewModelTests.testEverySettledSwapAdvancesTheSettledSwapCount`, and the swap evidence check asserts the countdown restarts).
 - **Test harness.** `HostedSurface.host` now attaches its window to the app's active window scene, sets the requested appearance on the window and the scene (so the accent color resolves to its dark variant in dark captures), and can emulate a smaller phone's safe area (`emulatingSafeArea:`).

@@ -16,7 +16,8 @@ final class TrainerSettingsViewModel {
     /// The Trainer stored for this user right now, or `nil` while unresolved or not yet read.
     private(set) var trainer: Trainer?
 
-    /// True once the profile has been read.
+    /// True once the stored profile has been read. A failed or empty read leaves it `false`, so the row
+    /// stays disabled and the screen's next `.task` reads again.
     private(set) var isLoaded = false
 
     /// True while a switch is being written.
@@ -31,16 +32,18 @@ final class TrainerSettingsViewModel {
         self.userService = userService
     }
 
-    /// The value the row shows: the effective Trainer's name, or the neutral unresolved state.
+    /// The value the row shows: the effective Trainer's name, the neutral unresolved state once a
+    /// stored profile has been read, and nothing before then.
     var valueText: String {
-        trainer?.displayName ?? TrainerChoiceCopy.notChosenValue
+        guard isLoaded else { return "" }
+        return trainer?.displayName ?? TrainerChoiceCopy.notChosenValue
     }
 
-    /// Read the stored profile. A failed or empty read leaves the row unresolved.
+    /// Read the stored profile. A failed or empty read stays unloaded rather than presenting a profile
+    /// it never read as unresolved.
     func load() async {
-        if let user = try? await userService.currentUser() {
-            trainer = Trainer.effective(for: user.profile)
-        }
+        guard let user = try? await userService.currentUser() else { return }
+        trainer = Trainer.effective(for: user.profile)
         isLoaded = true
     }
 

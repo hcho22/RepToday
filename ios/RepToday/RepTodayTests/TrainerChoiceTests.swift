@@ -106,6 +106,30 @@ final class TrainerChoiceTests: XCTestCase {
         XCTAssertEqual(other.valueText, "Not chosen yet")
     }
 
+    /// A profile that cannot be read is never presented as "Not chosen yet": the row stays unloaded (so
+    /// disabled), and the screen's next load reads again.
+    func testSettingsUnreadableProfileStaysUnloadedAndTheNextLoadRetries() async {
+        let service = ReadFailingUserService(user: user(sex: .male))
+        let model = TrainerSettingsViewModel(userService: service)
+        await model.load()
+        XCTAssertFalse(model.isLoaded)
+        XCTAssertNil(model.trainer)
+        XCTAssertNotEqual(model.valueText, TrainerChoiceCopy.notChosenValue)
+
+        await service.setReadsFail(false)
+        await model.load()
+        XCTAssertTrue(model.isLoaded)
+        XCTAssertEqual(model.trainer, .male)
+        XCTAssertEqual(model.valueText, "Male Trainer")
+    }
+
+    func testSettingsWithNoStoredUserStaysUnloaded() async {
+        let model = TrainerSettingsViewModel(userService: MockUserService(user: nil))
+        await model.load()
+        XCTAssertFalse(model.isLoaded)
+        XCTAssertNotEqual(model.valueText, TrainerChoiceCopy.notChosenValue)
+    }
+
     func testSettingsSwitchWritesThroughTheOneTrainerWriteAndSatisfiesTheChoice() async throws {
         let service = MockUserService(user: user(sex: .other))
         let model = TrainerSettingsViewModel(userService: service)
@@ -143,6 +167,25 @@ private actor SaveFailingUserService: UserServiceProtocol {
 
     func currentUser() async throws -> User? { user }
     func save(_ user: User) async throws { throw SaveFailed() }
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { user }
+    func deleteCurrentUser() async throws {}
+}
+
+/// A user service whose reads fail until told otherwise.
+private actor ReadFailingUserService: UserServiceProtocol {
+    struct ReadFailed: Error {}
+    private let user: User?
+    private var readsFail = true
+
+    init(user: User?) { self.user = user }
+
+    func setReadsFail(_ fail: Bool) { readsFail = fail }
+
+    func currentUser() async throws -> User? {
+        if readsFail { throw ReadFailed() }
+        return user
+    }
+    func save(_ user: User) async throws {}
     func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { user }
     func deleteCurrentUser() async throws {}
 }

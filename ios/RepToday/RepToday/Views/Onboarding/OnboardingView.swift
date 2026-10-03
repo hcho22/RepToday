@@ -110,6 +110,7 @@ struct OnboardingView: View {
                 Button(action: viewModel.goBack) {
                     Text("Back")
                         .font(Theme.Typography.button)
+                        .foregroundStyle(viewModel.isFinishing ? Theme.Colors.textSecondary : Theme.Colors.textPrimary)
                         .frame(maxWidth: .infinity)
                         .frame(height: Theme.Spacing.buttonHeight)
                 }

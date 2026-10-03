@@ -58,7 +58,7 @@ Heading, ring, next-up text, poses and both controls (+15s, Skip rest) stack wit
 Judged from the dark and light captures: the art reads clearly on `.secondarySystemBackground` in both appearances, so no dedicated card color was added.
 The compact ring's track (`Theme.Colors.surface`) is visible on the screen background in both appearances, as the PRD anticipated.
 
-## Control label contrast on the player
+## Control label contrast
 
 Measured from the `08-between-round-rest` and `02-running-hold-pair` captures by sampling the button fill and the label's glyph color and computing the WCAG contrast ratio.
 The labels are `Theme.Typography.button` (17 pt semibold), which is not WCAG "large text", so the bar is 4.5:1.
@@ -72,11 +72,22 @@ The labels are `Theme.Typography.button` (17 pt semibold), which is not WCAG "la
 
 Both are `.bordered` buttons whose label took the accent color; they now use the primary text token, and the gray fill keeps them visibly secondary to the prominent button beside them.
 
-Not changed here, recorded for the captain:
+One sweep of every `.bordered` button in the app found one more with the same accent-on-gray label: "Back" in onboarding (`OnboardingView.swift`).
+It is fixed the same way, with `Theme.Colors.textPrimary` (and `Theme.Colors.textSecondary` while it is disabled during the final save).
+The other three `.bordered` buttons already set their own label color and never had the defect: "Got it" on the classics note (`ReadyView.swift`, primary text), "Discard" on the resume card (`ReadyView.swift`, secondary text), and "Got it" on the foundations note (`ProgressTabView.swift`, primary text).
 
-- The same accent-on-gray `.bordered` label measures 4.47:1 in dark on four other screens outside this feature (`ReadyView.swift` two buttons, `ProgressTabView.swift`, `OnboardingView.swift`).
-- White text on the dark-mode accent in every `.borderedProminent` button ("Skip rest", "Done", "Start hold", and app-wide) measures 3.38:1 (light mode 8.72:1); it passes only the 3:1 large-text bar.
-  Fixing it means changing the dark AccentColor or the `onAccent` token, which is a brand decision.
+### White on the accent in `.borderedProminent` buttons (open brand-color question)
+
+White (`Theme.Colors.onAccent`) on the dark-mode accent `#788F9E` measures 3.38:1; in light mode, on `#2E4F61`, it measures 8.72:1.
+Every `.borderedProminent` label in the app ("Start", "Resume", "Done", "Start hold", "Skip rest", "Keep climbing", "Got it", the onboarding primary, the Coach accept buttons) uses `Theme.Typography.button`: the `headline` style, semibold, which scales with Dynamic Type.
+The app does not limit Dynamic Type, so every size applies: 14 pt (xSmall), 15, 16, 17 pt (Large, the default), 19, 21, 23, and 28-53 pt at the accessibility sizes.
+WCAG large text is at least 18 pt regular or at least 14 pt bold, and semibold (weight 600) is not bold (weight 700 and up).
+So these labels are large text only at xLarge (19 pt) and above, where the bar is 3:1 and 3.38:1 passes.
+At the default size and the three smaller ones (14-17 pt) they are not large text, the bar is 4.5:1, and 3.38:1 fails in dark mode.
+Light mode passes at every size.
+
+This is left open for the captain as a brand-color question: meeting 4.5:1 in dark mode means changing the dark AccentColor or the `onAccent` token, which this change does not do.
+The same white-on-accent pairing also draws the Theme-styled accent fills (selected duration and onboarding chips, the paywall purchase button, the Coach's user bubble), so one decision covers them too.
 
 ## Fold check (FR-17)
 
