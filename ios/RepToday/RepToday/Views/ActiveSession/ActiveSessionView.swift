@@ -396,8 +396,8 @@ struct ActiveSessionView: View {
         ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
     }
 
-    /// Whether the column runs at its tight rhythm (its gaps and the tracker's gap above its dots): on
-    /// a short screen, always. A roomy phone always keeps the full rhythm.
+    /// Whether the column runs at its tight rhythm (its gaps and the round tracker's gaps between its
+    /// lines): on a short screen, always. A roomy phone always keeps the full rhythm.
     private var isCompactColumn: Bool {
         playerHeight < Self.shortScreenHeight
     }
@@ -406,9 +406,10 @@ struct ActiveSessionView: View {
     private static let columnRhythm = Theme.Spacing.lg
     private static let compactColumnRhythm = Theme.Spacing.md
 
-    /// The round tracker's gap between its label and its dots: full, and tight on a short screen.
-    private static let dotsGap = Theme.Spacing.sm
-    private static let compactDotsGap = Theme.Spacing.xs
+    /// The round tracker's gap between its lines (its label, any side line and its dots): full, and
+    /// tight on a short screen.
+    private static let trackerGap = Theme.Spacing.sm
+    private static let compactTrackerGap = Theme.Spacing.xs
 
     /// Below this player height the screen is short (an iPhone SE's 647 pt under its status bar); every
     /// larger phone is laid out taller and never tightens the rhythm.
@@ -475,23 +476,21 @@ struct ActiveSessionView: View {
         }()
         let sideText = "Side \(viewModel.holdSide) of \(sides)"
 
-        // The gap above the dots tightens with the column (`isCompactColumn`), keeping them close under
-        // their label on a short screen.
-        return VStack(alignment: .leading, spacing: isCompactColumn ? Self.compactDotsGap : Self.dotsGap) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                Text(progressText)
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    // "Round N of M" / "Set N of M" wraps rather than truncating at the largest Dynamic
-                    // Type sizes (US-CC14, AC3).
-                    .fixedSize(horizontal: false, vertical: true)
+        // The tracker's lines tighten with the column (`isCompactColumn`), staying evenly spaced as one
+        // group on a short screen.
+        return VStack(alignment: .leading, spacing: isCompactColumn ? Self.compactTrackerGap : Self.trackerGap) {
+            Text(progressText)
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Colors.textPrimary)
+                // "Round N of M" / "Set N of M" wraps rather than truncating at the largest Dynamic
+                // Type sizes (US-CC14, AC3).
+                .fixedSize(horizontal: false, vertical: true)
 
-                if showsSide {
-                    Text(sideText)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if showsSide {
+                Text(sideText)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: Theme.Spacing.sm) {
