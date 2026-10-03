@@ -1481,6 +1481,7 @@ What landed:
   The session's Trainer travels down the player as the `\.trainer` environment value.
   The card shows the poses in every state; the work window and a running hold show an 80 pt compact `CountdownRing` beside the exercise name (`ActiveSessionView.exerciseHeadline`), and the full-card hold ring is gone.
   The ring's stroke is now inset inside its frame, so a ring is exactly its diameter (the rest ring draws 12 pt smaller than before).
+  On a short screen the player's card fits down (`ExerciseDemoView.fittedHeight`, never below 110 pt) so the name, the ring and the whole round tracker stay above the controls: on a 375x667 pt iPhone SE a name wrapping beside the ring costs the poses a few points, while a 393x852 pt iPhone 16 keeps the full 220 pt card.
 - **Rest overlay (US-TP08).** `RestView` shows `currentStep`'s poses under the next-up text on transition beats, between-round rests and the switch-sides beat.
   Sizes settled from the US-TP13 captures: the ring is flexible within 96-200 pt and the pose card within 110-220 pt, and the middle of the overlay takes the height before its spacers do.
   On a 375x667 pt iPhone SE the ring lands at 141-151 pt and the pose group at 125-135 pt with both controls on screen; on a 393x852 pt iPhone 16 the ring reaches its 200 pt maximum.
@@ -1488,6 +1489,7 @@ What landed:
   An unresolved user is held on a US-CC06 user pause while that read runs and, if still unresolved, sees `TrainerChoiceView` (two options showing each Trainer's start pose for the current movement) before any art and before the US-CC13 explainer, which follows the choice.
   A choice shows at once and is saved in the background; a failed save keeps it for the session and the next arrival asks again.
   Settings gains a Trainer section above Account (`TrainerSettingsViewModel`): the effective Trainer or "Not chosen yet", a menu of the two Trainers, and a failure line that keeps the stored Trainer.
+  The row re-reads the stored profile on every appearance, because the player's one-time choice is a second writer; an unreadable profile keeps the row disabled until a read succeeds, and a read that a switch overtook is dropped.
   `ReadyView` now hands the player `services.userService`.
 - **Lottie retired (US-TP12).** The package, `LottieDemoView`, the Lottie branch, `Exercise.animationName` and its two tests are gone; the project resolves no Swift package.
   `ModelsTests` and `PersistenceTests` prove an exercise and an active-session snapshot carrying `animationName` still decode, and the snapshot resumes at its saved position.

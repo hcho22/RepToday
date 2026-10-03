@@ -10,6 +10,10 @@ import Foundation
 ///
 /// A failed write keeps showing the stored Trainer and says the change was not saved (captain, Open
 /// Question 8), the way `InjuryFlagsViewModel` does - it never pretends the switch happened.
+///
+/// The screen reads the stored profile on every appearance, because the player's one-time choice is a
+/// second writer: an "other" user can leave Settings open on the Profile tab, choose in the player, and
+/// come back.
 @Observable
 @MainActor
 final class TrainerSettingsViewModel {
@@ -26,6 +30,9 @@ final class TrainerSettingsViewModel {
     /// A plain failure line when a switch could not be saved. `nil` in the happy path.
     private(set) var errorMessage: String?
 
+    /// Counts switches, so a read that a switch overtook never overwrites the Trainer it stored.
+    private var switchCount = 0
+
     private let userService: any UserServiceProtocol
 
     init(userService: any UserServiceProtocol) {
@@ -40,9 +47,10 @@ final class TrainerSettingsViewModel {
     }
 
     /// Read the stored profile. A failed or empty read stays unloaded rather than presenting a profile
-    /// it never read as unresolved.
+    /// it never read as unresolved, and a read that a switch overtook is dropped.
     func load() async {
-        guard let user = try? await userService.currentUser() else { return }
+        let switches = switchCount
+        guard let user = try? await userService.currentUser(), switchCount == switches else { return }
         trainer = Trainer.effective(for: user.profile)
         isLoaded = true
     }
@@ -50,6 +58,7 @@ final class TrainerSettingsViewModel {
     /// Persist `choice` as the explicit Trainer. Shows it only once the write has landed.
     func select(_ choice: Trainer) async {
         guard !isSaving else { return }
+        switchCount += 1
         isSaving = true
         defer { isSaving = false }
         errorMessage = nil

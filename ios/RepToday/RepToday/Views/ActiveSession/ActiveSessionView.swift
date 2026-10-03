@@ -43,6 +43,11 @@ struct ActiveSessionView: View {
     /// only when the persisted one-shot flag says it has never been shown.
     @State private var showExplainer = false
 
+    /// The height of the player's visible scroll area, and of everything in its column but the exercise
+    /// card, measured so the card can fit a short screen (`cardHeight`). Unmeasured, there is room.
+    @State private var scrollHeight = CGFloat.infinity
+    @State private var heightAroundCard: CGFloat = 0
+
     /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
     /// this to refresh the resumable session *without* racing the store's completion clear: a completed
     /// session leaves nothing resumable, while an abandoned one is re-read from the store.
@@ -335,23 +340,31 @@ struct ActiveSessionView: View {
                 .padding(.horizontal, Theme.Spacing.lg)
 
             if let step = viewModel.currentStep {
+                let cardHeight = cardHeight
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         blockContext(step)
                         // The card belongs to the Trainer's poses in every state (ADR-0008): the rep
                         // work window, a running or idle hold, a rep-based stretch. Any countdown sits
-                        // beside the exercise name below, so starting one never changes the card. The
-                        // no-art glyph pulses only on an idle card, as the demo slot always did.
+                        // beside the exercise name below, so starting one never changes what the card
+                        // shows (on a short screen a name the ring wraps can cost it a few points,
+                        // `cardHeight`). The no-art glyph pulses only on an idle card, as the demo slot
+                        // always did.
                         ExerciseDemoView(
                             prescription: step.prescription,
+                            height: cardHeight,
                             animatesGlyph: !(viewModel.isHolding || viewModel.currentStepAutoAdvances)
                         )
                         exerciseHeadline(step)
                         setTracker(step)
                     }
-                    .padding(Theme.Spacing.lg)
+                    .padding([.horizontal, .top], Theme.Spacing.lg)
+                    // Measured before the bottom padding: only the column's content has to show.
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { heightAroundCard = $0 }
+                    .padding(.bottom, Theme.Spacing.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
             }
 
             controls
@@ -364,6 +377,14 @@ struct ActiveSessionView: View {
         .onChange(of: viewModel.settledSwapCount) { _, _ in
             viewModel.autoStartHoldIfNeeded()
         }
+    }
+
+    /// The exercise card's height: its full `ExerciseDemoView.height` while the column fits the visible
+    /// scroll area. A short screen (375x667 pt) has no room for that - a name wrapping beside the
+    /// compact ring takes more - so the card and its poses shrink, as the rest preview's do (decision
+    /// 12), until the name, the ring and the whole round tracker clear the controls.
+    private var cardHeight: CGFloat {
+        ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
     }
 
     /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
@@ -1297,7 +1318,7 @@ private struct RestView: View {
     }
 
     /// The rest preview card's smallest and largest height.
-    static let posesHeightRange: ClosedRange<CGFloat> = 110...ExerciseDemoView.height
+    static let posesHeightRange: ClosedRange<CGFloat> = ExerciseDemoView.minHeight...ExerciseDemoView.height
 
     /// Extend (+15s) and Skip - both meeting the 60pt active-screen touch target.
     private var controls: some View {

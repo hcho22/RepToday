@@ -176,10 +176,9 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.Colors.surface)
         }
-        .task {
-            let model = trainerModel()
-            if !model.isLoaded { await model.load() }
-        }
+        // Every appearance re-reads: the player's one-time choice may have stored a Trainer while
+        // Settings sat open on the Profile tab.
+        .task { await trainerModel().load() }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.background)

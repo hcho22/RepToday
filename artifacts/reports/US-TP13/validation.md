@@ -40,6 +40,7 @@ The harness renders dark captures with the app scene in dark as well (`HostedSur
 
 Every state also asserts one focus stop per pose group and no element named after an image file or an individual pose.
 A swap showing the substitute's poses is asserted without a capture (`testSwapShowsTheSubstitutesPoses`).
+So is Settings left open on the Profile tab showing the Trainer a player choice stored once the tab returns (`testSettingsTrainerRowRereadsWhenTheTabReturns`).
 
 ## Rest overlay sizes (decision 12)
 
@@ -91,7 +92,9 @@ The same white-on-accent pairing also draws the Theme-styled accent fills (selec
 
 ## Fold check (FR-17)
 
-At default Dynamic Type on the emulated SE the exercise name and the compact ring end above the controls, as the name did before this change; the ring sits beside the name, so the headline row is no taller.
+At default Dynamic Type on the emulated SE the exercise name, the compact ring and the whole round tracker (its label and set dots) end inside the player's scroll area, above the controls, in the rep work window, a running hold, a single-pose movement and the no-art fallback.
+A name that wraps beside the ring makes the headline row taller, so on the SE the exercise card shrinks its poses to make room, never below the rest preview's 110 pt card floor; on the 393x852 phone the card keeps its full 220 pt and each pose about 160 pt.
+Starting a training hold on the SE brings the ring in beside the name, so the poses can shrink a few points as the hold starts (8.5 pt for Forearm Plank).
 At the largest accessibility text size the headline sits below the fold on the SE, exactly as the name did before (the controls grow too); it remains reachable by scrolling.
 
 ## Manual QA for the captain (not run here)

@@ -23,7 +23,8 @@ extension EnvironmentValues {
 /// flexible height, under the rest overlay's next-up preview (US-TP06/US-TP08).
 ///
 /// The card belongs to the poses (ADR-0008): the countdown ring sits beside the exercise name instead,
-/// so starting a window or a hold never changes what the card shows or its size.
+/// so starting a window or a hold never changes what the card shows. Only on a short screen, where the
+/// arriving ring can wrap the name, does the player's card give up height (`fittedHeight`).
 struct ExerciseDemoView: View {
     let prescription: PrescribedExercise
 
@@ -34,9 +35,20 @@ struct ExerciseDemoView: View {
     /// Whether the no-art glyph fallback pulses - see `ExerciseIllustration.animatesGlyph`.
     var animatesGlyph: Bool = true
 
-    /// The height of the exercise card in the player. One value for every state, so moving between
-    /// them shifts nothing below the card.
+    /// The full height of the exercise card in the player. One value for every state, so moving between
+    /// them shifts nothing below the card wherever the column fits; a short screen fits it down
+    /// (`fittedHeight`).
     static let height: CGFloat = 220
+
+    /// The smallest a card shrinks to on a short screen, in the player and the rest preview alike.
+    static let minHeight: CGFloat = 110
+
+    /// The player card's height with `room` points free for it: the full `height` when it fits,
+    /// otherwise `room`, shrinking the poses with it - but never below `minHeight`, past which the
+    /// player's column scrolls instead.
+    static func fittedHeight(room: CGFloat) -> CGFloat {
+        min(height, max(room, minHeight))
+    }
 
     var body: some View {
         ExerciseIllustration(prescription: prescription, animatesGlyph: animatesGlyph)

@@ -9,8 +9,9 @@ import SwiftUI
 /// (375x667 pt), in dark and light, and:
 /// - asserts the US-TP09 pose labels and the compact ring labels on the live accessibility tree, and
 ///   that no element exists per individual pose image;
-/// - asserts the small-phone fit: the compact ring is above the controls, and on the rest overlay the
-///   heading, ring, next-up text, poses and both controls stack without overlapping, all on screen;
+/// - asserts the small-phone fit: the compact ring and the round tracker are above the controls, and on
+///   the rest overlay the heading, ring, next-up text, poses and both controls stack without
+///   overlapping, all on screen;
 /// - writes a PNG per state, size and appearance under `artifacts/reports/US-TP13/` when run with
 ///   `REPTODAY_WRITE_EVIDENCE=1` (a temporary directory otherwise).
 @MainActor
@@ -141,14 +142,30 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         XCTAssertLessThanOrEqual(groups.count, 1, "one focus stop per pose group: \(groups)", file: file, line: line)
     }
 
-    /// On every size, the compact ring beside the name sits above the controls - visible without
-    /// scrolling - and the exercise name stays above the fold too.
+    /// The player's scroll area in the hosted window's coordinates: what shows without scrolling.
+    private func visibleScrollArea() -> CGRect? {
+        guard let root = root(), let window else { return nil }
+        func scrollView(in view: UIView) -> UIScrollView? {
+            if let scroll = view as? UIScrollView { return scroll }
+            return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
+        }
+        return scrollView(in: root).map { $0.convert($0.bounds, to: window) }
+    }
+
+    /// On every size, the compact ring beside the name and the round tracker below it (its label and
+    /// set dots) sit whole inside the player's scroll area - visible without scrolling, not cut by the
+    /// controls below them.
     private func assertRingAboveTheFold(prefix: String, primary: String, file: StaticString = #filePath, line: UInt = #line) {
-        guard let ring = frame({ $0.hasPrefix(prefix) }), let control = frame({ $0 == primary }) else {
-            return XCTFail("missing ring or \(primary); tree reads \(labels())", file: file, line: line)
+        guard let ring = frame({ $0.hasPrefix(prefix) }), let control = frame({ $0 == primary }),
+              let tracker = frame({ $0.hasPrefix("Round ") || $0.hasPrefix("Set ") }),
+              let visible = visibleScrollArea() else {
+            return XCTFail("missing ring, \(primary), tracker or the scroll area; tree reads \(labels())", file: file, line: line)
         }
         XCTAssertLessThanOrEqual(ring.maxY, control.minY, "the ring must be visible above the controls", file: file, line: line)
+        XCTAssertLessThanOrEqual(ring.maxY, visible.maxY, "the ring is cut by the bottom of the scroll area", file: file, line: line)
         XCTAssertLessThanOrEqual(ring.width, CountdownRingSize.compact + 1, "the ring must be the compact one", file: file, line: line)
+        XCTAssertLessThanOrEqual(tracker.maxY, visible.maxY + 0.5,
+                                 "the round tracker is cut by the bottom of the scroll area", file: file, line: line)
     }
 
     /// The rest overlay stacks heading, ring, next-up text, poses and both controls without overlap,
@@ -182,6 +199,10 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             assertPoseLabel("Glute Bridge, trainer showing start and end positions", exerciseName: "Glute Bridge")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
             assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
+            // A roomy phone keeps about 150 pt per pose; a short one shrinks them to fit, only so far.
+            if let poses = frame({ $0 == "Glute Bridge, trainer showing start and end positions" }) {
+                XCTAssertGreaterThanOrEqual(poses.height, variant.isSmall ? 100 : 150, "the poses shrank too far")
+            }
             try capture("01-rep-work-window-pair", variant)
         }
     }
@@ -296,6 +317,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             if let pose = frame({ $0 == "Wall Scapular Pull, trainer showing end position" }) {
                 XCTAssertEqual(pose.midX, variant.size.width / 2, accuracy: 1, "a single pose is centered")
             }
+            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
+            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("05-single-pose", variant)
         }
     }
@@ -307,6 +330,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             host(ActiveSessionView(workout: session, user: user(sex: .female)), variant)
             XCTAssertTrue(pump(until: { self.labels().contains("Prone Y-T-W Raises demonstration") }, timeout: 5), "\(labels())")
             XCTAssertFalse(labels().contains { $0.hasPrefix("Prone Y-T-W Raises, trainer showing") })
+            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "\(labels())")
+            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("06-no-art-fallback", variant)
         }
     }
@@ -444,6 +469,64 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 }
                 try capture(name, variant)
             }
+        }
+    }
+
+    /// Settings left open on the Profile tab while the player's one-time choice stores a Trainer: back on
+    /// the tab, the row shows the stored Trainer rather than the "Not chosen yet" it first read.
+    func testSettingsTrainerRowRereadsWhenTheTabReturns() throws {
+        let service = MockUserService(user: user(sex: .other))
+        let tabs = SettingsTabHarness.Selection()
+        host(
+            SettingsTabHarness(selection: tabs, settings: TrainerSettingsViewModel(userService: service))
+                .environment(\.services, ServiceContainer.mock())
+                .environment(AppState.preview(isOnboarded: true, selectedTab: .profile)),
+            Variant(size: CGSize(width: 393, height: 1400), style: .dark)
+        )
+        let trainerValue = { self.element({ $0 == "Trainer" })?.accessibilityValue }
+        XCTAssertTrue(pump(until: { trainerValue() == "Not chosen yet" }, timeout: 5), "row reads \(String(describing: trainerValue()))")
+
+        tabs.tab = .today
+        HostedSurface.pump(for: 0.5)
+        // A synchronous test, so the screen's own `.task` runs while the run loop is pumped.
+        let written = WriteFlag()
+        Task {
+            _ = try await service.saveTrainerChoice(.female)
+            written.landed = true
+        }
+        XCTAssertTrue(pump(until: { written.landed }, timeout: 5), "the player-side write never landed")
+
+        tabs.tab = .profile
+        XCTAssertTrue(pump(until: { trainerValue() == "Female Trainer" }, timeout: 5),
+                      "the row still reads \(String(describing: trainerValue())) after the Trainer was chosen elsewhere")
+    }
+}
+
+/// Set once a write made from a test's `Task` has landed.
+@MainActor
+private final class WriteFlag {
+    var landed = false
+}
+
+/// Settings pushed on a Profile tab beside a Today tab, with the selected tab driven from the test - the
+/// shape a user leaves Settings open in while they go and train.
+private struct SettingsTabHarness: View {
+    enum Tab { case today, profile }
+
+    @Observable
+    final class Selection {
+        var tab: Tab = .profile
+    }
+
+    @Bindable var selection: Selection
+    let settings: TrainerSettingsViewModel
+
+    var body: some View {
+        TabView(selection: $selection.tab) {
+            Text("Today").tag(Tab.today).tabItem { Text("Today") }
+            NavigationStack { SettingsView(trainerSettings: settings) }
+                .tag(Tab.profile)
+                .tabItem { Text("Profile") }
         }
     }
 }

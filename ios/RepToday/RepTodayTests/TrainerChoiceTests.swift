@@ -123,6 +123,38 @@ final class TrainerChoiceTests: XCTestCase {
         XCTAssertEqual(model.valueText, "Male Trainer")
     }
 
+    /// The player's one-time choice is a second writer: a load after it stored a Trainer shows that
+    /// Trainer, not the "Not chosen yet" the first load read.
+    func testSettingsLoadShowsAChoiceAnotherWriterStoredSinceTheLastLoad() async throws {
+        let service = MockUserService(user: user(sex: .other))
+        let model = TrainerSettingsViewModel(userService: service)
+        await model.load()
+        XCTAssertEqual(model.valueText, TrainerChoiceCopy.notChosenValue)
+
+        _ = try await service.saveTrainerChoice(.female)
+        await model.load()
+        XCTAssertEqual(model.trainer, .female)
+        XCTAssertEqual(model.valueText, "Female Trainer")
+    }
+
+    /// A read that started before a switch and returns after it never puts the old Trainer back.
+    func testSettingsReadOvertakenByASwitchKeepsTheSwitch() async {
+        let service = HeldReadUserService(user: user(sex: .male))
+        let model = TrainerSettingsViewModel(userService: service)
+        await model.load()
+
+        await service.holdNextRead()
+        let reading = Task { await model.load() }
+        await service.waitUntilReadIsHeld()
+        await model.select(.female)
+        XCTAssertEqual(model.trainer, .female)
+
+        await service.releaseHeldRead()
+        await reading.value
+        XCTAssertEqual(model.trainer, .female)
+        XCTAssertEqual(model.valueText, "Female Trainer")
+    }
+
     func testSettingsWithNoStoredUserStaysUnloaded() async {
         let model = TrainerSettingsViewModel(userService: MockUserService(user: nil))
         await model.load()
@@ -186,6 +218,44 @@ private actor ReadFailingUserService: UserServiceProtocol {
         return user
     }
     func save(_ user: User) async throws {}
+    func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { user }
+    func deleteCurrentUser() async throws {}
+}
+
+/// A user service that can hold one read, returning what was stored when it started, until released.
+private actor HeldReadUserService: UserServiceProtocol {
+    private var user: User?
+    private var holdsNextRead = false
+    private var heldRead: CheckedContinuation<Void, Never>?
+    private var readHeld: CheckedContinuation<Void, Never>?
+
+    init(user: User?) { self.user = user }
+
+    func holdNextRead() { holdsNextRead = true }
+
+    func waitUntilReadIsHeld() async {
+        if heldRead != nil { return }
+        await withCheckedContinuation { readHeld = $0 }
+    }
+
+    func releaseHeldRead() {
+        heldRead?.resume()
+        heldRead = nil
+    }
+
+    func currentUser() async throws -> User? {
+        let snapshot = user
+        if holdsNextRead {
+            holdsNextRead = false
+            await withCheckedContinuation { continuation in
+                heldRead = continuation
+                readHeld?.resume()
+                readHeld = nil
+            }
+        }
+        return snapshot
+    }
+    func save(_ user: User) async throws { self.user = user }
     func advancePhase(to earnedPhase: Phase, for userId: String) async throws -> User? { user }
     func deleteCurrentUser() async throws {}
 }
