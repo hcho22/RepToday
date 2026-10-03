@@ -145,6 +145,13 @@ final class ActiveSessionViewModel {
     /// two overlapping swaps of the same slot.
     private(set) var isSwapping = false
 
+    /// Counts swap requests that have finished, whatever their outcome. The player re-arms the work
+    /// window and the hands-free bookend hold when this changes. It exists because `isSwapping` alone
+    /// cannot carry that signal: an engine that answers before SwiftUI's next update flips it true and
+    /// back to false inside one transaction, so a change handler on it never fires and the substitute is
+    /// left with no countdown. A counter only ever moves forward, so every settled swap is seen.
+    private(set) var settledSwapCount = 0
+
     /// True when the most recent swap request found no safe, in-budget peer (`.noAlternative`): the
     /// original slot stays and the UI shows an honest "no alternative" state rather than an unsafe
     /// substitution. Cleared when the user advances off the exercise or requests another swap.
@@ -703,7 +710,10 @@ final class ActiveSessionViewModel {
         // A swap reshapes the slot and ends the running countdown, so any user pause is stale (US-CC06):
         // whether the swap substitutes or comes back `.noAlternative`, a fresh countdown re-arms un-paused.
         clearUserPause()
-        defer { isSwapping = false }
+        defer {
+            isSwapping = false
+            settledSwapCount += 1
+        }
 
         // A swap reshapes the slot, so any lingering rest, running hold, or running work window ends
         // without firing a completion cue. The *side* is deliberately not cleared here: a swap that

@@ -358,10 +358,11 @@ struct ActiveSessionView: View {
         }
         // A swap on a bookend hold ends the leg and lands on the substitute idle; re-arm the hands-free
         // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
-        // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. A no-op off
-        // the bookend-hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
-        .onChange(of: viewModel.isSwapping) { _, swapping in
-            if !swapping { viewModel.autoStartHoldIfNeeded() }
+        // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. Keyed on the
+        // settled-swap counter rather than `isSwapping`, which a fast swap toggles inside one update. A
+        // no-op off the bookend-hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
+        .onChange(of: viewModel.settledSwapCount) { _, _ in
+            viewModel.autoStartHoldIfNeeded()
         }
     }
 
@@ -1105,7 +1106,7 @@ private struct HoldCountdownView: View {
 /// tapped completion) and flows into the rest, firing the same accessible cue exactly once. The ticker
 /// lives here so it exists only while the window is on screen, and it drives a *pure* check
 /// (`completeWorkWindowIfElapsed`) that is a no-op until the deadline passes, so the cue can never fire
-/// early or per tick. A swap finishing (`isSwapping` back to false) re-arms the window for whatever slot
+/// early or per tick. A swap settling (`settledSwapCount` moving on) re-arms the window for whatever slot
 /// now occupies the position.
 private struct WorkWindowCountdownView: View {
     let viewModel: ActiveSessionViewModel
@@ -1131,10 +1132,11 @@ private struct WorkWindowCountdownView: View {
             font: Theme.Typography.title
         )
         // Auto-start on appear (hands-free) - and after a swap settles, where the view stays mounted so
-        // no fresh `onAppear` fires. Both are idempotent via `canStartWorkWindow`.
+        // no fresh `onAppear` fires (keyed on the settled-swap counter, which a fast swap cannot hide the
+        // way it can toggle `isSwapping` inside one update). Both are idempotent via `canStartWorkWindow`.
         .onAppear { viewModel.startWorkWindow() }
-        .onChange(of: viewModel.isSwapping) { _, swapping in
-            if !swapping { viewModel.startWorkWindow() }
+        .onChange(of: viewModel.settledSwapCount) { _, _ in
+            viewModel.startWorkWindow()
         }
         .onReceive(ticker) { date in
             currentDate = date

@@ -282,6 +282,9 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             "the card must show the substitute's poses after a swap; tree reads \(labels())"
         )
         XCTAssertFalse(labels().contains("Standard Push-Up, trainer showing start and end positions"))
+        // The substitute gets a live countdown again (a fast swap once left it frozen at full).
+        XCTAssertTrue(pump(until: { self.labels().contains("Pause session") }, timeout: 5),
+                      "the work window must restart for the substitute; tree reads \(labels())")
     }
 
     /// Wall Scapular Pull has only an end pose: one centered pose, named as the end position.
