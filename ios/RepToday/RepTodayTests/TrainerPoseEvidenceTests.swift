@@ -410,7 +410,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
     /// In every player state, the whole round tracker - its "Round N of M" / "Set N of M" label, any
     /// side line and the row of dots - shows above the controls without scrolling, on the small phone
     /// as on the default one (decision 24). The small phone gets there by shrinking the card, never
-    /// below `ExerciseDemoView.minHeight`; the default phone keeps the full card.
+    /// below `ExerciseDemoView.minHeight`, with its column at the tight rhythm in every state so the
+    /// spacing never changes between stations; the default phone keeps the full card and rhythm.
     func testRoundTrackerDotsStayAboveTheFoldInEveryState() throws {
         for state in try foldStates() {
             for variant in variants {
@@ -443,6 +444,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 if variant.isSmall {
                     XCTAssertGreaterThanOrEqual(card, ExerciseDemoView.minHeight - 0.5,
                                                 "\(state.name) \(variant.suffix): the card shrank below its floor")
+                    XCTAssertEqual(rhythm, Theme.Spacing.md, accuracy: 0.5,
+                                   "\(state.name) \(variant.suffix): a short screen keeps the tight column rhythm")
                 } else {
                     XCTAssertEqual(card, ExerciseDemoView.height, accuracy: 0.5,
                                    "\(state.name) \(variant.suffix): a roomy phone keeps the full card")

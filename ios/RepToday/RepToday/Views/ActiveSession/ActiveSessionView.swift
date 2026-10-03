@@ -44,8 +44,7 @@ struct ActiveSessionView: View {
     @State private var showExplainer = false
 
     /// The height of the player's visible scroll area, and of everything in its column but the exercise
-    /// card at the full column rhythm, measured so the card can fit a short screen (`cardHeight`).
-    /// Unmeasured, there is room.
+    /// card, measured so the card can fit a short screen (`cardHeight`). Unmeasured, there is room.
     @State private var scrollHeight = CGFloat.infinity
     @State private var heightAroundCard: CGFloat = 0
 
@@ -346,8 +345,7 @@ struct ActiveSessionView: View {
 
             if let step = viewModel.currentStep {
                 let cardHeight = cardHeight
-                let isCompact = isCompactColumn
-                let rhythm = isCompact ? Self.compactColumnRhythm : Self.columnRhythm
+                let rhythm = isCompactColumn ? Self.compactColumnRhythm : Self.columnRhythm
                 ScrollView {
                     VStack(alignment: .leading, spacing: rhythm) {
                         blockContext(step)
@@ -367,11 +365,8 @@ struct ActiveSessionView: View {
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.top, rhythm)
-                    // Measured before the bottom padding: only the column's content has to show. Stored at
-                    // the full rhythm, so tightening it cannot itself switch the tight rhythm back off.
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: {
-                        heightAroundCard = $0 + (isCompact ? Self.compactRhythmSavings : 0)
-                    }
+                    // Measured before the bottom padding: only the column's content has to show.
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { heightAroundCard = $0 }
                     .padding(.bottom, Theme.Spacing.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -394,23 +389,17 @@ struct ActiveSessionView: View {
     /// The exercise card's height: its full `ExerciseDemoView.height` while the column fits the visible
     /// scroll area. A short screen (375x667 pt) has no room for that - a name wrapping beside the
     /// compact ring takes more - so the card and its poses shrink (decision 24), as the rest preview's
-    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls.
-    ///
-    /// Some states still do not fit with the card at its 110 pt floor - a long name wrapping beside the
-    /// ring, or a per-side hold's extra "Side N of 2" line under a wrapped name. Only then, and only on a
-    /// short screen, the column tightens its rhythm (`isCompactColumn`) and the card takes back whatever
-    /// that frees beyond the tracker's needs. A roomy phone always keeps the full rhythm and card.
+    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls. The
+    /// short screen's column also runs at its tight rhythm (`isCompactColumn`) at every station, so
+    /// its spacing never changes from one to the next.
     private var cardHeight: CGFloat {
-        let freed = isCompactColumn ? Self.compactRhythmSavings : 0
-        return ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard + freed)
+        ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
     }
 
-    /// Whether the column runs at its tight rhythm (its gaps and the tracker's gap above its dots): on a
-    /// short screen, when even the card's floor at the full rhythm would leave the round tracker below
-    /// the fold.
+    /// Whether the column runs at its tight rhythm (its gaps and the tracker's gap above its dots): on
+    /// a short screen, always. A roomy phone always keeps the full rhythm.
     private var isCompactColumn: Bool {
         playerHeight < Self.shortScreenHeight
-            && scrollHeight - heightAroundCard < ExerciseDemoView.minHeight
     }
 
     /// The column's gap between its pieces, and above the first: full, and tight on a short screen.
@@ -420,10 +409,6 @@ struct ActiveSessionView: View {
     /// The round tracker's gap between its label and its dots: full, and tight on a short screen.
     private static let dotsGap = Theme.Spacing.sm
     private static let compactDotsGap = Theme.Spacing.xs
-
-    /// What the tight rhythm frees: the three gaps between block line, card, headline and tracker, the
-    /// space above the block line, and the tracker's gap above its dots.
-    private static let compactRhythmSavings = 4 * (columnRhythm - compactColumnRhythm) + (dotsGap - compactDotsGap)
 
     /// Below this player height the screen is short (an iPhone SE's 647 pt under its status bar); every
     /// larger phone is laid out taller and never tightens the rhythm.

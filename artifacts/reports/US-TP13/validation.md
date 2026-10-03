@@ -99,22 +99,25 @@ At the largest accessibility text size the headline sits below the fold on the S
 
 ### Every player state on the SE (2026-10-03)
 
-`testRoundTrackerDotsStayAboveTheFoldInEveryState` walks seven states at both sizes and appearances and fails if the tracker's dots end below the scroll area, if the SE card drops under 110 pt, or if the 393x852 card or column rhythm moves off 220 pt / 24 pt (PNGs `14-fold-*`).
+`testRoundTrackerDotsStayAboveTheFoldInEveryState` walks seven states at both sizes and appearances and fails if the tracker's dots end below the scroll area, if the SE card drops under 110 pt, if the SE column rhythm moves off 16 pt, or if the 393x852 card or column rhythm moves off 220 pt / 24 pt (PNGs `14-fold-*`).
 Two states did not fit before, even with the card at its 110 pt floor (`*-before.png`): Long-Lever Single-Leg Bridge, whose name wraps three lines beside the ring (dots 33.5 pt below the fold), and Kneeling Hip-Flexor Stretch running as a per-side bookend hold, with a wrapped name plus "Side 1 of 2" (dots 15 pt below).
-On a short screen (player under 700 pt) whose card would otherwise sit at its floor, the column now tightens its gaps from 24 to 16 pt and the tracker's label-to-dots gap from 8 to 4 pt, and the card takes back whatever that frees.
+On a short screen (player under 700 pt) the column now always runs at its tight rhythm: 16 pt gaps instead of 24 pt, and a 4 pt label-to-dots gap instead of 8 pt.
+So the spacing between block line, card, headline and tracker never changes from one station to the next, and only the card's height follows the room left, never below 110 pt.
+An earlier version tightened the rhythm only for states that would otherwise sit at the card's floor, so the gaps changed between stations; the captain chose steady spacing instead (2026-10-03).
 
 | State, 375x667 | Rhythm | Card | Dots bottom vs fold |
 |---|---|---|---|
 | Rep work window, 3-line name (Long-Lever Single-Leg Bridge) | 16 pt | 112.5 pt | at the fold (was 33.5 pt below) |
 | Running per-side bookend hold (Kneeling Hip-Flexor Stretch) | 16 pt | 131 pt | at the fold (was 15 pt below) |
-| Idle per-side training hold (Side Plank) | 24 pt | 136 pt | at the fold |
-| Running per-side training hold (Side Plank) | 24 pt | 127.5 pt | at the fold |
-| Rep-based stretch (Cat-Cow Flow) | 24 pt | 158.5 pt | at the fold |
-| Single pose (Wall Scapular Pull) | 24 pt | 117.5 pt | at the fold |
-| No-art glyph (Prone Y-T-W Raises) | 24 pt | 117.5 pt | at the fold |
+| Idle per-side training hold (Side Plank) | 16 pt | 172 pt | at the fold |
+| Running per-side training hold (Side Plank) | 16 pt | 163.5 pt | at the fold |
+| Rep-based stretch (Cat-Cow Flow) | 16 pt | 194.5 pt | at the fold |
+| Single pose (Wall Scapular Pull) | 16 pt | 153.5 pt | at the fold |
+| No-art glyph (Prone Y-T-W Raises) | 16 pt | 153.5 pt | at the fold |
 
-Rendered on the same Simulator before and after the change, every 393x852 capture in this suite is pixel-identical apart from the live countdown digits.
-A walk through a real 20-minute session on an iPhone SE (3rd generation) Simulator, out of process, put the dots exactly at the fold in every step it reached.
+On 393x852 every state keeps the 24 pt rhythm and the 220 pt card, and this run's 393x852 `14-fold-*` captures match the committed ones apart from one live countdown digit, so the 393x852 baselines are unchanged.
+The 375x667 captures of the player states (01-06) and of the Trainer choice, which shows the player behind its scrim (10), were refreshed for the tight rhythm; the rest overlays (07-09) cover the player, so their captures were left as they were.
+Before the steady-rhythm change, a walk through a real 20-minute session on an iPhone SE (3rd generation) Simulator, out of process, put the dots exactly at the fold in every step it reached.
 
 ## Manual QA for the captain (not run here)
 
