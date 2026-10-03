@@ -48,6 +48,10 @@ struct ActiveSessionView: View {
     @State private var scrollHeight = CGFloat.infinity
     @State private var heightAroundCard: CGFloat = 0
 
+    /// The height the player is laid out in, below the status bar - what tells a short screen
+    /// (`isCompactColumn`). Unmeasured, the screen is tall.
+    @State private var playerHeight = CGFloat.infinity
+
     /// Reports, as the player dismisses, whether the session completed (US-K04). The Ready Screen uses
     /// this to refresh the resumable session *without* racing the store's completion clear: a completed
     /// session leaves nothing resumable, while an abandoned one is re-read from the store.
@@ -341,8 +345,9 @@ struct ActiveSessionView: View {
 
             if let step = viewModel.currentStep {
                 let cardHeight = cardHeight
+                let rhythm = isCompactColumn ? Self.compactColumnRhythm : Self.columnRhythm
                 ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                    VStack(alignment: .leading, spacing: rhythm) {
                         blockContext(step)
                         // The card belongs to the Trainer's poses in every state (ADR-0008): the rep
                         // work window, a running or idle hold, a rep-based stretch. Any countdown sits
@@ -358,9 +363,12 @@ struct ActiveSessionView: View {
                         exerciseHeadline(step)
                         setTracker(step)
                     }
-                    .padding([.horizontal, .top], Theme.Spacing.lg)
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.top, rhythm)
                     // Measured before the bottom padding: only the column's content has to show.
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { heightAroundCard = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height - cardHeight } action: { height in
+                        if Self.isMeasurementChange(height, from: heightAroundCard) { heightAroundCard = height }
+                    }
                     .padding(.bottom, Theme.Spacing.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -369,6 +377,7 @@ struct ActiveSessionView: View {
 
             controls
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { playerHeight = $0 }
         // A swap on a bookend hold ends the leg and lands on the substitute idle; re-arm the hands-free
         // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
         // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. Keyed on the
@@ -382,9 +391,41 @@ struct ActiveSessionView: View {
     /// The exercise card's height: its full `ExerciseDemoView.height` while the column fits the visible
     /// scroll area. A short screen (375x667 pt) has no room for that - a name wrapping beside the
     /// compact ring takes more - so the card and its poses shrink (decision 24), as the rest preview's
-    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls.
+    /// do (decision 12), until the name, the ring and the whole round tracker clear the controls. The
+    /// short screen's column also runs at its tight rhythm (`isCompactColumn`) at every station, so
+    /// its spacing never changes from one to the next.
     private var cardHeight: CGFloat {
         ExerciseDemoView.fittedHeight(room: scrollHeight - heightAroundCard)
+    }
+
+    /// Whether the column runs at its tight rhythm (its gaps and the round tracker's gaps between its
+    /// lines): on a short screen, always. A roomy phone always keeps the full rhythm.
+    private var isCompactColumn: Bool {
+        playerHeight < Self.shortScreenHeight
+    }
+
+    /// The column's gap between its pieces, and above the first: full, and tight on a short screen.
+    private static let columnRhythm = Theme.Spacing.lg
+    private static let compactColumnRhythm = Theme.Spacing.md
+
+    /// The round tracker's gap between its lines (its label, any side line and its dots): full, and
+    /// tight on a short screen.
+    private static let trackerGap = Theme.Spacing.sm
+    private static let compactTrackerGap = Theme.Spacing.xs
+
+    /// Below this player height the screen is short (an iPhone SE's 647 pt under its status bar); every
+    /// larger phone is laid out taller and never tightens the rhythm.
+    private static let shortScreenHeight: CGFloat = 700
+
+    /// The smallest change in a measured height worth acting on: far below a pixel, far above the
+    /// floating-point noise between two layouts of the same column.
+    private static let measurementTolerance: CGFloat = 0.01
+
+    /// Whether `measured` is a real change from the `stored` height around the card. Two layouts of the
+    /// same column can measure a hair apart (iOS 18: 189.66666666666669, then 189.66666666666663), and
+    /// feeding that noise back into the card's height would relayout forever.
+    static func isMeasurementChange(_ measured: CGFloat, from stored: CGFloat) -> Bool {
+        abs(measured - stored) > measurementTolerance
     }
 
     /// The block this exercise belongs to and its position across the session ("Warm-up · 1 of 8").
@@ -448,7 +489,9 @@ struct ActiveSessionView: View {
         }()
         let sideText = "Side \(viewModel.holdSide) of \(sides)"
 
-        return VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        // The tracker's lines tighten with the column (`isCompactColumn`), staying evenly spaced as one
+        // group on a short screen.
+        return VStack(alignment: .leading, spacing: isCompactColumn ? Self.compactTrackerGap : Self.trackerGap) {
             Text(progressText)
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Colors.textPrimary)

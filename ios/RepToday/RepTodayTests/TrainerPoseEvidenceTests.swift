@@ -336,6 +336,155 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         }
     }
 
+    // MARK: - Small-phone fold (decision 24)
+
+    /// One player state the fold test visits: the session that lands on it, the pose group it shows,
+    /// and the element that says the state is live.
+    private struct FoldState {
+        let name: String
+        let session: Workout
+        let posesLabel: String
+        var exerciseName: String { String(posesLabel.prefix { $0 != "," }).replacingOccurrences(of: " demonstration", with: "") }
+        let ready: (String) -> Bool
+        var startsHold = false
+    }
+
+    private func foldStates() throws -> [FoldState] {
+        let pair = ", trainer showing start and end positions"
+        return [
+            // A long name wraps beside the compact ring - the tallest rep headline.
+            FoldState(
+                name: "rep-work-window-wrapped-name",
+                session: workout([("Strength", .strength, [try prescription("hinge_long_lever_bridge", sets: 4)])]),
+                posesLabel: "Long-Lever Single-Leg Bridge\(pair)",
+                ready: { $0.hasPrefix("Work window, ") }
+            ),
+            // An auto-started per-side bookend hold adds "Side 1 of 2" under the set label.
+            FoldState(
+                name: "running-per-side-bookend-hold",
+                session: workout([
+                    ("Warm-up", .warmup, [try prescription("mobility_kneeling_hip_flexor")]),
+                    ("Strength", .strength, [try prescription("push_wall")]),
+                ]),
+                posesLabel: "Kneeling Hip-Flexor Stretch\(pair)",
+                ready: { $0.hasPrefix("Hold, ") }
+            ),
+            // A per-side training hold before Start hold, then running with its ring and side line.
+            FoldState(
+                name: "pre-hold-per-side-training",
+                session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
+                posesLabel: "Side Plank\(pair)",
+                ready: { $0.hasPrefix("Start hold") }
+            ),
+            FoldState(
+                name: "running-per-side-training-hold",
+                session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
+                posesLabel: "Side Plank\(pair)",
+                ready: { $0.hasPrefix("Start hold") },
+                startsHold: true
+            ),
+            FoldState(
+                name: "rep-based-stretch",
+                session: workout([
+                    ("Warm-up", .warmup, [try prescription("mobility_cat_cow")]),
+                    ("Strength", .strength, [try prescription("push_wall")]),
+                ]),
+                posesLabel: "Cat-Cow Flow\(pair)",
+                ready: { $0 == "Complete set" || $0 == "Finish exercise" }
+            ),
+            FoldState(
+                name: "single-pose",
+                session: workout([("Strength", .strength, [try prescription("pull_wall_scapular_pull", sets: 4)])]),
+                posesLabel: "Wall Scapular Pull, trainer showing end position",
+                ready: { $0.hasPrefix("Work window, ") }
+            ),
+            FoldState(
+                name: "no-art-fallback",
+                session: workout([("Strength", .strength, [try prescription("pull_ytw", sets: 4)])]),
+                posesLabel: "Prone Y-T-W Raises demonstration",
+                ready: { $0.hasPrefix("Work window, ") }
+            ),
+        ]
+    }
+
+    /// In every player state, the whole round tracker - its "Round N of M" / "Set N of M" label, any
+    /// side line and the row of dots - shows above the controls without scrolling, on the small phone
+    /// as on the default one (decision 24). The small phone gets there by shrinking the card, never
+    /// below `ExerciseDemoView.minHeight`, with its column at the tight rhythm in every state so the
+    /// spacing never changes between stations; the default phone keeps the full rhythm and, wherever
+    /// its column fits, the full card.
+    func testRoundTrackerDotsStayAboveTheFoldInEveryState() throws {
+        for state in try foldStates() {
+            for variant in variants {
+                host(ActiveSessionView(workout: state.session, user: user(sex: .female)), variant)
+                XCTAssertTrue(pump(until: { self.labels().contains(where: state.ready) }, timeout: 10),
+                              "\(state.name) \(variant.suffix) never became live; tree reads \(labels())")
+                if state.startsHold {
+                    activate(startHoldLabel())
+                    XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
+                }
+                HostedSurface.pump(for: 0.5) // let the card settle on its fitted height
+                XCTAssertTrue(labels().contains(state.posesLabel), "\(state.name): no \"\(state.posesLabel)\" in \(labels())")
+                // The card sits one column gap below the block line and one above the exercise title, so
+                // its height is read off those two neighbours rather than off the poses inside it (a pose
+                // pair is width-bound on a roomy phone, and the glyph fallback is smaller than its card).
+                guard let tracker = frame({ $0.hasPrefix("Round ") || $0.hasPrefix("Set ") }),
+                      let block = frame({ $0.contains(", exercise ") }),
+                      let title = frame({ $0.hasPrefix(state.exerciseName + ", ") && !$0.contains("trainer showing") }),
+                      let visible = visibleScrollArea() else {
+                    XCTFail("\(state.name) \(variant.suffix): missing tracker, block line, title or scroll area; tree reads \(labels())")
+                    continue
+                }
+                // The column's rhythm is the gap above the block line: full, or tight on a short screen.
+                let rhythm = block.minY - visible.minY
+                let card = title.minY - block.maxY - 2 * rhythm
+                XCTAssertLessThanOrEqual(
+                    tracker.maxY, visible.maxY + 0.5,
+                    "\(state.name) \(variant.suffix): the round tracker's dots sit \(tracker.maxY - visible.maxY) pt below the fold"
+                )
+                if variant.isSmall {
+                    XCTAssertGreaterThanOrEqual(card, ExerciseDemoView.minHeight - 0.5,
+                                                "\(state.name) \(variant.suffix): the card shrank below its floor")
+                    XCTAssertEqual(rhythm, Theme.Spacing.md, accuracy: 0.5,
+                                   "\(state.name) \(variant.suffix): a short screen keeps the tight column rhythm")
+                } else {
+                    // A roomy phone keeps the full card unless the column cannot fit it (a Simulator
+                    // runtime with a taller top inset can leave a long name short of room), and then
+                    // the card gives up only what the tracker needs: it ends exactly at the fold.
+                    let fitsFullCard = card >= ExerciseDemoView.height - 0.5
+                    let shrankOnlyToFit = abs(tracker.maxY - visible.maxY) <= 0.5 && card >= ExerciseDemoView.minHeight - 0.5
+                    XCTAssertTrue(fitsFullCard || shrankOnlyToFit,
+                                  "\(state.name) \(variant.suffix): a roomy phone keeps the full card (card \(card) pt, tracker bottom \(tracker.maxY), fold \(visible.maxY))")
+                    XCTAssertEqual(rhythm, Theme.Spacing.lg, accuracy: 0.5,
+                                   "\(state.name) \(variant.suffix): a roomy phone keeps the full column rhythm")
+                }
+                print("US-TP13 FOLD \(state.name) \(variant.suffix): rhythm \(rhythm) pt, card \(card) pt, tracker bottom \(tracker.maxY), fold \(visible.maxY)")
+                try capture("14-fold-\(state.name)", variant)
+            }
+        }
+    }
+
+    /// The card's fit reads back the height measured around it, so a measurement that only differs by
+    /// floating-point noise must not count as a change: on iOS 18 the 375x667 idle training hold measured
+    /// 189.66666666666669 and 189.66666666666663 in turn, and acting on each flip relaid the player out
+    /// forever. A real change, down to one pixel on a 3x screen, still counts.
+    func testCardFitIgnoresMeasurementNoiseButNotARealChange() {
+        let noisy: (CGFloat, CGFloat) = (189.66666666666669, 189.66666666666663)
+        XCTAssertNotEqual(noisy.0, noisy.1, "the iOS 18 pair must really differ, or this proves nothing")
+        XCTAssertFalse(ActiveSessionView.isMeasurementChange(noisy.1, from: noisy.0))
+        XCTAssertFalse(ActiveSessionView.isMeasurementChange(noisy.0, from: noisy.1))
+        XCTAssertFalse(ActiveSessionView.isMeasurementChange(noisy.0, from: noisy.0))
+
+        XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0, from: 0), "the first measurement counts")
+        XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 + 1.0 / 3, from: noisy.0), "one 3x pixel taller counts")
+        XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 - 1.0 / 3, from: noisy.0), "one 3x pixel shorter counts")
+    }
+
+    /// The idle hold's primary control: "Start hold", or its per-side spoken form.
+    private func startHoldLabel() -> String {
+        labels().first { $0.hasPrefix("Start hold") } ?? "Start hold"
+    }
+
     // MARK: - Rest overlay (US-TP08)
 
     /// The transition beat and the between-round rest show the upcoming movement's poses, and fit.
