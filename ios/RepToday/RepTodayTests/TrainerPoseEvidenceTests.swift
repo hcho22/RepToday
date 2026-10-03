@@ -278,7 +278,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         XCTAssertTrue(
             pump(until: {
                 self.labels().contains { $0.hasSuffix(", trainer showing start and end positions") && !$0.hasPrefix("Standard Push-Up") }
-            }, timeout: 30), // the swap runs the real engine off the main actor; generous under a loaded suite
+            }, timeout: 10), // the swap runs the real engine off the main actor
             "the card must show the substitute's poses after a swap; tree reads \(labels())"
         )
         XCTAssertFalse(labels().contains("Standard Push-Up, trainer showing start and end positions"))

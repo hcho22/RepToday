@@ -46,7 +46,7 @@ Measured by the suite's fit assertions (`US-TP13 REST FIT` lines in the test log
 
 | Size | Rest ring | Pose group | Controls |
 | --- | --- | --- | --- |
-| 393x852 | 199-200 pt | 160 pt | on screen, below the poses |
+| 393x852 | 197-200 pt | 160 pt | on screen, below the poses |
 | 375x667 (SE) | 141-151 pt | 125-135 pt | on screen, below the poses |
 
 Heading, ring, next-up text, poses and both controls (+15s, Skip rest) stack without overlap on both sizes.

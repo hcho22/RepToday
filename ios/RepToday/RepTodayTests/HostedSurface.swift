@@ -51,7 +51,17 @@ enum HostedSurface {
         // A real key window is what makes the view lay out and draw its layers at all; sizing the
         // window to the full content height lays out the whole of a scrolling surface rather than
         // just the screenful that would be visible.
-        let window = UIWindow(frame: host.view.frame)
+        //
+        // The window joins the app's own window scene. A window built with only a frame belongs to no
+        // scene: on its own it still draws, but once the test host's SwiftUI window is up that window
+        // keeps key status, the detached one never becomes the active scene, and a surface hosted late
+        // in a full run reads as backgrounded (paused countdowns, a frozen accessibility tree).
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow()
+        window.frame = host.view.frame
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()

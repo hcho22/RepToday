@@ -1492,5 +1492,8 @@ What landed:
 - **Lottie retired (US-TP12).** The package, `LottieDemoView`, the Lottie branch, `Exercise.animationName` and its two tests are gone; the project resolves no Swift package.
   `ModelsTests` and `PersistenceTests` prove an exercise and an active-session snapshot carrying `animationName` still decode, and the snapshot resumes at its saved position.
 
+- **Test harness.** `HostedSurface.host` now attaches its window to the app's active window scene and can emulate a smaller phone's safe area (`emulatingSafeArea:`).
+  A frame-only window belonged to no scene: hosted late in a full run, behind the test host's own key window, it read as backgrounded, so countdowns paused and the accessibility tree froze (found when the swap evidence check passed alone and failed in the full suite).
+
 Evidence and the app-size measurement are in `artifacts/reports/US-TP13/validation.md` and `artifacts/reports/US-TP02/validation.md`.
 Physical-device behavior (art legibility from the floor, live VoiceOver, Reduce Motion) is the captain's manual QA.
