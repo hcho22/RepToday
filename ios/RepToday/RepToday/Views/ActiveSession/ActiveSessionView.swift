@@ -580,6 +580,10 @@ struct ActiveSessionView: View {
             } label: {
                 Text("Stop hold")
                     .font(Theme.Typography.button)
+                    // The bordered style would draw the label in the accent, which in dark mode reads at
+                    // 4.47:1 on the button's fill - under the 4.5:1 a 17 pt label needs. The primary text
+                    // color keeps it legible while the gray fill keeps it visibly secondary.
+                    .foregroundStyle(Theme.Colors.textPrimary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
@@ -1301,6 +1305,9 @@ private struct RestView: View {
             } label: {
                 Text("+\(ActiveSessionViewModel.restExtension)s")
                     .font(Theme.Typography.button)
+                    // Primary text rather than the bordered style's accent, which reads at 4.47:1 on this
+                    // fill in dark mode (see "Stop hold").
+                    .foregroundStyle(Theme.Colors.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: Theme.Spacing.workoutTouchTarget)
             }

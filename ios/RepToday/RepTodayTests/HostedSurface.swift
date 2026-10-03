@@ -62,6 +62,11 @@ enum HostedSurface {
             ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow()
         window.frame = host.view.frame
+        // The appearance goes on the scene too: SwiftUI resolves the app's accent color against the
+        // window scene, which otherwise keeps the Simulator's own appearance, so a dark capture would
+        // draw light-mode accents. Every host call sets it, so no suite inherits another's appearance.
+        window.overrideUserInterfaceStyle = style
+        scene?.traitOverrides.userInterfaceStyle = style
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()

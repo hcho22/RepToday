@@ -36,6 +36,8 @@ Settings and the largest-text capture are hosted at full content height (`*-x140
 | `12-settings-trainer-not-chosen` | Settings, unresolved "other" | value "Not chosen yet" |
 | `13-largest-dynamic-type-work-window` | `accessibility5`, Long-Lever Single-Leg Bridge, SE width | the name wraps beside the compact ring and never runs under it |
 
+The harness renders dark captures with the app scene in dark as well (`HostedSurface.host` sets the scene's trait override), so the accent color resolves to its dark variant exactly as it does on a device.
+
 Every state also asserts one focus stop per pose group and no element named after an image file or an individual pose.
 A swap showing the substitute's poses is asserted without a capture (`testSwapShowsTheSubstitutesPoses`).
 
@@ -55,6 +57,26 @@ Heading, ring, next-up text, poses and both controls (+15s, Skip rest) stack wit
 
 Judged from the dark and light captures: the art reads clearly on `.secondarySystemBackground` in both appearances, so no dedicated card color was added.
 The compact ring's track (`Theme.Colors.surface`) is visible on the screen background in both appearances, as the PRD anticipated.
+
+## Control label contrast on the player
+
+Measured from the `08-between-round-rest` and `02-running-hold-pair` captures by sampling the button fill and the label's glyph color and computing the WCAG contrast ratio.
+The labels are `Theme.Typography.button` (17 pt semibold), which is not WCAG "large text", so the bar is 4.5:1.
+
+| Label | Appearance | Before | After |
+| --- | --- | --- | --- |
+| "+15s" (rest overlay) | dark | 4.47:1 (accent `#788F9E` on fill `#262629`) | 15.09:1 (`Theme.Colors.textPrimary`) |
+| "+15s" (rest overlay) | light | 7.20:1 (accent `#2E4F61` on fill `#E9E9EB`) | 17.32:1 |
+| "Stop hold" (player) | dark | 4.47:1 (same accent on the same fill) | 15.09:1 |
+| "Stop hold" (player) | light | 7.20:1 | 17.32:1 |
+
+Both are `.bordered` buttons whose label took the accent color; they now use the primary text token, and the gray fill keeps them visibly secondary to the prominent button beside them.
+
+Not changed here, recorded for the captain:
+
+- The same accent-on-gray `.bordered` label measures 4.47:1 in dark on four other screens outside this feature (`ReadyView.swift` two buttons, `ProgressTabView.swift`, `OnboardingView.swift`).
+- White text on the dark-mode accent in every `.borderedProminent` button ("Skip rest", "Done", "Start hold", and app-wide) measures 3.38:1 (light mode 8.72:1); it passes only the 3:1 large-text bar.
+  Fixing it means changing the dark AccentColor or the `onAccent` token, which is a brand decision.
 
 ## Fold check (FR-17)
 

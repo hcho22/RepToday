@@ -1492,7 +1492,9 @@ What landed:
 - **Lottie retired (US-TP12).** The package, `LottieDemoView`, the Lottie branch, `Exercise.animationName` and its two tests are gone; the project resolves no Swift package.
   `ModelsTests` and `PersistenceTests` prove an exercise and an active-session snapshot carrying `animationName` still decode, and the snapshot resumes at its saved position.
 
-- **Test harness.** `HostedSurface.host` now attaches its window to the app's active window scene and can emulate a smaller phone's safe area (`emulatingSafeArea:`).
+- **Control contrast.** The player's two `.bordered` buttons ("+15s" on the rest overlay, "Stop hold") drew their label in the accent, 4.47:1 on the button fill in dark mode; they now use `Theme.Colors.textPrimary` (15.09:1 dark, 17.32:1 light).
+  The same pattern on four screens outside the player, and white on the dark accent in `.borderedProminent` buttons (3.38:1), are recorded for the captain in `artifacts/reports/US-TP13/validation.md`.
+- **Test harness.** `HostedSurface.host` now attaches its window to the app's active window scene, sets the requested appearance on the window and the scene (so the accent color resolves to its dark variant in dark captures), and can emulate a smaller phone's safe area (`emulatingSafeArea:`).
   A frame-only window belonged to no scene: hosted late in a full run, behind the test host's own key window, it read as backgrounded, so countdowns paused and the accessibility tree froze (found when the swap evidence check passed alone and failed in the full suite).
 
 Evidence and the app-size measurement are in `artifacts/reports/US-TP13/validation.md` and `artifacts/reports/US-TP02/validation.md`.
