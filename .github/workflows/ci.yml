@@ -6,7 +6,9 @@ name: CI
 #   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
 #   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
-#                    compile of the XCUITest scheme.
+#                    compile of the XCUITest scheme (Xcode 16.4, iOS 18 simulator).
+#   ios-26 (macos) - the same build + unit tests + XCUITest compile on Xcode 26.5
+#                    and an iOS 26 simulator.
 #
 # The exact npm and xcodebuild commands below were run locally in the worktree and
 # confirmed green before being encoded here (sink: 88 tests; iOS unit: 932 tests).
@@ -181,6 +183,99 @@ jobs:
         run: >-
           python3 tools/validate-app-bundle-metadata.py
           "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator/RepToday.app/Info.plist"
+
+      - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/RepToday/RepToday.xcodeproj \
+            -scheme RepTodayUITests \
+            -configuration Debug \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            $SIGNING_FLAGS \
+            build-for-testing
+
+  # ---------------------------------------------------------------------------
+  # Toolchain 2b: the same iOS unit gate on the current OS - iOS 26.
+  #
+  # The `ios` job above covers the minimum-supported side (Xcode 16.4, an iOS 18
+  # runtime). Most users run iOS 26, and a test race once failed only on the iOS 26.5
+  # simulator and reached main unnoticed (fixed in #191), so this job runs the same
+  # build + unit suite on a hosted macos-26 runner with Xcode 26.5 (the pin Immerse's
+  # native workflow uses on the same image). It runs in parallel with `ios`.
+  #
+  # It follows the `ios` job's patterns: xcodegen generation, the same cert-less
+  # ad-hoc SIGNING_FLAGS, and a concrete simulator UDID instead of a name match. The
+  # OS pin is the major version only: it picks an available iPhone on any iOS 26.x
+  # runtime (newest first), creating one against the newest iOS 26.x runtime if the
+  # image ships none, so a 26.x point update on the image does not break it. The
+  # bundle-metadata and Trainer-art checks are OS-independent and stay in `ios` only.
+  # ---------------------------------------------------------------------------
+  ios-26:
+    name: iOS app (iOS 26)
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      SIGNING_FLAGS: >-
+        CODE_SIGNING_ALLOWED=YES
+        CODE_SIGNING_REQUIRED=NO
+        CODE_SIGN_IDENTITY=-
+        DEVELOPMENT_TEAM=
+        PROVISIONING_PROFILE_SPECIFIER=
+      DERIVED_DATA_PATH: ${{ github.workspace }}/build/ci-derived-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project from project.yml
+        working-directory: ios/RepToday
+        run: xcodegen generate
+
+      - name: Select iOS 26 Simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list runtimes available
+          # Newest iOS 26.x runtime key first; within it prefer an iPhone 17, then any iPhone.
+          udid=$(xcrun simctl list devices available -j \
+            | jq -r '[ .devices | to_entries[]
+                       | select(.key | test("SimRuntime\\.iOS-26-"))
+                       | { key, v: (.key | capture("iOS-26-(?<m>[0-9]+)").m | tonumber), d: .value[] }
+                       | select(.d.isAvailable and (.d.name | startswith("iPhone"))) ]
+                     | sort_by([ -.v, (if .d.name == "iPhone 17" then 0 else 1 end) ])
+                     | first | .d.udid // empty')
+          if [ -z "$udid" ]; then
+            runtime=$(xcrun simctl list runtimes available -j \
+              | jq -r '[ .runtimes[] | select(.identifier | test("SimRuntime\\.iOS-26-")) ]
+                       | sort_by(.version | split(".") | map(tonumber)) | last | .identifier // empty')
+            if [ -z "$runtime" ]; then
+              echo "::error::No iOS 26 simulator runtime on this image"
+              exit 1
+            fi
+            echo "No available iOS 26 iPhone simulator; creating one against ${runtime}"
+            udid=$(xcrun simctl create 'iPhone 17' com.apple.CoreSimulator.SimDeviceType.iPhone-17 "$runtime")
+          fi
+          xcrun simctl boot "$udid" || true
+          xcrun simctl list devices | grep "$udid"
+          echo "DESTINATION=platform=iOS Simulator,id=${udid}" >> "$GITHUB_ENV"
+
+      - name: Build & run unit tests (RepToday scheme)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/RepToday/RepToday.xcodeproj \
+            -scheme RepToday \
+            -configuration Debug \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            $SIGNING_FLAGS \
+            clean test
 
       - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
         run: |
