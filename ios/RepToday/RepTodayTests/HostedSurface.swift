@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import XCTest
 
 /// The one place that hosts a production SwiftUI surface in a real key window and lets it settle, so
 /// that whatever a test reads next - the pixels or the accessibility tree - comes off a view that has
@@ -129,6 +130,26 @@ enum HostedSurface {
         while Date() < deadline {
             RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
+    }
+
+    /// Suspends until `condition` holds, failing the test if `timeout` passes first.
+    ///
+    /// This is the settling an `async` test needs instead of `pump(for:)`. Its body is itself a
+    /// main-actor job, so a nested run-loop turn cannot run other main-actor work - a hosted view's
+    /// `.task`, a button's `Task`, the SwiftUI update that follows - and pumping would only wait out
+    /// the clock. Suspending hands the main actor back so that work actually runs.
+    static func settle(
+        until condition: () -> Bool, timeout: TimeInterval = settleInterval,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(
+            condition(), "Timed out after \(timeout)s waiting for the hosted surface to settle",
+            file: file, line: line
+        )
     }
 }
 

@@ -499,18 +499,6 @@ final class ProgressTabSnapshotTests: XCTestCase {
         }
     }
 
-    /// Suspends until `condition` holds, giving main-actor work (a hosted view's `.task`, a button's
-    /// purchase `Task`, the SwiftUI update that follows) the turns a synchronous run-loop pump cannot.
-    private func settle(
-        until condition: () -> Bool, timeout: TimeInterval = HostedSurface.settleInterval
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition(), Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        XCTAssertTrue(condition(), "Timed out after \(timeout)s waiting for the hosted surface to settle")
-    }
-
     private func firstScrollView(in view: UIView) -> UIScrollView? {
         if let scrollView = view as? UIScrollView { return scrollView }
         for subview in view.subviews {
@@ -584,17 +572,17 @@ final class ProgressTabSnapshotTests: XCTestCase {
         // Buy the way a user does: only once the paywall's own `.task` catalog load has finished and
         // the plan is on screen, then by activating that plan's button. Calling `purchase` straight
         // after hosting raced that load - `HostedSurface.host` pumps the run loop synchronously from
-        // this main-actor test, so the load cannot finish inside it, and on iOS 26 (where SwiftUI
+        // this async main-actor test, so the load cannot finish inside it, and on iOS 26 (where SwiftUI
         // starts a `.task` eagerly) it is still in flight, so `purchase`'s `isBusy` guard dropped the
         // call. Suspending here is what lets the load and the unlock hand-off actually run.
-        try await settle(until: { !paywallViewModel.isBusy && !paywallViewModel.plans.isEmpty })
+        try await HostedSurface.settle(until: { !paywallViewModel.isBusy && !paywallViewModel.plans.isEmpty })
         let plan = SubscriptionPlan.samples[0]
         let planButton = try XCTUnwrap(AccessibilityTree.element(
             whereLabel: { $0.hasPrefix("\(plan.period.displayName), \(plan.priceLine)") },
             in: paywallWindow
         ))
         XCTAssertTrue(planButton.accessibilityActivate())
-        try await settle(until: { callbackSubscription != nil })
+        try await HostedSurface.settle(until: { callbackSubscription != nil })
 
         XCTAssertEqual(authority.subscription, grant.subscription)
         XCTAssertEqual(callbackSubscription, grant.subscription)
