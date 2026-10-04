@@ -568,8 +568,21 @@ final class ProgressTabSnapshotTests: XCTestCase {
             size: CGSize(width: 393, height: 852)
         )
         renderWindow = paywallWindow
-        await paywallViewModel.purchase(SubscriptionPlan.samples[0])
-        HostedSurface.pump(for: HostedSurface.settleInterval)
+
+        // Buy the way a user does: only once the paywall's own `.task` catalog load has finished and
+        // the plan is on screen, then by activating that plan's button. Calling `purchase` straight
+        // after hosting raced that load - `HostedSurface.host` pumps the run loop synchronously from
+        // this async main-actor test, so the load cannot finish inside it, and on iOS 26 (where SwiftUI
+        // starts a `.task` eagerly) it is still in flight, so `purchase`'s `isBusy` guard dropped the
+        // call. Suspending here is what lets the load and the unlock hand-off actually run.
+        try await HostedSurface.settle(until: { !paywallViewModel.isBusy && !paywallViewModel.plans.isEmpty })
+        let plan = SubscriptionPlan.samples[0]
+        let planButton = try XCTUnwrap(AccessibilityTree.element(
+            whereLabel: { $0.hasPrefix("\(plan.period.displayName), \(plan.priceLine)") },
+            in: paywallWindow
+        ))
+        XCTAssertTrue(planButton.accessibilityActivate())
+        try await HostedSurface.settle(until: { callbackSubscription != nil })
 
         XCTAssertEqual(authority.subscription, grant.subscription)
         XCTAssertEqual(callbackSubscription, grant.subscription)

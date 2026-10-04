@@ -93,11 +93,7 @@ final class PaywallViewModelTests: XCTestCase {
         surface.window.makeKeyAndVisible()
 
         func settle(until condition: () -> Bool) async throws {
-            let deadline = Date().addingTimeInterval(3)
-            while !condition(), Date() < deadline {
-                try await Task.sleep(nanoseconds: 10_000_000)
-            }
-            XCTAssertTrue(condition())
+            try await HostedSurface.settle(until: condition, timeout: 3)
             try await Task.sleep(nanoseconds: 700_000_000)
             surface.host.view.layoutIfNeeded()
         }

@@ -570,13 +570,20 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Your session drives itself") } }, timeout: 5),
                           "the explainer follows the choice: \(labels())")
             XCTAssertFalse(labels().contains("Choose your Trainer"))
+            // The choice is stored in the background (`TrainerSessionModel.choose`), so the art and the
+            // explainer can show before the write lands: read the store until it does, not once.
             let storedExpectation = expectation(description: "stored")
             Task {
-                let stored = try? await service.currentUser()
-                XCTAssertEqual(stored?.profile.trainer, .female)
+                var stored: Trainer?
+                for _ in 0..<50 {
+                    stored = try? await service.currentUser()?.profile.trainer
+                    if stored == .female { break }
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+                XCTAssertEqual(stored, .female)
                 storedExpectation.fulfill()
             }
-            wait(for: [storedExpectation], timeout: 5)
+            wait(for: [storedExpectation], timeout: 6)
         }
     }
 
