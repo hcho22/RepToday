@@ -164,7 +164,7 @@ struct StrengthGraduationRevealView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: Theme.Spacing.workoutTouchTarget)
         }
-        .buttonStyle(.borderedProminent)
+        .accentFilledButtonStyle()
         .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityLabel("Keep climbing")
         .accessibilityHint("Dismisses this and returns to Rep Today")

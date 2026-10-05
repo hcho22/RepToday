@@ -137,7 +137,7 @@ struct ContinuousCircuitExplainerView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: Theme.Spacing.workoutTouchTarget)
         }
-        .buttonStyle(.borderedProminent)
+        .accentFilledButtonStyle()
         .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .accessibilityLabel("Got it")
         .accessibilityHint("Dismisses this introduction and starts your session")

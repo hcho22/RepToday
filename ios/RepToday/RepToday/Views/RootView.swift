@@ -241,7 +241,7 @@ struct ProfileRowLabel: View {
                     .padding(.horizontal, Theme.Spacing.sm)
                     .padding(.vertical, Theme.Spacing.xs)
                     .background(
-                        Theme.Colors.accent.opacity(0.12),
+                        Theme.Colors.accentBadgeFill,
                         in: Capsule()
                     )
             }

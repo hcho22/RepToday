@@ -38,15 +38,22 @@ enum HostedSurface {
     /// Simulator's own, so a smaller phone can be rendered faithfully on whatever device the suite runs
     /// on - a 375x667 pt iPhone SE has a 20 pt status bar, not the iPhone 16's taller top inset. The
     /// hosting controller's `additionalSafeAreaInsets` absorbs the difference between the two.
+    ///
+    /// `level: .elevated` renders the surface as a presented sheet does: dark appearance lifts its
+    /// system backgrounds (#1C1C1E behind the content, #2C2C2E under grouped rows), which is what a
+    /// sheet's contrast has to be measured against.
     static func host<V: View>(
         _ view: V, size: CGSize, settleFor interval: TimeInterval = settleInterval,
-        style: UIUserInterfaceStyle = .dark, emulatingSafeArea safeArea: UIEdgeInsets? = nil
+        style: UIUserInterfaceStyle = .dark, level: UIUserInterfaceLevel = .base,
+        emulatingSafeArea safeArea: UIEdgeInsets? = nil
     ) -> (host: UIHostingController<V>, window: UIWindow) {
         let host = UIHostingController(rootView: view)
         // Dark by default (every committed baseline is dark). A suite that needs the other appearance
         // asks for it here, *before* first layout: switching a hosted surface afterwards leaves layers
-        // drawn in the old appearance, which composites as a mixed image.
+        // drawn in the old appearance, which composites as a mixed image. The interface level follows
+        // the same rule.
         host.overrideUserInterfaceStyle = style
+        host.traitOverrides.userInterfaceLevel = level
         host.view.frame = CGRect(origin: .zero, size: size)
 
         // A real key window is what makes the view lay out and draw its layers at all; sizing the

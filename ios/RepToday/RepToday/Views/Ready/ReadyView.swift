@@ -235,7 +235,7 @@ struct ReadyView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: Theme.Spacing.buttonHeight)
         }
-        .buttonStyle(.borderedProminent)
+        .accentFilledButtonStyle()
         .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         .padding(Theme.Spacing.lg)
         .background(Theme.Colors.background)
@@ -275,7 +275,7 @@ private struct DurationChip: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .frame(minWidth: Theme.Spacing.minTouchTarget, minHeight: Theme.Spacing.minTouchTarget)
                 .background(
-                    isSelected ? Theme.Colors.accent : Theme.Colors.surface,
+                    isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
                     in: Capsule()
                 )
         }
@@ -368,7 +368,7 @@ private struct ResumeSessionCard: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }
-                .buttonStyle(.borderedProminent)
+                .accentFilledButtonStyle()
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .accessibilityLabel("Resume session")
 

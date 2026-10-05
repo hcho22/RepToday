@@ -180,7 +180,7 @@ struct CoachDataDisclosureView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: Theme.Spacing.workoutTouchTarget)
             }
-            .buttonStyle(.borderedProminent)
+            .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(CoachDataDisclosureCopy.acknowledge)
             .accessibilityHint("Agrees to send your messages to OpenAI and opens the coach")

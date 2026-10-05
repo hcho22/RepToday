@@ -669,7 +669,7 @@ struct ActiveSessionView: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
-            .buttonStyle(.borderedProminent)
+            .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             // A timed movement always shows its timer as the primary action; a swap in flight makes it
             // momentarily unstartable (US-O03) without letting the button morph into a different one.
@@ -693,7 +693,7 @@ struct ActiveSessionView: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
-            .buttonStyle(.borderedProminent)
+            .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel("Done")
             .accessibilityHint("Ends this set early and moves on")
@@ -708,7 +708,7 @@ struct ActiveSessionView: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: Theme.Spacing.workoutTouchTarget)
             }
-            .buttonStyle(.borderedProminent)
+            .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel(completeButtonTitle)
         }
@@ -792,7 +792,7 @@ struct ActiveSessionView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: Theme.Spacing.workoutTouchTarget)
                 }
-                .buttonStyle(.borderedProminent)
+                .accentFilledButtonStyle()
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .accessibilityLabel("Done")
             }
@@ -836,7 +836,7 @@ struct ActiveSessionView: View {
                 .frame(minHeight: Theme.Spacing.workoutTouchTarget)
                 .padding(.horizontal, Theme.Spacing.xs)
                 .background(
-                    isSelected ? Theme.Colors.accent : Theme.Colors.surface,
+                    isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
                     in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
                 )
         }
@@ -1389,7 +1389,7 @@ private struct RestView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: Theme.Spacing.workoutTouchTarget)
             }
-            .buttonStyle(.borderedProminent)
+            .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .accessibilityLabel("Skip rest")
         }

@@ -131,7 +131,8 @@ struct InjuryFlagsView: View {
                         Task { await viewModel.retryLoad(preselecting: preselect) }
                     }
                     .font(Theme.Typography.button)
-                    .foregroundStyle(Theme.Colors.accent)
+                    // Presented as the coach's sheet, this row sits on dark appearance's raised #2C2C2E.
+                    .foregroundStyle(Theme.Colors.accentOnElevatedSurface)
                     .frame(minHeight: Theme.Spacing.minTouchTarget)
                     .accessibilityLabel(InjuryFlagsCopy.retry)
                     .accessibilityHint("Reads your saved areas again")
@@ -147,7 +148,7 @@ struct InjuryFlagsView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: Theme.Spacing.buttonHeight)
                         .background(
-                            viewModel.canSave ? Theme.Colors.accent : Theme.Colors.background,
+                            viewModel.canSave ? Theme.Colors.accentFill : Theme.Colors.background,
                             in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
                         )
                 }

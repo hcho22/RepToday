@@ -87,7 +87,7 @@ struct CoachSyntheticQAView: View {
                         }
                         .font(Theme.Typography.button)
                         .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight)
-                        .buttonStyle(.borderedProminent)
+                        .accentFilledButtonStyle()
                         .disabled(!configurationEnabled || !viewModel.canSend)
                     }
                     if viewModel.isSending { ProgressView("Awaiting bounded Coach request") }

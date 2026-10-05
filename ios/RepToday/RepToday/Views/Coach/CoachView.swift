@@ -432,7 +432,7 @@ private struct MessageBubble: View {
                 .padding(.horizontal, Theme.Spacing.md)
                 .padding(.vertical, Theme.Spacing.sm)
                 .background(
-                    isUser ? Theme.Colors.accent : Theme.Colors.surface,
+                    isUser ? Theme.Colors.accentFill : Theme.Colors.surface,
                     in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
                 )
                 .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
