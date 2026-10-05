@@ -25,10 +25,14 @@ enum Theme {
         /// luminances). See `artifacts/reports/dark-accent-contrast/validation.md`.
         static let accentFill = Color("AccentFill")
 
-        /// Accent text on a raised grouped row - an inset-grouped list row inside a presented sheet,
-        /// which dark appearance lifts to #2C2C2E, where `accent` falls short of 4.5:1. Identical to
-        /// `accent` in light appearance.
-        static let accentOnElevatedSurface = Color("AccentOnElevatedSurface")
+        /// Accent text on a grouped row that a presented sheet may raise. At the base level it is
+        /// `accent`; only at the elevated level (a sheet, which dark appearance lifts to #2C2C2E where
+        /// `accent` falls short of 4.5:1) does it resolve to the lighter `AccentOnElevatedSurface`.
+        /// Identical to `accent` in light appearance.
+        static let accentOnElevatedSurface = Color(uiColor: UIColor { traits in
+            let name = traits.userInterfaceLevel == .elevated ? "AccentOnElevatedSurface" : "AccentColor"
+            return UIColor(named: name, in: nil, compatibleWith: traits) ?? .tintColor
+        })
 
         /// The faint accent wash behind an accent-colored badge caption (the "Premium" tag): 12% of the
         /// accent in light appearance, 8% in dark so the caption on it keeps 4.5:1.

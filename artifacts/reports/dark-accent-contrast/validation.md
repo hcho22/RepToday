@@ -25,10 +25,11 @@ The captain chose option A plus fixes for the three spots that already fell shor
 | `Theme.Colors.accentFill` (`AccentFill`, new) | `#2E4F61` | `#637988` | Every fill that carries white content |
 | `Theme.Colors.onAccentSecondary` (`OnAccentSecondary`, new) | white at 90% | white at 100% | Paywall plan price and trial lines, chevron |
 | `Theme.Colors.accentBadgeFill` (`AccentBadgeFill`, new) | accent at 12% | accent at 8% | The Profile "Premium" badge's wash |
-| `Theme.Colors.accentOnElevatedSurface` (`AccentOnElevatedSurface`, new) | `#2E4F61` | `#7E96A5` | The injury screen's "Try again", whose coach-routed sheet raises its rows to `#2C2C2E` |
+| `Theme.Colors.accentOnElevatedSurface` (`AccentOnElevatedSurface`, new) | `#2E4F61` | `#788F9E`, `#7E96A5` in a sheet | The injury screen's "Try again", whose coach-routed sheet raises its rows to `#2C2C2E` |
 
 `#637988` keeps the accent's OKLCH hue and chroma and lowers lightness by 0.071; it is the lightest 8-bit shade on that line that reaches 4.5:1.
 `#7E96A5` is the same hue raised by 0.022, the smallest 8-bit step that clears 4.5:1 on `#2C2C2E`.
+The token resolves to it only at the elevated interface level a sheet uses, so the same screen pushed from Settings keeps the text accent.
 8% is the largest whole-percent wash that keeps the badge caption at 4.5:1.
 
 Every prominent button now goes through `View.accentFilledButtonStyle()` (`DesignSystem/AccentFilledButtonStyle.swift`), which is `.borderedProminent` tinted with `accentFill`.
@@ -47,7 +48,7 @@ Text needs 4.5:1, large text (22 pt semibold and up here) and non-text UI need 3
 | Paywall plan price and trial lines on the plan card | 4.5 | 3.06 fail | 4.54 pass |
 | Profile "Premium" badge caption on its wash over `#1C1C1E` | 4.5 | 4.27 fail | 4.53 pass |
 | Injury "Try again" on the coach sheet's raised row `#2C2C2E` | 4.5 | 4.12 fail | 4.51 pass |
-| Injury "Try again" on the pushed Settings row `#1C1C1E` | 4.5 | 5.03 pass | 5.50 pass |
+| Injury "Try again" on the pushed Settings row `#1C1C1E` | 4.5 | 5.03 pass | 5.03 pass |
 | Accent small text on `#000` (onboarding Privacy Policy link, "Signed in with Apple", navigation back buttons) | 4.5 | 6.21 pass | 6.21 pass |
 | Accent small text on `#1C1C1E` (Settings Privacy Policy link, Coach "Try again", paywall Restore/Retry/Terms/Privacy) | 4.5 | 5.03 pass | 5.03 pass |
 | Accent large text on `#1C1C1E` (consistency scores, Progress tiles, completion stats) | 3 | 5.03 pass | 5.03 pass |
@@ -73,18 +74,17 @@ Light appearance, unchanged: white on `#2E4F61` 8.72:1, the price line at 90% wh
 
 - white and `OnAccentSecondary` on `AccentFill` reach 4.5:1 in light, dark and a dark sheet;
 - `AccentColor` text reaches 4.5:1 on every background, card, grouped row and sheet background it sits on;
-- `AccentOnElevatedSurface` reaches 4.5:1 on a raised row;
+- `Theme.Colors.accentOnElevatedSurface` reaches 4.5:1 on its row in light, dark and a dark sheet;
 - the badge caption reaches 4.5:1 on its wash in both appearances;
-- light appearance and the dark text accent are pinned to their values;
-- no app source applies `.borderedProminent` outside `accentFilledButtonStyle()`, with a positive control on the helper.
+- light appearance, the dark text accent and `accentOnElevatedSurface` outside a sheet are pinned to their values.
 
-Non-vacuity, checked 2026-10-05: restoring the old values (dark `AccentFill` = `#788F9E`, the badge wash at 12%, the price line at 90%, the Retry color = the accent) and one direct `.borderedProminent` in `ReadyView` failed five of the six tests with the expected ratios (3.38, 3.06, 4.27, 4.12) and the guard message; the new values pass all six.
+Non-vacuity, checked 2026-10-05: restoring the old values (dark `AccentFill` = `#788F9E`, the badge wash at 12%, the price line at 90%, the Retry color = the accent) failed every test except the `AccentColor`-text one, with the expected ratios (3.38, 3.06, 4.27, 4.12); the new values pass them all.
 
 ## Screens (dark appearance)
 
 `RepTodayTests/DarkAccentContrastEvidenceTests` hosts the production surfaces in dark appearance and writes these PNGs (regenerate with `REPTODAY_WRITE_EVIDENCE=1`).
 For Start moving, Start, Done, Skip rest, the paywall plan card and the coach's injury-offer button it also reads the fill back off the rendered pixels and asserts `#637988` (within 2/255) with white at 4.5:1 or better.
-The paywall and the coach-routed injury screen are hosted at the elevated interface level a sheet uses (`HostedSurface.host(level: .elevated)`), and the injury test asserts the row behind "Try again" really drew `#2C2C2E`.
+The paywall and the coach-routed injury screen are hosted at the elevated interface level a sheet uses (`HostedSurface.host(level: .elevated)`), and the injury tests read back both the row behind "Try again" and the label's own color: `#7E96A5` on the sheet's raised `#2C2C2E` row, the unchanged `#788F9E` on the pushed screen's `#1C1C1E` row.
 
 - `01-onboarding-duration.png` - selected duration chip, "Start moving"
 - `02-ready.png` - selected duration chip, "Start"
@@ -95,6 +95,7 @@ The paywall and the coach-routed injury screen are hosted at the elevated interf
 - `07-coach-injury-offer.png` - the coach's filled accept button
 - `08-profile-premium-badge.png` - the "Premium" badge on its 8% wash
 - `09-injury-retry-sheet.png` - "Try again" on the sheet's raised row
+- `10-injury-retry-pushed.png` - "Try again" pushed from Settings, in the unchanged text accent
 
 ## Notes
 

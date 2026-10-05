@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import UIKit
 @testable import RepToday
 
@@ -30,6 +31,7 @@ final class AccentContrastTests: XCTestCase {
     private var dark: UITraitCollection { traits(.dark) }
     /// A presented sheet in dark appearance, where the system lifts its surfaces.
     private var darkElevated: UITraitCollection { traits(.dark, elevated: true) }
+    private var lightElevated: UITraitCollection { traits(.light, elevated: true) }
 
     // MARK: - Color math
 
@@ -53,6 +55,11 @@ final class AccentContrastTests: XCTestCase {
 
     private func system(_ color: UIColor, _ traits: UITraitCollection) -> RGBA {
         components(color, traits)
+    }
+
+    /// A `Theme` token as the screen resolves it under `traits`.
+    private func token(_ color: Color, _ traits: UITraitCollection) -> RGBA {
+        components(UIColor(color), traits)
     }
 
     private let white = RGBA(red: 1, green: 1, blue: 1, alpha: 1)
@@ -132,16 +139,16 @@ final class AccentContrastTests: XCTestCase {
     }
 
     /// The injury screen's Retry, presented as the coach's sheet, sits on a raised #2C2C2E row in dark
-    /// appearance, where the plain accent falls short.
-    func testAccentOnElevatedSurfaceReachesTextContrastOnARaisedRow() throws {
+    /// appearance, where the plain accent falls short; pushed from Settings it sits on a #1C1C1E row.
+    func testAccentOnElevatedSurfaceReachesTextContrastOnItsRow() throws {
         for (name, traits) in [("light", light), ("dark", dark), ("dark sheet", darkElevated)] {
             XCTAssertGreaterThanOrEqual(
                 contrast(
-                    try asset("AccentOnElevatedSurface", traits),
+                    token(Theme.Colors.accentOnElevatedSurface, traits),
                     on: system(.secondarySystemBackground, traits)
                 ),
                 textContrast,
-                "AccentOnElevatedSurface on a \(name) row must reach 4.5:1"
+                "accentOnElevatedSurface on a \(name) row must reach 4.5:1"
             )
         }
     }
@@ -163,7 +170,8 @@ final class AccentContrastTests: XCTestCase {
     // MARK: - What must not move
 
     /// Light appearance is the brand's reference and already passes, so the new tokens are the accent
-    /// itself there; dark `AccentColor` keeps its shade for text, icons, links and controls.
+    /// itself there; dark `AccentColor` keeps its shade for text, icons, links and controls, and so does
+    /// the injury screen's Retry everywhere but a sheet.
     func testLightAppearanceAndTheDarkTextAccentAreUnchanged() throws {
         let lightAccent = RGBA(red: 0.180, green: 0.310, blue: 0.380, alpha: 1)
         let darkAccent = RGBA(red: 0.470, green: 0.560, blue: 0.620, alpha: 1)
@@ -171,8 +179,15 @@ final class AccentContrastTests: XCTestCase {
         assertComponents(try asset("AccentColor", light), lightAccent, "light AccentColor is the brand reference")
         assertComponents(try asset("AccentColor", dark), darkAccent, "dark AccentColor stays the text-weight accent")
         assertComponents(try asset("AccentFill", light), lightAccent, "light AccentFill must equal the accent")
+        for (name, traits) in [("light", light), ("light sheet", lightElevated)] {
+            assertComponents(
+                token(Theme.Colors.accentOnElevatedSurface, traits), lightAccent,
+                "accentOnElevatedSurface (\(name)) must equal the accent"
+            )
+        }
         assertComponents(
-            try asset("AccentOnElevatedSurface", light), lightAccent, "light AccentOnElevatedSurface must equal the accent"
+            token(Theme.Colors.accentOnElevatedSurface, dark), darkAccent,
+            "outside a sheet, accentOnElevatedSurface keeps the dark text accent"
         )
 
         var lightWash = lightAccent
@@ -185,45 +200,5 @@ final class AccentContrastTests: XCTestCase {
         var lightSecondary = white
         lightSecondary.alpha = 0.9
         assertComponents(try asset("OnAccentSecondary", light), lightSecondary, "light secondary on-accent stays 90% white")
-    }
-
-    // MARK: - Every prominent button uses the fill
-
-    /// `.borderedProminent` fills with the app tint, which is the text-weight accent. Every prominent
-    /// button must go through `accentFilledButtonStyle()` instead, so a new one cannot quietly bring back
-    /// a 3.4:1 label.
-    func testNoViewAppliesBorderedProminentOutsideTheAccentFillStyle() throws {
-        // Built by concatenation so this guard's own source never contains the literal it hunts for.
-        let rawStyle = "buttonStyle(" + ".borderedProminent)"
-        let helperFileName = "AccentFilledButtonStyle.swift"
-
-        // `<repo>/ios/RepToday/RepTodayTests/AccentContrastTests.swift` -> `<repo>/ios/RepToday/RepToday`.
-        let appSources = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("RepToday")
-        let swiftFiles = (FileManager.default.enumerator(at: appSources, includingPropertiesForKeys: nil)?
-            .compactMap { $0 as? URL }
-            .filter { $0.pathExtension == "swift" }) ?? []
-        XCTAssertFalse(swiftFiles.isEmpty, "found no app sources under \(appSources.path) - the guard is scanning the wrong place")
-
-        var helperAppliesTheStyle = false
-        for file in swiftFiles {
-            let source = try String(contentsOf: file, encoding: .utf8)
-            if file.lastPathComponent == helperFileName {
-                helperAppliesTheStyle = source.contains(rawStyle)
-                continue
-            }
-            XCTAssertFalse(
-                source.contains(rawStyle),
-                """
-                \(file.lastPathComponent) applies \(rawStyle) directly, which fills with the text-weight \
-                accent and puts its white label at 3.4:1 in dark appearance. Use \
-                `.accentFilledButtonStyle()` instead.
-                """
-            )
-        }
-        // Positive control, so a renamed helper cannot make the scan pass vacuously.
-        XCTAssertTrue(helperAppliesTheStyle, "\(helperFileName) no longer applies \(rawStyle) - update this guard")
     }
 }

@@ -93,6 +93,33 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         return (Int(bytes[0]), Int(bytes[1]), Int(bytes[2]))
     }
 
+    /// The lightest 8-bit sRGB color the capture drew inside `rect` (in points). For text lighter than
+    /// its row, that is the fully covered interior of a glyph stroke: the text's own color.
+    private func lightestPixel(in rect: CGRect, of image: UIImage) throws -> (red: Int, green: Int, blue: Int) {
+        let scaled = CGRect(
+            x: rect.minX * image.scale, y: rect.minY * image.scale,
+            width: rect.width * image.scale, height: rect.height * image.scale
+        ).integral
+        let region = try XCTUnwrap(image.cgImage?.cropping(to: scaled))
+        var bytes = [UInt8](repeating: 0, count: region.width * region.height * 4)
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress, width: region.width, height: region.height, bitsPerComponent: 8,
+                bytesPerRow: region.width * 4, space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.draw(region, in: CGRect(x: 0, y: 0, width: region.width, height: region.height))
+        }
+        var lightest = (red: 0, green: 0, blue: 0)
+        for offset in stride(from: 0, to: bytes.count, by: 4) {
+            let candidate = (red: Int(bytes[offset]), green: Int(bytes[offset + 1]), blue: Int(bytes[offset + 2]))
+            if candidate.red + candidate.green + candidate.blue > lightest.red + lightest.green + lightest.blue {
+                lightest = candidate
+            }
+        }
+        return lightest
+    }
+
     private func contrastWithWhite(_ color: (red: Int, green: Int, blue: Int)) -> Double {
         func linear(_ channel: Int) -> Double {
             let value = Double(channel) / 255
@@ -273,7 +300,19 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         try capture("08-profile-premium-badge", size: CGSize(width: 393, height: 300))
     }
 
-    /// The injury screen as the coach's sheet, after a failed read: Retry on the raised #2C2C2E row.
+    /// Asserts the row behind the injury screen's Retry and the color Retry's label drew on it.
+    private func assertRetry(
+        in image: UIImage, row expectedRow: (red: Int, green: Int, blue: Int),
+        text expectedText: (red: Int, green: Int, blue: Int), file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let retry = try XCTUnwrap(frame { $0 == InjuryFlagsCopy.retry }, "\(labels())", file: file, line: line)
+        let row = try pixel(at: CGPoint(x: retry.maxX - 4, y: retry.midY), in: image)
+        assertClose(row, expectedRow, "the row behind Retry", file: file, line: line)
+        assertClose(try lightestPixel(in: retry, of: image), expectedText, "Retry's label", file: file, line: line)
+    }
+
+    /// The injury screen as the coach's sheet, after a failed read: Retry on the raised #2C2C2E row,
+    /// in the lighter `AccentOnElevatedSurface` shade.
     func testInjuryRetryOnTheSheetsRaisedRow() async throws {
         let viewModel = InjuryFlagsViewModel(userService: MockUserService(user: nil))
         await viewModel.load()
@@ -284,8 +323,18 @@ final class DarkAccentContrastEvidenceTests: XCTestCase {
         )
         XCTAssertTrue(pump(until: { self.labels().contains(InjuryFlagsCopy.retry) }), "\(labels())")
         let image = try capture("09-injury-retry-sheet", size: CGSize(width: 393, height: 1000))
-        let retry = try XCTUnwrap(frame { $0 == InjuryFlagsCopy.retry })
-        let row = try pixel(at: CGPoint(x: retry.maxX - 4, y: retry.midY), in: image)
-        assertClose(row, (0x2C, 0x2C, 0x2E), "the sheet's raised row behind Retry")
+        try assertRetry(in: image, row: (0x2C, 0x2C, 0x2E), text: (0x7E, 0x96, 0xA5))
+    }
+
+    /// The same screen pushed from Settings at the base level: Retry keeps the dark text accent on its
+    /// #1C1C1E row, like every other accent link there.
+    func testInjuryRetryPushedFromSettingsKeepsTheTextAccent() async throws {
+        let viewModel = InjuryFlagsViewModel(userService: MockUserService(user: nil))
+        await viewModel.load()
+        XCTAssertTrue(viewModel.loadFailed)
+        host(NavigationStack { InjuryFlagsView(viewModel: viewModel) }, size: CGSize(width: 393, height: 1000))
+        XCTAssertTrue(pump(until: { self.labels().contains(InjuryFlagsCopy.retry) }), "\(labels())")
+        let image = try capture("10-injury-retry-pushed", size: CGSize(width: 393, height: 1000))
+        try assertRetry(in: image, row: (0x1C, 0x1C, 0x1E), text: (0x78, 0x8F, 0x9E))
     }
 }
