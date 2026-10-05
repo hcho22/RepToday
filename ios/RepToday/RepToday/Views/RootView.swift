@@ -247,7 +247,7 @@ struct ProfileRowLabel: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        HStack(alignment: .profileRowTitleCenter, spacing: Theme.Spacing.md) {
             ProfileRowIconView(icon: icon)
                 .dynamicTypeSize(...ProfileRowIcon.largestTextSize)
 
@@ -261,6 +261,7 @@ struct ProfileRowLabel: View {
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .alignmentGuide(.profileRowTitleCenter) { $0[VerticalAlignment.center] }
                 if !dynamicTypeSize.isAccessibilitySize {
                     Spacer(minLength: 0)
                 }
@@ -293,6 +294,18 @@ struct ProfileRowLabel: View {
             in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
         )
     }
+}
+
+private extension VerticalAlignment {
+    /// The vertical center of a Profile row's title, so the glyph and chevron sit on the title's line
+    /// even when the badge moves under it.
+    enum ProfileRowTitleCenter: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat {
+            context[VerticalAlignment.center]
+        }
+    }
+
+    static let profileRowTitleCenter = VerticalAlignment(ProfileRowTitleCenter.self)
 }
 
 /// A Profile row's glyph, centered in a fixed-width column so a wide glyph never pushes its title right.
