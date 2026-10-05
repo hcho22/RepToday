@@ -3,8 +3,9 @@ import SwiftUI
 import UIKit
 @testable import RepToday
 
-/// A count's noun agrees with the count - "1 session", "0 sessions", "3 sessions" - in `CountWording`
-/// and on the Progress tab's count copy that reads through it, both on screen and to VoiceOver.
+/// A count's noun agrees with the count - "1 session", "0 sessions", "3 sessions" - in `CountWording`,
+/// on the Progress tab's count copy that reads through it, both on screen and to VoiceOver, and in the
+/// remaining time a session's countdown ring speaks.
 @MainActor
 final class CountWordingTests: XCTestCase {
 
@@ -101,5 +102,32 @@ final class CountWordingTests: XCTestCase {
         assertContains(labels, "3 sessions, 45 minutes moved.")
         assertContains(labels, "3, sessions logged")
         assertContains(labels, "12 reps, best set")
+    }
+
+    // MARK: - Countdown ring
+
+    /// Every countdown the player shows speaks its last second in the singular, and any other count in
+    /// the plural - read off the real ring's accessibility element, the value VoiceOver reads on demand.
+    func testCountdownRingSpeaksOneSecondInTheSingular() throws {
+        let names = ["Hold", "Work window", "Rest", "Switch sides"]
+        let (_, hostedWindow) = HostedSurface.host(
+            VStack(spacing: Theme.Spacing.sm) {
+                ForEach(names, id: \.self) { name in
+                    CountdownRing(remaining: 1, fraction: 0.05, name: name, diameter: CountdownRing.compactDiameter)
+                }
+                CountdownRing(remaining: 2, fraction: 0.1, name: "Rest", diameter: CountdownRing.compactDiameter)
+                CountdownRing(remaining: 0, fraction: 0, name: "Hold", diameter: CountdownRing.compactDiameter)
+            },
+            size: CGSize(width: 393, height: 852)
+        )
+        window = hostedWindow
+        let labels = AccessibilityTree.labels(in: try XCTUnwrap(hostedWindow.rootViewController?.view))
+
+        for name in names {
+            XCTAssertTrue(labels.contains("\(name), 1 second remaining"), "the \(name) ring should read one second; tree reads \(labels)")
+        }
+        XCTAssertTrue(labels.contains("Rest, 2 seconds remaining"), "tree reads \(labels)")
+        XCTAssertTrue(labels.contains("Hold, 0 seconds remaining"), "tree reads \(labels)")
+        XCTAssertFalse(labels.contains { $0.contains("1 seconds") }, "'1 seconds' should not appear; tree reads \(labels)")
     }
 }

@@ -178,40 +178,52 @@ struct ProfileTabView: View {
                 Theme.Colors.background
                     .ignoresSafeArea()
 
-                VStack(spacing: Theme.Spacing.lg) {
-                    PlaceholderTabView(
-                        icon: "person.crop.circle.fill",
-                        title: "Profile",
-                        subtitle: "Keep your movement basics current."
-                    )
-
-                    VStack(spacing: Theme.Spacing.md) {
-                        NavigationLink {
-                            AccountView(authService: services.authService)
-                        } label: {
-                            ProfileRowLabel(icon: .account, title: "Account")
-                        }
-                        .accessibilityLabel("Account")
-                        .accessibilityHint("Sign in with Apple or view your sign-in status")
-
-                        // US-AC03: the premium gate + upsell entry point for the talking coach
-                        // (US-AC02). A Premium subscriber navigates into `CoachView`; a free user's tap
-                        // opens the existing paywall carrying the `coach_upsell` entry point. The gate
-                        // is best-effort and never touches the core loop.
-                        CoachEntryRow(services: services)
-
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            ProfileRowLabel(icon: .settings, title: "Settings")
-                        }
-                        .accessibilityLabel("Settings")
-                        .accessibilityHint("Privacy and anonymous usage data")
+                // Scrolls only when large text makes the screen taller than the phone, so every row stays
+                // reachable; otherwise the content fills the screen with the rows pinned to the bottom.
+                GeometryReader { viewport in
+                    ScrollView {
+                        content
+                            .frame(minHeight: viewport.size.height)
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.bottom, Theme.Spacing.xl)
+                    .scrollBounceBehavior(.basedOnSize)
                 }
             }
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            PlaceholderTabView(
+                icon: "person.crop.circle.fill",
+                title: "Profile",
+                subtitle: "Keep your movement basics current."
+            )
+
+            VStack(spacing: Theme.Spacing.md) {
+                NavigationLink {
+                    AccountView(authService: services.authService)
+                } label: {
+                    ProfileRowLabel(icon: .account, title: "Account")
+                }
+                .accessibilityLabel("Account")
+                .accessibilityHint("Sign in with Apple or view your sign-in status")
+
+                // US-AC03: the premium gate + upsell entry point for the talking coach
+                // (US-AC02). A Premium subscriber navigates into `CoachView`; a free user's tap
+                // opens the existing paywall carrying the `coach_upsell` entry point. The gate
+                // is best-effort and never touches the core loop.
+                CoachEntryRow(services: services)
+
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    ProfileRowLabel(icon: .settings, title: "Settings")
+                }
+                .accessibilityLabel("Settings")
+                .accessibilityHint("Privacy and anonymous usage data")
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.bottom, Theme.Spacing.xl)
         }
     }
 }
@@ -269,6 +281,8 @@ struct ProfileRowLabel: View {
                     Text(badge)
                         .font(Theme.Typography.caption.weight(.semibold))
                         .foregroundStyle(Theme.Colors.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .padding(.horizontal, Theme.Spacing.sm)
                         .padding(.vertical, Theme.Spacing.xs)
                         .background(
