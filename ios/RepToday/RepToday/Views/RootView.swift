@@ -165,9 +165,10 @@ private struct MainTabsView: View {
     }
 }
 
-/// The Profile tab: the existing placeholder, plus a navigation row to the real Settings screen.
+/// The Profile tab: the existing placeholder, plus navigation rows to Account, the Coach and the real
+/// Settings screen.
 ///
-/// The row is a plain, prominent list-style row rather than a toolbar gear, because the one control
+/// Settings is a plain, prominent list-style row rather than a toolbar gear, because the one control
 /// behind it - the anonymous-usage-data opt-out - has to be *found* to be worth anything.
 struct ProfileTabView: View {
     @Environment(\.services) private var services
