@@ -498,7 +498,7 @@ paid model operations in these local continuations.
 
 ## Coach staging lane
 
-The staging lane answers one question without a production outage: which server check rejects a genuine device's Coach request.
+The staging lane answers one question without a production outage: which server check rejects a genuine device's Coach request, or at which step it fails with `503 auth_unavailable`.
 It is a separate, short-lived Worker, `reptoday-coach-staging`, at `https://reptoday-coach-staging.<account subdomain>.workers.dev/coach`, running the same `proxy/src/coach-auth-worker.js`.
 It has no custom domain, route or WAF rule, and it never touches the production script, zone or domain.
 

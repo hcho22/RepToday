@@ -4,8 +4,9 @@ import CryptoKit
 
 /// The Coach staging lane (`CoachStaging` build configuration and `RepTodayCoachStaging` scheme).
 /// Never compiled into Release. It talks to the separate `reptoday-coach-staging` Worker on
-/// workers.dev, keeps its own App Attest key id, and appends the server's fixed rejection label to
-/// the existing `[RepTodayCoach]` failure line. See docs/coach-runtime-authentication.md.
+/// workers.dev, keeps its own App Attest key id, and appends the server's fixed diagnostic label (a
+/// rejection guard or a 503's failing step) to the existing `[RepTodayCoach]` failure line. See
+/// docs/coach-runtime-authentication.md.
 enum CoachStaging {
     static let keyStoreName = "coachStagingAppAttestKeyV2"
 
