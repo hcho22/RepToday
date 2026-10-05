@@ -49,6 +49,16 @@ struct LoggedExercise: Codable, Equatable, Identifiable {
     var skipped: Bool
 }
 
+extension LoggedExercise {
+    /// Whether the user actually performed this exercise: not skipped, and at least one set
+    /// carrying real work (`reps > 0` or `durationSeconds > 0`). The one shared definition of
+    /// "performed" behind the Progress tab's worked instances and the Coach context's recent
+    /// patterns, so a skipped or set-less step never reads as done work on either surface.
+    var wasPerformed: Bool {
+        !skipped && completedSets.contains { ($0.reps ?? 0) > 0 || ($0.durationSeconds ?? 0) > 0 }
+    }
+}
+
 // MARK: - CompletedSet
 
 /// What the user actually did in one set: `reps` for rep-based movements, or

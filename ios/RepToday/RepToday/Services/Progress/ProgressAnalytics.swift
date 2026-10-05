@@ -94,7 +94,8 @@ struct ProgressAnalytics: Equatable {
 
     // MARK: - Worked instances
 
-    /// One completed exercise within a session: non-skipped and carrying at least one recorded set.
+    /// One completed exercise within a session (`LoggedExercise.wasPerformed`): non-skipped and
+    /// carrying at least one recorded set.
     /// This is the atom every count is built from, so a skipped or set-less movement never inflates
     /// balance, chain position, or a personal best.
     private struct WorkedInstance {
@@ -105,13 +106,9 @@ struct ProgressAnalytics: Equatable {
     private static func workedInstances(in logs: [WorkoutLog]) -> [WorkedInstance] {
         logs.flatMap { log in
             log.exercises
-                .filter { !$0.skipped && hasRecordedSet($0) }
+                .filter(\.wasPerformed)
                 .map { WorkedInstance(logged: $0, completedAt: log.completedAt) }
         }
-    }
-
-    private static func hasRecordedSet(_ logged: LoggedExercise) -> Bool {
-        logged.completedSets.contains { ($0.reps ?? 0) > 0 || ($0.durationSeconds ?? 0) > 0 }
     }
 
     // MARK: - Pillar balance (free)

@@ -107,7 +107,7 @@ struct CoachContextBundle: Encodable, Equatable {
     ///   - consistencyTrend: the Consistency Score trajectory (`ConsistencyTrend.trend`), oldest
     ///     first - summarized here to a current level and a direction.
     ///   - recentLogs: recent `WorkoutLog`s, used only to extract the distinct recent movement
-    ///     patterns. Nothing from a log other than its patterns and completion order leaves this
+    ///     patterns the user actually performed. Nothing from a log other than its patterns and completion order leaves this
     ///     function.
     ///   - strengthJourney: the premium strength-journey analytics (US-AN01,
     ///     `ProgressAnalytics.deep.strengthJourney`) - the same dated climb the Progress tab shows -
@@ -155,14 +155,17 @@ struct CoachContextBundle: Encodable, Equatable {
         )
     }
 
-    /// The distinct movement patterns across `logs`, most-recent-session-first, first occurrence
-    /// wins, capped at `limit`. Reads only each log's completion time and its exercises' patterns.
+    /// The distinct movement patterns the user actually performed across `logs`,
+    /// most-recent-session-first, first occurrence wins, capped at `limit`. Only exercises that
+    /// pass `LoggedExercise.wasPerformed` count, so a skipped or set-less step never reads to the
+    /// coach as recent work. Reads only each log's completion time and its exercises' patterns
+    /// and outcomes.
     private static func distinctRecentPatterns(from logs: [WorkoutLog], limit: Int) -> [String] {
         guard limit > 0 else { return [] }
         var seen = Set<String>()
         var ordered: [String] = []
         for log in logs.sorted(by: { $0.completedAt > $1.completedAt }) {
-            for exercise in log.exercises {
+            for exercise in log.exercises where exercise.wasPerformed {
                 let pattern = exercise.movementPattern.rawValue
                 if seen.insert(pattern).inserted {
                     ordered.append(pattern)

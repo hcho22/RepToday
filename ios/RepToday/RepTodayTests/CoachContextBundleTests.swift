@@ -168,6 +168,62 @@ final class CoachContextBundleTests: XCTestCase {
         XCTAssertEqual(bundle.recentPatterns, ["push"])
     }
 
+    func testRecentPatternsLeaveOutZeroValueSets() {
+        // Sets recorded with no reps and no seconds are not performed work (the Progress tab's
+        // worked-instance rule); a set with real work alongside zero-value ones still counts.
+        let logs = [
+            log(daysAgo: 1, exercises: [
+                (.squat, [CompletedSet(reps: 0, durationSeconds: nil),
+                          CompletedSet(reps: nil, durationSeconds: 0)], false),
+                (.core, [CompletedSet(reps: nil, durationSeconds: nil),
+                         CompletedSet(reps: nil, durationSeconds: 30)], false),
+            ]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs
+        )
+        XCTAssertEqual(bundle.recentPatterns, ["core"])
+    }
+
+    func testRecentPatternsKeepOrderDedupeAndLimitOverPerformedOnly() {
+        let logs = [
+            log(daysAgo: 3, exercises: [(.hinge, oneSet, false), (.core, oneSet, false)]),
+            // Most recent: a skipped pull must neither appear nor consume the cap.
+            log(daysAgo: 1, exercises: [(.pull, oneSet, true), (.push, oneSet, false),
+                                        (.push, oneSet, false), (.squat, oneSet, false)]),
+            // A skipped core here must not claim core's slot ahead of a performed one.
+            log(daysAgo: 2, exercises: [(.core, oneSet, true), (.pull, [], false), (.core, oneSet, false)]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs,
+            recentPatternLimit: 3
+        )
+        XCTAssertEqual(bundle.recentPatterns, ["push", "squat", "core"])
+    }
+
+    func testRecentPatternsEmptyWhenEverythingWasSkipped() {
+        let logs = [
+            log(daysAgo: 1, exercises: [(.push, oneSet, true), (.squat, [], true)]),
+            log(daysAgo: 2, exercises: [(.hinge, oneSet, true)]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs
+        )
+        XCTAssertEqual(bundle.recentPatterns, [])
+    }
+
     func testRecentPatternsEmptyWhenNoLogs() {
         let bundle = CoachContextBundle.make(
             phase: .discipline,
