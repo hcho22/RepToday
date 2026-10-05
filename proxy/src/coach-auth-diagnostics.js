@@ -50,10 +50,18 @@ export function parseDiagnosticLabel(label) {
   const parts = label.split('/');
   return parts.length === 2 ? diagnosticLabel(parts[0], parts[1]) : null;
 }
+// Staging-only 503 label: the step a `503 auth_unavailable` failed at, as `worker_unavailable/<step>`.
+// The step is a closed value set by the Worker's own code, never exception, Apple or request text.
+export const UNAVAILABLE_STEPS = Object.freeze(['config', 'request', 'state', 'premium_verify', 'premium_status',
+  'premium_current', 'deadline', 'handler']);
+export const unavailableLabel = step =>
+  typeof step === 'string' && UNAVAILABLE_STEPS.includes(step) ? `worker_unavailable/${step}` : null;
+// The client's closed vocabulary: every 401 `<stage>/<reason>` pair plus every 503 step label.
 export function allDiagnosticLabels() {
   const labels = Object.entries(FINAL).flatMap(([stage, reasons]) => reasons.map(reason => `${stage}/${reason}`));
   for (const stage of GUARD_STAGES) for (const reason of GUARD_REASONS) labels.push(`${stage}/${reason}`);
-  return [...new Set(labels.filter(label => parseDiagnosticLabel(label) === label))].sort();
+  const unavailable = UNAVAILABLE_STEPS.map(unavailableLabel);
+  return [...new Set([...labels.filter(label => parseDiagnosticLabel(label) === label), ...unavailable])].sort();
 }
 
 // Staging only: non-secret digest prefixes of what the server verified an assertion against, so a

@@ -150,6 +150,27 @@ final class CoachStagingTests: XCTestCase {
         XCTAssertEqual(unknown.all, ["[RepTodayCoach] transport=runtime endpoint=other stage=challenge category=http status=401 error=unauthorized"])
     }
 
+    func testStagingUnavailableResponseNamesTheFailingStepAndUnknownStepsAreDropped() async throws {
+        let lines = StagingLines()
+        let unavailable = #"{"error":"auth_unavailable"}"#
+        StagingHTTPFixture.state.set([challengeAnswer, .init(status: 503, body: unavailable, label: "worker_unavailable/premium_status")])
+        do { _ = try await stagingClient(attester: StagingAttester(), lines: lines).reply(to: "hello", context: context()); XCTFail("must fail") }
+        catch {}
+        XCTAssertEqual(lines.all, ["[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=503 error=auth_unavailable label=worker_unavailable/premium_status"])
+        let challenge = StagingLines()
+        StagingHTTPFixture.state.set([.init(status: 503, body: unavailable, label: "worker_unavailable/state")])
+        do { _ = try await stagingClient(attester: StagingAttester(), lines: challenge).reply(to: "hello", context: context()); XCTFail("must fail") }
+        catch {}
+        XCTAssertEqual(challenge.all, ["[RepTodayCoach] transport=runtime endpoint=other stage=challenge category=http status=503 error=auth_unavailable label=worker_unavailable/state"])
+        for value in ["worker_unavailable/PRIVATE", "worker_unavailable/state/x", "worker_unavailable", "unavailable/state"] {
+            let unknown = StagingLines()
+            StagingHTTPFixture.state.set([challengeAnswer, .init(status: 503, body: unavailable, label: value)])
+            do { _ = try await stagingClient(attester: StagingAttester(), lines: unknown).reply(to: "hello", context: context()); XCTFail("must fail") }
+            catch {}
+            XCTAssertEqual(unknown.all, ["[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=503 error=auth_unavailable"], value)
+        }
+    }
+
     func testStagingKeyStoreNeverTouchesTheProductionKey() throws {
         let suite = "CoachStagingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }

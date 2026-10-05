@@ -39,7 +39,8 @@ enum CoachStaging {
 }
 
 /// The latest staging response label, kept only if it is one of the server's closed
-/// `<stage>/<reason>` pairs (`proxy/src/coach-auth-diagnostics.js`). Consumed by the next failure line.
+/// `<stage>/<reason>` pairs (`proxy/src/coach-auth-diagnostics.js`): a 401 rejection guard, or the
+/// `worker_unavailable/<step>` a 503 failed at. Consumed by the next failure line.
 final class CoachStagingLabels: @unchecked Sendable {
     static let header = "X-RepToday-Coach-Diagnostic"
     /// The staging server's non-secret digest prefixes of what it checked an assertion against.
@@ -67,6 +68,9 @@ final class CoachStagingLabels: @unchecked Sendable {
                                                    "do_token_transaction", "do_state"]
     private static let guardReasons: Set<String> = ["envelope", "key_format", "prefix_format", "token_syntax", "token_mac",
                                                     "token_claims", "token_future", "token_expired", "denied"]
+    /// The step a staging `503 auth_unavailable` failed at (`UNAVAILABLE_STEPS` on the server).
+    private static let unavailableSteps: Set<String> = ["config", "request", "state", "premium_verify", "premium_status",
+                                                        "premium_current", "deadline", "handler"]
     private let lock = NSLock()
     private var latest: String?
     private var serverDigest: String?
@@ -78,6 +82,7 @@ final class CoachStagingLabels: @unchecked Sendable {
     static var all: Set<String> {
         var labels = Set(final.flatMap { stage, reasons in reasons.map { "\(stage)/\($0)" } })
         for stage in guardStages { for reason in guardReasons { labels.insert("\(stage)/\(reason)") } }
+        for step in unavailableSteps { labels.insert("worker_unavailable/\(step)") }
         return labels
     }
     static func valid(_ value: String?) -> String? {

@@ -1419,6 +1419,14 @@ Offline, the client and server follow the App Attest contract exactly, and the r
 With `COACH_STAGING_LABELS=1`, a `do_assertion/*` rejection now returns digest prefixes of the payload, body, transaction and challenge the server checked, and the `COACH_STAGING` app logs the same for what it signed, plus the assertion and its enrollment attestation.
 Production responses and Release and Debug executables are unchanged; the [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the contract.
 
+## Coach staging names the step of a 503 (2026-10-05)
+
+One production Coach send failed with `503 {"error":"auth_unavailable"}` after a successful challenge, and an unchanged send later succeeded.
+The gateway answers that same unlabelled 503 for every internal failure (the Durable Object call, Apple transaction verification, the status lookup, the current transaction, each deadline and the handler), and no server logs exist, so the step could not be named.
+With `COACH_STAGING_LABELS=1`, every `503 auth_unavailable` now carries `X-RepToday-Coach-Diagnostic: worker_unavailable/<step>` from a closed vocabulary set by the Worker's own code, never exception text, and the `COACH_STAGING` app appends it to its failure line.
+Production responses, Debug and Release executables and the 401 labels are unchanged; the [runtime authentication runbook](coach-runtime-authentication.md#coach-staging-lane) owns the vocabulary.
+Using it needs a staging redeploy and one staging send, each a separate captain decision.
+
 ## Coach Worker bundles use workerd's native crypto (2026-09-29)
 
 The staging capture from a genuine device showed that the client was correct.

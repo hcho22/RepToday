@@ -510,11 +510,31 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 - **Rejection label:** `COACH_STAGING_LABELS=1` adds `X-RepToday-Coach-Diagnostic: <stage>/<reason>` to every `401 unauthorized`.
   The body stays exactly `{"error":"unauthorized"}`.
   The label is one pair from the closed final-auth and challenge vocabularies in [`coach-auth-diagnostics.js`](../proxy/src/coach-auth-diagnostics.js), and a Durable Object's inner label (for example `do_assertion/assertion_signature`) is passed back to the Worker.
+- **Unavailable step label:** the same flag adds `X-RepToday-Coach-Diagnostic: worker_unavailable/<step>` to every `503 auth_unavailable`, naming the step that failed.
+  The body stays exactly `{"error":"auth_unavailable"}`.
+  The step is one of the closed `UNAVAILABLE_STEPS` in the same module:
+
+  | Step | What failed |
+  | --- | --- |
+  | `config` | a required binding is missing or malformed, at the gateway or inside the Premium check |
+  | `request` | reading or handling the request before any Durable Object call, such as a failed or stalled body stream |
+  | `state` | the Durable Object call on a challenge, enrollment, reply or delete: it rejected, answered non-JSON, or answered `auth_unavailable` after an internal storage or parse failure |
+  | `premium_verify` | loading Apple's library or verifying the presented transaction, including the Sandbox retry and its OCSP checks |
+  | `premium_status` | the App Store Server API subscription status lookup, or reading its response |
+  | `premium_current` | verifying the current `signedTransactionInfo` and evaluating the entitlement |
+  | `deadline` | the 20-second gateway deadline, during the state call, during the Premium check, or found elapsed after it |
+  | `handler` | the Coach handler (or the operator path's handler) threw |
+
+  The Worker's own code sets the step as it enters each stage, and the Premium check names the live call it was in.
+  Only that closed value is read: an exception's message, fields, Apple error text and request data never reach the header, and an unknown value adds no header.
+  The vocabulary follows the 2026-09-29 production 503 diagnosis (`state`, `premium_verify`, `premium_status`, `premium_current`, `deadline`, `handler`) and adds `config` and `request` so that every 503 path names a step.
+  It reuses the 401 header and its `<stage>/<reason>` shape, with the fixed stage `worker_unavailable`, so the staging app's existing closed-vocabulary check covers it.
+  The Durable Object's own 503 carries no inner label; the gateway reports it as `state`.
 - **Origin:** `COACH_STAGING_ORIGIN` makes the Worker serve only its own workers.dev URL; an unexpected value serves nothing.
 
 **Why it cannot reach production:**
 - Production `runtimeConfig` never emits `COACH_STAGING_*`, and `checkRuntimeSettings` rejects any unknown binding during stage, release and verification (`tools/coach-runtime-migrate.test.mjs` pins both staging names).
-- Without the bindings, production responses are byte-identical (`proxy/test/coach-staging-labels.test.js`).
+- Without the bindings, production responses are byte-identical: `proxy/test/coach-staging-labels.test.js` covers the 401 paths and `proxy/test/coach-unavailable-labels.test.js` every 503 path, also with invalid flag values.
 
 **The iOS staging build:**
 - The `RepTodayCoachStaging` scheme builds the release-optimized `CoachStaging` configuration with no local StoreKit file, so a real Sandbox purchase and production App Attest are used.
@@ -522,7 +542,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
 - Client code for the lane exists only under `COACH_STAGING`; the native staging test harness sets that condition explicitly.
   It posts to the staging URL but still signs the production protocol origin, so App Attest payload bytes match production.
   It keeps its own key id (`coachStagingAppAttestKeyV2`), so the production key is untouched; this diagnostic capture version ignores the earlier V1 staging key and enrolls once before its first assertion.
-  It appends the label to the existing line, for example `[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=worker_premium/status_match`.
+  It appends the label to the existing line, for example `[RepTodayCoach] transport=runtime endpoint=other stage=http category=http status=401 error=unauthorized label=worker_premium/status_match`, or `... status=503 error=auth_unavailable label=worker_unavailable/premium_status` for an unavailable step.
 - Release excludes all of it: `tools/archive-release.sh` archives only Release, and `tools/inspect-coach-qa-build.py` rejects a Release executable containing the staging markers.
 - The account's workers.dev subdomain is not committed.
   After deploy, put `REPTODAY_COACH_STAGING_SUBDOMAIN = <subdomain>` in the untracked `ios/RepToday/Config/CoachStaging.local.xcconfig`.
@@ -534,7 +554,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
   It prints `confirmed`, the `deployed` line with the staging URL, and `verified` after checking exact bindings, its own namespace, no custom domain, and both labelled no-model probes.
 - The captain runs `RepTodayCoachStaging` on the phone and sends one message.
   The first send enrolls a fresh staging key.
-  The failure line then names the rejecting guard, or the send gets `500 not_configured` because every check passed.
+  The failure line then names the rejecting guard, or the failing step of a `503 auth_unavailable`, or the send gets `500 not_configured` because every check passed.
 - `tools/coach-staging.sh --teardown` needs its own captain approval. It detaches any exact staging custom domain, removes the staging Durable Object namespace through a non-public deletion migration, force-deletes the staging script and secrets, then rechecks all three surfaces and confirms every production identity is unchanged. It also repairs an orphan namespace or domain when the staging script is already absent, and refuses any artifact that overlaps the production script, namespace or `coach.reptoday.app` before mutation.
   `--inspect` is read-only.
 - A labelled 401 identifies the guard for this device and purchase.
