@@ -132,6 +132,42 @@ final class CoachContextBundleTests: XCTestCase {
         XCTAssertEqual(bundle.recentPatterns, ["push", "squat", "core"])
     }
 
+    /// A log whose exercises carry explicit outcomes, for the performed-only recent-pattern rule.
+    private func log(daysAgo: Int, exercises: [(MovementPattern, [CompletedSet], Bool)]) -> WorkoutLog {
+        var built = log(daysAgo: daysAgo, patterns: [])
+        built.exercises = exercises.map { pattern, sets, skipped in
+            LoggedExercise(
+                id: UUID(),
+                exerciseId: "\(pattern.rawValue)_x",
+                pillar: .strength,
+                movementPattern: pattern,
+                completedSets: sets,
+                skipped: skipped
+            )
+        }
+        return built
+    }
+
+    private let oneSet = [CompletedSet(reps: 10, durationSeconds: nil)]
+
+    func testRecentPatternsLeaveOutSkippedAndSetLessExercises() {
+        let logs = [
+            log(daysAgo: 1, exercises: [
+                (.hinge, oneSet, true),   // skipped
+                (.pull, [], false),       // no sets logged
+                (.push, oneSet, false),   // performed
+            ]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs
+        )
+        XCTAssertEqual(bundle.recentPatterns, ["push"])
+    }
+
     func testRecentPatternsEmptyWhenNoLogs() {
         let bundle = CoachContextBundle.make(
             phase: .discipline,
