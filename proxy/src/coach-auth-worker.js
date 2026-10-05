@@ -1,4 +1,5 @@
-import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel, parseDiagnosticLabel, parseAssertionDigest } from './coach-auth-diagnostics.js';
+import { emitAuthGuardDiagnostic, emitFinalAuthDiagnostic, stagingLabelsEnabled, diagnosticLabel, parseDiagnosticLabel, parseAssertionDigest,
+  unavailableLabel } from './coach-auth-diagnostics.js';
 import { Buffer } from 'node:buffer';
 import legacyWorker from './worker.js';
 import { CoachAuthFailure, ORIGIN, VERSION, keyIDValid, appIDValid, issuerIDValid, hash, fromBase64, challengeToken, verifyChallenge, premiumEntitlement } from './coach-auth-crypto.js';
@@ -31,7 +32,7 @@ export async function authWithin(promise, milliseconds) {
   let timer;
   try {
     return await Promise.race([promise, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new CoachAuthFailure('auth_unavailable')), milliseconds);
+      timer = setTimeout(() => reject(new CoachAuthFailure('auth_unavailable', 'deadline')), milliseconds);
     })]);
   } finally { clearTimeout(timer); }
 }
@@ -55,12 +56,15 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
   const stagingDiagnostic = { stage: '', reason: '' };
   const noteFinal = (stage, reason) => { finalDiagnostic.stage = stage; finalDiagnostic.reason = reason; };
   const noteStaging = (stage, reason) => { stagingDiagnostic.stage = stage; stagingDiagnostic.reason = reason; };
+  // The step in progress, for a staging 503 label; a failure carrying its own closed step overrides it.
+  let step = 'config';
   try {
     const deadline = Date.now() + 20_000;
     const authorize = promise => authWithin(promise, Math.max(1, deadline - Date.now()));
     if (request.url !== servedOrigin(env)) return json({ error: 'not_found' }, 404);
     if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     if (!ready(env)) throw new CoachAuthFailure('auth_unavailable');
+    step = 'request';
     // Retained operator-only administration/QA credential; never distributed to an iOS app.
     // The reviewed legacy gate performs its constant-time comparison before any provider call.
     if (request.headers.get('Authorization')?.startsWith('Bearer ')) {
@@ -69,6 +73,7 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
       // Reserve the exact empty-body admission exchange for device proof + fresh Premium.
       // An operator's body-validation error must never masquerade as those two gates passing.
       if (operatorBytes.toString('utf8') === '{}') throw new CoachAuthFailure();
+      step = 'handler';
       return labelUnauthorized(await legacyWorker.fetch(
         new Request(ORIGIN, { method: 'POST', headers: request.headers, body: operatorBytes }), env),
       env, 'worker_operator', 'authorization');
@@ -89,6 +94,7 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
         if (input.kind === 'assert') {
           challengeStage = 'worker_state';
           noteStaging('worker_state', 'denied');
+          step = 'state';
           await authorize(state(env, { operation: 'challenge', keyId: input.keyId, challenge }));
         }
         return json({ challenge }); // Unknown-key enrollment challenges create no stored record.
@@ -99,6 +105,7 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
         noteStaging('worker_envelope', 'attestation_encoding');
         fromBase64(input.attestation, 8192);
         noteStaging('worker_state', 'denied');
+        step = 'state';
         await authorize(state(env, input)); return json({ enrolled: true });
       }
       if (!['challenge', 'enroll'].includes(input?.operation)) noteFinal('worker_envelope', 'missing_proof');
@@ -124,6 +131,7 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
     }
     if (proof.operation === 'reply') noteFinal('worker_state', 'denied');
     noteStaging('worker_state', 'denied');
+    step = 'state';
     const accepted = await authorize(state(env, { operation: proof.operation, keyId: proof.keyId, challenge: proof.challenge, assertion: proof.assertion,
       bodyHash: hash(bytes), transactionHash: hash(proof.transactionJws) }));
     if (proof.operation === 'reply') noteFinal('worker_state', 'not_authorized');
@@ -132,9 +140,11 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
     if (proof.operation === 'delete') return json({ deleted: true }); // Erasure needs key proof, not an active subscription.
     noteFinal('worker_premium', 'denied');
     noteStaging('worker_premium', 'denied');
+    step = 'premium_verify'; // The real premium check names its own live call on failure.
     await authorize(premium(proof.transactionJws, env, () => Date.now(),
       reason => { noteFinal('worker_premium', reason); noteStaging('worker_premium', reason); })); // Same gates; fixed reason only on denial.
-    if (Date.now() >= deadline) throw new CoachAuthFailure('auth_unavailable');
+    if (Date.now() >= deadline) throw new CoachAuthFailure('auth_unavailable', 'deadline');
+    step = 'handler';
     const headers = new Headers(request.headers);
     headers.delete('X-RepToday-Coach-Auth'); headers.set('Authorization', 'Bearer ' + env.CLIENT_SHARED_SECRET);
     // The exact verified raw bytes are passed to the existing bounded Coach handler; auth proof
@@ -154,8 +164,13 @@ export async function handleRuntimeCoach(request, env, { state = stateRequest, p
         challengeStage ? diagnosticLabel(challengeStage, challengeStage === 'worker_envelope' ? 'envelope' : 'denied') :
           diagnosticLabel('worker_envelope', 'envelope')) : null;
     const digest = label?.startsWith('do_assertion/') ? parseAssertionDigest(error?.digest) : null;
+    // Staging only: name the step a 503 failed at. Only this code's own closed step value is read,
+    // never a foreign exception's fields or text; an unknown value adds no header.
+    const unavailable = code === 'auth_unavailable' && stagingLabelsEnabled(env) ?
+      unavailableLabel(error instanceof CoachAuthFailure && error.step !== undefined ? error.step : step) : null;
     return json({ error: code }, code === 'payload_too_large' ? 413 : code === 'auth_unavailable' ? 503 : 401,
-      label ? { 'X-RepToday-Coach-Diagnostic': label, ...(digest ? { 'X-RepToday-Coach-Assertion-Digest': digest } : {}) } : {});
+      label ? { 'X-RepToday-Coach-Diagnostic': label, ...(digest ? { 'X-RepToday-Coach-Assertion-Digest': digest } : {}) } :
+        unavailable ? { 'X-RepToday-Coach-Diagnostic': unavailable } : {});
   }
 }
 

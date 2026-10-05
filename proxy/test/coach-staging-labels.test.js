@@ -143,7 +143,7 @@ describe('a staging Worker labels each rejection with one closed stage/reason pa
     expect((await post(ORIGIN, '{}')).status).toBe(404);
     expect((await post(STAGING, '{}')).status).toBe(401);
   });
-  it('adds no label to success, key_unavailable or auth_unavailable', async () => {
+  it('adds no rejection label to success or key_unavailable, and only its step label to auth_unavailable', async () => {
     const accepted = await post(STAGING, '{}', proof(await challenge(STAGING)));
     expect(accepted.status).toBe(400); expect(accepted.headers.get(HEADER)).toBeNull();
     const coachBody = JSON.stringify({
@@ -159,7 +159,7 @@ describe('a staging Worker labels each rejection with one closed stage/reason pa
     expect(await missing.json()).toEqual({ error: 'key_unavailable' }); expect(missing.headers.get(HEADER)).toBeNull();
     build({ COACH_STAGING_ORIGIN: STAGING, COACH_STAGING_LABELS: '1', APP_STORE_KEY_ID: 'bad' });
     const unavailable = await post(STAGING, '{}');
-    expect(unavailable.status).toBe(503); expect(unavailable.headers.get(HEADER)).toBeNull();
+    expect(unavailable.status).toBe(503); expect(unavailable.headers.get(HEADER)).toBe('worker_unavailable/config');
   });
   it('labels require the exact flag value', async () => {
     for (const flag of ['true', '0', 1, true]) {

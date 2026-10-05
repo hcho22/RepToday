@@ -15,7 +15,11 @@ export const VERSION = 'reptoday-coach-auth-v1';
 // Far above synchronized-host skew, and small beside the 60s lifetime and the client's 30s deadline.
 export const CHALLENGE_CLOCK_SKEW_MS = 5_000;
 export class CoachAuthFailure extends Error {
-  constructor(code = 'unauthorized') { super('Coach authentication failed'); this.code = code; }
+  // `step` is only ever one of the closed UNAVAILABLE_STEPS (coach-auth-diagnostics.js), set by this code.
+  constructor(code = 'unauthorized', step = undefined) {
+    super('Coach authentication failed'); this.code = code;
+    if (step !== undefined) this.step = step;
+  }
 }
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const keyIDValid = value => typeof value === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(value) &&
@@ -136,10 +140,12 @@ export function assertKey(assertion, publicKey, previousCounter, payload, appPre
 
 export async function premiumEntitlement(jws, env, now = () => Date.now(), onDenied = reason => {}) {
   let reason = 'denied';
+  let step = 'config'; // Which live call an auth_unavailable came from; never the exception itself.
   try {
     if (typeof jws !== 'string' || jws.length > 12_000 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jws) ||
         !appIDValid(env.APP_STORE_APP_ID) || !env.APP_STORE_PRIVATE_KEY ||
         !/^[A-Z0-9]{10}$/.test(env.APP_STORE_KEY_ID ?? '') || !issuerIDValid(env.APP_STORE_ISSUER_ID)) throw new CoachAuthFailure('auth_unavailable');
+    step = 'premium_verify';
     // Apple's OCSP dependency initializes randomness. Import inside the request context;
     // workerd correctly prohibits that operation at module initialization.
     const { AppStoreServerAPIClient, SignedDataVerifier, Environment, VerificationException, VerificationStatus } =
@@ -163,6 +169,7 @@ export async function premiumEntitlement(jws, env, now = () => Date.now(), onDen
     if (presented.environment !== environment) throw new CoachAuthFailure();
     reason = 'presented_chain';
     if (!/^[0-9]{1,32}$/.test(presented.originalTransactionId ?? '')) throw new CoachAuthFailure();
+    step = 'premium_status';
     const client = new AppStoreServerAPIClient(env.APP_STORE_PRIVATE_KEY, env.APP_STORE_KEY_ID, env.APP_STORE_ISSUER_ID, BUNDLE, environment);
     const statuses = await client.getAllSubscriptionStatuses(presented.originalTransactionId);
     const fetchedAt = now();
@@ -178,15 +185,16 @@ export async function premiumEntitlement(jws, env, now = () => Date.now(), onDen
     const matches = candidates.filter(row => row.originalTransactionId === presented.originalTransactionId);
     reason = 'status_match';
     if (matches.length !== 1 || matches[0].status !== 1 || typeof matches[0].signedTransactionInfo !== 'string' || matches[0].signedTransactionInfo.length > 12_000) throw new CoachAuthFailure();
+    step = 'premium_current';
     const current = await verifier.verifyAndDecodeTransaction(matches[0].signedTransactionInfo);
     reason = 'premium_policy';
     if (!evaluateVerifiedPremiumEntitlement({ ...presented }, { ...current }, matches[0].status, fetchedAt, now(), environment)) throw new CoachAuthFailure();
   } catch (error) {
     if (error instanceof CoachAuthFailure) {
       if (error.code === 'unauthorized') { try { onDenied(reason); } catch {} }
-      throw error;
+      throw error.code === 'auth_unavailable' ? new CoachAuthFailure('auth_unavailable', step) : error;
     }
     // SDK exceptions may contain a signed proof/API diagnostics; never forward or log them.
-    throw new CoachAuthFailure('auth_unavailable');
+    throw new CoachAuthFailure('auth_unavailable', step);
   }
 }
