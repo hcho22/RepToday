@@ -1066,7 +1066,7 @@ private struct ChainJourneyView: View {
     private var durationSuffix: String {
         guard let weeks = chain.weeksClimbed else { return "" }
         if weeks <= 0 { return ", this week" }
-        return weeks == 1 ? ", 1 week" : ", \(weeks) weeks"
+        return ", " + CountWording.phrase(weeks, singular: "week", plural: "weeks")
     }
 
     private var spokenHeadline: String {
@@ -1076,7 +1076,7 @@ private struct ChainJourneyView: View {
         }
         let span: String
         if let weeks = chain.weeksClimbed {
-            span = weeks <= 0 ? "this week" : (weeks == 1 ? "over 1 week" : "over \(weeks) weeks")
+            span = weeks <= 0 ? "this week" : "over " + CountWording.phrase(weeks, singular: "week", plural: "weeks")
         } else {
             span = ""
         }
