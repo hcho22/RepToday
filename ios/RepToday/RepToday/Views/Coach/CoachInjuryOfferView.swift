@@ -87,7 +87,7 @@ struct CoachInjuryOfferView: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                 }
-                .buttonStyle(.borderedProminent)
+                .accentFilledButtonStyle()
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
                 .accessibilityLabel(CoachInjuryOfferCopy.accept)
                 .accessibilityHint(CoachInjuryOfferCopy.acceptHint(for: area))

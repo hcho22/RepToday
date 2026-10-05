@@ -1514,3 +1514,18 @@ What landed:
 
 Evidence and the app-size measurement are in `artifacts/reports/US-TP13/validation.md` and `artifacts/reports/US-TP02/validation.md`.
 Physical-device behavior (art legibility from the floor, live VoiceOver, Reduce Motion) is the captain's manual QA.
+
+## Dark-appearance accent contrast (2026-10-05)
+
+The [dark accent contrast validation report](../artifacts/reports/dark-accent-contrast/validation.md) owns the decision, the token values, the before/after ratios and the dark evidence.
+The US-TP13 "Control contrast" bullet above records its landing state; the open white-on-accent question it names is resolved here.
+
+What landed:
+
+- **A separate fill.** White (`onAccent`) content sits on `Theme.Colors.accentFill`, darker than the accent in dark appearance only, while `Theme.Colors.accent` keeps its dark shade for text, icons, links and controls.
+  Every prominent button goes through `View.accentFilledButtonStyle()` (`DesignSystem/AccentFilledButtonStyle.swift`); the selected chips, the Coach user bubble, the paywall plan card and the injury Save button fill with `accentFill` directly.
+- **The three spots that already fell short.** The paywall plan's price and trial lines use `Theme.Colors.onAccentSecondary`, the Profile "Premium" badge's wash is `Theme.Colors.accentBadgeFill`, and the injury screen's "Try again" uses `Theme.Colors.accentOnElevatedSurface`, which is lighter than the accent only in dark appearance at the elevated interface level the Coach's sheet uses.
+- **Test harness.** `HostedSurface.host` takes `level:`, so a suite can render a surface at the elevated level a presented sheet uses.
+
+Light appearance is unchanged.
+Earlier stories' committed dark baselines still show the old fill as point-in-time records.

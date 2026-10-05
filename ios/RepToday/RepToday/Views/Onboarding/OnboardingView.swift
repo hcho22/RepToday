@@ -131,7 +131,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: Theme.Spacing.buttonHeight)
             }
-            .buttonStyle(.borderedProminent)
+            .accentFilledButtonStyle()
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
             .disabled(!viewModel.canAdvance || viewModel.isFinishing)
         }
@@ -693,7 +693,7 @@ private struct DurationChip: View {
             .frame(height: 72)
             .foregroundStyle(isSelected ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
             .background(
-                isSelected ? Theme.Colors.accent : Theme.Colors.surface,
+                isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
                 in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
             )
         }
@@ -765,7 +765,7 @@ private struct ChipFlow: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: Theme.Spacing.minTouchTarget)
                         .background(
-                            isSelected ? Theme.Colors.accent : Theme.Colors.surface,
+                            isSelected ? Theme.Colors.accentFill : Theme.Colors.surface,
                             in: Capsule()
                         )
                 }

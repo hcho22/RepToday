@@ -250,11 +250,11 @@ private struct PaywallPlanButton: View {
                         .foregroundStyle(Theme.Colors.onAccent)
                     Text(plan.priceLine)
                         .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Colors.onAccent.opacity(0.9))
+                        .foregroundStyle(Theme.Colors.onAccentSecondary)
                     if let trial = plan.trialDescription {
                         Text(trial)
                             .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.onAccent.opacity(0.9))
+                            .foregroundStyle(Theme.Colors.onAccentSecondary)
                     }
                 }
                 Spacer(minLength: Theme.Spacing.sm)
@@ -262,12 +262,12 @@ private struct PaywallPlanButton: View {
                     SwiftUI.ProgressView().tint(Theme.Colors.onAccent)
                 } else {
                     Image(systemName: "chevron.right")
-                        .foregroundStyle(Theme.Colors.onAccent.opacity(0.9))
+                        .foregroundStyle(Theme.Colors.onAccentSecondary)
                 }
             }
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, minHeight: Theme.Spacing.buttonHeight, alignment: .leading)
-            .background(Theme.Colors.accent, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
+            .background(Theme.Colors.accentFill, in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius))
         }
         .buttonStyle(.plain)
         .disabled(isDisabled || isPurchasing)

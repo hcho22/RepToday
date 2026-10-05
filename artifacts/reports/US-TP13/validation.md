@@ -77,7 +77,11 @@ One sweep of every `.bordered` button in the app found one more with the same ac
 It is fixed the same way, with `Theme.Colors.textPrimary` (and `Theme.Colors.textSecondary` while it is disabled during the final save).
 The other three `.bordered` buttons already set their own label color and never had the defect: "Got it" on the classics note (`ReadyView.swift`, primary text), "Discard" on the resume card (`ReadyView.swift`, secondary text), and "Got it" on the foundations note (`ProgressTabView.swift`, primary text).
 
-### White on the accent in `.borderedProminent` buttons (open brand-color question)
+### White on the accent in `.borderedProminent` buttons (resolved 2026-10-05)
+
+Resolved: the captain chose a separate fill token, so white content now sits on `Theme.Colors.accentFill` (`#637988` in dark appearance, 4.54:1) while the text-weight dark accent stays `#788F9E`.
+The before/after table, the three adjacent fixes and the dark screenshots are in `artifacts/reports/dark-accent-contrast/validation.md`.
+The rest of this section is the original finding, kept as recorded.
 
 White (`Theme.Colors.onAccent`) on the dark-mode accent `#788F9E` measures 3.38:1; in light mode, on `#2E4F61`, it measures 8.72:1.
 Every `.borderedProminent` label in the app ("Start", "Resume", "Done", "Start hold", "Skip rest", "Keep climbing", "Got it", the onboarding primary, the Coach accept buttons) uses `Theme.Typography.button`: the `headline` style, semibold, which scales with Dynamic Type.

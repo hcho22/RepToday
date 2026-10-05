@@ -14,8 +14,29 @@ enum Theme {
     /// color exists, and fall back to a sensible system color otherwise so the app
     /// always renders, even before the full palette is designed.
     enum Colors {
-        /// Brand accent, used for primary actions. Mirrors the asset catalog AccentColor.
+        /// Brand accent for text, icons, links and controls. Mirrors the asset catalog AccentColor.
+        /// Never put `onAccent` content on it - that is what `accentFill` is for.
         static let accent = Color.accentColor
+
+        /// The accent as a fill behind white (`onAccent`) content: filled buttons, selected chips, the
+        /// coach's user bubble, the paywall plan card. Identical to `accent` in light appearance; one
+        /// shade darker in dark appearance so white labels reach 4.5:1, which the dark `accent` cannot
+        /// do while also staying legible as text on dark surfaces (the two needs ask for disjoint
+        /// luminances). See `artifacts/reports/dark-accent-contrast/validation.md`.
+        static let accentFill = Color("AccentFill")
+
+        /// Accent text on a grouped row that a presented sheet may raise. At the base level it is
+        /// `accent`; only at the elevated level (a sheet, which dark appearance lifts to #2C2C2E where
+        /// `accent` falls short of 4.5:1) does it resolve to the lighter `AccentOnElevatedSurface`.
+        /// Identical to `accent` in light appearance.
+        static let accentOnElevatedSurface = Color(uiColor: UIColor { traits in
+            let name = traits.userInterfaceLevel == .elevated ? "AccentOnElevatedSurface" : "AccentColor"
+            return UIColor(named: name, in: nil, compatibleWith: traits) ?? .tintColor
+        })
+
+        /// The faint accent wash behind an accent-colored badge caption (the "Premium" tag): 12% of the
+        /// accent in light appearance, 8% in dark so the caption on it keeps 4.5:1.
+        static let accentBadgeFill = Color("AccentBadgeFill")
 
         /// Primary screen background.
         static let background = Color(uiColor: .systemBackground)
@@ -32,8 +53,12 @@ enum Theme {
         /// Secondary / supporting text.
         static let textSecondary = Color(uiColor: .secondaryLabel)
 
-        /// Text/icon color drawn on top of the accent color.
+        /// Text/icon color drawn on top of `accentFill`.
         static let onAccent = Color.white
+
+        /// Supporting text/icons drawn on top of `accentFill` (a plan's price line under its name).
+        /// White at 90% in light appearance; full white in dark, where 90% falls below 4.5:1.
+        static let onAccentSecondary = Color("OnAccentSecondary")
 
         /// Destructive / irreversible actions (e.g. the Settings "Delete Account" control, US-AD01).
         /// The system red so it reads as danger in both light and dark and tracks accessibility
