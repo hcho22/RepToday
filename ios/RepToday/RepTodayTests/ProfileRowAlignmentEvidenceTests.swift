@@ -45,9 +45,11 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
     }
 
     /// Renders the real `ProfileRowLabel` once per glyph, with and without a badge, and reads where each
-    /// title lands. The bare label is hosted (not `ProfileTabView`) because a `NavigationLink`'s own
-    /// accessibility label merges its row into one element, hiding the title's frame.
-    private func assertRowTitlesAlign(at dynamicTypeSize: DynamicTypeSize) throws {
+    /// title and the glyph and chevron beside it land: every title starts at the same x, and the glyph
+    /// and chevron sit on the title's line even when the badge moves under it. The bare label is hosted
+    /// (not `ProfileTabView`) because a `NavigationLink`'s own accessibility label merges its row into
+    /// one element, hiding the title's frame.
+    private func assertRowsLineUp(at dynamicTypeSize: DynamicTypeSize) throws {
         let rows = ProfileRowIcon.allCases.flatMap { icon in
             [nil, "Premium"].map { badge in
                 (icon: icon, badge: badge, title: badge == nil ? "\(icon) title" : "\(icon) badged title")
@@ -73,16 +75,23 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
             let title = try XCTUnwrap(elements.first { $0.accessibilityLabel == row.title },
                                       "no \(row.title) element; tree reads \(AccessibilityTree.labels(in: root))")
             let titleFrame = title.accessibilityFrame
-            let leading = elements.filter { other in
+            let rowGlyphs = elements.filter { other in
                 other !== title
-                    && other.accessibilityFrame.minX < titleFrame.minX
+                    && other.accessibilityLabel != row.badge
                     && other.accessibilityFrame.maxY > titleFrame.minY
                     && other.accessibilityFrame.minY < titleFrame.maxY
             }
+            let leading = rowGlyphs.filter { $0.accessibilityFrame.minX < titleFrame.minX }
+            let trailing = rowGlyphs.filter { $0.accessibilityFrame.minX >= titleFrame.maxX }
             XCTAssertFalse(leading.isEmpty, "the \(row.icon.rawValue) glyph should lead the \(row.title) row")
+            XCTAssertFalse(trailing.isEmpty, "a chevron should end the \(row.title) row")
             for glyph in leading {
                 XCTAssertLessThanOrEqual(glyph.accessibilityFrame.maxX, titleFrame.minX,
                                          "the \(row.icon.rawValue) glyph overlaps the \(row.title) title at \(dynamicTypeSize)")
+            }
+            for glyph in leading + trailing {
+                XCTAssertEqual(glyph.accessibilityFrame.midY, titleFrame.midY, accuracy: 0.5,
+                               "\(glyph.accessibilityLabel ?? "a glyph") sits off the \(row.title) line at \(dynamicTypeSize)")
             }
             titleLeadingEdges.append((row.title, titleFrame.minX))
         }
@@ -94,12 +103,12 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
         }
     }
 
-    func testEveryRowTitleStartsAtTheSameXAtTheDefaultTextSize() throws {
-        try assertRowTitlesAlign(at: .large)
+    func testEveryRowLinesUpOnItsTitleAtTheDefaultTextSize() throws {
+        try assertRowsLineUp(at: .large)
     }
 
-    func testEveryRowTitleStartsAtTheSameXAtTheLargestTextSize() throws {
-        try assertRowTitlesAlign(at: .accessibility5)
+    func testEveryRowLinesUpOnItsTitleAtTheLargestTextSize() throws {
+        try assertRowsLineUp(at: .accessibility5)
     }
 
     /// The widest glyph any row uses fits the shared icon column at every text size the icon grows to,
