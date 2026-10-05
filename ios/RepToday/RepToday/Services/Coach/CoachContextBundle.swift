@@ -107,8 +107,8 @@ struct CoachContextBundle: Encodable, Equatable {
     ///   - consistencyTrend: the Consistency Score trajectory (`ConsistencyTrend.trend`), oldest
     ///     first - summarized here to a current level and a direction.
     ///   - recentLogs: recent `WorkoutLog`s, used only to extract the distinct recent movement
-    ///     patterns the user actually performed. Nothing from a log other than its patterns and completion order leaves this
-    ///     function.
+    ///     patterns the user actually performed. Nothing from a log other than its patterns and
+    ///     completion order leaves this function.
     ///   - strengthJourney: the premium strength-journey analytics (US-AN01,
     ///     `ProgressAnalytics.deep.strengthJourney`) - the same dated climb the Progress tab shows -
     ///     summarized here to a coarse per-pattern trend (US-AN02). Defaults to empty so callers that
