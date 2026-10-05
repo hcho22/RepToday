@@ -180,7 +180,9 @@ US-AN02 extended the same posture to the strength-journey narration: the persona
 Replies use the app's own plain words.
 The persona forbids internal terms and field names in a reply (among them "engine", "stalest", "chain", "consistency signal" and the context field names) and points the model at the words the Progress tab shows ("Consistency", "Tier 2 of 4", "next tier in reach", "Strength Phase", "Not started yet").
 A foundation line with no tracked progress is described as its progress not having started yet, never as missing data or a stall.
-That wording is a statement about tracked progress only: `recentPatterns` lists the patterns that appeared in recent sessions, which can include skipped steps, so the model is told never to treat it as proof of completed work.
+That wording is a statement about tracked progress only.
+The current app sends in `recentPatterns` only the patterns of exercises the user actually performed (not skipped and with at least one set carrying real work, the same `LoggedExercise.wasPerformed` rule the Progress tab counts with).
+Older builds also listed skipped and set-less steps, and the Worker serves both, so the persona still describes the list as patterns that appeared in recent sessions and tells the model never to treat it as proof of completed work.
 Changing the persona is covered by `test/worker.test.js` ("sends a persona that forbids generating a workout and names the target intents and voice", "sends a persona that forbids setting or claiming an injury filter", "sends a persona that narrates the strength journey and offers only a bounded preference", "teaches the four foundations and side-aware Legs narration in the emitted model request", "sends instructions that forbid internal terms in replies and name the app's own vocabulary", and "sends a neutral not-started rule and marks recent patterns as not proof of completed work").
 
 ## Tests and typecheck

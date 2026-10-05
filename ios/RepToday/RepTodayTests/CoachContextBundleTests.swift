@@ -132,6 +132,98 @@ final class CoachContextBundleTests: XCTestCase {
         XCTAssertEqual(bundle.recentPatterns, ["push", "squat", "core"])
     }
 
+    /// A log whose exercises carry explicit outcomes, for the performed-only recent-pattern rule.
+    private func log(daysAgo: Int, exercises: [(MovementPattern, [CompletedSet], Bool)]) -> WorkoutLog {
+        var built = log(daysAgo: daysAgo, patterns: [])
+        built.exercises = exercises.map { pattern, sets, skipped in
+            LoggedExercise(
+                id: UUID(),
+                exerciseId: "\(pattern.rawValue)_x",
+                pillar: .strength,
+                movementPattern: pattern,
+                completedSets: sets,
+                skipped: skipped
+            )
+        }
+        return built
+    }
+
+    private let oneSet = [CompletedSet(reps: 10, durationSeconds: nil)]
+
+    func testRecentPatternsLeaveOutSkippedAndSetLessExercises() {
+        let logs = [
+            log(daysAgo: 1, exercises: [
+                (.hinge, oneSet, true),   // skipped
+                (.pull, [], false),       // no sets logged
+                (.push, oneSet, false),   // performed
+            ]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs
+        )
+        XCTAssertEqual(bundle.recentPatterns, ["push"])
+    }
+
+    func testRecentPatternsLeaveOutZeroValueSets() {
+        // Sets recorded with no reps and no seconds are not performed work (the Progress tab's
+        // worked-instance rule); a set with real work alongside zero-value ones still counts.
+        let logs = [
+            log(daysAgo: 1, exercises: [
+                (.squat, [CompletedSet(reps: 0, durationSeconds: nil),
+                          CompletedSet(reps: nil, durationSeconds: 0)], false),
+                (.core, [CompletedSet(reps: nil, durationSeconds: nil),
+                         CompletedSet(reps: nil, durationSeconds: 30)], false),
+            ]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs
+        )
+        XCTAssertEqual(bundle.recentPatterns, ["core"])
+    }
+
+    func testRecentPatternsKeepOrderDedupeAndLimitOverPerformedOnly() {
+        let logs = [
+            log(daysAgo: 3, exercises: [(.hinge, oneSet, false), (.core, oneSet, false)]),
+            // Most recent: a skipped pull must neither appear nor consume the cap.
+            log(daysAgo: 1, exercises: [(.pull, oneSet, true), (.push, oneSet, false),
+                                        (.push, oneSet, false), (.squat, oneSet, false)]),
+            // A skipped core here must not claim core's slot ahead of a performed one.
+            log(daysAgo: 2, exercises: [(.core, oneSet, true), (.pull, [], false), (.core, oneSet, false)]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs,
+            recentPatternLimit: 3
+        )
+        XCTAssertEqual(bundle.recentPatterns, ["push", "squat", "core"])
+    }
+
+    func testRecentPatternsEmptyWhenEverythingWasSkipped() {
+        let logs = [
+            log(daysAgo: 1, exercises: [(.push, oneSet, true), (.squat, [], true)]),
+            log(daysAgo: 2, exercises: [(.hinge, oneSet, true)]),
+        ]
+        let bundle = CoachContextBundle.make(
+            phase: .discipline,
+            requestedMinutes: 10,
+            chainPositions: [],
+            consistencyTrend: [],
+            recentLogs: logs
+        )
+        XCTAssertEqual(bundle.recentPatterns, [])
+    }
+
     func testRecentPatternsEmptyWhenNoLogs() {
         let bundle = CoachContextBundle.make(
             phase: .discipline,
