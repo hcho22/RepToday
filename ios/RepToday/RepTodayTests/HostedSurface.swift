@@ -200,6 +200,19 @@ enum AccessibilityTree {
         return spoken
     }
 
+    /// Every accessibility element in `root`, in traversal order, so a test can read where each one sits
+    /// (its `accessibilityFrame`) and not only what it says.
+    static func elements(in root: UIView) -> [NSObject] {
+        activate()
+
+        var elements: [NSObject] = []
+        walk(root) { node in
+            if node.isAccessibilityElement { elements.append(node) }
+            return true
+        }
+        return elements
+    }
+
     /// The element carrying `label`, so a test can activate it exactly the way VoiceOver's double-tap
     /// does - driving the production control rather than reaching past it into the view model.
     static func element(labeled label: String, in root: UIView) -> NSObject? {

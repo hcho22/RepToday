@@ -451,8 +451,8 @@ private struct ConsistencyCard: View {
         guard consistency.longestChain > 0 else {
             return "Every time you show up counts - even five minutes."
         }
-        let unit = consistency.longestChain == 1 ? "week" : "weeks"
-        return "Best run: \(consistency.longestChain) \(unit) on goal."
+        let run = CountWording.phrase(consistency.longestChain, singular: "week", plural: "weeks")
+        return "Best run: \(run) on goal."
     }
 
     private var accessibilityText: String {

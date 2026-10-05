@@ -858,8 +858,14 @@ struct ActiveSessionView: View {
     private func summaryCard(_ summary: SessionSummary) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack(spacing: Theme.Spacing.lg) {
-                statTile(value: "\(summary.durationMinutes)", unit: summary.durationMinutes == 1 ? "minute" : "minutes")
-                statTile(value: "\(summary.completedSetCount)", unit: summary.completedSetCount == 1 ? "set" : "sets")
+                statTile(
+                    value: "\(summary.durationMinutes)",
+                    unit: CountWording.noun(for: summary.durationMinutes, singular: "minute", plural: "minutes")
+                )
+                statTile(
+                    value: "\(summary.completedSetCount)",
+                    unit: CountWording.noun(for: summary.completedSetCount, singular: "set", plural: "sets")
+                )
             }
 
             if !summary.coverageText.isEmpty {
@@ -943,14 +949,14 @@ struct ActiveSessionView: View {
     static func targetAccessibilityText(_ prescription: PrescribedExercise) -> String {
         let suffix = perSideSuffix(prescription)
         if let reps = prescription.reps {
-            let repsPhrase = reps == 1 ? "1 rep" : "\(reps) reps"
+            let repsPhrase = CountWording.phrase(reps, singular: "rep", plural: "reps")
             return "\(setsPhrase(prescription.sets)) of \(repsPhrase)\(suffix)"
         }
         if let seconds = prescription.durationSeconds {
             // One set holds once, so the article moves with the noun: "1 set of a 30 second hold".
-            let holdPhrase = prescription.sets == 1
-                ? "a \(seconds) second hold"
-                : "\(seconds) second holds"
+            let holdPhrase = CountWording.noun(
+                for: prescription.sets, singular: "a \(seconds) second hold", plural: "\(seconds) second holds"
+            )
             return "\(setsPhrase(prescription.sets)) of \(holdPhrase)\(suffix)"
         }
         return setsPhrase(prescription.sets)
@@ -958,7 +964,7 @@ struct ActiveSessionView: View {
 
     /// `"1 set"` / `"3 sets"` - the set count agreeing with its noun.
     static func setsPhrase(_ sets: Int) -> String {
-        sets == 1 ? "1 set" : "\(sets) sets"
+        CountWording.phrase(sets, singular: "set", plural: "sets")
     }
 
     /// "0:30" for a duration in seconds - the prescribed hold in the target line, and the remaining

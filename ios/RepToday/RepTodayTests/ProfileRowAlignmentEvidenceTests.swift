@@ -7,9 +7,9 @@ import UIKit
 /// `ProfileTabView` (Account, Coach, Settings) rendered at the default text size and at the largest
 /// accessibility size, in light and dark, under `artifacts/reports/profile-row-alignment/`.
 ///
-/// Every row's title starts at the same x because its glyph sits in a fixed-width column; the column
-/// only holds that promise while every glyph fits inside it, which is pinned at every text size the
-/// icon renders at.
+/// Every row's title starts at the same x because its glyph sits in a fixed-width column. That is read
+/// off the rendered rows themselves, and the column only holds the promise while every glyph fits
+/// inside it, which is pinned at every text size the icon renders at.
 @MainActor
 final class ProfileRowAlignmentEvidenceTests: XCTestCase {
 
@@ -42,6 +42,64 @@ final class ProfileRowAlignmentEvidenceTests: XCTestCase {
 
         let image = HostedSurface.capture(root, size: size, afterScreenUpdates: true)
         try EvidenceOutput.write(image, named: fileName, for: EvidenceOutput.Story.profileRowAlignment)
+    }
+
+    /// Renders the real `ProfileRowLabel` once per glyph, with and without a badge, and reads where each
+    /// title lands. The bare label is hosted (not `ProfileTabView`) because a `NavigationLink`'s own
+    /// accessibility label merges its row into one element, hiding the title's frame.
+    private func assertRowTitlesAlign(at dynamicTypeSize: DynamicTypeSize) throws {
+        let rows = ProfileRowIcon.allCases.flatMap { icon in
+            [nil, "Premium"].map { badge in
+                (icon: icon, badge: badge, title: badge == nil ? "\(icon) title" : "\(icon) badged title")
+            }
+        }
+        let size = CGSize(width: 393, height: dynamicTypeSize.isAccessibilitySize ? 1600 : 852)
+        let (_, hostedWindow) = HostedSurface.host(
+            VStack(spacing: Theme.Spacing.sm) {
+                ForEach(rows, id: \.title) { row in
+                    ProfileRowLabel(icon: row.icon, title: row.title, badge: row.badge)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .environment(\.dynamicTypeSize, dynamicTypeSize),
+            size: size
+        )
+        window = hostedWindow
+        let root = try XCTUnwrap(hostedWindow.rootViewController?.view)
+        let elements = AccessibilityTree.elements(in: root)
+
+        var titleLeadingEdges: [(title: String, minX: CGFloat)] = []
+        for row in rows {
+            let title = try XCTUnwrap(elements.first { $0.accessibilityLabel == row.title },
+                                      "no \(row.title) element; tree reads \(AccessibilityTree.labels(in: root))")
+            let titleFrame = title.accessibilityFrame
+            let leading = elements.filter { other in
+                other !== title
+                    && other.accessibilityFrame.minX < titleFrame.minX
+                    && other.accessibilityFrame.maxY > titleFrame.minY
+                    && other.accessibilityFrame.minY < titleFrame.maxY
+            }
+            XCTAssertFalse(leading.isEmpty, "the \(row.icon.rawValue) glyph should lead the \(row.title) row")
+            for glyph in leading {
+                XCTAssertLessThanOrEqual(glyph.accessibilityFrame.maxX, titleFrame.minX,
+                                         "the \(row.icon.rawValue) glyph overlaps the \(row.title) title at \(dynamicTypeSize)")
+            }
+            titleLeadingEdges.append((row.title, titleFrame.minX))
+        }
+
+        let reference = try XCTUnwrap(titleLeadingEdges.first)
+        for edge in titleLeadingEdges.dropFirst() {
+            XCTAssertEqual(edge.minX, reference.minX, accuracy: 0.5,
+                           "\(edge.title) starts at x \(edge.minX) but \(reference.title) at x \(reference.minX), at \(dynamicTypeSize)")
+        }
+    }
+
+    func testEveryRowTitleStartsAtTheSameXAtTheDefaultTextSize() throws {
+        try assertRowTitlesAlign(at: .large)
+    }
+
+    func testEveryRowTitleStartsAtTheSameXAtTheLargestTextSize() throws {
+        try assertRowTitlesAlign(at: .accessibility5)
     }
 
     /// The widest glyph any row uses fits the shared icon column at every text size the icon grows to,
