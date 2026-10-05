@@ -1040,16 +1040,18 @@ private struct SessionTopBar: View {
 ///
 /// **VoiceOver (US-CC14, AC2):** the ring is a single element carrying `.updatesFrequently`, so VoiceOver
 /// does *not* announce every per-second change or pull focus onto the drawing as it ticks; the remaining
-/// time stays in the label and is read **on demand** when the user focuses the element. The label keeps
-/// the "<name>, N seconds remaining" shape the rest of the flow (and its evidence suites) already speak.
+/// time stays in the label and is read **on demand** when the user focuses the element. The ring builds
+/// that label itself in the "<name>, N seconds remaining" shape the rest of the flow (and its evidence
+/// suites) already speak, with the noun agreeing with the count ("Rest, 1 second remaining").
 ///
 /// **Reduce Motion (US-CC14, AC4):** the sweeping arc animation is dropped when Reduce Motion is on - the
 /// arc still redraws to the current fraction each tick, but as a discrete step rather than a smooth
 /// sweep, so the ring never animates against the preference. The centre time is what the user reads.
-private struct CountdownRing: View {
+struct CountdownRing: View {
     let remaining: Int
     let fraction: Double
-    let accessibilityLabel: String
+    /// What is counting down ("Hold", "Work window", "Rest", "Switch sides"), spoken before the time.
+    let name: String
 
     /// The ring's size and typography. A fixed `diameter` draws it at exactly that size (the compact
     /// headline ring); `nil` lets it take the largest square its container offers, between
@@ -1097,7 +1099,7 @@ private struct CountdownRing: View {
         }
         .modifier(RingSize(diameter: diameter))
         .accessibilityElement()
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel("\(name), \(CountWording.phrase(remaining, singular: "second", plural: "seconds")) remaining")
         // US-CC14 (AC2): mark the ring as frequently self-updating so VoiceOver polls it on demand
         // instead of announcing every tick or stealing focus as the countdown runs down. The remaining
         // time stays queryable in the label; it is simply not spoken continuously.
@@ -1151,7 +1153,7 @@ private struct HoldCountdownView: View {
         CountdownRing(
             remaining: remaining,
             fraction: min(1, max(0, Double(remaining) / Double(total))),
-            accessibilityLabel: "Hold, \(remaining) seconds remaining",
+            name: "Hold",
             diameter: CountdownRing.compactDiameter,
             lineWidth: CountdownRing.compactLineWidth,
             font: Theme.Typography.title
@@ -1196,7 +1198,7 @@ private struct WorkWindowCountdownView: View {
         CountdownRing(
             remaining: remaining,
             fraction: min(1, max(0, Double(remaining) / Double(total))),
-            accessibilityLabel: "Work window, \(remaining) seconds remaining",
+            name: "Work window",
             diameter: CountdownRing.compactDiameter,
             lineWidth: CountdownRing.compactLineWidth,
             font: Theme.Typography.title
@@ -1276,7 +1278,7 @@ private struct RestView: View {
                 CountdownRing(
                     remaining: remaining,
                     fraction: fraction,
-                    accessibilityLabel: heading + ", \(remaining) seconds remaining",
+                    name: heading,
                     diameter: nil
                 )
                 .padding(.horizontal, Theme.Spacing.lg)
