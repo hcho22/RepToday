@@ -38,7 +38,7 @@ struct CoachEntryRow: View {
         NavigationLink {
             CoachSyntheticQAView(services: services, appState: appState)
         } label: {
-            ProfileRowLabel(icon: "testtube.2", title: "Coach Synthetic QA")
+            ProfileRowLabel(icon: .coachSyntheticQA, title: "Coach Synthetic QA")
         }
         .accessibilityLabel("Coach Synthetic QA")
         .accessibilityHint("Approved synthetic contexts. Consent and verified Premium required to send.")
@@ -49,7 +49,7 @@ struct CoachEntryRow: View {
                 NavigationLink {
                     CoachView(services: services)
                 } label: {
-                    ProfileRowLabel(icon: "bubble.left.and.bubble.right.fill", title: "Coach")
+                    ProfileRowLabel(icon: .coach, title: "Coach")
                 }
                 .accessibilityLabel("Coach")
                 .accessibilityHint("Ask the coach about your workouts and form")
@@ -59,7 +59,7 @@ struct CoachEntryRow: View {
                     showPaywall = true
                 } label: {
                     ProfileRowLabel(
-                        icon: "bubble.left.and.bubble.right.fill",
+                        icon: .coach,
                         title: "Coach",
                         badge: "Premium"
                     )

@@ -233,8 +233,8 @@ private struct ConsistencyHeadlineCard: View {
             }
 
             HStack(spacing: Theme.Spacing.lg) {
-                stat(value: "\(consistency.totalWorkoutsCompleted)", label: "sessions")
-                stat(value: "\(consistency.totalMinutesExercised)", label: "minutes moved")
+                stat(value: "\(consistency.totalWorkoutsCompleted)", label: sessionsNoun)
+                stat(value: "\(consistency.totalMinutesExercised)", label: minutesMovedNoun)
             }
         }
         .padding(Theme.Spacing.md)
@@ -261,12 +261,20 @@ private struct ConsistencyHeadlineCard: View {
         guard consistency.longestChain > 0 else {
             return "Every time you show up counts - even five minutes."
         }
-        let unit = consistency.longestChain == 1 ? "week" : "weeks"
-        return "Best run: \(consistency.longestChain) \(unit) on goal."
+        let run = CountWording.phrase(consistency.longestChain, singular: "week", plural: "weeks")
+        return "Best run: \(run) on goal."
+    }
+
+    private var sessionsNoun: String {
+        CountWording.noun(for: consistency.totalWorkoutsCompleted, singular: "session", plural: "sessions")
+    }
+
+    private var minutesMovedNoun: String {
+        CountWording.noun(for: consistency.totalMinutesExercised, singular: "minute moved", plural: "minutes moved")
     }
 
     private var accessibilityText: String {
-        "You're someone who moves. Consistency \(Int(consistency.score.rounded())). \(pride) \(consistency.totalWorkoutsCompleted) sessions, \(consistency.totalMinutesExercised) minutes moved."
+        "You're someone who moves. Consistency \(Int(consistency.score.rounded())). \(pride) \(consistency.totalWorkoutsCompleted) \(sessionsNoun), \(consistency.totalMinutesExercised) \(minutesMovedNoun)."
     }
 }
 
@@ -353,7 +361,7 @@ private struct ScoreTrendCard: View {
 
     private var trendAccessibilityValue: String {
         guard let first = trend.first, let last = trend.last else { return "" }
-        return "From \(Int(first.score.rounded())) to \(Int(last.score.rounded())) over \(trend.count) weeks."
+        return "From \(Int(first.score.rounded())) to \(Int(last.score.rounded())) over \(CountWording.phrase(trend.count, singular: "week", plural: "weeks"))."
     }
 }
 
@@ -879,12 +887,15 @@ private struct PersonalBestsCard: View {
                 .foregroundStyle(Theme.Colors.textPrimary)
 
             LazyVGrid(columns: columns, spacing: Theme.Spacing.md) {
-                tile(value: "\(bests.totalSessions)", label: "sessions logged")
+                tile(
+                    value: "\(bests.totalSessions)",
+                    label: CountWording.noun(for: bests.totalSessions, singular: "session logged", plural: "sessions logged")
+                )
                 tile(value: "\(bests.longestSessionMinutes) min", label: "longest session")
                 tile(value: "\(bests.mostSessionsInAWeek)", label: "best week")
                 tile(value: "\(bests.totalMinutesMoved) min", label: "total moved")
                 if let reps = bests.bestReps {
-                    tile(value: "\(reps.value) reps", label: "best set - \(reps.displayName)")
+                    tile(value: CountWording.phrase(reps.value, singular: "rep", plural: "reps"), label: "best set - \(reps.displayName)")
                 }
                 if let hold = bests.bestHold {
                     tile(value: "\(hold.value)s", label: "longest hold - \(hold.displayName)")
@@ -1221,7 +1232,9 @@ private struct WeeklyVolumeCard: View {
 
     private var accessibilityValue: String {
         let total = points.reduce(0) { $0 + $1.setsCompleted }
-        return "\(total) sets over \(points.count) weeks."
+        let sets = CountWording.phrase(total, singular: "set", plural: "sets")
+        let weeks = CountWording.phrase(points.count, singular: "week", plural: "weeks")
+        return "\(sets) over \(weeks)."
     }
 }
 

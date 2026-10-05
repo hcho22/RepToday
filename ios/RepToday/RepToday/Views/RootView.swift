@@ -169,7 +169,7 @@ private struct MainTabsView: View {
 ///
 /// The row is a plain, prominent list-style row rather than a toolbar gear, because the one control
 /// behind it - the anonymous-usage-data opt-out - has to be *found* to be worth anything.
-private struct ProfileTabView: View {
+struct ProfileTabView: View {
     @Environment(\.services) private var services
 
     var body: some View {
@@ -189,7 +189,7 @@ private struct ProfileTabView: View {
                         NavigationLink {
                             AccountView(authService: services.authService)
                         } label: {
-                            ProfileRowLabel(icon: "person.crop.circle", title: "Account")
+                            ProfileRowLabel(icon: .account, title: "Account")
                         }
                         .accessibilityLabel("Account")
                         .accessibilityHint("Sign in with Apple or view your sign-in status")
@@ -203,7 +203,7 @@ private struct ProfileTabView: View {
                         NavigationLink {
                             SettingsView()
                         } label: {
-                            ProfileRowLabel(icon: "gearshape.fill", title: "Settings")
+                            ProfileRowLabel(icon: .settings, title: "Settings")
                         }
                         .accessibilityLabel("Settings")
                         .accessibilityHint("Privacy and anonymous usage data")
@@ -216,45 +216,94 @@ private struct ProfileTabView: View {
     }
 }
 
+/// The leading glyph of each Profile row. Enumerated so the shared icon column can be sized to - and
+/// tested against - the widest glyph any row uses.
+enum ProfileRowIcon: String, CaseIterable {
+    case account = "person.crop.circle"
+    case coach = "bubble.left.and.bubble.right.fill"
+    case coachSyntheticQA = "testtube.2"
+    case settings = "gearshape.fill"
+
+    /// The icon column's width at the default text size, scaled with Dynamic Type relative to `.body`
+    /// (the glyph's own text style). Wide enough for `coach`, the widest glyph (28pt at 17pt body), so
+    /// every row's title starts at the same x.
+    static let columnWidth: CGFloat = 30
+
+    /// The largest text size the icon (and its column) grows to. Beyond it the glyph alone would take a
+    /// third of the row and squeeze the title it decorates down to an ellipsis.
+    static let largestTextSize: DynamicTypeSize = .accessibility1
+}
+
 /// A prominent list-style navigation row on the Profile tab: an icon, a title, an optional trailing
 /// badge, and a chevron. Shared so the Coach and Settings rows stay visually identical (and so the
 /// US-AC03 gate can reuse it for both the Premium and upsell states). Internal, not private, so the
 /// coach entry row in its own file can render an identical row.
 struct ProfileRowLabel: View {
-    let icon: String
+    let icon: ProfileRowIcon
     let title: String
     /// An optional short trailing tag (e.g. "Premium" on the coach upsell row). `nil` renders no badge.
     var badge: String?
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
-            Image(systemName: icon)
-                .foregroundStyle(Theme.Colors.accent)
-            Text(title)
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Spacer(minLength: 0)
-            if let badge {
-                Text(badge)
-                    .font(Theme.Typography.caption.weight(.semibold))
-                    .foregroundStyle(Theme.Colors.accent)
-                    .padding(.horizontal, Theme.Spacing.sm)
-                    .padding(.vertical, Theme.Spacing.xs)
-                    .background(
-                        Theme.Colors.accentBadgeFill,
-                        in: Capsule()
-                    )
+            ProfileRowIconView(icon: icon)
+                .dynamicTypeSize(...ProfileRowIcon.largestTextSize)
+
+            // At accessibility sizes the badge moves under the title, so the title keeps the row's width.
+            let textLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.xs))
+                : AnyLayout(HStackLayout(spacing: Theme.Spacing.md))
+            textLayout {
+                Text(title)
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 0)
+                }
+                if let badge {
+                    Text(badge)
+                        .font(Theme.Typography.caption.weight(.semibold))
+                        .foregroundStyle(Theme.Colors.accent)
+                        .padding(.horizontal, Theme.Spacing.sm)
+                        .padding(.vertical, Theme.Spacing.xs)
+                        .background(
+                            Theme.Colors.accentBadgeFill,
+                            in: Capsule()
+                        )
+                }
+            }
+            if dynamicTypeSize.isAccessibilitySize {
+                Spacer(minLength: 0)
             }
             Image(systemName: "chevron.right")
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .dynamicTypeSize(...ProfileRowIcon.largestTextSize)
         }
         .padding(.horizontal, Theme.Spacing.md)
-        // The standard 56pt control height, which already clears the 44pt target.
-        .frame(height: Theme.Spacing.buttonHeight)
+        .padding(.vertical, Theme.Spacing.sm)
+        // The standard 56pt control height, which already clears the 44pt target; it grows with large
+        // text instead of clipping the title.
+        .frame(minHeight: Theme.Spacing.buttonHeight)
         .background(
             Theme.Colors.surface,
             in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
         )
+    }
+}
+
+/// A Profile row's glyph, centered in a fixed-width column so a wide glyph never pushes its title right.
+private struct ProfileRowIconView: View {
+    let icon: ProfileRowIcon
+    @ScaledMetric(relativeTo: .body) private var columnWidth = ProfileRowIcon.columnWidth
+
+    var body: some View {
+        Image(systemName: icon.rawValue)
+            .foregroundStyle(Theme.Colors.accent)
+            .frame(width: columnWidth)
     }
 }
 
