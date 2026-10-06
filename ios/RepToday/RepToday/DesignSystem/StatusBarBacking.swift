@@ -5,10 +5,10 @@ extension View {
     /// screen slides under a solid band instead of being drawn beneath the clock and battery.
     ///
     /// For a full-screen surface with no navigation bar, whose `ScrollView` reaches the top safe-area
-    /// edge (the Today, Progress and Profile tabs, and the session-complete screen). A screen with a navigation bar already gets the
-    /// system's own backing and does not need it. The band is the same `Theme.Colors.background` the
-    /// screen sits on, so an unscrolled screen looks exactly as it did; it takes no touches and is
-    /// invisible to VoiceOver.
+    /// edge (the Today, Progress and Profile tabs, and the session-complete screen). A screen with a
+    /// navigation bar already gets the system's own backing and does not need it. The band is the same
+    /// `Theme.Colors.background` the screen sits on, so an unscrolled screen looks exactly as it did; it
+    /// takes no touches and is invisible to VoiceOver.
     func statusBarBacking() -> some View {
         overlay {
             // Either the screen's frame already reaches the top of the display (a background that
