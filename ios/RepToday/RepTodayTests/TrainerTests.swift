@@ -102,7 +102,7 @@ final class TrainerTests: XCTestCase {
     /// the user survives the Trainer write.
     func testSaveTrainerChoiceKeepsAFieldAnotherWriterChangedAfterTheCallerLoaded() async throws {
         let service = MockUserService(user: user(sex: .male))
-        let firstLoad = try await XCTUnwrapAsync(await service.currentUser())
+        let firstLoad = try XCTUnwrapAsync(await service.currentUser())
 
         var secondWriter = firstLoad
         secondWriter.consistency.totalWorkoutsCompleted += 5
@@ -111,7 +111,7 @@ final class TrainerTests: XCTestCase {
 
         try await service.saveTrainerChoice(.female)
 
-        let stored = try await XCTUnwrapAsync(await service.currentUser())
+        let stored = try XCTUnwrapAsync(await service.currentUser())
         XCTAssertEqual(stored.profile.trainer, .female)
         XCTAssertEqual(stored.consistency.totalWorkoutsCompleted, firstLoad.consistency.totalWorkoutsCompleted + 5)
         XCTAssertEqual(stored.profile.injuries, firstLoad.profile.injuries + ["knees"])
@@ -135,7 +135,7 @@ final class TrainerTests: XCTestCase {
         XCTAssertNil(afterDeletion)
 
         try await service.save(user(sex: .male))
-        let reOnboarded = try await XCTUnwrapAsync(await service.currentUser())
+        let reOnboarded = try XCTUnwrapAsync(await service.currentUser())
         XCTAssertNil(reOnboarded.profile.trainer)
         XCTAssertEqual(Trainer.effective(for: reOnboarded.profile), .male)
     }

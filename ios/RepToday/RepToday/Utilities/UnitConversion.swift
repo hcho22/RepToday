@@ -80,11 +80,11 @@ enum UnitConversion {
     }
 
     /// `"5 feet 7 inches"` - the spoken height, with each noun agreeing with its own count, so
-    /// VoiceOver never reads "1 feet". Mirrors the agreement rule the active-session prescription
-    /// copy already follows.
+    /// VoiceOver never reads "1 feet". The noun comes from `CountWording`, like every other count the
+    /// app shows or speaks.
     static func heightAccessibilityLabel(feet: Int, inches: Int) -> String {
-        let feetPart = "\(feet) \(feet == 1 ? "foot" : "feet")"
-        let inchesPart = "\(inches) \(inches == 1 ? "inch" : "inches")"
+        let feetPart = CountWording.phrase(feet, singular: "foot", plural: "feet")
+        let inchesPart = CountWording.phrase(inches, singular: "inch", plural: "inches")
         return "\(feetPart) \(inchesPart)"
     }
 
@@ -103,6 +103,6 @@ enum UnitConversion {
     /// `"165 pounds"` - the spoken weight, agreeing with its own count for the same reason as
     /// `heightAccessibilityLabel`.
     static func weightAccessibilityLabel(pounds: Int) -> String {
-        "\(pounds) \(pounds == 1 ? "pound" : "pounds")"
+        CountWording.phrase(pounds, singular: "pound", plural: "pounds")
     }
 }

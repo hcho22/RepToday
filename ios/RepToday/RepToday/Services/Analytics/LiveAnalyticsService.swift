@@ -21,7 +21,10 @@ import Foundation
 /// **Retry duplicates are measurement-safe.** One random `eventId` is assigned at acceptance,
 /// encoded once during persistence, and reused by every retry. Convex returns `204` but inserts at
 /// most one row for that id, covering the classic "insert committed, response was interrupted" case.
-final class LiveAnalyticsService: AnalyticsServiceProtocol {
+///
+/// **`Sendable` by construction.** `record(_:)` is callable from any thread, and the compiler checks
+/// that claim: the only state is an immutable `@Sendable` consent reader and the delivery actor.
+final class LiveAnalyticsService: AnalyticsServiceProtocol, Sendable {
     static let routePath = "logEvent"
     static let endpointInfoPlistKey = "RepTodayAnalyticsEndpoint"
     static let secretInfoPlistKey = "RepTodayAnalyticsSecret"
