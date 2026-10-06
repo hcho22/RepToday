@@ -37,6 +37,7 @@ enum EvidenceOutput {
         static let progressAnalytics = "us-m02"
         static let trialConversionSubscribe = "trial-conversion-subscribe"
         static let profileRowAlignment = "profile-row-alignment"
+        static let statusBarBacking = "status-bar-backing"
     }
 
     /// The directory `story`'s evidence is written to for this run.

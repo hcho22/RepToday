@@ -1529,3 +1529,14 @@ What landed:
 
 Light appearance is unchanged.
 Earlier stories' committed dark baselines still show the old fill as point-in-time records.
+
+## Status-bar backing on scrolling screens (2026-10-05)
+
+The [status-bar backing validation report](../artifacts/reports/status-bar-backing/validation.md) owns the defect, the screens checked and the evidence.
+
+What landed:
+
+- **One shared backing.** `View.statusBarBacking()` (`DesignSystem/StatusBarBacking.swift`) paints `Theme.Colors.background` behind the status bar, so content scrolled up past the top slides under a solid band instead of being drawn over the clock.
+  A full-screen screen with no navigation bar whose `ScrollView` reaches the top safe-area edge uses it: the Today, Progress and Profile tabs and the session-complete screen.
+  A screen with a navigation bar does not need it.
+- **Guard.** `StatusBarBackingEvidenceTests` reads the status-bar band of each scrolled screen pixel by pixel.

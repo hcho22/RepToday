@@ -799,6 +799,9 @@ struct ActiveSessionView: View {
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity)
         }
+        // At large text the summary runs past the screen; scrolled, it slides under a solid band
+        // rather than beneath the status bar's clock.
+        .statusBarBacking()
     }
 
     /// The optional, non-blocking perceived-difficulty rating (US-L02): three pills from easy to hard.
