@@ -74,6 +74,7 @@ struct ProgressTabView: View {
                 content
             }
         }
+        .statusBarBacking()
         .task {
             await viewModel.load()
         }

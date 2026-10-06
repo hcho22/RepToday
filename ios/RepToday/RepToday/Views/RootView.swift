@@ -189,6 +189,7 @@ struct ProfileTabView: View {
                     .scrollBounceBehavior(.basedOnSize)
                 }
             }
+            .statusBarBacking()
         }
     }
 

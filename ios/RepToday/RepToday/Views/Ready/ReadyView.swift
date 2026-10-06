@@ -77,6 +77,7 @@ struct ReadyView: View {
                 emptyState
             }
         }
+        .statusBarBacking()
         // Re-runs on appear and whenever the user confirms an injury-flag change (US-AC08), so the
         // session on screen is rebuilt against the safety filter they just set rather than the one in
         // force when the tab was last opened.
