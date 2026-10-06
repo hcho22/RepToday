@@ -7,8 +7,8 @@ import UIKit
 /// behind the clock and battery: every scrolling tab (Today, Progress, Profile) and the full-screen
 /// session-complete screen is hosted on an iPhone SE
 /// (375x667 pt, a 20 pt status bar above, a 49 pt tab bar below), scrolled, and the status-bar band of
-/// the rendered screen is read pixel by pixel. It must be nothing but the screen's own background, at the
-/// default and the largest text size, in light and dark. The renders land under
+/// the rendered screen is read pixel by pixel. It must be nothing but the screen's own background, at
+/// every text size (default, largest) the screen scrolls at, in light and dark. The renders land under
 /// `artifacts/reports/status-bar-backing/`.
 ///
 /// The system draws the status bar in its own window, so a hosted capture shows the band exactly as the
@@ -112,10 +112,12 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
     }
 
     /// The session-complete screen is a full-screen cover rather than a tab, but it scrolls under the
-    /// same status bar: the celebration and summary run past an iPhone SE's screen at either text size.
+    /// same status bar once the largest text size runs the celebration and summary past an iPhone SE's
+    /// screen. At the default size the summary fits the screen, nothing reaches the status bar, and the
+    /// default size is not a case.
     func testSessionCompleteScreenKeepsTheStatusBarClearWhenScrolled() throws {
         let exercise = try catalogExercise("push_wall")
-        for look in Look.allCases {
+        for look in [Look.largestLight, .largestDark] {
             let workout = Workout(
                 id: UUID(), createdAt: Date(), shape: .singleFocus, focusPillar: .strength, requestedMinutes: 5,
                 wasReturn: false,
@@ -141,7 +143,8 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
 
     /// Hosts `view` as an iPhone SE in `look`, scrolls it so content passes behind the status bar, and
     /// asserts the status-bar band holds only the background - with the unscrolled and scrolled renders
-    /// kept as evidence.
+    /// kept as evidence. A screen whose scrolled content never reaches the band fails rather than passing
+    /// on a band that had nothing to hide.
     private func assertStatusBarClear<V: View>(
         _ view: V, look: Look, named name: String, arrive: ((UIView) throws -> Void)? = nil,
         file: StaticString = #filePath, line: UInt = #line
@@ -164,11 +167,17 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
         let maxOffset = scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height
         // Far enough that content has to pass behind the 20 pt band, whatever sits first on the screen.
         let offset = min(maxOffset, 160)
-        XCTAssertGreaterThan(offset, Self.insets.top - scrollView.adjustedContentInset.top,
-                             "\(name) does not scroll far enough to put content behind the status bar",
-                             file: file, line: line)
         scrollView.setContentOffset(CGPoint(x: 0, y: offset - scrollView.adjustedContentInset.top), animated: false)
         HostedSurface.pump(for: 0.4)
+
+        let screenSpace = try XCTUnwrap(root.window?.screen.coordinateSpace)
+        let behindStatusBar = AccessibilityTree.elements(in: root).filter { element in
+            let frame = root.convert(element.accessibilityFrame, from: screenSpace)
+            return frame.minY < Self.insets.top && frame.maxY > 0
+        }
+        XCTAssertFalse(behindStatusBar.isEmpty,
+                       "\(name) does not scroll far enough to put content behind the status bar",
+                       file: file, line: line)
 
         let image = HostedSurface.capture(root, size: Self.screen, afterScreenUpdates: true)
         try EvidenceOutput.write(image, named: "\(name)-scrolled.png", for: EvidenceOutput.Story.statusBarBacking)

@@ -21,7 +21,8 @@ The modal cards (first-run explainer, Trainer choice, Coach disclosure, graduati
 
 `StatusBarBackingEvidenceTests` hosts each screen as an iPhone SE (375x667 pt with a 20 pt status-bar inset and a 49 pt tab-bar inset), at the default text size and at `.accessibility5`, in light and dark.
 It renders the screen as it opens (`<screen>-<look>-top.png`), scrolls it so content passes behind the status bar, renders it again (`<screen>-<look>-scrolled.png`), and asserts that every pixel of the 20 pt status-bar band is the screen's background.
-Profile has nothing to scroll at the default size, and only the largest text size makes the session-complete screen taller than the phone, so those two cases cover what can scroll.
+Before reading the pixels it checks, from the live accessibility tree, that at least one element's frame now reaches into the band, so a screen that cannot scroll content behind the status bar fails instead of passing on an empty band.
+Profile has nothing to scroll at the default size, and only the largest text size makes the session-complete screen taller than the phone, so those two screens are checked at the largest size only.
 The band's last pixel row is allowed a faint tint, because the capture's resampling bleeds a few percent of the row below into it; drawn content differs by the full contrast of that row.
 
 Without the fix every scrolled case fails, by between 1,173 and 58,698 band pixels (Today, Progress and Profile at each look they scroll at, and the session-complete screen at the largest size).
