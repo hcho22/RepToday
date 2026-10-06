@@ -247,14 +247,15 @@ enum ProfileRowIcon: String, CaseIterable {
     static let largestTextSize: DynamicTypeSize = .accessibility1
 }
 
-/// A prominent list-style navigation row on the Profile tab: an icon, a title, an optional trailing
-/// badge, and a chevron. Shared so the Coach and Settings rows stay visually identical (and so the
-/// US-AC03 gate can reuse it for both the Premium and upsell states). Internal, not private, so the
-/// coach entry row in its own file can render an identical row.
+/// A prominent list-style navigation row on the Profile tab: an icon, a title, an optional badge, and a
+/// chevron. Shared so the Account, Coach and Settings rows stay visually identical (and so the US-AC03
+/// gate can reuse it for both the Premium and upsell states). Internal, not private, so the coach entry
+/// row in its own file can render an identical row.
 struct ProfileRowLabel: View {
     let icon: ProfileRowIcon
     let title: String
-    /// An optional short trailing tag (e.g. "Premium" on the coach upsell row). `nil` renders no badge.
+    /// An optional short tag (e.g. "Premium" on the coach upsell row), trailing the title or, at
+    /// accessibility sizes, under it. `nil` renders no badge.
     var badge: String?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
