@@ -135,8 +135,8 @@ Content-Type: application/json
   whether it has advanced - no date, id, or identity field), requested minutes - and contains
   **no raw `WorkoutLog` history and no identity field**. The proxy validates it is present and
   object-shaped but does not otherwise constrain it (the app owns the definition).
-  Each chain/trend line carries its stable raw `pattern` key. The proxy prompt maps those keys to
-  Push, Pull, the Squat and Hinge sides of Legs, and Core for the model.
+  Each chain/trend line carries its stable raw `pattern` key. This JSON is the wire format only: the
+  model is never handed it (see "What the model is given" below).
 - `message` (required) - the user's free-text question. Non-empty and at most **2000 characters**
   (the iOS client caps the same value; the proxy re-checks as defense in depth).
 - `safetyIdentifier` (required) - a random, app-generated `coach-<UUIDv4>` pseudonym. It is distinct
@@ -173,17 +173,58 @@ malformed body is handled identically by the client: surface a non-blocking erro
 The coach persona (`COACH_SYSTEM_PROMPT`) is the talking coach's voice (US-AC02).
 It covers the target intents: "why this workout?" (the app's reasoning, such as the area the user has gone longest without), "how do I do <movement>?" (safe bodyweight form cues), "is <movement> safe with <complaint>?" or any mention of pain or injury (general, non-diagnostic guidance plus an invitation to flag that area themselves in the app's injury settings), "I'm bored" (variety is built in), and "how am I doing?" (a concrete insight from the strength-journey trend in the context, naming what is climbing and what has gone flat and for how long).
 It answers in the app's identity-framed, never-shaming voice.
-The load-bearing invariant it enforces first is that the coach only ever **talks**: it never generates, edits, or prescribes a workout (the deterministic on-device engine owns every session and all safety).
+The load-bearing invariant it enforces first is that the coach only ever **talks**: it never generates, edits, or prescribes a workout (the app builds every session on the phone and owns all safety).
 US-AC08 hardened the injury half of that boundary: the persona states the coach **cannot set, clear, or read** the injury flag (only the user can, only in that screen) and must never say or imply that it has flagged an area, removed a movement, or changed anything, speaking in the future tense about what the user can do.
 That is the model-side half of "the coach's language never implies it has already removed movements".
-US-AN02 extended the same posture to the strength-journey narration: the persona may offer to lean the program toward a stalled line but must never claim to have already changed anything (the app applies the preference).
+US-AN02 extended the same posture to the strength-journey narration: the persona may offer to lean the program toward a stalled foundation or side of Legs but must never claim to have already changed anything (the app applies the preference).
 Replies use the app's own plain words.
-The persona forbids internal terms and field names in a reply (among them "engine", "stalest", "chain", "consistency signal" and the context field names) and points the model at the words the Progress tab shows ("Consistency", "Tier 2 of 4", "next tier in reach", "Strength Phase", "Not started yet").
-A foundation line with no tracked progress is described as its progress not having started yet, never as missing data or a stall.
+The persona tells the model what to say instead of each word the app never shows a user in that sense ("engine", "stalest", "chain", "frontier", "consistency signal", "line" for a foundation, "unlock" for a next tier, "Discipline Phase") and points it at the words the Progress tab shows ("Consistency", "Tier 2 of 4", "next tier in reach", "Strength Phase", "Not started yet").
+"Tier" is the app's own word, so the Coach may say it.
+A foundation with no tracked progress is described as its progress not having started yet, never as missing data or a stall.
 That wording is a statement about tracked progress only.
 The current app sends in `recentPatterns` only the patterns of exercises the user actually performed (not skipped and with at least one set carrying real work, the same `LoggedExercise.wasPerformed` rule the Progress tab counts with).
 Older builds also listed skipped and set-less steps, and the Worker serves both, so the persona still describes the list as patterns that appeared in recent sessions and tells the model never to treat it as proof of completed work.
-Changing the persona is covered by `test/worker.test.js` ("sends a persona that forbids generating a workout and names the target intents and voice", "sends a persona that forbids setting or claiming an injury filter", "sends a persona that narrates the strength journey and offers only a bounded preference", "teaches the four foundations and side-aware Legs narration in the emitted model request", "sends instructions that forbid internal terms in replies and name the app's own vocabulary", and "sends a neutral not-started rule and marks recent patterns as not proof of completed work").
+Changing the persona is covered by `test/worker.test.js` ("sends a persona that forbids generating a workout and names the target intents and voice", "sends a persona that forbids setting or claiming an injury filter", "sends a persona that narrates the strength journey and offers only a bounded preference", "teaches the four foundations and side-aware Legs narration in the emitted model request", "tells the Coach what to say instead of each listed word and keeps the app's own vocabulary", "uses no listed word in the instructions outside the sentence that says what to use instead", and "sends a neutral not-started rule and marks recent patterns as not proof of completed work").
+
+### What the model is given
+
+A model repeats the words it is given, so nothing the Coach model is handed may be a word the app never shows a user in that sense.
+[`coach-internal-words.json`](coach-internal-words.json) is the one list of those words, each with what to say instead and where the app does or does not show it.
+"Tier" is not on it: the Progress tab shows "Tier 2 of 4 - next tier in reach".
+
+The request's JSON names its facts in the app's own code's words (`chainPositions`, `chainLength`, the phase value `discipline`), so the Worker never passes it to the model.
+`buildCoachPrompt` writes the same facts out from allowlists, in the Progress tab's wording, for example:
+
+```
+User's progress context (a non-identifying summary):
+Strength Phase: not earned yet.
+Requested minutes: 15.
+Where they stand in each foundation:
+- Push: Standard Push-Up, Tier 3 of 7 - next tier in reach
+- Legs, Hinge side: Glute Bridge, Tier 1 of 5 - next tier in reach
+- Core: Not started yet
+Movement patterns in their recent sessions, most recent first: Push, Core, Squat.
+Consistency: 72, rising.
+Strength journey:
+- Legs, Hinge side: flat, 3 weeks at its current tier, has moved up a tier before
+
+User's message:
+why did I get squats today?
+```
+
+A field or value the Worker does not recognize is dropped rather than passed on, and a part the request does not carry is left out rather than invented.
+A movement's display name is the one piece of the app's text passed on as written, as a single bounded line.
+No fact is added: this is the request's own content in other words.
+Every app build sends the same request shape, so older builds are served the same way without an app release.
+
+Two suites hold this to the one list:
+
+- `ios/RepToday/RepTodayTests/CoachRequestVocabularyTests.swift` builds the request through the app's own send path for three users (the first a beginner on the first movement of every foundation) and pins each to a file under `test/fixtures/coach-requests/`.
+  It also checks that no value the app sends, and no movement name in the catalog, is a listed word.
+- `test/worker.test.js` runs the Worker over those same files and fails if the summary or the instructions hand the model a listed word ("gives the model no listed word for any request the app builds").
+
+When the app's request changes, rebuild the fixtures by running that iOS suite with `REPTODAY_WRITE_EVIDENCE=1`, then run `npm test` here.
+Neither suite can show what a live model replies; that needs a real Coach message.
 
 ## Tests and typecheck
 

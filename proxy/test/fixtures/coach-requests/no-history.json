@@ -1,0 +1,50 @@
+{
+  "context" : {
+    "chainPositions" : [
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "push",
+        "tier" : 0
+      },
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "pull",
+        "tier" : 0
+      },
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "squat",
+        "tier" : 0
+      },
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "hinge",
+        "tier" : 0
+      },
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "core",
+        "tier" : 0
+      }
+    ],
+    "consistency" : {
+      "currentScore" : 0,
+      "direction" : "new"
+    },
+    "phase" : "discipline",
+    "recentPatterns" : [
+
+    ],
+    "requestedMinutes" : 15,
+    "strengthJourney" : [
+
+    ]
+  },
+  "message" : "Why this workout?",
+  "safetyIdentifier" : "coach-00000000-0000-4000-8000-000000000001"
+}

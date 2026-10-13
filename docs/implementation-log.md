@@ -1540,3 +1540,25 @@ What landed:
   A full-screen screen with no navigation bar whose `ScrollView` reaches the top safe-area edge uses it: the Today, Progress and Profile tabs and the session-complete screen.
   A screen with a navigation bar does not need it.
 - **Guard.** `StatusBarBackingEvidenceTests` reads the status-bar band of each scrolled screen pixel by pixel.
+
+## The Coach is given only words the app shows (2026-10-13)
+
+A Coach reply described a beginner's standing with words the app never shows a user in that sense: a foundation as a "line", and a next tier as not yet "unlocked".
+Every such word was in what the model had been handed, in the Worker's instructions or in the field names of the app's request.
+A model repeats the words it is given, so the fix is to stop giving them, not to rewrite replies.
+
+What landed (Worker only; the app's request format and the app are unchanged):
+
+- **One list.** [`proxy/coach-internal-words.json`](../proxy/coach-internal-words.json) names each word, what to say instead, and where the app does or does not show it.
+  "Tier" is deliberately not on it: the Progress tab shows "Tier 2 of 4 - next tier in reach", so it is the app's own word and the Coach may say it.
+  "Engine" is on it by an earlier decision about Coach replies, although the app does print "the engine" in three strings; the list records that.
+- **The summary in the app's words.** `buildCoachPrompt` (`proxy/src/worker.js`) no longer hands the model the request's JSON, whose field names (`chainPositions`, `chainLength`) and phase value (`discipline`) are the app's code's words.
+  It writes the same facts out from allowlists in the Progress tab's wording ("Legs, Squat side: Wall Sit, Tier 1 of 2 - next tier in reach", "Not started yet", "Strength Phase: not earned yet."), drops anything it does not recognize, and adds nothing.
+  Every app build sends the same shape, so no app release is needed.
+- **The instructions.** `COACH_SYSTEM_PROMPT` uses no listed word outside one sentence that tells the model what to say instead of each.
+  The rest of the 2026-09-30 wording stands: the Progress tab's own words, the not-started rule, and the rule that recent movement patterns are not proof of completed work.
+- **Tests.** The reproduction is the regression test, in two suites that read the one list: `CoachRequestVocabularyTests` builds and pins the app's real requests, and `proxy/test/worker.test.js` checks what the Worker hands the model for them.
+  The "Coach is given only words the app shows" row in [`docs/test-coverage.md`](test-coverage.md) has the detail, and [`proxy/README.md`](../proxy/README.md) ("What the model is given") the contract.
+
+What this cannot show is a live reply: a model can still choose a word it was not given.
+It reaches users only through a Coach Worker release, which is a separately approved step.
