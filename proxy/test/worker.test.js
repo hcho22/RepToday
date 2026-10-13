@@ -131,6 +131,31 @@ function summaryOf(upstreamBody) {
   return summary;
 }
 
+/** Made-up text no list in the Worker holds, standing in for a value it has never been taught. */
+const UNLISTED = "zz-unlisted";
+
+/**
+ * Every leaf under `node` as `{ steps, name, value }`: `steps` leads to it, and `name` is its field
+ * name with list positions left out ("chainPositions[].tier", "recentPatterns[]"). An empty list or
+ * object is a leaf, so a field the app sends empty is still named.
+ */
+function leavesOf(node, steps = [], name = "") {
+  if (typeof node !== "object" || node === null || Object.keys(node).length === 0) {
+    return [{ steps, name, value: node }];
+  }
+  return Object.entries(node).flatMap(([key, value]) =>
+    leavesOf(value, [...steps, key], Array.isArray(node) ? `${name}[]` : name ? `${name}.${key}` : key),
+  );
+}
+
+/** A copy of `tree` with the leaf at `steps` replaced by `value`. */
+function withLeaf(tree, steps, value) {
+  const copy = structuredClone(tree);
+  const parent = steps.slice(0, -1).reduce((node, step) => node[step], copy);
+  parent[steps.at(-1)] = value;
+  return copy;
+}
+
 /** Build a Claude-shaped Messages response body. */
 function anthropicReply(text) {
   return {
@@ -209,6 +234,38 @@ function coachRequest(body, { headers, includeSafetyIdentifier = true } = {}) {
 }
 
 const ENV = { ANTHROPIC_API_KEY: "sk-ant-test", OPENAI_API_KEY: "sk-openai-test" };
+
+/** The summary the Worker hands the model for the request `body`. */
+async function summaryFor(body) {
+  fetchSpy.mockClear();
+  await worker.fetch(coachRequest(body), ENV);
+  return summaryOf(JSON.parse(fetchSpy.mock.calls[0][1].body));
+}
+
+/**
+ * What the summary drops from the contexts of `requests`, which is what the model is never told. A
+ * field name is dropped when no request shows the Worker reading it. A string - a name from one of the
+ * app's closed lists, or a movement's display name - is dropped when the summary reads the same with
+ * made-up text in its place. A number or a flag may go unread in one place (a foundation not started
+ * yet has no tier to state), so those are held by field name alone.
+ */
+async function droppedFromTheSummary(requests) {
+  const names = new Set();
+  const read = new Set();
+  const strings = new Set();
+  for (const { body } of requests) {
+    const summary = await summaryFor(body);
+    for (const { steps, name, value } of leavesOf(body.context)) {
+      names.add(name);
+      if ((await summaryFor({ ...body, context: withLeaf(body.context, steps, UNLISTED) })) !== summary) {
+        read.add(name);
+      } else if (typeof value === "string") {
+        strings.add(`${name}: ${value}`);
+      }
+    }
+  }
+  return [...[...names].filter((name) => !read.has(name)), ...strings];
+}
 
 describe("POST /coach", () => {
   it("uses gpt-5.6-luna through the Responses API for a valid Coach request", async () => {
@@ -625,6 +682,60 @@ describe("POST /coach", () => {
       }
       expect(summary, file).toContain(`Requested minutes: ${body.context.requestedMinutes}.`);
     }
+  });
+
+  // The summary is written from allowlists, so a field or a value the Worker has not been taught is
+  // dropped without a word. These files are the requests the app builds: when the app's request grows
+  // and they are rebuilt, this fails until the Worker is taught what the app now sends.
+  it("drops no field name and no value of a request the app builds", async () => {
+    expect(await droppedFromTheSummary(APP_REQUESTS)).toEqual([]);
+  });
+
+  // The check above is not vacuous: each way the app's request can outgrow the Worker is named.
+  it.each([
+    { what: "a new field", drift: (context) => { context.restDays = 2; }, dropped: "restDays" },
+    {
+      what: "a new field of a foundation",
+      drift: (context) => { context.chainPositions[0].weeksHeld = 4; },
+      dropped: "chainPositions[].weeksHeld",
+    },
+    { what: "a new phase", drift: (context) => { context.phase = "mastery"; }, dropped: "phase: mastery" },
+    {
+      what: "a new foundation",
+      drift: (context) => {
+        context.chainPositions.push({ pattern: "carry", tier: 0, chainLength: 0, hasNextTier: false });
+      },
+      dropped: "chainPositions[].pattern: carry",
+    },
+    {
+      what: "a new movement pattern",
+      drift: (context) => { context.recentPatterns.push("carry"); },
+      dropped: "recentPatterns[]: carry",
+    },
+    {
+      what: "a new Consistency direction",
+      drift: (context) => { context.consistency.direction = "surging"; },
+      dropped: "consistency.direction: surging",
+    },
+    {
+      what: "a new strength-journey foundation",
+      drift: (context) => {
+        context.strengthJourney.push({ pattern: "carry", trend: "flat", weeksAtCurrentTier: 2, hasAdvanced: false });
+      },
+      dropped: "strengthJourney[].pattern: carry",
+    },
+    {
+      what: "a new strength-journey trend",
+      drift: (context) => {
+        context.strengthJourney.push({ pattern: "push", trend: "peaking", weeksAtCurrentTier: 2, hasAdvanced: true });
+      },
+      dropped: "strengthJourney[].trend: peaking",
+    },
+  ])("names $what the app starts sending as dropped", async ({ drift, dropped }) => {
+    const requests = structuredClone(APP_REQUESTS);
+    drift(requests[0].body.context);
+
+    expect(await droppedFromTheSummary(requests)).toContain(dropped);
   });
 
   it("hands the model the reported beginner's standing as the Progress tab words it", async () => {
