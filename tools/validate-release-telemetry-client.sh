@@ -11,6 +11,8 @@ set +x
 
 readonly DEPLOYMENT='hcho22:reptoday-telemetry:prod'
 readonly EXPECTED_ENDPOINT='https://sensible-spider-810.convex.site'
+readonly KEYCHAIN_SERVICE='com.reptoday.analytics.production'
+readonly KEYCHAIN_ACCOUNT='release-archive'
 readonly BUNDLE_ID='com.reptoday.app'
 readonly INSTALL_ID_DEADLINE_SECONDS=10
 readonly DELIVERY_DEADLINE_SECONDS=15
@@ -18,8 +20,6 @@ readonly DELIVERY_POLL_SECONDS=1
 readonly VALIDATION_ID_PREFIX='prod-validation-'
 
 repo_root=$(git rev-parse --show-toplevel)
-# shellcheck source=tools/telemetry-keychain.sh
-source "$repo_root/tools/telemetry-keychain.sh"
 simulator_id=${1:-$(xcrun simctl list devices available | awk '/iPhone 16 \(/ { gsub(/[()]/, "", $3); print $3; exit }')}
 convex_bin="$repo_root/node_modules/.bin/convex"
 run_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
@@ -36,7 +36,7 @@ if [[ ! -x "$convex_bin" ]]; then
     exit 69
 fi
 
-secret=$(telemetry_keychain_secret production) || {
+secret=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null) || {
     echo 'error: production telemetry token is unavailable in the macOS Keychain' >&2
     exit 78
 }
@@ -46,7 +46,7 @@ private_xcconfig="$private_dir/TelemetrySecrets.xcconfig"
 derived_data="$private_dir/DerivedData"
 trap 'rm -rf "$private_dir"' EXIT HUP INT TERM
 umask 077
-write_telemetry_secret_xcconfig "$secret" "$private_xcconfig"
+printf 'REPTODAY_ANALYTICS_SECRET = %s\n' "$secret" > "$private_xcconfig"
 
 xcrun simctl boot "$simulator_id" >/dev/null 2>&1 || true
 xcodebuild \

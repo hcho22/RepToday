@@ -8,6 +8,8 @@
 set -euo pipefail
 set +x
 
+readonly KEYCHAIN_SERVICE="com.reptoday.analytics.production"
+readonly KEYCHAIN_ACCOUNT="release-archive"
 readonly EXPECTED_ENDPOINT="https://sensible-spider-810.convex.site"
 
 if [[ $# -lt 1 ]]; then
@@ -28,9 +30,6 @@ for argument in "$@"; do
 done
 
 repo_root=$(git rev-parse --show-toplevel)
-# Names the production Keychain item and writes the private xcconfig; shared with the Debug route.
-# shellcheck source=tools/telemetry-keychain.sh
-source "$repo_root/tools/telemetry-keychain.sh"
 "$repo_root/tools/validate-production-telemetry.sh"
 private_dir=$(mktemp -d "${TMPDIR:-/tmp}/reptoday-release.XXXXXX")
 private_xcconfig="$private_dir/TelemetrySecrets.xcconfig"
@@ -41,19 +40,22 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-secret=$(telemetry_keychain_secret production) || {
+secret=$(security find-generic-password \
+    -s "$KEYCHAIN_SERVICE" \
+    -a "$KEYCHAIN_ACCOUNT" \
+    -w 2>/dev/null) || {
     echo "error: production telemetry secret is missing from the macOS Keychain" >&2
     echo "see artifacts/reports/production-telemetry/validation.md for provisioning and rotation" >&2
     exit 78
 }
 
-if ! telemetry_secret_is_well_formed "$secret"; then
+if [[ ! "$secret" =~ ^[[:xdigit:]]{64}$ ]]; then
     echo "error: production telemetry secret has an unexpected format; rotate it before archiving" >&2
     exit 78
 fi
 
 umask 077
-write_telemetry_secret_xcconfig "$secret" "$private_xcconfig"
+printf 'REPTODAY_ANALYTICS_SECRET = %s\n' "$secret" > "$private_xcconfig"
 
 xcodebuild \
     -project "$repo_root/ios/RepToday/RepToday.xcodeproj" \

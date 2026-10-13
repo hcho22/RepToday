@@ -2,18 +2,15 @@
 
 # Owns the development usage-data shared secret: the value a Debug build sends to the dev sink in
 # the X-RepToday-Analytics-Secret header. It lives in two places only, this Mac's login Keychain and
-# the dev Convex deployment's ANALYTICS_SHARED_SECRET variable, and reaches a Debug build through
-# the same route Release uses (tools/telemetry-keychain.sh): Keychain -> private xcconfig.
+# the dev Convex deployment's ANALYTICS_SHARED_SECRET variable, and reaches a Debug build by the
+# route Release takes for its own value: Keychain -> private xcconfig (tools/telemetry-keychain.sh).
 #
 #   install   Keychain -> ios/RepToday/Config/DebugTelemetry.local.xcconfig (untracked, mode 600).
 #             Run once per checkout; Debug builds made afterwards send usage data to the dev sink.
-#   remove    Delete that file; later Debug builds send no usage data.
 #   verify    Status codes only: the Keychain value is accepted (204); a missing value, a wrong
 #             value and every --refused-value-file value are refused (401).
-#   adopt     Copy the dev deployment's current value into this Mac's Keychain, then verify. For a
-#             second Mac. Changes no deployment.
 #   rotate    Generate a new value, store it in the Keychain, set it on the dev deployment, then
-#             verify. Every other Mac and every already-built Debug app is refused from then on.
+#             verify. Every already-built Debug app is refused from then on.
 #
 # Nothing here prints a value, passes one as a command argument, or can target production: every
 # deployment command names the deployment read from the Debug REPTODAY_ANALYTICS_ENDPOINT build
@@ -23,6 +20,7 @@ set -euo pipefail
 set +x
 
 readonly DEPLOYMENT_VARIABLE='ANALYTICS_SHARED_SECRET'
+readonly PRODUCTION_DEPLOYMENT='sensible-spider-810'
 readonly SECRET_HEADER='X-RepToday-Analytics-Secret'
 readonly CURL_CONNECT_TIMEOUT_SECONDS=5
 readonly CURL_MAX_TIME_SECONDS=15
@@ -39,7 +37,7 @@ readonly local_xcconfig="$repo_root/ios/RepToday/Config/DebugTelemetry.local.xcc
 readonly convex_bin="$repo_root/node_modules/.bin/convex"
 
 usage() {
-    echo 'usage: tools/dev-telemetry-secret.sh <install|remove|verify|adopt|rotate> [--refused-value-file <path>]...' >&2
+    echo 'usage: tools/dev-telemetry-secret.sh <install|verify|rotate> [--refused-value-file <path>]...' >&2
     exit 64
 }
 
@@ -80,7 +78,7 @@ resolve_dev_deployment() {
     release_deployment=$(deployment_name_of "$release_origin") \
         || fail 78 'the Release REPTODAY_ANALYTICS_ENDPOINT build setting does not name a Convex deployment, so the target cannot be told apart from production'
     echo "target deployment: $dev_deployment (dev: the Debug REPTODAY_ANALYTICS_ENDPOINT)"
-    if [[ "$dev_deployment" == "$release_deployment" || "$dev_deployment" == "$TELEMETRY_PRODUCTION_DEPLOYMENT" ]]; then
+    if [[ "$dev_deployment" == "$release_deployment" || "$dev_deployment" == "$PRODUCTION_DEPLOYMENT" ]]; then
         fail 78 "refusing: $dev_deployment is the production deployment"
     fi
     dev_endpoint="$debug_origin/logEvent"
@@ -97,12 +95,11 @@ require_convex() {
 # process argument. Read back afterwards, because that reader reports no failure of its own.
 store_in_keychain() {
     local secret=$1
-    local service account stored
-    service=$(telemetry_keychain_service development)
-    account=$(telemetry_keychain_account development)
-    printf 'add-generic-password -U -s %s -a %s -w %s\n' "$service" "$account" "$secret" \
+    local stored
+    printf 'add-generic-password -U -s %s -a %s -w %s\n' \
+        "$DEV_TELEMETRY_KEYCHAIN_SERVICE" "$DEV_TELEMETRY_KEYCHAIN_ACCOUNT" "$secret" \
         | security -i > /dev/null 2>&1 || true
-    stored=$(telemetry_keychain_secret development) || stored=''
+    stored=$(dev_telemetry_keychain_secret) || stored=''
     if [[ "$stored" != "$secret" ]]; then
         unset stored
         fail 78 'the macOS Keychain did not store the dev usage-data secret; unlock the login Keychain and retry'
@@ -143,15 +140,16 @@ post_status() {
     rm -f "$header_config"
 }
 
-# verify_boundary <accepted secret> <refused value file>...
+# verify_boundary <seconds to wait for acceptance> <accepted secret> <refused value file>...
 verify_boundary() {
-    local accepted=$1
-    shift
+    local acceptance_wait_seconds=$1
+    local accepted=$2
+    shift 2
     local stamp deadline status refused refused_file index=0 ok=true
     stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 
     # A changed deployment variable can take a moment to reach the HTTP action.
-    deadline=$((SECONDS + ACCEPTANCE_DEADLINE_SECONDS))
+    deadline=$((SECONDS + acceptance_wait_seconds))
     status=$(post_status accepted "$accepted" "$stamp")
     while [[ "$status" != 204 ]] && (( SECONDS < deadline )); do
         sleep 2
@@ -192,8 +190,8 @@ verify_boundary() {
 
 command_install() {
     local secret
-    secret=$(telemetry_keychain_secret development) \
-        || fail 78 'the dev usage-data secret is not in the macOS Keychain; run tools/dev-telemetry-secret.sh adopt (or rotate) first. Debug builds still work without it and send no usage data'
+    secret=$(dev_telemetry_keychain_secret) \
+        || fail 78 'the dev usage-data secret is not in the macOS Keychain. Debug builds still work without it and send no usage data; tools/dev-telemetry-secret.sh rotate replaces a lost value'
     telemetry_secret_is_well_formed "$secret" \
         || { unset secret; fail 78 'the dev usage-data secret has an unexpected format; rotate it'; }
     # Never let the value land where git would publish it.
@@ -204,34 +202,13 @@ command_install() {
     echo "wrote ${local_xcconfig#"$repo_root"/} (untracked, mode 600); Debug builds now send usage data to the dev sink"
 }
 
-command_remove() {
-    rm -f "$local_xcconfig"
-    echo "removed ${local_xcconfig#"$repo_root"/}; Debug builds now send no usage data"
-}
-
 command_verify() {
     local secret
     resolve_dev_deployment
-    secret=$(telemetry_keychain_secret development) \
+    secret=$(dev_telemetry_keychain_secret) \
         || fail 78 'the dev usage-data secret is not in the macOS Keychain'
     make_temp_dir
-    verify_boundary "$secret" "$@" || { unset secret; fail 1 'the dev sink did not answer as expected'; }
-    unset secret
-}
-
-command_adopt() {
-    local secret
-    resolve_dev_deployment
-    require_convex
-    secret=$(run_with_timeout "$CONVEX_TIMEOUT_SECONDS" "$convex_bin" env get "$DEPLOYMENT_VARIABLE" \
-        --deployment "$dev_deployment" < /dev/null 2>/dev/null) \
-        || fail 69 "could not read $DEPLOYMENT_VARIABLE from $dev_deployment"
-    telemetry_secret_is_well_formed "$secret" \
-        || { unset secret; fail 78 "$dev_deployment holds a value of an unexpected format; rotate it"; }
-    store_in_keychain "$secret"
-    echo 'stored the dev deployment value in the macOS Keychain'
-    make_temp_dir
-    verify_boundary "$secret" "$@" || { unset secret; fail 1 'the dev sink did not answer as expected'; }
+    verify_boundary 0 "$secret" "$@" || { unset secret; fail 1 'the dev sink did not answer as expected'; }
     unset secret
 }
 
@@ -239,7 +216,7 @@ command_rotate() {
     local previous secret output
     resolve_dev_deployment
     require_convex
-    previous=$(telemetry_keychain_secret development) || previous=''
+    previous=$(dev_telemetry_keychain_secret) || previous=''
     secret=$(od -An -vtx1 -N32 /dev/urandom | tr -d ' \n')
     telemetry_secret_is_well_formed "$secret" \
         || { unset secret previous; fail 70 'the system random source did not yield 32 bytes'; }
@@ -260,8 +237,8 @@ command_rotate() {
             echo 'the Keychain was put back to the previous value' >&2
         else
             security delete-generic-password \
-                -s "$(telemetry_keychain_service development)" \
-                -a "$(telemetry_keychain_account development)" > /dev/null 2>&1 || true
+                -s "$DEV_TELEMETRY_KEYCHAIN_SERVICE" \
+                -a "$DEV_TELEMETRY_KEYCHAIN_ACCOUNT" > /dev/null 2>&1 || true
             echo 'the Keychain item was removed again' >&2
         fi
         unset secret previous
@@ -271,7 +248,8 @@ command_rotate() {
     unset output previous
     echo "rotated at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-    verify_boundary "$secret" "$@" || { unset secret; fail 1 'the dev sink did not answer as expected after the rotation'; }
+    verify_boundary "$ACCEPTANCE_DEADLINE_SECONDS" "$secret" "$@" \
+        || { unset secret; fail 1 'the dev sink did not answer as expected after the rotation'; }
     unset secret
     echo 'next: run tools/dev-telemetry-secret.sh install in each checkout that builds Debug'
 }
@@ -294,9 +272,7 @@ done
 
 case "$command" in
     install) [[ ${#refused_files[@]} -eq 0 ]] || usage; command_install ;;
-    remove) [[ ${#refused_files[@]} -eq 0 ]] || usage; command_remove ;;
     verify) command_verify ${refused_files[@]+"${refused_files[@]}"} ;;
-    adopt) command_adopt ${refused_files[@]+"${refused_files[@]}"} ;;
     rotate) command_rotate ${refused_files[@]+"${refused_files[@]}"} ;;
     *) usage ;;
 esac

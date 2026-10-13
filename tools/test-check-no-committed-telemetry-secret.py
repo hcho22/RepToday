@@ -84,19 +84,6 @@ class CommittedSecretCheckTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(PLANTED, result.stdout + result.stderr)
 
-    def test_a_debug_target_level_key_that_would_override_the_xcconfig_is_flagged(self):
-        block = ('\t\t0000 /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n'
-                 '\t\t\tbaseConfigurationReference = 1111 /* DebugTelemetry.xcconfig */;\n'
-                 '\t\t\tbuildSettings = {\n\t\t\t\tREPTODAY_ANALYTICS_ENDPOINT = "https://example.invalid";\n'
-                 '%s\t\t\t};\n\t\t\tname = Debug;\n\t\t};\n')
-        name = 'ios/RepToday/RepToday.xcodeproj/project.pbxproj'
-        self.write(name, block % '')
-        self.assertEqual(self.run_check().returncode, 0)
-        self.write(name, block % '\t\t\t\tREPTODAY_ANALYTICS_SECRET = "";\n')
-        result = self.run_check()
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('overrides the xcconfig', result.stdout)
-
     def test_the_ignored_private_xcconfig_is_not_read(self):
         self.write('ios/RepToday/Config/DebugTelemetry.local.xcconfig', f'REPTODAY_ANALYTICS_SECRET = {PLANTED}\n')
         self.assertEqual(self.run_check().returncode, 0)

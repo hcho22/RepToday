@@ -299,9 +299,9 @@ npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; neve
 The client sources the same value from the `REPTODAY_ANALYTICS_SECRET` build setting, expanded
 into `Info.plist`. No configuration commits a value for it: this repository is public, so the value
 never enters `ios/RepToday/project.yml`, a tracked xcconfig or the generated project, and CI fails
-if one does (`tools/check-no-committed-telemetry-secret.py`). Both values reach a build by one
-route, owned by `tools/telemetry-keychain.sh`: an item in the macOS login Keychain is written to a
-private mode-600 xcconfig.
+if one does (`tools/check-no-committed-telemetry-secret.py`). Both values reach a build by the same
+route, each with its own item: an item in the macOS login Keychain is written to a private mode-600
+xcconfig.
 
 | Build | Keychain item (service / account) | Deployment | How the xcconfig reaches the build |
 |---|---|---|---|
@@ -314,25 +314,23 @@ That is every Debug build on a fresh clone and every CI run; such a build still 
 
 #### The dev secret on a Mac
 
-The dev secret lives in two places only: the dev deployment's `ANALYTICS_SHARED_SECRET` and the login Keychain of each Mac that builds Debug with usage data on.
+The dev secret lives in two places only: the dev deployment's `ANALYTICS_SHARED_SECRET` and the login Keychain of the one Mac that holds it.
 All of these print status codes and never a value, and every deployment command names its target first and stops if it is the Release one.
 
 ```bash
-npm ci                                  # the Convex CLI, used by adopt and rotate
-npx convex login                        # once; needs access to the hcho22/reptoday-telemetry project
-tools/dev-telemetry-secret.sh adopt     # copy the dev deployment's value into this Mac's Keychain
 tools/dev-telemetry-secret.sh install   # Keychain -> the untracked xcconfig; once per checkout
 tools/dev-telemetry-secret.sh verify    # Keychain value 204; no value and a wrong value 401
+npm ci                                  # the Convex CLI, used by rotate
+npx convex login                        # once; needs access to the hcho22/reptoday-telemetry project
 tools/dev-telemetry-secret.sh rotate    # new random 32-byte value in the Keychain and on dev
-tools/dev-telemetry-secret.sh remove    # delete the xcconfig; Debug builds send nothing again
 ```
 
 A Debug build with usage data on, in the Simulator or on a phone: run `install` in the checkout once, then build and run the `RepToday` scheme in Debug from Xcode or `xcodebuild` as usual.
 The secret is read when the app is built, so an app built before `install`, or before a rotation, has to be rebuilt.
-Someone without access to the Convex project cannot obtain the dev secret; their Debug builds work and send nothing.
+A Mac without the Keychain item has no dev secret; its Debug builds work and send nothing.
 
-`rotate` makes every other Mac's Keychain copy and every already-built Debug app be refused with `401`; on each other Mac run `adopt` and `install`, then rebuild.
-If the Keychain value is ever lost, `adopt` restores it from the deployment, and `rotate` replaces it outright.
+`rotate` makes every already-built Debug app be refused with `401`; run `install` in each checkout again, then rebuild.
+If the Keychain value is ever lost, `rotate` replaces it.
 
 The dev secret was committed to this repository until 2026-10-13 and that value is still readable in git history.
 History was not rewritten.

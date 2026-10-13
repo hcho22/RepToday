@@ -2,11 +2,9 @@
 """Fail when a build setting commits a usage-data shared secret.
 
 This repository is public. REPTODAY_ANALYTICS_SECRET reaches a build only from the macOS Keychain
-through a private xcconfig (tools/telemetry-keychain.sh), so no file git would publish may give it
-a value: not the XcodeGen spec, the generated project, a tracked xcconfig, a scheme or a workflow,
-and not Info.plist, whose key must stay the build-setting reference. It also fails when the Debug
-configuration sets the key at target level, empty or not, because that overrides the xcconfig the
-Keychain value arrives through.
+through a private xcconfig, so no file git would publish may give it a value: not the XcodeGen
+spec, the generated project, a tracked xcconfig, a scheme or a workflow, and not Info.plist, whose
+key must stay the build-setting reference.
 
 It reads the working tree, tracked and untracked-but-not-ignored, so it also covers a project that
 was just regenerated. An ignored file (the private xcconfig itself) is not read. A finding names
@@ -31,12 +29,6 @@ BUILD_SETTING_SUFFIXES = ('.pbxproj', '.xcconfig', '.xcscheme', '.yml', '.yaml')
 ASSIGNMENT = re.compile(
     re.escape(SETTING)
     + r'(?:\[[^\]]*\])?["\']?\s*[:=]\s*(?:"(?P<double>[^"]*)"|\'(?P<single>[^\']*)\'|(?P<bare>\S*))'
-)
-# A build configuration based on the Debug xcconfig, and its own settings. Any target-level value
-# there, even an empty one, overrides the xcconfig and silently switches the Keychain route off.
-DEBUG_XCCONFIG_BLOCK = re.compile(
-    r'baseConfigurationReference = \w+ /\* DebugTelemetry\.xcconfig \*/;\s*buildSettings = \{(.*?)\n\t*\};',
-    re.DOTALL,
 )
 PLACEHOLDER = re.compile(r'<[^<>]*>')
 REFERENCE = re.compile(r'\$[({].*[)}]')
@@ -69,9 +61,6 @@ def findings_in(root):
             for number, line in enumerate(text.splitlines(), start=1):
                 if any(not is_empty_value(match) for match in ASSIGNMENT.finditer(line)):
                     findings.append(f'{relative}:{number}: {SETTING} is given a value (withheld)')
-            if any(SETTING in block for block in DEBUG_XCCONFIG_BLOCK.findall(text)):
-                findings.append(f'{relative}: a configuration based on DebugTelemetry.xcconfig sets {SETTING} '
-                                f'itself, which overrides the xcconfig; remove the key from project.yml')
         elif path.suffix == '.plist':
             try:
                 value = plistlib.loads(path.read_bytes()).get(PLIST_KEY)

@@ -95,10 +95,10 @@ targets:
       # endpoint URL cannot flood the `events` table. No configuration commits a value for it: this
       # repository is public, so the literal must never enter this file, a tracked xcconfig or the
       # generated project (`tools/check-no-committed-telemetry-secret.py` fails CI if one does).
-      # Both values come from the macOS login Keychain through one route, a private xcconfig written
-      # by `tools/telemetry-keychain.sh`: Release receives the production value at archive time
-      # (`tools/archive-release.sh`), and Debug reads the dev value from the untracked file
-      # `Config/DebugTelemetry.xcconfig` optionally includes (`tools/dev-telemetry-secret.sh install`).
+      # Both values come from the macOS login Keychain by the same route, a private xcconfig:
+      # Release receives the production value at archive time (`tools/archive-release.sh`), and
+      # Debug reads the dev value from the untracked file `Config/DebugTelemetry.xcconfig`
+      # optionally includes (`tools/dev-telemetry-secret.sh install`).
       # Debug therefore sets no `REPTODAY_ANALYTICS_SECRET` below - a target-level value would
       # override that file. It is a *cost-raiser, not a guarantee* - shipped in the binary, so it is
       # extractable by anyone who unpacks the app; it stops opportunistic flooding, not a determined

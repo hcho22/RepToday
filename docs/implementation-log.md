@@ -1551,13 +1551,13 @@ What landed:
 - **No committed value, for any configuration.** Debug sets no `REPTODAY_ANALYTICS_SECRET` in `project.yml`; it takes `Config/DebugTelemetry.xcconfig`, which leaves the value empty and optionally includes the untracked `DebugTelemetry.local.xcconfig`.
   A target-level setting would override that file, which is why the Debug key is absent rather than empty.
   Release, CoachDeviceQA and CoachStaging are unchanged: their resolved build settings and all four schemes compare identical before and after.
-- **One route for both secrets.** `tools/telemetry-keychain.sh` names the production and development Keychain items side by side and writes the private mode-600 xcconfig.
-  `tools/archive-release.sh` and the two production validators now source it instead of each naming the production item; `tools/dev-telemetry-secret.sh` (`install`, `remove`, `verify`, `adopt`, `rotate`) owns the development item.
+- **The route Release takes, with its own item.** The dev value lives in its own login Keychain item (`tools/telemetry-keychain.sh`) and reaches a Debug build as a private mode-600 xcconfig, the way `tools/archive-release.sh` hands Release the production value.
+  `tools/dev-telemetry-secret.sh` (`install`, `verify`, `rotate`) owns it.
+  `tools/archive-release.sh` and the two production validators are untouched.
 - **A Debug build without the secret sends nothing.** It carries the dev endpoint and an empty secret, so `LiveAnalyticsService.configured(...)` returns `nil` and the container wires `NoOpAnalyticsService`: not sent, rather than sent and refused, with no crash, no blocking and nothing shown.
   That is every fresh clone and every CI run, so tests no longer assume the app bundle carries a secret: `ServiceContainer.live(analyticsConfiguration:)` takes the bundle whose `Info.plist` is read, and the container tests pass one of the shape they mean.
   An XCUITest probe launch supplies a stand-in secret (`TelemetryUITestHarness.probeSecretStandIn`) because its transport is intercepted in process and the opt-out suite needs a live transport to count.
 - **Guards.** `tools/check-no-committed-telemetry-secret.py` fails CI when a build-setting file or `Info.plist` gives the secret a value, and never prints it.
-  `tools/test-telemetry-secret-wiring.sh` runs the real scripts against stand-ins for `security`, `xcodebuild`, `curl` and the Convex CLI: the archive wrapper still hands `xcodebuild` the production value in a mode-600 file it then removes, the dev commands refuse the production deployment, and no value reaches an output or a command argument.
-  The same archive cases pass against the wrapper as it was before this change.
+  `tools/test-telemetry-secret-wiring.sh` runs the real dev script against stand-ins for `security`, `xcodebuild`, `curl` and the Convex CLI: `install` writes only the git-ignored mode-600 file, `rotate` refuses the production deployment and puts the Keychain back when the deployment write fails, and no value reaches an output or a command argument.
 
 The old value stays in git history, which was not rewritten; the rotation made it useless.

@@ -5,7 +5,7 @@
 - Convex team/project: `hcho22/reptoday-telemetry` (the existing project already used by development deployment `courteous-dogfish-560`; no second project was created).
 - Default production deployment: `sensible-spider-810`.
 - HTTP-action origin: `https://sensible-spider-810.convex.site`; client route: `POST /logEvent`.
-- Convex ownership remains with team `hcho22`. Release-token custody is the captain-owned macOS login Keychain item with service `com.reptoday.analytics.production` and account `release-archive`. Since 2026-10-13 that name and the private-xcconfig writer live in `tools/telemetry-keychain.sh`, shared with the development item; the archive and validator scripts read the same item as before.
+- Convex ownership remains with team `hcho22`. Release-token custody is the captain-owned macOS login Keychain item with service `com.reptoday.analytics.production` and account `release-archive`.
 - The production token is 256 bits of random hex, production-only, and was never printed. Its two captain-controlled source-of-truth copies are the Keychain item above and the production deployment variable `ANALYTICS_SHARED_SECRET`; a privately archived Release app necessarily contains the same extractable client copy, while the temporary injection file is removed on exit. Equality was checked in memory without displaying either value.
 - The token is an extractable client-shipped abuse deterrent, not strong authentication. The per-install ceiling (60/minute) and per-IP ceiling (600/minute) in `convex/rateLimit.ts` are the authoritative abuse bound.
 

@@ -133,13 +133,13 @@ jobs:
 
       # This repository is public, so no build setting may commit the usage-data shared secret. It
       # runs after generation so the regenerated project is read too. The second step runs the real
-      # Keychain-to-build scripts against stand-ins: no Keychain, deployment, network or secret.
+      # dev secret script against stand-ins: no Keychain, deployment, network or secret.
       - name: Check no usage-data secret is committed
         run: |
           python3 tools/test-check-no-committed-telemetry-secret.py
           python3 tools/check-no-committed-telemetry-secret.py
 
-      - name: Test the usage-data secret route (offline stand-ins)
+      - name: Test the dev usage-data secret tooling (offline stand-ins)
         run: bash tools/test-telemetry-secret-wiring.sh
 
       - name: Test app bundle metadata validator
