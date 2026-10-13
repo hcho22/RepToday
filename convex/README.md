@@ -296,12 +296,47 @@ compares it (constant-time) against the deployment's `ANALYTICS_SHARED_SECRET` e
 npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; never committed to Convex
 ```
 
-The client sources the same value from a per-configuration build setting
-(`REPTODAY_ANALYTICS_SECRET` in `ios/RepToday/project.yml`, expanded into `Info.plist`), exactly the
-way it sources the endpoint: Debug carries the dev deployment's secret; Release source carries an
-empty default and `tools/archive-release.sh` injects the production-only value from the captain-owned
-macOS Keychain through a temporary mode-600 xcconfig. The build setting and the target deployment's
-environment variable must match. Missing either endpoint or token remains inert and nonfatal.
+The client sources the same value from the `REPTODAY_ANALYTICS_SECRET` build setting, expanded
+into `Info.plist`. No configuration commits a value for it: this repository is public, so the value
+never enters `ios/RepToday/project.yml`, a tracked xcconfig or the generated project, and CI fails
+if one does (`tools/check-no-committed-telemetry-secret.py`). Both values reach a build by one
+route, owned by `tools/telemetry-keychain.sh`: an item in the macOS login Keychain is written to a
+private mode-600 xcconfig.
+
+| Build | Keychain item (service / account) | Deployment | How the xcconfig reaches the build |
+|---|---|---|---|
+| Release | `com.reptoday.analytics.production` / `release-archive` | `sensible-spider-810` | `tools/archive-release.sh` writes a temporary file, passes it with `-xcconfig` and removes it |
+| Debug | `com.reptoday.analytics.development` / `debug-build` | `courteous-dogfish-560` | `tools/dev-telemetry-secret.sh install` writes the untracked `ios/RepToday/Config/DebugTelemetry.local.xcconfig`, which `Config/DebugTelemetry.xcconfig` optionally includes |
+
+The build setting and the target deployment's environment variable must match.
+A build made without its Keychain item has an empty secret and is inert and nonfatal: `LiveAnalyticsService.configured(...)` returns `nil`, the container wires `NoOpAnalyticsService`, and no usage data is sent at all, rather than sent and refused.
+That is every Debug build on a fresh clone and every CI run; such a build still builds, runs and passes its tests, and shows the user nothing.
+
+#### The dev secret on a Mac
+
+The dev secret lives in two places only: the dev deployment's `ANALYTICS_SHARED_SECRET` and the login Keychain of each Mac that builds Debug with usage data on.
+All of these print status codes and never a value, and every deployment command names its target first and stops if it is the Release one.
+
+```bash
+npm ci                                  # the Convex CLI, used by adopt and rotate
+npx convex login                        # once; needs access to the hcho22/reptoday-telemetry project
+tools/dev-telemetry-secret.sh adopt     # copy the dev deployment's value into this Mac's Keychain
+tools/dev-telemetry-secret.sh install   # Keychain -> the untracked xcconfig; once per checkout
+tools/dev-telemetry-secret.sh verify    # Keychain value 204; no value and a wrong value 401
+tools/dev-telemetry-secret.sh rotate    # new random 32-byte value in the Keychain and on dev
+tools/dev-telemetry-secret.sh remove    # delete the xcconfig; Debug builds send nothing again
+```
+
+A Debug build with usage data on, in the Simulator or on a phone: run `install` in the checkout once, then build and run the `RepToday` scheme in Debug from Xcode or `xcodebuild` as usual.
+The secret is read when the app is built, so an app built before `install`, or before a rotation, has to be rebuilt.
+Someone without access to the Convex project cannot obtain the dev secret; their Debug builds work and send nothing.
+
+`rotate` makes every other Mac's Keychain copy and every already-built Debug app be refused with `401`; on each other Mac run `adopt` and `install`, then rebuild.
+If the Keychain value is ever lost, `adopt` restores it from the deployment, and `rotate` replaces it outright.
+
+The dev secret was committed to this repository until 2026-10-13 and that value is still readable in git history.
+History was not rewritten.
+The rotation recorded in `artifacts/reports/dev-telemetry-secret-rotation/validation.md` made that value useless: the dev deployment refuses it.
 
 - A **missing or wrong** secret is a caller fault: **`401`**, no insert. Never `5xx`, so it never
   looks like a sink outage on the `4xx`/`5xx` signal a human watches during the PMF test.

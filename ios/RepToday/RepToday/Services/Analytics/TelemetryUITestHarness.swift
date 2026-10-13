@@ -90,6 +90,17 @@ enum TelemetryUITestHarness {
         return URLSession(configuration: configuration)
     }
 
+    /// The shared secret a probe launch's transport carries when the build has none.
+    ///
+    /// A Debug build made on a Mac without the dev Keychain secret has an empty
+    /// `RepTodayAnalyticsSecret`, which resolves the inert no-op sink and would leave the probe
+    /// nothing to count. `interceptingSession()` answers every probe request in process, so this
+    /// plainly fake value cannot reach a server; it only lets the suite prove the opt-out gate on
+    /// any Mac and in CI. `nil` outside a probe launch, where an unconfigured build stays inert.
+    static var probeSecretStandIn: String? {
+        isActive ? "probe-launch-stand-in-not-a-secret" : nil
+    }
+
     /// Emits one probe event through the container's own resolved sink, at app entry.
     ///
     /// It emits `app_install` from `RepTodayApp.init()` deliberately: that is the exact name and the

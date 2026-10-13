@@ -18,6 +18,10 @@ import XCTest
 /// in-process counting interceptor, emits one `app_install` from `RepTodayApp.init()` - the exact
 /// name and place US-T07's real app-entry emission uses, but on every probe launch so the proof does
 /// not depend on first-launch state - and renders the running count in a HUD this suite reads.
+/// A probe launch also supplies a stand-in for the shared secret when the build has none: a Debug
+/// build carries the dev secret only on a Mac whose Keychain holds it, and without one the app wires
+/// the inert sink, leaving nothing to count. The interceptor answers every request in process, so the
+/// stand-in never reaches a server and the suite passes on a fresh clone as it does anywhere else.
 ///
 /// **What these tests prove.** That the gate, in the real app, decides whether the transport
 /// dispatches a request at all: with the flag off nothing is dispatched, with it on something is

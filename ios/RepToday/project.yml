@@ -55,8 +55,10 @@ targets:
           - $(SRCROOT)/RepToday/Resources/Assets.xcassets
         basedOnDependencyAnalysis: false
         showEnvVars: false
-    # Supplies REPTODAY_COACH_STAGING_SUBDOMAIN from an untracked local file; no other configuration reads it.
+    # Each supplies one value from an untracked local file that no other configuration reads:
+    # CoachStaging its REPTODAY_COACH_STAGING_SUBDOMAIN, Debug the dev REPTODAY_ANALYTICS_SECRET.
     configFiles:
+      Debug: Config/DebugTelemetry.xcconfig
       CoachStaging: Config/CoachStaging.xcconfig
     settings:
       base:
@@ -89,17 +91,20 @@ targets:
       # `NoOpAnalyticsService`, so an unconfigured Release build emits nothing and fails nothing.
       # The worst case is therefore silently no data rather than silently the wrong destination,
       # which is also the documented emergency disable/rollback posture.
-      # The US-T14 shared secret, split the same way and for the same reasons: Debug carries the
-      # *development* deployment's secret. Release keeps an empty source default and receives its
-      # production-only value from the captain-owned macOS Keychain through
-      # `tools/archive-release.sh`; the literal must never enter this file or the generated project.
-      # It is sent on every `POST /logEvent` so a stranger who discovers the endpoint URL
-      # cannot flood the `events` table. It is a *cost-raiser, not a guarantee* - committed here and
-      # shipped in the binary, so it is extractable by anyone who unpacks the app; it stops
-      # opportunistic flooding, not a determined attacker (see `convex/README.md`). The Debug value
-      # must match the deployment's `ANALYTICS_SHARED_SECRET` env var (`npx convex env set`). An empty
-      # value is inert exactly like an empty endpoint: `LiveAnalyticsService.configured(...)` returns
-      # nil and the container falls back to `NoOpAnalyticsService`.
+      # The US-T14 shared secret is sent on every `POST /logEvent` so a stranger who discovers the
+      # endpoint URL cannot flood the `events` table. No configuration commits a value for it: this
+      # repository is public, so the literal must never enter this file, a tracked xcconfig or the
+      # generated project (`tools/check-no-committed-telemetry-secret.py` fails CI if one does).
+      # Both values come from the macOS login Keychain through one route, a private xcconfig written
+      # by `tools/telemetry-keychain.sh`: Release receives the production value at archive time
+      # (`tools/archive-release.sh`), and Debug reads the dev value from the untracked file
+      # `Config/DebugTelemetry.xcconfig` optionally includes (`tools/dev-telemetry-secret.sh install`).
+      # Debug therefore sets no `REPTODAY_ANALYTICS_SECRET` below - a target-level value would
+      # override that file. It is a *cost-raiser, not a guarantee* - shipped in the binary, so it is
+      # extractable by anyone who unpacks the app; it stops opportunistic flooding, not a determined
+      # attacker (see `convex/README.md`). An empty value is inert exactly like an empty endpoint:
+      # `LiveAnalyticsService.configured(...)` returns nil and the container falls back to
+      # `NoOpAnalyticsService`, which is what a Debug build made without the Keychain item does.
       # Release enables the approved public Coach origin with App Attest/StoreKit and no binary
       # secret. Debug stays inert; CoachDeviceQA retains its separate synthetic preparation lane.
       # Deployment confirmation is separate from genuine-device/model QA; see
@@ -107,7 +112,7 @@ targets:
       configs:
         Debug:
           REPTODAY_ANALYTICS_ENDPOINT: https://courteous-dogfish-560.convex.site
-          REPTODAY_ANALYTICS_SECRET: d8f3a1c07b9e4256a1c3e5f7091b2d4e
+          # The secret key is absent here on purpose, not forgotten: see the comment above.
           REPTODAY_COACH_SYNTHETIC_QA: "0"
           REPTODAY_COACH_ENDPOINT: ""
           REPTODAY_COACH_SECRET: ""

@@ -309,6 +309,7 @@
 		0BC2191979477909693D6653 /* TrainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerTests.swift; sourceTree = "<group>"; };
 		0C9175E5ADC4C0CBA4F5B847 /* ExerciseSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSwap.swift; sourceTree = "<group>"; };
 		0CAE82AAEE49641A9AF81E3D /* StrengthPrimaryRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthPrimaryRegressionTests.swift; sourceTree = "<group>"; };
+		0E40A3748625DF796901839B /* DebugTelemetry.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = DebugTelemetry.xcconfig; sourceTree = "<group>"; };
 		0F59B824B9A8FEDF7ED77EBC /* DefaultDurationLearning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultDurationLearning.swift; sourceTree = "<group>"; };
 		11B9FD6F285D21BFC4FBCFC1 /* RepToday.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RepToday.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1467FDF4832D95379E2C6F5E /* ColdStartHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartHandoffTests.swift; sourceTree = "<group>"; };
@@ -679,6 +680,7 @@
 			isa = PBXGroup;
 			children = (
 				9FADA28236B01F094C12589C /* CoachStaging.xcconfig */,
+				0E40A3748625DF796901839B /* DebugTelemetry.xcconfig */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -1819,6 +1821,7 @@
 		};
 		9877C915EDB126EB7593607B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0E40A3748625DF796901839B /* DebugTelemetry.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1840,7 +1843,6 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.reptoday.app;
 				REPTODAY_ANALYTICS_ENDPOINT = "https://courteous-dogfish-560.convex.site";
-				REPTODAY_ANALYTICS_SECRET = d8f3a1c07b9e4256a1c3e5f7091b2d4e;
 				REPTODAY_COACH_AUTH_MODE = "app-attest-storekit-v1";
 				REPTODAY_COACH_ENDPOINT = "";
 				REPTODAY_COACH_SECRET = "";

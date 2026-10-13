@@ -10,6 +10,8 @@ transcript is the one-time live confirmation, in the same spirit as the US-T03 /
 - The US-T14 functions deployed to the dev deployment (`npx convex dev --once`).
 - The shared secret configured on the deployment: `npx convex env set ANALYTICS_SHARED_SECRET <secret>`.
   The `<secret>` matches the Debug `REPTODAY_ANALYTICS_SECRET` build setting in `ios/RepToday/project.yml`.
+  That was true on the date above. The value was rotated on 2026-10-13 and is no longer committed
+  anywhere; see `artifacts/reports/dev-telemetry-secret-rotation/validation.md`.
 - Route: `POST https://courteous-dogfish-560.convex.site/logEvent`.
 - Header: `X-RepToday-Analytics-Secret: <secret>`.
 - Row counts read back with the internal `reconcile:eventsForInstalls` query

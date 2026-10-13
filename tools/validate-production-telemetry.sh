@@ -10,8 +10,6 @@ set +x
 
 readonly DEPLOYMENT='hcho22:reptoday-telemetry:prod'
 readonly ENDPOINT='https://sensible-spider-810.convex.site/logEvent'
-readonly KEYCHAIN_SERVICE='com.reptoday.analytics.production'
-readonly KEYCHAIN_ACCOUNT='release-archive'
 readonly CURL_CONNECT_TIMEOUT_SECONDS=3
 readonly CURL_MAX_TIME_SECONDS=5
 readonly CONVEX_QUERY_TIMEOUT_SECONDS=15
@@ -19,6 +17,8 @@ readonly MAX_RATE_WINDOW_ATTEMPTS=3
 readonly VALIDATION_ID_PREFIX='prod-validation-'
 
 repo_root=$(git rev-parse --show-toplevel)
+# shellcheck source=tools/telemetry-keychain.sh
+source "$repo_root/tools/telemetry-keychain.sh"
 convex_bin="$repo_root/node_modules/.bin/convex"
 run_stamp=$(date -u '+%Y%m%dT%H%M%SZ')
 smoke_id="${VALIDATION_ID_PREFIX}smoke-$run_stamp"
@@ -38,7 +38,7 @@ if [[ ! -x "$convex_bin" ]]; then
     exit 69
 fi
 
-secret=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$KEYCHAIN_ACCOUNT" -w 2>/dev/null) || {
+secret=$(telemetry_keychain_secret production) || {
     echo 'error: production telemetry token is unavailable in the macOS Keychain' >&2
     exit 78
 }

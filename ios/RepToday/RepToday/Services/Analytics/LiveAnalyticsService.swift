@@ -120,8 +120,13 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol, Sendable {
     }
 
     /// Builds the service from the deployment origin and shared secret in `Info.plist`, or `nil`
-    /// when either value is absent/unusable. That `nil` remains the quiet, inert raw-Release posture
-    /// and is resolved to `NoOpAnalyticsService` by the container.
+    /// when either value is absent/unusable. That `nil` is the quiet, inert posture of every build
+    /// made without its Keychain secret - a raw Release build and a Debug build on a Mac that has no
+    /// dev secret alike - and is resolved to `NoOpAnalyticsService` by the container.
+    ///
+    /// `secretStandIn` is used only when the bundle carries no usable secret. Its one caller is a
+    /// Debug XCUITest probe launch (`TelemetryUITestHarness.probeSecretStandIn`), whose session
+    /// answers every request in process, so the stand-in can never reach a server.
     static func configured(
         bundle: Bundle = .main,
         installId: @escaping @Sendable () -> String,
@@ -129,11 +134,13 @@ final class LiveAnalyticsService: AnalyticsServiceProtocol, Sendable {
         isEnabled: @escaping @Sendable () -> Bool = { true },
         consentGeneration: @escaping @Sendable () -> Int = { 0 },
         outboxStorage: (any AnalyticsOutboxStorage)? = nil,
-        backgroundExecution: AnalyticsBackgroundExecution = .live
+        backgroundExecution: AnalyticsBackgroundExecution = .live,
+        secretStandIn: String? = nil
     ) -> LiveAnalyticsService? {
         guard
             let endpoint = endpoint(fromOrigin: bundle.object(forInfoDictionaryKey: endpointInfoPlistKey)),
             let secret = secret(fromValue: bundle.object(forInfoDictionaryKey: secretInfoPlistKey))
+                ?? secret(fromValue: secretStandIn)
         else {
             return nil
         }
