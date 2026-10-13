@@ -61,14 +61,14 @@ The captain wants the foundations to read the way people talk about strength: Pu
 
 ## Consequences
 
-- Native foundation membership and counting chains have one definition in `StrengthFoundation`, shared by the gate and the native surfaces. The proxy's separate prompt maps the stable wire keys to this vocabulary; its contract is documented in [proxy/README.md](../../proxy/README.md).
+- Native foundation membership and counting chains have one definition in `StrengthFoundation`, shared by the gate and the native surfaces. The proxy maps the stable wire keys to this vocabulary separately; its contract is documented in [proxy/README.md](../../proxy/README.md).
 - `MovementPattern`, the exercise catalog, session assembly and the zero-equipment rule are unchanged.
 - Some Discipline users' foundation counts drop on update (Pull is new and Legs now needs both sides), and it can take them longer to earn Strength than it would have.
   The note explains it, and the recalculation is honest: it reflects what the user has actually demonstrated on the ladders that now count.
 - A user who only trained the postural pull chain sees Pull as "not started" on the Progress tab, even though those movements are in their sessions.
   This is the accepted cost of postural work not counting.
 - The Coach's context bundle now carries a fifth chain summary, Pull, and its strength-journey summaries can name Pull.
-  The app-to-proxy wire stays unchanged: the existing raw pattern keys carry all five lines, and the updated proxy prompt derives foundation names and Legs sides from those keys.
+  The app-to-proxy wire stays unchanged: the existing raw pattern keys carry all five lines, and the proxy derives foundation names and Legs sides from those keys.
   The updated `/coach` prompt reaches users only after that proxy is separately deployed; this change does not deploy it.
 - Pull has no Strength-Phase rung, so the graduation reveal names only the Push, Legs and Core ladders as gaining Strength-Phase movements.
 
