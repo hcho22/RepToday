@@ -43,3 +43,5 @@ __pycache__/
 *.py[cod]
 # Coach staging lane: the account's workers.dev subdomain stays local.
 ios/RepToday/Config/CoachStaging.local.xcconfig
+# Dev usage-data shared secret: written from the login Keychain, never committed.
+ios/RepToday/Config/DebugTelemetry.local.xcconfig

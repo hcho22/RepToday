@@ -131,6 +131,17 @@ jobs:
         working-directory: ios/RepToday
         run: xcodegen generate
 
+      # This repository is public, so no build setting may commit the usage-data shared secret. It
+      # runs after generation so the regenerated project is read too. The second step runs the real
+      # dev secret script against stand-ins: no Keychain, deployment, network or secret.
+      - name: Check no usage-data secret is committed
+        run: |
+          python3 tools/test-check-no-committed-telemetry-secret.py
+          python3 tools/check-no-committed-telemetry-secret.py
+
+      - name: Test the dev usage-data secret tooling (offline stand-ins)
+        run: bash tools/test-telemetry-secret-wiring.sh
+
       - name: Test app bundle metadata validator
         run: python3 tools/test-app-bundle-metadata.py
 
@@ -210,7 +221,8 @@ jobs:
   # OS pin is the major version only: it picks an available iPhone on any iOS 26.x
   # runtime (newest first), creating one against the newest iOS 26.x runtime if the
   # image ships none, so a 26.x point update on the image does not break it. The
-  # bundle-metadata and Trainer-art checks are OS-independent and stay in `ios` only.
+  # usage-data secret, bundle-metadata and Trainer-art checks are OS-independent and
+  # stay in `ios` only.
   # ---------------------------------------------------------------------------
   ios-26:
     name: iOS app (iOS 26)

@@ -19,7 +19,8 @@ and US-T12 added the last three - the monetization funnel's `paywall_shown`, `tr
 That covers **all 13 registered event names**. So `record(_:)` is now
 called at app entry, through onboarding, on the Ready Screen, across the session lifecycle, on the weekly rollup, on the paywall, and from the app-lifetime StoreKit transaction listener. Release archives now target production deployment `sensible-spider-810`; the matching abuse-deterrence token is injected from the captain-owned macOS Keychain by `tools/archive-release.sh`, never committed. A missing endpoint or token still resolves
 `NoOpAnalyticsService`,
-while a Debug build's app-entry events do land here on a genuine first launch. The other caller is
+while a Debug build that carries the dev token (see "Abuse guard" below) does land its app-entry
+events here on a genuine first launch. The other caller is
 US-T06's `#if DEBUG`, launch-argument-gated XCUITest probe, which normally has its own in-process
 interceptor in front of it; pointed at a real deployment deliberately, as the US-T06 validation run
 did, it writes ordinary rows here, so probe rows are a thing this table can contain and are deleted
@@ -33,8 +34,8 @@ knows nothing about it - it has no notion of consent, and no way to tell an inst
 from one that never ran. An install is simply absent, and this table cannot say which it was.
 Which deployment the app talks to is a per-configuration build setting
 (`REPTODAY_ANALYTICS_ENDPOINT` in `ios/RepToday/project.yml`): Debug points at the dev deployment and
-Release at production deployment `sensible-spider-810`. Release's token remains private and is
-injected only by the archive path above.
+Release at production deployment `sensible-spider-810`. Neither deployment's token is committed;
+"A client-embedded shared secret" below owns how each reaches a build.
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
 It is now the *sink's* only entry point too, which this file previously claimed before it was true:
@@ -296,12 +297,45 @@ compares it (constant-time) against the deployment's `ANALYTICS_SHARED_SECRET` e
 npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; never committed to Convex
 ```
 
-The client sources the same value from a per-configuration build setting
-(`REPTODAY_ANALYTICS_SECRET` in `ios/RepToday/project.yml`, expanded into `Info.plist`), exactly the
-way it sources the endpoint: Debug carries the dev deployment's secret; Release source carries an
-empty default and `tools/archive-release.sh` injects the production-only value from the captain-owned
-macOS Keychain through a temporary mode-600 xcconfig. The build setting and the target deployment's
-environment variable must match. Missing either endpoint or token remains inert and nonfatal.
+The client sources the same value from the `REPTODAY_ANALYTICS_SECRET` build setting, expanded
+into `Info.plist`. No configuration commits a value for it: this repository is public, so the value
+never enters `ios/RepToday/project.yml`, a tracked xcconfig or the generated project, and CI fails
+if one does (`tools/check-no-committed-telemetry-secret.py`). Both values reach a build by the same
+route, each with its own item: an item in the macOS login Keychain is written to a private mode-600
+xcconfig.
+
+| Build | Keychain item (service / account) | Deployment | How the xcconfig reaches the build |
+|---|---|---|---|
+| Release | `com.reptoday.analytics.production` / `release-archive` | `sensible-spider-810` | `tools/archive-release.sh` writes a temporary file, passes it with `-xcconfig` and removes it |
+| Debug | `com.reptoday.analytics.development` / `debug-build` | `courteous-dogfish-560` | `tools/dev-telemetry-secret.sh install` writes the untracked `ios/RepToday/Config/DebugTelemetry.local.xcconfig`, which `Config/DebugTelemetry.xcconfig` optionally includes |
+
+The build setting and the target deployment's environment variable must match.
+A build made without its Keychain item has an empty secret and is inert and nonfatal: `LiveAnalyticsService.configured(...)` returns `nil`, the container wires `NoOpAnalyticsService`, and no usage data is sent at all, rather than sent and refused.
+That is every Debug build on a fresh clone and every CI run; such a build still builds, runs and passes its tests, and shows the user nothing.
+
+#### The dev secret on a Mac
+
+The dev secret lives in two places only: the dev deployment's `ANALYTICS_SHARED_SECRET` and the login Keychain of the one Mac that holds it.
+`tools/dev-telemetry-secret.sh` never prints a value (`verify` and `rotate` report the sink's answers as HTTP status codes), and both of those name their target deployment first and stop if it is the Release one.
+
+```bash
+tools/dev-telemetry-secret.sh install   # Keychain -> the untracked xcconfig; once per checkout
+tools/dev-telemetry-secret.sh verify    # Keychain value 204; no value and a wrong value 401
+npm ci                                  # the Convex CLI, used by rotate
+npx convex login                        # once; needs access to the hcho22/reptoday-telemetry project
+tools/dev-telemetry-secret.sh rotate    # new random 32-byte value in the Keychain and on dev
+```
+
+A Debug build with usage data on, in the Simulator or on a phone: run `install` in the checkout once, then build and run the `RepToday` scheme in Debug from Xcode or `xcodebuild` as usual.
+The secret is read when the app is built, so an app built before `install`, or before a rotation, has to be rebuilt.
+A Mac without the Keychain item has no dev secret; its Debug builds work and send nothing.
+
+`rotate` makes every already-built Debug app be refused with `401`; run `install` in each checkout again, then rebuild.
+If the Keychain value is ever lost, `rotate` replaces it.
+
+The dev secret was committed to this repository until 2026-10-13 and that value is still readable in git history.
+History was not rewritten.
+The rotation recorded in `artifacts/reports/dev-telemetry-secret-rotation/validation.md` made that value useless: the dev deployment refuses it.
 
 - A **missing or wrong** secret is a caller fault: **`401`**, no insert. Never `5xx`, so it never
   looks like a sink outage on the `4xx`/`5xx` signal a human watches during the PMF test.

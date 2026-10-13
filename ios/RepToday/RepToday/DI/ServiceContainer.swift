@@ -225,6 +225,11 @@ struct ServiceContainer {
     ///     (`RepTodayTests/UITestLaunchGuardTests.swift`, in the unit bundle) scans every
     ///     `RepTodayUITests` source and fails the routinely-run `-scheme RepToday test` gate if
     ///     `XCUIApplication(` is constructed anywhere but `TestApp.swift`.
+    ///   - analyticsConfiguration: The bundle whose `Info.plist` names the telemetry endpoint and
+    ///     shared secret; the app's own by default. A Debug build carries the dev secret only on a
+    ///     Mac whose Keychain holds it (`tools/dev-telemetry-secret.sh install`) and CI never does,
+    ///     so a test asserting how this container wires a *configured* or an *unconfigured* build
+    ///     passes a bundle of that shape instead of depending on where it was built.
     ///   - analyticsGate: The opt-out gate (US-T06), read fresh per emission. Passed down for the
     ///     same reason `installId` is: `AppState` owns the flag, so the app hands over a gate bound
     ///     to the store its own `AppState` writes rather than letting this side re-derive which
@@ -239,6 +244,7 @@ struct ServiceContainer {
         installId: String,
         analyticsInstallId: (@Sendable () -> String)? = nil,
         coachSafetyIdentifierProvider: @escaping @Sendable () -> CoachSafetyIdentifier?,
+        analyticsConfiguration: Bundle = .main,
         analyticsGate: @escaping @Sendable () -> Bool = AppState.analyticsGate(),
         analyticsConsentGeneration: @escaping @Sendable () -> Int = AppState.analyticsConsentGenerationProvider(),
         analyticsService: (any AnalyticsServiceProtocol)? = nil
@@ -272,28 +278,36 @@ struct ServiceContainer {
         let analyticsSession: URLSession?
         let analyticsOutboxStorage: (any AnalyticsOutboxStorage)?
         let analyticsBackgroundExecution: AnalyticsBackgroundExecution
+        // A probe launch's intercepted transport also carries a stand-in secret, so the opt-out
+        // suite does not depend on the Mac's Keychain holding the dev one.
+        let analyticsSecretStandIn: String?
         #if DEBUG
         analyticsSession = TelemetryUITestHarness.interceptingSession()
         analyticsOutboxStorage = analyticsSession == nil ? nil : VolatileAnalyticsOutboxStorage()
         analyticsBackgroundExecution = analyticsSession == nil ? .live : .none
+        analyticsSecretStandIn = TelemetryUITestHarness.probeSecretStandIn
         #else
         analyticsSession = nil
         analyticsOutboxStorage = nil
         analyticsBackgroundExecution = .live
+        analyticsSecretStandIn = nil
         #endif
         // Resolve the telemetry sink once, so the completion recorder's `week_active` emission (US-T11)
         // and the container's own sink are the same instance and share the consent gate. An explicit
         // `analyticsService` overrides the build-configured resolution; otherwise it is the live
-        // transport when the endpoint and shared token are configured (Debug and a privately-injected
-        // Release archive), or the inert no-op when either value is missing.
+        // transport when the endpoint and shared token are configured (a Debug build or a Release
+        // archive whose secret was injected from the Keychain), or the inert no-op when either value
+        // is missing (the same two builds made without it).
         let resolvedAnalyticsService: any AnalyticsServiceProtocol = analyticsService
             ?? LiveAnalyticsService.configured(
+                bundle: analyticsConfiguration,
                 installId: analyticsInstallId ?? { installId },
                 session: analyticsSession,
                 isEnabled: analyticsGate,
                 consentGeneration: analyticsConsentGeneration,
                 outboxStorage: analyticsOutboxStorage,
-                backgroundExecution: analyticsBackgroundExecution
+                backgroundExecution: analyticsBackgroundExecution,
+                secretStandIn: analyticsSecretStandIn
             )
             ?? NoOpAnalyticsService()
         // The premium coach transport (US-AC02), resolved once from the build-configured `POST /coach`

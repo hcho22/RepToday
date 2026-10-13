@@ -200,12 +200,24 @@ final class AnalyticsServiceTests: XCTestCase {
         // the recording mock, which would grow an in-memory backlog nothing drains. Asserted by type
         // rather than by emitting - nothing in this test may reach the network.
         #if DEBUG
-        // Debug configures the dev deployment (`REPTODAY_ANALYTICS_ENDPOINT` in `project.yml`), so
-        // the default must resolve to the live transport.
-        XCTAssertTrue(
-            live.analyticsService is LiveAnalyticsService,
-            "the production container must wire the live Convex transport when an endpoint is configured"
-        )
+        // Debug configures the dev deployment (`REPTODAY_ANALYTICS_ENDPOINT` in `project.yml`), but
+        // carries that deployment's shared secret only on a Mac whose Keychain holds it
+        // (`tools/dev-telemetry-secret.sh install`) - never on a fresh clone or in CI. The default
+        // follows whichever build this is: the live transport with a secret, the inert sink without.
+        let buildCarriesSecret = LiveAnalyticsService.secret(
+            fromValue: Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.secretInfoPlistKey)
+        ) != nil
+        if buildCarriesSecret {
+            XCTAssertTrue(
+                live.analyticsService is LiveAnalyticsService,
+                "the production container must wire the live Convex transport when the build is configured"
+            )
+        } else {
+            XCTAssertTrue(
+                live.analyticsService is NoOpAnalyticsService,
+                "a Debug build with no secret must fall back to the inert sink rather than wiring a transport"
+            )
+        }
         #else
         // A raw Release test build carries the production endpoint but not the privately-injected
         // archive token, so the same inert fallback applies.

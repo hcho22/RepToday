@@ -45,6 +45,33 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         )
     }
 
+    /// A throwaway bundle whose `Info.plist` carries exactly this telemetry configuration, so a
+    /// test states the build shape it means instead of inheriting the Mac it was built on: a Debug
+    /// build carries the dev secret only where the Keychain holds it
+    /// (`tools/dev-telemetry-secret.sh install`), and CI never does.
+    private func makeConfigurationBundle(endpoint: String, secret: String) throws -> Bundle {
+        let bundleURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RepToday-Configuration-\(UUID().uuidString).bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: bundleURL) }
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "com.reptoday.tests.configuration",
+            LiveAnalyticsService.endpointInfoPlistKey: endpoint,
+            LiveAnalyticsService.secretInfoPlistKey: secret
+        ]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: bundleURL.appendingPathComponent("Info.plist"), options: .atomic)
+        return try XCTUnwrap(Bundle(url: bundleURL))
+    }
+
+    /// The deployment origin the running Debug app bundle carries (`REPTODAY_ANALYTICS_ENDPOINT`).
+    private func appBundleOrigin() throws -> String {
+        try XCTUnwrap(
+            Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.endpointInfoPlistKey) as? String,
+            "the app bundle carries no analytics endpoint"
+        )
+    }
+
     override func setUp() {
         super.setUp()
         StubURLProtocol.reset()
@@ -760,8 +787,10 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// stub. Asserted by reading the built service's own gate, so nothing is emitted to find out -
     /// and so a future edit that drops `isEnabled:` from the `configured(...)` call fails here.
     ///
-    /// Debug-only because a raw Release test build has no privately-injected token and therefore
-    /// wires `NoOpAnalyticsService`, which has no gate to read (`AnalyticsServiceTests` asserts that half).
+    /// The container is handed a configured bundle rather than left to the app's own, because a
+    /// build carries a secret only where the Keychain supplied one; an unconfigured build wires
+    /// `NoOpAnalyticsService`, which has no gate to read (asserted below). Debug-only because the
+    /// container's test-host interception, which keeps this off the network, is Debug-only.
     #if DEBUG
     func testTheProductionContainersGateIsThePersistedOptOutFlag() throws {
         let standard = UserDefaults.standard
@@ -771,11 +800,15 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let container = ServiceContainer.live(
             context: controller.viewContext,
             installId: "container-install",
-            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") }
+            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
+            analyticsConfiguration: try makeConfigurationBundle(
+                endpoint: "https://example-deployment.convex.site",
+                secret: Self.testSecret
+            )
         )
         let service = try XCTUnwrap(
             container.analyticsService as? LiveAnalyticsService,
-            "the Debug container must wire the live transport"
+            "a configured container must wire the live transport"
         )
 
         standard.removeObject(forKey: AppState.analyticsEnabledKey)
@@ -806,11 +839,15 @@ final class LiveAnalyticsServiceTests: XCTestCase {
             context: controller.viewContext,
             installId: "container-install",
             coachSafetyIdentifierProvider: appState.coachSafetyIdentifierProvider,
+            analyticsConfiguration: try makeConfigurationBundle(
+                endpoint: "https://example-deployment.convex.site",
+                secret: Self.testSecret
+            ),
             analyticsGate: appState.analyticsGate
         )
         let service = try XCTUnwrap(
             container.analyticsService as? LiveAnalyticsService,
-            "the Debug container must wire the live transport"
+            "a configured container must wire the live transport"
         )
 
         XCTAssertTrue(service.isEmissionEnabled, "a fresh install must be opted in")
@@ -823,6 +860,94 @@ final class LiveAnalyticsServiceTests: XCTestCase {
 
         appState.analyticsEnabled = true
         XCTAssertTrue(service.isEmissionEnabled)
+    }
+
+    /// A Debug build made on a Mac without the dev Keychain secret - a fresh clone, and every CI
+    /// run - carries the dev endpoint and an empty secret. Its usage data is **not sent**: the
+    /// container wires the inert sink instead of a transport the dev deployment would only ever
+    /// refuse, so an emission site calling it returns at once, and no outbox is built or loaded.
+    func testADebugBuildWithoutTheDevSecretWiresTheInertSinkAndSendsNothing() throws {
+        let unconfigured = try makeConfigurationBundle(endpoint: try appBundleOrigin(), secret: "")
+
+        let controller = MockPersistence.controller()
+        let container = ServiceContainer.live(
+            context: controller.viewContext,
+            installId: "container-install",
+            coachSafetyIdentifierProvider: { CoachSafetyIdentifier(rawValue: "coach-00000000-0000-4000-8000-000000000001") },
+            analyticsConfiguration: unconfigured
+        )
+        XCTAssertTrue(
+            container.analyticsService is NoOpAnalyticsService,
+            "a Debug build with no secret must fall back to the inert sink"
+        )
+        // Every emission site's call, exactly as written there: synchronous, nothing to handle.
+        for name in AnalyticsEventName.allCases {
+            container.analyticsService.record(AnalyticsEvent(name: name, timestampMs: Self.installMs))
+        }
+
+        let storage = CountingAnalyticsOutboxStorage()
+        XCTAssertNil(
+            LiveAnalyticsService.configured(
+                bundle: unconfigured,
+                installId: "install-42",
+                outboxStorage: storage,
+                backgroundExecution: .none
+            )
+        )
+        XCTAssertEqual(storage.loadCount, 0)
+        XCTAssertEqual(storage.saveCount, 0, "a Debug build with no secret touched durable analytics state")
+    }
+
+    /// The stand-in secret exists for the XCUITest probe alone: it applies only when the bundle has
+    /// no secret, it rides the header like a real one, and outside a probe launch there is none, so
+    /// an ordinary unconfigured build stays inert.
+    func testTheProbeStandInAppliesOnlyToAnUnconfiguredBundle() async throws {
+        XCTAssertNil(TelemetryUITestHarness.probeSecretStandIn, "the unit-test host is not a probe launch")
+
+        let sent = expectation(description: "request intercepted")
+        StubURLProtocol.onRequest = { _ in sent.fulfill() }
+        let unconfigured = try makeConfigurationBundle(endpoint: "https://example-deployment.convex.site", secret: "")
+        let service = try XCTUnwrap(
+            LiveAnalyticsService.configured(
+                bundle: unconfigured,
+                installId: { "install-42" },
+                session: StubURLProtocol.makeSession(),
+                outboxStorage: VolatileAnalyticsOutboxStorage(),
+                backgroundExecution: .none,
+                secretStandIn: "stand-in-not-a-secret"
+            )
+        )
+        service.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        await fulfillment(of: [sent], timeout: 5)
+        XCTAssertEqual(
+            StubURLProtocol.captured.first?.value(forHTTPHeaderField: LiveAnalyticsService.secretHeaderField),
+            "stand-in-not-a-secret"
+        )
+
+        let configuredBundle = try makeConfigurationBundle(
+            endpoint: "https://example-deployment.convex.site",
+            secret: Self.testSecret
+        )
+        let configured = try XCTUnwrap(
+            LiveAnalyticsService.configured(
+                bundle: configuredBundle,
+                installId: { "install-42" },
+                session: StubURLProtocol.makeSession(),
+                outboxStorage: VolatileAnalyticsOutboxStorage(),
+                backgroundExecution: .none,
+                secretStandIn: "stand-in-not-a-secret"
+            )
+        )
+        StubURLProtocol.reset()
+        let sentAgain = expectation(description: "second request intercepted")
+        StubURLProtocol.onRequest = { _ in sentAgain.fulfill() }
+        configured.record(AnalyticsEvent(name: .appInstall, timestampMs: Self.installMs))
+        await fulfillment(of: [sentAgain], timeout: 5)
+        XCTAssertEqual(
+            StubURLProtocol.captured.first?.value(forHTTPHeaderField: LiveAnalyticsService.secretHeaderField),
+            Self.testSecret,
+            "a stand-in must never replace the build's own secret"
+        )
     }
     #endif
 
@@ -873,10 +998,13 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(resolved, "abc123")
     }
 
-    /// The secret is split per build configuration (`REPTODAY_ANALYTICS_SECRET` in
-    /// `ios/RepToday/project.yml`, expanded into `Info.plist`) exactly as the endpoint is, and the
-    /// split is read out of the **running app bundle** rather than asserted in prose: Debug carries
-    /// the dev deployment's secret, while raw Release test builds carry no privately-injected token.
+    /// No configuration commits a secret (`REPTODAY_ANALYTICS_SECRET` reaches `Info.plist` from a
+    /// private xcconfig written out of the macOS Keychain), so what the **running app bundle**
+    /// carries depends on the Mac it was built on: the dev secret where
+    /// `tools/dev-telemetry-secret.sh install` has run, and an empty string on a fresh clone and in
+    /// CI. Both are valid Debug builds, so this asserts what must hold in either: the key is still
+    /// expanded from the build setting, and the build resolves a live service exactly when it has a
+    /// secret. Each shape is pinned on its own, deterministically, by the bundle-driven tests here.
     ///
     /// Only the Debug half runs, for the same `ENABLE_TESTABILITY`-is-Debug-only reason
     /// `testTheAppBundlesEndpointFollowsTheBuildConfiguration` documents; the Release half is
@@ -885,21 +1013,19 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         let configured = Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.secretInfoPlistKey)
 
         #if DEBUG
-        let secret = try XCTUnwrap(configured as? String, "the Debug build carries no analytics secret")
-        XCTAssertFalse(secret.isEmpty, "the Debug build's analytics secret expanded to nothing")
-        XCTAssertNotNil(
-            LiveAnalyticsService.secret(fromValue: secret),
-            "the Debug build's analytics secret does not resolve"
+        let secret = try XCTUnwrap(configured as? String, "the Debug build's Info.plist lost its analytics secret key")
+        XCTAssertFalse(secret.contains("$("), "the analytics secret build setting was not expanded")
+        let service = LiveAnalyticsService.configured(
+            bundle: .main,
+            installId: "install-42",
+            outboxStorage: VolatileAnalyticsOutboxStorage(),
+            backgroundExecution: .none
         )
-        // With both an endpoint and a secret present, the Debug build resolves a live service.
-        XCTAssertNotNil(
-            LiveAnalyticsService.configured(
-                bundle: .main,
-                installId: "install-42",
-                outboxStorage: VolatileAnalyticsOutboxStorage(),
-                backgroundExecution: .none
-            )
-        )
+        if LiveAnalyticsService.secret(fromValue: secret) == nil {
+            XCTAssertNil(service, "a Debug build with no secret must stay inert")
+        } else {
+            XCTAssertNotNil(service, "a Debug build with an endpoint and a secret must resolve a live service")
+        }
         #else
         // Nothing configured, so nothing to authenticate with - inert exactly like the endpoint.
         XCTAssertNil(LiveAnalyticsService.secret(fromValue: configured))
@@ -930,19 +1056,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// token was not injected. Combined configuration must stop before constructing or loading the
     /// outbox, not merely build a client that earns `401`s later.
     func testConfiguredReleaseShapeWithBlankSecretLeavesStorageUntouched() throws {
-        let bundleURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RepToday-Unconfigured-\(UUID().uuidString).bundle", isDirectory: true)
-        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
-        let info: [String: Any] = [
-            "CFBundleIdentifier": "com.reptoday.tests.unconfigured",
-            LiveAnalyticsService.endpointInfoPlistKey: "https://production.example.convex.site",
-            LiveAnalyticsService.secretInfoPlistKey: ""
-        ]
-        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
-            .write(to: bundleURL.appendingPathComponent("Info.plist"), options: .atomic)
-
-        let bundle = try XCTUnwrap(Bundle(url: bundleURL))
+        let bundle = try makeConfigurationBundle(endpoint: "https://production.example.convex.site", secret: "")
         let storage = CountingAnalyticsOutboxStorage()
         XCTAssertNil(
             LiveAnalyticsService.configured(
@@ -959,7 +1073,7 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     /// The endpoint is split per build configuration (`REPTODAY_ANALYTICS_ENDPOINT` in
     /// `ios/RepToday/project.yml`, expanded into `Info.plist`), and the split is read out of the
     /// **running app bundle** rather than asserted in prose: Debug carries the dev deployment,
-    /// Release carries the production endpoint; without the private archive token it remains inert.
+    /// Release carries the production endpoint; without its Keychain secret either remains inert.
     ///
     /// **Only the Debug half actually runs, and that limit is stated rather than glossed.** This
     /// project sets `ENABLE_TESTABILITY` on the Debug configuration only, so `@testable import
@@ -983,9 +1097,11 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         )
         XCTAssertEqual(endpoint.scheme, "https")
         XCTAssertEqual(endpoint.path, "/logEvent")
+        // That origin needs only a secret beside it to resolve a live service; whether this build
+        // has one is the Keychain's business, asserted separately.
         XCTAssertNotNil(
             LiveAnalyticsService.configured(
-                bundle: .main,
+                bundle: try makeConfigurationBundle(endpoint: origin, secret: Self.testSecret),
                 installId: "install-42",
                 outboxStorage: VolatileAnalyticsOutboxStorage(),
                 backgroundExecution: .none
@@ -1000,21 +1116,20 @@ final class LiveAnalyticsServiceTests: XCTestCase {
     }
 
     /// A configured bundle builds a service that posts to that deployment's `/logEvent`. The
-    /// expected host is read back out of the same `Info.plist` rather than hard-coded, so moving the
-    /// deployment does not turn this into a failing test. It is a Debug-only assertion because a
-    /// A raw Release build has no injected token to build a service from - that half is asserted above.
+    /// expected host is read back out of the app's own `Info.plist` rather than hard-coded, so
+    /// moving the deployment does not turn this into a failing test; the secret beside it is a test
+    /// value, because the app bundle carries the real one only where the Keychain supplied it. It
+    /// is a Debug-only assertion because the endpoint read is the Debug bundle's.
     #if DEBUG
     func testConfiguredReadsTheAppBundlesEndpointAndPostsToItsRoute() async throws {
-        let configured = try XCTUnwrap(
-            Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.endpointInfoPlistKey) as? String
-        )
+        let configured = try appBundleOrigin()
         let expectedHost = try XCTUnwrap(URL(string: configured)?.host)
 
         let sent = expectation(description: "request intercepted")
         StubURLProtocol.onRequest = { _ in sent.fulfill() }
         let service = try XCTUnwrap(
             LiveAnalyticsService.configured(
-                bundle: .main,
+                bundle: try makeConfigurationBundle(endpoint: configured, secret: Self.testSecret),
                 installId: "install-42",
                 session: StubURLProtocol.makeSession(),
                 outboxStorage: VolatileAnalyticsOutboxStorage(),
@@ -1031,17 +1146,11 @@ final class LiveAnalyticsServiceTests: XCTestCase {
         XCTAssertEqual(url.host, expectedHost)
         XCTAssertEqual(url.path, "/logEvent")
 
-        // The configured service carries the app bundle's secret on the header the sink reads,
-        // rather than an empty or hard-coded one (US-T14). The expected value is read back out of the
-        // same `Info.plist` so rotating the dev secret does not turn this into a failing test.
-        let expectedSecret = try XCTUnwrap(
-            LiveAnalyticsService.secret(
-                fromValue: Bundle.main.object(forInfoDictionaryKey: LiveAnalyticsService.secretInfoPlistKey)
-            )
-        )
+        // The configured service carries its bundle's secret on the header the sink reads, rather
+        // than an empty or hard-coded one (US-T14).
         XCTAssertEqual(
             request.value(forHTTPHeaderField: LiveAnalyticsService.secretHeaderField),
-            expectedSecret
+            Self.testSecret
         )
     }
     #endif
