@@ -6,6 +6,12 @@ Revision `b1b1156` (the Worker/Durable Object clock-skew tolerance below) was de
 the guarded `--stage`/`--release` on 2026-09-28 as version
 `4b00c88e-3214-458c-af3d-4ba67b2e66b0`, and `--verify-restored` then passed; the version it
 replaced was `f12edbeb-1ca1-4570-ba50-8418ae0eea46`.
+A read-only listing of the Worker's deployments on 2026-10-13 shows the active version is
+`2c622512-5dd8-4fdb-8a67-c6f30969049a`, deployed 2026-09-30 from revision `03b572a` (its
+`COACH_AUTH_SOURCE_REV` binding), with no deployment after it.
+Nothing merged after `03b572a` is live until a later approved release.
+That includes the plain-language Coach instructions of 2026-09-30 (`443d6ac`) and the Coach
+summary and word list of 2026-10-13 (`proxy/README.md`, "What the model is given").
 This supersedes the historical Production-only `2952fab` release status. Deployment confirmation
 is not genuine-device evidence: TestFlight App Attest/StoreKit admission and a live model response
 remain unverified.

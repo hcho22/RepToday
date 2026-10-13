@@ -1,0 +1,92 @@
+{
+  "about": [
+    "Words that must not be in what the Coach model is given or told to say, because the app never shows them to a user in that sense.",
+    "This is the one list. proxy/test/worker.test.js holds the Coach instructions and the summary the Worker hands the model to it; ios/RepToday/RepTodayTests/CoachRequestVocabularyTests.swift holds the app's side to it.",
+    "'tier' is deliberately not here: the Progress tab shows 'Tier 2 of 4 - next tier in reach', so it is the app's own word.",
+    "forms: each form is a run of whole words, matched case-insensitively after splitting camelCase and punctuation, so 'chainPositions' matches 'chain' and 'discipline' does not match 'line'.",
+    "say: what the instructions tell the Coach to say instead. null means the word is only kept out of what the Coach is given, without naming it to the model.",
+    "onlyWith: the one sense the app does use the word in. A sentence of the instructions may use the word only if it also names this.",
+    "proof: where the app does or does not show the word."
+  ],
+  "words": [
+    {
+      "word": "engine",
+      "forms": ["engine", "engines"],
+      "say": "'Rep Today' or 'the app'",
+      "proof": "Kept out of Coach replies by the captain's decision of 2026-09-30. The app does print 'the engine' in three places (the Premium 'How it's felt' note in ProgressTabView, in two of its wordings, and StrengthGraduationRevealView), so this entry rests on that decision and not on absence."
+    },
+    {
+      "word": "deterministic",
+      "forms": ["deterministic"],
+      "say": "'Rep Today' or 'the app'",
+      "proof": "No screen an ordinary user reaches shows it; the only string is on the hidden Coach QA screen (CoachSyntheticQAView)."
+    },
+    {
+      "word": "stalest",
+      "forms": ["stalest", "stale", "staleness"],
+      "say": "'the area you've gone longest without'",
+      "proof": "No user-facing string contains it; the one occurrence is a canned reply for SwiftUI previews (CoachView)."
+    },
+    {
+      "word": "chain",
+      "forms": ["chain", "chains"],
+      "say": "'ladder'",
+      "proof": "No user-facing string contains it. The Progress tab calls the same thing a ladder ('The ladder you're climbing'). It also reaches the Worker in the field names chainPositions and chainLength, which the Worker never hands to the model."
+    },
+    {
+      "word": "frontier",
+      "forms": ["frontier", "frontiers"],
+      "say": "'your current movement'",
+      "proof": "Shown only on the hidden Coach QA screen and in its fixed QA prompts. The Progress tab says 'Your current movement in each foundation.'"
+    },
+    {
+      "word": "consistency signal",
+      "forms": ["consistency signal", "consistency signals"],
+      "say": "'Consistency'",
+      "proof": "No user-facing string contains 'signal'. The Progress tab says 'Consistency'."
+    },
+    {
+      "word": "line",
+      "forms": ["line", "lines"],
+      "say": "'foundation', or 'side' for the Squat side and the Hinge side of Legs",
+      "proof": "The app never calls a foundation a line. Its only uses of the word are 'Your trend line grows as the weeks add up' (ProgressTabView) and 'One line, in your words' (OnboardingView)."
+    },
+    {
+      "word": "unlock",
+      "forms": ["unlock", "unlocks", "unlocked", "unlocking"],
+      "say": "'next tier in reach' for a next tier or movement, keeping 'unlock' for what earning the Strength Phase opens",
+      "onlyWith": "Strength Phase",
+      "proof": "Every use in the app is about what the Strength Phase or Premium opens: 'Earn the Strength Phase to unlock', 'Strength skill - unlocked', 'the full catalog is unlocked' (ProgressTabView), 'More movements unlock when you earn the Strength Phase' (ReadyView), and the Premium upsell. A next tier is 'next tier in reach' or 'Coming up', never locked."
+    },
+    {
+      "word": "Discipline Phase",
+      "forms": ["discipline phase", "discipline phases"],
+      "say": "that they are working toward the Strength Phase",
+      "proof": "No string in the app contains 'discipline'; the app names only the Strength Phase. It reaches the Worker as the phase value 'discipline', which the Worker hands to the model as 'Strength Phase: not earned yet.'"
+    },
+    {
+      "word": "bundle",
+      "forms": ["bundle", "bundles"],
+      "say": null,
+      "proof": "Only developer-facing strings contain it (a catalog load error and the hidden QA probe's labels)."
+    },
+    {
+      "word": "horizontal",
+      "forms": ["horizontal"],
+      "say": null,
+      "proof": "No string in the app contains it. The app says 'Pull counts the row ladder' (ProgressTabView)."
+    },
+    {
+      "word": "postural",
+      "forms": ["postural"],
+      "say": null,
+      "proof": "No string in the app contains it."
+    },
+    {
+      "word": "accessory",
+      "forms": ["accessory", "accessories"],
+      "say": null,
+      "proof": "No string in the app contains it."
+    }
+  ]
+}

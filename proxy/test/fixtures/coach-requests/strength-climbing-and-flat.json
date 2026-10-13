@@ -1,0 +1,73 @@
+{
+  "context" : {
+    "chainPositions" : [
+      {
+        "chainLength" : 8,
+        "currentExercise" : "Incline Push-Up",
+        "hasNextTier" : true,
+        "pattern" : "push",
+        "tier" : 2
+      },
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "pull",
+        "tier" : 0
+      },
+      {
+        "chainLength" : 7,
+        "currentExercise" : "Bodyweight Squat",
+        "hasNextTier" : true,
+        "pattern" : "squat",
+        "tier" : 2
+      },
+      {
+        "chainLength" : 6,
+        "currentExercise" : "Glute Bridge",
+        "hasNextTier" : true,
+        "pattern" : "hinge",
+        "tier" : 1
+      },
+      {
+        "chainLength" : 0,
+        "hasNextTier" : false,
+        "pattern" : "core",
+        "tier" : 0
+      }
+    ],
+    "consistency" : {
+      "currentScore" : 27,
+      "direction" : "falling"
+    },
+    "phase" : "strength",
+    "recentPatterns" : [
+      "hinge",
+      "mobility",
+      "squat",
+      "push"
+    ],
+    "requestedMinutes" : 15,
+    "strengthJourney" : [
+      {
+        "hasAdvanced" : true,
+        "pattern" : "push",
+        "trend" : "climbing",
+        "weeksAtCurrentTier" : 1
+      },
+      {
+        "hasAdvanced" : false,
+        "pattern" : "squat",
+        "trend" : "steady",
+        "weeksAtCurrentTier" : 0
+      },
+      {
+        "hasAdvanced" : false,
+        "pattern" : "hinge",
+        "trend" : "flat",
+        "weeksAtCurrentTier" : 5
+      }
+    ]
+  },
+  "message" : "I'm bored, this feels repetitive.",
+  "safetyIdentifier" : "coach-00000000-0000-4000-8000-000000000001"
+}

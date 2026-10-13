@@ -1,0 +1,88 @@
+{
+  "context" : {
+    "chainPositions" : [
+      {
+        "chainLength" : 4,
+        "currentExercise" : "Wall Push-Up",
+        "hasNextTier" : true,
+        "pattern" : "push",
+        "tier" : 1
+      },
+      {
+        "chainLength" : 1,
+        "currentExercise" : "Wall Scapular Pull",
+        "hasNextTier" : false,
+        "pattern" : "pull",
+        "tier" : 1
+      },
+      {
+        "chainLength" : 2,
+        "currentExercise" : "Wall Sit",
+        "hasNextTier" : true,
+        "pattern" : "squat",
+        "tier" : 1
+      },
+      {
+        "chainLength" : 2,
+        "currentExercise" : "Glute Bridge",
+        "hasNextTier" : true,
+        "pattern" : "hinge",
+        "tier" : 1
+      },
+      {
+        "chainLength" : 1,
+        "currentExercise" : "Forearm Plank",
+        "hasNextTier" : false,
+        "pattern" : "core",
+        "tier" : 1
+      }
+    ],
+    "consistency" : {
+      "currentScore" : 100,
+      "direction" : "new"
+    },
+    "phase" : "discipline",
+    "recentPatterns" : [
+      "push",
+      "pull",
+      "squat",
+      "hinge",
+      "core"
+    ],
+    "requestedMinutes" : 15,
+    "strengthJourney" : [
+      {
+        "hasAdvanced" : false,
+        "pattern" : "push",
+        "trend" : "steady",
+        "weeksAtCurrentTier" : 0
+      },
+      {
+        "hasAdvanced" : false,
+        "pattern" : "pull",
+        "trend" : "steady",
+        "weeksAtCurrentTier" : 0
+      },
+      {
+        "hasAdvanced" : false,
+        "pattern" : "squat",
+        "trend" : "steady",
+        "weeksAtCurrentTier" : 0
+      },
+      {
+        "hasAdvanced" : false,
+        "pattern" : "hinge",
+        "trend" : "steady",
+        "weeksAtCurrentTier" : 0
+      },
+      {
+        "hasAdvanced" : false,
+        "pattern" : "core",
+        "trend" : "steady",
+        "weeksAtCurrentTier" : 0
+      }
+    ]
+  },
+  "message" : "How am I doing?",
+  "safetyIdentifier" : "coach-00000000-0000-4000-8000-000000000001"
+}
