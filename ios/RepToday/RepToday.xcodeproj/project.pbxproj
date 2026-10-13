@@ -190,6 +190,7 @@
 		AC296AF1DF7478D5EB2D2B47 /* StrengthGraduationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ACD55BC9F5E016E8DE5D73D /* StrengthGraduationViewModel.swift */; };
 		AC55155DABE13639BB5C29FA /* ReturnOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85274C4D6459D630BE1E4978 /* ReturnOverrideTests.swift */; };
 		AFBACB778EE32D517D4FB299 /* AccentFilledButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DCC7756FE8570C0D5324F3 /* AccentFilledButtonStyle.swift */; };
+		B230AD184C72DCFF0423AAE1 /* CoachRequestVocabularyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B3C9A78E2220F8E2FE516D /* CoachRequestVocabularyTests.swift */; };
 		B2D623F71914B30B4B79B9FB /* CoachStagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6C5632D5D475327FED5B9F /* CoachStagingTests.swift */; };
 		B464730ADEEA68188493A292 /* CoachSyntheticFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBD3F7EE9DBBEAEFA41C240 /* CoachSyntheticFixtures.swift */; };
 		B4B38F942E95757ABABB4B3D /* CoreDataServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3499D10F0327F4C2CD18593 /* CoreDataServicesTests.swift */; };
@@ -296,6 +297,7 @@
 		00F43E0682457E77E4283394 /* SessionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPolicyTests.swift; sourceTree = "<group>"; };
 		028AFC709F6BE529E6A2B11B /* TelemetryUITestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryUITestHarness.swift; sourceTree = "<group>"; };
 		0297CA46CCCC98D71C7E0B79 /* PolicyNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyNote.swift; sourceTree = "<group>"; };
+		02B3C9A78E2220F8E2FE516D /* CoachRequestVocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachRequestVocabularyTests.swift; sourceTree = "<group>"; };
 		04DBFB7EC59AD23C40981B7C /* CoachProxyClientConfiguredTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachProxyClientConfiguredTests.swift; sourceTree = "<group>"; };
 		0535D9A19CD2F1050908D03D /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		0578D844799A0DC399CE7D2D /* StrengthJourneyEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthJourneyEvidenceTests.swift; sourceTree = "<group>"; };
@@ -845,6 +847,7 @@
 				ACD3E0CEDD39FC75033A22C8 /* CoachProofSchemaProbeTests.swift */,
 				04DBFB7EC59AD23C40981B7C /* CoachProxyClientConfiguredTests.swift */,
 				623583620870CFC4115CDD41 /* CoachProxyClientTests.swift */,
+				02B3C9A78E2220F8E2FE516D /* CoachRequestVocabularyTests.swift */,
 				8801927E0C4864D44184691E /* CoachRuntimeAuthenticationTests.swift */,
 				2FD6DEC3527FC592EABED8EF /* CoachRuntimeProofProbeTests.swift */,
 				EB6C5632D5D475327FED5B9F /* CoachStagingTests.swift */,
@@ -1328,6 +1331,7 @@
 				74465A5182139F8702E8F971 /* CoachProofSchemaProbeTests.swift in Sources */,
 				131634063C1861EC4EF187D8 /* CoachProxyClientConfiguredTests.swift in Sources */,
 				C249069BA8BB01D7B21E01C8 /* CoachProxyClientTests.swift in Sources */,
+				B230AD184C72DCFF0423AAE1 /* CoachRequestVocabularyTests.swift in Sources */,
 				229B80CA7B55B483133284F0 /* CoachRuntimeAuthenticationTests.swift in Sources */,
 				71CC66E35574DAC9831DEB9D /* CoachRuntimeProofProbeTests.swift in Sources */,
 				B2D623F71914B30B4B79B9FB /* CoachStagingTests.swift in Sources */,

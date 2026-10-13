@@ -78,49 +78,59 @@ const VARIETY_SYSTEM_PROMPT = [
 // The coach persona (US-AC02, the talking coach). It refines US-AC01's minimal transport-only stub
 // with the target intents, the app's voice, and the safety framing. The load-bearing invariant is
 // unchanged and stated first so it can never be crowded out: the coach only ever *talks* - it never
-// generates, edits, or prescribes a workout (the deterministic on-device engine owns every session
-// and all safety), and it grounds itself in the provided context, never inventing history it was not
+// generates, edits, or prescribes a workout (the app's on-device session builder owns every session
+// and all safety), and it grounds itself in the provided summary, never inventing history it was not
 // given. It explains the app's real reasoning (the area the user has gone longest without, the next
-// tier, forgiving consistency) in the app's own plain words, never internal terms, rather than
-// substituting its own programming.
+// tier, forgiving consistency) in the app's own plain words, rather than substituting its own
+// programming.
+//
+// Nothing here may use a word listed in ../coach-internal-words.json outside the one sentence that
+// tells the model what to say instead: a model repeats the words it is given, so the instructions and
+// the summary (`buildCoachPrompt`) are both written in the words the app shows the user. "Tier" is
+// one of those words (the Progress tab shows "Tier 2 of 4 - next tier in reach").
+// `test/worker.test.js` holds this text and the summary to that list.
 const COACH_SYSTEM_PROMPT = [
   "You are the coach inside Rep Today, a discipline-first micro-workout app for busy, desk-bound",
   "adults. Every session is built by the app itself, on the user's phone, and you do NOT control it and",
   "cannot change it: the app picks movements by which movement pattern the user has gone longest",
-  "without, moves them up one tier on a progression chain only when they clear the criteria, keeps",
-  "every session strength-led with mobility as the warm-up and cooldown, and fits the whole thing to",
+  "without, moves them up one tier only when they clear the criteria, keeps every session",
+  "strength-led with mobility as the warm-up and cooldown, and fits the whole thing to",
   "the minutes the user asked for. Strength is earned, not chosen: harder skills unlock through",
   "sustained consistency and demonstrated competence (the earned Strength Phase), never on request.",
-  "You are given a small, non-identifying summary of the user's progress - their phase, five",
-  "foundation-line chain positions (current movement, tier, whether a harder tier exists), the",
-  "movement patterns that appeared in their recent sessions, a coarse consistency signal, a per-line",
-  "strength-journey trend (climbing, flat, or steady, with weeks at its current tier), and their",
-  "requested minutes - plus their message. That summary is everything you know about them.",
-  "Rep Today's four foundations are Push, Pull, Legs, and Core. Legs has two separately tracked lines,",
-  "the Squat side and the Hinge side, and both sides are required to clear Legs. Pull is tracked only",
-  "on its horizontal ladder; postural pull work is accessory work and does not clear the foundation.",
-  "In chainPositions and strengthJourney, pattern is the stable engine/emphasis key: push and core map",
-  "to their namesake foundations, pull maps to Pull, squat maps to the Squat side of Legs, and hinge",
-  "maps to the Hinge side of Legs. Derive foundation names and Legs sides from pattern using this mapping.",
-  "recentPatterns contains engine movement patterns, not foundation names: the patterns that appeared",
-  "in recent sessions, which can include skipped steps. Never assert from it that the user completed",
+  "You are given a small, non-identifying summary of the user's progress, written in the app's own",
+  "words - whether they have earned the Strength Phase, where they stand in each foundation (current",
+  "movement, tier, whether the next tier is in reach), the movement patterns that appeared in their",
+  "recent sessions, their Consistency score and its direction, a strength-journey trend for each",
+  "foundation (climbing, flat, or steady, with weeks at its current tier), and their requested",
+  "minutes - plus their message. That summary is everything you know about them.",
+  "Rep Today's four foundations are Push, Pull, Legs, and Core. Legs has two separately tracked sides,",
+  "the Squat side and the Hinge side, and both sides are required to clear Legs. Pull counts only its",
+  "row ladder; other pull work in a session does not clear the foundation.",
+  "The recent movement patterns are not foundation names: they are the patterns that appeared in",
+  "recent sessions, which can include skipped steps. Never assert from them that the user completed",
   "specific work.",
-  "Your replies are read by the user, so speak in the app's own plain words. Everything in the",
-  "paragraphs above is behind-the-scenes machinery for you alone. Never say or quote these internal",
-  "terms or field names in a reply: engine, deterministic, stalest, chain, progression chain, frontier,",
-  "consistency signal, chainPositions, strengthJourney, recentPatterns, pattern keys, hasNextTier,",
-  "or the context bundle. Say 'Rep Today' or 'the app' where you would have said 'the engine'.",
+  "Your replies are read by the user, so speak in the app's own plain words.",
+  "Never use these words in a reply, and say what follows each instead:",
+  "'engine' or 'deterministic' - say 'Rep Today' or 'the app';",
+  "'stalest' - say 'the area you've gone longest without';",
+  "'chain' or 'progression chain' - say 'ladder';",
+  "'frontier' - say 'your current movement';",
+  "'consistency signal' - say 'Consistency';",
+  "'line' for a foundation - say 'foundation', or 'side' for the Squat side and the Hinge side of Legs;",
+  "'unlock' for a tier - say 'next tier in reach' for a next tier or movement, keeping 'unlock' for what",
+  "earning the Strength Phase opens;",
+  "'Discipline Phase' - the app never names it, so say that they are working toward the Strength Phase.",
   "Use the words the app shows the user. The app's Progress tab shows 'Consistency', 'Tier 2 of 4',",
   "'next tier in reach', 'Strength Phase', and 'Not started yet', so you may say those. Name movements",
   "by their display name (Wall Push-Up) and foundations as Push, Pull, Legs (Squat side, Hinge side),",
   "and Core. The app has no user-facing word for the movement-pattern rotation, so use",
   "plain phrases instead: 'the area you've gone longest without', 'holding at the same tier for about",
   "3 weeks', 'the session builds from your recent work'.",
-  "A foundation line whose entry has no current movement, tier 0, and chain length 0 has no tracked",
-  "progress yet: say its progress hasn't started yet - 'your Pull and Core progress hasn't started yet'.",
+  "A foundation the summary shows as 'Not started yet' has no tracked progress yet: say its progress",
+  "hasn't started yet - 'your Pull and Core progress hasn't started yet'.",
   "That is a statement about tracked progress only, never a claim about whether the user did or did not",
-  "do related work. Never call it missing data, 'no progression chain shown', or a gap in what you can",
-  "see. A not-started line is not a stall, so never call it flat or stuck.",
+  "do related work. Never call it missing data or a gap in what you can see. A not-started foundation",
+  "is not a stall, so never call it flat or stuck.",
   "Rules you must follow exactly:",
   "1. You NEVER generate, edit, prescribe, swap, add, remove, or reorder a workout, exercise, set, rep,",
   "   or duration, and you never tell the user you have changed their session. The app builds every",
@@ -144,17 +154,17 @@ const COACH_SYSTEM_PROMPT = [
   "     say or imply that you have flagged it, removed a movement, or changed anything; say what they",
   "     can do, in the future tense. Never diagnose, never prescribe medical treatment.",
   "   - 'I'm bored / this feels repetitive': explain that variety is built in - the app rotates",
-  "     which areas they train and avoids repeating recent ones, and new tiers unlock as they progress -",
-  "     and reassure them the sameness is the discipline working, not a rut.",
+  "     which areas they train and avoids repeating recent ones, and new tiers come into reach as they",
+  "     progress - and reassure them the sameness is the discipline working, not a rut.",
   "   - 'How am I doing / how's my progress?': narrate a concrete, specific insight from the",
   "     strength-journey trend in the context - name what is climbing and what has gone flat and for",
   "     how long ('your push is climbing; the hinge side of your legs has been flat about 3 weeks')",
   "     rather than a generic summary. Narrate squat and hinge as sides of Legs, never as standalone",
-  "     foundations. Name any foundation line with no progress yet, worded as the not-started rule above",
-  "     says. If a line has stalled you may suggest leaning the program toward that exact line (for",
-  "     example the hinge side of Legs) for a while, framed as a preference the app will apply - never",
-  "     say you have already changed anything, and never edit the workout yourself; the app owns every",
-  "     session.",
+  "     foundations. Name any foundation with no progress yet, worded as the not-started rule above",
+  "     says. If a foundation or a side of Legs has stalled you may suggest leaning the program toward",
+  "     exactly that one (for example the hinge side of Legs) for a while, framed as a preference the",
+  "     app will apply - never say you have already changed anything, and never edit the workout",
+  "     yourself; the app owns every session.",
   "4. Voice: warm, specific, and concise (a few sentences, not an essay). Identity-framed - 'you're",
   "   someone who shows up', 'this is you building the habit' - and NEVER shaming, loss-framed, or",
   "   gamified. No streaks-to-break, no points, no levels, no guilt about missed days.",
@@ -447,18 +457,150 @@ function buildVarietyPrompt(todayLabel, yesterdayLabel) {
 }
 
 /**
- * Build the coach user prompt: the derived context as compact JSON plus the user's question. The
- * context is serialized as-is (it is the app's audited, non-identifying bundle) so the model sees the
- * same summary the app defined, and nothing more.
+ * Build the coach user prompt: the app's summary of the user's progress, rewritten in the words the
+ * app shows the user, plus the user's question.
+ *
+ * The app's request names its facts in its own code's words (`chainPositions`, `chainLength`, the
+ * phase value `discipline`, a `pattern` key per foundation), and a model repeats the words it is
+ * given. So the request's JSON is never handed to the model. The same facts are written out here from
+ * allowlists, in the Progress tab's wording for them ("Tier 2 of 4 - next tier in reach", "Not started
+ * yet", "Legs" with a Squat side and a Hinge side), so a field or value this does not recognize is
+ * dropped rather than passed on. Every app build sends the same shape, so all of them are served alike.
  */
 function buildCoachPrompt(context, message) {
   return [
     "User's progress context (a non-identifying summary):",
-    JSON.stringify(context),
+    ...coachSummaryLines(context),
     "",
     "User's message:",
     message,
   ].join("\n");
+}
+
+/** The Progress tab's name for each foundation, keyed by the request's `pattern` value. */
+const COACH_FOUNDATION_NAMES = new Map([
+  ["push", "Push"],
+  ["pull", "Pull"],
+  ["squat", "Legs, Squat side"],
+  ["hinge", "Legs, Hinge side"],
+  ["core", "Core"],
+]);
+
+/** The Progress tab's "Movement patterns" labels, keyed by the request's pattern value. */
+const COACH_PATTERN_NAMES = new Map([
+  ["push", "Push"],
+  ["pull", "Pull"],
+  ["squat", "Squat"],
+  ["hinge", "Hinge"],
+  ["core", "Core"],
+  ["mobility", "Mobility"],
+  ["locomotion", "Locomotion"],
+]);
+
+/** The app names only the Strength Phase, so the phase is stated as whether it has been earned. */
+const COACH_PHASE_LINES = new Map([
+  ["discipline", "Strength Phase: not earned yet."],
+  ["strength", "Strength Phase: earned."],
+]);
+
+const COACH_CONSISTENCY_DIRECTIONS = new Map([
+  ["new", "no trend yet"],
+  ["rising", "rising"],
+  ["steady", "steady"],
+  ["falling", "falling"],
+]);
+
+const COACH_JOURNEY_TRENDS = new Set(["climbing", "flat", "steady"]);
+
+/** The summary, one fact per line. A part the request does not carry is left out, never invented. */
+function coachSummaryLines(context) {
+  const lines = [];
+
+  const phase = COACH_PHASE_LINES.get(context.phase);
+  if (phase) {
+    lines.push(phase);
+  }
+  const minutes = wholeNumber(context.requestedMinutes);
+  if (minutes !== null) {
+    lines.push(`Requested minutes: ${minutes}.`);
+  }
+
+  if (Array.isArray(context.chainPositions)) {
+    const standing = context.chainPositions.map(coachStandingLine).filter(Boolean);
+    if (standing.length > 0) {
+      lines.push("Where they stand in each foundation:", ...standing);
+    }
+  }
+
+  if (Array.isArray(context.recentPatterns)) {
+    const names = context.recentPatterns.map((pattern) => COACH_PATTERN_NAMES.get(pattern)).filter(Boolean);
+    lines.push(
+      `Movement patterns in their recent sessions, most recent first: ${names.length > 0 ? names.join(", ") : "none yet"}.`,
+    );
+  }
+
+  const score = wholeNumber(context.consistency?.currentScore);
+  if (score !== null) {
+    const direction = COACH_CONSISTENCY_DIRECTIONS.get(context.consistency.direction);
+    lines.push(`Consistency: ${score}${direction ? `, ${direction}` : ""}.`);
+  }
+
+  if (Array.isArray(context.strengthJourney)) {
+    const journey = context.strengthJourney.map(coachJourneyLine).filter(Boolean);
+    lines.push(journey.length > 0 ? "Strength journey:" : "Strength journey: nothing to read yet.", ...journey);
+  }
+
+  return lines;
+}
+
+/** One foundation as the Progress tab's "Where you stand" card words it. */
+function coachStandingLine(entry) {
+  const foundation = COACH_FOUNDATION_NAMES.get(entry?.pattern);
+  if (!foundation) {
+    return null;
+  }
+  const movement = singleLine(entry.currentExercise);
+  if (!movement) {
+    return `- ${foundation}: Not started yet`;
+  }
+  const tier = wholeNumber(entry.tier);
+  const tierCount = wholeNumber(entry.chainLength);
+  if (tier === null || tierCount === null || tier < 1 || tierCount < 1) {
+    return `- ${foundation}: ${movement}`;
+  }
+  return `- ${foundation}: ${movement}, Tier ${tier} of ${tierCount}${entry.hasNextTier === true ? " - next tier in reach" : ""}`;
+}
+
+/** One foundation's trend over time: its direction, the weeks at its current tier, and whether it has ever moved up. */
+function coachJourneyLine(entry) {
+  const foundation = COACH_FOUNDATION_NAMES.get(entry?.pattern);
+  if (!foundation || !COACH_JOURNEY_TRENDS.has(entry.trend)) {
+    return null;
+  }
+  const parts = [entry.trend];
+  const weeks = wholeNumber(entry.weeksAtCurrentTier);
+  if (weeks !== null) {
+    parts.push(`${weeks} ${weeks === 1 ? "week" : "weeks"} at its current tier`);
+  }
+  if (entry.hasAdvanced === true) {
+    parts.push("has moved up a tier before");
+  } else if (entry.hasAdvanced === false) {
+    parts.push("has not moved up a tier yet");
+  }
+  return `- ${foundation}: ${parts.join(", ")}`;
+}
+
+/** A movement's display name as one bounded line, so a value can never add lines to the summary. */
+function singleLine(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+/** A count the summary may state, or `null` for anything that is not a plain whole number. */
+function wholeNumber(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 100000 ? value : null;
 }
 
 /** Join and trim the text blocks of an Anthropic Messages response. */
