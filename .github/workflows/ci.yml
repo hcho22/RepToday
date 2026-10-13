@@ -221,7 +221,8 @@ jobs:
   # OS pin is the major version only: it picks an available iPhone on any iOS 26.x
   # runtime (newest first), creating one against the newest iOS 26.x runtime if the
   # image ships none, so a 26.x point update on the image does not break it. The
-  # bundle-metadata and Trainer-art checks are OS-independent and stay in `ios` only.
+  # usage-data secret, bundle-metadata and Trainer-art checks are OS-independent and
+  # stay in `ios` only.
   # ---------------------------------------------------------------------------
   ios-26:
     name: iOS app (iOS 26)

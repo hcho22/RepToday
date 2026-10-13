@@ -8,9 +8,10 @@ import Foundation
 /// `ServiceContainer.live(...)` when `LiveAnalyticsService.configured(...)` returns `nil`. Such a
 /// build must emit nothing quietly rather than trap, retry, or log on a path the core loop shares.
 ///
-/// That includes an endpoint or token that is missing/mistyped, and a raw Release build whose
-/// production token was not privately injected (`ios/RepToday/project.yml`). So skipping the private
-/// archive path loses telemetry quietly rather than turning into an app error.
+/// That includes an endpoint or token that is missing/mistyped, a raw Release build whose
+/// production token was not privately injected (`ios/RepToday/project.yml`), and a Debug build made
+/// without the dev Keychain secret - every fresh clone and CI run. So skipping the private archive
+/// path, or the dev secret's `install`, loses telemetry quietly rather than becoming an app error.
 ///
 /// It discards rather than records, which is the difference from `MockAnalyticsService`: a
 /// production sink that appended to an array nothing drains would grow one `AnalyticsEvent` per
