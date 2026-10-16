@@ -128,9 +128,9 @@ final class LiveStoreKitFacade: StoreKitFacade {
         for product in products {
             guard let subscription = product.subscription else { continue }
             let isEligible = await Self.isEligibleForIntroOffer(subscription)
-            if let storeProduct = Self.storeProduct(from: product, isEligibleForIntroOffer: isEligible) {
-                subscriptions.append(storeProduct)
-            }
+            subscriptions.append(Self.storeProduct(
+                from: product, subscription: subscription, isEligibleForIntroOffer: isEligible
+            ))
         }
         #if COACH_IPHONE_QA
         if subscriptions.isEmpty {
@@ -421,9 +421,9 @@ final class LiveStoreKitFacade: StoreKitFacade {
 
     private static func storeProduct(
         from product: Product,
+        subscription: Product.SubscriptionInfo,
         isEligibleForIntroOffer: Bool
-    ) -> StoreProduct? {
-        guard let subscription = product.subscription else { return nil }
+    ) -> StoreProduct {
         let period: SubscriptionPlan.Period = subscription.subscriptionPeriod.unit == .year ? .yearly : .monthly
         return StoreProduct(
             id: product.id,

@@ -36,9 +36,10 @@ struct SubscriptionPlan: Identifiable, Equatable, Hashable {
     /// Localized price for the whole period, e.g. "$7.99" or "$59.99".
     let displayPrice: String
     let period: Period
-    /// A human-readable free-trial phrase (e.g. "14-day free trial"), or `nil` when the plan has no
-    /// introductory offer. Naming it here keeps the paywall honest - the badge only shows when the
-    /// underlying product actually carries a trial.
+    /// A human-readable free-trial phrase (e.g. "14-day free trial"), present only when the product
+    /// carries a free-trial introductory offer and Apple reports this Apple ID eligible to redeem it;
+    /// otherwise `nil`. Naming it here keeps the paywall honest - the badge only shows a trial this
+    /// user will actually get.
     let trialDescription: String?
 
     /// The price line the paywall shows, e.g. "$7.99 / month".

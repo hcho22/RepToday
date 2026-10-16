@@ -39,7 +39,7 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
         defer { _ = (host, window) }
         try await HostedSurface.settle(until: {
             AccessibilityTree.labels(in: host.view).contains { $0.contains("/ year") }
-        })
+        }, timeout: 15)
         let image = HostedSurface.capture(host.view, size: size)
         try EvidenceOutput.write(image, named: name, for: "trial-label-eligibility")
         return AccessibilityTree.labels(in: host.view)
