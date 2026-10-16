@@ -54,7 +54,13 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
     }
 
     func testUserWhoAlreadyUsedTheTrialSeesNoTrialLine() async throws {
-        try await session.buyProduct(identifier: SubscriptionPlan.ProductID.monthly)
+        do {
+            try await session.buyProduct(identifier: SubscriptionPlan.ProductID.monthly)
+        } catch StoreKitError.notEntitled {
+            // iOS 26.3+ simulators never receive the configuration under `xcodebuild test`, so the session
+            // cannot record a purchase (Apple developer forums thread 826971). The iOS 18 lane still runs this.
+            throw XCTSkip("This simulator's StoreKit test session cannot record a purchase")
+        }
         try session.expireSubscription(productIdentifier: SubscriptionPlan.ProductID.monthly)
         let labels = try await paywallLabels(capturing: "trial-used-paywall.png")
         XCTAssertFalse(labels.contains { $0.contains("free trial") }, "\(labels)")
