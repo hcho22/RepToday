@@ -460,7 +460,7 @@ struct StoreKitSubscriptionService: SubscriptionServiceProtocol {
             id: product.id,
             displayPrice: product.displayPrice,
             period: product.period,
-            trialDescription: product.trialDescription
+            trialDescription: product.promisedTrialDescription
         )
     }
 }

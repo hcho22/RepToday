@@ -65,8 +65,39 @@ struct StoreProduct: Equatable {
     let displayPrice: String
     let period: SubscriptionPlan.Period
     /// A free-trial phrase (e.g. "14-day free trial") when the product carries an introductory
-    /// free-trial offer, else `nil`.
+    /// free-trial offer, else `nil`. This describes the offer the product carries, not whether this
+    /// user may redeem it; the paywall shows it only when `introOfferEligibility` is `.eligible`.
     let trialDescription: String?
+    /// Whether the current Apple ID may still redeem the introductory offer.
+    let introOfferEligibility: IntroOfferEligibility
+
+    init(
+        id: String,
+        displayPrice: String,
+        period: SubscriptionPlan.Period,
+        trialDescription: String?,
+        introOfferEligibility: IntroOfferEligibility = .eligible
+    ) {
+        self.id = id
+        self.displayPrice = displayPrice
+        self.period = period
+        self.trialDescription = trialDescription
+        self.introOfferEligibility = introOfferEligibility
+    }
+
+    /// The trial line the paywall may promise: only when Apple says this user is eligible. An
+    /// ineligible or undetermined user sees the price alone, never a trial Apple may not give.
+    var promisedTrialDescription: String? {
+        introOfferEligibility == .eligible ? trialDescription : nil
+    }
+}
+
+/// Apple's answer to "may this user still redeem the introductory offer?".
+enum IntroOfferEligibility: Equatable {
+    case eligible
+    case ineligible
+    /// The check could not be completed; treated like ineligible for display.
+    case unknown
 }
 
 /// An active premium entitlement as read from StoreKit's verified current entitlements, projected to

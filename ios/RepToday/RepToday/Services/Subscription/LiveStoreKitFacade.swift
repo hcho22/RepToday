@@ -124,7 +124,14 @@ final class LiveStoreKitFacade: StoreKitFacade {
         } catch {
             throw Self.requestFailure(error)
         }
-        let subscriptions = products.compactMap(Self.storeProduct(from:))
+        var subscriptions: [StoreProduct] = []
+        for product in products {
+            guard let subscription = product.subscription else { continue }
+            let eligibility = await Self.introOfferEligibility(for: subscription)
+            if let storeProduct = Self.storeProduct(from: product, introOfferEligibility: eligibility) {
+                subscriptions.append(storeProduct)
+            }
+        }
         #if COACH_IPHONE_QA
         if subscriptions.isEmpty {
             throw SubscriptionError.diagnosticProductsUnavailable(rawProductCount: products.count)
@@ -405,14 +412,27 @@ final class LiveStoreKitFacade: StoreKitFacade {
         (lhs.expiresAt ?? .distantFuture) >= (rhs.expiresAt ?? .distantFuture) ? lhs : rhs
     }
 
-    private static func storeProduct(from product: Product) -> StoreProduct? {
+    /// Apple's eligibility for the product's introductory offer. Only asked when the product carries
+    /// one; a cancelled task yields `.unknown` rather than a guess.
+    private static func introOfferEligibility(for subscription: Product.SubscriptionInfo) async -> IntroOfferEligibility {
+        guard subscription.introductoryOffer != nil else { return .ineligible }
+        let eligible = await subscription.isEligibleForIntroOffer
+        guard !Task.isCancelled else { return .unknown }
+        return eligible ? .eligible : .ineligible
+    }
+
+    private static func storeProduct(
+        from product: Product,
+        introOfferEligibility: IntroOfferEligibility
+    ) -> StoreProduct? {
         guard let subscription = product.subscription else { return nil }
         let period: SubscriptionPlan.Period = subscription.subscriptionPeriod.unit == .year ? .yearly : .monthly
         return StoreProduct(
             id: product.id,
             displayPrice: product.displayPrice,
             period: period,
-            trialDescription: trialDescription(for: subscription.introductoryOffer)
+            trialDescription: trialDescription(for: subscription.introductoryOffer),
+            introOfferEligibility: introOfferEligibility
         )
     }
 
