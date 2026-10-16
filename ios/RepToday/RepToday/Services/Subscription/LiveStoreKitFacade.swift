@@ -127,8 +127,8 @@ final class LiveStoreKitFacade: StoreKitFacade {
         var subscriptions: [StoreProduct] = []
         for product in products {
             guard let subscription = product.subscription else { continue }
-            let eligibility = await Self.introOfferEligibility(for: subscription)
-            if let storeProduct = Self.storeProduct(from: product, introOfferEligibility: eligibility) {
+            let isEligible = await Self.isEligibleForIntroOffer(subscription)
+            if let storeProduct = Self.storeProduct(from: product, isEligibleForIntroOffer: isEligible) {
                 subscriptions.append(storeProduct)
             }
         }
@@ -412,18 +412,16 @@ final class LiveStoreKitFacade: StoreKitFacade {
         (lhs.expiresAt ?? .distantFuture) >= (rhs.expiresAt ?? .distantFuture) ? lhs : rhs
     }
 
-    /// Apple's eligibility for the product's introductory offer. Only asked when the product carries
-    /// one; a cancelled task yields `.unknown` rather than a guess.
-    private static func introOfferEligibility(for subscription: Product.SubscriptionInfo) async -> IntroOfferEligibility {
-        guard subscription.introductoryOffer != nil else { return .ineligible }
-        let eligible = await subscription.isEligibleForIntroOffer
-        guard !Task.isCancelled else { return .unknown }
-        return eligible ? .eligible : .ineligible
+    /// Whether Apple lets this Apple ID redeem the product's introductory offer. Only asked when the
+    /// product carries one.
+    private static func isEligibleForIntroOffer(_ subscription: Product.SubscriptionInfo) async -> Bool {
+        guard subscription.introductoryOffer != nil else { return false }
+        return await subscription.isEligibleForIntroOffer
     }
 
     private static func storeProduct(
         from product: Product,
-        introOfferEligibility: IntroOfferEligibility
+        isEligibleForIntroOffer: Bool
     ) -> StoreProduct? {
         guard let subscription = product.subscription else { return nil }
         let period: SubscriptionPlan.Period = subscription.subscriptionPeriod.unit == .year ? .yearly : .monthly
@@ -432,7 +430,7 @@ final class LiveStoreKitFacade: StoreKitFacade {
             displayPrice: product.displayPrice,
             period: period,
             trialDescription: trialDescription(for: subscription.introductoryOffer),
-            introOfferEligibility: introOfferEligibility
+            isEligibleForIntroOffer: isEligibleForIntroOffer
         )
     }
 

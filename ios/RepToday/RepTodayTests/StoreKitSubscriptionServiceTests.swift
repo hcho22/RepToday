@@ -73,13 +73,15 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
         id: SubscriptionPlan.ProductID.monthly,
         displayPrice: "$7.99",
         period: .monthly,
-        trialDescription: "14-day free trial"
+        trialDescription: "14-day free trial",
+        isEligibleForIntroOffer: true
     )
     private let yearlyProduct = StoreProduct(
         id: SubscriptionPlan.ProductID.yearly,
         displayPrice: "$59.99",
         period: .yearly,
-        trialDescription: nil
+        trialDescription: nil,
+        isEligibleForIntroOffer: false
     )
 
     private func premiumEntitlement(
@@ -945,20 +947,19 @@ final class StoreKitSubscriptionServiceTests: XCTestCase {
     }
 
     func testTrialLineShownOnlyWhenEligible() async throws {
-        for (eligibility, expected) in [
-            (IntroOfferEligibility.eligible, "14-day free trial" as String?),
-            (.ineligible, nil),
-            (.unknown, nil),
+        for (isEligible, expected) in [
+            (true, "14-day free trial" as String?),
+            (false, nil),
         ] {
             let monthly = StoreProduct(
                 id: SubscriptionPlan.ProductID.monthly,
                 displayPrice: "$7.99",
                 period: .monthly,
                 trialDescription: "14-day free trial",
-                introOfferEligibility: eligibility
+                isEligibleForIntroOffer: isEligible
             )
             let plans = try await service(StubFacade(products: [monthly, yearlyProduct])).premiumPlans()
-            XCTAssertEqual(plans[0].trialDescription, expected, "\(eligibility)")
+            XCTAssertEqual(plans[0].trialDescription, expected, "eligible: \(isEligible)")
             XCTAssertEqual(plans[0].priceLine, "$7.99 / month", "price is unchanged by eligibility")
             XCTAssertNil(plans[1].trialDescription, "yearly never shows a trial")
         }
