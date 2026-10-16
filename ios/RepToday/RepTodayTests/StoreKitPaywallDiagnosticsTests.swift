@@ -33,7 +33,8 @@ final class StoreKitPaywallDiagnosticsTests: XCTestCase {
             switch catalog {
             case .available:
                 return [StoreProduct(id: SubscriptionPlan.ProductID.monthly,
-                                     displayPrice: "$1", period: .monthly, trialDescription: nil)]
+                                     displayPrice: "$1", period: .monthly, trialDescription: nil,
+                                     isEligibleForIntroOffer: false)]
             case .empty: return []
             case .failure:
                 throw LiveStoreKitFacade.requestFailure(NSError(

@@ -124,7 +124,14 @@ final class LiveStoreKitFacade: StoreKitFacade {
         } catch {
             throw Self.requestFailure(error)
         }
-        let subscriptions = products.compactMap(Self.storeProduct(from:))
+        var subscriptions: [StoreProduct] = []
+        for product in products {
+            guard let subscription = product.subscription else { continue }
+            let isEligible = await Self.isEligibleForIntroOffer(subscription)
+            subscriptions.append(Self.storeProduct(
+                from: product, subscription: subscription, isEligibleForIntroOffer: isEligible
+            ))
+        }
         #if COACH_IPHONE_QA
         if subscriptions.isEmpty {
             throw SubscriptionError.diagnosticProductsUnavailable(rawProductCount: products.count)
@@ -405,14 +412,25 @@ final class LiveStoreKitFacade: StoreKitFacade {
         (lhs.expiresAt ?? .distantFuture) >= (rhs.expiresAt ?? .distantFuture) ? lhs : rhs
     }
 
-    private static func storeProduct(from product: Product) -> StoreProduct? {
-        guard let subscription = product.subscription else { return nil }
+    /// Whether Apple lets this Apple ID redeem the product's introductory offer. Only asked when the
+    /// product carries one.
+    private static func isEligibleForIntroOffer(_ subscription: Product.SubscriptionInfo) async -> Bool {
+        guard subscription.introductoryOffer != nil else { return false }
+        return await subscription.isEligibleForIntroOffer
+    }
+
+    private static func storeProduct(
+        from product: Product,
+        subscription: Product.SubscriptionInfo,
+        isEligibleForIntroOffer: Bool
+    ) -> StoreProduct {
         let period: SubscriptionPlan.Period = subscription.subscriptionPeriod.unit == .year ? .yearly : .monthly
         return StoreProduct(
             id: product.id,
             displayPrice: product.displayPrice,
             period: period,
-            trialDescription: trialDescription(for: subscription.introductoryOffer)
+            trialDescription: trialDescription(for: subscription.introductoryOffer),
+            isEligibleForIntroOffer: isEligibleForIntroOffer
         )
     }
 
