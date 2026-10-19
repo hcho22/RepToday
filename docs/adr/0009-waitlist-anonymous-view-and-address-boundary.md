@@ -24,7 +24,7 @@ One leaked email-service credential, or one export that holds addresses, would e
    A reviewed gr0wthlab change records its path once the build lands.
 3. An entry identifier is random, 1 to 64 letters, digits, `-` or `_`, unique, stable while the sign-up exists, and never derived from the address: not a hash, not an encoding.
    An address is low-entropy and guessable, so a hash of it can be reversed by testing candidate addresses.
-4. Addresses are turned into an entry (and an entry into an address) only on the founder's side, at send time, in RepToday's storage or the email tool.
+4. An entry identifier is turned into an address only on the founder's side, at send time, in RepToday's storage or the email tool.
 5. No email-service credential and no export that holds addresses is ever placed in the gr0wthlab, Mandu or RepToday checkouts.
    Credentials live in the macOS Keychain or in the hosting provider's secret store, never in a file git could publish.
 6. A visitor's Source comes only from the link they arrived by (`tiktok`, `youtube`, `reddit`, `network`, else `unknown`), never from a question.

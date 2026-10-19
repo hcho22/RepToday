@@ -6,7 +6,7 @@
   This PRD carries all of it verbatim (Appendix A) and adds or drops no field, Source, event property or file field.
   The request leaves five choices to RepToday: storage (including whether Kit stays), hosting, how a link's Source reaches its sign-up, how and how often the view is produced, and whether sign-ups confirm their email.
   Each is Open Question 1-5 below, with the realistic options, a marked recommendation and the stories it gates.
-  Open Questions 6-13 are further design choices this PRD found while grounding the request in current `main`.
+  Open Questions 6-14 are further design choices this PRD found while grounding the request in current `main`.
   A story that depends on a question does not build that choice until the captain settles it; each story names the questions it waits for.
 - Story prefix: `US-WL##` (Waitlist).
   A grep of every PRD, doc, source file and report found no existing `US-W` story id.
@@ -99,7 +99,7 @@ The request itself is Appendix A, verbatim.
 | 43 | Left to RepToday: how a link's Source reaches its sign-up | US-WL04 | OQ3 |
 | 44 | Left to RepToday: how and how often the view is produced | US-WL07 | OQ4 |
 | 45 | Left to RepToday: whether sign-ups confirm their email | US-WL06 | OQ5 |
-| 46 | Left to RepToday: every other implementation choice | all | OQ6-OQ13 |
+| 46 | Left to RepToday: every other implementation choice | all | OQ6-OQ14 |
 | 47 | Once the build lands, gr0wthlab needs one reviewed change (the file's path and the go-live date); until then every post stays "can't publish yet" | US-WL12 | Dep. 1 |
 
 ## Verified facts on current main (2026-10-19)
@@ -180,7 +180,7 @@ chrome-devtools-axi open http://localhost:8788/
 `chrome-devtools-axi resize 390 844` is not enough: headless Chrome clamps it to about 500 px (V21).
 The local site is served with `npx wrangler pages dev gtm/03-site --port 8788`, which needs no Cloudflare login and is meant to apply `_headers` and `_redirects`; whether it also reproduces the Pages fallback is itself checked in US-WL04, and anything the emulation does not reproduce is re-checked on the captain-approved preview deploy in US-WL12.
 No test posts to the production list, and no email goes to any address other than one created for the test or owned by the founder; sign-up destinations are configurable and tests use a local stub receiver or a separate test destination.
-The US-WL12 rehearsal is the one captain-approved step that uses the production destination, with the founder's own addresses.
+The US-WL12 rehearsal is the one captain-approved step that uses the production destination and the production event sink, with the founder's own addresses; its evidence records the rehearsal's time window so the conversion computation can exclude those rows.
 Each story writes evidence (screenshots at both widths, command transcripts, no addresses) under `artifacts/reports/US-WL##/validation.md`, adds a row to `docs/test-coverage.md` and an entry to `docs/implementation-log.md`.
 Pure date logic takes an injected `asOf` clock and never reads the wall clock, per the project convention.
 The first task of US-WL06 (the spike that proves the OQ1 destination) runs before US-WL02 is built against a real destination; the rest of US-WL06 follows US-WL02.
@@ -193,7 +193,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 | US-WL04 Source links and persistence | US-WL01, US-WL02, OQ2, OQ3, OQ12 |
 | US-WL05 web events | OQ7, OQ8, US-WL02, US-WL04 |
 | US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11; after its spike, US-WL02 and US-WL04 |
-| US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4 |
+| US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4, OQ14 |
 | US-WL08 address boundary guard | US-WL01, US-WL03 (which removes the `hello@` mailbox links the guard would flag), US-WL07, OQ1 |
 | US-WL09 send-time lookup | US-WL06, US-WL08, OQ1 |
 | US-WL10 removal and retention | US-WL06, US-WL07, OQ13 |
@@ -244,7 +244,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   There is no "how did you hear about us" field.
 - [ ] Empty or malformed email, or no Fit answer, blocks submission with a visible message tied to its control (`aria-describedby` or an associated error element), moves focus to the first invalid control, and keeps everything already entered; wording per Appendix B (OQ9).
 - [ ] While sending, the submit control is disabled and shows the in-progress wording; on acceptance the form shows the success wording; on failure it shows the error wording, keeps the entered values and allows a retry; none of these states widens the card.
-- [ ] The submission goes to the destination settled in OQ1, configurable in one place; tests post to a local stub receiver, and no test run posts to the production destination.
+- [ ] The submission goes to the destination settled in OQ1, configurable in one place; tests post to a local stub receiver, and no test run posts to the production destination (the US-WL12 rehearsal is the one exception, stated above).
 - [ ] Control heights are at least 44 px; text and controls meet 4.5:1 contrast on the Paper tokens (hero) and on the light card inside the Night band (closing); focus is visible; the whole form completes by keyboard alone; status messages are announced (`aria-live="polite"`).
 - [ ] The form lives inside the existing `.waitlist` card and fits it at 390 px and 1440 px with no horizontal scroll.
 - [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px (screenshots under `artifacts/reports/US-WL02/`).
@@ -330,7 +330,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] `referrer_source` is the visit's tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; it is never the Source's other spelling `unknown`, never a UTM value and never free text.
 - [ ] Neither event carries the email address, the entry identifier, any identifier of the visitor or device, or any cookie.
 - [ ] Emission is fire-and-forget: a failed, slow or blocked request never delays the page, the form or the success state, and nothing retries into a loop.
-- [ ] No event is sent from `localhost`, a preview URL or a test run to the production sink.
+- [ ] No event is sent from `localhost`, a preview URL or a test run to the production sink (the US-WL12 rehearsal is the one exception, stated above).
 - [ ] The sink side follows OQ7 and, whatever it is, rejects any name other than the two web names and any property bag other than exactly `{referrer_source: <tag or none>}`, without disturbing the app's `POST /logEvent` contract (its 13 names, its secret header, its tests).
 - [ ] The app's shared-secret header value is never placed in a web page.
 - [ ] If the sink is Convex: the new route has its own rate-limit scope sized for web traffic (the per-install key cannot apply), the origin is checked, `convex/README.md` documents the route and the reserved row convention, `convex/http.test.ts`-style tests cover accepted and rejected bodies, `npm run typecheck` and `npm test` pass, and the stale "handled outside the app" notes (V16) are rewritten.
@@ -392,7 +392,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] It projects only those five fields; the address, any name and any other stored field never enter its in-memory view structure.
 - [ ] `fit` is `null` only for a sign-up that holds no answer, which includes a stored Fit outside the three tags (US-WL06); `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
 - [ ] `generated_at` is stamped after the store is read and carries a UTC offset, so no `signed_up_on` is later than its UTC date.
-- [ ] Entries are written in a stable order, whatever order the store returns them in: ascending by the time the sign-up was first submitted, with the entry identifier as the last tie-break, so the reader's invitation tie-break (the view's own order) invites the earliest same-day sign-ups first and gives the same order on every run.
+- [ ] Entries are written in a stable order, whatever order the store returns them in: ascending by `signed_up_on`, then by entry identifier, so the reader's invitation tie-break (the view's own order) is the same on every run; first-come order within a day is OQ14.
 - [ ] Before writing, it runs US-WL01's checker over the candidate bytes and refuses to replace the existing file if the check fails, leaving the previous view untouched and exiting non-zero with a message that never repeats a value.
 - [ ] The write is atomic (a temporary file in the same directory, then a rename), the file mode is owner-only, and a file that would exceed the 10,000,000-byte limit fails the run rather than truncating.
 - [ ] A removed or retention-expired sign-up is absent from the next generation; an empty store writes `"entries": []`.
@@ -406,15 +406,15 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Validation Test:**
 
-- **Setup:** A synthetic store holding five sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, and one whose stored Fit and Source are outside the allowed sets), listed out of sign-up order and with two submitted on the same day, the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
+- **Setup:** A synthetic store holding five sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, and one whose stored Fit and Source are outside the allowed sets), listed out of date order and with two on the same day, the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
 - **Steps:**
   1. Run the producer against the synthetic store; run `check-view.py` on the output; if available, run the reader cross-check.
   2. Remove one synthetic sign-up and rerun; compare entries.
   3. Make the checker fail on purpose (inject a stored entry identifier that is an address, assembled from parts at test time as in US-WL01, into the synthetic store; an out-of-set `source` would only be normalized) and rerun; confirm the previous file is unchanged.
   4. Point the output at a path inside the RepToday checkout, then at a symlink that resolves into it.
   5. Interrupt a run between the temporary write and the rename.
-- **Expected Result:** Step 1 produces a five-entry view the checker and the reader accept, with the out-of-set sign-up written as `fit` `null` and `source` `unknown` and the entries in ascending submission time (the earlier same-day sign-up first); step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
-- **Failure Indicator:** The file holds a field beyond the five, the entries follow the store's order rather than submission time, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
+- **Expected Result:** Step 1 produces a five-entry view the checker and the reader accept, with the out-of-set sign-up written as `fit` `null` and `source` `unknown` and the entries in ascending `signed_up_on` (the two same-day entries in entry-identifier order); step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
+- **Failure Indicator:** The file holds a field beyond the five, the entries follow the store's order rather than `signed_up_on` then entry identifier, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
 
 ### US-WL08: The address boundary guard
 
@@ -545,7 +545,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
 - [ ] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
 - [ ] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, git-ignored files included, and no address outside the guard's allowlist in the RepToday checkout (US-WL08, with each rule's file scope as stated there).
-- [ ] The evidence (`artifacts/reports/US-WL12/validation.md`) contains screenshots at 390 px and 1440 px, the commands and results above, the view's path and format version, and **no address**.
+- [ ] The evidence (`artifacts/reports/US-WL12/validation.md`) contains screenshots at 390 px and 1440 px, the commands and results above, the view's path and format version, the rehearsal's start and end times (so its event rows can be excluded from the conversion), and **no address**.
 - [ ] A short hand-off note states the file's path and the go-live date for the gr0wthlab follow-up (Dependencies, item 1); this story makes no change in gr0wthlab or Mandu.
 - [ ] `AGENTS.md` (a pointer entry only), `CONTEXT.md`, `gtm/03-site/DEPLOY.md`, `convex/README.md` (if US-WL05 used Convex), `docs/implementation-log.md` and `docs/test-coverage.md` are updated, and this PRD's status header and checkboxes are brought current.
 
@@ -588,7 +588,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - FR-17: `waitlist_signup` must be emitted when an email is submitted (OQ8), with the property `referrer_source` and no other.
 - FR-18: `referrer_source` must be the visit's tag or `none`.
 - FR-19: Neither event may carry the email address, the entry identifier, or any other identifier of the visitor or device.
-- FR-20: Emission must never block, delay or fail the page or the sign-up, and must not run from `localhost`, a preview or a test against the production sink.
+- FR-20: Emission must never block, delay or fail the page or the sign-up, and must not run from `localhost`, a preview or a test against the production sink, apart from the captain-approved US-WL12 rehearsal.
 - FR-21: The sink must accept only these two names with exactly that property bag and must leave the app's `POST /logEvent` contract unchanged.
 
 **Records and entries**
@@ -602,7 +602,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **The anonymous view**
 
 - FR-27: The view must be UTF-8 JSON whose top level is exactly `view` (the integer `1`), `generated_at` and `entries`.
-- FR-28: Each entry must be exactly `entry`, `source` (`tiktok`, `youtube`, `reddit`, `network` or `unknown`), `fit` (one of the three tags, or `null` only for a sign-up that holds no answer), `beta_opt_in` (`true` or `false`) and `signed_up_on` (`YYYY-MM-DD`); a stored value outside these sets is written as `unknown` or `null`, never as stored; entries are written in ascending order of first submission time, with the entry identifier as the last tie-break, because the reader's invitation order falls back to the view's own order.
+- FR-28: Each entry must be exactly `entry`, `source` (`tiktok`, `youtube`, `reddit`, `network` or `unknown`), `fit` (one of the three tags, or `null` only for a sign-up that holds no answer), `beta_opt_in` (`true` or `false`) and `signed_up_on` (`YYYY-MM-DD`); a stored value outside these sets is written as `unknown` or `null`, never as stored; entries are written in ascending order of `signed_up_on`, then entry identifier, because the reader's invitation order falls back to the view's own order.
 - FR-29: `generated_at` must be the time the file was written, with its UTC offset, and no `signed_up_on` may be later than its UTC date.
 - FR-30: The view must hold nothing else: no address, name or other field, and no string, key or identifier anywhere in it that looks like an address or decodes to one.
 - FR-31: A removed or retention-expired sign-up must be absent from the next generation.
@@ -700,7 +700,7 @@ These become expensive once the Waitlist is live or the first link is posted, so
 - Zero address-shaped strings in every generated view: the producer refuses to write one, and the first live view is read by gr0wthlab's reader as a normal read, not a failed or refused one.
 - All five arrivals (the four links and plain `reptoday.app`) give the form the right hidden Source value in US-WL04's Validation Test, with the four links rechecked on the preview: 5 of 5; and the rehearsal's two stored sign-ups carry `tiktok` and `unknown`: 2 of 2.
 - The rehearsal's removal leaves the store and the next view in one sweep, and the commitment of 7 days has measured headroom (the daily sweep plus a stated mailbox cadence).
-- `landing_page_view` and `waitlist_signup` rows exist for the rehearsal with only `referrer_source`, so the pre-registered conversion (`waitlist_signup` divided by `landing_page_view`, split by `referrer_source`) can be computed.
+- `landing_page_view` and `waitlist_signup` rows exist for the rehearsal, inside its recorded time window, with only `referrer_source`, so the pre-registered conversion (`waitlist_signup` divided by `landing_page_view`, split by `referrer_source`) can be computed.
 - The privacy policy's Waitlist section is live before the form, and every sentence in it is traced to a mechanism.
 - The audit of the three checkouts finds zero credentials and zero address lists.
 - If Kit's embed script is dropped (OQ1 option A), the landing pages load one fewer third-party script and set no `ckid` storage key.
@@ -711,7 +711,7 @@ These become expensive once the Waitlist is live or the first link is posted, so
    gr0wthlab needs one reviewed change that records the view's path in `config/products.json` (`waitlist.view.local_path`) and the go-live date in `config/run.json` (`waitlist.live_since`, to be set "once US-ME05's Validation Test has passed on reptoday.app").
    Until it lands, every post stays "can't publish yet".
    US-WL12 produces the hand-off note; the change itself is gr0wthlab's.
-2. **Captain actions** (none is done by this PRD or by a crewmate): settle Open Questions 1-13; read the live Kit account's confirmation setting and sign-up count (V13); create any credential in the Keychain; approve the preview and production deploys of the site and, if used, the Convex sink; install the scheduled producer on the Mac; run the legal pass the privacy page already requires; commit to the mailbox cadence in US-WL10.
+2. **Captain actions** (none is done by this PRD or by a crewmate): settle Open Questions 1-14; read the live Kit account's confirmation setting and sign-up count (V13); create any credential in the Keychain; approve the preview and production deploys of the site and, if used, the Convex sink; install the scheduled producer on the Mac; run the legal pass the privacy page already requires; commit to the mailbox cadence in US-WL10.
 3. **Mandu** owns the event-metric schema; if the captain wants its "utm or none" wording aligned with the request's "tag or `none`", that edit is outside RepToday.
 
 ## Open Questions
@@ -871,6 +871,15 @@ Options: read it from the email service's broadcast history; or the founder reco
 Reason: reading broadcast history is brittle across services and plan changes, and the date is a single deliberate act.
 Sign-ups that arrive after the launch email are kept only until the same 30-day mark, as the approved wording says.
 Gates: US-WL10.
+
+**OQ14. Should same-day sign-ups be invited first-come?**
+The reader invites opted-in good-Fit sign-ups earliest `signed_up_on` first and settles a same-day tie by the view's own order, in batches of 20.
+With only the date stored, US-WL07 orders same-day sign-ups by their random entry identifier, so who among them is invited first is arbitrary but the same on every run.
+Options: (a) keep the date only; (b) store each sign-up's first submission time and order same-day sign-ups by it.
+Option (b) keeps a finer datum than "the sign-up date" the approved privacy wording names, so it needs that wording changed, and under OQ1 Option A it depends on the sending service exposing a creation time that a resubmission does not change (a spike item).
+**Recommendation: (a), keep the date only.**
+Reason: it stores nothing beyond the approved wording, the order stays stable across runs, and the tie matters only when more good-Fit opt-ins than one batch arrive on the same day.
+Gates: US-WL07.
 
 ## Appendix A: the approved request, verbatim
 
