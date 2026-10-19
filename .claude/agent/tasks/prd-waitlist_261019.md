@@ -325,7 +325,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `landing_page_view` is emitted once when a landing page (`/`, `/index-b`, and the four Source links) loads, never on `/privacy`, with exactly one property, `referrer_source`.
+- [ ] `landing_page_view` is emitted once on every load of either landing-page document (`index.html` or `index-b.html`), whatever path served it (`/`, `/index-b`, the four Source links, or any other path the fallback answers with the landing page), never on `/privacy`, with exactly one property, `referrer_source`.
 - [ ] `waitlist_signup` is emitted when an email is submitted (the moment settled in OQ8) with exactly one property, `referrer_source`.
 - [ ] `referrer_source` is the visit's tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; it is never the Source's other spelling `unknown`, never a UTM value and never free text.
 - [ ] Neither event carries the email address, the entry identifier, any identifier of the visitor or device, or any cookie.
@@ -346,8 +346,9 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   3. Post a web event with an extra property, one with a name outside the two, and one with a `referrer_source` of `unknown`; post `landing_page_view` to the app's `/logEvent`.
   4. Open `/privacy`.
   5. Point the page's event endpoint (configurable for tests) at an unreachable local address, submit a sign-up, and read `chrome-devtools-axi console`.
-- **Expected Result:** Step 1 stores three `landing_page_view` rows, with `{"referrer_source":"none"}`, then `{"referrer_source":"youtube"}`, then `{"referrer_source":"youtube"}` (the kept tag); step 2 adds `waitlist_signup` with `{"referrer_source":"youtube"}`; every row holds exactly the two names and one property; step 3's three web posts are rejected and the `/logEvent` post is still rejected as before; step 4 adds nothing; step 5 still reaches the sign-up stub and shows the success wording, with no uncaught error in the console.
-- **Failure Indicator:** Any row holds an address, an entry identifier, an extra property or `unknown`; `/privacy` emits a view; a failing sink blocks the form; the app contract or its tests change.
+  6. With the endpoint restored, open `/tiktk` in a fresh page; read the stored rows.
+- **Expected Result:** Step 1 stores three `landing_page_view` rows, with `{"referrer_source":"none"}`, then `{"referrer_source":"youtube"}`, then `{"referrer_source":"youtube"}` (the kept tag); step 2 adds `waitlist_signup` with `{"referrer_source":"youtube"}`; every row holds exactly the two names and one property; step 3's three web posts are rejected and the `/logEvent` post is still rejected as before; step 4 adds nothing; step 5 still reaches the sign-up stub and shows the success wording, with no uncaught error in the console; step 6 adds one `landing_page_view` with `{"referrer_source":"none"}`.
+- **Failure Indicator:** Any row holds an address, an entry identifier, an extra property or `unknown`; `/privacy` emits a view; a landing page served at an unrecognized path emits none; a failing sink blocks the form; the app contract or its tests change.
 
 ### US-WL06: Sign-up storage and entry identifiers
 
@@ -541,7 +542,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - [ ] The full flow passes on the local site and stub (all earlier stories' Validation Tests rerun).
 - [ ] With the captain's approval, the site is deployed to a Cloudflare Pages preview first and the Source-link casings, the fallback behavior and the events are rechecked there; production publication is a separate, captain-approved, credentialed step (as `AGENTS.md` already requires), with the privacy page deployed with or before the form.
-- [ ] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
+- [ ] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), confirms both addresses if OQ5 settles on double opt-in, the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
 - [ ] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
 - [ ] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
 - [ ] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, git-ignored files included, and no address outside the guard's allowlist in the RepToday checkout (US-WL08, with each rule's file scope as stated there).
@@ -556,7 +557,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   1. Follow the acceptance criteria in order, recording evidence at each step.
   2. Run the reader cross-check and `audit-checkouts.sh`.
   3. Compare the hand-off note with gr0wthlab's configuration fields it must fill.
-- **Expected Result:** Each criterion passes with evidence, the reader's verdict is "read" with two entries (and then zero), the audit is clean, and the hand-off note names the path and date.
+- **Expected Result:** Each criterion passes with evidence, the reader's verdict is "read" with the two rehearsal entries among the view's entries (beside any existing sign-ups, such as those OQ6 keeps), and then the same view without them, the audit is clean, and the hand-off note names the path and date.
 - **Failure Indicator:** The reader refuses or fails the view, a Source is lost, a removed sign-up lingers, the audit finds a credential or an export that holds addresses (in an ignored file or not), or an address outside the guard's allowlist in the RepToday checkout, or any rehearsal step used the production list outside the agreed addresses.
 
 ## Functional Requirements
@@ -584,7 +585,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Web events**
 
-- FR-16: `landing_page_view` must be emitted when a landing page loads, with the property `referrer_source` and no other.
+- FR-16: `landing_page_view` must be emitted on every load of either landing-page document, whatever path served it, and never on `/privacy`, with the property `referrer_source` and no other.
 - FR-17: `waitlist_signup` must be emitted when an email is submitted (OQ8), with the property `referrer_source` and no other.
 - FR-18: `referrer_source` must be the visit's tag or `none`.
 - FR-19: Neither event may carry the email address, the entry identifier, or any other identifier of the visitor or device.
@@ -873,12 +874,12 @@ Sign-ups that arrive after the launch email are kept only until the same 30-day 
 Gates: US-WL10.
 
 **OQ14. Should same-day sign-ups be invited first-come?**
-The reader invites opted-in good-Fit sign-ups earliest `signed_up_on` first and settles a same-day tie by the view's own order, in batches of 20.
+The reader invites opted-in sign-ups good Fit first and then everyone else, each group earliest `signed_up_on` first, and settles a same-day tie by the view's own order; each batch takes at most 20, fewer when the cohort's remaining room (it holds at most 50) is smaller.
 With only the date stored, US-WL07 orders same-day sign-ups by their random entry identifier, so who among them is invited first is arbitrary but the same on every run.
 Options: (a) keep the date only; (b) store each sign-up's first submission time and order same-day sign-ups by it.
 Option (b) keeps a finer datum than "the sign-up date" the approved privacy wording names, so it needs that wording changed, and under OQ1 Option A it depends on the sending service exposing a creation time that a resubmission does not change (a spike item).
 **Recommendation: (a), keep the date only.**
-Reason: it stores nothing beyond the approved wording, the order stays stable across runs, and the tie matters only when more good-Fit opt-ins than one batch arrive on the same day.
+Reason: it stores nothing beyond the approved wording and the order stays stable across runs; the cost is that whenever a batch boundary falls inside a same-day group of two or more opted-in sign-ups, good Fit or not, who on that day is invited first is arbitrary.
 Gates: US-WL07.
 
 ## Appendix A: the approved request, verbatim
