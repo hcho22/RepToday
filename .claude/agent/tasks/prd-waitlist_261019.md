@@ -157,7 +157,7 @@ These are the reader's exact rules, which US-WL01's checker mirrors and which th
 | `fit` must be `null` or one of the configured answers (`lost-the-routine`, `exercises-regularly`, `never-had-a-routine`). A `null` is counted as unknown Fit, never as not a fit. | FR-5, FR-28 |
 | `beta_opt_in` must be a real JSON boolean. | FR-28 |
 | `signed_up_on` must be a string that round-trips `date.fromisoformat(text).isoformat() == text` (so exactly `YYYY-MM-DD`) and must **not** be later than the UTC date of `generated_at`. | FR-24, FR-29 |
-| **Address check, run first over the file's whole text and again over every key and value:** any `@` with a character other than whitespace, another `@` or one of `"'<>()[]{},;:\` on **both** sides counts as an address. A hit **refuses** the whole read: nothing is kept, no Waitlist Evidence is recorded that week, and a Guardrail breach is reported. An `entry` is additionally decoded as percent-encoding, base64 (both alphabets) and hex, and a whole address in any decoding is a breach. | FR-30 |
+| **Address check, run first over the file's whole text and again over every key and value:** any `@` with a character other than whitespace, another `@` or one of `"'<>()[]{},;:\` on **both** sides counts as an address. A hit **refuses** the whole read: nothing is kept, no Waitlist Evidence is recorded that week, and a Guardrail breach is reported. An `entry` is additionally decoded: its percent-decoding is judged by that same loose rule, while its base64 (both alphabets) and hex decodings, read as printable UTF-8, count only when they hold a whole address (a local-part character, an `@` and a dotted domain ending in two or more letters); a hit in either is a breach. | FR-30 |
 | Any other departure from the format is a **failed** read (named in the run report without repeating any value), not a breach; the run goes on without the view. | FR-27, FR-28 |
 | The reader opens and reads the whole file once, with no lock; a view of any age is read and its age reported. | FR-32, FR-34 |
 | The configured path must not overlap, in either direction, any place the sandboxed agent can read: the gr0wthlab repository and git directories, every registered location (including the Mandu and RepToday checkouts) and the system read paths. The launcher refuses to start otherwise. | FR-33 |
@@ -187,13 +187,13 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 | --- | --- |
 | US-WL01 contract and view checker | nothing |
 | US-WL02 sign-up form | OQ1 and US-WL06's spike (the destination), OQ5, OQ9 |
-| US-WL03 page copy and consistency | US-WL02, OQ9 |
-| US-WL04 Source links and persistence | OQ2, OQ3, OQ12 |
+| US-WL03 page copy and consistency | US-WL01, US-WL02, OQ9 |
+| US-WL04 Source links and persistence | US-WL01, US-WL02, OQ2, OQ3, OQ12 |
 | US-WL05 web events | OQ7, OQ8, US-WL02, US-WL04 |
-| US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11 |
+| US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11; after its spike, US-WL02 and US-WL04 |
 | US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4 |
-| US-WL08 address boundary guard | US-WL01, US-WL03 (which removes the `hello@` mailbox links the guard would flag), OQ1 |
-| US-WL09 send-time lookup | US-WL06, OQ1 |
+| US-WL08 address boundary guard | US-WL01, US-WL03 (which removes the `hello@` mailbox links the guard would flag), US-WL07, OQ1 |
+| US-WL09 send-time lookup | US-WL06, US-WL08, OQ1 |
 | US-WL10 removal and retention | US-WL06, US-WL07, OQ13 |
 | US-WL11 privacy policy Waitlist section | OQ1, OQ5, OQ10, US-WL10 |
 | US-WL12 go-live rehearsal and evidence | all of the above, plus the captain's deploy approval |
@@ -208,9 +208,9 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] Every approved string in that file (the wording, the Fit and Source tags, `unknown` and `none`) is byte-identical to its text in Appendix A (checked by a test that reads both).
   The posted field names, the entry pattern and the byte limit are not in Appendix A (the names are this build's choice; the pattern and the limit are the reader's), so the test does not compare them with it.
 - [ ] `tools/waitlist/check-view.py` (Python 3 standard library only, like `tools/check-trainer-art.py`) takes a file path and exits 0 only for a view that satisfies every rule in "The gr0wthlab reader contract"; on failure it names the rule and the entry's position and never prints the offending value.
-- [ ] It runs the address check first, over the file's whole text and then every key and value, with the reader's pattern, and decodes `entry` as percent-encoding, base64 (both alphabets) and hex.
+- [ ] It runs the address check first, over the file's whole text and then every key and value, with the reader's loose pattern; it judges `entry`'s percent-decoding by that same loose pattern, and its base64 (both alphabets) and hex decodings by the reader's whole-address pattern, as the reader contract states.
 - [ ] Fixtures under `tools/waitlist/fixtures/`: a valid view with three entries (one with `fit` `null`, one with source `unknown`), a valid view with empty `entries`, and one failing fixture per rule (missing and extra top-level keys; `view` 2 and `view` true; `generated_at` without an offset; `signed_up_on` malformed and later than `generated_at`'s UTC date; a duplicate entry; an entry of length 0 and of 65; a character outside the alphabet; a `source` and a `fit` outside the lists; `beta_opt_in` as a string; an extra entry key; a file that is not UTF-8).
-- [ ] The address cases and the over-limit file are generated, never committed: the test builds each at run time, assembling every address from parts, and writes it to a temporary path outside the repository (an address-shaped value in `source`, in `fit`, in `generated_at` and in a key name; an `entry` that is an address in percent-encoded, base64 and hex form; a file over the 10,000,000-byte limit), and a test fails if any file under `tools/waitlist/fixtures/` contains an address-shaped string.
+- [ ] The address cases and the over-limit file are generated, never committed: the test builds each at run time, assembling every address from parts, and writes it to a temporary path outside the repository (an address-shaped value in `source`, in `fit`, in `generated_at` and in a key name; an `entry` that is an address in percent-encoded, base64 and hex form; an `entry` whose percent-decoding puts an `@` between two ordinary characters without forming a whole address, which the reader refuses rather than fails; a file over the 10,000,000-byte limit), and a test fails if any file under `tools/waitlist/fixtures/` contains an address-shaped string.
 - [ ] `tools/waitlist/test-check-view.py` runs every committed and generated fixture and asserts accept or reject and the named rule.
 - [ ] Optional local cross-check: when an environment variable names a gr0wthlab checkout, the test also imports that checkout's `src/gr0wthlab/waitlist.py` read-only and requires its verdict (read, failed or refused) to agree with this checker on every fixture; it is skipped otherwise, never required in CI, and writes nothing in gr0wthlab.
 - [ ] The test is wired into a CI job that needs no Xcode (US-WL12 may add the job if none exists).
@@ -695,7 +695,7 @@ These become expensive once the Waitlist is live or the first link is posted, so
 ## Success Metrics
 
 - Zero address-shaped strings in every generated view: the producer refuses to write one, and the first live view is read by gr0wthlab's reader as a normal read, not a failed or refused one.
-- All five arrivals in the rehearsal (the four links and plain `reptoday.app`) store the right Source: 5 of 5.
+- All five arrivals (the four links and plain `reptoday.app`) give the form the right hidden Source value in US-WL04's Validation Test, with the four links rechecked on the preview: 5 of 5; and the rehearsal's two stored sign-ups carry `tiktok` and `unknown`: 2 of 2.
 - The rehearsal's removal leaves the store and the next view in one sweep, and the commitment of 7 days has measured headroom (the daily sweep plus a stated mailbox cadence).
 - `landing_page_view` and `waitlist_signup` rows exist for the rehearsal with only `referrer_source`, so the pre-registered conversion (`waitlist_signup` divided by `landing_page_view`, split by `referrer_source`) can be computed.
 - The privacy policy's Waitlist section is live before the form, and every sentence in it is traced to a mechanism.
