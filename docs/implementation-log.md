@@ -1583,3 +1583,25 @@ What landed:
   `tools/test-telemetry-secret-wiring.sh` runs the real dev script against stand-ins for `security`, `xcodebuild`, `curl` and the Convex CLI: `install` writes only the git-ignored mode-600 file, `rotate` refuses the production deployment and puts the Keychain back when the deployment write fails, and no value reaches an output or a command argument.
 
 The old value stays in git history, which was not rewritten; the rotation made it useless.
+
+## Waitlist contract file and view checker (US-WL01, 2026-10-19)
+
+The first of the Waitlist PRD's slices (`.claude/agent/tasks/prd-waitlist_261019.md`); tooling only, so the site, Kit, Convex, the privacy policy and the app are untouched.
+The captain settled the PRD's Open Questions 1-14 by accepting its recommendations on 2026-10-19; this slice depends on none of them.
+The [validation record](../artifacts/reports/US-WL01/validation.md) owns the commands and results.
+
+What landed:
+
+- **One contract file.** `tools/waitlist/contract.json` holds the approved wording, the Fit answers and tags, the four Source tags, `unknown` and `none`, the posted field names (this build's choice, recorded once because renaming one later means a migration), the view version, key lists, entry pattern and byte limit.
+  The test reads the PRD's Appendix A and fails when an approved string differs from it by a byte.
+- **A checker that mirrors the reader.** `tools/waitlist/check-view.py` follows gr0wthlab's `waitlist.read` in the same order: the address check over the file's text and then every key and value (a hit is `refused`, exit 2), the file-level checks, then the format (`failed`, exit 1).
+  It reads the same first 10,000,001 bytes the reader keeps.
+  Its reports name a rule and a position and never a value; it prints no traceback, since an exception message could carry one.
+- **The reader wins over the PRD's prose.** Reading the reader surfaced six details the prose omits (a float `1.0` version is accepted, `generated_at` is stripped and every `Z` replaced, the examined window, the address check running before encoding and JSON failures, repeated keys, an unopenable file); they are recorded in the PRD and pinned by cases.
+- **Fixtures.** 42 committed files and 29 cases generated at test time, each address assembled from parts and written outside the repository, so no address-shaped string is ever committed; a test scans everything under `tools/waitlist/` for one.
+- **Cross-check.** With `GR0WTHLAB_CHECKOUT` set, the test imports that checkout's reader read-only (bytecode writing off, nothing written there) and requires its verdict, its refused places and its failed-read detail to equal the checker's on every fixture, generated case and 600 seeded mutations.
+  It is skipped otherwise and never required in CI.
+- **CI.** A `waitlist` job (Ubuntu, Python 3.9 and 3.12, no Xcode, no secret, no network) runs the test.
+- **Wording.** Five files that still said "this repository is public" now carry `AGENTS.md`'s premise, "treat this repository as public (its visibility has changed before)"; the no-committed-secret rule and its checks are unchanged.
+
+Accepted limits: `datetime.fromisoformat` accepts different spellings on different Python versions, so the checker is exact against the reader on the same interpreter, and the producer (US-WL07) will write the one spelling every version accepts.

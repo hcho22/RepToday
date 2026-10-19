@@ -1,0 +1,32 @@
+{
+  "contract": 1,
+  "note": "The Waitlist's one contract file (US-WL01). Every later story reads these values instead of retyping them. The wording, the Fit answers, the Source tags, unknown and none are the captain-approved text of the Waitlist request (the PRD's Appendix A) and tools/waitlist/test-check-view.py fails when any of them drifts from it. The posted field names are this build's choice, recorded here once; renaming one later means a migration. The view rules mirror gr0wthlab's reader (src/gr0wthlab/waitlist.py); check-view.py enforces them.",
+  "copy": {
+    "heading": "Join the waitlist",
+    "sentence": "Add your email and we'll tell you the day it ships.",
+    "fit_legend": "Which sounds most like you?",
+    "beta_label": "Invite me to the beta before launch",
+    "promise": "one launch email, plus a beta invitation only if you ask for one"
+  },
+  "fit_answers": [
+    {"tag": "lost-the-routine", "label": "I used to work out and lost the routine"},
+    {"tag": "exercises-regularly", "label": "I work out regularly"},
+    {"tag": "never-had-a-routine", "label": "I've never had a routine"}
+  ],
+  "source_tags": ["tiktok", "youtube", "reddit", "network"],
+  "unknown_source": "unknown",
+  "no_source_event": "none",
+  "posted_fields": {
+    "email": "email",
+    "fit": "fit",
+    "beta_opt_in": "beta_opt_in",
+    "source": "source"
+  },
+  "view": {
+    "version": 1,
+    "top_keys": ["view", "generated_at", "entries"],
+    "entry_keys": ["entry", "source", "fit", "beta_opt_in", "signed_up_on"],
+    "entry_pattern": "[A-Za-z0-9_-]{1,64}",
+    "max_bytes": 10000000
+  }
+}

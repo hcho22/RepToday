@@ -298,9 +298,9 @@ npx convex env set ANALYTICS_SHARED_SECRET <the-secret>   # per deployment; neve
 ```
 
 The client sources the same value from the `REPTODAY_ANALYTICS_SECRET` build setting, expanded
-into `Info.plist`. No configuration commits a value for it: this repository is public, so the value
-never enters `ios/RepToday/project.yml`, a tracked xcconfig or the generated project, and CI fails
-if one does (`tools/check-no-committed-telemetry-secret.py`). Both values reach a build by the same
+into `Info.plist`. No configuration commits a value for it: this repository is treated as public (its visibility has
+changed before), so the value never enters `ios/RepToday/project.yml`, a tracked xcconfig or the generated project,
+and CI fails if one does (`tools/check-no-committed-telemetry-secret.py`). Both values reach a build by the same
 route, each with its own item: an item in the macOS login Keychain is written to a private mode-600
 xcconfig.
 
