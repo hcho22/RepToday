@@ -192,12 +192,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 | US-WL03 page copy and consistency | US-WL01, US-WL02, OQ9 |
 | US-WL04 Source links and persistence | US-WL01, US-WL02, OQ2, OQ3, OQ12 |
 | US-WL05 web events | OQ7, OQ8, US-WL02, US-WL04 |
-| US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11; after its spike, US-WL02 and US-WL04 |
+| US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11, OQ14; after its spike, US-WL02 and US-WL04 |
 | US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4, OQ14 |
 | US-WL08 address boundary guard | US-WL01, US-WL03 (which removes the `hello@` mailbox links the guard would flag), US-WL07, OQ1 |
 | US-WL09 send-time lookup | US-WL06, US-WL08, OQ1 |
 | US-WL10 removal and retention | US-WL06, US-WL07, OQ13 |
-| US-WL11 privacy policy Waitlist section | OQ1, OQ5, OQ10, US-WL10 |
+| US-WL11 privacy policy Waitlist section | OQ1, OQ5, OQ10, OQ14, US-WL10 |
 | US-WL12 go-live rehearsal and evidence | all of the above, plus the captain's deploy approval |
 
 ### US-WL01: One contract - the approved strings, the tags and a view checker
@@ -356,8 +356,8 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change (OQ14 option b), and whether a public post can set or overwrite the field that holds the entry identifier.
-  If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording; if a public post can set or overwrite the identifier field, the captain decides how the producer keeps identifiers its own before US-WL07 is built.
+- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13) and whether that message carries a working unsubscribe link (OQ5), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change (under OQ1 Option A the only source of `signed_up_on` and of the original dates OQ6 keeps, and the time OQ14 option b would order by), and whether a public post can set or overwrite the field that holds the entry identifier.
+  If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording; if a public post can set or overwrite the identifier field, the captain decides how the producer keeps identifiers its own before US-WL07 is built; if it exposes no creation time a resubmission leaves alone, the captain decides how `signed_up_on` is kept before US-WL06 and US-WL07 are built; if its confirmation message carries no working unsubscribe link, the captain decides how removal by that link is kept before US-WL11 publishes the wording.
 - [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date, the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
 - [ ] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
 - [ ] A collision with the identifier of a removed sign-up is negligible by construction (identifiers carry at least 80 bits of entropy).
@@ -483,7 +483,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] Every waitlist email (launch and beta) carries an unsubscribe link; a test message through the email service shows it (a configuration check, not a code change, if the service adds it).
+- [ ] Every waitlist email (launch and beta, and the confirmation message if OQ5 settles on double opt-in) carries an unsubscribe link; a test message through the email service shows it (a configuration check, not a code change, if the service adds it).
 - [ ] A removal request by unsubscribe link or by a message to reptoday.app@gmail.com results in the sign-up and its answers being **deleted** (not merely marked unsubscribed) within 7 days of the request.
 - [ ] A `remove` command removes one sign-up by entry identifier or by an address typed at a prompt (never an argument), and a daily sweep deletes every sign-up the email service reports as unsubscribed.
 - [ ] The founder records the launch-email date once, in a small state file outside every checkout (`record-launch-email --sent-on YYYY-MM-DD`, OQ13); the retention sweep deletes every remaining sign-up on or after that date plus 30 days.
@@ -518,7 +518,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] The wording is the approved draft in Appendix C, edited by the captain, and makes no promise beyond the five points and what OQ5 and OQ10 add.
 - [ ] Structure, numbering, the table of contents, the anchor and the "This website is static" note follow OQ10; no cross-reference to a renumbered section is left stale.
 - [ ] "Last updated" carries the publication date.
-- [ ] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
+- [ ] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "the unsubscribe link in any waitlist email" -> US-WL10 and the US-WL06 spike's confirmation-message result; "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
 - [ ] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag about the missing retention schedule is updated to say what now exists and what is still unreviewed.
 - [ ] The section is published no later than the form (US-WL12 orders the deploy).
 - [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
@@ -621,7 +621,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Removal and retention**
 
-- FR-40: Every waitlist email must carry an unsubscribe link.
+- FR-40: Every waitlist email, including the confirmation message if OQ5 settles on double opt-in, must carry an unsubscribe link.
 - FR-41: A message to reptoday.app@gmail.com must be an accepted way to ask for removal.
 - FR-42: A removal must delete the sign-up and its answers within 7 days of the request.
 - FR-43: A sign-up must be deleted when it has been kept until 30 days after the launch email went out, or earlier on removal, whichever comes first.
@@ -730,7 +730,7 @@ The store must hold the address, the Fit answer, the beta choice, the Source, th
   The page's own HTML form (replacing Kit's embed script) posts from the visitor's browser straight to Kit's public sign-up endpoint, the same one the embed uses today (V2), carrying the Fit answer, beta choice and Source as Kit custom fields.
   The producer on the founder's Mac assigns each new sign-up its random entry identifier, writes it back as a custom field, and reads the five fields through Kit's API with a credential held in the Keychain.
   Pros: the address never touches any Rep Today-run infrastructure, so the approved sentence "only the founder, when sending a waitlist email, and the service that stores it" is literally true; no server code to run; Kit already sends mail, hosts the unsubscribe link and handles bounces; the smallest change from today.
-  Cons: "an answer is required to sign up" is enforced only in the page, so a direct post could arrive with no Fit answer (the view's `null` exists for exactly that, and the producer normalizes out-of-set values); the producer needs a full-power Kit credential on the Mac (acceptable on the founder's side, but not scopable to anonymous fields); Kit's unsubscribe is believed to mark a subscriber unsubscribed rather than delete it, so "deleted within 7 days" needs the sweep in US-WL10, and whether its API can permanently delete one is unverified (confirm both in the spike); a first-party post to Kit's endpoint with custom fields, and whether the browser can read its result, is not an integration this PRD could verify from the repository (confirm in the spike); the entry identifier is a custom field on the same public endpoint, so a direct post might set or overwrite it, planting a value derived from an address or a copy of another sign-up's identifier (confirm in the spike; if it can, the captain decides how the producer keeps identifiers its own before US-WL07); and the producer sees the store only when it runs, so if a resubmission overwrites stored fields, one made before the producer's next run can replace a first sign-up's Source before the producer has recorded it (OQ11; confirm in the spike).
+  Cons: "an answer is required to sign up" is enforced only in the page, so a direct post could arrive with no Fit answer (the view's `null` exists for exactly that, and the producer normalizes out-of-set values); the producer needs a full-power Kit credential on the Mac (acceptable on the founder's side, but not scopable to anonymous fields); Kit's unsubscribe is believed to mark a subscriber unsubscribed rather than delete it, so "deleted within 7 days" needs the sweep in US-WL10, and whether its API can permanently delete one is unverified (confirm both in the spike); a first-party post to Kit's endpoint with custom fields, and whether the browser can read its result, is not an integration this PRD could verify from the repository (confirm in the spike); the entry identifier is a custom field on the same public endpoint, so a direct post might set or overwrite it, planting a value derived from an address or a copy of another sign-up's identifier (confirm in the spike; if it can, the captain decides how the producer keeps identifiers its own before US-WL07); and the producer sees the store only when it runs, so if a resubmission overwrites stored fields, one made before the producer's next run can replace a first sign-up's Source before the producer has recorded it (OQ11; confirm in the spike); and no Rep Today code stamps the date, so `signed_up_on` can come only from a creation time Kit keeps and a resubmission does not reset (confirm in the spike; if it cannot, the captain decides how the date is kept).
 - *Option A2 - Kit stays, with a small Cloudflare Pages Function in front of it.*
   The Function validates the post (answer required, tags checked, bot protection), mints the entry identifier at sign-up, forwards to Kit with a Kit credential held as a Cloudflare secret, and may write an address-free row to its own store so the producer never needs Kit's credential.
   Pros: server-side enforcement; identifiers minted once, in one place; the producer's credential can be limited to the anonymous store.
@@ -742,6 +742,7 @@ The store must hold the address, the Fit answer, the beta choice, the Source, th
 
 **Recommendation: Option A** (Kit stays; first-party form; producer assigns identifiers), because it keeps the approved "who sees your address" sentence literally true and adds no new place that handles addresses.
 Fall back to **A2** only if the US-WL06 spike shows Kit's endpoint cannot carry the fields or cannot be read by the page; that fallback needs the captain's approval of the amended sentence.
+If the spike shows Kit exposes no creation time a resubmission leaves alone, the captain decides how `signed_up_on` is kept before US-WL06 and US-WL07 are built.
 Gates: US-WL02, US-WL06, US-WL07, US-WL08, US-WL09, US-WL10, US-WL11.
 
 **OQ2. Hosting.**
@@ -807,7 +808,7 @@ Gates: US-WL07.
   Cons: typos and other people's addresses join the list, a bot can inflate the good-Fit opt-in count that gr0wthlab measures against its bar of about 50, and bounces at launch hurt deliverability.
 - *Double opt-in (a confirmation message, then the sign-up counts).*
   Pros: only reachable addresses are counted and invited; it is a cheap filter against bots and typos.
-  Cons: one more message that the approved promise does not mention, so the captain must approve a short confirmation line and the policy's "why" list gains "to confirm your address".
+  Cons: one more message that the approved promise does not mention, so the captain must approve a short confirmation line and the policy's "why" list gains "to confirm your address"; and before launch the confirmation message is the only waitlist email a sign-up receives, so the policy's "the unsubscribe link in any waitlist email" depends on it carrying one (a US-WL06 spike item).
 
 **Recommendation: double opt-in, with only confirmed sign-ups listed in the view (their `signed_up_on` is the date they submitted).**
 Reason: the Beta Cohort bar counts opted-in good-Fit sign-ups, and an unreachable or fake address is worse than a missing one; the approved sentences stay verbatim.
@@ -877,10 +878,11 @@ Gates: US-WL10.
 The reader invites opted-in sign-ups good Fit first and then everyone else, each group earliest `signed_up_on` first, and settles a same-day tie by the view's own order; each batch takes at most 20, fewer when the cohort's remaining room (it holds at most 50) is smaller.
 With only the date stored, US-WL07 orders same-day sign-ups by their random entry identifier, so who among them is invited first is arbitrary but the same on every run.
 Options: (a) keep the date only; (b) store each sign-up's first submission time and order same-day sign-ups by it.
-Option (b) keeps a finer datum than "the sign-up date" the approved privacy wording names, so it needs that wording changed, and under OQ1 Option A it depends on the sending service exposing a creation time that a resubmission does not change (a spike item).
+Under OQ1 Option A2 or B, option (b) stores a finer datum than "the sign-up date" the approved privacy wording names, so it needs that wording changed (US-WL06 stores it, US-WL11 words it).
+Under Option A it adds neither: the sending service already keeps the creation time that `signed_up_on` comes from (a US-WL06 spike item), and (b) only orders by it.
 **Recommendation: (a), keep the date only.**
-Reason: it stores nothing beyond the approved wording and the order stays stable across runs; the cost is that whenever a batch boundary falls inside a same-day group of two or more opted-in sign-ups, good Fit or not, who on that day is invited first is arbitrary.
-Gates: US-WL07.
+Reason: under A2 or B it stores nothing beyond the approved wording, and under every option the order stays stable across runs; the cost is that whenever a batch boundary falls inside a same-day group of two or more opted-in sign-ups, good Fit or not, who on that day is invited first is arbitrary.
+Gates: US-WL06, US-WL07, US-WL11.
 
 ## Appendix A: the approved request, verbatim
 
