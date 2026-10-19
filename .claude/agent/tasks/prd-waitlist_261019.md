@@ -98,7 +98,7 @@ The request itself is Appendix A, verbatim.
 | 42 | Left to RepToday: hosting | US-WL04 | OQ2 |
 | 43 | Left to RepToday: how a link's Source reaches its sign-up | US-WL04 | OQ3 |
 | 44 | Left to RepToday: how and how often the view is produced | US-WL07 | OQ4 |
-| 45 | Left to RepToday: whether sign-ups confirm their email | US-WL06 | OQ5 |
+| 45 | Left to RepToday: whether sign-ups confirm their email | US-WL06, US-WL07 | OQ5 |
 | 46 | Left to RepToday: every other implementation choice | all | OQ6-OQ14 |
 | 47 | Once the build lands, gr0wthlab needs one reviewed change (the file's path and the go-live date); until then every post stays "can't publish yet" | US-WL12 | Dep. 1 |
 
@@ -192,12 +192,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 | US-WL03 page copy and consistency | US-WL01, US-WL02, OQ9 |
 | US-WL04 Source links and persistence | US-WL01, US-WL02, OQ2, OQ3, OQ12 |
 | US-WL05 web events | OQ7, OQ8, US-WL02, US-WL04 |
-| US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11, OQ14; after its spike, US-WL02 and US-WL04 |
-| US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4, OQ14 |
+| US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11; after its spike, US-WL02 and US-WL04 |
+| US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4, OQ5 |
 | US-WL08 address boundary guard | US-WL01, US-WL03 (which removes the `hello@` mailbox links the guard would flag), US-WL07, OQ1 |
 | US-WL09 send-time lookup | US-WL06, US-WL08, OQ1 |
 | US-WL10 removal and retention | US-WL06, US-WL07, OQ13 |
-| US-WL11 privacy policy Waitlist section | OQ1, OQ5, OQ10, OQ14, US-WL10 |
+| US-WL11 privacy policy Waitlist section | OQ1, OQ5, OQ10, US-WL10 |
 | US-WL12 go-live rehearsal and evidence | all of the above, plus the captain's deploy approval |
 
 ### US-WL01: One contract - the approved strings, the tags and a view checker
@@ -356,11 +356,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13) and whether that message carries a working unsubscribe link (OQ5), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change (under OQ1 Option A the only source of `signed_up_on`; under every option the only source of the original dates OQ6 keeps, since those sign-ups exist only in Kit; and, wherever Kit holds sign-ups (A and A2), a time OQ14 option b could order by without storing anything new), and whether a public post can set or overwrite the field that holds the entry identifier.
+- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13) and whether that message carries a working unsubscribe link (OQ5), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change (under OQ1 Option A the only source of `signed_up_on`; under every option the only source of the original dates OQ6 keeps, since those sign-ups exist only in Kit), and whether a public post can set or overwrite the field that holds the entry identifier.
   If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording; if a public post can set or overwrite the identifier field, the captain decides how the producer keeps identifiers its own before US-WL07 is built; if it exposes no creation time a resubmission leaves alone, the captain decides how `signed_up_on` and OQ6's original dates are kept before US-WL06 and US-WL07 are built; if its confirmation message carries no working unsubscribe link, the captain decides how removal by that link is kept before US-WL11 publishes the wording.
-- [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date (with its first submission time only if OQ14 settles on option b), the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
+- [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date, the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
 - [ ] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
 - [ ] A collision with the identifier of a removed sign-up is negligible by construction (identifiers carry at least 80 bits of entropy).
+- [ ] Under OQ1 Option A, where no Rep Today code runs at sign-up, an assignment step gives every stored sign-up that lacks an entry identifier a fresh one under the rule above, writes it back to the store, and never reassigns an existing one.
 - [ ] A value that arrives outside the allowed sets never reaches the view as sent: a Fit value outside the three tags counts as no answer, and a Source outside the five counts as `unknown`.
   Under OQ1 Option A the browser posts straight to the sending service and no Rep Today code runs at storage time, so the service keeps what was posted and the producer normalizes it when it projects the view (FR-28, US-WL07); under A2 or B, Rep Today's own code stores the value as none or `unknown`.
 - [ ] `signed_up_on` is the UTC date the sign-up was submitted, and does not change on a later resubmission.
@@ -373,11 +374,11 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Validation Test:**
 
-- **Setup:** A test destination (a separate test list or tag in the chosen service, or the local stub), the captain's approval of OQ1, OQ5, OQ6, OQ11 and OQ14.
+- **Setup:** A test destination (a separate test list or tag in the chosen service, or the local stub), the captain's approval of OQ1, OQ5, OQ6 and OQ11.
 - **Steps:**
   1. Submit three test sign-ups with addresses created for the test, each in a fresh page (`chrome-devtools-axi newpage`): one through `/tiktok` with Fit `lost-the-routine` and the box ticked, one through plain `/` with a different Fit answer, one repeating the first address with the box unticked.
-  2. Inspect the stored records.
-  3. Remove the first sign-up, then submit the same address again through `/reddit` in a fresh page.
+  2. Under OQ1 Option A, run the identifier assignment; then inspect the stored records.
+  3. Remove the first sign-up, then submit the same address again through `/reddit` in a fresh page; under Option A, run the identifier assignment again.
   4. Run the identifier unit tests.
   5. Under OQ1 Option A2 or B only, post one sign-up straight to the destination with a Fit and a Source outside the allowed sets, and inspect its stored record (under Option A this check is US-WL07's).
 - **Expected Result:** Step 2 shows two entries (not three) with the Source, Fit, beta choice, date and identifier recorded, and the repeat handled as OQ11 settles; step 3 gives the re-added sign-up a different identifier; step 4 passes; step 5's record holds no answer and Source `unknown`.
@@ -392,30 +393,33 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] A command under `tools/waitlist/` reads the store (OQ1) and writes the view: top-level keys exactly `view` (`1`), `generated_at` and `entries`; each entry exactly `entry`, `source`, `fit`, `beta_opt_in`, `signed_up_on`, with the values and types in the reader contract.
 - [ ] It projects only those five fields; the address, any name and any other stored field never enter its in-memory view structure.
 - [ ] `fit` is `null` only for a sign-up that holds no answer, which includes a stored Fit outside the three tags (US-WL06); `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
+- [ ] Under OQ1 Option A, the producer runs US-WL06's identifier assignment before projecting, so it never projects a missing identifier and never mints one only in memory.
+- [ ] Under double opt-in (OQ5), an unconfirmed sign-up is never projected, and it appears once confirmed, with `signed_up_on` still its submission date.
 - [ ] `generated_at` is stamped after the store is read and carries a UTC offset, so no `signed_up_on` is later than its UTC date.
-- [ ] Entries are written in a stable order, whatever order the store returns them in: ascending by `signed_up_on`, then within a day as OQ14 settles (by entry identifier under option a, by first submission time under option b), so the reader's invitation tie-break (the view's own order) is the same on every run.
+- [ ] Entries are written in a stable order, whatever order the store returns them in: ascending by `signed_up_on`, then by entry identifier, so the reader's invitation tie-break (the view's own order) is the same on every run.
 - [ ] Before writing, it runs US-WL01's checker over the candidate bytes and refuses to replace the existing file if the check fails, leaving the previous view untouched and exiting non-zero with a message that never repeats a value.
 - [ ] The write is atomic (a temporary file in the same directory, then a rename), the file mode is owner-only, and a file that would exceed the 10,000,000-byte limit fails the run rather than truncating.
 - [ ] A removed or retention-expired sign-up is absent from the next generation; an empty store writes `"entries": []`.
 - [ ] The default output path is outside the gr0wthlab, Mandu and RepToday checkouts and outside every git work tree, settled in OQ4; the command resolves symbolic links and refuses to write when the directory the file would be written in, or any ancestor of it, contains a `.git` entry (a directory, or a file as in a linked worktree).
 - [ ] It runs on the cadence settled in OQ4 and can be run on demand; a missed run is visible to the reader as the view's age (`generated_at`), which the launcher already reports.
 - [ ] The evidence records whether a scheduled run that the Mac slept through runs when it wakes (OQ4's "confirm").
-- [ ] It needs no network at read time for gr0wthlab: the reader opens a local file; the producer's own network use (to read the store) is the producer's alone.
+- [ ] It needs no network at read time for gr0wthlab: the reader opens a local file; the producer's own network use (to read the store and, under OQ1 Option A, to write back new identifiers) is the producer's alone.
 - [ ] Credentials the producer needs are read from the macOS Keychain at run time (item names recorded, values never), never from a file, argument or environment value that git or a shell history could keep.
 - [ ] It logs counts only, never a value.
 - [ ] A synthetic store mode (fixture input) exists for tests, so no test touches the real store.
 
 **Validation Test:**
 
-- **Setup:** A synthetic store holding five sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, and one whose stored Fit and Source are outside the allowed sets), listed out of date order and with two on the same day, the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
+- **Setup:** A synthetic store holding seven sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, one whose stored Fit and Source are outside the allowed sets, one with no entry identifier under OQ1 Option A, and one not yet confirmed under double opt-in), listed out of date order and with two on the same day, the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
 - **Steps:**
   1. Run the producer against the synthetic store; run `check-view.py` on the output; if available, run the reader cross-check.
   2. Remove one synthetic sign-up and rerun; compare entries.
   3. Make the checker fail on purpose (inject a stored entry identifier that is an address, assembled from parts at test time as in US-WL01, into the synthetic store; an out-of-set `source` would only be normalized) and rerun; confirm the previous file is unchanged.
   4. Point the output at a path inside the RepToday checkout, then at a symlink that resolves into it.
   5. Interrupt a run between the temporary write and the rename.
-- **Expected Result:** Step 1 produces a five-entry view the checker and the reader accept, with the out-of-set sign-up written as `fit` `null` and `source` `unknown` and the entries in ascending `signed_up_on` (the two same-day entries in the within-day order OQ14 settles); step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
-- **Failure Indicator:** The file holds a field beyond the five, the entries follow the store's order rather than `signed_up_on` then the within-day order OQ14 settles, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
+  6. Under double opt-in, confirm the unconfirmed sign-up and rerun.
+- **Expected Result:** Step 1 produces a view the checker and the reader accept, with one entry per sign-up except the unconfirmed one under double opt-in, the out-of-set sign-up written as `fit` `null` and `source` `unknown`, the sign-up without an identifier given one that is written back to the store, and the entries in ascending `signed_up_on` (the two same-day entries in entry-identifier order); step 2 drops exactly the removed entry and keeps every other identifier, the newly assigned one included; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one; step 6 lists the newly confirmed sign-up with `signed_up_on` still its submission date.
+- **Failure Indicator:** The file holds a field beyond the five, the entries follow the store's order rather than `signed_up_on` then entry identifier, an unconfirmed sign-up is listed under double opt-in, an identifier is reassigned or minted only in memory, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
 
 ### US-WL08: The address boundary guard
 
@@ -594,7 +598,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Records and entries**
 
-- FR-22: A stored sign-up must hold the address, the Fit answer or none, the beta choice, the Source, the sign-up date (with its first submission time only if OQ14 settles on option b) and the entry identifier, plus only the status the sending service requires.
+- FR-22: A stored sign-up must hold the address, the Fit answer or none, the beta choice, the Source, the sign-up date and the entry identifier, plus only the status the sending service requires.
 - FR-23: The entry identifier must be random (cryptographically secure), 1 to 64 letters, digits, `-` or `_`, unique, stable while the sign-up exists, stored with the sign-up, and never derived from the address (not a hash, not an encoding).
 - FR-24: `signed_up_on` must be the sign-up's date in UTC and must not change on resubmission.
 - FR-25: A repeated submission of an address already on the list must not create a second entry (OQ11).
@@ -603,7 +607,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **The anonymous view**
 
 - FR-27: The view must be UTF-8 JSON whose top level is exactly `view` (the integer `1`), `generated_at` and `entries`.
-- FR-28: Each entry must be exactly `entry`, `source` (`tiktok`, `youtube`, `reddit`, `network` or `unknown`), `fit` (one of the three tags, or `null` only for a sign-up that holds no answer), `beta_opt_in` (`true` or `false`) and `signed_up_on` (`YYYY-MM-DD`); a stored value outside these sets is written as `unknown` or `null`, never as stored; entries are written in ascending order of `signed_up_on`, with the within-day tie-break following OQ14 (entry identifier under option a, first submission time under option b), because the reader's invitation order falls back to the view's own order.
+- FR-28: Each entry must be exactly `entry`, `source` (`tiktok`, `youtube`, `reddit`, `network` or `unknown`), `fit` (one of the three tags, or `null` only for a sign-up that holds no answer), `beta_opt_in` (`true` or `false`) and `signed_up_on` (`YYYY-MM-DD`); a stored value outside these sets is written as `unknown` or `null`, never as stored; entries are written in ascending order of `signed_up_on`, then entry identifier, because the reader's invitation order falls back to the view's own order.
 - FR-29: `generated_at` must be the time the file was written, with its UTC offset, and no `signed_up_on` may be later than its UTC date.
 - FR-30: The view must hold nothing else: no address, name or other field, and no string, key or identifier anywhere in it that looks like an address or decodes to one.
 - FR-31: A removed or retention-expired sign-up must be absent from the next generation.
@@ -815,7 +819,7 @@ Reason: the Beta Cohort bar counts opted-in good-Fit sign-ups, and an unreachabl
 It needs the captain's approval of the confirmation wording and the policy line (Appendix B and C).
 Single opt-in is a defensible alternative if the captain prefers the minimal copy.
 Whether the live Kit form already confirms is not visible (V13); the captain should read the setting.
-Gates: US-WL02, US-WL06, US-WL11.
+Gates: US-WL02, US-WL06, US-WL07, US-WL11.
 
 ### Further design choices
 
@@ -876,13 +880,12 @@ Gates: US-WL10.
 
 **OQ14. Should same-day sign-ups be invited first-come?**
 The reader invites opted-in sign-ups good Fit first and then everyone else, each group earliest `signed_up_on` first, and settles a same-day tie by the view's own order; each batch takes at most 20, fewer when the cohort's remaining room (it holds at most 50) is smaller.
-With only the date stored, US-WL07 orders same-day sign-ups by their random entry identifier, so who among them is invited first is arbitrary but the same on every run.
-Options: (a) keep the date only; (b) store each sign-up's first submission time and order same-day sign-ups by it.
-Under OQ1 Option B, option (b) stores a finer datum than "the sign-up date" the approved privacy wording names, so it needs that wording changed (US-WL06 stores it, US-WL11 words it).
-Under Options A and A2 it adds neither: Kit, which stores the sign-ups under both, already keeps a creation time (a US-WL06 spike item), and (b) only orders by it.
-**Recommendation: (a), keep the date only.**
-Reason: under B it stores nothing beyond the approved wording, and under every option the order stays stable across runs; the cost is that whenever a batch boundary falls inside a same-day group of two or more opted-in sign-ups, good Fit or not, who on that day is invited first is arbitrary.
-Gates: US-WL06, US-WL07, US-WL11.
+US-WL07 orders same-day sign-ups by their random entry identifier, so whenever a batch boundary falls inside a same-day group of two or more opted-in sign-ups, good Fit or not, who on that day is invited first is arbitrary but the same on every run.
+Options: (a) keep that date-only order; (b) order same-day sign-ups by submission time.
+**Recommendation: (a), under every storage option.**
+Reason: the view's order is data the Marketing Engineer reads, and ordering by time would reveal the within-day sequence of sign-ups, beyond the sign-up date the approved privacy wording names.
+Choosing (b) later needs a stored submission time, a privacy wording change and an amendment to this PRD before the build.
+Gates: none as written; choosing (b) amends US-WL06, US-WL07 and US-WL11 first.
 
 ## Appendix A: the approved request, verbatim
 
