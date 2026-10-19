@@ -26,7 +26,7 @@ One leaked email-service credential, or one export that holds addresses, would e
    An address is low-entropy and guessable, so a hash of it can be reversed by testing candidate addresses.
 4. An entry identifier is turned into an address only on the founder's side, at send time, in RepToday's storage or the email tool.
 5. No email-service credential and no export that holds addresses is ever placed in the gr0wthlab, Mandu or RepToday checkouts.
-   Credentials live in the macOS Keychain or in the hosting provider's secret store, never in a file git could publish.
+   Credentials live in the macOS Keychain or in the hosting or email provider's own secret store, never in a file git could publish.
 6. A visitor's Source comes only from the link they arrived by (`tiktok`, `youtube`, `reddit`, `network`, else `unknown`), never from a question.
    A new Source needs a new Dispatch request and a reviewed gr0wthlab change.
 7. The view's format is a versioned contract with gr0wthlab's reader (`src/gr0wthlab/waitlist.py` in the gr0wthlab repository).
@@ -44,7 +44,7 @@ One leaked email-service credential, or one export that holds addresses, would e
 
 - The view cannot answer any question that needs an address or a name; that is the point.
 - Field names, allowed values, the Source tags, the Fit answers, the entry identifiers and the file's path become hard to change after go-live, because gr0wthlab's configuration and Waitlist Evidence depend on them (the PRD lists each).
-- A removed sign-up leaves the view on its next generation, so the view is rebuilt from the store each time rather than appended to.
+- A removed sign-up leaves the view on the next generation that reads the store after its removal (the PRD's US-WL07 and US-WL10 own the timing), so the view is rebuilt from the store each time rather than appended to.
 - RepToday must guard its own side: a refusal to write the view anywhere inside a git work tree, a conformance check that mirrors gr0wthlab's reader, and a CI check that no credential or address list is committed.
   gr0wthlab's own address check (Guardrail G6) remains the backstop, not the plan.
 - The privacy policy's Waitlist section (retention 30 days after the launch email, removal within 7 days, "only the founder ... and the service that stores it") becomes a public commitment the storage design must keep literally true.
