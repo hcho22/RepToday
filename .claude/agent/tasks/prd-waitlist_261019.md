@@ -160,6 +160,7 @@ These are the reader's exact rules, which US-WL01's checker mirrors and which th
 | **Address check, run first over the file's whole text and again over every key and value:** any `@` with a character other than whitespace, another `@` or one of `"'<>()[]{},;:\` on **both** sides counts as an address. A hit **refuses** the whole read: nothing is kept, no Waitlist Evidence is recorded that week, and a Guardrail breach is reported. An `entry` is additionally decoded: its percent-decoding is judged by that same loose rule, while its base64 (both alphabets) and hex decodings, read as printable UTF-8, count only when they hold a whole address (a local-part character, an `@` and a dotted domain ending in two or more letters); a hit in either is a breach. | FR-30 |
 | Any other departure from the format is a **failed** read (named in the run report without repeating any value), not a breach; the run goes on without the view. | FR-27, FR-28 |
 | The reader opens and reads the whole file once, with no lock; a view of any age is read and its age reported. | FR-32, FR-34 |
+| Beta Cohort invitations take opted-in sign-ups in order: good Fit first, then the earliest `signed_up_on`, and the view's own order settles a tie (`invitation_order`); each batch takes at most `batch_size` (20 in `config/run.json`) from the front. So the order the producer writes entries in decides who is invited among same-day sign-ups. | FR-28, US-WL07 |
 | The configured path must not overlap, in either direction, any place the sandboxed agent can read: the gr0wthlab repository and git directories, every registered location (including the Mandu and RepToday checkouts) and the system read paths. The launcher refuses to start otherwise. | FR-33 |
 | The path is `null` in `config/products.json` until a reviewed change sets it; `GR0WTHLAB_WAITLIST_VIEW` overrides it. `waitlist.live_since` in `config/run.json` is `null` until a reviewed change sets it "once US-ME05's Validation Test has passed on reptoday.app". | Dep. 1 |
 | The reader's own test draws 5,000 random identifiers of 8 to 64 characters from the allowed alphabet and requires none to look like, or decode to, an address. | US-WL06 |
@@ -178,7 +179,8 @@ chrome-devtools-axi open http://localhost:8788/
 
 `chrome-devtools-axi resize 390 844` is not enough: headless Chrome clamps it to about 500 px (V21).
 The local site is served with `npx wrangler pages dev gtm/03-site --port 8788`, which needs no Cloudflare login and is meant to apply `_headers` and `_redirects`; whether it also reproduces the Pages fallback is itself checked in US-WL04, and anything the emulation does not reproduce is re-checked on the captain-approved preview deploy in US-WL12.
-No test, local or otherwise, posts to the production sign-up destination or sends a real email; sign-up destinations are configurable and tests use a local stub receiver or a separate test destination.
+No test posts to the production list, and no email goes to any address other than one created for the test or owned by the founder; sign-up destinations are configurable and tests use a local stub receiver or a separate test destination.
+The US-WL12 rehearsal is the one captain-approved step that uses the production destination, with the founder's own addresses.
 Each story writes evidence (screenshots at both widths, command transcripts, no addresses) under `artifacts/reports/US-WL##/validation.md`, adds a row to `docs/test-coverage.md` and an entry to `docs/implementation-log.md`.
 Pure date logic takes an injected `asOf` clock and never reads the wall clock, per the project convention.
 The first task of US-WL06 (the spike that proves the OQ1 destination) runs before US-WL02 is built against a real destination; the rest of US-WL06 follows US-WL02.
@@ -353,7 +355,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether a post that omits a field leaves that field's stored value alone (OQ11), and whether a public post can set or overwrite the field that holds the entry identifier.
+- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), and whether a public post can set or overwrite the field that holds the entry identifier.
   If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording; if a public post can set or overwrite the identifier field, the captain decides how the producer keeps identifiers its own before US-WL07 is built.
 - [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date, the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
 - [ ] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
@@ -390,6 +392,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] It projects only those five fields; the address, any name and any other stored field never enter its in-memory view structure.
 - [ ] `fit` is `null` only for a sign-up that holds no answer, which includes a stored Fit outside the three tags (US-WL06); `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
 - [ ] `generated_at` is stamped after the store is read and carries a UTC offset, so no `signed_up_on` is later than its UTC date.
+- [ ] Entries are written in a stable order, whatever order the store returns them in: ascending by the time the sign-up was first submitted, with the entry identifier as the last tie-break, so the reader's invitation tie-break (the view's own order) invites the earliest same-day sign-ups first and gives the same order on every run.
 - [ ] Before writing, it runs US-WL01's checker over the candidate bytes and refuses to replace the existing file if the check fails, leaving the previous view untouched and exiting non-zero with a message that never repeats a value.
 - [ ] The write is atomic (a temporary file in the same directory, then a rename), the file mode is owner-only, and a file that would exceed the 10,000,000-byte limit fails the run rather than truncating.
 - [ ] A removed or retention-expired sign-up is absent from the next generation; an empty store writes `"entries": []`.
@@ -403,15 +406,15 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Validation Test:**
 
-- **Setup:** A synthetic store holding five sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, and one whose stored Fit and Source are outside the allowed sets), the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
+- **Setup:** A synthetic store holding five sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, and one whose stored Fit and Source are outside the allowed sets), listed out of sign-up order and with two submitted on the same day, the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
 - **Steps:**
   1. Run the producer against the synthetic store; run `check-view.py` on the output; if available, run the reader cross-check.
   2. Remove one synthetic sign-up and rerun; compare entries.
   3. Make the checker fail on purpose (inject a stored entry identifier that is an address, assembled from parts at test time as in US-WL01, into the synthetic store; an out-of-set `source` would only be normalized) and rerun; confirm the previous file is unchanged.
   4. Point the output at a path inside the RepToday checkout, then at a symlink that resolves into it.
   5. Interrupt a run between the temporary write and the rename.
-- **Expected Result:** Step 1 produces a five-entry view the checker and the reader accept, with the out-of-set sign-up written as `fit` `null` and `source` `unknown`; step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
-- **Failure Indicator:** The file holds a field beyond the five, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
+- **Expected Result:** Step 1 produces a five-entry view the checker and the reader accept, with the out-of-set sign-up written as `fit` `null` and `source` `unknown` and the entries in ascending submission time (the earlier same-day sign-up first); step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
+- **Failure Indicator:** The file holds a field beyond the five, the entries follow the store's order rather than submission time, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
 
 ### US-WL08: The address boundary guard
 
@@ -426,7 +429,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   The two file-pinned entries apply to no other file, so no Waitlist path gains an exemption.
   The existing `Bearer` test fixtures (`CoachProxyClientTests.swift`, `ProxyVarietyLanguageProviderTests.swift` and `CoachRuntimeAuthenticationTests.swift` in `ios/RepToday/RepTodayTests/`; `coach-auth-worker.test.js` and `coach-staging-labels.test.js` in `proxy/test/`) name no email-service credential and lie outside the Waitlist paths, so they pass without an entry.
 - [ ] A finding names the file and line and never repeats the value.
-- [ ] Non-vacuity is shown the way the repository does it: adding a credential-shaped assignment, then an export file, then an address, each makes the check fail; removing them makes it pass.
+- [ ] Non-vacuity is shown the way the repository does it: adding a credential-shaped assignment, then an export file, then an address, each makes the check fail with a message naming its own rule; removing them makes it pass.
 - [ ] `tools/waitlist/audit-checkouts.sh <directory>...` is a read-only audit the founder can point at the gr0wthlab, Mandu and RepToday checkouts; it prints file names and counts only and is run at go-live (US-WL12).
   It reads what the sandbox reads, the directory itself, not git's file list, so each rule states its file scope.
   In every directory, the guard's credential rules scan every file, git-ignored or not, skipping only `.git`, so a key kept in an ignored file (such as a root `.env`) is found.
@@ -445,7 +448,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   2. In the scratch copy add, one at a time: a literal credential assignment, a CSV export file with a single address-shaped row (assembled from parts), and a stray address.
   3. Run the audit against the RepToday checkout, and against a scratch directory seeded with the same three things.
   4. Create a new git-ignored file holding a literal credential assignment in the RepToday checkout (for example a root `.env`, which `.gitignore` ignores, when none exists yet), run the audit against the checkout again, then delete that new file.
-- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage fails the check with a file-and-line message that holds no value; step 3's audit reports zero findings on the real checkout and, on the scratch directory, the credential and the export but not the stray address, naming files and counts only; step 4's audit reports the credential in the ignored file, by name and without its value.
+- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage fails the check with a file-and-line message that holds no value, and the export case's message names the export rule (its address would also trip the address rule, so failing alone proves nothing); step 3's audit reports zero findings on the real checkout and, on the scratch directory, the credential and the export but not the stray address, naming files and counts only; step 4's audit reports the credential in the ignored file, by name and without its value.
 - **Failure Indicator:** A planted credential, export or address passes the check, a message echoes a value, the audit misses a credential (in an ignored file or not) or an export, flags a lone address outside the RepToday checkout, or writes anything.
 
 ### US-WL09: Send-time lookup on the founder's side
@@ -599,7 +602,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **The anonymous view**
 
 - FR-27: The view must be UTF-8 JSON whose top level is exactly `view` (the integer `1`), `generated_at` and `entries`.
-- FR-28: Each entry must be exactly `entry`, `source` (`tiktok`, `youtube`, `reddit`, `network` or `unknown`), `fit` (one of the three tags, or `null` only for a sign-up that holds no answer), `beta_opt_in` (`true` or `false`) and `signed_up_on` (`YYYY-MM-DD`); a stored value outside these sets is written as `unknown` or `null`, never as stored.
+- FR-28: Each entry must be exactly `entry`, `source` (`tiktok`, `youtube`, `reddit`, `network` or `unknown`), `fit` (one of the three tags, or `null` only for a sign-up that holds no answer), `beta_opt_in` (`true` or `false`) and `signed_up_on` (`YYYY-MM-DD`); a stored value outside these sets is written as `unknown` or `null`, never as stored; entries are written in ascending order of first submission time, with the entry identifier as the last tie-break, because the reader's invitation order falls back to the view's own order.
 - FR-29: `generated_at` must be the time the file was written, with its UTC offset, and no `signed_up_on` may be later than its UTC date.
 - FR-30: The view must hold nothing else: no address, name or other field, and no string, key or identifier anywhere in it that looks like an address or decodes to one.
 - FR-31: A removed or retention-expired sign-up must be absent from the next generation.
@@ -854,7 +857,7 @@ Gates: US-WL11.
 **Recommendation: no second entry; the entry identifier, sign-up date and Source stay from the first sign-up; the Fit answer and the beta choice take the latest values** (a person correcting themselves).
 Mechanism depends on OQ1 (with Option A the producer keeps the first-seen Source, because the sending service may overwrite fields on a resubmission - confirm in the spike).
 Under Option A that protection has a window: the producer sees the store only when it runs (OQ4), so a resubmission before its next run, such as the same person returning by plain `reptoday.app` in a new tab to tick the beta box, can replace the first Source before the producer has recorded it.
-The spike records whether a post that omits a field leaves the stored value alone; the captain decides, with that result, whether the window is acceptable.
+The spike records whether a resubmission overwrites stored fields; the captain decides, with that result, whether the window is acceptable.
 Gates: US-WL06.
 
 **OQ12. Do `utm_*` parameters set the Source?**
