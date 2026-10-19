@@ -428,8 +428,11 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] A finding names the file and line and never repeats the value.
 - [ ] Non-vacuity is shown the way the repository does it: adding a credential-shaped assignment, then an export file, then an address, each makes the check fail; removing them makes it pass.
 - [ ] `tools/waitlist/audit-checkouts.sh <directory>...` is a read-only audit the founder can point at the gr0wthlab, Mandu and RepToday checkouts; it prints file names and counts only and is run at go-live (US-WL12).
-  On the RepToday checkout it lives in, it applies the guard's rules with the guard's allowlist.
-  On any other directory it looks only for what the request forbids there, email-service credentials and exports that hold addresses (the guard's credential and export rules), and not for single address strings, which the gr0wthlab checkout's own tests and examples hold.
+  It reads what the sandbox reads, the directory itself, not git's file list, so each rule states its file scope.
+  In every directory, the guard's credential rules scan every file, git-ignored or not, skipping only `.git`, so a key kept in an ignored file (such as a root `.env`) is found.
+  In every directory, the guard's export rule scans the same files except installed dependency folders (`node_modules/` and a Python virtual environment), whose third-party package metadata carries maintainers' addresses.
+  On the RepToday checkout it lives in, it also applies the guard's address rule, with the guard's allowlist, to the guard's own file list (tracked, or untracked and not ignored).
+  On any other directory it applies no address rule, because single address strings are not what the request forbids there and the gr0wthlab checkout's own tests and examples hold them.
 - [ ] The only places a credential may live are the macOS Keychain and the hosting or email provider's own secret store; the Keychain item names (service and account, in the style of `tools/telemetry-keychain.sh`) are documented, values never.
 - [ ] The view producer's refusal to write inside a work tree (US-WL07) is covered by a test cited here.
 - [ ] The RepToday side is the only side this PRD can enforce; the matching rule for the other two checkouts is stated as gr0wthlab's Guardrail G6 and verified read-only by the audit's credential and export rules, with no change made to either.
@@ -441,8 +444,9 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   1. Run the check on the clean tree.
   2. In the scratch copy add, one at a time: a literal credential assignment, an export file with address-shaped rows (assembled from parts), and a stray address.
   3. Run the audit against the RepToday checkout, and against a scratch directory seeded with the same three things.
-- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage fails the check with a file-and-line message that holds no value; step 3's audit reports zero findings on the real checkout and, on the scratch directory, the credential and the export but not the stray address, naming files and counts only.
-- **Failure Indicator:** A planted credential, export or address passes the check, a message echoes a value, the audit misses a credential or an export, flags a lone address outside the RepToday checkout, or writes anything.
+  4. Create a new git-ignored file holding a literal credential assignment in the RepToday checkout (for example a root `.env`, which `.gitignore` ignores, when none exists yet), run the audit against the checkout again, then delete that new file.
+- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage fails the check with a file-and-line message that holds no value; step 3's audit reports zero findings on the real checkout and, on the scratch directory, the credential and the export but not the stray address, naming files and counts only; step 4's audit reports the credential in the ignored file, by name and without its value.
+- **Failure Indicator:** A planted credential, export or address passes the check, a message echoes a value, the audit misses a credential (in an ignored file or not) or an export, flags a lone address outside the RepToday checkout, or writes anything.
 
 ### US-WL09: Send-time lookup on the founder's side
 
@@ -537,7 +541,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
 - [ ] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
 - [ ] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
-- [ ] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, and no address outside the guard's allowlist in the RepToday checkout (US-WL08).
+- [ ] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, git-ignored files included, and no address outside the guard's allowlist in the RepToday checkout (US-WL08, with each rule's file scope as stated there).
 - [ ] The evidence (`artifacts/reports/US-WL12/validation.md`) contains screenshots at 390 px and 1440 px, the commands and results above, the view's path and format version, and **no address**.
 - [ ] A short hand-off note states the file's path and the go-live date for the gr0wthlab follow-up (Dependencies, item 1); this story makes no change in gr0wthlab or Mandu.
 - [ ] `AGENTS.md` (a pointer entry only), `CONTEXT.md`, `gtm/03-site/DEPLOY.md`, `convex/README.md` (if US-WL05 used Convex), `docs/implementation-log.md` and `docs/test-coverage.md` are updated, and this PRD's status header and checkboxes are brought current.
@@ -550,7 +554,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   2. Run the reader cross-check and `audit-checkouts.sh`.
   3. Compare the hand-off note with gr0wthlab's configuration fields it must fill.
 - **Expected Result:** Each criterion passes with evidence, the reader's verdict is "read" with two entries (and then zero), the audit is clean, and the hand-off note names the path and date.
-- **Failure Indicator:** The reader refuses or fails the view, a Source is lost, a removed sign-up lingers, the audit finds a credential, an export that holds addresses, or an address outside the guard's allowlist in the RepToday checkout, or any rehearsal step used the production list outside the agreed addresses.
+- **Failure Indicator:** The reader refuses or fails the view, a Source is lost, a removed sign-up lingers, the audit finds a credential or an export that holds addresses (in an ignored file or not), or an address outside the guard's allowlist in the RepToday checkout, or any rehearsal step used the production list outside the agreed addresses.
 
 ## Functional Requirements
 
