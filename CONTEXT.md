@@ -90,6 +90,15 @@ The Trainer only demonstrates; it never talks, advises, or changes a session, an
 A user's Trainer defaults from their onboarding answer, a user who answered "other" chooses once, and anyone can switch in Settings.
 The owning code is `Models/Trainer.swift` (the enum, `Trainer.effective(for:)` and the one write `saveTrainerChoice`), `Services/Trainer/TrainerPoseResolver.swift` (which poses exist, read off the asset catalog by exercise id) and `Views/ActiveSession/ExerciseIllustration.swift`; the spec is `.claude/agent/tasks/prd-trainer-pose-art_261002.md` (`US-TP##`) and the decision is [ADR-0008](docs/adr/0008-static-trainer-pose-art-replaces-lottie-demo.md).
 
+## Waitlist
+
+The pre-launch sign-up on `reptoday.app`: a visitor gives an email address, answers one **Fit** question, and may ask for a beta invitation.
+A visit's **Source** is where the visitor came from, taken only from the link they arrived by (`reptoday.app/tiktok`, `/youtube`, `/reddit`, `/network`; any other arrival is `unknown`) and never asked as a question; it is unrelated to the "Source" column of the asset-attribution ledger.
+**Fit** (capital F) is the visitor's answer to "Which sounds most like you?" (`lost-the-routine`, `exercises-regularly`, `never-had-a-routine`); it is unrelated to the engine's timing fit (Step 7).
+The **anonymous view** is the one address-free file (entry identifier, Source, Fit, beta opt-in, sign-up date) that RepToday keeps on the founder's Mac for gr0wthlab's launcher to read; an **entry identifier** is the random, never address-derived name of one sign-up in it.
+Addresses are resolved only on the founder's side, at send time, and no email-service credential or address export is ever placed in the gr0wthlab, Mandu or RepToday checkouts.
+Planned and not yet built: the spec is `.claude/agent/tasks/prd-waitlist_261019.md` (`US-WL##`) and the boundary decision is [ADR-0009](docs/adr/0009-waitlist-anonymous-view-and-address-boundary.md).
+
 ## Two-Writer Policy Safety
 
 `SessionPolicy` has two writers - the deterministic Programmer (`DeterministicSessionPolicyService`, which owns the safety moves: plateau de-load, Re-entry Ramp, cold-start) and the premium AI coach (`Services/Coach/CoachSessionPolicyService`, US-AC07, which may only nudge the three **preference** levers).
