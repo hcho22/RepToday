@@ -192,7 +192,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 | US-WL05 web events | OQ7, OQ8, US-WL02, US-WL04 |
 | US-WL06 sign-up storage and entry identifiers | OQ1, OQ5, OQ6, OQ11 |
 | US-WL07 anonymous view producer | US-WL01, US-WL06, OQ4 |
-| US-WL08 address boundary guard | US-WL01, OQ1 |
+| US-WL08 address boundary guard | US-WL01, US-WL03 (which removes the `hello@` mailbox links the guard would flag), OQ1 |
 | US-WL09 send-time lookup | US-WL06, OQ1 |
 | US-WL10 removal and retention | US-WL06, US-WL07, OQ13 |
 | US-WL11 privacy policy Waitlist section | OQ1, OQ5, OQ10, US-WL10 |
@@ -205,12 +205,13 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **Acceptance Criteria:**
 
 - [ ] A data file under `tools/waitlist/` (for example `contract.json`) holds, as data: the heading "Join the waitlist"; the sentence "Add your email and we'll tell you the day it ships."; the Fit legend "Which sounds most like you?"; the three Fit answers with their labels and tags; the beta label "Invite me to the beta before launch"; the phrase "one launch email, plus a beta invitation only if you ask for one"; the four Source tags; the words `unknown` and `none`; the names of the form's posted fields (email, Fit answer, beta choice, Source); the view format version `1`; the entry pattern `[A-Za-z0-9_-]{1,64}`; and the 10,000,000-byte limit.
-- [ ] Every string in that file is byte-identical to Appendix A (checked by a test that reads both).
+- [ ] Every approved string in that file (the wording, the Fit and Source tags, `unknown` and `none`) is byte-identical to its text in Appendix A (checked by a test that reads both).
+  The posted field names, the entry pattern and the byte limit are not in Appendix A (the names are this build's choice; the pattern and the limit are the reader's), so the test does not compare them with it.
 - [ ] `tools/waitlist/check-view.py` (Python 3 standard library only, like `tools/check-trainer-art.py`) takes a file path and exits 0 only for a view that satisfies every rule in "The gr0wthlab reader contract"; on failure it names the rule and the entry's position and never prints the offending value.
 - [ ] It runs the address check first, over the file's whole text and then every key and value, with the reader's pattern, and decodes `entry` as percent-encoding, base64 (both alphabets) and hex.
-- [ ] Fixtures under `tools/waitlist/fixtures/`: a valid view with three entries (one with `fit` `null`, one with source `unknown`), a valid view with empty `entries`, and one failing fixture per rule (missing and extra top-level keys; `view` 2 and `view` true; `generated_at` without an offset; `signed_up_on` malformed and later than `generated_at`'s UTC date; a duplicate entry; an entry of length 0 and of 65; a character outside the alphabet; a `source` and a `fit` outside the lists; `beta_opt_in` as a string; an extra entry key; an address-shaped value in `source`, in `fit`, in `generated_at` and in a key name; an `entry` that is an address in percent-encoded, base64 and hex form; a file over the limit; a file that is not UTF-8).
-- [ ] No fixture commits an address: address-shaped strings are assembled at test time from parts, and a test fails if any fixture file contains an address-shaped string.
-- [ ] `tools/waitlist/test-check-view.py` runs every fixture and asserts accept or reject and the named rule.
+- [ ] Fixtures under `tools/waitlist/fixtures/`: a valid view with three entries (one with `fit` `null`, one with source `unknown`), a valid view with empty `entries`, and one failing fixture per rule (missing and extra top-level keys; `view` 2 and `view` true; `generated_at` without an offset; `signed_up_on` malformed and later than `generated_at`'s UTC date; a duplicate entry; an entry of length 0 and of 65; a character outside the alphabet; a `source` and a `fit` outside the lists; `beta_opt_in` as a string; an extra entry key; a file over the limit; a file that is not UTF-8).
+- [ ] The address cases are generated, never committed: the test assembles each from parts at run time and writes it to a temporary path outside the repository (an address-shaped value in `source`, in `fit`, in `generated_at` and in a key name; an `entry` that is an address in percent-encoded, base64 and hex form), and a test fails if any file under `tools/waitlist/fixtures/` contains an address-shaped string.
+- [ ] `tools/waitlist/test-check-view.py` runs every committed and generated fixture and asserts accept or reject and the named rule.
 - [ ] Optional local cross-check: when an environment variable names a gr0wthlab checkout, the test also imports that checkout's `src/gr0wthlab/waitlist.py` read-only and requires its verdict (read, failed or refused) to agree with this checker on every fixture; it is skipped otherwise, never required in CI, and writes nothing in gr0wthlab.
 - [ ] The test is wired into a CI job that needs no Xcode (US-WL12 may add the job if none exists).
 - [ ] Lint passes.
@@ -220,10 +221,10 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - **Setup:** The branch with US-WL01; Python 3; optionally a gr0wthlab checkout for the cross-check.
 - **Steps:**
   1. Run `python3 tools/waitlist/test-check-view.py`.
-  2. Run `python3 tools/waitlist/check-view.py tools/waitlist/fixtures/valid.json`, then the address-in-`source` fixture.
+  2. Run `python3 tools/waitlist/check-view.py tools/waitlist/fixtures/valid.json`, then run it on an address-in-`source` view that the test's generator writes to a temporary path outside the repository.
   3. Edit one string in the contract file (for example the heading) and rerun step 1.
   4. If a gr0wthlab checkout is available, set the environment variable and rerun step 1 read-only.
-- **Expected Result:** Step 1 passes; step 2 exits 0 for the valid view and non-zero for the address fixture with a message that names the rule and position but not the value; step 3 fails the byte-identity test; step 4 shows the checker and the real reader agreeing on every fixture.
+- **Expected Result:** Step 1 passes; step 2 exits 0 for the valid view and non-zero for the generated address view with a message that names the rule and position but not the value; step 3 fails the byte-identity test; step 4 shows the checker and the real reader agreeing on every fixture.
 - **Failure Indicator:** A malformed view is accepted, a message repeats an address-shaped value, an address is committed in a fixture, or the checker and the reader disagree on any fixture.
 
 ### US-WL02: The sign-up form
@@ -270,7 +271,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] The hero's lead-in sentence "Rep Today is pre-launch and not yet on the App Store." and the `<noscript>` mailbox fallbacks are handled as OQ9 settles; after this story no placement offers a second way to join the waitlist.
 - [ ] The FAQ sentence "the pre-launch waitlist holds the email you add to it ... nothing more" is replaced as OQ9 settles, so it no longer understates what the form keeps; the "When does it launch?" answer stays consistent with the call to action.
 - [ ] Neither page asks the visitor for a download, a follow or a share; the form is the only action that asks anything of the visitor (a word-list grep guard).
-- [ ] `tools/waitlist/check-site.py` (CI) fails when: the four placements differ beyond element ids; any approved string from the contract file is missing or altered; "one message" is present; a `mailto:` join path is present; an email-shaped string other than the policy's published contact address appears in `gtm/03-site/`.
+- [ ] `tools/waitlist/check-site.py` (CI) fails when: the four placements differ beyond element ids; any approved string from the contract file is missing or altered; "one message" is present; a `mailto:` join path is present; an email-shaped string (a whole address, as US-WL08 defines it) other than the policy's published contact address appears in `gtm/03-site/`.
 - [ ] Outside the waitlist blocks and the sentences above, `index.html` and `index-b.html` differ only as they do today (a before/after diff is attached to the evidence), so the running A/B comparison is not disturbed.
 - [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px on `/` and `/index-b`.
 
@@ -280,10 +281,11 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - **Steps:**
   1. Run `python3 tools/waitlist/check-site.py`.
   2. Evaluate on each page `document.body.innerText.includes('one message')` and `...includes('one launch email, plus a beta invitation only if you ask for one')`.
-  3. Evaluate `document.querySelectorAll('a[href^="mailto:"]').length` on `/` and `/index-b`.
+  3. Put one `<noscript>` mailbox link back into a placement and rerun step 1.
+     A browser with scripting on parses `<noscript>` content as text, so a DOM query cannot see that link; the static check in step 1 is the test for a mailbox join path.
   4. Make one placement differ (change a label in the closing band only) and rerun step 1.
   5. Read the FAQ answers at 390 px and 1440 px.
-- **Expected Result:** Step 1 passes; step 2 is `false` then `true`; step 3 returns 0 on both pages (the policy's contact link is on `/privacy`, not here); step 4 fails the check and names the placement; the FAQ matches the form and the policy.
+- **Expected Result:** Step 1 passes; step 2 is `false` then `true`; step 3 fails the check and names the file and line; step 4 fails the check and names the placement; the FAQ matches the form and the policy.
 - **Failure Indicator:** "one message" survives, a mailbox join path survives, the FAQ still says "nothing more", one placement drifts without the check failing, or the A/B variants gain unrelated differences.
 
 ### US-WL04: Source links and Source persistence
@@ -293,7 +295,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **Acceptance Criteria:**
 
 - [ ] `reptoday.app/tiktok`, `/youtube`, `/reddit` and `/network` each open the landing page with the sign-up form; the lowercase word after the slash is that visit's Source tag.
-- [ ] The links work in any letter case (`/TikTok`, `/YOUTUBE`, `/rEdDiT`, `/Network` all resolve to the lowercase tag); a trailing slash also works (robustness, not in the request).
+- [ ] The links work in any letter case (`/TikTok`, `/YOUTUBE`, `/rEdDiT`, `/Network` all resolve to the lowercase tag).
 - [ ] Each link is only the bare tag: no query string, token or redirect chain is needed to use it, so it can be said aloud, typed or put in a profile.
 - [ ] Once a visit has arrived by one of the four links, the tag is kept for the rest of that visit while the visitor moves between the landing page, the FAQ anchors and `/privacy`, per the persistence rule settled in OQ3, and is what the form sends and what the events carry.
 - [ ] Every other arrival (plain `reptoday.app`, `/index-b` with no tag, an unrecognized path, any search or social referrer, a `utm_*` parameter) yields Source `unknown` for the sign-up and `none` for the events; nothing outside the four tags is ever recorded as a tag.
@@ -307,12 +309,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - **Setup:** The local site and the stub receiver; the hidden Source field's name is taken from the contract file.
 - **Steps:**
-  1. Open `/tiktok`, `/TikTok`, `/YOUTUBE`, `/reddit` and `/network` in turn; after each, evaluate the hidden Source field's value.
-  2. From `/tiktok` follow the footer "Privacy Policy" link, then return to `/` in the same tab, and evaluate the field; then submit a sign-up and read the stub.
-  3. In a fresh page (`chrome-devtools-axi newpage`) open `/`, `/index-b`, `/tiktk`, `/?utm_source=tiktok` and `/reddit?x=1`.
-  4. Submit a sign-up from step 3's plain `/` page.
+  1. Open `/tiktok`, `/TikTok`, `/YOUTUBE`, `/reddit` and `/network`, each in a fresh page (`chrome-devtools-axi newpage`); after each, evaluate the hidden Source field's value.
+  2. In a fresh page open `/tiktok`, follow the footer "Privacy Policy" link, then return to `/` in the same tab, and evaluate the field; then submit a sign-up and read the stub.
+  3. In a fresh page, before any Source link is opened in it, open `/`, evaluate the field, and submit a sign-up; then open `/index-b`, `/tiktk` and `/?utm_source=tiktok` in turn in the same page, evaluating the field after each.
+  4. In the same page open `/reddit?x=1` and evaluate the field.
   5. After the captain-approved preview deploy (US-WL12), repeat step 1 against the preview URL.
-- **Expected Result:** Step 1 yields `tiktok`, `tiktok`, `youtube`, `reddit`, `network`; step 2 still yields `tiktok` after browsing and the stub body carries `tiktok`; step 3 yields `unknown` for `/`, `/index-b`, `/tiktk` and the UTM URL, and `reddit` for `/reddit?x=1`; step 4's body carries `unknown`; step 5 matches the local result for every casing.
+- **Expected Result:** Step 1 yields `tiktok`, `tiktok`, `youtube`, `reddit`, `network`; step 2 still yields `tiktok` after browsing and the stub body carries `tiktok`; step 3 yields `unknown` for `/`, `/index-b`, `/tiktk` and the UTM URL, and its stub body carries `unknown`; step 4 yields `reddit`; step 5 matches the local result for every casing.
 - **Failure Indicator:** A casing misses, the tag is lost after visiting `/privacy`, a `utm_source` or an arbitrary path becomes a tag, a cookie appears, or the fallback behavior differs on the real Pages deployment.
 
 ### US-WL05: Web events
@@ -337,12 +339,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - **Setup:** The dev Convex deployment (`courteous-dogfish-560`) or the in-process `convex-test` harness, never production; the local site pointed at it.
 - **Steps:**
-  1. Open `/youtube`, then `/`; read the stored rows.
+  1. In a fresh page (`chrome-devtools-axi newpage`), before any Source link is opened in it, open `/`; then `/youtube`, then `/` again in the same page; read the stored rows.
   2. Submit a sign-up from `/youtube`; read the stored rows.
   3. Post a web event with an extra property, one with a name outside the two, and one with a `referrer_source` of `unknown`; post `landing_page_view` to the app's `/logEvent`.
   4. Open `/privacy`.
   5. Point the page's event endpoint (configurable for tests) at an unreachable local address, submit a sign-up, and read `chrome-devtools-axi console`.
-- **Expected Result:** Step 1 stores `landing_page_view` with `{"referrer_source":"youtube"}` and then `{"referrer_source":"none"}`; step 2 adds `waitlist_signup` with `{"referrer_source":"youtube"}`; every row holds exactly the two names and one property; step 3's three web posts are rejected and the `/logEvent` post is still rejected as before; step 4 adds nothing; step 5 still reaches the sign-up stub and shows the success wording, with no uncaught error in the console.
+- **Expected Result:** Step 1 stores three `landing_page_view` rows, with `{"referrer_source":"none"}`, then `{"referrer_source":"youtube"}`, then `{"referrer_source":"youtube"}` (the kept tag); step 2 adds `waitlist_signup` with `{"referrer_source":"youtube"}`; every row holds exactly the two names and one property; step 3's three web posts are rejected and the `/logEvent` post is still rejected as before; step 4 adds nothing; step 5 still reaches the sign-up stub and shows the success wording, with no uncaught error in the console.
 - **Failure Indicator:** Any row holds an address, an entry identifier, an extra property or `unknown`; `/privacy` emits a view; a failing sink blocks the form; the app contract or its tests change.
 
 ### US-WL06: Sign-up storage and entry identifiers
@@ -351,11 +353,13 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, and whether it sends a confirmation message (the unknowns in V13); if it cannot, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11.
+- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), and whether a resubmission of a listed address overwrites its stored fields (OQ11).
+  If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording.
 - [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date, the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
 - [ ] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
 - [ ] A collision with the identifier of a removed sign-up is negligible by construction (identifiers carry at least 80 bits of entropy).
-- [ ] A value that arrives outside the allowed sets is stored as no answer: a Fit value outside the three tags is stored as none, and a Source outside the five is stored as `unknown`; the stored text is never passed through to the view.
+- [ ] A value that arrives outside the allowed sets never reaches the view as sent: a Fit value outside the three tags counts as no answer, and a Source outside the five counts as `unknown`.
+  Under OQ1 Option A the browser posts straight to the sending service and no Rep Today code runs at storage time, so the service keeps what was posted and the producer normalizes it when it projects the view (FR-28, US-WL07); under A2 or B, Rep Today's own code stores the value as none or `unknown`.
 - [ ] `signed_up_on` is the UTC date the sign-up was submitted, and does not change on a later resubmission.
 - [ ] A second submission with an address already on the list follows OQ11 and never creates a second entry.
 - [ ] Existing sign-ups made before this build are handled as OQ6 settles.
@@ -368,12 +372,13 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - **Setup:** A test destination (a separate test list or tag in the chosen service, or the local stub), the captain's approval of OQ1, OQ5, OQ6 and OQ11.
 - **Steps:**
-  1. Submit three test sign-ups with addresses created for the test: one through `/tiktok` with Fit `lost-the-routine` and the box ticked, one through plain `/` with a different Fit answer, one repeating the first address with the box unticked.
+  1. Submit three test sign-ups with addresses created for the test, each in a fresh page (`chrome-devtools-axi newpage`): one through `/tiktok` with Fit `lost-the-routine` and the box ticked, one through plain `/` with a different Fit answer, one repeating the first address with the box unticked.
   2. Inspect the stored records.
-  3. Remove the first sign-up, then submit the same address again through `/reddit`.
+  3. Remove the first sign-up, then submit the same address again through `/reddit` in a fresh page.
   4. Run the identifier unit tests.
-- **Expected Result:** Step 2 shows two entries (not three) with the Source, Fit, beta choice, date and identifier recorded, and the repeat handled as OQ11 settles; step 3 gives the re-added sign-up a different identifier; step 4 passes.
-- **Failure Indicator:** A second entry appears for a repeated address, an identifier correlates with the address, an out-of-set value reaches the stored record verbatim, or an address appears in any log.
+  5. Under OQ1 Option A2 or B only, post one sign-up straight to the destination with a Fit and a Source outside the allowed sets, and inspect its stored record (under Option A this check is US-WL07's).
+- **Expected Result:** Step 2 shows two entries (not three) with the Source, Fit, beta choice, date and identifier recorded, and the repeat handled as OQ11 settles; step 3 gives the re-added sign-up a different identifier; step 4 passes; step 5's record holds no answer and Source `unknown`.
+- **Failure Indicator:** A second entry appears for a repeated address, an identifier correlates with the address, under A2 or B an out-of-set value reaches the stored record verbatim, or an address appears in any log.
 
 ### US-WL07: The anonymous view producer
 
@@ -383,13 +388,14 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - [ ] A command under `tools/waitlist/` reads the store (OQ1) and writes the view: top-level keys exactly `view` (`1`), `generated_at` and `entries`; each entry exactly `entry`, `source`, `fit`, `beta_opt_in`, `signed_up_on`, with the values and types in the reader contract.
 - [ ] It projects only those five fields; the address, any name and any other stored field never enter its in-memory view structure.
-- [ ] `fit` is `null` only for a sign-up that holds no answer; `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
+- [ ] `fit` is `null` only for a sign-up that holds no answer, which includes a stored Fit outside the three tags (US-WL06); `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
 - [ ] `generated_at` is stamped after the store is read and carries a UTC offset, so no `signed_up_on` is later than its UTC date.
 - [ ] Before writing, it runs US-WL01's checker over the candidate bytes and refuses to replace the existing file if the check fails, leaving the previous view untouched and exiting non-zero with a message that never repeats a value.
 - [ ] The write is atomic (a temporary file in the same directory, then a rename), the file mode is owner-only, and a file that would exceed the 10,000,000-byte limit fails the run rather than truncating.
 - [ ] A removed or retention-expired sign-up is absent from the next generation; an empty store writes `"entries": []`.
-- [ ] The default output path is outside the gr0wthlab, Mandu and RepToday checkouts and outside every git work tree, settled in OQ4; the command resolves symbolic links and refuses to write when the resolved path lies inside any directory that has a `.git` ancestor.
+- [ ] The default output path is outside the gr0wthlab, Mandu and RepToday checkouts and outside every git work tree, settled in OQ4; the command resolves symbolic links and refuses to write when the directory the file would be written in, or any ancestor of it, contains a `.git` entry (a directory, or a file as in a linked worktree).
 - [ ] It runs on the cadence settled in OQ4 and can be run on demand; a missed run is visible to the reader as the view's age (`generated_at`), which the launcher already reports.
+- [ ] The evidence records whether a scheduled run that the Mac slept through runs when it wakes (OQ4's "confirm").
 - [ ] It needs no network at read time for gr0wthlab: the reader opens a local file; the producer's own network use (to read the store) is the producer's alone.
 - [ ] Credentials the producer needs are read from the macOS Keychain at run time (item names recorded, values never), never from a file, argument or environment value that git or a shell history could keep.
 - [ ] It logs counts only, never a value.
@@ -397,14 +403,14 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Validation Test:**
 
-- **Setup:** A synthetic store holding four sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date), the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
+- **Setup:** A synthetic store holding five sign-ups (a `null` Fit, an `unknown` Source, a ticked box, a recent date, and one whose stored Fit and Source are outside the allowed sets), the default output directory (or a temporary one outside any repository for the test), and optionally the gr0wthlab checkout for the cross-check.
 - **Steps:**
   1. Run the producer against the synthetic store; run `check-view.py` on the output; if available, run the reader cross-check.
   2. Remove one synthetic sign-up and rerun; compare entries.
-  3. Make the checker fail on purpose (inject an address-shaped `source` into the synthetic store) and rerun; confirm the previous file is unchanged.
+  3. Make the checker fail on purpose (inject a stored entry identifier that is an address, assembled from parts at test time as in US-WL01, into the synthetic store; an out-of-set `source` would only be normalized) and rerun; confirm the previous file is unchanged.
   4. Point the output at a path inside the RepToday checkout, then at a symlink that resolves into it.
   5. Interrupt a run between the temporary write and the rename.
-- **Expected Result:** Step 1 produces a four-entry view the checker and the reader accept; step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
+- **Expected Result:** Step 1 produces a five-entry view the checker and the reader accept, with the out-of-set sign-up written as `fit` `null` and `source` `unknown`; step 2 drops exactly the removed entry and keeps every other identifier; step 3 exits non-zero, leaves the earlier bytes untouched and prints no value; step 4 refuses both with a clear message; step 5 leaves either the complete old file or the complete new file, never a partial one.
 - **Failure Indicator:** The file holds a field beyond the five, an address-shaped string is written, a failing check still replaces the file, a path inside a work tree is accepted, or a partial file is ever visible.
 
 ### US-WL08: The address boundary guard
@@ -413,7 +419,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `tools/check-no-waitlist-credentials.py` (CI, in the style of `tools/check-no-committed-telemetry-secret.py`) fails when a tracked or untracked-but-not-ignored file in the RepToday checkout contains: an assignment of a literal value to a name used for an email-service credential (names listed in the tool), a bearer or API-key header with a literal value, a subscriber-export file (a CSV or JSON with an email column and more than a few rows), or an email-shaped string other than the allowlist (the policy's published contact address and the reserved `example` domains used by existing tests).
+- [ ] `tools/check-no-waitlist-credentials.py` (CI, in the style of `tools/check-no-committed-telemetry-secret.py`) fails when a tracked or untracked-but-not-ignored file in the RepToday checkout contains: an assignment of a literal value to a name used for an email-service credential, or to a header named for one (the names, including the email service's own API-key header, listed in the tool); any bearer or API-key header with a literal value in the Waitlist's own paths (`gtm/03-site/`, `tools/waitlist/` and any other path a Waitlist story adds); a subscriber-export file (a CSV or JSON with an email column and more than a few rows); or an email-shaped string not on the allowlist.
+- [ ] "Email-shaped" means a whole address: a local part of letters, digits and `._%+-`, an `@`, and a dotted domain whose last label is two or more letters.
+  It is narrower than the reader's any-`@` rule on purpose: that rule, which US-WL01's view checker keeps for the view, would flag every scoped package path in `package-lock.json` and `proxy/package-lock.json`.
+- [ ] The allowlist is the policy's published contact address, addresses at the reserved `example` domains used by existing tests, and two existing URL-userinfo test inputs, each allowed only in its own file: the `user:password@` inputs before the App Store Server API hosts in `proxy/test/apple-fetch.test.js`, and the `user@` input before the Coach host in `ios/RepToday/RepTodayTests/CoachProxyClientConfiguredTests.swift`.
+  The two file-pinned entries apply to no other file, so no Waitlist path gains an exemption.
+  The existing `Bearer` test fixtures (`CoachProxyClientTests.swift`, `ProxyVarietyLanguageProviderTests.swift` and `CoachRuntimeAuthenticationTests.swift` in `ios/RepToday/RepTodayTests/`; `coach-auth-worker.test.js` and `coach-staging-labels.test.js` in `proxy/test/`) name no email-service credential and lie outside the Waitlist paths, so they pass without an entry.
 - [ ] A finding names the file and line and never repeats the value.
 - [ ] Non-vacuity is shown the way the repository does it: adding a credential-shaped assignment, then an export file, then an address, each makes the check fail; removing them makes it pass.
 - [ ] `tools/waitlist/audit-checkouts.sh <directory>...` is a read-only audit the founder can point at the gr0wthlab, Mandu and RepToday checkouts; it prints file names and counts only and is run at go-live (US-WL12).
@@ -423,12 +434,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Validation Test:**
 
-- **Setup:** The branch; a scratch copy of the working tree for the sabotage steps.
+- **Setup:** The branch, with US-WL03 merged; a scratch copy of the working tree for the sabotage steps.
 - **Steps:**
   1. Run the check on the clean tree.
   2. In the scratch copy add, one at a time: a literal credential assignment, an export file with address-shaped rows (assembled from parts), and a stray address.
   3. Run the audit against the RepToday checkout, and against a scratch directory seeded with the same three things.
-- **Expected Result:** Step 1 passes; each step 2 sabotage fails the check with a file-and-line message that holds no value; step 3's audit reports zero findings on the real checkout and three on the scratch directory, naming files and counts only.
+- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage fails the check with a file-and-line message that holds no value; step 3's audit reports zero findings on the real checkout and three on the scratch directory, naming files and counts only.
 - **Failure Indicator:** A planted credential, export or address passes, a message echoes a value, or the audit writes anything.
 
 ### US-WL09: Send-time lookup on the founder's side
@@ -521,7 +532,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - [ ] The full flow passes on the local site and stub (all earlier stories' Validation Tests rerun).
 - [ ] With the captain's approval, the site is deployed to a Cloudflare Pages preview first and the Source-link casings, the fallback behavior and the events are rechecked there; production publication is a separate, captain-approved, credentialed step (as `AGENTS.md` already requires), with the privacy page deployed with or before the form.
-- [ ] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag (with addresses the founder owns), the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
+- [ ] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
 - [ ] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
 - [ ] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
 - [ ] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing.
@@ -697,7 +708,7 @@ These become expensive once the Waitlist is live or the first link is posted, so
 ## Open Questions
 
 Each question lists the realistic options grounded in the current code and services, the **recommendation (marked)** with its reason, and the stories it gates.
-Vendor behavior that this PRD could not verify from the repository (marked "confirm") is checked in the US-WL06 spike, not assumed.
+Behavior that this PRD could not verify from the repository (marked "confirm") is checked, not assumed: the sending service's in the US-WL06 spike, and the scheduler's in US-WL07.
 
 ### Left to RepToday by the request
 
@@ -709,7 +720,7 @@ The store must hold the address, the Fit answer, the beta choice, the Source, th
   The page's own HTML form (replacing Kit's embed script) posts from the visitor's browser straight to Kit's public sign-up endpoint, the same one the embed uses today (V2), carrying the Fit answer, beta choice and Source as Kit custom fields.
   The producer on the founder's Mac assigns each new sign-up its random entry identifier, writes it back as a custom field, and reads the five fields through Kit's API with a credential held in the Keychain.
   Pros: the address never touches any Rep Today-run infrastructure, so the approved sentence "only the founder, when sending a waitlist email, and the service that stores it" is literally true; no server code to run; Kit already sends mail, hosts the unsubscribe link and handles bounces; the smallest change from today.
-  Cons: "an answer is required to sign up" is enforced only in the page, so a direct post could arrive with no Fit answer (the view's `null` exists for exactly that, and the producer normalizes out-of-set values); the producer needs a full-power Kit credential on the Mac (acceptable on the founder's side, but not scopable to anonymous fields); Kit's unsubscribe is believed to mark a subscriber unsubscribed rather than delete it, so "deleted within 7 days" needs the sweep in US-WL10 (confirm); a first-party post to Kit's endpoint with custom fields, and whether the browser can read its result, is not an integration this PRD could verify from the repository (confirm in the spike).
+  Cons: "an answer is required to sign up" is enforced only in the page, so a direct post could arrive with no Fit answer (the view's `null` exists for exactly that, and the producer normalizes out-of-set values); the producer needs a full-power Kit credential on the Mac (acceptable on the founder's side, but not scopable to anonymous fields); Kit's unsubscribe is believed to mark a subscriber unsubscribed rather than delete it, so "deleted within 7 days" needs the sweep in US-WL10, and whether its API can permanently delete one is unverified (confirm both in the spike); a first-party post to Kit's endpoint with custom fields, and whether the browser can read its result, is not an integration this PRD could verify from the repository (confirm in the spike).
 - *Option A2 - Kit stays, with a small Cloudflare Pages Function in front of it.*
   The Function validates the post (answer required, tags checked, bot protection), mints the entry identifier at sign-up, forwards to Kit with a Kit credential held as a Cloudflare secret, and may write an address-free row to its own store so the producer never needs Kit's credential.
   Pros: server-side enforcement; identifiers minted once, in one place; the producer's credential can be limited to the anonymous store.
@@ -747,7 +758,10 @@ Today any unmatched path already serves the landing page (V15), so the four link
   The page script reads the first path segment, lowercases it, accepts it only if it is one of the four tags, keeps it in `sessionStorage` for the tab, and writes it to the form's hidden field and the events.
   Explicit `_redirects` rewrites make the four links independent of the implicit fallback.
   Pros: no server code; no cookie; no server sees visitor-level data.
-  Cons: a Source is lost if the visitor opens a site page in a new tab; it depends on a top-level 404 page never being added.
+  Cons: a Source is lost if the visitor opens a site page in a new tab; it depends on a top-level 404 page never being added; the visitor stays on `/tiktok`, so the visible URL carries the tag and a shared URL mislabels everyone it reaches.
+- *Option a2 - option (a), then replacing the visible URL with `/` (`history.replaceState`) once the tag is kept.*
+  Pros: everything (a) gives, and a copied or shared address carries no tag, so it labels no one.
+  Cons: the address bar no longer shows the link the visitor used; one more step in the page script.
 - *Option b - server-side* (a Function or `_worker.js`).
   It normalizes case, sets a first-party cookie or rewrites, and can return real 404s for unknown paths.
   Pros: robust routing.
@@ -758,9 +772,10 @@ Today any unmatched path already serves the landing page (V15), so the four link
 
 *Persistence sub-question:* when one browser tab session sees more than one listed link, which wins?
 First-touch keeps the earliest; last-touch keeps the most recent.
-**Recommendation: option (a) with last-touch among the four links, and a visit to plain `reptoday.app` or any other path leaving an existing tag in place for that tab session.**
+**Recommendation: option (a) with last-touch among the four links, and a visit to plain `reptoday.app` or any other path leaving an existing tag in place for that tab session; a trailing slash (`/tiktok/`) counts as the same link.**
 Reason: the request says a sign-up keeps "the Source of the link its visitor arrived by, even after they look around the site", which is the most recent listed link in the visit, and looking around (clicking the wordmark, the FAQ, `/privacy`) must not erase it.
 Browser-tab storage also keeps the answer scoped to a visit, so a person returning days later by plain `reptoday.app` is `unknown`, as the request says.
+The request names only the four bare links; accepting a trailing slash keeps a typed or pasted slash from losing the Source, and is the captain's call because the request does not settle it.
 The fallback depends on no top-level 404 page existing, which US-WL04 guards with a test.
 Gates: US-WL04.
 
