@@ -29,10 +29,59 @@ enum HostedSurface {
     /// anywhere, so opting it out of the enum's `@MainActor` isolation costs nothing.
     nonisolated static let settleInterval: TimeInterval = 2.5
 
+    // MARK: - Window lifecycle
+
+    /// Every window `host` has created that has not been dismantled yet, held weakly so tracking never
+    /// keeps one alive.
+    private static var hostedWindows: [WeakWindow] = []
+    private static let reaper = HostedWindowReaper()
+    private static var reaperRegistered = false
+
+    private struct WeakWindow {
+        weak var window: UIWindow?
+    }
+
+    /// Records a window `host` created, and makes sure every hosted window is taken off the scene when
+    /// the test that hosted it finishes.
+    private static func track(_ window: UIWindow) {
+        hostedWindows.removeAll { $0.window == nil }
+        hostedWindows.append(WeakWindow(window: window))
+        if !reaperRegistered {
+            reaperRegistered = true
+            XCTestObservationCenter.shared.addTestObserver(reaper)
+        }
+    }
+
+    /// Takes a hosted window off the app's window scene, releasing the surface inside it.
+    ///
+    /// A window that is only hidden stays in `UIWindowScene.windows` for as long as anything holds it,
+    /// and hosted windows do get held: over a full run 25 were still attached by the Today status-bar
+    /// test and 69 by the end, although every suite hides its window in `tearDown`. What holds them was
+    /// not pinned down, which is why this detaches them from the scene instead of relying on them being
+    /// released. Each is a live SwiftUI hosting view on the same scene as the surface under test, so each
+    /// adds main-thread work to every later look. That is load on a timing-sensitive surface, not the
+    /// cause of the empty accessibility tree `StatusBarBackingEvidenceTests` once failed on: that was
+    /// `ReadyViewModel` writing its observed state off the main thread (see "The Today screen no longer
+    /// misses its loaded session" in `docs/implementation-log.md`).
+    static func dismantle(_ window: UIWindow) {
+        window.isHidden = true
+        window.rootViewController = nil
+        window.windowScene = nil
+    }
+
+    /// Dismantles every window `host` created that is still attached.
+    static func dismantleAllHostedWindows() {
+        for entry in hostedWindows {
+            if let window = entry.window { dismantle(window) }
+        }
+        hostedWindows.removeAll()
+    }
+
     /// Hosts `view` at `size` in a real key window and returns it laid out, drawn and settled.
     ///
     /// The window is handed back rather than kept here because a released window takes the hosted view
-    /// down with it: the caller has to hold it for as long as the surface is read.
+    /// down with it: the caller has to hold it for as long as the surface is read. It is dismantled when
+    /// the test that hosted it ends, so it never outlives that test.
     ///
     /// `emulatingSafeArea` hosts the surface with exactly those safe-area insets instead of the running
     /// Simulator's own, so a smaller phone can be rendered faithfully on whatever device the suite runs
@@ -69,6 +118,7 @@ enum HostedSurface {
             .first { $0.activationState == .foregroundActive }
             ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow()
+        track(window)
         window.frame = host.view.frame
         // The appearance goes on the scene too: SwiftUI resolves the app's accent color against the
         // window scene, which otherwise keeps the Simulator's own appearance, so a dark capture would
@@ -280,5 +330,19 @@ enum AccessibilityTree {
             }
         }
         descend(root)
+    }
+}
+
+/// Dismantles the windows `HostedSurface.host` created when the test that hosted them finishes, so no
+/// suite has to remember to (and the ones that did not stop accumulating them on the app's scene).
+private final class HostedWindowReaper: NSObject, XCTestObservation {
+    func testCaseDidFinish(_ testCase: XCTestCase) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { HostedSurface.dismantleAllHostedWindows() }
+        } else {
+            DispatchQueue.main.sync {
+                MainActor.assumeIsolated { HostedSurface.dismantleAllHostedWindows() }
+            }
+        }
     }
 }

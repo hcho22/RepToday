@@ -293,6 +293,7 @@ Both ends of that are independently wrong and both are fixed.
 Dismissal no longer leaves a countdown running on disk - first by freezing the leg on the way out, and finally by never writing one at all (the section below is where that lands).
 What survives from that round either way is the ordering: `close()` reports the dismissal to the Ready Screen only once the last queued write has landed, so the resume card reflects the position the user actually left rather than the one before it.
 That report hops to the main actor explicitly (`Task { @MainActor in … }`) rather than inheriting whatever a nonisolated method gives it, because `onFinish` reaches `ReadyViewModel.handlePlayerDismiss`, which mutates `@Observable` state SwiftUI is tracking; only `body` is implicitly main-actor, so the annotation is what makes that true.
+For the writes themselves it did not: `handlePlayerDismiss` was then a nonisolated `async` method, which ran on the cooperative pool whoever called it, until `ReadyViewModel` became `@MainActor` ("The Today screen no longer misses its loaded session", below).
 The round that fixed the write end also made restore defensive about what it read, on the reasoning that a snapshot can predate this, be killed by the OS with no scene-phase transition, or simply be resumed days later: a leg still marked running whose deadline had gone by was brought back idle rather than finished.
 That guard is gone now, because there is nothing left for it to guard - `init(state:)` reads the side and discards every other key a snapshot might carry, so no restore path ever sees a countdown.
 The principle it was reaching for survived and hardened into the rule: an unfinished leg is unfinished work, and the user re-starts it deliberately.
@@ -1605,3 +1606,49 @@ What landed:
 - **Wording.** Five files that still said "this repository is public" now carry `AGENTS.md`'s premise, "treat this repository as public (its visibility has changed before)"; the no-committed-secret rule and its checks are unchanged.
 
 Accepted limits: `datetime.fromisoformat` accepts different spellings on different Python versions, so the checker is exact against the reader on the same interpreter, and the producer (US-WL07) will write the one spelling every version accepts.
+
+## The Today screen no longer misses its loaded session (2026-10-19)
+
+`StatusBarBackingEvidenceTests.testTodayTabKeepsTheStatusBarClearWhenScrolled` failed once on the iOS 26 CI job (run 39325755281, attempt 2) and passed on the same commit in attempt 3.
+The failing look was the fourth (largest text, dark): `"Start" never appeared; tree reads []`, then `today-ax5-dark has no scroll view`.
+Every other look in that run, and every look in 22 other iOS 18 and iOS 26 jobs since the test landed, took 3.3 to 3.9 seconds; this one used its whole 12.5 second budget.
+
+What the evidence says:
+
+- **The screen was stuck on its loading spinner.** The failing capture is 115 KB.
+  A hosted spinner renders at about 116 KB with an empty accessibility tree, the empty state at 177 KB with three labels, and a loaded screen at 230 to 260 KB.
+  So `load()` had started and the view never showed its result.
+- **The model had finished; the view never heard.** Reproduced locally (below) with counters on the real `ReadyView`: at the stall the task had started and finished, the view model held the workout and `isLoading` was false, yet the hosted view still drew the spinner.
+  A process sample shows the main thread and every pool thread idle in the run loop.
+  Reassigning the hosting controller's `rootView` made it render at once; a relayout, re-showing the window, a Core Animation flush and an intrinsic-size invalidation did not.
+  SwiftUI had missed a change, and nothing was left to ask for a re-render.
+- **The cause: `ReadyViewModel` wrote its observed state off the main thread.** It was `@Observable` but not `@MainActor`, and the project builds in Swift 5.9 mode, where a nonisolated `async` method runs on the cooperative thread pool whoever calls it.
+  So `.task { await viewModel.load() }` set `isLoading`, `workout` and the rest on a pool thread while SwiftUI read them on the main thread.
+  Observation tracking records which properties `body` reads and subscribes to them only once `body` has returned, so a write landing between the two is never announced.
+  The stale state fits exactly: `body` read `workout == nil` and `isLoading == true` and drew the spinner, `load()` set `workout` and cleared `isLoading` before the subscription, and the spinner branch reads nothing that changes later.
+  That is every symptom above, and it is a product bug, not a test artifact: a busy phone could leave the Today tab on its spinner until something else re-rendered it.
+  The view models behind the other tabs' loads (`ProgressViewModel.load`, `CoachGateViewModel.load`) were already main-actor isolated; `ReadyViewModel` was the outlier.
+- **Hosted windows amplify it.** The suite leaves hosted windows on the app scene long after their tests: a hidden window stays in `UIWindowScene.windows` while anything holds it, and a full run had 25 on the scene by the Today status-bar test and 69 by the end, although every suite that keeps a `window` hides it in `tearDown`.
+  Each is a live hosting view adding main-thread work to every later look, which widens the gap the write has to land in.
+  Hosting the Ready screen in a loop on the iOS 26.5 Simulator under CPU load stalled nine times in five runs, each with 287 to 486 windows on the scene, and at that load not at all with the windows released or detached (700 and 1,000 looks), with 142 windows in 1,000 looks, or with a single container at 552 windows under heavier load.
+  What retains the windows was not pinned down (hosting in one autorelease pool kept every window, a pool per look freed most of them, and a single long-lived service container kept all of them), which is why the clean-up detaches windows from the scene rather than relying on their release.
+- **Reproduced with two windows on the scene.** A probe (local, not committed) hosted the real `ReadyView` over the mock container on the iOS 26.5 Simulator (iPhone 17), cycling through the suite's four looks, dismantling each window before the next so no more than 2 were ever on the scene, with busy threads in the test process standing in for a loaded CI runner.
+  With 40 busy threads the pre-fix view model did not stall in 800 looks; with 80 it stalled twice in 1,200, both times with the empty tree CI reported (`"Start"` absent, tree `[]`).
+  With `ReadyViewModel` on the main actor the same 80-thread probe did not stall in 2,400 looks, where the pre-fix rate predicts about four.
+
+What changed:
+
+- **`ReadyViewModel` is `@MainActor`.** `load`, `selectDuration`, `handlePlayerDismiss`, `refreshResumableSession`, `discardResumableSession` and `abandonResumableSessionForOverwrite` now write the state the screen observes on the main thread; the service, store and engine calls they await still run wherever those run.
+  `ReadyViewModelTests` (now `@MainActor`, as is the one `StapleMovementsTests` case that loads a `ReadyViewModel`) adds `testEveryOperationChangesObservedStateOnTheMainThread`, which records the thread each of those operations announces its first observed change on; without the annotation it fails for all seven calls it makes, every change arriving on a pool thread.
+- **`HostedSurface` owns window lifetime, as hygiene.** `host` records every window it creates, and a test observer dismantles them all (`HostedSurface.dismantle`: hidden, root controller cleared, taken off the scene) when the test ends.
+  `AccountDeletionViewModelTests`, the one suite that builds its own scene window, dismantles it in `tearDown` instead of only hiding it.
+  A full run now has 2 to 5 windows on the scene at the Today status-bar test.
+- **The failure message names the count.** `StatusBarBackingEvidenceTests.waitFor` adds how many windows are attached to the scene, so a recurrence says whether the pile-up is back.
+- **Nothing the test checks moved.** The Today look, the 8 second wait for "Start", the scroll, the band assertion and every other suite's assertions are unchanged.
+
+What this cannot show:
+
+- The failure on CI was a one-off at about one look in a hundred, so that it was this race is inferred from the identical stale state (a loaded model behind a spinner), not observed on CI.
+- The local rate is low (2 in 1,200 under heavy load), so the after-fix result is statistical: no stall in 2,400 looks leaves about a 2% chance that the rate did not change, not none.
+- `OnboardingViewModel` (`signInWithApple`, `completeSignIn`, `finish`) and `ActiveSessionViewModel.swapCurrentExercise` are also nonisolated `async` methods writing observed state, so the same race is open there; nothing has been seen to stall on them, and they are not changed here.
+- `HostedSurfaceLifecycleTests` covers the dismantling; that the observer runs at the end of every test is shown by the window count in a full run, not by a test of its own.
