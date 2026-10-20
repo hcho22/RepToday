@@ -95,11 +95,11 @@ function load(pathname, storage, options = {}) {
     sent.push({ url, init });
     return Promise.resolve(options.answer ? options.answer(url, init) : {});
   });
-  const forms = options.form ? [fakeForm(page)] : [];
+  const forms = Array.from({ length: options.form === true ? 1 : options.form || 0 }, () => fakeForm(page));
   const document = new Proxy({
     referrer: options.referrer || '',
     querySelectorAll: (selector) => (selector === 'form[data-waitlist-form]' ? forms : []),
-    createElement: (tag) => element({ tag, style: {}, remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); } }),
+    createElement: (tag) => element({ tag, style: {}, contentWindow: {}, remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); } }),
   }, {
     set(target, key, value) { writes.push(String(key)); target[key] = value; return true; },
   });
@@ -121,11 +121,12 @@ function load(pathname, storage, options = {}) {
     sent,
     page,
     form: forms[0],
+    forms,
     timers,
     post(message) { for (const listener of windowListeners.message || []) { listener(message); } },
     show(event) { for (const listener of windowListeners.pageshow || []) { listener(event); } },
     elapse() { for (const [id, timer] of Array.from(timers)) { timers.delete(id); timer.callback(); } },
-    submit() { forms[0].dispatch('submit', { preventDefault() {} }); },
+    submit(index = 0) { forms[index].dispatch('submit', { preventDefault() {} }); },
   };
 }
 
@@ -285,7 +286,7 @@ test('a successful sign-up sends one waitlist_signup carrying only the tag: no a
   assert.strictEqual(loaded.form.parts.status.textContent, 'Check your email to confirm your address.');
 });
 
-test('Kit refusing the address shows the email message, whatever the status, and allows a retry', async () => {
+test('Kit refusing the address on a 2xx, 400 or 422 answer shows the email message and allows a retry', async () => {
   for (const [status, body] of [[422, { errors: ['email_address contains an invalid email address'] }], [400, { errors: { email_address: ['is invalid'] } }], [200, { errors: ['invalid'] }]]) {
     const loaded = load('/', memoryStorage(), { hostname: 'reptoday.app', form: true, answer: (url) => (url === KIT_SIGNUP ? answer(status, body) : {}) });
     fillIn(loaded);
@@ -309,6 +310,9 @@ test('Kit refusing the address shows the email message, whatever the status, and
 test('any other failure shows the failure wording, keeps the entries and allows a retry', async () => {
   const failures = [
     () => Promise.resolve(answer(500, {})),
+    () => Promise.resolve(answer(500, { errors: ['Internal error'] })),
+    () => Promise.resolve(answer(429, { errors: ['Too many requests'] })),
+    () => Promise.resolve(answer(404, { errors: ['Form not found'] })),
     () => Promise.resolve({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) }),
     () => Promise.resolve(answer(200, { status: 'something else' })),
     () => Promise.resolve(answer(200, { status: 'quarantined', url: 'https://evil.example/forms/guards/x' })),
@@ -321,8 +325,10 @@ test('any other failure shows the failure wording, keeps the entries and allows 
     loaded.form.parts.beta.checked = true;
     loaded.submit();
     await settle();
-    const { status, button, email, beta, guard } = loaded.form.parts;
+    const { status, button, email, emailError, beta, guard } = loaded.form.parts;
     assert.strictEqual(status.textContent, 'That did not go through. Try again in a moment.');
+    assert.strictEqual(emailError.hidden, true);
+    assert.strictEqual(email.getAttribute('aria-invalid'), null);
     assert.strictEqual(button.disabled, false);
     assert.strictEqual(email.value, ADDRESS);
     assert.strictEqual(beta.checked, true);
@@ -343,9 +349,12 @@ test('Kit\'s check shows in its iframe, and its confirmation, from Kit\'s origin
   assert.strictEqual(guard.children.length, 1);
   assert.strictEqual(guard.children[0].src, KIT_GUARD);
   assert.strictEqual(button.disabled, true);
-  loaded.post({ origin: 'https://evil.example', data: { name: 'ckjs:guard:confirmed' } });
+  const frame = guard.children[0].contentWindow;
+  loaded.post({ origin: 'https://evil.example', source: frame, data: { name: 'ckjs:guard:confirmed' } });
   assert.notStrictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
-  loaded.post({ origin: 'https://app.kit.com', data: { name: 'ckjs:guard:confirmed' } });
+  loaded.post({ origin: 'https://app.kit.com', source: {}, data: { name: 'ckjs:guard:confirmed' } });
+  assert.notStrictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
+  loaded.post({ origin: 'https://app.kit.com', source: frame, data: { name: 'ckjs:guard:confirmed' } });
   assert.strictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
   assert.strictEqual(guard.hidden, true);
   assert.strictEqual(guard.children.length, 0);
@@ -365,6 +374,7 @@ test('a check that is never confirmed gives the form back after a bounded wait, 
   const waits = Array.from(loaded.timers.values()).map((timer) => timer.ms);
   assert.strictEqual(waits.length, 1);
   assert.ok(waits[0] > 0 && waits[0] <= 300000, String(waits[0]));
+  const frame = guard.children[0].contentWindow;
   loaded.elapse();
   assert.strictEqual(guard.hidden, true);
   assert.strictEqual(guard.children.length, 0);
@@ -373,12 +383,34 @@ test('a check that is never confirmed gives the form back after a bounded wait, 
   assert.strictEqual(loaded.form.getAttribute('aria-busy'), 'false');
   assert.strictEqual(status.textContent, 'That did not go through. Try again in a moment.');
   assert.strictEqual(email.value, ADDRESS);
-  loaded.post({ origin: 'https://app.kit.com', data: { name: 'ckjs:guard:confirmed' } });
+  loaded.post({ origin: 'https://app.kit.com', source: frame, data: { name: 'ckjs:guard:confirmed' } });
   assert.notStrictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
   loaded.submit();
   await settle();
   assert.strictEqual(signups(loaded).length, 2);
   assert.strictEqual(guard.children.length, 1);
+});
+
+test('with both placements\' checks up, a message from one check reaches only its own form', async () => {
+  const loaded = load('/', memoryStorage(), { hostname: 'reptoday.app', form: 2, answer: (url) => (url === KIT_SIGNUP ? answer(200, { status: 'quarantined', url: KIT_GUARD }) : {}) });
+  for (const [index, form] of loaded.forms.entries()) {
+    form.parts.email.value = ADDRESS;
+    form.parts.radios[1].checked = true;
+    loaded.submit(index);
+    await settle();
+  }
+  const [hero, closing] = loaded.forms;
+  const heroFrame = hero.parts.guard.children[0];
+  const closingFrame = closing.parts.guard.children[0];
+  assert.ok(heroFrame && closingFrame);
+  loaded.post({ origin: 'https://app.kit.com', source: closingFrame.contentWindow, data: { name: 'ckjs:guard:size', height: 300 } });
+  assert.strictEqual(closingFrame.style.height, '300px');
+  assert.strictEqual(heroFrame.style.height, undefined);
+  loaded.post({ origin: 'https://app.kit.com', source: heroFrame.contentWindow, data: { name: 'ckjs:guard:confirmed' } });
+  assert.strictEqual(hero.getAttribute('data-wl-state'), 'done');
+  assert.notStrictEqual(closing.getAttribute('data-wl-state'), 'done');
+  assert.strictEqual(closing.parts.guard.children.length, 1);
+  assert.strictEqual(events(loaded).filter((event) => event.name === 'waitlist_signup').length, 1);
 });
 
 test('a landing page load sends exactly one landing_page_view carrying only the visit\'s tag or none', () => {

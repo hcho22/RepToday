@@ -14,7 +14,7 @@ No email address appears in this record; the browser checks used addresses creat
 - The four placements (hero and closing band on `index.html` and `index-b.html`) now carry one `<form>` definition, identical except for element ids, in place of Kit's embed script.
   The `<noscript>` mailbox join is gone; a visitor without script sees "The sign-up form needs JavaScript." (Appendix B).
 - Kit's reCAPTCHA check (spike decision D4): a `quarantined` answer shows Kit's guard page in an iframe inside the card.
-  The script accepts it only from Kit's origin and `/forms/guards/` path, listens for Kit's `ckjs:guard:*` messages from that origin only, and shows the success wording when Kit reports it confirmed.
+  The script accepts it only from Kit's origin and `/forms/guards/` path, listens for Kit's `ckjs:guard:*` messages from that origin and that form's own frame only, and shows the success wording when Kit reports it confirmed.
 - `tools/waitlist/stub-receiver.py`: the local stand-in (success, quarantined, validation errors, failure and slow modes) with a stand-in guard page.
 - `tools/waitlist/contract.json`: the three provisional custom-field names are settled by the spike (`fields[fit]`, `fields[beta_opt_in]`, `fields[source]`; Kit's keys are `fit`, `beta_opt_in`, `source`), and the producer-owned `entry` field is recorded separately because the form never posts it.
 - Styles: an `--error` token (`#A32A2A`) and the form styles, using the existing Paper tokens.

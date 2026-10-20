@@ -243,8 +243,9 @@
       guardFrame.setAttribute('scrolling', 'no');
       guardFrame.style.cssText = 'border:0;width:100%;height:0;max-width:100%';
       guardListener = function (event) {
-        if (event.origin !== target.guardOrigin || !event.data || typeof event.data !== 'object') { return; }
-        if (event.data.name === 'ckjs:guard:size' && guardFrame) {
+        if (event.origin !== target.guardOrigin || !guardFrame || event.source !== guardFrame.contentWindow) { return; }
+        if (!event.data || typeof event.data !== 'object') { return; }
+        if (event.data.name === 'ckjs:guard:size') {
           var height = Number(event.data.height);
           if (height > 0 && height < 1200) { guardFrame.style.height = height + 'px'; }
         } else if (event.data.name === 'ckjs:guard:confirmed') {
@@ -266,9 +267,10 @@
       setStatus(COPY.failed);
     }
 
-    // Kit turned the post down with a list of errors, whatever the HTTP status.
-    function rejected(answer) {
-      return Boolean(answer && answer.errors);
+    // Kit turned the address down: an error list on a 2xx, 400 or 422 answer. An error list on
+    // any other status is a failed post.
+    function rejected(response, answer) {
+      return Boolean(answer && answer.errors) && (response.ok || response.status === 400 || response.status === 422);
     }
 
     function send() {
@@ -290,23 +292,22 @@
         signal: controller ? controller.signal : undefined
       }).then(function (response) {
         return response.json().then(function (answer) {
-          if (!response.ok && !rejected(answer)) { throw new Error('status'); }
-          return answer;
+          if (timer) { window.clearTimeout(timer); }
+          if (rejected(response, answer)) {
+            setBusy(false);
+            setError(email, emailError, COPY.emailError);
+            email.focus();
+          } else if (!response.ok) {
+            fail();
+          } else if (answer && answer.status === 'success') {
+            setBusy(false);
+            finish();
+          } else if (answer && answer.status === 'quarantined' && typeof answer.url === 'string') {
+            if (!showGuard(answer.url, target)) { fail(); }
+          } else {
+            fail();
+          }
         });
-      }).then(function (answer) {
-        if (timer) { window.clearTimeout(timer); }
-        if (rejected(answer)) {
-          setBusy(false);
-          setError(email, emailError, COPY.emailError);
-          email.focus();
-        } else if (answer && answer.status === 'success') {
-          setBusy(false);
-          finish();
-        } else if (answer && answer.status === 'quarantined' && typeof answer.url === 'string') {
-          if (!showGuard(answer.url, target)) { fail(); }
-        } else {
-          fail();
-        }
       }).catch(function () {
         if (timer) { window.clearTimeout(timer); }
         fail();
