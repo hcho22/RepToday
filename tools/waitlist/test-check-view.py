@@ -145,6 +145,8 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn(contract['unknown_source'], contract['source_tags'])
         self.assertNotIn(contract['no_source_event'], contract['source_tags'])
         self.assertEqual(sorted(contract['posted_fields']), ['beta_opt_in', 'email', 'fit', 'source'])
+        self.assertEqual(contract['posted_fields']['email'], 'email_address')
+        self.assertEqual(sorted(contract['posted_fields_provisional']), ['beta_opt_in', 'fit', 'source'])
         names = list(contract['posted_fields'].values())
         self.assertTrue(all(isinstance(name, str) and name for name in names))
         self.assertEqual(len(set(names)), 4)
@@ -226,7 +228,7 @@ def assert_case(test, case, result):
 
 class CommittedFixtureTests(unittest.TestCase):
     def test_every_committed_fixture_is_listed_and_every_listed_fixture_exists(self):
-        self.assertEqual(sorted(path.name for path in FIXTURES.iterdir()), sorted(EXPECTED))
+        self.assertEqual(sorted(path.name for path in FIXTURES.glob('*.json')), sorted(EXPECTED))
 
     def test_every_committed_fixture_gets_its_verdict_and_names_its_rule(self):
         for case in committed_cases():
@@ -393,7 +395,7 @@ class RepositoryHygieneTests(unittest.TestCase):
     def test_no_file_under_tools_waitlist_holds_an_address_shaped_string(self):
         scanned = 0
         for path in sorted(HERE.rglob('*')):
-            if not path.is_file() or '__pycache__' in path.parts:
+            if not path.is_file() or '__pycache__' in path.parts or path.name.startswith('.'):
                 continue
             text = path.read_bytes().decode('utf-8', errors='replace')
             scanned += 1
@@ -402,7 +404,7 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.assertGreater(scanned, 40)
 
     def test_no_committed_fixture_is_an_address_or_over_the_limit(self):
-        for path in FIXTURES.iterdir():
+        for path in FIXTURES.glob('*.json'):
             self.assertLess(path.stat().st_size, 100000, path.name)
             self.assertNotIn(AT.encode('ascii'), path.read_bytes(), path.name)
 

@@ -1,6 +1,6 @@
 # PRD: Rep Today Waitlist (2026-10-19)
 
-- Status: **Drafted 2026-10-19; implementation not yet authorized.**
+- Status: **Drafted 2026-10-19; implementation authorized 2026-10-19, built in four reviewed slices.**
   The captain approved the gr0wthlab Dispatch request for RepToday's Waitlist (item 20261016-reptoday-waitlist) on 2026-10-19 and asked for this PRD first.
   The request fixes the sign-up, the Source links, the web events, the privacy policy content, the anonymous view's format and the address boundary.
   This PRD carries all of it verbatim (Appendix A) and adds or drops no field, Source, event property or file field.
@@ -223,7 +223,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - [x] A data file under `tools/waitlist/` (for example `contract.json`) holds, as data: the heading "Join the waitlist"; the sentence "Add your email and we'll tell you the day it ships."; the Fit legend "Which sounds most like you?"; the three Fit answers with their labels and tags; the beta label "Invite me to the beta before launch"; the phrase "one launch email, plus a beta invitation only if you ask for one"; the four Source tags; the words `unknown` and `none`; the names of the form's posted fields (email, Fit answer, beta choice, Source); the view format version `1`; the entry pattern `[A-Za-z0-9_-]{1,64}`; and the 10,000,000-byte limit.
 - [x] Every approved string in that file (the wording, the Fit and Source tags, `unknown` and `none`) is byte-identical to its text in Appendix A (checked by a test that reads both).
-  The posted field names, the entry pattern and the byte limit are not in Appendix A (the names are this build's choice; the pattern and the limit are the reader's), so the test does not compare them with it.
+  The posted field names, the entry pattern and the byte limit are not in Appendix A (the email name is Kit's `email_address` under OQ1 Option A and the others are provisional until US-WL06's spike; the pattern and the limit are the reader's), so the test does not compare them with it.
 - [x] `tools/waitlist/check-view.py` (Python 3 standard library only, like `tools/check-trainer-art.py`) takes a file path and exits 0 only for a view that satisfies every rule in "The gr0wthlab reader contract"; on failure it names the rule and the entry's position and never prints the offending value.
 - [x] It runs the address check first, over the file's whole text and then every key and value, with the reader's loose pattern; it judges `entry`'s percent-decoding by that same loose pattern, and its base64 (both alphabets) and hex decodings by the reader's whole-address pattern, as the reader contract states.
 - [x] Fixtures under `tools/waitlist/fixtures/`: a valid view with three entries (one with `fit` `null`, one with source `unknown`), a valid view with empty `entries`, and one failing fixture per rule (missing and extra top-level keys; `view` 2 and `view` true; `generated_at` without an offset; `signed_up_on` malformed and later than `generated_at`'s UTC date; a duplicate entry; an entry of length 0 and of 65; a character outside the alphabet; a `source` and a `fit` outside the lists; `beta_opt_in` as a string; an extra entry key; a file that is not UTF-8).
@@ -743,9 +743,28 @@ These become expensive once the Waitlist is live or the first link is posted, so
 
 ## Open Questions
 
+**Settled 2026-10-19.**
+The captain's words: "Waitlist - go with your recommendations".
+Every marked recommendation below is accepted:
+
+- OQ1: Option A (Kit stays, a first-party form posts to Kit, a producer on the founder's Mac assigns entry identifiers).
+- OQ2: (a) stay on Cloudflare Pages, static.
+- OQ3: (a) per-tab last-touch among the four links; a plain path keeps an existing tag; a trailing slash counts as the same link.
+- OQ4: (ii) a daily `launchd` run that also runs after each sweep, plus on demand, writing `~/Library/Application Support/RepToday/waitlist/waitlist-view.json`, owner-only.
+- OQ5: double opt-in; only confirmed sign-ups in the view.
+- OQ6: (a) keep existing Kit sign-ups as Source `unknown`, Fit `null`, beta `false`.
+- OQ7: (a) a new, separate `POST` route for web events.
+- OQ8: `waitlist_signup` fires once per accepted submission.
+- OQ9: Appendix B's wording.
+- OQ10: (a) a new privacy section "The waitlist".
+- OQ11: no second entry; the latest Fit and beta choice win.
+- OQ12: `utm_*` parameters do not set the Source.
+- OQ13: `record-launch-email --sent-on`.
+- OQ14: (a) date-only order.
+
 Each question lists the realistic options grounded in the current code and services, the **recommendation (marked)** with its reason, and the stories it gates.
 Behavior that this PRD could not verify from the repository (marked "confirm") is checked, not assumed: the sending service's in the US-WL06 spike, and the scheduler's in US-WL07.
-Every option-specific build note in this PRD ("under Option A", "under double opt-in" and the like) is provisional until the captain settles OQ1 and OQ5; the build re-verifies the chosen option's design in full.
+With OQ1 and OQ5 settled, the build notes for the chosen options ("under Option A", "under double opt-in" and the like) now apply; the build re-verifies the chosen option's design in full.
 
 ### Left to RepToday by the request
 

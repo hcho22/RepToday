@@ -49,3 +49,14 @@ One leaked email-service credential, or one export that holds addresses, would e
   gr0wthlab's own address check (Guardrail G6) remains the backstop, not the plan.
 - The privacy policy's Waitlist section (retention 30 days after the launch email, removal within 7 days, "only the founder ... and the service that stores it") becomes a public commitment the storage design must keep literally true.
 - Storage, hosting, how the Source reaches the sign-up, how often the view is produced and whether sign-ups confirm their email are deliberately not decided here.
+
+## Settled choices
+
+The captain settled the PRD's Open Questions 1-5 on 2026-10-19 ("Waitlist - go with your recommendations"), accepting each marked recommendation.
+The PRD's Open Questions section keeps the options and reasons.
+
+1. Storage (OQ1): Option A - Kit stays, a first-party form posts to Kit, and a producer on the founder's Mac assigns entry identifiers.
+2. Hosting (OQ2): (a) stay on Cloudflare Pages, static.
+3. Source transport (OQ3): (a) per-tab last-touch among the four links; a plain path keeps an existing tag; a trailing slash counts as the same link.
+4. View production (OQ4): (ii) a daily `launchd` run that also runs after each sweep, plus on demand, writing `~/Library/Application Support/RepToday/waitlist/waitlist-view.json`, owner-only.
+5. Confirmation (OQ5): double opt-in; only confirmed sign-ups are in the view.

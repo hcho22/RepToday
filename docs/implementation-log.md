@@ -1587,12 +1587,12 @@ The old value stays in git history, which was not rewritten; the rotation made i
 ## Waitlist contract file and view checker (US-WL01, 2026-10-19)
 
 The first of the Waitlist PRD's slices (`.claude/agent/tasks/prd-waitlist_261019.md`); tooling only, so the site, Kit, Convex, the privacy policy and the app are untouched.
-The captain settled the PRD's Open Questions 1-14 by accepting its recommendations on 2026-10-19; this slice depends on none of them.
+The captain settled the PRD's Open Questions 1-14 by accepting its recommendations on 2026-10-19; this slice depends only on OQ1, whose Option A posts to Kit's sign-up endpoint and so sets the posted email field name, `email_address` (verified fact V2).
 The [validation record](../artifacts/reports/US-WL01/validation.md) owns the commands and results.
 
 What landed:
 
-- **One contract file.** `tools/waitlist/contract.json` holds the approved wording, the Fit answers and tags, the four Source tags, `unknown` and `none`, the posted field names (this build's choice, recorded once because renaming one later means a migration), the view version, key lists, entry pattern and byte limit.
+- **One contract file.** `tools/waitlist/contract.json` holds the approved wording, the Fit answers and tags, the four Source tags, `unknown` and `none`, the posted field names (the email field is Kit's `email_address`; the Fit, beta and Source names are provisional until US-WL06's spike confirms how Kit's endpoint takes custom fields), the view version, key lists, entry pattern and byte limit.
   The test reads the PRD's Appendix A and fails when an approved string differs from it by a byte.
 - **A checker that mirrors the reader.** `tools/waitlist/check-view.py` follows gr0wthlab's `waitlist.read` in the same order: the address check over the file's text and then every key and value (a hit is `refused`, exit 2), the file-level checks, then the format (`failed`, exit 1).
   It reads the same first 10,000,001 bytes the reader keeps.
