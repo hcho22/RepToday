@@ -304,7 +304,7 @@ describe("POST /logEvent - the 13-name vocabulary is a wire contract", () => {
     }
   });
 
-  test("the vocabulary is exactly 13 names, and the two web-side events are not among them", () => {
+  test("the vocabulary is exactly 13 names, and the two web-side events are not among them (they use /webEvent)", () => {
     expect(EVENT_NAMES).toHaveLength(13);
     expect(EVENT_NAMES).not.toContain("landing_page_view");
     expect(EVENT_NAMES).not.toContain("waitlist_signup");

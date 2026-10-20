@@ -7,7 +7,8 @@ import { ConvexError, v } from "convex/values";
  * These are a wire contract fixed by US-T02: they are the exact raw values of
  * `AnalyticsEventName` in `ios/RepToday/RepToday/Models/AnalyticsEvent.swift`, which in turn come
  * verbatim from the anonymous funnel event-metric schema. The two web-side events
- * (`landing_page_view`, `waitlist_signup`) are handled outside the app and are deliberately absent.
+ * (`landing_page_view`, `waitlist_signup`) are deliberately absent: they arrive on the separate
+ * `POST /webEvent` route and its own closed union in `webEvents.ts` (US-WL05).
  *
  * Adding a name here without adding the matching Swift case (or vice versa) breaks the contract.
  */

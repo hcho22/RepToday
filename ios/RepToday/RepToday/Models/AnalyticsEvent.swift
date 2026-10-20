@@ -28,8 +28,8 @@ import Foundation
 
 /// The 13 in-app events RepToday emits, keyed to the pre-registered schema.
 ///
-/// The two web-side events (`landing_page_view`, `waitlist_signup`) are handled outside the app
-/// and are deliberately absent. `AnalyticsServiceTests` pins the count at exactly 13 so a missing
+/// The two web-side events (`landing_page_view`, `waitlist_signup`) are the landing pages' own, sent
+/// to a separate route (`POST /webEvent`, US-WL05), and are deliberately absent. `AnalyticsServiceTests` pins the count at exactly 13 so a missing
 /// or extra case fails loudly.
 enum AnalyticsEventName: String, Codable, CaseIterable, Identifiable, Hashable {
     case appInstall = "app_install"

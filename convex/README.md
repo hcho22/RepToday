@@ -1,6 +1,7 @@
 # Rep Today telemetry sink (US-T03)
 
 The whole analytics backend: **one immutable evidence table, one idempotent-insert mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
+The Waitlist landing pages' two anonymous events have a second, separate route and insert mutation into the same table, with its own guard (US-WL05, "Web events" below).
 
 It exists so the anonymous funnel events defined in the event-metric schema have
 somewhere to land during the 90-day PMF test.
@@ -38,7 +39,7 @@ Release at production deployment `sensible-spider-810`. Neither deployment's tok
 "A client-embedded shared secret" below owns how each reaches a build.
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
-It is now the *sink's* only entry point too, which this file previously claimed before it was true:
+It is now the *sink's* only entry point for app events too (the landing pages' web events have their own, `POST /webEvent`), which this file previously claimed before it was true:
 `logEvent` was a public mutation until review caught it, so the deployment's own
 `.convex.cloud/api/mutation` endpoint was a second, undocumented way in that skipped every check the
 action performs. It is an `internalMutation` now - see below.
@@ -108,8 +109,8 @@ helper US-T14 added - a throttle counter store, not an evidence surface; see "Ab
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|
 | `eventId`   | `v.optional(v.string())` | Client-generated idempotency key, stable across retries. The current durable client always supplies it; optionality preserves older rows and requests from already-shipped one-shot clients. |
-| `name`      | `v.string()` | One of the 13 pre-registered event names (below). |
-| `installId` | `v.string()` | Random per-install identifier (US-T05). Never a user identity - no email, IDFA, or Sign in with Apple id ever reaches here. |
+| `name`      | `v.string()` | One of the 13 pre-registered event names (below), or one of the two Waitlist web events (see "Web events"). |
+| `installId` | `v.string()` | Random per-install identifier (US-T05), or the one reserved value `web` every web-event row carries. Never a user identity - no email, IDFA, or Sign in with Apple id ever reaches here. |
 | `clientTs`  | `v.number()` | Client-side timestamp, ms since the Unix epoch. |
 | `serverTs`  | `v.number()` | Server-received timestamp, ms since the Unix epoch, stamped by the mutation. |
 | `props`     | `v.any()`    | The event's non-identifying property bag, stored exactly as it arrived. |
@@ -152,8 +153,9 @@ day30_return         week_active          paywall_shown         trial_started
 subscribe
 ```
 
-The two web-side events from the schema (`landing_page_view`, `waitlist_signup`) are handled
-outside the app and are deliberately absent.
+The two web-side events from the schema (`landing_page_view`, `waitlist_signup`) are deliberately
+absent from this list: they are not app events, and `POST /logEvent` rejects both. They arrive on a
+separate route, `POST /webEvent` (see "Web events").
 Changing a raw value on either side without the other breaks the contract; the case *names* on the
 Swift side may be refactored freely, the strings may not.
 
@@ -480,6 +482,44 @@ reinterpret - and why the action requires one instead of coercing whatever it is
 
 `generation_ms` is **not** a top-level scalar. It rides inside `props`, which the action passes
 through untouched and the schema stores as-is, so it is not reached by that coercion.
+
+## Web events: `POST /webEvent` -> `204` (US-WL05)
+
+The Waitlist landing pages (`gtm/03-site/waitlist.js`) count two anonymous events, and they do not go
+through `/logEvent`: that route's 13 names, shared-secret header and per-install limit are the app's
+contract and are unchanged.
+The new route has its own closed vocabulary (`webEvents.ts`) and writes through its own internal
+mutation, `webEvents:logWebEvent`, into the same `events` table (no third table).
+
+- **Names and bag.** `landing_page_view` (once per load of either landing page, never `/privacy`) and
+  `waitlist_signup` (once per accepted sign-up). The body is exactly
+  `{"name": ..., "props": {"referrer_source": ...}}`, where `referrer_source` is the visit's Source
+  tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; never `unknown`, never a UTM value, never
+  free text. Any other field, name or value is a `400`. No email address, entry identifier, device or
+  visitor identifier, cookie or timestamp is carried.
+- **Rows.** `installId` is the one reserved value `web` (not a UUID, the same for every visitor), and
+  `clientTs` is the server's clock, so no visitor clock is stored. Install-based tooling
+  (`tools/reconcile`) selects rows by install identifier and never asks for `web`; anything counting
+  unique installs must exclude it.
+- **No secret.** The pages are public, so the app's secret must never be put in one. The route instead
+  requires the request's `Origin` to be one of the site's (`https://reptoday.app`,
+  `https://www.reptoday.app`; a dev deployment sets `WEB_EVENT_ALLOWED_ORIGINS` to a comma list),
+  caps the body at 1 KiB, and rate limits in two scopes of its own: 120 a minute per source IP and
+  3,000 a minute for the whole route (`checkAndBumpWeb`; the per-install key cannot apply). A request
+  already over its source's limit does not count toward the route's. A browser sets `Origin` and a
+  page cannot forge it, but a script outside a browser can send any value, so these are cost-raisers,
+  not a guarantee. The source is the forwarded client address, and Convex documents no client address
+  a caller cannot forge: a script that varies `X-Forwarded-For` per request dodges the per-source limit
+  and can use up the route-wide one. The consequence is skewed or briefly paused anonymous web counts
+  only (the rest of a one-minute window); sign-ups go to Kit, not here, and `/logEvent` is separate.
+- **No CORS.** The page sends a simple `text/plain` POST with `no-cors` and never reads the answer, so
+  there is no preflight. Status: `204` stored, `400` the body, `403` the origin, `429` the limit, `500`
+  only for a store failure (no detail in the response).
+- **Coverage.** `convex/webEvents.test.ts` (`npm test`, in process, no deployment) covers accepted and
+  rejected bodies, the origin list, the two rate-limit scopes, the app route being unchanged and a
+  failing store.
+- **Deploy.** Deploying this to the production deployment is a separate, credentialed, captain-approved
+  step; until then the pages carry the production URL but emit only from `reptoday.app`.
 
 ## Read path: `reconcile:eventsForInstalls` (internal, US-T13 harness)
 

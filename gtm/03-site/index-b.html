@@ -25,6 +25,7 @@
     --fern: #5FA981;
     --hairline: rgba(27, 34, 40, 0.14);
     --card-shadow: 0 1px 3px rgba(27, 34, 40, 0.08);
+    --error: #A32A2A;
   }
 
   * { box-sizing: border-box; }
@@ -190,7 +191,7 @@
     color: var(--ink);
   }
 
-  /* ---------- Waitlist (Kit embed container) ---------- */
+  /* ---------- Waitlist (sign-up card) ---------- */
 
   .waitlist {
     margin: 16px 0 0;
@@ -222,13 +223,65 @@
     line-height: 20px;
     color: var(--slate);
   }
-  /* Kit renders its own form into this container; keep it from overflowing
-     the paper card and let its inputs use the full width. */
-  .waitlist form,
-  .waitlist .formkit-form { max-width: 100%; }
+  .waitlist-lead {
+    margin: 16px 0 0;
+    max-width: 32em;
+    font-size: 15px;
+    line-height: 22px;
+    color: var(--slate);
+  }
+
+  /* The sign-up form (waitlist.js): email, one Fit question, one optional box.
+     Controls are at least 44px tall; errors use --error, 4.5:1 on Paper. */
+  .waitlist .wl-form { max-width: 100%; margin: 0; }
+  .wl-form[hidden], .wl-form [hidden] { display: none; }
+  .wl-form label { display: block; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+  .wl-field { margin: 0 0 14px; }
+  .wl-form input[type="email"] {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 6px;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--slate);
+    border-radius: 10px;
+  }
+  .wl-form fieldset { min-width: 0; margin: 0 0 6px; padding: 0; border: 0; }
+  .wl-form legend { padding: 0; margin: 0 0 2px; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+  .wl-form .wl-choice { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 10px 0; font-weight: 400; cursor: pointer; }
+  .wl-form .wl-choice input { flex: none; width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--moss); }
+  .wl-form .wl-beta { margin-top: 2px; }
+  .wl-form :focus-visible { outline: 3px solid var(--moss); outline-offset: 2px; }
+  .wl-form input[aria-invalid="true"] { border-color: var(--error); }
+  .wl-error { margin: 6px 0 0; max-width: none; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--error); }
+  .wl-submit {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin-top: 10px;
+    padding: 12px 16px;
+    font: inherit;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--moss);
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .wl-submit:disabled { background: var(--slate); cursor: progress; }
+  .wl-status { margin: 0; max-width: none; font-size: 15px; line-height: 22px; color: var(--ink); }
+  .wl-status:not(:empty) { margin-top: 12px; }
+  .wl-status:focus { outline: none; }
+  .wl-guard { margin-top: 12px; }
 
   /* Closing waitlist band: Night palette for a calm end-of-page CTA, with the
-     paper card kept light so Kit's own light-background form stays legible. */
+     paper card kept light so the form stays legible. */
   section.signup { background: var(--night); color: var(--bone); }
   section.signup .h1 { color: var(--bone); }
   section.signup .lead { margin: 16px 0 0; color: var(--mist); font-size: 19px; line-height: 29px; }
@@ -760,11 +813,32 @@
 
         <div class="hero-proof">
           <p class="proof-line">No streaks, no badges, no XP, anywhere. A missed day can dent your score. Nothing can ever zero it.</p>
+          <p class="waitlist-lead">Rep Today is pre-launch and not yet on the App Store.</p>
           <div class="waitlist" role="group" aria-labelledby="waitlist-hero-head">
             <p class="waitlist-head" id="waitlist-hero-head">Join the waitlist</p>
-            <p class="waitlist-sub">Rep Today is pre-launch and not yet on the App Store. Add your email and we'll tell you the day it ships.</p>
-            <script async data-uid="e89d4fc82c" src="https://rep-today.kit.com/e89d4fc82c/index.js"></script>
-            <noscript><p class="waitlist-fallback">The signup form needs JavaScript. Email <a href="mailto:hello@reptoday.app">hello@reptoday.app</a> to join the waitlist.</p></noscript>
+            <p class="waitlist-sub">Add your email and we'll tell you the day it ships.</p>
+            <form class="wl-form" id="wl-form-hero" data-waitlist-form novalidate autocomplete="off" hidden>
+              <div data-wl-fields>
+                <div class="wl-field">
+                  <label for="wl-email-hero">Email</label>
+                  <input type="email" id="wl-email-hero" name="email_address" autocomplete="email" inputmode="email" required aria-describedby="wl-email-error-hero">
+                  <p class="wl-error" id="wl-email-error-hero" data-wl-error="email" hidden></p>
+                </div>
+                <fieldset class="wl-fit" aria-describedby="wl-fit-error-hero">
+                  <legend>Which sounds most like you?</legend>
+                  <label class="wl-choice"><input type="radio" name="fields[fit]" value="lost-the-routine"><span>I used to work out and lost the routine</span></label>
+                  <label class="wl-choice"><input type="radio" name="fields[fit]" value="exercises-regularly"><span>I work out regularly</span></label>
+                  <label class="wl-choice"><input type="radio" name="fields[fit]" value="never-had-a-routine"><span>I've never had a routine</span></label>
+                  <p class="wl-error" id="wl-fit-error-hero" data-wl-error="fit" hidden></p>
+                </fieldset>
+                <label class="wl-choice wl-beta"><input type="checkbox" name="fields[beta_opt_in]" value="true"><span>Invite me to the beta before launch</span></label>
+                <input type="hidden" name="fields[source]" value="unknown">
+                <button type="submit" class="wl-submit">Join the waitlist</button>
+              </div>
+              <div class="wl-guard" data-wl-guard hidden></div>
+              <p class="wl-status" data-wl-status role="status" aria-live="polite"></p>
+            </form>
+            <noscript><p class="waitlist-fallback">The sign-up form needs JavaScript.</p></noscript>
           </div>
         </div>
       </div>
@@ -1035,7 +1109,7 @@
           <summary>Is my data sold?</summary>
           <div class="answer">
             <p>Never sold. There are no ads, and the core loop needs no account: your history lives on your device, with optional sync to your own private iCloud, and workouts are written to Apple Health only if you choose.</p>
-            <p>Two things to be plain about. The app plans minimal anonymous usage measurement - events like session starts and completions, carrying a random per-install ID, never an email or advertising ID. And the pre-launch waitlist holds the email you add to it, so we can tell you when the app ships - nothing more. None of that is ever sold either.</p>
+            <p>Two things to be plain about. The app plans minimal anonymous usage measurement - events like session starts and completions, carrying a random per-install ID, never an email or advertising ID. And the pre-launch waitlist keeps your email, your answers to its form, which Rep Today link brought you, if any, and the date you joined; the Privacy Policy's waitlist section says why and for how long. None of that is ever sold either.</p>
             <p>Full details are in our <a href="/privacy">Privacy Policy</a>.</p>
           </div>
         </details>
@@ -1055,13 +1129,33 @@
       <div class="section-head">
         <p class="overline" style="color: var(--fern);">Before it ships</p>
         <h2 class="h1">Be there on day one.</h2>
-        <p class="lead">Rep Today is pre-launch. Join the waitlist and we'll email you the moment it's on the App Store - no date to announce yet, no spam, one message.</p>
+        <p class="lead">Rep Today is pre-launch. Join the waitlist and we'll email you the moment it's on the App Store - no date to announce yet, no spam, one launch email, plus a beta invitation only if you ask for one.</p>
       </div>
       <div class="waitlist" role="group" aria-labelledby="waitlist-foot-head">
         <p class="waitlist-head" id="waitlist-foot-head">Join the waitlist</p>
         <p class="waitlist-sub">Add your email and we'll tell you the day it ships.</p>
-        <script async data-uid="e89d4fc82c" src="https://rep-today.kit.com/e89d4fc82c/index.js"></script>
-        <noscript><p class="waitlist-fallback">The signup form needs JavaScript. Email <a href="mailto:hello@reptoday.app">hello@reptoday.app</a> to join the waitlist.</p></noscript>
+        <form class="wl-form" id="wl-form-foot" data-waitlist-form novalidate autocomplete="off" hidden>
+          <div data-wl-fields>
+            <div class="wl-field">
+              <label for="wl-email-foot">Email</label>
+              <input type="email" id="wl-email-foot" name="email_address" autocomplete="email" inputmode="email" required aria-describedby="wl-email-error-foot">
+              <p class="wl-error" id="wl-email-error-foot" data-wl-error="email" hidden></p>
+            </div>
+            <fieldset class="wl-fit" aria-describedby="wl-fit-error-foot">
+              <legend>Which sounds most like you?</legend>
+              <label class="wl-choice"><input type="radio" name="fields[fit]" value="lost-the-routine"><span>I used to work out and lost the routine</span></label>
+              <label class="wl-choice"><input type="radio" name="fields[fit]" value="exercises-regularly"><span>I work out regularly</span></label>
+              <label class="wl-choice"><input type="radio" name="fields[fit]" value="never-had-a-routine"><span>I've never had a routine</span></label>
+              <p class="wl-error" id="wl-fit-error-foot" data-wl-error="fit" hidden></p>
+            </fieldset>
+            <label class="wl-choice wl-beta"><input type="checkbox" name="fields[beta_opt_in]" value="true"><span>Invite me to the beta before launch</span></label>
+            <input type="hidden" name="fields[source]" value="unknown">
+            <button type="submit" class="wl-submit">Join the waitlist</button>
+          </div>
+          <div class="wl-guard" data-wl-guard hidden></div>
+          <p class="wl-status" data-wl-status role="status" aria-live="polite"></p>
+        </form>
+        <noscript><p class="waitlist-fallback">The sign-up form needs JavaScript.</p></noscript>
       </div>
     </div>
   </section>
@@ -1085,5 +1179,6 @@
   </div>
 </footer>
 
+<script src="/waitlist.js"></script>
 </body>
 </html>

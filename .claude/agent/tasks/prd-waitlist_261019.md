@@ -130,7 +130,7 @@ Each row is marked **holds**, **DIFFERS** (the request's assumption does not mat
 | V11 | The policy's published contact address is the one the request quotes, `reptoday.app@gmail.com`. "Last updated" reads September 1, 2026. The table of contents links `#website`. The only "section N" cross-references in the page are to sections 3, 6, 7 and 9. | `privacy.html:236,260,389`; grep | holds |
 | V12 | The policy is an engineering draft: a visible "Draft - not legal advice" banner and a header comment require a legal pass before go-live, and section 12 flags that the policy "does not describe a formal rights-request process ... or a data-retention schedule". Section 8 says "We use no third-party analytics or tracking SDKs - the anonymous measurement above goes only to Rep Today's own endpoint". | `privacy.html:11-27,~376,341` | **new** (the Waitlist section adds the first retention schedule and removal process; the legal flag stays) |
 | V13 | Sign-ups are stored by Kit today. The repository holds no sign-up data, no export, no Kit credential and no code that reads Kit (`kit.com` appears only in the pages, `_headers` and `DEPLOY.md`). Whether the live Kit form sends a confirmation email, and how many sign-ups exist, cannot be seen from the repository or the page. | repo grep | holds; two **new** unknowns (OQ5, OQ6) |
-| V14 | Hosting is Cloudflare Pages, project `reptoday-site`, pure static, no build step, `gtm/03-site` as both root and output. `DEPLOY.md` documents two deploy routes (Wrangler CLI, or Git integration) and does not say which is live. There is no `_redirects`, no `functions/` directory and no 404 page. `_headers` sets `nosniff`, a referrer policy, `X-Frame-Options: DENY` and a permissions policy, and sets no Content-Security-Policy so the Kit embed keeps working. `DEPLOY.md` assigns attaching the custom domain to the captain as a manual step. | `gtm/03-site/DEPLOY.md`, `_headers`; `ls` | holds |
+| V14 | Hosting is Cloudflare Pages, project `reptoday-site`, pure static, no build step, `gtm/03-site` as both root and output. `DEPLOY.md` documents two deploy routes (Wrangler CLI, or Git integration) and does not say which is live. There is no `_redirects`, no `functions/` directory and no 404 page. `_headers` sets `nosniff`, a referrer policy, `X-Frame-Options: DENY` and a permissions policy, and sets no Content-Security-Policy so the Kit embed keeps working. `DEPLOY.md` assigns attaching the custom domain to the captain as a manual step. Amended 2026-10-20: the live route is the manual Wrangler deploy (the live index page lags `main`'s `gtm/03-site/index.html`, and GitHub shows no Cloudflare Pages deployments or statuses), so merging to `main` publishes nothing by itself; a deploy publishes everything under `gtm/03-site` on `main`, and slice 4 owns the production deploy and the production Kit form's custom fields. | `gtm/03-site/DEPLOY.md`, `_headers`; `ls`; live page and GitHub deployments (2026-10-20) | holds; the live route is **new** (2026-10-20) |
 | V15 | Today `/tiktok`, `/TikTok`, `/youtube`, `/reddit` and `/network` all return `200 text/html` with the landing page, consistent with Cloudflare Pages' documented single-page-app fallback, which serves `index.html` for any path that matches no file when the project has no 404 page. So does `/robots.txt` and `/sitemap.xml`. `/index-b` is `200`; `/privacy.html` and `/index-b.html` answer with a redirect (Pages' extensionless-URL behavior). The Source links therefore "work" today but record nothing, and an arbitrary path is indistinguishable from plain `reptoday.app`. | live `fetch` probe, 2026-10-19 | **new** (shapes OQ2, OQ3; the `robots.txt` behavior is noted as a Non-Goal) |
 | V16 | RepToday's repository does **not** define `landing_page_view`, `waitlist_signup` or `referrer_source`. It records them as web-side events "handled outside the app and deliberately absent": `convex/events.ts:9-11`, `convex/README.md` ("The 13 event names are a wire contract"), `Models/AnalyticsEvent.swift:31`, the funnel PRD's non-goal (line 561), `AnalyticsServiceTests` and `convex/http.test.ts:309-314`, which asserts the sink **rejects** both names. | repo grep | holds (with the consequence that today's sink refuses them) |
 | V17 | The definition is in Mandu's event-metric schema: `landing_page_view` (Web, "Landing page loads", property `referrer_source` "(utm or none)", feeds "Pre-launch top of funnel; K5 channel signal"); `waitlist_signup` (Web, "Email submitted to waitlist", `referrer_source`, feeds "Pre-launch conversion"); and the conversion `waitlist_signup` divided by `landing_page_view`, split by `referrer_source`. The schema also says events carry a random per-install ID only. | Mandu `projects/RepToday/gtm/06-channels/event-metric-schema.md` | **DIFFERS** in one word: the schema says "utm or none" for `landing_page_view`, the request says the visit's tag or `none`. This PRD follows the request and reads no UTM parameters (OQ12). A web visit has no install, so "random per-install ID" cannot apply (OQ7). |
@@ -138,6 +138,7 @@ Each row is marked **holds**, **DIFFERS** (the request's assumption does not mat
 | V19 | Both page variants are live: `index.html` at `/` and `index-b.html` at `/index-b`. The A/B split by Worker is explicitly out of scope in `DEPLOY.md`. | `DEPLOY.md`; live probe | holds ("the form appears more than once" applies across both) |
 | V20 | `AGENTS.md` said "This repository is public". GitHub reports `RepToday` as **private** (checked 2026-10-19). | `AGENTS.md:21`; `gh repo view` | **DIFFERS**; `AGENTS.md` now reads "Treat this repository as public (its visibility has changed before)", keeping its no-committed-secret rule unchanged. The same "is public" premise stood, unedited, in `README.md`, `convex/README.md`, `.github/workflows/ci.yml`, `ios/RepToday/project.yml` and `tools/check-no-committed-telemetry-secret.py`; US-WL01's change reworded those five to the same premise, changing only that wording (the rule and its checks are untouched). Every credential rule in this PRD holds either way, and the site's own content is public regardless. |
 | V21 | Headless Chrome through `chrome-devtools-axi resize 390 844` reports a 500 px viewport, because it enforces a minimum window width (the pages' own CSS comments say the same). `chrome-devtools-axi emulate --viewport "390x844x3,mobile,touch"` followed by re-opening the page gives a true 390 px viewport. On the live page the waitlist card is 342 px wide at 390 px, with no horizontal scroll. | live probe | **new** (how this PRD's web Validation Tests reach 390 px) |
+| V22 | Convex documents no client address an HTTP action caller cannot forge: its HTTP actions follow the Fetch API, and its documentation names no trusted client-IP header. `POST /webEvent`'s per-source limit therefore keys on the forwarded client address (`clientIpFrom`: the first hop of `X-Forwarded-For`, else `CF-Connecting-IP`), which a script outside a browser can set to a new value on every request. Such a script dodges the 120-a-minute per-source limit and can use up the route's 3,000-a-minute budget (a request already over its own source's limit never counts toward it). The consequence is skewed or briefly paused anonymous web counts only: the rest of a one-minute window's `landing_page_view` and `waitlist_signup` rows are refused or diluted, while sign-ups (posted to Kit), addresses and the app's `/logEvent` are untouched. | `convex/http.ts`, `convex/rateLimit.ts`; https://docs.convex.dev/functions/http-actions (checked 2026-10-20) | **new** (the per-source limit is best-effort; US-WL05) |
 
 ## The gr0wthlab reader contract
 
@@ -250,19 +251,19 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] One form definition appears in all four placements (hero and closing band, on `index.html` and `index-b.html`), identical except for element ids (FR-2; US-WL03 enforces it).
-- [ ] The heading is "Join the waitlist" and the sentence is "Add your email and we'll tell you the day it ships."
-- [ ] Field 1: an Email input (`type="email"`, `autocomplete="email"`, required) with a visible label; no placeholder stands in for the label.
-- [ ] Field 2: a `fieldset` with the legend "Which sounds most like you?" and three radio buttons labelled exactly "I used to work out and lost the routine" (`lost-the-routine`), "I work out regularly" (`exercises-regularly`) and "I've never had a routine" (`never-had-a-routine`); required; **none checked** on first load, after a reload and after back-navigation (form restoration must not pre-select).
-- [ ] Field 3: a checkbox labelled exactly "Invite me to the beta before launch", **unchecked** on first load, after a reload and after back-navigation.
-- [ ] No other input, visible or hidden, carries anything the visitor entered; the only additional value sent is the visit's Source tag (FR-14), which the visitor is never asked for.
+- [x] One form definition appears in all four placements (hero and closing band, on `index.html` and `index-b.html`), identical except for element ids (FR-2; US-WL03 enforces it).
+- [x] The heading is "Join the waitlist" and the sentence is "Add your email and we'll tell you the day it ships."
+- [x] Field 1: an Email input (`type="email"`, `autocomplete="email"`, required) with a visible label; no placeholder stands in for the label.
+- [x] Field 2: a `fieldset` with the legend "Which sounds most like you?" and three radio buttons labelled exactly "I used to work out and lost the routine" (`lost-the-routine`), "I work out regularly" (`exercises-regularly`) and "I've never had a routine" (`never-had-a-routine`); required; **none checked** on first load, after a reload and after back-navigation (form restoration must not pre-select).
+- [x] Field 3: a checkbox labelled exactly "Invite me to the beta before launch", **unchecked** on first load, after a reload and after back-navigation.
+- [x] No other input, visible or hidden, carries anything the visitor entered; the only additional value sent is the visit's Source tag (FR-14), which the visitor is never asked for.
   There is no "how did you hear about us" field.
-- [ ] Empty or malformed email, or no Fit answer, blocks submission with a visible message tied to its control (`aria-describedby` or an associated error element), moves focus to the first invalid control, and keeps everything already entered; wording per Appendix B (OQ9).
-- [ ] While sending, the submit control is disabled and shows the in-progress wording; on acceptance the form shows the success wording; on failure it shows the error wording, keeps the entered values and allows a retry; none of these states widens the card.
-- [ ] The submission goes to the destination settled in OQ1, configurable in one place; tests post to a local stub receiver, and no test run posts to the production destination (the US-WL12 rehearsal is the one exception, stated above).
-- [ ] Control heights are at least 44 px; text and controls meet 4.5:1 contrast on the Paper tokens (hero) and on the light card inside the Night band (closing); focus is visible; the whole form completes by keyboard alone; status messages are announced (`aria-live="polite"`).
-- [ ] The form lives inside the existing `.waitlist` card and fits it at 390 px and 1440 px with no horizontal scroll.
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px (screenshots under `artifacts/reports/US-WL02/`).
+- [x] Empty or malformed email, or no Fit answer, blocks submission with a visible message tied to its control (`aria-describedby` or an associated error element), moves focus to the first invalid control, and keeps everything already entered; wording per Appendix B (OQ9).
+- [x] While sending, the submit control is disabled and shows the in-progress wording; on acceptance the form shows the success wording; on failure it shows the error wording, keeps the entered values and allows a retry; none of these states widens the card.
+- [x] The submission goes to the destination settled in OQ1, configurable in one place; tests post to a local stub receiver, and no test run posts to the production destination (the US-WL12 rehearsal is the one exception, stated above).
+- [x] Control heights are at least 44 px; text and controls meet 4.5:1 contrast on the Paper tokens (hero) and on the light card inside the Night band (closing); focus is visible; the whole form completes by keyboard alone; status messages are announced (`aria-live="polite"`).
+- [x] The form lives inside the existing `.waitlist` card and fits it at 390 px and 1440 px with no horizontal scroll.
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px (screenshots under `artifacts/reports/US-WL02/`).
 
 **Validation Test:**
 
@@ -283,14 +284,14 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] The string "one message" appears nowhere on either page.
-- [ ] The closing band's lead now contains the phrase "one launch email, plus a beta invitation only if you ask for one" verbatim.
-- [ ] The hero's lead-in sentence "Rep Today is pre-launch and not yet on the App Store." and the `<noscript>` mailbox fallbacks are handled as OQ9 settles; after this story no placement offers a second way to join the waitlist.
-- [ ] The FAQ sentence "the pre-launch waitlist holds the email you add to it ... nothing more" is replaced as OQ9 settles, so it no longer understates what the form keeps; the "When does it launch?" answer stays consistent with the call to action.
-- [ ] Neither page asks the visitor for a download, a follow or a share; the form is the only action that asks anything of the visitor (a word-list grep guard).
-- [ ] `tools/waitlist/check-site.py` (CI) fails when: the four placements differ beyond element ids; any approved string from the contract file is missing or altered; "one message" is present; a `mailto:` join path is present; an email-shaped string (a whole address, as US-WL08 defines it) other than the policy's published contact address appears in a text file in `gtm/03-site/` (text as US-WL08 defines it).
-- [ ] Outside the waitlist blocks and the sentences above, `index.html` and `index-b.html` differ only as they do today (a before/after diff is attached to the evidence), so the running A/B comparison is not disturbed.
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px on `/` and `/index-b`.
+- [x] The string "one message" appears nowhere on either page.
+- [x] The closing band's lead now contains the phrase "one launch email, plus a beta invitation only if you ask for one" verbatim.
+- [x] The hero's lead-in sentence "Rep Today is pre-launch and not yet on the App Store." and the `<noscript>` mailbox fallbacks are handled as OQ9 settles; after this story no placement offers a second way to join the waitlist.
+- [x] The FAQ sentence "the pre-launch waitlist holds the email you add to it ... nothing more" is replaced as OQ9 settles, so it no longer understates what the form keeps; the "When does it launch?" answer stays consistent with the call to action.
+- [x] Neither page asks the visitor for a download, a follow or a share; the form is the only action that asks anything of the visitor (a word-list grep guard).
+- [x] `tools/waitlist/check-site.py` (CI) fails when: the four placements differ beyond element ids; any approved string from the contract file is missing or altered; "one message" is present; a `mailto:` join path is present; an email-shaped string (a whole address, as US-WL08 defines it) other than the policy's published contact address appears in a text file in `gtm/03-site/` (text as US-WL08 defines it).
+- [x] Outside the waitlist blocks and the sentences above, `index.html` and `index-b.html` differ only as they do today (a before/after diff is attached to the evidence), so the running A/B comparison is not disturbed.
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px on `/` and `/index-b`.
 
 **Validation Test:**
 
@@ -311,16 +312,16 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `reptoday.app/tiktok`, `/youtube`, `/reddit` and `/network` each open the landing page with the sign-up form; the lowercase word after the slash is that visit's Source tag.
-- [ ] The links work in any letter case (`/TikTok`, `/YOUTUBE`, `/rEdDiT`, `/Network` all resolve to the lowercase tag).
-- [ ] Each link is only the bare tag: no query string, token or redirect chain is needed to use it, so it can be said aloud, typed or put in a profile.
-- [ ] Once a visit has arrived by one of the four links, the tag is kept for the rest of that visit while the visitor moves between the landing page, the FAQ anchors and `/privacy`, per the persistence rule settled in OQ3, and is what the form sends and what the events carry.
-- [ ] Every other arrival (plain `reptoday.app`, `/index-b` with no tag, an unrecognized path, any search or social referrer, a `utm_*` parameter) yields Source `unknown` for the sign-up and `none` for the events; nothing outside the four tags is ever recorded as a tag.
-- [ ] The four tags live in one list shared by the page script, the contract file (US-WL01) and the view producer; a unit test fails if the list and the view checker's allowed sources disagree.
-- [ ] Adding a Source is documented as a new Dispatch request plus a reviewed gr0wthlab change, and no code path accepts a fifth tag.
-- [ ] The routing the chosen hosting needs (OQ2) is explicit, not an accident of the fallback: a test fails if a top-level 404 page is added in a way that turns the four links into 404s.
-- [ ] No cookie is set and no identifier is stored beyond the tag (and, if OQ3 recommends it, a per-tab `sessionStorage` entry holding only the tag).
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
+- [x] `reptoday.app/tiktok`, `/youtube`, `/reddit` and `/network` each open the landing page with the sign-up form; the lowercase word after the slash is that visit's Source tag.
+- [x] The links work in any letter case (`/TikTok`, `/YOUTUBE`, `/rEdDiT`, `/Network` all resolve to the lowercase tag).
+- [x] Each link is only the bare tag: no query string, token or redirect chain is needed to use it, so it can be said aloud, typed or put in a profile.
+- [x] Once a visit has arrived by one of the four links, the tag is kept for the rest of that visit while the visitor moves between the landing page, the FAQ anchors and `/privacy`, per the persistence rule settled in OQ3, and is what the form sends and what the events carry.
+- [x] Every other arrival (plain `reptoday.app`, `/index-b` with no tag, an unrecognized path, any search or social referrer, a `utm_*` parameter) yields Source `unknown` for the sign-up and `none` for the events; nothing outside the four tags is ever recorded as a tag.
+- [x] The four tags live in one list shared by the page script, the contract file (US-WL01) and the view producer; a unit test fails if the list and the view checker's allowed sources disagree.
+- [x] Adding a Source is documented as a new Dispatch request plus a reviewed gr0wthlab change, and no code path accepts a fifth tag.
+- [x] The routing the chosen hosting needs (OQ2) is explicit, not an accident of the fallback: a test fails if a top-level 404 page is added in a way that turns the four links into 404s.
+- [x] No cookie is set and no identifier is stored beyond the tag (and, if OQ3 recommends it, a per-tab `sessionStorage` entry holding only the tag).
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
 
 **Validation Test:**
 
@@ -340,17 +341,17 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `landing_page_view` is emitted once on every load of either landing-page document (`index.html` or `index-b.html`), whatever path served it (`/`, `/index-b`, the four Source links, or any other path the fallback answers with the landing page), never on `/privacy`, with exactly one property, `referrer_source`.
-- [ ] `waitlist_signup` is emitted when an email is submitted (the moment settled in OQ8) with exactly one property, `referrer_source`.
-- [ ] `referrer_source` is the visit's tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; it is never the Source's other spelling `unknown`, never a UTM value and never free text.
-- [ ] Neither event carries the email address, the entry identifier, any identifier of the visitor or device, or any cookie.
-- [ ] Emission is fire-and-forget: a failed, slow or blocked request never delays the page, the form or the success state, and nothing retries into a loop.
-- [ ] No event is sent from `localhost`, a preview URL or a test run to the production sink (the US-WL12 rehearsal is the one exception, stated above).
-- [ ] The sink side follows OQ7 and, whatever it is, rejects any name other than the two web names and any property bag other than exactly `{referrer_source: <tag or none>}`, without disturbing the app's `POST /logEvent` contract (its 13 names, its secret header, its tests).
-- [ ] The app's shared-secret header value is never placed in a web page.
-- [ ] If the sink is Convex: the new route has its own rate-limit scope sized for web traffic (the per-install key cannot apply), the origin is checked, `convex/README.md` documents the route and the reserved row convention, `convex/http.test.ts`-style tests cover accepted and rejected bodies, `npm run typecheck` and `npm test` pass, and the stale "handled outside the app" notes (V16) are rewritten.
-- [ ] `AGENTS.md` and the funnel PRD's non-goal are amended only as far as the new route requires, in the existing amendment style.
-- [ ] Deploying the sink to the production Convex deployment is a separate, captain-approved, credentialed step.
+- [x] `landing_page_view` is emitted once on every load of either landing-page document (`index.html` or `index-b.html`), whatever path served it (`/`, `/index-b`, the four Source links, or any other path the fallback answers with the landing page), never on `/privacy`, with exactly one property, `referrer_source`.
+- [x] `waitlist_signup` is emitted when an email is submitted (the moment settled in OQ8) with exactly one property, `referrer_source`.
+- [x] `referrer_source` is the visit's tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; it is never the Source's other spelling `unknown`, never a UTM value and never free text.
+- [x] Neither event carries the email address, the entry identifier, any identifier of the visitor or device, or any cookie.
+- [x] Emission is fire-and-forget: a failed, slow or blocked request never delays the page, the form or the success state, and nothing retries into a loop.
+- [x] No event is sent from `localhost`, a preview URL or a test run to the production sink (the US-WL12 rehearsal is the one exception, stated above).
+- [x] The sink side follows OQ7 and, whatever it is, rejects any name other than the two web names and any property bag other than exactly `{referrer_source: <tag or none>}`, without disturbing the app's `POST /logEvent` contract (its 13 names, its secret header, its tests).
+- [x] The app's shared-secret header value is never placed in a web page.
+- [x] If the sink is Convex: the new route has its own rate-limit scope sized for web traffic (the per-install key cannot apply), the origin is checked, `convex/README.md` documents the route and the reserved row convention, `convex/http.test.ts`-style tests cover accepted and rejected bodies, `npm run typecheck` and `npm test` pass, and the stale "handled outside the app" notes (V16) are rewritten.
+- [x] `AGENTS.md` and the funnel PRD's non-goal are amended only as far as the new route requires, in the existing amendment style.
+- [x] Deploying the sink to the production Convex deployment is a separate, captain-approved, credentialed step.
 
 **Validation Test:**
 
@@ -371,7 +372,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13) and whether that message carries a working unsubscribe link (OQ5), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change and that is the submission time, unchanged by confirmation (OQ5) (under OQ1 Option A the only source of `signed_up_on`; under every option the only source of the original dates OQ6 keeps, since those sign-ups exist only in Kit), and whether a public post can set or overwrite the field that holds the entry identifier.
+- [x] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13) and whether that message carries a working unsubscribe link (OQ5), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change and that is the submission time, unchanged by confirmation (OQ5) (under OQ1 Option A the only source of `signed_up_on`; under every option the only source of the original dates OQ6 keeps, since those sign-ups exist only in Kit), and whether a public post can set or overwrite the field that holds the entry identifier.
   If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording; if a public post can set or overwrite the identifier field, the captain decides how the producer keeps identifiers its own before US-WL07 is built; if it exposes no creation time a resubmission leaves alone, the captain decides how `signed_up_on` and OQ6's original dates are kept before US-WL06 and US-WL07 are built; if that time is not the submission time under double opt-in, the captain decides which date `signed_up_on` carries before US-WL07 is built; if its confirmation message carries no working unsubscribe link, the captain decides how removal by that link is kept before US-WL11 publishes the wording.
 - [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date, the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
 - [ ] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
@@ -761,6 +762,11 @@ Every marked recommendation below is accepted:
 - OQ12: `utm_*` parameters do not set the Source.
 - OQ13: `record-launch-email --sent-on`.
 - OQ14: (a) date-only order.
+- US-WL06 spike findings (2026-10-20, `artifacts/reports/US-WL06/spike.md`), each recommendation accepted:
+  D1 the view producer keeps a local owner-only ledger (Kit subscriber id to entry identifier) and trusts only it, because a public post can set Kit's `entry` field;
+  D2 Kit's API cannot delete a subscriber, so the sweeps unsubscribe, overwrite the email with a placeholder and blank every field within a day, and the privacy wording keeps "deleted";
+  D3 a same-day resubmission overwriting the first Source is accepted;
+  D4 the form hosts Kit's reCAPTCHA guard iframe when Kit answers `quarantined` (origin-checked), and the privacy section names reCAPTCHA via Kit.
 
 Each question lists the realistic options grounded in the current code and services, the **recommendation (marked)** with its reason, and the stories it gates.
 Behavior that this PRD could not verify from the repository (marked "confirm") is checked, not assumed: the sending service's in the US-WL06 spike, and the scheduler's in US-WL07.

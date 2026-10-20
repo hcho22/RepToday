@@ -3,6 +3,7 @@ import { convexToJson, type ConvexError, type Value } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { EVENT_NAMES, type AnalyticsEventName } from "./events";
+import { WEB_EVENT_NAMES, WEB_REFERRER_SOURCES } from "./webEvents";
 
 /**
  * The client's only entry point.
@@ -309,6 +310,103 @@ http.route({
       // short durable bounds. The split therefore still matters operationally and also tells the
       // client whether a replay is useful. Detail stays in the deployment log, not the response.
       console.error("logEvent failed", error);
+      return jsonResponse(500, "internal error");
+    }
+    return new Response(null, { status: 204 });
+  }),
+});
+
+/**
+ * The Waitlist's two web events (US-WL05): a separate route beside `/logEvent`, never a widening of
+ * it. `/logEvent` keeps its 13 names, its secret header and its per-install rate limit; this route
+ * takes only `landing_page_view` and `waitlist_signup`, carrying exactly `{ referrer_source }`.
+ *
+ * **No secret.** The landing pages are public, so any value embedded in one is public too, and the
+ * app's shared secret must never be put there. This route instead rests on three cost-raisers that
+ * are honest about what they are: the request's `Origin` header must be one of the site's origins
+ * (a browser sets it and a page cannot forge it, but a script outside a browser can send any value,
+ * so it does not stop a determined caller), a tiny body cap, and a web-sized per-IP and whole-route
+ * rate limit. It carries no CORS: the page sends a simple `text/plain` POST with `no-cors` and never
+ * reads the answer, so no preflight exists to handle.
+ *
+ * Rejections are the caller's: `403` for a wrong or missing origin, `400` for anything but the exact
+ * body, `429` over the limit, and nothing is inserted for any of them. Only a database or runtime
+ * failure is a `500`, with no detail in the response.
+ */
+export const MAX_WEB_EVENT_BODY_BYTES = 1024;
+
+/** The site's origins. A dev or preview deployment overrides them with `WEB_EVENT_ALLOWED_ORIGINS`. */
+export const DEFAULT_WEB_EVENT_ORIGINS = ["https://reptoday.app", "https://www.reptoday.app"];
+
+const allowedWebOrigins = (): string[] => {
+  const configured = process.env.WEB_EVENT_ALLOWED_ORIGINS;
+  if (!configured) return DEFAULT_WEB_EVENT_ORIGINS;
+  const list = configured.split(",").map((origin) => origin.trim()).filter((origin) => origin !== "");
+  return list.length > 0 ? list : DEFAULT_WEB_EVENT_ORIGINS;
+};
+
+const sameKeys = (value: Record<string, unknown>, keys: string[]): boolean => {
+  const actual = Object.keys(value).sort();
+  const wanted = [...keys].sort();
+  return actual.length === wanted.length && actual.every((key, i) => key === wanted[i]);
+};
+
+http.route({
+  path: "/webEvent",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = request.headers.get("origin");
+    if (origin === null || !allowedWebOrigins().includes(origin)) {
+      return jsonResponse(403, "origin not allowed");
+    }
+
+    const rawBody = await request.arrayBuffer();
+    if (rawBody.byteLength > MAX_WEB_EVENT_BODY_BYTES) {
+      return jsonResponse(400, `body is over the ${MAX_WEB_EVENT_BODY_BYTES}-byte limit`);
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(new TextDecoder().decode(rawBody));
+    } catch {
+      return jsonResponse(400, "body is not valid JSON");
+    }
+    if (typeof body !== "object" || body === null || Array.isArray(body)) {
+      return jsonResponse(400, "body must be a JSON object");
+    }
+    const event = body as Record<string, unknown>;
+    // Exactly a name and a bag: no timestamp, identifier, address or any other field.
+    if (!sameKeys(event, ["name", "props"])) {
+      return jsonResponse(400, "body must hold exactly name and props");
+    }
+    const name = event.name;
+    if (typeof name !== "string" || !(WEB_EVENT_NAMES as readonly string[]).includes(name)) {
+      return jsonResponse(400, "name must be landing_page_view or waitlist_signup");
+    }
+    const props = event.props;
+    if (typeof props !== "object" || props === null || Array.isArray(props) || !sameKeys(props as Record<string, unknown>, ["referrer_source"])) {
+      return jsonResponse(400, "props must be exactly referrer_source");
+    }
+    const referrerSource = (props as Record<string, unknown>).referrer_source;
+    if (typeof referrerSource !== "string" || !(WEB_REFERRER_SOURCES as readonly string[]).includes(referrerSource)) {
+      return jsonResponse(400, "referrer_source must be a Source tag or none");
+    }
+
+    const decision = await ctx.runMutation(internal.rateLimit.checkAndBumpWeb, {
+      sourceIp: clientIpFrom(request),
+      nowMs: Date.now(),
+    });
+    if (!decision.allowed) {
+      return jsonResponse(429, `rate limit exceeded (${decision.limitedBy})`);
+    }
+
+    try {
+      await ctx.runMutation(internal.webEvents.logWebEvent, {
+        name: name as (typeof WEB_EVENT_NAMES)[number],
+        referrerSource: referrerSource as (typeof WEB_REFERRER_SOURCES)[number],
+      });
+    } catch (error) {
+      console.error("logWebEvent failed", error);
       return jsonResponse(500, "internal error");
     }
     return new Response(null, { status: 204 });

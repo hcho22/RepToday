@@ -1652,3 +1652,31 @@ What this cannot show:
 - The local rate is low (2 in 1,200 under heavy load), so the after-fix result is statistical: no stall in 2,400 looks leaves about a 2% chance that the rate did not change, not none.
 - `OnboardingViewModel` (`signInWithApple`, `completeSignIn`, `finish`) and `ActiveSessionViewModel.swapCurrentExercise` are also nonisolated `async` methods writing observed state, so the same race is open there; nothing has been seen to stall on them, and they are not changed here.
 - `HostedSurfaceLifecycleTests` covers the dismantling; that the observer runs at the end of every test is shown by the window count in a full run, not by a test of its own.
+
+## Waitlist sign-up form and the Kit spike (US-WL06 spike and US-WL02, 2026-10-20)
+
+Slice 2 of the Waitlist PRD, first part.
+The [spike note](../artifacts/reports/US-WL06/spike.md) ran against a separate Kit test account only and settled OQ1 Option A: Kit stores the Fit answer, beta choice and Source from a first-party post and a browser can read the result, but its API cannot delete a subscriber, a public post can set the `entry` field, a resubmission overwrites the answers, and Kit sometimes answers `quarantined` with a reCAPTCHA iframe.
+The captain accepted the recommendations on each (the producer keeps an owner-only ledger of identifiers; the sweeps scrub rather than delete; the same-day Source overwrite is accepted; the form hosts Kit's guard); the producer, sweeps and privacy wording are later slices.
+US-WL02 replaces the four Kit embeds with one first-party form (`gtm/03-site/waitlist.js`), the local stub receiver (`tools/waitlist/stub-receiver.py`) and the settled field names in `tools/waitlist/contract.json`.
+The [validation record](../artifacts/reports/US-WL02/validation.md) owns the commands and results.
+A page served from localhost posts to the stub, never to Kit.
+
+## Waitlist page copy and the landing-page check (US-WL03, 2026-10-20)
+
+The closing promise is now "one launch email, plus a beta invitation only if you ask for one", the FAQ names what the waitlist keeps and points to the policy, and no placement offers a mailbox join.
+`tools/waitlist/check-site.py` (CI job `waitlist`) keeps the four placements one form, the approved strings and field names intact, and the site free of stray addresses; the A/B pages differ outside the waitlist as before.
+The [validation record](../artifacts/reports/US-WL03/validation.md) owns the commands and results.
+
+## Waitlist Source links and persistence (US-WL04, 2026-10-20)
+
+The four links record their tag in the page script (path only, last touch among them, kept per tab in `sessionStorage`, no cookie, `utm_*` ignored) and the sign-up carries it; `_redirects` rewrites them to `/` (a rewrite to `/index.html` is answered with a 308 that drops the tag), and mixed-case links rely on Pages' fallback, so a top-level `404.html` is a CI failure.
+The [validation record](../artifacts/reports/US-WL04/validation.md) owns the commands and results; the preview-deploy repeat is slice 4's.
+
+## Waitlist web events (US-WL05, 2026-10-20)
+
+`landing_page_view` and `waitlist_signup` go from the landing pages to a new `POST /webEvent` route on the Convex sink (code and tests only; deploying it is slice 4's, with the captain's approval): its own closed two-name union and exact `{referrer_source}` bag, an `Origin` check instead of the app's secret (which never goes in a page), a 1 KiB cap, its own rate-limit scope, and rows in the existing `events` table under the reserved `installId` `web`.
+`POST /logEvent` and its 13 names are unchanged.
+The pages send fire-and-forget `no-cors` POSTs from `reptoday.app` only.
+The [validation record](../artifacts/reports/US-WL05/validation.md) owns the commands and results; `convex/README.md` ("Web events") owns the contract.
+

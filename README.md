@@ -211,7 +211,7 @@ RepToday/
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── tools/                   # Release/telemetry tooling, guarded Coach runtime helpers, and the offline US-T13 reconciliation harness
 ├── proxy/                   # Content-stateless key-holding Worker with the deployed App Attest/StoreKit Coach gateway
-├── gtm/03-site/             # Canonical reptoday.app static source: root variants, hosted privacy policy, shared headers, A/B screenshots, and deploy guide
+├── gtm/03-site/             # Canonical reptoday.app static source: root variants, the shared Waitlist form script, hosted privacy policy, shared headers, Source-link redirects, A/B screenshots, and deploy guide
 ├── docs/                    # Implementation log, test-coverage map, Coach runtime-auth reference, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
 ├── AGENTS.md                # Repo guidance and architecture reference - the real file
@@ -231,7 +231,7 @@ RepToday/
 | `.claude/agent/tasks/prd-round-cap-wide-circuits.md` | A fourth, complete PRD - caps every training-block exercise at **2-4 rounds** (`US-RC##`) and fills longer sessions by adding distinct movements instead of more rounds; ADR-0004 and the `CONTEXT.md` "Wide Circuit" term record the settled design. |
 | `.claude/agent/tasks/prd-phase-2-strength-coach-analytics_260825.md` | A fifth, complete PRD - makes the earned Strength Phase real and visible, adds the premium Coach and its two-writer safety boundary (ADR-0005), and adds premium strength-journey analytics. Current Coach runtime and QA status is owned by `docs/coach-runtime-authentication.md`. |
 | `CLAUDE.md` | Repo conventions and architecture for contributors and AI assistants - an `@AGENTS.md` pointer; edit `AGENTS.md`, which links detailed reference docs. |
-| `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, the US-T14 abuse guard (shared secret + rate limiting), its boundary suite, the deliberate non-goals, and the residual it still carries. |
+| `convex/README.md` | The telemetry sink's own reference: the `events` table, the `logEvent` contract, `POST /logEvent`, the US-T14 abuse guard (shared secret + rate limiting), its boundary suite, the deliberate non-goals, the residual it still carries, and the Waitlist pages' separate `POST /webEvent` route. |
 | `gtm/03-site/DEPLOY.md` | The canonical Cloudflare Pages workflow for the public static site, including the source inventory and the production publication/credential gate. |
 | `docs/implementation-log.md` | What has actually been built, story by story - the narrative behind each landed story. |
 | `docs/test-coverage.md` | The test-coverage map: one row per suite, added as the owning story lands. |
