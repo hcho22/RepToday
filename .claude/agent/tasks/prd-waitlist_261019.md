@@ -579,19 +579,21 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `reptoday.app/privacy` has a Waitlist section, in place of the waitlist sentences of section 10, saying in the policy's plain voice:
+- [x] `reptoday.app/privacy` has a Waitlist section, in place of the waitlist sentences of section 10, saying in the policy's plain voice:
   what is collected (the email address; the answer to the routine question; whether you asked for a beta invitation; which Rep Today link brought you, if any; and the sign-up date);
   why (to email you when Rep Today launches; to invite you to the beta, only if you asked; and to count, without your address, which links and which routines bring people);
   how long it is kept (until 30 days after the launch email goes out, or until you ask to be removed, whichever comes first);
   how to be removed (the unsubscribe link in any waitlist email, or a message to reptoday.app@gmail.com; your sign-up and answers are then deleted within 7 days);
   and who sees your address (only the founder, when sending a waitlist email, and the service that stores it for Rep Today; it is never sold or shared).
-- [ ] The wording is the approved draft in Appendix C, edited by the captain, and makes no promise beyond the five points and what OQ5 and OQ10 add.
-- [ ] Structure, numbering, the table of contents, the anchor and the "This website is static" note follow OQ10; no cross-reference to a renumbered section is left stale.
+- [x] The wording is the approved draft in Appendix C, edited by the captain, and makes no promise beyond the five points and what OQ5 and OQ10 add.
+  Approved 2026-10-20 ("privacy - approve with b"): Appendix C adjusted to the captain's answers (a spam complaint is a removal request; "deleted" stays through the founder's delete in Kit), plus the session-storage sentence, the reCAPTCHA sentence (D4) and one item naming the approximate location Kit records for a confirmed sign-up; the exact text is in `gtm/03-site/privacy.html` and `artifacts/reports/US-WL11/validation.md`.
+- [x] Structure, numbering, the table of contents, the anchor and the "This website is static" note follow OQ10; no cross-reference to a renumbered section is left stale.
 - [ ] "Last updated" carries the publication date.
-- [ ] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "the unsubscribe link in any waitlist email" -> US-WL10 and the US-WL06 spike's confirmation-message result; "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
-- [ ] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag about the missing retention schedule is updated to say what now exists and what is still unreviewed.
+  Open: set in the same change as the captain-approved production deploy (US-WL12).
+- [x] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "the unsubscribe link in any waitlist email" -> US-WL10 and the US-WL06 spike's confirmation-message result; "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
+- [x] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag about the missing retention schedule is updated to say what now exists and what is still unreviewed.
 - [ ] The section is published no later than the form (US-WL12 orders the deploy).
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
 
 **Validation Test:**
 
