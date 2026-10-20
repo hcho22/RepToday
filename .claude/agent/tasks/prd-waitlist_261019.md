@@ -250,19 +250,19 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] One form definition appears in all four placements (hero and closing band, on `index.html` and `index-b.html`), identical except for element ids (FR-2; US-WL03 enforces it).
-- [ ] The heading is "Join the waitlist" and the sentence is "Add your email and we'll tell you the day it ships."
-- [ ] Field 1: an Email input (`type="email"`, `autocomplete="email"`, required) with a visible label; no placeholder stands in for the label.
-- [ ] Field 2: a `fieldset` with the legend "Which sounds most like you?" and three radio buttons labelled exactly "I used to work out and lost the routine" (`lost-the-routine`), "I work out regularly" (`exercises-regularly`) and "I've never had a routine" (`never-had-a-routine`); required; **none checked** on first load, after a reload and after back-navigation (form restoration must not pre-select).
-- [ ] Field 3: a checkbox labelled exactly "Invite me to the beta before launch", **unchecked** on first load, after a reload and after back-navigation.
-- [ ] No other input, visible or hidden, carries anything the visitor entered; the only additional value sent is the visit's Source tag (FR-14), which the visitor is never asked for.
+- [x] One form definition appears in all four placements (hero and closing band, on `index.html` and `index-b.html`), identical except for element ids (FR-2; US-WL03 enforces it).
+- [x] The heading is "Join the waitlist" and the sentence is "Add your email and we'll tell you the day it ships."
+- [x] Field 1: an Email input (`type="email"`, `autocomplete="email"`, required) with a visible label; no placeholder stands in for the label.
+- [x] Field 2: a `fieldset` with the legend "Which sounds most like you?" and three radio buttons labelled exactly "I used to work out and lost the routine" (`lost-the-routine`), "I work out regularly" (`exercises-regularly`) and "I've never had a routine" (`never-had-a-routine`); required; **none checked** on first load, after a reload and after back-navigation (form restoration must not pre-select).
+- [x] Field 3: a checkbox labelled exactly "Invite me to the beta before launch", **unchecked** on first load, after a reload and after back-navigation.
+- [x] No other input, visible or hidden, carries anything the visitor entered; the only additional value sent is the visit's Source tag (FR-14), which the visitor is never asked for.
   There is no "how did you hear about us" field.
-- [ ] Empty or malformed email, or no Fit answer, blocks submission with a visible message tied to its control (`aria-describedby` or an associated error element), moves focus to the first invalid control, and keeps everything already entered; wording per Appendix B (OQ9).
-- [ ] While sending, the submit control is disabled and shows the in-progress wording; on acceptance the form shows the success wording; on failure it shows the error wording, keeps the entered values and allows a retry; none of these states widens the card.
-- [ ] The submission goes to the destination settled in OQ1, configurable in one place; tests post to a local stub receiver, and no test run posts to the production destination (the US-WL12 rehearsal is the one exception, stated above).
-- [ ] Control heights are at least 44 px; text and controls meet 4.5:1 contrast on the Paper tokens (hero) and on the light card inside the Night band (closing); focus is visible; the whole form completes by keyboard alone; status messages are announced (`aria-live="polite"`).
-- [ ] The form lives inside the existing `.waitlist` card and fits it at 390 px and 1440 px with no horizontal scroll.
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px (screenshots under `artifacts/reports/US-WL02/`).
+- [x] Empty or malformed email, or no Fit answer, blocks submission with a visible message tied to its control (`aria-describedby` or an associated error element), moves focus to the first invalid control, and keeps everything already entered; wording per Appendix B (OQ9).
+- [x] While sending, the submit control is disabled and shows the in-progress wording; on acceptance the form shows the success wording; on failure it shows the error wording, keeps the entered values and allows a retry; none of these states widens the card.
+- [x] The submission goes to the destination settled in OQ1, configurable in one place; tests post to a local stub receiver, and no test run posts to the production destination (the US-WL12 rehearsal is the one exception, stated above).
+- [x] Control heights are at least 44 px; text and controls meet 4.5:1 contrast on the Paper tokens (hero) and on the light card inside the Night band (closing); focus is visible; the whole form completes by keyboard alone; status messages are announced (`aria-live="polite"`).
+- [x] The form lives inside the existing `.waitlist` card and fits it at 390 px and 1440 px with no horizontal scroll.
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px (screenshots under `artifacts/reports/US-WL02/`).
 
 **Validation Test:**
 

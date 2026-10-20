@@ -146,7 +146,15 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn(contract['no_source_event'], contract['source_tags'])
         self.assertEqual(sorted(contract['posted_fields']), ['beta_opt_in', 'email', 'fit', 'source'])
         self.assertEqual(contract['posted_fields']['email'], 'email_address')
-        self.assertEqual(sorted(contract['posted_fields_provisional']), ['beta_opt_in', 'fit', 'source'])
+        # The spike (US-WL06) settled the custom-field names, so none is provisional any more.
+        self.assertNotIn('posted_fields_provisional', contract)
+        self.assertEqual(contract['posted_fields'], {
+            'email': 'email_address',
+            'fit': 'fields[fit]',
+            'beta_opt_in': 'fields[beta_opt_in]',
+            'source': 'fields[source]',
+        })
+        self.assertEqual(contract['kit_producer_fields'], {'entry': 'entry'})
         names = list(contract['posted_fields'].values())
         self.assertTrue(all(isinstance(name, str) and name for name in names))
         self.assertEqual(len(set(names)), 4)

@@ -1652,3 +1652,13 @@ What this cannot show:
 - The local rate is low (2 in 1,200 under heavy load), so the after-fix result is statistical: no stall in 2,400 looks leaves about a 2% chance that the rate did not change, not none.
 - `OnboardingViewModel` (`signInWithApple`, `completeSignIn`, `finish`) and `ActiveSessionViewModel.swapCurrentExercise` are also nonisolated `async` methods writing observed state, so the same race is open there; nothing has been seen to stall on them, and they are not changed here.
 - `HostedSurfaceLifecycleTests` covers the dismantling; that the observer runs at the end of every test is shown by the window count in a full run, not by a test of its own.
+
+## Waitlist sign-up form and the Kit spike (US-WL06 spike and US-WL02, 2026-10-20)
+
+Slice 2 of the Waitlist PRD, first part.
+The [spike note](../artifacts/reports/US-WL06/spike.md) ran against a separate Kit test account only and settled OQ1 Option A: Kit stores the Fit answer, beta choice and Source from a first-party post and a browser can read the result, but its API cannot delete a subscriber, a public post can set the `entry` field, a resubmission overwrites the answers, and Kit sometimes answers `quarantined` with a reCAPTCHA iframe.
+The captain accepted the recommendations on each (the producer keeps an owner-only ledger of identifiers; the sweeps scrub rather than delete; the same-day Source overwrite is accepted; the form hosts Kit's guard); the producer, sweeps and privacy wording are later slices.
+US-WL02 replaces the four Kit embeds with one first-party form (`gtm/03-site/waitlist.js`), the local stub receiver (`tools/waitlist/stub-receiver.py`) and the settled field names in `tools/waitlist/contract.json`.
+The [validation record](../artifacts/reports/US-WL02/validation.md) owns the commands and results.
+A page served from localhost posts to the stub, never to Kit.
+

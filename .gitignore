@@ -45,3 +45,6 @@ __pycache__/
 ios/RepToday/Config/CoachStaging.local.xcconfig
 # Dev usage-data shared secret: written from the login Keychain, never committed.
 ios/RepToday/Config/DebugTelemetry.local.xcconfig
+
+# Local Cloudflare Pages preview state (npx wrangler pages dev)
+.wrangler/
