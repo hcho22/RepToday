@@ -16,7 +16,8 @@ Routes (all send permissive CORS headers, like Kit's public endpoint):
   GET  /forms/guards/*  a tiny stand-in for Kit's reCAPTCHA page: it reports a size, and a
                         button reports "confirmed" to the page that framed it
 
-The pages find it at http://127.0.0.1:8799 when they are served from localhost.
+The pages find it at http://127.0.0.1:8799 when they are served from localhost; a local page's
+sign-up and check always use that port, so another --port reaches only a test-named event sink.
 """
 
 import argparse

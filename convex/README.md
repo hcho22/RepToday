@@ -1,6 +1,7 @@
 # Rep Today telemetry sink (US-T03)
 
 The whole analytics backend: **one immutable evidence table, one idempotent-insert mutation, one HTTP route** - guarded, since US-T14, by a shared-secret check and a per-caller throttle over an ephemeral `rateLimits` helper table swept by a cleanup cron (see "Abuse guard" below).
+The Waitlist landing pages' two anonymous events have a second, separate route and insert mutation into the same table, with its own guard (US-WL05, "Web events" below).
 
 It exists so the anonymous funnel events defined in the event-metric schema have
 somewhere to land during the 90-day PMF test.
@@ -38,7 +39,7 @@ Release at production deployment `sensible-spider-810`. Neither deployment's tok
 "A client-embedded shared secret" below owns how each reaches a build.
 That is why the HTTP action below is load-bearing rather than convenience: it is the client's only
 entry point.
-It is now the *sink's* only entry point too, which this file previously claimed before it was true:
+It is now the *sink's* only entry point for app events too (the landing pages' web events have their own, `POST /webEvent`), which this file previously claimed before it was true:
 `logEvent` was a public mutation until review caught it, so the deployment's own
 `.convex.cloud/api/mutation` endpoint was a second, undocumented way in that skipped every check the
 action performs. It is an `internalMutation` now - see below.
@@ -108,8 +109,8 @@ helper US-T14 added - a throttle counter store, not an evidence surface; see "Ab
 | Field       | Type         | Meaning |
 |-------------|--------------|---------|
 | `eventId`   | `v.optional(v.string())` | Client-generated idempotency key, stable across retries. The current durable client always supplies it; optionality preserves older rows and requests from already-shipped one-shot clients. |
-| `name`      | `v.string()` | One of the 13 pre-registered event names (below). |
-| `installId` | `v.string()` | Random per-install identifier (US-T05). Never a user identity - no email, IDFA, or Sign in with Apple id ever reaches here. |
+| `name`      | `v.string()` | One of the 13 pre-registered event names (below), or one of the two Waitlist web events (see "Web events"). |
+| `installId` | `v.string()` | Random per-install identifier (US-T05), or the one reserved value `web` every web-event row carries. Never a user identity - no email, IDFA, or Sign in with Apple id ever reaches here. |
 | `clientTs`  | `v.number()` | Client-side timestamp, ms since the Unix epoch. |
 | `serverTs`  | `v.number()` | Server-received timestamp, ms since the Unix epoch, stamped by the mutation. |
 | `props`     | `v.any()`    | The event's non-identifying property bag, stored exactly as it arrived. |

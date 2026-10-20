@@ -9,8 +9,8 @@ import { v } from "convex/values";
  * happen atomically - two concurrent requests for the same key cannot both read the same pre-bump
  * count and both slip under the ceiling. The HTTP action calls this **before** `logEvent`, and
  * inserts a row only when it answers `allowed: true`, so a throttled request never reaches the
- * `events` table. It is internal for the same reason `logEvent` is: the public HTTP action is the
- * sink's only entry point.
+ * `events` table. It is internal for the same reason `logEvent` is: the public HTTP actions are the
+ * sink's only entry points (`POST /webEvent` has its own throttle, `checkAndBumpWeb` below).
  *
  * **Two keys, two ceilings.** The primary key is the per-install identifier the client carries in
  * the request body; the backstop is the coarse source IP. They get different ceilings on purpose:
