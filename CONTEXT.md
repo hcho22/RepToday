@@ -97,7 +97,7 @@ A visit's **Source** is where the visitor came from, taken only from the link th
 **Fit** (capital F) is the visitor's answer to "Which sounds most like you?" (`lost-the-routine`, `exercises-regularly`, `never-had-a-routine`); it is unrelated to the engine's timing fit (Step 7).
 The **anonymous view** is the one address-free file (entry identifier, Source, Fit, beta opt-in, sign-up date) that RepToday keeps on the founder's Mac for gr0wthlab's launcher to read; an **entry identifier** is the random, never address-derived name of one sign-up in it.
 Addresses are resolved only on the founder's side, at send time, and no email-service credential or address export is ever placed in the gr0wthlab, Mandu or RepToday checkouts.
-Planned and not yet built: the spec is `.claude/agent/tasks/prd-waitlist_261019.md` (`US-WL##`) and the boundary decision is [ADR-0009](docs/adr/0009-waitlist-anonymous-view-and-address-boundary.md).
+Being built in reviewed slices: the spec, which tracks what has landed, is `.claude/agent/tasks/prd-waitlist_261019.md` (`US-WL##`), the approved strings and tags are in `tools/waitlist/contract.json`, and the boundary decision is [ADR-0009](docs/adr/0009-waitlist-anonymous-view-and-address-boundary.md).
 
 ## Two-Writer Policy Safety
 

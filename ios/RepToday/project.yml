@@ -93,8 +93,9 @@ targets:
       # which is also the documented emergency disable/rollback posture.
       # The US-T14 shared secret is sent on every `POST /logEvent` so a stranger who discovers the
       # endpoint URL cannot flood the `events` table. No configuration commits a value for it: this
-      # repository is public, so the literal must never enter this file, a tracked xcconfig or the
-      # generated project (`tools/check-no-committed-telemetry-secret.py` fails CI if one does).
+      # repository is treated as public (its visibility has changed before), so the literal must
+      # never enter this file, a tracked xcconfig or the generated project
+      # (`tools/check-no-committed-telemetry-secret.py` fails CI if one does).
       # Both values come from the macOS login Keychain by the same route, a private xcconfig:
       # Release receives the production value at archive time (`tools/archive-release.sh`), and
       # Debug reads the dev value from the untracked file `Config/DebugTelemetry.xcconfig`

@@ -5,6 +5,7 @@ name: CI
 #
 #   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
 #   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
+#   waitlist (ubuntu) - the Waitlist contract file and anonymous-view checker tests (no Xcode).
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
 #                    compile of the XCUITest scheme (Xcode 16.4, iOS 18 simulator).
 #   ios-26 (macos) - the same build + unit tests + XCUITest compile on Xcode 26.5
@@ -74,6 +75,34 @@ jobs:
         run: npm run test
 
   # ---------------------------------------------------------------------------
+  # The Waitlist's operator tooling (tools/waitlist/) - Ubuntu, no Xcode.
+  #
+  # Python 3 standard library only, so there is nothing to install. The tests need no
+  # network and no secret: the contract file against the PRD's Appendix A, every
+  # committed and generated view fixture, and the guard that no address-shaped string
+  # is committed under tools/waitlist/. The cross-check against gr0wthlab's reader is
+  # skipped here (it needs a gr0wthlab checkout and is run locally). Python 3.9 is
+  # gr0wthlab's declared minimum; 3.12 is the current runner default.
+  # ---------------------------------------------------------------------------
+  waitlist:
+    name: Waitlist contract (view checker tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Test the Waitlist contract and view checker
+        run: python3 tools/waitlist/test-check-view.py
+
+  # ---------------------------------------------------------------------------
   # Toolchain 2: iOS SwiftUI app - macOS.
   #
   # Runner/Xcode are pinned to a natively-compatible pair that exists on the
@@ -131,9 +160,10 @@ jobs:
         working-directory: ios/RepToday
         run: xcodegen generate
 
-      # This repository is public, so no build setting may commit the usage-data shared secret. It
-      # runs after generation so the regenerated project is read too. The second step runs the real
-      # dev secret script against stand-ins: no Keychain, deployment, network or secret.
+      # Treat this repository as public (its visibility has changed before), so no build setting may
+      # commit the usage-data shared secret. It runs after generation so the regenerated project is
+      # read too. The second step runs the real dev secret script against stand-ins: no Keychain,
+      # deployment, network or secret.
       - name: Check no usage-data secret is committed
         run: |
           python3 tools/test-check-no-committed-telemetry-secret.py
@@ -181,6 +211,7 @@ jobs:
       - name: Build & run unit tests (RepToday scheme)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepToday \
@@ -198,6 +229,7 @@ jobs:
       - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepTodayUITests \
@@ -280,6 +312,7 @@ jobs:
       - name: Build & run unit tests (RepToday scheme)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepToday \
@@ -292,6 +325,7 @@ jobs:
       - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepTodayUITests \

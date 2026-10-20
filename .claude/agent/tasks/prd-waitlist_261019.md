@@ -1,6 +1,6 @@
 # PRD: Rep Today Waitlist (2026-10-19)
 
-- Status: **Drafted 2026-10-19; implementation not yet authorized.**
+- Status: **Drafted 2026-10-19; implementation authorized 2026-10-19, built in four reviewed slices.**
   The captain approved the gr0wthlab Dispatch request for RepToday's Waitlist (item 20261016-reptoday-waitlist) on 2026-10-19 and asked for this PRD first.
   The request fixes the sign-up, the Source links, the web events, the privacy policy content, the anonymous view's format and the address boundary.
   This PRD carries all of it verbatim (Appendix A) and adds or drops no field, Source, event property or file field.
@@ -136,7 +136,7 @@ Each row is marked **holds**, **DIFFERS** (the request's assumption does not mat
 | V17 | The definition is in Mandu's event-metric schema: `landing_page_view` (Web, "Landing page loads", property `referrer_source` "(utm or none)", feeds "Pre-launch top of funnel; K5 channel signal"); `waitlist_signup` (Web, "Email submitted to waitlist", `referrer_source`, feeds "Pre-launch conversion"); and the conversion `waitlist_signup` divided by `landing_page_view`, split by `referrer_source`. The schema also says events carry a random per-install ID only. | Mandu `projects/RepToday/gtm/06-channels/event-metric-schema.md` | **DIFFERS** in one word: the schema says "utm or none" for `landing_page_view`, the request says the visit's tag or `none`. This PRD follows the request and reads no UTM parameters (OQ12). A web visit has no install, so "random per-install ID" cannot apply (OQ7). |
 | V18 | The Convex sink's `events` row requires `installId`, and its `name` is a plain string; the closed union of the 13 app events is on the internal `logEvent` mutation's arguments; `POST /logEvent` requires a shared-secret header, enforces 60 events per install and 600 per IP per minute and a 64 KiB body, and handles no CORS or preflight anywhere in `convex/http.ts`. The deployment's schema is limited to the `events` table and the ephemeral `rateLimits` table ("the second - and, per FR-6, last permitted - table"). Its contract is "no identity in any event". | `convex/schema.ts`, `events.ts`, `http.ts`, `rateLimit.ts`; funnel PRD FR-6 | **new** (rules out Convex as the address store; constrains OQ7) |
 | V19 | Both page variants are live: `index.html` at `/` and `index-b.html` at `/index-b`. The A/B split by Worker is explicitly out of scope in `DEPLOY.md`. | `DEPLOY.md`; live probe | holds ("the form appears more than once" applies across both) |
-| V20 | `AGENTS.md` said "This repository is public". GitHub reports `RepToday` as **private** (checked 2026-10-19). | `AGENTS.md:21`; `gh repo view` | **DIFFERS**; this change rewords that sentence to "Treat this repository as public (its visibility has changed before)", keeping its no-committed-secret rule unchanged. The same "is public" premise still stands, unedited, in `README.md`, `convex/README.md`, `.github/workflows/ci.yml`, `ios/RepToday/project.yml` and `tools/check-no-committed-telemetry-secret.py`. Every credential rule in this PRD holds either way, and the site's own content is public regardless. |
+| V20 | `AGENTS.md` said "This repository is public". GitHub reports `RepToday` as **private** (checked 2026-10-19). | `AGENTS.md:21`; `gh repo view` | **DIFFERS**; `AGENTS.md` now reads "Treat this repository as public (its visibility has changed before)", keeping its no-committed-secret rule unchanged. The same "is public" premise stood, unedited, in `README.md`, `convex/README.md`, `.github/workflows/ci.yml`, `ios/RepToday/project.yml` and `tools/check-no-committed-telemetry-secret.py`; US-WL01's change reworded those five to the same premise, changing only that wording (the rule and its checks are untouched). Every credential rule in this PRD holds either way, and the site's own content is public regardless. |
 | V21 | Headless Chrome through `chrome-devtools-axi resize 390 844` reports a 500 px viewport, because it enforces a minimum window width (the pages' own CSS comments say the same). `chrome-devtools-axi emulate --viewport "390x844x3,mobile,touch"` followed by re-opening the page gives a true 390 px viewport. On the live page the waitlist card is 342 px wide at 390 px, with no horizontal scroll. | live probe | **new** (how this PRD's web Validation Tests reach 390 px) |
 
 ## The gr0wthlab reader contract
@@ -164,6 +164,21 @@ These are the reader's exact rules, which US-WL01's checker mirrors and which th
 | The configured path must not overlap, in either direction, any place the sandboxed agent can read: the gr0wthlab repository and git directories, every registered location (including the Mandu and RepToday checkouts) and the system read paths. The launcher refuses to start otherwise. | FR-33 |
 | The path is `null` in `config/products.json` until a reviewed change sets it; `GR0WTHLAB_WAITLIST_VIEW` overrides it. `waitlist.live_since` in `config/run.json` is `null` until a reviewed change sets it "once US-ME05's Validation Test has passed on reptoday.app". | Dep. 1 |
 | The reader's own test draws 5,000 random identifiers of 8 to 64 characters from the allowed alphabet and requires none to look like, or decode to, an address. | US-WL06 |
+
+Reader details the prose above omits, found by reading `waitlist.py` and checked by US-WL01's cross-check against it (the reader wins; none changes a requirement):
+
+- `view` is compared with `1` after the boolean test, so a JSON float `1.0` is read as version 1; a larger integer is rejected on its own, with no other problem listed.
+  The checker follows the reader, and the producer (US-WL07) writes the integer.
+- `generated_at` is stripped of surrounding whitespace and every `Z` is replaced by `+00:00` before `fromisoformat` runs, so which spellings parse depends on the interpreter (Python 3.11 and later accept more than 3.9 does).
+  The producer writes the one form of the request's example, which every version accepts.
+- The reader keeps only the first 10,000,001 bytes of a file: the address check runs on those bytes, so an address after them is never seen and the file is a failed read for its size, while an address inside them makes an oversized file a refused read.
+  The same order holds for a file that is not UTF-8 or not JSON: the address check on its text runs first, so such a file with an address-shaped sequence is refused, not failed.
+- The text is decoded with replacement characters for the address check, so an invalid byte beside an `@` counts as a character on that side.
+- JSON is parsed by Python's own `json.loads`, so a repeated key keeps its last value (the reader accepts such a file) and `NaN` and `Infinity` parse, though they can only land where the format rejects them.
+  The producer writes neither.
+- When the file cannot be opened (missing, a folder, unreadable) the reader reports a failed read.
+
+Every one of these is a fixture or a generated case in `tools/waitlist/`, and the checker agrees with the reader on all of them.
 
 ## User Stories
 
@@ -206,17 +221,17 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A data file under `tools/waitlist/` (for example `contract.json`) holds, as data: the heading "Join the waitlist"; the sentence "Add your email and we'll tell you the day it ships."; the Fit legend "Which sounds most like you?"; the three Fit answers with their labels and tags; the beta label "Invite me to the beta before launch"; the phrase "one launch email, plus a beta invitation only if you ask for one"; the four Source tags; the words `unknown` and `none`; the names of the form's posted fields (email, Fit answer, beta choice, Source); the view format version `1`; the entry pattern `[A-Za-z0-9_-]{1,64}`; and the 10,000,000-byte limit.
-- [ ] Every approved string in that file (the wording, the Fit and Source tags, `unknown` and `none`) is byte-identical to its text in Appendix A (checked by a test that reads both).
-  The posted field names, the entry pattern and the byte limit are not in Appendix A (the names are this build's choice; the pattern and the limit are the reader's), so the test does not compare them with it.
-- [ ] `tools/waitlist/check-view.py` (Python 3 standard library only, like `tools/check-trainer-art.py`) takes a file path and exits 0 only for a view that satisfies every rule in "The gr0wthlab reader contract"; on failure it names the rule and the entry's position and never prints the offending value.
-- [ ] It runs the address check first, over the file's whole text and then every key and value, with the reader's loose pattern; it judges `entry`'s percent-decoding by that same loose pattern, and its base64 (both alphabets) and hex decodings by the reader's whole-address pattern, as the reader contract states.
-- [ ] Fixtures under `tools/waitlist/fixtures/`: a valid view with three entries (one with `fit` `null`, one with source `unknown`), a valid view with empty `entries`, and one failing fixture per rule (missing and extra top-level keys; `view` 2 and `view` true; `generated_at` without an offset; `signed_up_on` malformed and later than `generated_at`'s UTC date; a duplicate entry; an entry of length 0 and of 65; a character outside the alphabet; a `source` and a `fit` outside the lists; `beta_opt_in` as a string; an extra entry key; a file that is not UTF-8).
-- [ ] The address cases and the over-limit file are generated, never committed: the test builds each at run time, assembling every address from parts, and writes it to a temporary path outside the repository (an address-shaped value in `source`, in `fit`, in `generated_at` and in a key name; an `entry` that is an address in percent-encoded, base64 and hex form; an `entry` whose percent-decoding puts an `@` between two ordinary characters without forming a whole address, which the reader refuses rather than fails; a file over the 10,000,000-byte limit), and a test fails if any file under `tools/waitlist/fixtures/` contains an address-shaped string.
-- [ ] `tools/waitlist/test-check-view.py` runs every committed and generated fixture and asserts accept or reject and the named rule.
-- [ ] Optional local cross-check: when an environment variable names a gr0wthlab checkout, the test also imports that checkout's `src/gr0wthlab/waitlist.py` read-only and requires its verdict (read, failed or refused) to agree with this checker on every fixture; it is skipped otherwise, never required in CI, and writes nothing in gr0wthlab.
-- [ ] The test is wired into a CI job that needs no Xcode (US-WL12 may add the job if none exists).
-- [ ] Lint passes.
+- [x] A data file under `tools/waitlist/` (for example `contract.json`) holds, as data: the heading "Join the waitlist"; the sentence "Add your email and we'll tell you the day it ships."; the Fit legend "Which sounds most like you?"; the three Fit answers with their labels and tags; the beta label "Invite me to the beta before launch"; the phrase "one launch email, plus a beta invitation only if you ask for one"; the four Source tags; the words `unknown` and `none`; the names of the form's posted fields (email, Fit answer, beta choice, Source); the view format version `1`; the entry pattern `[A-Za-z0-9_-]{1,64}`; and the 10,000,000-byte limit.
+- [x] Every approved string in that file (the wording, the Fit and Source tags, `unknown` and `none`) is byte-identical to its text in Appendix A (checked by a test that reads both).
+  The posted field names, the entry pattern and the byte limit are not in Appendix A (the email name is Kit's `email_address` under OQ1 Option A and the others are provisional until US-WL06's spike; the pattern and the limit are the reader's), so the test does not compare them with it.
+- [x] `tools/waitlist/check-view.py` (Python 3 standard library only, like `tools/check-trainer-art.py`) takes a file path and exits 0 only for a view that satisfies every rule in "The gr0wthlab reader contract"; on failure it names the rule and the entry's position and never prints the offending value.
+- [x] It runs the address check first, over the file's whole text and then every key and value, with the reader's loose pattern; it judges `entry`'s percent-decoding by that same loose pattern, and its base64 (both alphabets) and hex decodings by the reader's whole-address pattern, as the reader contract states.
+- [x] Fixtures under `tools/waitlist/fixtures/`: a valid view with three entries (one with `fit` `null`, one with source `unknown`), a valid view with empty `entries`, and one failing fixture per rule (missing and extra top-level keys; `view` 2 and `view` true; `generated_at` without an offset; `signed_up_on` malformed and later than `generated_at`'s UTC date; a duplicate entry; an entry of length 0 and of 65; a character outside the alphabet; a `source` and a `fit` outside the lists; `beta_opt_in` as a string; an extra entry key; a file that is not UTF-8).
+- [x] The address cases and the over-limit file are generated, never committed: the test builds each at run time, assembling every address from parts, and writes it to a temporary path outside the repository (an address-shaped value in `source`, in `fit`, in `generated_at` and in a key name; an `entry` that is an address in percent-encoded, base64 and hex form; an `entry` whose percent-decoding puts an `@` between two ordinary characters without forming a whole address, which the reader refuses rather than fails; a file over the 10,000,000-byte limit), and a test fails if any file under `tools/waitlist/fixtures/` contains an address-shaped string.
+- [x] `tools/waitlist/test-check-view.py` runs every committed and generated fixture and asserts accept or reject and the named rule.
+- [x] Optional local cross-check: when an environment variable names a gr0wthlab checkout, the test also imports that checkout's `src/gr0wthlab/waitlist.py` read-only and requires its verdict (read, failed or refused) to agree with this checker on every fixture; it is skipped otherwise, never required in CI, and writes nothing in gr0wthlab.
+- [x] The test is wired into a CI job that needs no Xcode (US-WL12 may add the job if none exists).
+- [x] Lint passes.
 
 **Validation Test:**
 
@@ -728,9 +743,28 @@ These become expensive once the Waitlist is live or the first link is posted, so
 
 ## Open Questions
 
+**Settled 2026-10-19.**
+The captain's words: "Waitlist - go with your recommendations".
+Every marked recommendation below is accepted:
+
+- OQ1: Option A (Kit stays, a first-party form posts to Kit, a producer on the founder's Mac assigns entry identifiers).
+- OQ2: (a) stay on Cloudflare Pages, static.
+- OQ3: (a) per-tab last-touch among the four links; a plain path keeps an existing tag; a trailing slash counts as the same link.
+- OQ4: (ii) a daily `launchd` run that also runs after each sweep, plus on demand, writing `~/Library/Application Support/RepToday/waitlist/waitlist-view.json`, owner-only.
+- OQ5: double opt-in; only confirmed sign-ups in the view.
+- OQ6: (a) keep existing Kit sign-ups as Source `unknown`, Fit `null`, beta `false`.
+- OQ7: (a) a new, separate `POST` route for web events.
+- OQ8: `waitlist_signup` fires once per accepted submission.
+- OQ9: Appendix B's wording.
+- OQ10: (a) a new privacy section "The waitlist".
+- OQ11: no second entry; the latest Fit and beta choice win.
+- OQ12: `utm_*` parameters do not set the Source.
+- OQ13: `record-launch-email --sent-on`.
+- OQ14: (a) date-only order.
+
 Each question lists the realistic options grounded in the current code and services, the **recommendation (marked)** with its reason, and the stories it gates.
 Behavior that this PRD could not verify from the repository (marked "confirm") is checked, not assumed: the sending service's in the US-WL06 spike, and the scheduler's in US-WL07.
-Every option-specific build note in this PRD ("under Option A", "under double opt-in" and the like) is provisional until the captain settles OQ1 and OQ5; the build re-verifies the chosen option's design in full.
+With OQ1 and OQ5 settled, the build notes for the chosen options ("under Option A", "under double opt-in" and the like) now apply; the build re-verifies the chosen option's design in full.
 
 ### Left to RepToday by the request
 

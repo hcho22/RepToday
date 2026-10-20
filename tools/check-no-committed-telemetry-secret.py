@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Fail when a build setting commits a usage-data shared secret.
 
-This repository is public. REPTODAY_ANALYTICS_SECRET reaches a build only from the macOS Keychain
-through a private xcconfig, so no file git would publish may give it a value: not the XcodeGen
-spec, the generated project, a tracked xcconfig, a scheme or a workflow, and not Info.plist, whose
-key must stay the build-setting reference.
+Treat this repository as public (its visibility has changed before). REPTODAY_ANALYTICS_SECRET
+reaches a build only from the macOS Keychain through a private xcconfig, so no file git would
+publish may give it a value: not the XcodeGen spec, the generated project, a tracked xcconfig, a
+scheme or a workflow, and not Info.plist, whose key must stay the build-setting reference.
 
 It reads the working tree, tracked and untracked-but-not-ignored, so it also covers a project that
 was just regenerated. An ignored file (the private xcconfig itself) is not read. A finding names

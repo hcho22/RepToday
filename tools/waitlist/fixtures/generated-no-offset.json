@@ -1,0 +1,27 @@
+{
+  "view": 1,
+  "generated_at": "2026-10-11T22:00:00",
+  "entries": [
+    {
+      "entry": "k3P9xQ2m",
+      "source": "tiktok",
+      "fit": "lost-the-routine",
+      "beta_opt_in": true,
+      "signed_up_on": "2026-10-05"
+    },
+    {
+      "entry": "Zr4-tW8_nB1c",
+      "source": "unknown",
+      "fit": "exercises-regularly",
+      "beta_opt_in": false,
+      "signed_up_on": "2026-10-08"
+    },
+    {
+      "entry": "a7Vx0LqE92mD",
+      "source": "reddit",
+      "fit": null,
+      "beta_opt_in": false,
+      "signed_up_on": "2026-10-11"
+    }
+  ]
+}
