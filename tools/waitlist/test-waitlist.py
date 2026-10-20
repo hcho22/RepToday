@@ -21,6 +21,7 @@ import plistlib
 import pty
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -813,6 +814,37 @@ class DailyJob(Case):
         for record in self.reload_store().values():
             self.assertNotIn(AT, record['email'])
         self.assertEqual(self.view()['entries'], [])
+
+    def test_an_interrupt_while_a_pass_writes_its_view_stops_the_whole_job(self):
+        """Ctrl-C is not a failure: one landing while a retention pass regenerates the view (held there by a hang) ends
+        the job with 130, with no further pass and no producer step."""
+        for _ in range(3):
+            self.add(fit='lost-the-routine')
+        self.launch_record(sent_days_ago=31)
+        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', **{wl_common.RUN_LIMIT_ENV: '150', wl_common.FAULT_ENV: 'after-read:hang'})
+        process = subprocess.Popen([sys.executable, str(WAITLIST), 'daily', '--live', '--state-dir', str(self.state),
+                                    '--synthetic', str(self.store_path)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=environment)
+
+        def stop():
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        self.addCleanup(stop)
+        seen = b''
+        deadline = time.monotonic() + 60
+        while b'sweep-retention:' not in seen and time.monotonic() < deadline:
+            if select.select([process.stdout], [], [], 0.2)[0]:
+                chunk = os.read(process.stdout.fileno(), 4096)
+                if not chunk:
+                    break
+                seen += chunk
+        self.assertIn(b'sweep-retention: done', seen)
+        process.send_signal(signal.SIGINT)
+        output = (seen + process.communicate(timeout=30)[0]).decode('utf-8', 'replace')
+        self.assertEqual(process.returncode, 130, output)
+        self.assertNotIn('starting pass', output)
+        self.assertNotIn('daily: step produce', output)
+        self.assertFalse(contains_address(output))
 
     def test_a_retention_pass_that_erases_nothing_fails_the_step_and_is_not_repeated(self):
         for _ in range(3):

@@ -29,7 +29,7 @@ Both sweeps are dry runs unless `--live` is given. `--as-of YYYY-MM-DD` (retenti
 and is accepted only in a dry run or against a synthetic store.
 
 Exit status: 0 done, 1 a step failed, 2 the candidate view failed the checker (the old file is untouched),
-3 a run passed its time limit, 64 usage, 70 internal error.
+3 a run passed its time limit, 64 usage, 70 internal error, 130 interrupted (Ctrl-C stops the whole command).
 """
 import argparse
 import getpass
@@ -46,7 +46,7 @@ from wl_common import (  # noqa: E402
     ensure_private_dir, parse_day, require_directory_outside_work_trees, run_limit, state_dir, today_local)
 from wl_store import KitStore, RestrictedStore, SyntheticStore  # noqa: E402
 
-EXIT_OK, EXIT_FAILED, EXIT_REFUSED, EXIT_LIMIT, EXIT_USAGE, EXIT_INTERNAL = 0, 1, 2, 3, 64, 70
+EXIT_OK, EXIT_FAILED, EXIT_REFUSED, EXIT_LIMIT, EXIT_USAGE, EXIT_INTERNAL, EXIT_INTERRUPTED = 0, 1, 2, 3, 64, 70, 130
 
 
 def say(message):
@@ -230,7 +230,7 @@ def command_show(args):
 
 def command_daily(args):
     """Both sweeps, then the producer. A step that fails, raises or runs out of time does not stop the next one, and
-    the job's own exit status is non-zero when any step did not finish."""
+    the job's own exit status is non-zero when any step did not finish; an interrupt stops the job."""
     steps = [
         ('sweep-unsubscribed', lambda: command_sweep_unsubscribed(args)),
         ('sweep-retention', lambda: daily_retention(args)),
@@ -252,7 +252,8 @@ def command_daily(args):
 
 
 def guarded(step):
-    """Run a command and turn every way it can end into an exit status and a message that holds no value."""
+    """Run a command and turn every way it can fail into an exit status and a message that holds no value. An
+    interrupt is not a failure: it goes on up, so it stops the whole command."""
     try:
         return step()
     except wl_core.CheckRefused as error:
@@ -264,8 +265,6 @@ def guarded(step):
     except RunLimitExceeded:
         complain('waitlist: the run passed its time limit; nothing was replaced')
         return EXIT_LIMIT
-    except KeyboardInterrupt:
-        return 130
     except Exception as error:  # never let a traceback carry a value out
         complain('waitlist: internal error ({})'.format(type(error).__name__))
         return EXIT_INTERNAL
@@ -323,7 +322,10 @@ def main(argv):
         args = build_parser().parse_args(argv)
     except SystemExit as error:
         return EXIT_USAGE if error.code else EXIT_OK
-    return guarded(lambda: args.run(args))
+    try:
+        return guarded(lambda: args.run(args))
+    except KeyboardInterrupt:
+        return EXIT_INTERRUPTED
 
 
 if __name__ == '__main__':

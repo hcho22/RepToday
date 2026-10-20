@@ -255,6 +255,10 @@ class ExportRule(Scratch):
             'rows.json': '[["Beta testers"], ["Name", "Email"], ["Jos\xe9", "{}"]]',
             'rows.jsonl': '["Name", "Email"]\n["Jos\xe9", "{}"]\n',
             'damaged-rows.json': '[\n  ["Name", "Email"],\n  ["Jos\xe9", "{}"],\n',
+            'email-titled.csv': 'Waitlist emails\nName,Email\nJos\xe9,{}\n',
+            'email-titled.tsv': 'Email list\nName\tEmail\nJos\xe9\t{}\n',
+            'email-rows.json': '[["Email export"], ["Name", "Email"], ["Jos\xe9", "{}"]]',
+            'email-rows.jsonl': '["Waitlist emails"]\n["Name", "Email"]\n["Jos\xe9", "{}"]\n',
         }
         for name, content in cases.items():
             code, rules, found = self.export_rules(name, content.format(address('titled')).encode('cp1252'))
@@ -471,6 +475,17 @@ class Audit(Scratch):
         code, output = self.audit(self.root)
         self.assertEqual(code, 1, output)
         self.assertIn('locked:1: rule unreadable-directory', output)
+        self.assertNotIn(AT, output)
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads a file whatever its directory allows')
+    def test_an_export_in_a_directory_the_audit_can_list_but_not_search_fails_naming_it(self):
+        self.write('ro/list.csv', 'name,email\nA,{}\n'.format(address('ro')))
+        listed_only = self.root / 'ro'
+        os.chmod(str(listed_only), 0o444)
+        self.addCleanup(os.chmod, str(listed_only), 0o700)
+        code, output = self.audit(self.root)
+        self.assertEqual(code, 1, output)
+        self.assertIn('ro/list.csv:1: rule unreadable-export', output)
         self.assertNotIn(AT, output)
 
     def test_a_missing_directory_is_an_error_not_a_pass(self):

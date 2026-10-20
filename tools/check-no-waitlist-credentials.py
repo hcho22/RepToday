@@ -35,9 +35,9 @@ Rules, each named in a finding:
                          holds, directly or anywhere beneath it, even one email-shaped address not on the allowlist,
                          however few rows it has. Every such file is read whatever its encoding (UTF-8, else UTF-16
                          by its byte-order mark, else a single-byte decoding such as Latin-1), so a Windows-1252
-                         export is not skipped. A table's header is the first row that names an email column, so
-                         a title line above it hides nothing; a JSON array of rows, or JSON Lines with one row per
-                         line, is read as a table too. A damaged file (a CSV or TSV the reader cannot parse or that
+                         export is not skipped. In a table, every row is read against each email column any row
+                         above it named, so a title line above the header hides nothing, even one that mentions
+                         email; a JSON array of rows, or JSON Lines with one row per line, is read as a table too. A damaged file (a CSV or TSV the reader cannot parse or that
                          leaves a line break inside a cell, as an unclosed quote does; a line of JSON that does not
                          parse) is read line by line: once the file names an email column or field, any unlisted
                          address on such a line counts, so damage hides nothing.
@@ -69,6 +69,7 @@ import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -292,19 +293,21 @@ def strings_beneath(value):
 
 
 def table_step(header, row, damaged, delimiter, relative):
-    """One row of a table. Until a row names an email column it returns (that row's email columns, False); after
-    that, (the header, whether the row holds an unlisted address in such a column or, in a damaged table, anywhere
-    on its line)."""
-    if not header:
-        return [index for index, cell in enumerate(row) if email_named(cell)], False
-    cells = [delimiter.join(row)] if damaged else [row[index] for index in header if index < len(row)]
-    return header, any(unlisted_addresses(cell, relative) for cell in cells)
+    """One row of a table, against `header`, the email columns rows above it named. Returns those columns with this
+    row's own added, and whether the row holds an unlisted address in one of them or, in a damaged table once any
+    row has named one, anywhere on its line."""
+    if damaged:
+        cells = [delimiter.join(row)] if header else []
+    else:
+        cells = [row[index] for index in header if index < len(row)]
+    return header | {index for index, cell in enumerate(row) if email_named(cell)}, any(
+        unlisted_addresses(cell, relative) for cell in cells)
 
 
 def table_findings(rows, damaged, delimiter, relative):
-    """(line, rule) for each row after the first row that names an email column holding an unlisted address there."""
+    """(line, rule) for each row holding an unlisted address in a column a row above it named for email."""
     found = []
-    header = []
+    header = set()
     for number, row in enumerate(rows, start=1):
         header, hit = table_step(header, row, damaged, delimiter, relative)
         if hit:
@@ -324,7 +327,7 @@ def walk_json(value, relative, line, found):
                 found.append((line, 'export-file'))
             walk_json(inner, relative, line, found)
     elif isinstance(value, list):
-        header = []
+        header = set()
         for inner in value:
             if isinstance(inner, list):
                 header, hit = table_step(header, json_row(inner), False, ',', relative)
@@ -342,7 +345,7 @@ def json_line_findings(lines, names_email, relative):
     fragment of a larger document) counts an unlisted address anywhere on it once the file names an email field, so
     damage hides nothing."""
     found = []
-    header = []
+    header = set()
     for number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
@@ -461,13 +464,15 @@ def read_small(path):
 
 def scan_file(root, relative, tally, credentials, exports, addresses):
     path = os.path.join(str(root), relative)
-    if not os.path.isfile(path) or os.path.islink(path):
-        return
     export = exports and relative.lower().endswith(EXPORT_SUFFIXES)
     try:
+        if not stat.S_ISREG(os.lstat(path).st_mode):
+            return
         data = read_small(path)
         if export:
             tally.add(relative, export_findings(data, relative) if data is not None else large_export_findings(path, relative))
+    except FileNotFoundError:
+        return
     except OSError:
         if export:
             tally.add(relative, [(1, 'unreadable-export')])
