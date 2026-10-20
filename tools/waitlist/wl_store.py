@@ -13,6 +13,7 @@ single-record read does not.
 An error raised here names the step and the HTTP status. It never carries a response body, a URL with an
 address in its query, or the credential.
 """
+import http.client
 import json
 import os
 import subprocess
@@ -134,7 +135,7 @@ class KitStore(object):
                 status, raw = error.code, b''
                 retry_after = error.headers.get('Retry-After') if error.headers else None
                 error.close()
-            except (urllib.error.URLError, OSError):
+            except (urllib.error.URLError, OSError, http.client.HTTPException):
                 raise StoreError('Kit request failed ({}: no answer)'.format(label))
             allowed = RATE_LIMIT_RETRIES if status == 429 else len(RETRY_PAUSES)
             if status in RETRY_STATUSES and attempt < allowed:

@@ -35,12 +35,16 @@ Rules, each named in a finding:
                          holds, directly or anywhere beneath it, even one email-shaped address not on the allowlist,
                          however few rows it has. Every such file is read whatever its encoding (UTF-8, else UTF-16
                          by its byte-order mark, else a single-byte decoding such as Latin-1), so a Windows-1252
-                         export is not skipped. A damaged file (a CSV or TSV the reader cannot parse or that leaves
-                         a line break inside a cell, as an unclosed quote does; a line of JSON that does not parse)
-                         is read line by line: once the file names an email column or field, any unlisted address
-                         on such a line counts, so damage hides nothing.
+                         export is not skipped. A table's header is the first row that names an email column, so
+                         a title line above it hides nothing; a JSON array of rows, or JSON Lines with one row per
+                         line, is read as a table too. A damaged file (a CSV or TSV the reader cannot parse or that
+                         leaves a line break inside a cell, as an unclosed quote does; a line of JSON that does not
+                         parse) is read line by line: once the file names an email column or field, any unlisted
+                         address on such a line counts, so damage hides nothing.
   unreadable-export      a CSV, TSV, JSON or JSONL file in the export rule's scope that cannot be read (no
                          permission, an I/O error): it could hold an export, so it fails the run.
+  unreadable-directory   in the audit, a directory that cannot be listed: whatever it holds would go unread, so it
+                         fails the run.
   address                an email-shaped string not on the allowlist. Only text files are read for this rule
                          (files that decode as UTF-8 and hold no NUL byte): committed images such as the Trainer
                          pose art hold address-shaped byte runs by chance.
@@ -287,6 +291,32 @@ def strings_beneath(value):
     return []
 
 
+def table_step(header, row, damaged, delimiter, relative):
+    """One row of a table. Until a row names an email column it returns (that row's email columns, False); after
+    that, (the header, whether the row holds an unlisted address in such a column or, in a damaged table, anywhere
+    on its line)."""
+    if not header:
+        return [index for index, cell in enumerate(row) if email_named(cell)], False
+    cells = [delimiter.join(row)] if damaged else [row[index] for index in header if index < len(row)]
+    return header, any(unlisted_addresses(cell, relative) for cell in cells)
+
+
+def table_findings(rows, damaged, delimiter, relative):
+    """(line, rule) for each row after the first row that names an email column holding an unlisted address there."""
+    found = []
+    header = []
+    for number, row in enumerate(rows, start=1):
+        header, hit = table_step(header, row, damaged, delimiter, relative)
+        if hit:
+            found.append((number, 'export-file'))
+    return found
+
+
+def json_row(items):
+    """A JSON array as a table row: each cell as text."""
+    return [item if isinstance(item, str) else json.dumps(item, ensure_ascii=False) for item in items]
+
+
 def walk_json(value, relative, line, found):
     if isinstance(value, dict):
         for key, inner in value.items():
@@ -294,42 +324,37 @@ def walk_json(value, relative, line, found):
                 found.append((line, 'export-file'))
             walk_json(inner, relative, line, found)
     elif isinstance(value, list):
+        header = []
         for inner in value:
+            if isinstance(inner, list):
+                header, hit = table_step(header, json_row(inner), False, ',', relative)
+                if hit:
+                    found.append((line, 'export-file'))
             walk_json(inner, relative, line, found)
 
 
 JSON_KEY = re.compile(r'"([^"\\]*)"\s*:')
 
 
-def table_findings(rows, damaged, delimiter, relative):
-    """(line, rule) for each row under a header that names an email column and holds an unlisted address in such a
-    column or, in a damaged table, anywhere on its line."""
-    found = []
-    header = None
-    for number, row in enumerate(rows, start=1):
-        if header is None:
-            if any(cell.strip() for cell in row):
-                header = [index for index, cell in enumerate(row) if email_named(cell)]
-            continue
-        cells = [delimiter.join(row)] if damaged and header else [row[index] for index in header if index < len(row)]
-        if any(unlisted_addresses(cell, relative) for cell in cells):
-            found.append((number, 'export-file'))
-    return found
-
-
 def json_line_findings(lines, names_email, relative):
-    """(line, rule) for JSON read a line at a time: an object or array line is walked, and any other line (damaged,
-    or a fragment of a larger document) counts an unlisted address anywhere on it once the file names an email
-    field, so damage hides nothing."""
+    """(line, rule) for JSON read a line at a time: an object or array line (a trailing comma, as in one element of a
+    larger document, set aside) is walked, array lines are also rows of one table, and any other line (damaged, or a
+    fragment of a larger document) counts an unlisted address anywhere on it once the file names an email field, so
+    damage hides nothing."""
     found = []
+    header = []
     for number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
-            value = json.loads(line)
+            value = json.loads(line.rstrip().rstrip(','))
             parsed = isinstance(value, (dict, list))
             if parsed:
                 walk_json(value, relative, number, found)
+            if isinstance(value, list):
+                header, hit = table_step(header, json_row(value), False, ',', relative)
+                if hit:
+                    found.append((number, 'export-file'))
         except (ValueError, RecursionError):
             parsed = False
         if not parsed and names_email and unlisted_addresses(line, relative):
@@ -389,10 +414,14 @@ def published_files(root):
     return [name for name in listed.decode('utf-8', errors='replace').split('\0') if name]
 
 
-def walked_files(root, skip_dependency_folders):
+def walked_files(root, skip_dependency_folders, unlisted=None):
     """Every regular file under `root`, git-ignored or not, skipping `.git` (a directory, or the file a linked
-    worktree has). With `skip_dependency_folders`, installed dependency folders are skipped too."""
-    for directory, names, files in os.walk(str(root), followlinks=False):
+    worktree has). With `skip_dependency_folders`, installed dependency folders are skipped too. A directory that
+    cannot be listed is appended to `unlisted`, when given, by its path relative to `root`."""
+    def record(error):
+        if unlisted is not None:
+            unlisted.append(os.path.relpath(error.filename or str(root), str(root)))
+    for directory, names, files in os.walk(str(root), onerror=record, followlinks=False):
         pruned = []
         for name in names:
             path = os.path.join(directory, name)
@@ -470,8 +499,11 @@ def audit_directory(directory):
     tally = Tally()
     this_checkout = root == ROOT
     export_scope = set(walked_files(root, True))
-    for relative in walked_files(root, False):
+    unlisted = []
+    for relative in walked_files(root, False, unlisted):
         scan_file(root, relative, tally, True, relative in export_scope, False)
+    for relative in unlisted:
+        tally.add(relative, [(1, 'unreadable-directory')])
     if this_checkout:
         for relative in published_files(root):
             path = os.path.join(str(root), relative)

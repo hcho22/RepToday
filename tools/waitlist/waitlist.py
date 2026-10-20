@@ -118,9 +118,10 @@ def sweep_status(name, counts, extra=''):
 
 
 def after_erasure(store, directory, counts, soft_deadline):
-    """A deletion is followed by a view generated from a store read made after it."""
+    """A deletion is followed by a view generated from a store read made after it. A view that cannot be written is
+    a failed status, never an exception, so the erasure's counts still reach the caller."""
     if counts['erased']:
-        return regenerate(store, directory, soft_deadline)
+        return guarded(lambda: regenerate(store, directory, soft_deadline))
     return EXIT_OK
 
 

@@ -143,6 +143,7 @@ Every waitlist email carries Kit's unsubscribe link: send the launch email and t
 Each step runs whatever an earlier one did, a step that fails or runs out of time is reported as `FAILED (exit N)`, and the job exits non-zero when any step did.
 One run of the retention sweep erases only what fits before its last 120 seconds, roughly 300 sign-ups at Kit's API-key rate (about 2 requests a second; an erasure is 3 calls), so the job repeats it as separate passes, each under the lock and its own 600 second limit, while the previous pass left sign-ups and erased at least one, up to 20 passes (about 6,000 sign-ups).
 The step is reported failed only when sign-ups remain after the last pass or a pass erased none; the next daily run continues from there.
+A view that cannot be written after a pass is reported, but the pass's erasures still count and the next pass runs; the job's last step writes the view again.
 `launchd/app.reptoday.waitlist-daily.plist` runs it at 06:30 local time, and a calendar job the Mac slept through starts when the Mac next wakes.
 
 Install it (the captain's step, slice 4; nothing in the repository does this):

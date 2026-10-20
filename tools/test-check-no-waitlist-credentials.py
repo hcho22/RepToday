@@ -247,6 +247,19 @@ class ExportRule(Scratch):
         code, rules, found = self.export_rules('damaged.json', damaged.encode('cp1252'))
         self.assertEqual((code, rules), (1, ['export-file']))
 
+    def test_a_title_line_above_the_header_or_a_table_of_json_rows_hides_nothing(self):
+        """Saved in Windows-1252 so the address rule skips each file and only the export rule can fail it."""
+        cases = {
+            'titled.csv': 'Beta testers\nName,Email\nJos\xe9,{}\n',
+            'titled.tsv': 'Beta testers\n\nName\tEmail\nJos\xe9\t{}\n',
+            'rows.json': '[["Beta testers"], ["Name", "Email"], ["Jos\xe9", "{}"]]',
+            'rows.jsonl': '["Name", "Email"]\n["Jos\xe9", "{}"]\n',
+            'damaged-rows.json': '[\n  ["Name", "Email"],\n  ["Jos\xe9", "{}"],\n',
+        }
+        for name, content in cases.items():
+            code, rules, found = self.export_rules(name, content.format(address('titled')).encode('cp1252'))
+            self.assertEqual((code, rules), (1, ['export-file']), name)
+
     def test_an_export_over_the_size_cap_is_read_a_line_at_a_time(self):
         """Made here and never committed: filler rows past the 50 MB cap, then one row in Windows-1252 with an accented
         name and an unlisted address, so only the export rule, reading every row, can fail it."""
@@ -448,6 +461,17 @@ class Audit(Scratch):
         self.assertIn('first.csv:2: rule export-file', output)
         self.assertIn('later.csv:2: rule export-file', output)
         self.assertIn('creds.sh:1: rule credential-assignment', output)
+
+    @unittest.skipIf(os.geteuid() == 0, 'root lists a directory whatever its mode')
+    def test_a_directory_the_audit_cannot_list_fails_naming_it(self):
+        self.write('locked/list.csv', 'name,email\nA,{}\n'.format(address('locked')))
+        locked = self.root / 'locked'
+        os.chmod(str(locked), 0)
+        self.addCleanup(os.chmod, str(locked), 0o700)
+        code, output = self.audit(self.root)
+        self.assertEqual(code, 1, output)
+        self.assertIn('locked:1: rule unreadable-directory', output)
+        self.assertNotIn(AT, output)
 
     def test_a_missing_directory_is_an_error_not_a_pass(self):
         code, output = self.audit(self.root / 'nope')

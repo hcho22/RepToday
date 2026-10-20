@@ -798,6 +798,22 @@ class DailyJob(Case):
             self.assertTrue(all(value is None for value in record['fields'].values()))
         self.assertEqual(self.view()['entries'], [])
 
+    def test_a_view_that_cannot_be_written_after_a_pass_does_not_stop_the_next_pass(self):
+        """The last sign-up is dated in the future, so every view made while it is still listed fails the checker; the
+        passes that erase the others still count their erasures and the next pass runs."""
+        for _ in range(7):
+            self.add(fit='lost-the-routine')
+        self.add(created='2099-01-01T00:00:00Z', fit='lost-the-routine')
+        self.launch_record(sent_days_ago=31)
+        code, output = self.cli('daily', '--live', env={wl_common.RUN_LIMIT_ENV: '121', wl_common.FAULT_ENV: 'erase:pause'})
+        self.assertEqual(code, 0, output)
+        self.assertIn('entry-date-future', output)
+        self.assertIn('starting pass 2', output)
+        self.assertIn('daily: step sweep-retention ok', output)
+        for record in self.reload_store().values():
+            self.assertNotIn(AT, record['email'])
+        self.assertEqual(self.view()['entries'], [])
+
     def test_a_retention_pass_that_erases_nothing_fails_the_step_and_is_not_repeated(self):
         for _ in range(3):
             self.add(fit='lost-the-routine')
@@ -931,6 +947,14 @@ class KitClient(unittest.TestCase):
         with self.assertRaises(StoreError) as raised:
             wrong.list_subscribers()
         self.assertIn('HTTP 401', str(raised.exception))
+
+    def test_an_answer_cut_short_is_a_store_error(self):
+        subscriber = self.fake.add(address('cut'), fit='lost-the-routine')
+        self.fake.mode = 'truncated'
+        for call in (self.store.list_subscribers, lambda: self.store.erase(subscriber)):
+            with self.assertRaises(StoreError) as raised:
+                call()
+            self.assertIn('no answer', str(raised.exception))
 
     def test_a_call_that_never_answers_ends_by_its_timeout(self):
         self.fake.mode = 'hang'

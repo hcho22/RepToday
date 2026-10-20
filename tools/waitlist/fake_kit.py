@@ -5,7 +5,8 @@ Python 3 standard library only. It binds 127.0.0.1, keeps subscribers in memory,
 test gives it, and never prints a request. Its behavior follows what `artifacts/reports/US-WL06/spike.md` and the
 test-account probes showed Kit doing: `status=all` lists every state, a list is cursor-paginated, `PUT` merges the
 named custom fields and replaces the address when one is given, unsubscribing sets `cancelled`, a tag create is
-idempotent. A test sets `mode` to `hang` (answers after a long pause), `error` (HTTP 500) or `busy` (HTTP
+idempotent. A test sets `mode` to `hang` (answers after a long pause), `error` (HTTP 500), `truncated` (an answer
+cut short of the length it states) or `busy` (HTTP
 `busy_status`, 503 unless set, for the next `busy_count` requests, then normal; `busy_retry_after` adds a
 `Retry-After` header, as Kit's rate limit does with a 429).
 """
@@ -87,6 +88,13 @@ class FakeKit(object):
                     time.sleep(30)
                 if mode == 'error':
                     return self._send(500)
+                if mode == 'truncated':
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', '1000')
+                    self.end_headers()
+                    self.wfile.write(b'{"subscribers": [')
+                    return None
                 if self.headers.get('X-Kit-Api-Key') != fake.api_key:
                     return self._send(401, {'errors': ['The access token is invalid']})
                 body = self._body() if method in ('POST', 'PUT') else {}
