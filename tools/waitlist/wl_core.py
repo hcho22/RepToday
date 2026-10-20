@@ -12,8 +12,12 @@ How the pieces fit (the PRD's OQ1 Option A with the captain's Kit decisions D1 t
     `entry` to the ledger's value (D1).
   * The view is projected from the store and the ledger, checked by `check-view.py`'s own code, and written
     atomically only if it passes.
-  * Kit cannot delete a subscriber, so removal and retention erase one (unsubscribe, placeholder address, blank
-    fields) and the next view leaves it out (D2).
+  * Kit's API cannot delete a subscriber, so removal and retention erase one (unsubscribe, placeholder address,
+    blank fields) and the next view leaves it out (D2). Kit still keeps an approximate location on the erased
+    record, so the founder then deletes it in Kit's web app: the ledger lists every erased id until a check finds
+    that it no longer answers (`check_kit_deletes`).
+  * A spam complaint is a removal request, so the unsubscribed sweep erases a `complained` sign-up as it does a
+    `cancelled` one; a `bounced` one stays until the retention date.
 """
 import importlib.util
 import json
@@ -23,9 +27,10 @@ from pathlib import Path
 
 from wl_common import (
     HERE, LAUNCH_NAME, LAUNCH_WINDOW_DAYS, LEDGER_NAME, VIEW_NAME, WaitlistError, deletion_date, ensure_private_dir,
-    fault, load_contract, new_entry, parse_day, remove_stale_temporaries, require_directory_outside_work_trees,
-    require_file_outside_work_trees, retention_due, utc_day_of, validate_launch_date, write_private_atomic)
-from wl_store import ACTIVE, CANCELLED, INACTIVE
+    fault, kit_delete_by, load_contract, new_entry, parse_day, remove_stale_temporaries,
+    require_directory_outside_work_trees, require_file_outside_work_trees, retention_due, today_local, utc_day_of,
+    validate_launch_date, write_private_atomic)
+from wl_store import ACTIVE, CANCELLED, COMPLAINED, INACTIVE, REMOVAL_REQUESTED
 
 
 def _load_checker():
@@ -88,6 +93,9 @@ class Ledger(object):
         # from being given a new identifier, written to, listed in the view or erased a second time. An id is
         # never reused by Kit, and a tombstone holds nothing but that id.
         self.erased = set()
+        # Erased ids the founder has still to delete in Kit's web app, each with the day it was erased. An id
+        # leaves this list when a check finds that Kit no longer answers for it; its tombstone stays.
+        self.awaiting_kit_delete = {}
 
     def load(self):
         try:
@@ -95,6 +103,7 @@ class Ledger(object):
         except FileNotFoundError:
             self.entries = {}
             self.erased = set()
+            self.awaiting_kit_delete = {}
             return self
         except OSError:
             raise WaitlistError('the ledger could not be read')
@@ -102,9 +111,13 @@ class Ledger(object):
             data = json.loads(raw.decode('utf-8'))
             subscribers = data['subscribers']
             erased = data.get('erased', [])
+            awaiting = data.get('awaiting_kit_delete', {})
             if data.get('ledger') != LEDGER_VERSION or not isinstance(subscribers, dict) or not isinstance(erased, list):
                 raise ValueError
             if not all(isinstance(item, str) and item.isdigit() for item in erased):
+                raise ValueError
+            if not isinstance(awaiting, dict) or not all(
+                    key in erased and parse_day(value) is not None for key, value in awaiting.items()):
                 raise ValueError
             seen = set()
             for subscriber_id, record in subscribers.items():
@@ -118,16 +131,22 @@ class Ledger(object):
             raise WaitlistError('the ledger is damaged; restore it or move it aside (moving it aside gives every sign-up a new entry identifier)')
         self.entries = {str(key): {'entry': value['entry'], 'source': value['source']} for key, value in subscribers.items()}
         self.erased = set(erased)
+        self.awaiting_kit_delete = dict(awaiting)
         return self
 
     def save(self):
-        payload = {'ledger': LEDGER_VERSION, 'subscribers': self.entries, 'erased': sorted(self.erased, key=int)}
+        payload = {'ledger': LEDGER_VERSION, 'subscribers': self.entries, 'erased': sorted(self.erased, key=int),
+                   'awaiting_kit_delete': self.awaiting_kit_delete}
         write_private_atomic(self.path, (json.dumps(payload, indent=2, sort_keys=True) + '\n').encode('utf-8'))
 
-    def mark_erased(self, subscriber_id):
-        """Forget a subscriber's identifier and remember that it was erased. The caller saves."""
-        self.entries.pop(str(subscriber_id), None)
-        self.erased.add(str(subscriber_id))
+    def mark_erased(self, subscriber_id, on):
+        """Forget a subscriber's identifier, remember that it was erased, and list it for the founder to delete in
+        Kit's web app (an id already listed keeps its first day). The caller saves."""
+        subscriber_id = str(subscriber_id)
+        self.entries.pop(subscriber_id, None)
+        if subscriber_id not in self.erased:
+            self.awaiting_kit_delete.setdefault(subscriber_id, on.isoformat())
+        self.erased.add(subscriber_id)
 
     def entry_of(self, subscriber_id):
         record = self.entries.get(str(subscriber_id))
@@ -146,12 +165,13 @@ class Ledger(object):
 # Identifier assignment (US-WL06).
 
 
-def assign_entries(store, ledger, subscribers, soft_deadline=None):
+def assign_entries(store, ledger, subscribers, soft_deadline=None, today=None):
     """Give every stored sign-up that lacks an identifier one, remember the Source first seen, and reset Kit's
     `entry` field wherever it differs from the ledger. The ledger is saved before any write to Kit, so an
     interruption leaves either nothing or an identifier the next run writes back; past the soft deadline no new
-    write is started and the rest are left for the next run, so the view that follows is still written. Returns
-    counts."""
+    write is started and the rest are left for the next run, so the view that follows is still written. A scrubbed
+    record the ledger does not know as erased (one erased under a lost ledger) is listed for the founder to delete
+    in Kit's web app from `today`. Returns counts."""
     counts = {'assigned': 0, 'reset': 0, 'pruned': 0, 'writeback_failed': 0, 'writeback_deferred': 0}
     eligible = [item for item in subscribers
                 if item.state in (ACTIVE, INACTIVE) and not item.scrubbed and item.id not in ledger.erased]
@@ -168,7 +188,7 @@ def assign_entries(store, ledger, subscribers, soft_deadline=None):
         if item.scrubbed and (item.id in ledger.entries or item.id not in ledger.erased):
             if item.id in ledger.entries:
                 counts['pruned'] += 1
-            ledger.mark_erased(item.id)
+            ledger.mark_erased(item.id, today or today_local())
             changed = True
     if changed:
         ledger.save()
@@ -224,7 +244,7 @@ def view_path(directory, output=None):
     return Path(str(output)) if output else Path(str(directory)) / VIEW_NAME
 
 
-def produce_view(store, directory, output=None, now=None, mutate_candidate=None, soft_deadline=None):
+def produce_view(store, directory, output=None, now=None, mutate_candidate=None, soft_deadline=None, today=None):
     """Read the store, assign identifiers, project the view, check it, and replace the file only if the check
     passes. Must be called while holding the run lock. Returns counts."""
     directory = Path(str(directory))
@@ -239,7 +259,7 @@ def produce_view(store, directory, output=None, now=None, mutate_candidate=None,
     subscribers = store.list_subscribers()
     fault('after-read')
     generated_at = (now or (lambda: datetime.now(timezone.utc)))()  # stamped after the store was read
-    counts = assign_entries(store, ledger, subscribers, soft_deadline)
+    counts = assign_entries(store, ledger, subscribers, soft_deadline, today)
     counts['unconfirmed'] = sum(1 for item in subscribers
                                 if item.state == INACTIVE and not item.scrubbed and item.id not in ledger.erased)
     view = build_view(subscribers, ledger, generated_at)
@@ -304,10 +324,10 @@ def record_launch_email(directory, sent_on_text, today, replace=False):
     return sent_on, deletion_date(sent_on)
 
 
-def _erase_all(store, ledger, targets, soft_deadline):
+def _erase_all(store, ledger, targets, soft_deadline, today):
     """Erase each target, forgetting its ledger entry as it goes. Stops starting new ones past the soft deadline.
-    Returns (erased, failed, remaining)."""
-    erased = failed = 0
+    Returns (erased ids, failed, remaining)."""
+    erased, failed = [], 0
     remaining = len(targets)
     for item in targets:
         if soft_deadline is not None and time.monotonic() > soft_deadline:
@@ -319,21 +339,33 @@ def _erase_all(store, ledger, targets, soft_deadline):
         except WaitlistError:
             failed += 1
             continue
-        erased += 1
-        ledger.mark_erased(item.id)
+        erased.append(item.id)
+        ledger.mark_erased(item.id, today)
         ledger.save()
     return erased, failed, remaining
 
 
-def sweep_unsubscribed(store, directory, live=False, soft_deadline=None):
-    """Erase every sign-up Kit reports as unsubscribed. A dry run counts them and changes nothing. Returns counts."""
+def _sweep_counts(targets, live):
+    return {'due': len(targets), 'erased': 0, 'erased_ids': [], 'failed': 0, 'remaining': 0, 'live': live}
+
+
+def _erase_targets(store, ledger, targets, counts, soft_deadline, today):
+    ids, counts['failed'], counts['remaining'] = _erase_all(store, ledger, targets, soft_deadline, today)
+    counts['erased'], counts['erased_ids'] = len(ids), ids
+
+
+def sweep_unsubscribed(store, directory, live=False, soft_deadline=None, today=None):
+    """Erase every sign-up whose holder asked for removal through Kit: unsubscribed (`cancelled`) or a spam
+    complaint (`complained`). A dry run counts them and changes nothing. Returns counts."""
     ledger = Ledger(directory).load()
     targets = [item for item in store.list_subscribers()
-               if item.state == CANCELLED and not item.scrubbed and item.id not in ledger.erased]
+               if item.state in REMOVAL_REQUESTED and not item.scrubbed and item.id not in ledger.erased]
     fault('sweep-unsubscribed')
-    counts = {'due': len(targets), 'erased': 0, 'failed': 0, 'remaining': 0, 'live': live}
+    counts = _sweep_counts(targets, live)
+    counts['unsubscribed'] = sum(1 for item in targets if item.state == CANCELLED)
+    counts['complained'] = sum(1 for item in targets if item.state == COMPLAINED)
     if live and targets:
-        counts['erased'], counts['failed'], counts['remaining'] = _erase_all(store, ledger, targets, soft_deadline)
+        _erase_targets(store, ledger, targets, counts, soft_deadline, today or today_local())
     return counts
 
 
@@ -342,8 +374,9 @@ def sweep_retention(store, directory, as_of, live=False, soft_deadline=None):
     date recorded it deletes nothing. A dry run counts them and changes nothing. One call is one pass, bounded by
     the soft deadline; the daily job repeats it. Returns counts."""
     sent_on = read_launch_record(directory, today=as_of)
-    counts = {'due': 0, 'erased': 0, 'failed': 0, 'remaining': 0, 'live': live, 'recorded': sent_on is not None,
-              'not_due': False, 'deletion_date': deletion_date(sent_on).isoformat() if sent_on else None}
+    counts = _sweep_counts([], live)
+    counts.update({'recorded': sent_on is not None, 'not_due': False,
+                   'deletion_date': deletion_date(sent_on).isoformat() if sent_on else None})
     if sent_on is None:
         return counts
     if not retention_due(sent_on, as_of):
@@ -353,11 +386,11 @@ def sweep_retention(store, directory, as_of, live=False, soft_deadline=None):
     targets = [item for item in store.list_subscribers() if not item.scrubbed and item.id not in ledger.erased]
     counts['due'] = len(targets)
     if live and targets:
-        counts['erased'], counts['failed'], counts['remaining'] = _erase_all(store, ledger, targets, soft_deadline)
+        _erase_targets(store, ledger, targets, counts, soft_deadline, as_of)
     return counts
 
 
-def remove_signup(store, directory, entry=None, address=None, live=True):
+def remove_signup(store, directory, entry=None, address=None, live=True, today=None):
     """Erase one sign-up, found by entry identifier or by an exact address. Returns the Kit id it erased, or None for
     a dry run that found it. Raises when nothing matches exactly."""
     ledger = Ledger(directory).load()
@@ -374,9 +407,49 @@ def remove_signup(store, directory, entry=None, address=None, live=True):
     if not live:
         return subscriber_id
     store.erase(subscriber_id)
-    ledger.mark_erased(subscriber_id)
+    ledger.mark_erased(subscriber_id, today or today_local())
     ledger.save()
     return subscriber_id
+
+
+# The founder's delete in Kit's web app (the captain's decision, 2026-10-20).
+
+
+def check_kit_deletes(store, directory, today, soft_deadline=None):
+    """Check every erased id still listed for the founder to delete in Kit's web app, and stop listing the ones Kit
+    no longer answers for. One listing finds the ids Kit still lists; only the others are read one by one, since a
+    listing trails a delete by a few minutes. Past the soft deadline the rest stay listed, unchecked, for the next
+    run. The tooling cannot delete: it only checks afterwards. Returns counts and the ids still waiting, each with the
+    day it was erased, the day to delete it by and whether that day has passed."""
+    ledger = Ledger(directory).load()
+    counts = {'confirmed': 0, 'failed': 0, 'unchecked': 0, 'waiting': []}
+    if not ledger.awaiting_kit_delete:
+        return counts
+    listed = set(item.id for item in store.list_subscribers())
+    changed = False
+    for subscriber_id, erased_on in sorted(ledger.awaiting_kit_delete.items(), key=lambda pair: (pair[1], int(pair[0]))):
+        still_there = subscriber_id in listed
+        if not still_there:
+            if soft_deadline is not None and time.monotonic() > soft_deadline:
+                counts['unchecked'] += 1
+                still_there = True
+            else:
+                try:
+                    still_there = store.exists(subscriber_id)
+                except WaitlistError:
+                    counts['failed'] += 1
+                    still_there = True
+        if still_there:
+            due = kit_delete_by(parse_day(erased_on))
+            counts['waiting'].append({'id': subscriber_id, 'erased_on': erased_on, 'delete_by': due.isoformat(),
+                                      'overdue': today > due})
+            continue
+        del ledger.awaiting_kit_delete[subscriber_id]
+        counts['confirmed'] += 1
+        changed = True
+    if changed:
+        ledger.save()
+    return counts
 
 
 # Send-time lookup (US-WL09).

@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   The Waitlist's daily job (US-WL07 and US-WL10, OQ4 option ii): both removal sweeps live, then the anonymous
-  view. This file is a template and is NOT installed by the repository: tools/waitlist/README.md ("Install the
+  view, then the check of the erased sign-ups the founder still has to delete in Kit's web app. This file is a template and is NOT installed by the repository: tools/waitlist/README.md ("Install the
   daily job") says how the founder installs it. Replace __REPO_ROOT__ with the path of the RepToday checkout and
   __HOME__ with the home directory (launchd does not expand "~").
 

@@ -56,6 +56,10 @@ RETENTION_DAYS = 30
 # would put the retention deletion in the past or a day or two away, and the sweep deletes every
 # sign-up the morning after, so a mistyped date is refused rather than recorded.
 LAUNCH_WINDOW_DAYS = 7
+# Kit's API cannot delete a subscriber, so after the scrub the founder deletes the record in Kit's web app (the
+# captain's decision, 2026-10-20). An unsubscribe is scrubbed within a day of the request, so deleting within
+# this many days of the scrub keeps the whole removal inside the 7 days the privacy policy promises.
+KIT_DELETE_DAYS = 5
 
 ENTRY_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 ENTRY_LENGTH = 16  # 62^16 is about 2^95, above the PRD's 80-bit floor.
@@ -319,6 +323,11 @@ def utc_day_of(timestamp):
 
 def deletion_date(sent_on):
     return sent_on + timedelta(days=RETENTION_DAYS)
+
+
+def kit_delete_by(erased_on):
+    """The last day the founder deletes in Kit's web app a sign-up the tooling erased on `erased_on`."""
+    return erased_on + timedelta(days=KIT_DELETE_DAYS)
 
 
 def validate_launch_date(text, today):

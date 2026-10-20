@@ -5,7 +5,10 @@ Python 3 standard library only. It binds 127.0.0.1, keeps subscribers in memory,
 test gives it, and never prints a request. Its behavior follows what `artifacts/reports/US-WL06/spike.md` and the
 test-account probes showed Kit doing: `status=all` lists every state, a list is cursor-paginated, `PUT` merges the
 named custom fields and replaces the address when one is given, unsubscribing sets `cancelled`, a tag create is
-idempotent. A test sets `mode` to `hang` (answers after a long pause), `error` (HTTP 500), `truncated` (an answer
+idempotent, a listing returns a blank custom field as an empty string where a single-record read returns null (as
+Kit's listing did on 2026-10-20), and there is no API delete (`DELETE` answers 404, as Kit's does). `delete` stands
+in for the founder's delete in Kit's web app: afterwards the id answers 404. A state in `refuse_unsubscribe` makes
+the unsubscribe call answer 422, as Kit might for a record it already mails nothing. A test sets `mode` to `hang` (answers after a long pause), `error` (HTTP 500), `truncated` (an answer
 cut short of the length it states) or `busy` (HTTP
 `busy_status`, 503 unless set, for the next `busy_count` requests, then normal; `busy_retry_after` adds a
 `Retry-After` header, as Kit's rate limit does with a 429).
@@ -30,6 +33,7 @@ class FakeKit(object):
         self.busy_status = 503
         self.busy_retry_after = None
         self.requests = []
+        self.refuse_unsubscribe = set()
         self.lock = threading.Lock()
         self._next_id = 1000
         self._next_tag = 500
@@ -49,6 +53,14 @@ class FakeKit(object):
 
     def get(self, subscriber_id):
         return self.subscribers[int(subscriber_id)]
+
+    def delete(self, subscriber_id):
+        """The founder's delete in Kit's web app: the record is gone, from every listing and every read."""
+        with self.lock:
+            del self.subscribers[int(subscriber_id)]
+            for members in self.tag_members.values():
+                if int(subscriber_id) in members:
+                    members.remove(int(subscriber_id))
 
     def start(self):
         fake = self
@@ -126,6 +138,8 @@ class FakeKit(object):
                         subscriber = fake.subscribers.get(int(parts[2]))
                         if subscriber is None:
                             return self._send(404)
+                        if subscriber['state'] in fake.refuse_unsubscribe:
+                            return self._send(422, {'errors': ['Subscriber cannot be unsubscribed']})
                         subscriber['state'] = 'cancelled'
                         return self._send(204)
                 if parts[:2] == ['v4', 'tags']:
@@ -166,7 +180,9 @@ class FakeKit(object):
                     start = ids.index(after) + 1 if after in ids else len(ids)
                 chunk = items[start:start + size]
                 more = start + size < len(items)
-                return self._send(200, {'subscribers': chunk, 'pagination': {
+                listed = [dict(item, fields={key: '' if value is None else value
+                                             for key, value in (item.get('fields') or {}).items()}) for item in chunk]
+                return self._send(200, {'subscribers': listed, 'pagination': {
                     'has_previous_page': start > 0, 'has_next_page': more,
                     'start_cursor': str(chunk[0]['id']) if chunk else None,
                     'end_cursor': str(chunk[-1]['id']) if chunk else None, 'per_page': size}})
@@ -179,6 +195,9 @@ class FakeKit(object):
 
             def do_PUT(self):
                 self._dispatch('PUT')
+
+            def do_DELETE(self):
+                self._dispatch('DELETE')
 
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
