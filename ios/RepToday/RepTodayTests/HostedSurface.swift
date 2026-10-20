@@ -80,7 +80,8 @@ enum HostedSurface {
     /// Hosts `view` at `size` in a real key window and returns it laid out, drawn and settled.
     ///
     /// The window is handed back rather than kept here because a released window takes the hosted view
-    /// down with it: the caller has to hold it for as long as the surface is read.
+    /// down with it: the caller has to hold it for as long as the surface is read. It is dismantled when
+    /// the test that hosted it ends, so it never outlives that test.
     ///
     /// `emulatingSafeArea` hosts the surface with exactly those safe-area insets instead of the running
     /// Simulator's own, so a smaller phone can be rendered faithfully on whatever device the suite runs

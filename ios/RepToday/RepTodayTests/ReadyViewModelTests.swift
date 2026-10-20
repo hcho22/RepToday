@@ -1120,10 +1120,6 @@ private final class PillarByDurationEngine: WorkoutEngineProtocol {
     }
 }
 
-// MARK: - Ready Screen telemetry doubles (US-T09)
-
-/// An advanceable clock the view model reads through its injected `now`, so a test can pin the exact
-/// span an engine call takes and assert the `generation_ms` measured around it.
 /// The thread an observed change was announced on. Observation calls back on whichever thread made the
 /// change, so the record is lock-guarded.
 private final class ReadyChangeThreadRecorder: @unchecked Sendable {
@@ -1135,6 +1131,10 @@ private final class ReadyChangeThreadRecorder: @unchecked Sendable {
     func record(onMain: Bool) { lock.withLock { recorded = onMain } }
 }
 
+// MARK: - Ready Screen telemetry doubles (US-T09)
+
+/// An advanceable clock the view model reads through its injected `now`, so a test can pin the exact
+/// span an engine call takes and assert the `generation_ms` measured around it.
 private final class ReadyMutableClock {
     var now: Date
     init(_ start: Date) { now = start }
