@@ -23,7 +23,7 @@ final class AccountDeletionViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
-        renderWindows.forEach { $0.isHidden = true }
+        renderWindows.forEach { HostedSurface.dismantle($0) }
         renderWindows = []
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil

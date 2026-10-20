@@ -7,9 +7,8 @@ import UIKit
 /// window scene when their test ends, rather than left hidden on it for the rest of the run.
 ///
 /// A window that is only hidden stays on the scene for as long as anything holds it, and over a full run
-/// hosted windows piled up that way (25 by the Today status-bar test, 69 by the end). Past a few hundred
-/// a hosted view stopped re-rendering after its model finished loading, which is the empty accessibility
-/// tree `StatusBarBackingEvidenceTests` once failed on.
+/// hosted windows piled up that way (25 by the Today status-bar test, 69 by the end), each a live hosting
+/// view adding main-thread work to every surface hosted after it.
 @MainActor
 final class HostedSurfaceLifecycleTests: XCTestCase {
 

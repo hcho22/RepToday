@@ -821,6 +821,7 @@ final class StapleMovementsTests: XCTestCase {
 
     // MARK: - The one-time note
 
+    @MainActor
     private func readyViewModel(for user: User) -> ReadyViewModel {
         ReadyViewModel(
             userService: MockUserService(user: user),
@@ -830,6 +831,7 @@ final class StapleMovementsTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testTheNoteIsEligibleOnlyForRestrictedDisciplineUsers() async throws {
         for (level, phase, expected) in [
             (FitnessLevel.beginner, Phase.discipline, true),

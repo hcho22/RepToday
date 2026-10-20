@@ -13,6 +13,7 @@ import Observation
 /// the session's Variety Language line ("what today is"), the forgiving Consistency Score ("how I'm
 /// doing", identity-framed), and the policy note ("what the app changed") - and kicks off the
 /// on-open Re-program in the background, so the change lands next open and the user never waits.
+@MainActor
 @Observable
 final class ReadyViewModel {
 

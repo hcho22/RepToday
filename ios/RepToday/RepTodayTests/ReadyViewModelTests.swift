@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 @testable import RepToday
 
 /// Tests the minimal Ready Screen view model (US-I01).
@@ -6,6 +7,7 @@ import XCTest
 /// The Ready Screen's promise is that today's session is already there on open. These tests verify
 /// the view model loads the current user, generates a session at the learned Default Duration
 /// against the in-force policy, and degrades gracefully when there is no user.
+@MainActor
 final class ReadyViewModelTests: XCTestCase {
 
     private let fixedDate = Date(timeIntervalSinceReferenceDate: 760_000_000)
@@ -175,6 +177,59 @@ final class ReadyViewModelTests: XCTestCase {
         await vm.handlePlayerDismiss(completed: false)
 
         XCTAssertNotNil(vm.resumableSession, "an abandoned session is offered back")
+    }
+
+    // MARK: - Observed state changes on the main thread
+
+    /// Every operation the Ready Screen drives changes the state it renders on the main thread, the
+    /// thread SwiftUI reads it from. A change made on another thread can land between `body` reading a
+    /// property and SwiftUI registering its interest in it, and is then never rendered: the Today tab
+    /// once stayed on its loading spinner with the session already loaded.
+    func testEveryOperationChangesObservedStateOnTheMainThread() async throws {
+        let store = InMemoryActiveSessionStore()
+        let vm = makeViewModel(user: onboardedUser(defaultMinutes: 15), store: store)
+
+        var onMain = await firstChangeIsOnMainThread(observing: { _ = vm.isLoading }) { await vm.load() }
+        XCTAssertEqual(onMain, true, "load")
+
+        onMain = await firstChangeIsOnMainThread(observing: { _ = vm.selectedMinutes }) { await vm.selectDuration(30) }
+        XCTAssertEqual(onMain, true, "selectDuration")
+
+        try await store.save(resumableState(), for: "preview-user")
+        onMain = await firstChangeIsOnMainThread(observing: { _ = vm.resumableSession }) { await vm.refreshResumableSession() }
+        XCTAssertEqual(onMain, true, "refreshResumableSession")
+
+        onMain = await firstChangeIsOnMainThread(observing: { _ = vm.resumableSession }) {
+            await vm.handlePlayerDismiss(completed: true)
+        }
+        XCTAssertEqual(onMain, true, "handlePlayerDismiss after a completed session")
+
+        onMain = await firstChangeIsOnMainThread(observing: { _ = vm.resumableSession }) {
+            await vm.handlePlayerDismiss(completed: false)
+        }
+        XCTAssertEqual(onMain, true, "handlePlayerDismiss after a paused session")
+
+        onMain = await firstChangeIsOnMainThread(observing: { _ = vm.resumableSession }) { await vm.discardResumableSession() }
+        XCTAssertEqual(onMain, true, "discardResumableSession")
+
+        try await store.save(resumableState(), for: "preview-user")
+        await vm.refreshResumableSession()
+        onMain = await firstChangeIsOnMainThread(observing: { _ = vm.resumableSession }) {
+            await vm.abandonResumableSessionForOverwrite()
+        }
+        XCTAssertEqual(onMain, true, "abandonResumableSessionForOverwrite")
+    }
+
+    /// Whether the first change `operation` makes to the state `read` observes reaches its observers on
+    /// the main thread, or `nil` when it changes none of it.
+    private func firstChangeIsOnMainThread(
+        observing read: () -> Void,
+        during operation: () async -> Void
+    ) async -> Bool? {
+        let recorder = ReadyChangeThreadRecorder()
+        withObservationTracking(read) { recorder.record(onMain: Thread.isMainThread) }
+        await operation()
+        return recorder.onMain
     }
 
     // MARK: - Give-up abandonment telemetry (US-T10)
@@ -1069,6 +1124,17 @@ private final class PillarByDurationEngine: WorkoutEngineProtocol {
 
 /// An advanceable clock the view model reads through its injected `now`, so a test can pin the exact
 /// span an engine call takes and assert the `generation_ms` measured around it.
+/// The thread an observed change was announced on. Observation calls back on whichever thread made the
+/// change, so the record is lock-guarded.
+private final class ReadyChangeThreadRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: Bool?
+
+    var onMain: Bool? { lock.withLock { recorded } }
+
+    func record(onMain: Bool) { lock.withLock { recorded = onMain } }
+}
+
 private final class ReadyMutableClock {
     var now: Date
     init(_ start: Date) { now = start }

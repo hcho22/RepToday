@@ -58,10 +58,11 @@ enum HostedSurface {
     /// and hosted windows do get held: over a full run 25 were still attached by the Today status-bar
     /// test and 69 by the end, although every suite hides its window in `tearDown`. What holds them was
     /// not pinned down, which is why this detaches them from the scene instead of relying on them being
-    /// released. Each is a live SwiftUI hosting view on the same scene as the surface under test, and
-    /// hundreds of them made a hosted view miss its re-render after its model had finished loading (the
-    /// empty accessibility tree `StatusBarBackingEvidenceTests` once failed on; see "Hosted windows no
-    /// longer pile up on the app scene" in `docs/implementation-log.md`).
+    /// released. Each is a live SwiftUI hosting view on the same scene as the surface under test, so each
+    /// adds main-thread work to every later look. That is load on a timing-sensitive surface, not the
+    /// cause of the empty accessibility tree `StatusBarBackingEvidenceTests` once failed on: that was
+    /// `ReadyViewModel` writing its observed state off the main thread (see "The Today screen no longer
+    /// misses its loaded session" in `docs/implementation-log.md`).
     static func dismantle(_ window: UIWindow) {
         window.isHidden = true
         window.rootViewController = nil
