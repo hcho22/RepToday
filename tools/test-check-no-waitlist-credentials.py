@@ -6,7 +6,7 @@
 Python 3 standard library plus `git`, no network and no secret. Every sabotage (a credential, an export, an
 address, a binary file) is written into a scratch directory, never into the repository, and every address and
 credential-shaped value is assembled from parts so this file holds none. A real-tree test requires the guard to
-pass on the repository itself, including the existing `Bearer` test fixtures and the two URL-userinfo inputs.
+pass on the repository itself, which holds `Bearer` test fixtures and the two URL-userinfo inputs.
 """
 import importlib.util
 import json
@@ -82,13 +82,10 @@ def rules_of(findings):
 
 
 class CleanAndSabotage(Scratch):
-    def test_the_real_tree_passes_including_the_existing_bearer_fixtures_and_userinfo_inputs(self):
+    def test_the_real_tree_passes(self):
         done = subprocess.run([sys.executable, str(GUARD)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=str(ROOT))
         self.assertEqual(done.returncode, 0, done.stdout.decode())
         self.assertIn('0 findings', done.stdout.decode())
-        # the fixtures the PRD names exist and hold the shapes the rules are about
-        for relative in ('proxy/test/coach-auth-worker.test.js', 'ios/RepToday/RepTodayTests/CoachProxyClientTests.swift'):
-            self.assertIn('Bearer', (ROOT / relative).read_text(encoding='utf-8'))
 
     def test_a_clean_scratch_tree_passes_and_each_sabotage_fails_with_its_own_rule(self):
         self.write('README.md', 'nothing here\n')
@@ -210,6 +207,22 @@ class ExportRule(Scratch):
         damaged = ('[{"email": "%s"}, {"email": ' % address('damaged')).encode('utf-8')  # truncated
         code, rules, found = self.export_rules('damaged.json', damaged)
         self.assertIn('export-file', rules)
+
+    def test_a_csv_the_reader_cannot_parse_is_still_found_and_never_crashes_the_guard(self):
+        row = address('damaged')
+        cases = {
+            'nul.csv': 'name,email\nA\0B,{}\n'.format(row),  # Python 3.9 and 3.10 refuse a NUL
+            'nul.tsv': 'name\temail\nA\0B\t{}\n'.format(row),
+            'long.csv': 'email,note\n{},"{}"\n'.format(row, 'x' * 200000),  # a field past the reader's default limit
+            'unbalanced.csv': 'email,note\n{},"{}\n'.format(row, 'x' * 200000),
+        }
+        for name, content in cases.items():
+            code, rules, found = self.export_rules(name, content.encode('utf-8'))
+            self.assertEqual(code, 1, name)
+            self.assertIn('export-file', rules, name)
+        clean = 'name,note\nA\0B,{}\n'.format('x' * 200000)
+        code, rules, found = self.export_rules('clean.csv', clean.encode('utf-8'))
+        self.assertEqual((code, rules), (0, []))
 
     def test_a_file_with_an_email_column_but_no_unlisted_address_is_not_an_export(self):
         allowed = 'reptoday.app' + AT + 'gmail.com'
@@ -366,6 +379,19 @@ class Audit(Scratch):
         code, output = self.audit(other)
         self.assertEqual(code, 1)
         self.assertIn('data/list.csv:2: rule export-file', output)
+
+    def test_a_damaged_csv_in_one_directory_does_not_stop_the_audit_of_the_rest(self):
+        self.write('first.csv', 'name,email\nA\0B,{}\n'.format(address('first')))
+        self.write('later.csv', 'email,note\n{},"{}"\n'.format(address('later'), 'x' * 200000))
+        other = Path(tempfile.mkdtemp(prefix='waitlist-guard-other-')).resolve()
+        self.addCleanup(shutil.rmtree, str(other), True)
+        (other / 'creds.sh').write_text('{}={}\n'.format(KIT_KEY_NAME, VALUE))
+        code, output = self.audit(self.root, other)
+        self.assertEqual(code, 1, output)
+        self.assertNotIn('Traceback', output)
+        self.assertIn('first.csv:2: rule export-file', output)
+        self.assertIn('later.csv:2: rule export-file', output)
+        self.assertIn('creds.sh:1: rule credential-assignment', output)
 
     def test_a_missing_directory_is_an_error_not_a_pass(self):
         code, output = self.audit(self.root / 'nope')

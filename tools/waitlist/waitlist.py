@@ -10,7 +10,8 @@
     waitlist.py tag LABEL ENTRY...           tag the named sign-ups inside Kit for a broadcast
     waitlist.py show ENTRY                   print one address, to an interactive terminal only
     waitlist.py daily [--live]               the scheduled job: both sweeps, then the producer, each step run
-                                             whatever an earlier step did, every failed step reported
+                                             whatever an earlier step did, every failed step reported; the
+                                             retention sweep repeats in separate passes until it is done
 
 Python 3 standard library only (the system `/usr/bin/python3` is enough). The Kit API key is read from the
 macOS Keychain at run time (service `com.reptoday.waitlist.kit`, account `api-key`; the service name can be
@@ -19,7 +20,7 @@ Output is counts, rule names and entry identifiers: never an address, an answer 
 
 Options every command takes:
     --state-dir DIR          where the view, ledger, launch-email record and lock live
-                             (default: ~/Library/Application Support/RepToday/waitlist, or $WAITLIST_STATE_DIR)
+                             (default: ~/Library/Application Support/RepToday/waitlist)
     --synthetic FILE         use a synthetic store held in a JSON file instead of Kit (tests)
     --restrict-to-ids A,B    act only on those Kit subscriber ids, so a shared test account's other
                              subscribers are never read or touched
@@ -41,8 +42,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import wl_core  # noqa: E402
 from wl_common import (  # noqa: E402
-    WaitlistError, RunLimitExceeded, RunLock, SWEEP_RESERVE_SECONDS, enable_test_faults, ensure_private_dir,
-    parse_day, require_directory_outside_work_trees, run_limit, state_dir, today_local)
+    RETENTION_PASS_CAP, SWEEP_RESERVE_SECONDS, WaitlistError, RunLimitExceeded, RunLock, enable_test_faults,
+    ensure_private_dir, parse_day, require_directory_outside_work_trees, run_limit, state_dir, today_local)
 from wl_store import KitStore, RestrictedStore, SyntheticStore  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED, EXIT_LIMIT, EXIT_USAGE, EXIT_INTERNAL = 0, 1, 2, 3, 64, 70
@@ -79,17 +80,15 @@ def locked_run(args, body):
             return body(store, directory, deadline - SWEEP_RESERVE_SECONDS)
 
 
-def describe(counts):
-    return ', '.join('{} {}'.format(key.replace('_', ' '), value) for key, value in counts.items() if not isinstance(value, bool))
-
-
 # Commands. Each returns an exit status.
 
 
-def regenerate(store, directory, output=None):
-    counts = wl_core.produce_view(store, directory, output=output)
+def regenerate(store, directory, soft_deadline, output=None):
+    counts = wl_core.produce_view(store, directory, output=output, soft_deadline=soft_deadline)
     say('waitlist-view: wrote the view (entries {}, assigned {}, entry resets {}, unconfirmed left out {}, pruned {})'.format(
         counts['entries'], counts['assigned'], counts['reset'], counts['unconfirmed'], counts['pruned']))
+    if counts['writeback_deferred']:
+        say('waitlist-view: {} entry write-backs to Kit were left for the next run (time limit)'.format(counts['writeback_deferred']))
     if counts['writeback_failed']:
         say('waitlist-view: {} entry write-backs to Kit failed; the next run retries them'.format(counts['writeback_failed']))
         return EXIT_FAILED
@@ -97,15 +96,15 @@ def regenerate(store, directory, output=None):
 
 
 def command_produce(args):
-    return locked_run(args, lambda store, directory, soft_deadline: regenerate(store, directory, output=args.output))
+    return locked_run(args, lambda store, directory, soft_deadline: regenerate(store, directory, soft_deadline, output=args.output))
 
 
 def command_assign(args):
     def body(store, directory, soft_deadline):
         ledger = wl_core.Ledger(directory).load()
-        counts = wl_core.assign_entries(store, ledger, store.list_subscribers())
-        say('waitlist-assign: assigned {}, entry resets {}, pruned {}, write-backs failed {}'.format(
-            counts['assigned'], counts['reset'], counts['pruned'], counts['writeback_failed']))
+        counts = wl_core.assign_entries(store, ledger, store.list_subscribers(), soft_deadline)
+        say('waitlist-assign: assigned {}, entry resets {}, pruned {}, write-backs failed {}, left for the next run {}'.format(
+            counts['assigned'], counts['reset'], counts['pruned'], counts['writeback_failed'], counts['writeback_deferred']))
         return EXIT_FAILED if counts['writeback_failed'] else EXIT_OK
     return locked_run(args, body)
 
@@ -118,10 +117,10 @@ def sweep_status(name, counts, extra=''):
     return EXIT_FAILED if counts['failed'] or counts['remaining'] else EXIT_OK
 
 
-def after_erasure(store, directory, counts):
+def after_erasure(store, directory, counts, soft_deadline):
     """A deletion is followed by a view generated from a store read made after it."""
     if counts['erased']:
-        return regenerate(store, directory)
+        return regenerate(store, directory, soft_deadline)
     return EXIT_OK
 
 
@@ -129,7 +128,23 @@ def command_sweep_unsubscribed(args):
     def body(store, directory, soft_deadline):
         counts = wl_core.sweep_unsubscribed(store, directory, live=args.live, soft_deadline=soft_deadline)
         status = sweep_status('sweep-unsubscribed', counts)
-        return max(status, after_erasure(store, directory, counts))
+        return max(status, after_erasure(store, directory, counts, soft_deadline))
+    return locked_run(args, body)
+
+
+def retention_pass(args, as_of):
+    """One run of the retention sweep, under the lock and its own time limit. Returns (exit status, counts)."""
+    def body(store, directory, soft_deadline):
+        counts = wl_core.sweep_retention(store, directory, as_of, live=args.live, soft_deadline=soft_deadline)
+        if not counts['recorded']:
+            say('sweep-retention: no launch-email date is recorded, so nothing is due and nothing was deleted')
+            return EXIT_OK, counts
+        if counts['not_due']:
+            say('sweep-retention: not due until {} - nothing deleted ({})'.format(
+                counts['deletion_date'], 'live' if counts['live'] else 'dry run'))
+            return EXIT_OK, counts
+        status = sweep_status('sweep-retention', counts)
+        return max(status, after_erasure(store, directory, counts, soft_deadline)), counts
     return locked_run(args, body)
 
 
@@ -141,19 +156,23 @@ def command_sweep_retention(args):
         as_of = parse_day(args.as_of)
         if as_of is None:
             raise WaitlistError('--as-of must be a real date written YYYY-MM-DD')
+    return retention_pass(args, as_of)[0]
 
-    def body(store, directory, soft_deadline):
-        counts = wl_core.sweep_retention(store, directory, as_of, live=args.live, soft_deadline=soft_deadline)
-        if not counts['recorded']:
-            say('sweep-retention: no launch-email date is recorded, so nothing is due and nothing was deleted')
-            return EXIT_OK
-        if counts['not_due']:
-            say('sweep-retention: not due until {} - nothing deleted ({})'.format(
-                counts['deletion_date'], 'live' if counts['live'] else 'dry run'))
-            return EXIT_OK
-        status = sweep_status('sweep-retention', counts)
-        return max(status, after_erasure(store, directory, counts))
-    return locked_run(args, body)
+
+def daily_retention(args):
+    """The daily job's retention step: one pass erases what fits in one run, so the pass is repeated, each a separate
+    run, while the previous one left sign-ups and erased at least one, up to RETENTION_PASS_CAP passes. The step
+    fails only when sign-ups remain after the last pass or a pass erased none."""
+    as_of = today_local()
+    for number in range(1, RETENTION_PASS_CAP + 1):
+        status, counts = retention_pass(args, as_of)
+        left = counts['due'] - counts['erased']
+        if not left or not counts['erased']:
+            return status
+        if number < RETENTION_PASS_CAP:
+            say('sweep-retention: {} left after pass {}; starting pass {}'.format(left, number, number + 1))
+    say('sweep-retention: {} left after {} passes, the most one daily run makes'.format(left, RETENTION_PASS_CAP))
+    return status
 
 
 def prompt_address():
@@ -175,7 +194,7 @@ def command_remove(args):
             say('remove: dry run - one sign-up matches exactly; nothing deleted')
             return EXIT_OK
         say('remove: erased one sign-up')
-        return regenerate(store, directory)
+        return regenerate(store, directory, soft_deadline)
     return locked_run(args, body)
 
 
@@ -213,7 +232,7 @@ def command_daily(args):
     the job's own exit status is non-zero when any step did not finish."""
     steps = [
         ('sweep-unsubscribed', lambda: command_sweep_unsubscribed(args)),
-        ('sweep-retention', lambda: command_sweep_retention(argparse.Namespace(**dict(vars(args), as_of=None)))),
+        ('sweep-retention', lambda: daily_retention(args)),
         ('produce', lambda: command_produce(argparse.Namespace(**dict(vars(args), output=None)))),
     ]
     failed = []

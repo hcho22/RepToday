@@ -25,7 +25,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CONTRACT_PATH = HERE / 'contract.json'
 
-STATE_DIR_ENV = 'WAITLIST_STATE_DIR'
 DEFAULT_STATE_DIR = Path('~/Library/Application Support/RepToday/waitlist')
 VIEW_NAME = 'waitlist-view.json'
 LEDGER_NAME = 'ledger.json'
@@ -40,9 +39,14 @@ TEMP_SUFFIX = '.tmp'
 RUN_LIMIT_ENV = 'WAITLIST_RUN_LIMIT_SECONDS'
 DEFAULT_RUN_LIMIT_SECONDS = 600
 LOCK_MARGIN_SECONDS = 60
-# A sweep stops starting new deletions this long before its limit, so the view regeneration that
-# follows a deletion still has time to finish inside the run.
+# A run stops starting new deletions, and new entry write-backs to Kit, this long before its limit, so
+# the view that follows still has time to be written inside the run.
 SWEEP_RESERVE_SECONDS = 120
+# One run of the retention sweep erases what fits before that point: Kit lets an API key make about 2
+# requests a second and an erasure takes 3, so roughly 300 sign-ups. The daily job repeats the sweep, each
+# pass a separate run under the lock and its own limit, while the previous pass left sign-ups and erased at
+# least one, up to this many passes: about 6,000 sign-ups in one daily run.
+RETENTION_PASS_CAP = 20
 # Every network call carries its own timeout.
 NETWORK_TIMEOUT_SECONDS = 20
 
@@ -85,8 +89,7 @@ def field_key(contract, name):
 
 
 def state_dir(explicit=None):
-    chosen = explicit or os.environ.get(STATE_DIR_ENV)
-    return Path(os.path.expanduser(str(chosen))) if chosen else DEFAULT_STATE_DIR.expanduser()
+    return Path(os.path.expanduser(str(explicit))) if explicit else DEFAULT_STATE_DIR.expanduser()
 
 
 def run_limit_seconds():
@@ -138,16 +141,26 @@ def require_file_outside_work_trees(path):
 
 
 def ensure_private_dir(directory):
+    """The tool's own state directory: created if missing, and owner-only either way."""
     directory = Path(str(directory))
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(str(directory), 0o700)
 
 
+def create_missing_dir(directory):
+    """Create `directory` owner-only when it is missing. An existing one, such as the folder an `--output` path
+    names, is the founder's and keeps its mode."""
+    if not Path(str(directory)).is_dir():
+        ensure_private_dir(directory)
+
+
 # Faults a test injects at named points of a run: `WAITLIST_TEST_FAULT=<point>:exit` ends the process there, as a
-# crash would, and `<point>:hang` stops there until the run's time limit cuts it off. They are honored only when
+# crash would, `<point>:hang` stops there until the run's time limit cuts it off, and `<point>:pause` waits
+# FAULT_PAUSE_SECONDS each time the point is reached, as a slow Kit call would. They are honored only when
 # the CLI switched them on, which it does only in the synthetic store mode, so a real run cannot be made to fail
 # this way.
 FAULT_ENV = 'WAITLIST_TEST_FAULT'
+FAULT_PAUSE_SECONDS = 0.3
 _faults_enabled = False
 
 
@@ -165,6 +178,8 @@ def fault(point):
         return
     if action == 'hang':
         time.sleep(3600)
+    elif action == 'pause':
+        time.sleep(FAULT_PAUSE_SECONDS)
     else:
         os._exit(137)
 
@@ -172,7 +187,7 @@ def fault(point):
 def write_private_atomic(path, data):
     """Write `data` to `path`: a mode-600 temporary file in the same directory, flushed to disk, then a rename."""
     path = Path(str(path))
-    ensure_private_dir(path.parent)
+    create_missing_dir(path.parent)
     temporary = path.parent / '{}{}.{}{}'.format(TEMP_PREFIX, path.name, os.getpid(), TEMP_SUFFIX)
     descriptor = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
@@ -272,10 +287,6 @@ def new_entry(taken=()):
 
 
 # Dates. Everything that depends on today takes `as_of` (a `date`); the CLI is the one place that reads the clock.
-
-
-def today_utc():
-    return datetime.now(timezone.utc).date()
 
 
 def today_local():

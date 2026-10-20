@@ -146,11 +146,13 @@ class Ledger(object):
 # Identifier assignment (US-WL06).
 
 
-def assign_entries(store, ledger, subscribers):
+def assign_entries(store, ledger, subscribers, soft_deadline=None):
     """Give every stored sign-up that lacks an identifier one, remember the Source first seen, and reset Kit's
     `entry` field wherever it differs from the ledger. The ledger is saved before any write to Kit, so an
-    interruption leaves either nothing or an identifier the next run writes back. Returns counts."""
-    counts = {'assigned': 0, 'reset': 0, 'pruned': 0, 'writeback_failed': 0}
+    interruption leaves either nothing or an identifier the next run writes back; past the soft deadline no new
+    write is started and the rest are left for the next run, so the view that follows is still written. Returns
+    counts."""
+    counts = {'assigned': 0, 'reset': 0, 'pruned': 0, 'writeback_failed': 0, 'writeback_deferred': 0}
     eligible = [item for item in subscribers
                 if item.state in (ACTIVE, INACTIVE) and not item.scrubbed and item.id not in ledger.erased]
     taken = set(ledger.taken())
@@ -173,6 +175,9 @@ def assign_entries(store, ledger, subscribers):
     for item in eligible:
         wanted = ledger.entry_of(item.id)
         if item.entry == wanted:
+            continue
+        if soft_deadline is not None and time.monotonic() > soft_deadline:
+            counts['writeback_deferred'] += 1
             continue
         try:
             store.set_entry(item.id, wanted)
@@ -219,7 +224,7 @@ def view_path(directory, output=None):
     return Path(str(output)) if output else Path(str(directory)) / VIEW_NAME
 
 
-def produce_view(store, directory, output=None, now=None, mutate_candidate=None):
+def produce_view(store, directory, output=None, now=None, mutate_candidate=None, soft_deadline=None):
     """Read the store, assign identifiers, project the view, check it, and replace the file only if the check
     passes. Must be called while holding the run lock. Returns counts."""
     directory = Path(str(directory))
@@ -227,7 +232,6 @@ def produce_view(store, directory, output=None, now=None, mutate_candidate=None)
     require_directory_outside_work_trees(directory)
     require_file_outside_work_trees(target)
     ensure_private_dir(directory)
-    ensure_private_dir(target.parent)
     remove_stale_temporaries(directory)
     remove_stale_temporaries(target.parent)
 
@@ -235,7 +239,7 @@ def produce_view(store, directory, output=None, now=None, mutate_candidate=None)
     subscribers = store.list_subscribers()
     fault('after-read')
     generated_at = (now or (lambda: datetime.now(timezone.utc)))()  # stamped after the store was read
-    counts = assign_entries(store, ledger, subscribers)
+    counts = assign_entries(store, ledger, subscribers, soft_deadline)
     counts['unconfirmed'] = sum(1 for item in subscribers
                                 if item.state == INACTIVE and not item.scrubbed and item.id not in ledger.erased)
     view = build_view(subscribers, ledger, generated_at)
@@ -309,6 +313,7 @@ def _erase_all(store, ledger, targets, soft_deadline):
         if soft_deadline is not None and time.monotonic() > soft_deadline:
             break
         remaining -= 1
+        fault('erase')
         try:
             store.erase(item.id)
         except WaitlistError:
@@ -333,8 +338,9 @@ def sweep_unsubscribed(store, directory, live=False, soft_deadline=None):
 
 
 def sweep_retention(store, directory, as_of, live=False, soft_deadline=None):
-    """Erase every remaining sign-up on or after the launch-email date plus 30 days. With no date recorded it deletes
-    nothing. A dry run counts them and changes nothing. Returns counts."""
+    """Erase every remaining sign-up, in whatever Kit state, on or after the launch-email date plus 30 days. With no
+    date recorded it deletes nothing. A dry run counts them and changes nothing. One call is one pass, bounded by
+    the soft deadline; the daily job repeats it. Returns counts."""
     sent_on = read_launch_record(directory, today=as_of)
     counts = {'due': 0, 'erased': 0, 'failed': 0, 'remaining': 0, 'live': live, 'recorded': sent_on is not None,
               'not_due': False, 'deletion_date': deletion_date(sent_on).isoformat() if sent_on else None}

@@ -34,7 +34,8 @@ Rules, each named in a finding:
   export-file            a CSV, TSV, JSON or JSONL file with a column or field named for an email address that
                          holds even one email-shaped address not on the allowlist, however few rows it has. Every
                          such file is read whatever its encoding (UTF-8, else UTF-16 by its byte-order mark, else
-                         a single-byte decoding such as Latin-1), so a Windows-1252 export is not skipped.
+                         a single-byte decoding such as Latin-1), so a Windows-1252 export is not skipped, and a
+                         CSV or TSV the reader cannot parse (a NUL byte, say) is read line by line instead.
   address                an email-shaped string not on the allowlist. Only text files are read for this rule
                          (files that decode as UTF-8 and hold no NUL byte): committed images such as the Trainer
                          pose art hold address-shaped byte runs by chance.
@@ -116,6 +117,7 @@ PLACEHOLDER = re.compile(r'<[^<>]*>|\$[({]?[A-Za-z_(].*|%[({]?[A-Za-z_].*|\{\{.*
 EXPORT_SUFFIXES = ('.csv', '.tsv', '.json', '.jsonl')
 EXPORT_SKIP_DIRECTORIES = ('node_modules', 'site-packages')
 MAX_BYTES = 50 * 1000 * 1000
+csv.field_size_limit(MAX_BYTES)  # no field of a file this reads is longer than the file
 
 
 def is_placeholder(text):
@@ -259,16 +261,23 @@ def export_findings(data, relative):
     suffix = os.path.splitext(relative)[1].lower()
     if suffix in ('.csv', '.tsv'):
         delimiter = '\t' if suffix == '.tsv' else ','
-        rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+        try:
+            rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+            damaged = False
+        except csv.Error:
+            # Not readable as a table (a NUL byte on Python 3.9 and 3.10, say): split each line by hand and, under a
+            # header that names an email column, count an unlisted address anywhere on a line, so damage hides nothing.
+            rows = [line.split(delimiter) for line in text.splitlines()]
+            damaged = True
         header = None
         for number, row in enumerate(rows, start=1):
             if header is None:
                 if any(cell.strip() for cell in row):
                     header = [index for index, cell in enumerate(row) if email_named(cell)]
                 continue
-            for index in header:
-                if index < len(row) and unlisted_addresses(row[index], relative):
-                    found.append((number, 'export-file'))
+            cells = [delimiter.join(row)] if damaged and header else [row[index] for index in header if index < len(row)]
+            if any(unlisted_addresses(cell, relative) for cell in cells):
+                found.append((number, 'export-file'))
         return found
     try:
         walk_json(json.loads(text.lstrip('\ufeff')), relative, 1, found)

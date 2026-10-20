@@ -7,7 +7,7 @@ because the email is dropped where the response is parsed. The two places an add
 
 What Kit's API does and does not do is recorded in `artifacts/reports/US-WL06/spike.md`: it cannot delete a
 subscriber, so `erase` unsubscribes, overwrites the address with a placeholder that is not an address, and
-blanks every custom field (decision D2). A list trails a fresh write by up to a couple of minutes, a
+blanks the first name and every custom field (decision D2). A list trails a fresh write by up to a couple of minutes, a
 single-record read does not.
 
 An error raised here names the step and the HTTP status. It never carries a response body, a URL with an
@@ -26,7 +26,6 @@ from pathlib import Path
 from wl_common import NETWORK_TIMEOUT_SECONDS, WaitlistError, field_key, load_contract, write_private_atomic
 
 KIT_BASE_URL = 'https://api.kit.com'
-BASE_URL_ENV = 'WAITLIST_KIT_BASE_URL'  # loopback only, so a test can point the real client at a local fake
 KEYCHAIN_SERVICE_ENV = 'WAITLIST_KIT_KEYCHAIN_SERVICE'
 DEFAULT_KEYCHAIN_SERVICE = 'com.reptoday.waitlist.kit'
 KEYCHAIN_ACCOUNT = 'api-key'
@@ -42,8 +41,10 @@ RETRY_PAUSES = (1.0, 2.0)
 RATE_LIMIT_RETRIES = 5
 MAX_RETRY_WAIT_SECONDS = 30.0
 
-# Kit's subscriber states. `inactive` is a sign-up that has not confirmed; `cancelled` is an unsubscribed one.
-ACTIVE, INACTIVE, CANCELLED = 'active', 'inactive', 'cancelled'
+# Kit's subscriber states. `inactive` is a sign-up that has not confirmed; `cancelled` is an unsubscribed one;
+# Kit sends nothing to a `bounced` or `complained` one either, so an erased record may be in any of those three.
+ACTIVE, INACTIVE, CANCELLED, BOUNCED, COMPLAINED = 'active', 'inactive', 'cancelled', 'bounced', 'complained'
+UNMAILED = (CANCELLED, BOUNCED, COMPLAINED)
 # The Kit custom-field keys, named once in contract.json: the three the form posts and the one the producer writes.
 _CONTRACT = load_contract()
 FIELD_KEYS = {'fit': field_key(_CONTRACT, 'fit'), 'beta': field_key(_CONTRACT, 'beta_opt_in'),
@@ -59,6 +60,23 @@ class StoreError(WaitlistError):
 def placeholder_for(subscriber_id):
     """What replaces an erased subscriber's address: a value Kit accepts that is not an address."""
     return 'removed-{}'.format(subscriber_id)
+
+
+def is_scrubbed(address, first_name, fields):
+    """Nothing identifying is left: no address, no first name and no value in any custom field."""
+    return ((not isinstance(address, str) or '@' not in address) and not first_name
+            and all(value is None for value in fields.values()))
+
+
+def subscriber_in(answer):
+    """The subscriber record a single-record answer carries, or None."""
+    item = answer.get('subscriber') if isinstance(answer, dict) else None
+    return item if isinstance(item, dict) else None
+
+
+def fields_of(item):
+    fields = item.get('fields') if isinstance(item, dict) else None
+    return fields if isinstance(fields, dict) else {}
 
 
 def read_api_key(service=None):
@@ -77,7 +95,7 @@ def read_api_key(service=None):
 
 def checked_base_url(url):
     """Kit's own origin, or a loopback address a test serves a fake on. Anything else is refused, so a stray
-    setting can never send the credential somewhere else."""
+    value can never send the credential somewhere else."""
     parsed = urllib.parse.urlparse(url)
     if url.rstrip('/') == KIT_BASE_URL:
         return KIT_BASE_URL
@@ -93,7 +111,7 @@ def normalize_state(value):
 class KitStore(object):
     def __init__(self, api_key, base_url=None, timeout=NETWORK_TIMEOUT_SECONDS):
         self._key = api_key
-        self._base = checked_base_url(base_url or os.environ.get(BASE_URL_ENV) or KIT_BASE_URL)
+        self._base = checked_base_url(base_url or KIT_BASE_URL)
         self._timeout = timeout
 
     @classmethod
@@ -164,12 +182,11 @@ class KitStore(object):
 
     @staticmethod
     def _parse(item):
-        fields = item.get('fields') if isinstance(item.get('fields'), dict) else {}
+        fields = fields_of(item)
         values = {role: fields.get(key) for role, key in FIELD_KEYS.items()}
-        address = item.get('email_address')
-        scrubbed = (not isinstance(address, str) or '@' not in address) and all(value is None for value in values.values())
         return Subscriber(str(item.get('id')), normalize_state(item.get('state')), item.get('created_at'),
-                          values['fit'], values['beta'], values['source'], values['entry'], scrubbed)
+                          values['fit'], values['beta'], values['source'], values['entry'],
+                          is_scrubbed(item.get('email_address'), item.get('first_name'), fields))
 
     def list_subscribers(self):
         return [self._parse(item) for item in self._pages('list subscribers', '/v4/subscribers?status=all')]
@@ -181,15 +198,19 @@ class KitStore(object):
         self._call('unsubscribe', 'POST', '/v4/subscribers/{}/unsubscribe'.format(subscriber_id), {})
 
     def erase(self, subscriber_id):
-        """Unsubscribe, replace the address with a placeholder and blank every custom field, then read the record
-        back and refuse to call it erased unless the address and the answers are gone."""
+        """Unsubscribe, replace the address with a placeholder and blank the first name and every custom field the
+        record holds (the four this tooling names and any other the account has), then read the record back and
+        refuse to call it erased unless the address, the name and every field are gone and Kit mails it nothing."""
+        path = '/v4/subscribers/{}'.format(subscriber_id)
         self.unsubscribe(subscriber_id)
-        self._call('overwrite record', 'PUT', '/v4/subscribers/{}'.format(subscriber_id), {
+        written = self._call('overwrite record', 'PUT', path, {
             'email_address': placeholder_for(subscriber_id), 'first_name': None,
             'fields': {key: None for key in FIELD_KEYS.values()}})
-        record = self._call('read back', 'GET', '/v4/subscribers/{}'.format(subscriber_id))
-        item = (record or {}).get('subscriber') if isinstance(record, dict) else None
-        if not isinstance(item, dict) or not self._parse(item).scrubbed or normalize_state(item.get('state')) != CANCELLED:
+        others = [key for key, value in fields_of(subscriber_in(written)).items() if value is not None]
+        if others:
+            self._call('overwrite record', 'PUT', path, {'fields': {key: None for key in others}})
+        item = subscriber_in(self._call('read back', 'GET', path))
+        if item is None or not self._parse(item).scrubbed or normalize_state(item.get('state')) not in UNMAILED:
             raise StoreError('Kit record was not erased (read back)')
 
     def find_id_by_email(self, address):
@@ -203,17 +224,11 @@ class KitStore(object):
         return str(found[0]['id']) if found else None
 
     def email_of(self, subscriber_id):
-        record = self._call('read subscriber', 'GET', '/v4/subscribers/{}'.format(subscriber_id))
-        item = (record or {}).get('subscriber') if isinstance(record, dict) else None
-        address = item.get('email_address') if isinstance(item, dict) else None
+        item = subscriber_in(self._call('read subscriber', 'GET', '/v4/subscribers/{}'.format(subscriber_id)))
+        address = item.get('email_address') if item is not None else None
         if not isinstance(address, str) or '@' not in address:
             raise StoreError('that sign-up holds no address')
         return address
-
-    def state_of(self, subscriber_id):
-        record = self._call('read subscriber', 'GET', '/v4/subscribers/{}'.format(subscriber_id))
-        item = (record or {}).get('subscriber') if isinstance(record, dict) else None
-        return normalize_state(item.get('state') if isinstance(item, dict) else None)
 
     def ensure_tag(self, label):
         tag = self._call('create tag', 'POST', '/v4/tags', {'name': label}).get('tag')
@@ -233,7 +248,8 @@ class KitStore(object):
 
 
 class SyntheticStore(object):
-    """A store held in a JSON file, for tests: `{"subscribers": [{"id", "email", "state", "created_at", "fields"}]}`.
+    """A store held in a JSON file, for tests: `{"subscribers": [{"id", "email", "first_name", "state", "created_at",
+    "fields"}]}`, the first name optional.
     It behaves as the Kit store does, including what `erase` leaves behind, and is rewritten after every change so
     one process can leave work for the next. The file holds addresses, so it lives in a temporary directory a test
     makes and is never committed."""
@@ -257,10 +273,9 @@ class SyntheticStore(object):
 
     def _subscriber(self, record):
         values = self._fields(record)
-        address = record.get('email')
-        scrubbed = (not isinstance(address, str) or '@' not in address) and all(value is None for value in values.values())
         return Subscriber(str(record['id']), record.get('state', ''), record.get('created_at'),
-                          values['fit'], values['beta'], values['source'], values['entry'], scrubbed)
+                          values['fit'], values['beta'], values['source'], values['entry'],
+                          is_scrubbed(record.get('email'), record.get('first_name'), record.get('fields') or {}))
 
     def _record(self, data, subscriber_id):
         for record in data['subscribers']:
@@ -287,7 +302,8 @@ class SyntheticStore(object):
         record = self._record(data, subscriber_id)
         record['state'] = CANCELLED
         record['email'] = placeholder_for(subscriber_id)
-        record['fields'] = {key: None for key in FIELD_KEYS.values()}
+        record['first_name'] = None
+        record['fields'] = {key: None for key in set(record.get('fields') or {}) | set(FIELD_KEYS.values())}
         self._save(data)
 
     def find_id_by_email(self, address):
@@ -304,9 +320,6 @@ class SyntheticStore(object):
             raise StoreError('that sign-up holds no address')
         return address
 
-    def state_of(self, subscriber_id):
-        return self._record(self._load(), subscriber_id).get('state', '')
-
     def tag_subscribers(self, label, subscriber_ids):
         data = self._load()
         for subscriber_id in subscriber_ids:
@@ -314,9 +327,6 @@ class SyntheticStore(object):
             if label not in tags:
                 tags.append(label)
         self._save(data)
-
-    def tag_members(self, label):
-        return sorted(str(record['id']) for record in self._load()['subscribers'] if label in (record.get('tags') or []))
 
 
 class RestrictedStore(object):
@@ -355,14 +365,7 @@ class RestrictedStore(object):
         self._allow(subscriber_id)
         return self._store.email_of(subscriber_id)
 
-    def state_of(self, subscriber_id):
-        self._allow(subscriber_id)
-        return self._store.state_of(subscriber_id)
-
     def tag_subscribers(self, label, subscriber_ids):
         for subscriber_id in subscriber_ids:
             self._allow(subscriber_id)
         self._store.tag_subscribers(label, subscriber_ids)
-
-    def tag_members(self, label):
-        return [item for item in self._store.tag_members(label) if item in self._ids]

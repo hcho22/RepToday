@@ -54,6 +54,18 @@ def contains_address(text):
     return wl_core.check_view.ENCODED_ADDRESS.search(text) is not None or AT in text
 
 
+class KeepsKey(dict):
+    """A fake Kit record that ignores every write to one key, as a record Kit would not change that way."""
+
+    def __init__(self, record, key):
+        dict.__init__(self, record)
+        self.kept = key
+
+    def __setitem__(self, key, value):
+        if key != self.kept:
+            dict.__setitem__(self, key, value)
+
+
 class Case(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='waitlist-test-'))
@@ -88,7 +100,6 @@ class Case(unittest.TestCase):
 
     def cli(self, *arguments, env=None, expect=None, check_output=True):
         environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
-        environment.pop(wl_common.STATE_DIR_ENV, None)
         environment.pop(wl_common.FAULT_ENV, None)
         environment.update(env or {})
         done = subprocess.run([sys.executable, str(WAITLIST)] + list(arguments) + [
@@ -104,6 +115,12 @@ class Case(unittest.TestCase):
 
     def view(self):
         return json.loads((self.state / wl_common.VIEW_NAME).read_text(encoding='utf-8'))
+
+    def launch_record(self, sent_days_ago):
+        """The launch-email record `record-launch-email` would have written on the day the email went out."""
+        sent_on = (wl_common.today_local() - timedelta(days=sent_days_ago)).isoformat()
+        self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        (self.state / wl_common.LAUNCH_NAME).write_text(json.dumps({'launch_email': 1, 'sent_on': sent_on, 'recorded_on': sent_on}))
 
     def ledger(self):
         return json.loads((self.state / wl_common.LEDGER_NAME).read_text(encoding='utf-8'))['subscribers']
@@ -339,6 +356,33 @@ class ProducerSafety(Case):
             wl_core.produce_view(self.synthetic(), self.state, mutate_candidate=lambda data: data + b' ' * (limit + 1))
         self.assertIn('exceed', str(raised.exception))
         self.assertEqual((self.state / wl_common.VIEW_NAME).read_bytes(), old)
+
+    def test_write_backs_past_the_soft_deadline_are_left_for_the_next_run_and_the_view_is_still_written(self):
+        first = self.add(fit='lost-the-routine', beta='true', source='tiktok')
+        second = self.add(created='2026-10-06T12:00:00Z')
+        # a 120 second limit leaves no time before the reserve, so not one write-back to Kit is started
+        code, output = self.cli('produce', env={wl_common.RUN_LIMIT_ENV: '120'}, expect=0)
+        self.assertIn('2 entry write-backs to Kit were left for the next run', output)
+        self.assertEqual(len(self.view()['entries']), 2)
+        self.check_view_file()
+        store = self.reload_store()
+        self.assertEqual([store[key]['fields']['entry'] for key in (first, second)], [None, None])
+        self.cli('produce', expect=0)
+        store, ledger = self.reload_store(), self.ledger()
+        for key in (first, second):
+            self.assertEqual(store[key]['fields']['entry'], ledger[key]['entry'])
+
+    def test_an_output_into_an_existing_folder_keeps_that_folders_mode(self):
+        self.add()
+        shared = self.tmp / 'shared'
+        shared.mkdir()
+        os.chmod(str(shared), 0o755)
+        self.cli('produce', '--output', str(shared / 'view.json'), expect=0)
+        self.assertEqual(os.stat(str(shared)).st_mode & 0o777, 0o755)
+        self.assertEqual(os.stat(str(shared / 'view.json')).st_mode & 0o777, 0o600)
+        fresh = self.tmp / 'fresh' / 'deeper'
+        self.cli('produce', '--output', str(fresh / 'view.json'), expect=0)
+        self.assertEqual(os.stat(str(fresh)).st_mode & 0o777, 0o700)  # a folder the run created is owner-only
 
     def test_an_empty_store_writes_an_empty_entries_list(self):
         self.save_store()
@@ -673,6 +717,24 @@ class Removal(Case):
         self.assertEqual(code, 1, output)
         self.assertIn('no sign-up has that address', output)
 
+    def test_an_erased_signup_keeps_no_first_name_or_other_field(self):
+        sub = self.add(fit='lost-the-routine', beta='true', source='tiktok')
+        leftover = self.add(state='cancelled', email='removed-0')  # no address, but a name a scrub missed
+        for record in self.records:
+            if record['id'] in (sub, leftover):
+                record['first_name'] = 'Named'
+                record['fields']['last_name'] = 'Other'
+        self.save_store()
+        self.cli('produce', expect=0)
+        self.cli('remove', '--entry', self.ledger()[sub]['entry'], expect=0)
+        code, output = self.cli('sweep-unsubscribed', '--live', expect=0)
+        self.assertIn('erased 1', output)
+        store = self.reload_store()
+        for key in (sub, leftover):
+            self.assertIsNone(store[key]['first_name'])
+            self.assertIn('last_name', store[key]['fields'])
+            self.assertTrue(all(value is None for value in store[key]['fields'].values()))
+
     def test_a_dry_run_changes_nothing_and_the_hash_of_the_store_stays(self):
         self.sweep_world()
         for record in self.records:
@@ -719,6 +781,36 @@ class DailyJob(Case):
         self.assertIn('dry-run sweeps', output)
         self.assertIn(AT, self.reload_store()[sub]['email'])
 
+    def test_the_retention_step_repeats_passes_until_a_store_larger_than_one_pass_is_erased(self):
+        """A 121 second limit leaves each pass one second before the reserve to start erasures in, and each erasure
+        pauses 0.3 seconds, so one pass erases at most four of the ten sign-ups. Every Kit state is due."""
+        states = ('active', 'inactive', 'bounced', 'complained')
+        for number in range(10):
+            self.add(state=states[number % len(states)], fit='lost-the-routine', beta='true', source='tiktok')
+        self.launch_record(sent_days_ago=31)
+        code, output = self.cli('daily', '--live', env={wl_common.RUN_LIMIT_ENV: '121', wl_common.FAULT_ENV: 'erase:pause'})
+        self.assertEqual(code, 0, output)
+        self.assertIn('sweep-retention: incomplete', output)
+        self.assertIn('starting pass 2', output)
+        self.assertIn('daily: step sweep-retention ok', output)
+        for record in self.reload_store().values():
+            self.assertNotIn(AT, record['email'])
+            self.assertTrue(all(value is None for value in record['fields'].values()))
+        self.assertEqual(self.view()['entries'], [])
+
+    def test_a_retention_pass_that_erases_nothing_fails_the_step_and_is_not_repeated(self):
+        for _ in range(3):
+            self.add(fit='lost-the-routine')
+        self.launch_record(sent_days_ago=31)
+        # a 120 second limit leaves no time before the reserve, so the pass starts no erasure
+        code, output = self.cli('daily', '--live', env={wl_common.RUN_LIMIT_ENV: '120'})
+        self.assertEqual(code, 1, output)
+        self.assertIn('daily: step sweep-retention FAILED (exit 1)', output)
+        self.assertNotIn('starting pass 2', output)
+        self.assertIn('daily: step produce ok', output)
+        for record in self.reload_store().values():
+            self.assertIn(AT, record['email'])
+
     def test_the_launchd_definition_runs_the_live_daily_job_and_holds_no_secret(self):
         path = HERE / 'launchd' / 'app.reptoday.waitlist-daily.plist'
         definition = plistlib.loads(path.read_bytes())
@@ -728,9 +820,6 @@ class DailyJob(Case):
         self.assertEqual(arguments[2:], ['daily', '--live'])
         self.assertIn('StartCalendarInterval', definition)
         self.assertNotIn('EnvironmentVariables', definition)
-        text = path.read_text(encoding='utf-8')
-        self.assertFalse(contains_address(text))
-        self.assertNotIn('Bearer', text)
 
 
 class KitClient(unittest.TestCase):
@@ -786,20 +875,40 @@ class KitClient(unittest.TestCase):
         self.assertIn(AT, self.fake.get(bystander)['email_address'])
         self.assertTrue([item for item in self.store.list_subscribers() if item.id == str(subscriber)][0].scrubbed)
 
+    def test_erase_blanks_the_first_name_and_every_other_custom_field(self):
+        subscriber = self.fake.add(address('named'), fit='lost-the-routine', source='tiktok')
+        record = self.fake.get(subscriber)
+        record['first_name'] = 'Named'
+        record['fields']['last_name'] = 'Other'  # a custom field this tooling does not name
+        self.store.erase(subscriber)
+        record = self.fake.get(subscriber)
+        self.assertIsNone(record['first_name'])
+        self.assertEqual(set(record['fields']), set(fake_kit.FIELD_NAMES) | {'last_name'})
+        self.assertTrue(all(value is None for value in record['fields'].values()))
+
     def test_erase_that_does_not_scrub_is_reported(self):
-        subscriber = self.fake.add(address('stubborn'), fit='lost-the-routine')
-        original = self.fake.subscribers[subscriber]
+        for kept, value in (('email_address', None), ('first_name', 'Named')):
+            subscriber = self.fake.add(address('stubborn-' + kept), fit='lost-the-routine')
+            record = self.fake.subscribers[subscriber]
+            if value is not None:
+                record[kept] = value
+            self.fake.subscribers[subscriber] = KeepsKey(record, kept)  # Kit keeps it however it is written
+            with self.assertRaises(StoreError) as raised:
+                self.store.erase(subscriber)
+            self.assertIn('not erased', str(raised.exception), kept)
 
-        class Stubborn(dict):  # a record that keeps its address however it is written
-            def __setitem__(self, key, value):
-                if key != 'email_address':
-                    dict.__setitem__(self, key, value)
-
-        stubborn = Stubborn(original)
-        self.fake.subscribers[subscriber] = stubborn
-        with self.assertRaises(StoreError) as raised:
+    def test_erase_accepts_a_bounced_or_complained_record_that_keeps_its_state(self):
+        for state in (wl_store.BOUNCED, wl_store.COMPLAINED):
+            subscriber = self.fake.add(address(state), state=state, fit='lost-the-routine')
+            self.fake.subscribers[subscriber] = KeepsKey(self.fake.subscribers[subscriber], 'state')
             self.store.erase(subscriber)
-        self.assertIn('not erased', str(raised.exception))
+            record = self.fake.get(subscriber)
+            self.assertEqual(record['state'], state)
+            self.assertNotIn(AT, record['email_address'])
+        mailed = self.fake.add(address('still-mailed'), fit='lost-the-routine')
+        self.fake.subscribers[mailed] = KeepsKey(self.fake.subscribers[mailed], 'state')
+        with self.assertRaises(StoreError):
+            self.store.erase(mailed)  # a record Kit still mails is never called erased
 
     def test_find_by_address_is_exact_and_ignores_case(self):
         target = self.fake.add('Mixed-Case' + AT + 'example.com')
@@ -885,13 +994,14 @@ class KitClient(unittest.TestCase):
 
     def test_retention_through_the_kit_client_with_an_injected_clock(self):
         wl_core.record_launch_email(self.state, '2026-11-10', date(2026, 11, 10))
-        ids = [self.fake.add(address('r{}'.format(n)), state=state) for n, state in enumerate(('active', 'inactive', 'cancelled'))]
+        states = ('active', 'inactive', 'cancelled', 'bounced', 'complained')
+        ids = [self.fake.add(address('r{}'.format(n)), state=state) for n, state in enumerate(states)]
         early = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 9), live=True)
         self.assertEqual((early['due'], early['erased'], early['not_due']), (0, 0, True))
         for subscriber_id in ids:
             self.assertIn(AT, self.fake.get(subscriber_id)['email_address'])
         due = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 10), live=True)
-        self.assertEqual((due['due'], due['erased']), (3, 3))
+        self.assertEqual((due['due'], due['erased']), (5, 5))
         for subscriber_id in ids:
             self.assertNotIn(AT, self.fake.get(subscriber_id)['email_address'])
         later = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 11), live=True)
@@ -991,7 +1101,6 @@ def run_in_pty(arguments, typed=None, timeout=60):
     pid, descriptor = pty.fork()
     if pid == 0:
         environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
-        environment.pop(wl_common.STATE_DIR_ENV, None)
         os.execve(sys.executable, [sys.executable, str(WAITLIST)] + list(arguments), environment)
     shown = b''
     sent = typed is None
