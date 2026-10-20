@@ -291,6 +291,22 @@ test('a local page shows the stub\'s stand-in check with no override, and only a
   assert.strictEqual(site.form.parts.status.textContent, 'That did not go through. Try again in a moment.');
 });
 
+test('a local test override names only the event sink: a signupUrl or guardOrigin in it changes neither the post nor the trusted check', async () => {
+  const STUB_GUARD = 'http://127.0.0.1:8799/forms/guards/test';
+  const override = JSON.stringify({ signupUrl: 'http://127.0.0.1:9000/signup', guardOrigin: 'http://127.0.0.1:9000', eventsUrl: 'http://127.0.0.1:8799/event' });
+  const loaded = load('/', memoryStorage({ 'waitlist.testEndpoints': override }), { hostname: 'localhost', form: true, answer: (url) => (url.endsWith('/signup') ? answer(200, { status: 'quarantined', url: STUB_GUARD }) : {}) });
+  fillIn(loaded);
+  loaded.submit();
+  await settle();
+  assert.deepStrictEqual(loaded.sent.map((request) => request.url), ['http://127.0.0.1:8799/event', 'http://127.0.0.1:8799/signup']);
+  const frame = loaded.form.parts.guard.children[0];
+  assert.strictEqual(frame.src, STUB_GUARD);
+  loaded.post({ origin: 'http://127.0.0.1:9000', source: frame.contentWindow, data: { name: 'ckjs:guard:confirmed' } });
+  assert.notStrictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
+  loaded.post({ origin: 'http://127.0.0.1:8799', source: frame.contentWindow, data: { name: 'ckjs:guard:confirmed' } });
+  assert.strictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
+});
+
 test('a successful sign-up sends one waitlist_signup carrying only the tag: no address, entry or identifier', async () => {
   const loaded = load('/YouTube', memoryStorage(), { hostname: 'reptoday.app', form: true, answer: (url) => (url === KIT_SIGNUP ? answer(200, { status: 'success' }) : {}) });
   fillIn(loaded);

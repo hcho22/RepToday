@@ -42,7 +42,7 @@ Widths: the sign-up from `/youtube` at 390 px and 1440 px (`youtube-signup-390.p
 
 ## Node checks of the page script
 
-`node tools/waitlist/test-source.cjs`: 26 tests, six of them for events: exactly one `landing_page_view` per load with only the tag or `none`; a kept tag carried and a poisoned stored value read as `none`, never `unknown`; the request shape (`POST`, `no-cors`, `credentials: 'omit'`, `keepalive`, `text/plain`, no cookie, secret or identifier); nothing sent from localhost, previews or lookalike hosts, with a stub honored on local hosts only; a rejecting, throwing, hanging or non-function `fetch` never throws into the page and is not retried; and a successful sign-up sends one `waitlist_signup` carrying only the tag, with no address, entry or identifier in any event request ("a successful sign-up sends one waitlist_signup carrying only the tag: no address, entry or identifier").
+`node tools/waitlist/test-source.cjs`: 27 tests, six of them for events: exactly one `landing_page_view` per load with only the tag or `none`; a kept tag carried and a poisoned stored value read as `none`, never `unknown`; the request shape (`POST`, `no-cors`, `credentials: 'omit'`, `keepalive`, `text/plain`, no cookie, secret or identifier); nothing sent from localhost, previews or lookalike hosts, with a stub honored on local hosts only; a rejecting, throwing, hanging or non-function `fetch` never throws into the page and is not retried; and a successful sign-up sends one `waitlist_signup` carrying only the tag, with no address, entry or identifier in any event request ("a successful sign-up sends one waitlist_signup carrying only the tag: no address, entry or identifier").
 
 ## Not done here, by design
 

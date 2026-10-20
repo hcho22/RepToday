@@ -52,32 +52,27 @@
     return CONFIG.localHosts.indexOf(window.location.hostname) !== -1;
   }
 
-  // A local page can be pointed at other stubs by a test; no other host can.
-  function testEndpoints() {
-    if (!isLocal()) { return {}; }
+  // The event sink a test names for a local page (sessionStorage waitlist.testEndpoints, key
+  // eventsUrl, its only key), else none.
+  function testEventsUrl() {
     try {
       var test = JSON.parse(window.sessionStorage.getItem('waitlist.testEndpoints') || 'null');
-      return test && typeof test === 'object' ? test : {};
-    } catch (error) { return {}; }
+      return test && typeof test.eventsUrl === 'string' ? test.eventsUrl : '';
+    } catch (error) { return ''; }
   }
 
   // The destination for this page. A local page posts to the stub, never to Kit, and trusts the
   // stub's stand-in check instead of Kit's.
   function endpoints() {
-    var test = testEndpoints();
-    return {
-      signupUrl: typeof test.signupUrl === 'string' ? test.signupUrl : (isLocal() ? CONFIG.localSignupUrl : CONFIG.signupUrl),
-      guardOrigin: typeof test.guardOrigin === 'string' ? test.guardOrigin : (isLocal() ? new URL(CONFIG.localSignupUrl).origin : CONFIG.guardOrigin)
-    };
+    return isLocal()
+      ? { signupUrl: CONFIG.localSignupUrl, guardOrigin: new URL(CONFIG.localSignupUrl).origin }
+      : { signupUrl: CONFIG.signupUrl, guardOrigin: CONFIG.guardOrigin };
   }
 
   // Where web events go: the production route only from the production site's own hosts, nowhere
   // from a preview or localhost, unless a local test names a stub.
   function eventsTarget() {
-    if (isLocal()) {
-      var test = testEndpoints();
-      return typeof test.eventsUrl === 'string' ? test.eventsUrl : '';
-    }
+    if (isLocal()) { return testEventsUrl(); }
     return CONFIG.eventHosts.indexOf(window.location.hostname) !== -1 ? CONFIG.eventsUrl : '';
   }
 
