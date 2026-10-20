@@ -14,6 +14,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
 } from "./rateLimit";
 import { WEB_EVENT_INSTALL_ID, WEB_EVENT_NAMES, WEB_REFERRER_SOURCES } from "./webEvents";
+import contractText from "../tools/waitlist/contract.json?raw";
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -33,6 +34,8 @@ const modules: Record<string, () => Promise<any>> = Object.fromEntries(
 );
 
 const SITE = "https://reptoday.app";
+/** The Waitlist contract file (`tools/waitlist/contract.json`), the one owner of the Source vocabulary. */
+const contract = JSON.parse(contractText) as { source_tags: string[]; unknown_source: string; no_source_event: string };
 const setup = () => convexTest(schema, modules);
 
 const originalOrigins = process.env.WEB_EVENT_ALLOWED_ORIGINS;
@@ -98,6 +101,19 @@ describe("POST /webEvent: accepted bodies", () => {
       expect(row.installId).toBe("web");
     }
     expect(JSON.stringify(stored)).not.toContain("@");
+  });
+
+  test("the route accepts exactly the contract file's Source tags and its no-tag value, and not the sign-up's unknown", async () => {
+    const wanted = [...contract.source_tags, contract.no_source_event];
+    expect([...WEB_REFERRER_SOURCES].sort()).toEqual([...wanted].sort());
+    const t = setup();
+    for (const name of WEB_EVENT_NAMES) {
+      for (const source of wanted) {
+        expect((await postWeb(t, event(name, source))).status).toBe(204);
+      }
+      expect((await postWeb(t, event(name, contract.unknown_source))).status).toBe(400);
+    }
+    expect(await rows(t)).toHaveLength(WEB_EVENT_NAMES.length * wanted.length);
   });
 
   test("the site's www origin is accepted too, and no secret is needed", async () => {
@@ -237,7 +253,7 @@ describe("POST /webEvent: rate limit", () => {
     expect(next).toEqual({ allowed: true, limitedBy: null });
   });
 
-  test("one source over its own ceiling does not use up the route-wide budget", async () => {
+  test("a request over its source's ceiling does not count toward the route-wide budget", async () => {
     const t = setup();
     const start = 1_800_000_000_000 - (1_800_000_000_000 % RATE_LIMIT_WINDOW_MS);
     for (let i = 0; i < MAX_WEB_EVENTS_PER_WINDOW; i += 1) {

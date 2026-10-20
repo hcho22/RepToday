@@ -160,8 +160,15 @@ export const checkAndBump = internalMutation({
  * the `webip` and `web` scopes. See `MAX_WEB_EVENTS_PER_IP_PER_WINDOW`.
  *
  * Unlike `checkAndBump`, the keys are not both bumped: the `web` key is shared by every visitor, so
- * a request already over its own source's ceiling is answered without counting against it. One
- * source flooding the route therefore uses up only its own budget, never everyone's.
+ * a request already over its own source's ceiling is answered without counting against it.
+ *
+ * **The per-source key is best-effort.** `sourceIp` is the request's forwarded client address
+ * (`clientIpFrom` in `http.ts`), and Convex documents no client address a caller cannot forge, so a
+ * script that sends a different `X-Forwarded-For` on each request lands every request in a fresh
+ * `webip` bucket, dodges that ceiling, and can use up the route-wide budget. The consequence is
+ * skewed or briefly paused anonymous web counts only: the rest of that one-minute window's
+ * `landing_page_view`/`waitlist_signup` rows are refused or diluted, while sign-ups (posted to Kit,
+ * never here), addresses and the app's `/logEvent` are untouched.
  */
 export const checkAndBumpWeb = internalMutation({
   args: {

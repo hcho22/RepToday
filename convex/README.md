@@ -505,10 +505,12 @@ mutation, `webEvents:logWebEvent`, into the same `events` table (no third table)
   `https://www.reptoday.app`; a dev deployment sets `WEB_EVENT_ALLOWED_ORIGINS` to a comma list),
   caps the body at 1 KiB, and rate limits in two scopes of its own: 120 a minute per source IP and
   3,000 a minute for the whole route (`checkAndBumpWeb`; the per-install key cannot apply). A request
-  already over its source's limit does not count toward the route's, so one source cannot use up
-  everyone's budget. A browser
-  sets `Origin` and a page cannot forge it, but a script outside a browser can send any value, so these
-  are cost-raisers, not a guarantee.
+  already over its source's limit does not count toward the route's. A browser sets `Origin` and a
+  page cannot forge it, but a script outside a browser can send any value, so these are cost-raisers,
+  not a guarantee. The source is the forwarded client address, and Convex documents no client address
+  a caller cannot forge: a script that varies `X-Forwarded-For` per request dodges the per-source limit
+  and can use up the route-wide one. The consequence is skewed or briefly paused anonymous web counts
+  only (the rest of a one-minute window); sign-ups go to Kit, not here, and `/logEvent` is separate.
 - **No CORS.** The page sends a simple `text/plain` POST with `no-cors` and never reads the answer, so
   there is no preflight. Status: `204` stored, `400` the body, `403` the origin, `429` the limit, `500`
   only for a store failure (no detail in the response).

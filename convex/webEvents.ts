@@ -14,8 +14,9 @@ import { v } from "convex/values";
  * to the waitlist"), each carrying `referrer_source` = the visit's Source tag or `none`. The word
  * `unknown` is the *sign-up's* Source for a visit with no tag, never an event value, so it is not in
  * the list. The four tags are the Waitlist contract file's `source_tags`
- * (`tools/waitlist/contract.json`); adding a Source is a new Dispatch request plus a reviewed
- * gr0wthlab change, and a change here alone would be rejected by the site's check.
+ * (`tools/waitlist/contract.json`), and `none` is its `no_source_event`; `convex/webEvents.test.ts`
+ * fails when this list and the contract file differ. Adding a Source is a new Dispatch request plus a
+ * reviewed gr0wthlab change.
  *
  * **No identity of any kind.** A web visit has no install, so the row's `installId` column holds the
  * one reserved value below, the same for every web event. Nothing about the visitor, the device, the
