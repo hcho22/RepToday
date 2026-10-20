@@ -62,7 +62,21 @@ export const MAX_EVENTS_PER_IP_PER_WINDOW = 600;
  */
 export const RECLAIM_BATCH = 2000;
 
-type LimitedBy = "install" | "ip";
+/**
+ * The web events' own scope (US-WL05). `POST /webEvent` has no per-install identifier - every web
+ * row shares one reserved value - so the per-install key above cannot apply and is not used. Instead
+ * a per-IP key and one deployment-wide key, each in its own scope (`webip`, `web`) so they can never
+ * be confused with the app's `ip` counters. A real visitor sends a page view per load and one
+ * sign-up, so 120 a minute per source clears a crowd behind one NAT; 3000 a minute for the whole
+ * route is far above a launch-day burst and far below a flood. The single deployment-wide row is
+ * deliberate and only affordable at this traffic: all web requests bump it, so it would contend
+ * under heavy load, and a route that is genuinely hot should shed load before it should scale.
+ * Like every ceiling here it raises the cost of a casual flood and does not defeat a determined one.
+ */
+export const MAX_WEB_EVENTS_PER_IP_PER_WINDOW = 120;
+export const MAX_WEB_EVENTS_PER_WINDOW = 3000;
+
+type LimitedBy = "install" | "ip" | "webip" | "web";
 
 /**
  * Bump one key's counter for the current window and report whether it is now over its ceiling.
@@ -137,6 +151,31 @@ export const checkAndBump = internalMutation({
 
     // The install key is reported first when both trip, since it is the more specific of the two.
     const limitedBy: LimitedBy | null = installOver ? "install" : ipOver ? "ip" : null;
+    return { allowed: limitedBy === null, limitedBy };
+  },
+});
+
+/**
+ * The web events' throttle (US-WL05): the same atomic read-increment-compare as `checkAndBump`, in
+ * the `webip` and `web` scopes. See `MAX_WEB_EVENTS_PER_IP_PER_WINDOW`.
+ */
+export const checkAndBumpWeb = internalMutation({
+  args: {
+    sourceIp: v.union(v.string(), v.null()),
+    nowMs: v.number(),
+  },
+  returns: v.object({
+    allowed: v.boolean(),
+    limitedBy: v.union(v.literal("webip"), v.literal("web"), v.null()),
+  }),
+  handler: async (ctx, { sourceIp, nowMs }) => {
+    const windowStart = nowMs - (nowMs % RATE_LIMIT_WINDOW_MS);
+    const ipOver =
+      sourceIp === null
+        ? false
+        : await bump(ctx, "webip", sourceIp, windowStart, MAX_WEB_EVENTS_PER_IP_PER_WINDOW);
+    const wholeOver = await bump(ctx, "web", "all", windowStart, MAX_WEB_EVENTS_PER_WINDOW);
+    const limitedBy: "webip" | "web" | null = ipOver ? "webip" : wholeOver ? "web" : null;
     return { allowed: limitedBy === null, limitedBy };
   },
 });

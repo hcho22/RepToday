@@ -88,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, b'{}')
         elif path == '/event':
             with LOCK:
-                STATE['events'].append({'content_type': self.headers.get('Content-Type', ''), 'body': body})
+                STATE['events'].append({'content_type': self.headers.get('Content-Type', ''), 'origin': self.headers.get('Origin', ''), 'cookie': self.headers.get('Cookie', ''), 'body': body})
             self._send(204)
         elif path == '/signup':
             with LOCK:

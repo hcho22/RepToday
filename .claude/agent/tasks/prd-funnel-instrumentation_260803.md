@@ -558,7 +558,7 @@ This story adds **no** user accounts, no per-user authentication, no App Trackin
 - **No ATT prompt** and no access to the advertising identifier.
 - **No change to the deterministic engine, the paywall logic, the session loop, or any existing service behaviour.** Emissions are additive hooks; they never alter what the app does.
 - **No backend beyond the single immutable `events` table, its idempotent `logEvent` mutation, `POST /logEvent`, US-T14's rate-limit counter store, and US-T13's internal reconciliation read.** The throttle store remains ephemeral and is never evidence; `events.by_installId` only selects raw rows, while `events.by_eventId` only makes client retries idempotent. There is no server-side queue, aggregation, funnel/cohort math, user account, per-user authentication, or user identity in events.
-- **No web-side events.** `landing_page_view` and `waitlist_signup` are web events handled outside the app and are not part of this build.
+- **No web-side events.** `landing_page_view` and `waitlist_signup` are web events handled outside the app and are not part of this build. (Amended by the Waitlist PRD's US-WL05: the landing pages now send them to a separate `POST /webEvent` route; this build and `POST /logEvent` are unchanged.)
 - **No attempt to read K3 (D30 retention) or K7 (day-35 conversion) at the checkpoint.** They are structurally unreadable in the window (see Success Metrics); this build makes them measurable later, not now.
 
 ---

@@ -1673,3 +1673,10 @@ The [validation record](../artifacts/reports/US-WL03/validation.md) owns the com
 The four links record their tag in the page script (path only, last touch among them, kept per tab in `sessionStorage`, no cookie, `utm_*` ignored) and the sign-up carries it; `_redirects` rewrites them to `/` (a rewrite to `/index.html` is answered with a 308 that drops the tag), and mixed-case links rely on Pages' fallback, so a top-level `404.html` is a CI failure.
 The [validation record](../artifacts/reports/US-WL04/validation.md) owns the commands and results; the preview-deploy repeat is slice 4's.
 
+## Waitlist web events (US-WL05, 2026-10-20)
+
+`landing_page_view` and `waitlist_signup` go from the landing pages to a new `POST /webEvent` route on the Convex sink (code and tests only; deploying it is slice 4's, with the captain's approval): its own closed two-name union and exact `{referrer_source}` bag, an `Origin` check instead of the app's secret (which never goes in a page), a 1 KiB cap, its own rate-limit scope, and rows in the existing `events` table under the reserved `installId` `web`.
+`POST /logEvent` and its 13 names are unchanged.
+The pages send fire-and-forget `no-cors` POSTs from `reptoday.app` only.
+The [validation record](../artifacts/reports/US-WL05/validation.md) owns the commands and results; `convex/README.md` ("Web events") owns the contract.
+

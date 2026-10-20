@@ -16,6 +16,10 @@
     // Local development never posts to Kit: it posts to tools/waitlist/stub-receiver.py.
     localHosts: ['localhost', '127.0.0.1', '[::1]'],
     localSignupUrl: 'http://127.0.0.1:8799/signup',
+    // The two anonymous web events (US-WL05) go to their own Convex route, never the app's /logEvent
+    // and never with the app's secret. They are sent only from the production site's own hosts.
+    eventsUrl: 'https://sensible-spider-810.convex.site/webEvent',
+    eventHosts: ['reptoday.app', 'www.reptoday.app'],
     timeoutMs: 20000
   };
 
@@ -45,19 +49,32 @@
     return CONFIG.localHosts.indexOf(window.location.hostname) !== -1;
   }
 
-  // The destination for this page. A local page can be pointed at another stub by a test.
+  // A local page can be pointed at other stubs by a test; no other host can.
+  function testEndpoints() {
+    if (!isLocal()) { return {}; }
+    try {
+      var test = JSON.parse(window.sessionStorage.getItem('waitlist.testEndpoints') || 'null');
+      return test && typeof test === 'object' ? test : {};
+    } catch (error) { return {}; }
+  }
+
+  // The destination for this page. A local page posts to the stub, never to Kit.
   function endpoints() {
-    var found = { signupUrl: isLocal() ? CONFIG.localSignupUrl : CONFIG.signupUrl, guardOrigin: CONFIG.guardOrigin };
+    var test = testEndpoints();
+    return {
+      signupUrl: typeof test.signupUrl === 'string' ? test.signupUrl : (isLocal() ? CONFIG.localSignupUrl : CONFIG.signupUrl),
+      guardOrigin: typeof test.guardOrigin === 'string' ? test.guardOrigin : CONFIG.guardOrigin
+    };
+  }
+
+  // Where web events go: the production route only from the production site's own hosts, nowhere
+  // from a preview or localhost, unless a local test names a stub.
+  function eventsTarget() {
     if (isLocal()) {
-      try {
-        var test = JSON.parse(window.sessionStorage.getItem('waitlist.testEndpoints') || 'null');
-        if (test && typeof test === 'object') {
-          if (typeof test.signupUrl === 'string') { found.signupUrl = test.signupUrl; }
-          if (typeof test.guardOrigin === 'string') { found.guardOrigin = test.guardOrigin; }
-        }
-      } catch (error) { /* storage unavailable: keep the defaults */ }
+      var test = testEndpoints();
+      return typeof test.eventsUrl === 'string' ? test.eventsUrl : '';
     }
-    return found;
+    return CONFIG.eventHosts.indexOf(window.location.hostname) !== -1 ? CONFIG.eventsUrl : '';
   }
 
   // The tag a path names: the whole path must be one of the four tags, in any letter case,
@@ -94,7 +111,31 @@
     return visit || 'unknown';
   }
 
-  window.RepTodayWaitlist = { sourceTags: SOURCE_TAGS, tagForPath: tagForPath, resolveVisit: resolveVisit };
+  // The visit's tag as an event carries it: the tag, else none (never unknown).
+  function eventSource() {
+    return visit || 'none';
+  }
+
+  // One anonymous event: just a name and referrer_source, no address, entry, identifier or cookie.
+  // Fire and forget: a simple text/plain POST that is never read, with no retry, so a slow, blocked
+  // or failed request cannot delay or break the page or the form.
+  function track(name) {
+    try {
+      var url = eventsTarget();
+      if (!url) { return; }
+      var request = fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        credentials: 'omit',
+        keepalive: true,
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ name: name, props: { referrer_source: eventSource() } })
+      });
+      if (request && typeof request.catch === 'function') { request.catch(function () { /* never surfaced */ }); }
+    } catch (error) { /* never surfaced */ }
+  }
+
+  window.RepTodayWaitlist = { sourceTags: SOURCE_TAGS, tagForPath: tagForPath, resolveVisit: resolveVisit, eventSource: eventSource, track: track };
 
   function looksLikeEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
@@ -152,6 +193,7 @@
       var fields = form.querySelectorAll('[data-wl-fields]');
       for (var i = 0; i < fields.length; i += 1) { fields[i].hidden = true; }
       setStatus(COPY.success);
+      track('waitlist_signup');
       status.setAttribute('tabindex', '-1');
       status.focus();
     }
@@ -278,6 +320,8 @@
     source.value = visitSource();
     form.hidden = false;
   }
+
+  track('landing_page_view');
 
   var forms = document.querySelectorAll('form[data-waitlist-form]');
   for (var i = 0; i < forms.length; i += 1) { init(forms[i]); }

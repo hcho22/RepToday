@@ -152,8 +152,9 @@ day30_return         week_active          paywall_shown         trial_started
 subscribe
 ```
 
-The two web-side events from the schema (`landing_page_view`, `waitlist_signup`) are handled
-outside the app and are deliberately absent.
+The two web-side events from the schema (`landing_page_view`, `waitlist_signup`) are deliberately
+absent from this list: they are not app events, and `POST /logEvent` rejects both. They arrive on a
+separate route, `POST /webEvent` (see "Web events").
 Changing a raw value on either side without the other breaks the contract; the case *names* on the
 Swift side may be refactored freely, the strings may not.
 
@@ -480,6 +481,40 @@ reinterpret - and why the action requires one instead of coercing whatever it is
 
 `generation_ms` is **not** a top-level scalar. It rides inside `props`, which the action passes
 through untouched and the schema stores as-is, so it is not reached by that coercion.
+
+## Web events: `POST /webEvent` -> `204` (US-WL05)
+
+The Waitlist landing pages (`gtm/03-site/waitlist.js`) count two anonymous events, and they do not go
+through `/logEvent`: that route's 13 names, shared-secret header and per-install limit are the app's
+contract and are unchanged.
+The new route has its own closed vocabulary (`webEvents.ts`) and writes through its own internal
+mutation, `webEvents:logWebEvent`, into the same `events` table (no third table).
+
+- **Names and bag.** `landing_page_view` (once per load of either landing page, never `/privacy`) and
+  `waitlist_signup` (once per accepted sign-up). The body is exactly
+  `{"name": ..., "props": {"referrer_source": ...}}`, where `referrer_source` is the visit's Source
+  tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; never `unknown`, never a UTM value, never
+  free text. Any other field, name or value is a `400`. No email address, entry identifier, device or
+  visitor identifier, cookie or timestamp is carried.
+- **Rows.** `installId` is the one reserved value `web` (not a UUID, the same for every visitor), and
+  `clientTs` is the server's clock, so no visitor clock is stored. Install-based tooling
+  (`tools/reconcile`) selects rows by install identifier and never asks for `web`; anything counting
+  unique installs must exclude it.
+- **No secret.** The pages are public, so the app's secret must never be put in one. The route instead
+  requires the request's `Origin` to be one of the site's (`https://reptoday.app`,
+  `https://www.reptoday.app`; a dev deployment sets `WEB_EVENT_ALLOWED_ORIGINS` to a comma list),
+  caps the body at 1 KiB, and rate limits in two scopes of its own: 120 a minute per source IP and
+  3,000 a minute for the whole route (`checkAndBumpWeb`; the per-install key cannot apply). A browser
+  sets `Origin` and a page cannot forge it, but a script outside a browser can send any value, so these
+  are cost-raisers, not a guarantee.
+- **No CORS.** The page sends a simple `text/plain` POST with `no-cors` and never reads the answer, so
+  there is no preflight. Status: `204` stored, `400` the body, `403` the origin, `429` the limit, `500`
+  only for a store failure (no detail in the response).
+- **Coverage.** `convex/webEvents.test.ts` (`npm test`, in process, no deployment) covers accepted and
+  rejected bodies, the origin list, the two rate-limit scopes, the app route being unchanged and a
+  failing store.
+- **Deploy.** Deploying this to the production deployment is a separate, credentialed, captain-approved
+  step; until then the pages carry the production URL but emit only from `reptoday.app`.
 
 ## Read path: `reconcile:eventsForInstalls` (internal, US-T13 harness)
 

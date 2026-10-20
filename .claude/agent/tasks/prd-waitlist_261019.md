@@ -340,17 +340,17 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `landing_page_view` is emitted once on every load of either landing-page document (`index.html` or `index-b.html`), whatever path served it (`/`, `/index-b`, the four Source links, or any other path the fallback answers with the landing page), never on `/privacy`, with exactly one property, `referrer_source`.
-- [ ] `waitlist_signup` is emitted when an email is submitted (the moment settled in OQ8) with exactly one property, `referrer_source`.
-- [ ] `referrer_source` is the visit's tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; it is never the Source's other spelling `unknown`, never a UTM value and never free text.
-- [ ] Neither event carries the email address, the entry identifier, any identifier of the visitor or device, or any cookie.
-- [ ] Emission is fire-and-forget: a failed, slow or blocked request never delays the page, the form or the success state, and nothing retries into a loop.
-- [ ] No event is sent from `localhost`, a preview URL or a test run to the production sink (the US-WL12 rehearsal is the one exception, stated above).
-- [ ] The sink side follows OQ7 and, whatever it is, rejects any name other than the two web names and any property bag other than exactly `{referrer_source: <tag or none>}`, without disturbing the app's `POST /logEvent` contract (its 13 names, its secret header, its tests).
-- [ ] The app's shared-secret header value is never placed in a web page.
-- [ ] If the sink is Convex: the new route has its own rate-limit scope sized for web traffic (the per-install key cannot apply), the origin is checked, `convex/README.md` documents the route and the reserved row convention, `convex/http.test.ts`-style tests cover accepted and rejected bodies, `npm run typecheck` and `npm test` pass, and the stale "handled outside the app" notes (V16) are rewritten.
-- [ ] `AGENTS.md` and the funnel PRD's non-goal are amended only as far as the new route requires, in the existing amendment style.
-- [ ] Deploying the sink to the production Convex deployment is a separate, captain-approved, credentialed step.
+- [x] `landing_page_view` is emitted once on every load of either landing-page document (`index.html` or `index-b.html`), whatever path served it (`/`, `/index-b`, the four Source links, or any other path the fallback answers with the landing page), never on `/privacy`, with exactly one property, `referrer_source`.
+- [x] `waitlist_signup` is emitted when an email is submitted (the moment settled in OQ8) with exactly one property, `referrer_source`.
+- [x] `referrer_source` is the visit's tag (`tiktok`, `youtube`, `reddit`, `network`) or `none`; it is never the Source's other spelling `unknown`, never a UTM value and never free text.
+- [x] Neither event carries the email address, the entry identifier, any identifier of the visitor or device, or any cookie.
+- [x] Emission is fire-and-forget: a failed, slow or blocked request never delays the page, the form or the success state, and nothing retries into a loop.
+- [x] No event is sent from `localhost`, a preview URL or a test run to the production sink (the US-WL12 rehearsal is the one exception, stated above).
+- [x] The sink side follows OQ7 and, whatever it is, rejects any name other than the two web names and any property bag other than exactly `{referrer_source: <tag or none>}`, without disturbing the app's `POST /logEvent` contract (its 13 names, its secret header, its tests).
+- [x] The app's shared-secret header value is never placed in a web page.
+- [x] If the sink is Convex: the new route has its own rate-limit scope sized for web traffic (the per-install key cannot apply), the origin is checked, `convex/README.md` documents the route and the reserved row convention, `convex/http.test.ts`-style tests cover accepted and rejected bodies, `npm run typecheck` and `npm test` pass, and the stale "handled outside the app" notes (V16) are rewritten.
+- [x] `AGENTS.md` and the funnel PRD's non-goal are amended only as far as the new route requires, in the existing amendment style.
+- [x] Deploying the sink to the production Convex deployment is a separate, captain-approved, credentialed step.
 
 **Validation Test:**
 
