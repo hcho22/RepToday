@@ -39,6 +39,8 @@ Rules, each named in a finding:
                          a line break inside a cell, as an unclosed quote does; a line of JSON that does not parse)
                          is read line by line: once the file names an email column or field, any unlisted address
                          on such a line counts, so damage hides nothing.
+  unreadable-export      a CSV, TSV, JSON or JSONL file in the export rule's scope that cannot be read (no
+                         permission, an I/O error): it could hold an export, so it fails the run.
   address                an email-shaped string not on the allowlist. Only text files are read for this rule
                          (files that decode as UTF-8 and hold no NUL byte): committed images such as the Trainer
                          pose art hold address-shaped byte runs by chance.
@@ -51,8 +53,13 @@ The allowlist is the policy's published contact address, addresses at the reserv
 URL-userinfo test inputs that are address-shaped by accident, each allowed only in its own file. A finding names
 the file and line and never repeats a value.
 
+A file over 50 MB is read by the export rule alone, and only if it is a CSV, TSV, JSON or JSONL file in that rule's
+scope: decoded as any other export is, a line at a time, under the damaged-file reading above, so every row is seen
+without holding the file. The other rules skip it, and the run reports how many files no rule read.
+
 Exit status: 0 clean, 1 findings, 2 usage.
 """
+import codecs
 import csv
 import io
 import json
@@ -120,7 +127,8 @@ PLACEHOLDER = re.compile(r'<[^<>]*>|\$[({]?[A-Za-z_(].*|%[({]?[A-Za-z_].*|\{\{.*
 EXPORT_SUFFIXES = ('.csv', '.tsv', '.json', '.jsonl')
 EXPORT_SKIP_DIRECTORIES = ('node_modules', 'site-packages')
 MAX_BYTES = 50 * 1000 * 1000
-csv.field_size_limit(MAX_BYTES)  # no field of a file this reads is longer than the file
+CHUNK_BYTES = 1000 * 1000
+csv.field_size_limit(MAX_BYTES)  # no field of a file read whole is longer than the file
 
 
 def is_placeholder(text):
@@ -192,6 +200,32 @@ def decode_for_export(data):
         return data.decode('utf-8')
     except UnicodeDecodeError:
         return data.decode('latin-1')
+
+
+def export_encoding(path):
+    """The codec `decode_for_export` would decode the file with, found without holding the file."""
+    with open(path, 'rb') as handle:
+        head = handle.read(3)
+        if head.startswith(b'\xef\xbb\xbf'):
+            return 'utf-8-sig'
+        if head.startswith((b'\xff\xfe', b'\xfe\xff')):
+            return 'utf-16'
+        handle.seek(0)
+        decoder = codecs.getincrementaldecoder('utf-8')()
+        try:
+            for chunk in iter(lambda: handle.read(CHUNK_BYTES), b''):
+                decoder.decode(chunk)
+            decoder.decode(b'', final=True)
+        except UnicodeDecodeError:
+            return 'latin-1'
+    return 'utf-8'
+
+
+def export_lines(path, encoding):
+    """The file's lines in that codec, one at a time."""
+    with open(path, encoding=encoding, errors='replace') as handle:
+        for line in handle:
+            yield line.rstrip('\r\n')
 
 
 def decode_text_only(data):
@@ -267,41 +301,28 @@ def walk_json(value, relative, line, found):
 JSON_KEY = re.compile(r'"([^"\\]*)"\s*:')
 
 
-def export_findings(data, relative):
-    """(line, rule) for a CSV, TSV, JSON or JSONL file that holds a subscriber export: a column or field named for an
-    email address with at least one address not on the allowlist."""
-    text = decode_for_export(data)
+def table_findings(rows, damaged, delimiter, relative):
+    """(line, rule) for each row under a header that names an email column and holds an unlisted address in such a
+    column or, in a damaged table, anywhere on its line."""
     found = []
-    suffix = os.path.splitext(relative)[1].lower()
-    if suffix in ('.csv', '.tsv'):
-        delimiter = '\t' if suffix == '.tsv' else ','
-        try:
-            rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
-        except csv.Error:
-            rows = None
-        damaged = rows is None or any('\n' in cell or '\r' in cell for row in rows for cell in row)
-        if damaged:
-            # Not readable as a table (a NUL byte on Python 3.9 and 3.10), or a cell holding a line break (an unclosed
-            # quote folds the rest of the file into one): split each line by hand and, under a header that names an
-            # email column, count an unlisted address anywhere on a line, so damage hides nothing.
-            rows = [line.split(delimiter) for line in text.splitlines()]
-        header = None
-        for number, row in enumerate(rows, start=1):
-            if header is None:
-                if any(cell.strip() for cell in row):
-                    header = [index for index, cell in enumerate(row) if email_named(cell)]
-                continue
-            cells = [delimiter.join(row)] if damaged and header else [row[index] for index in header if index < len(row)]
-            if any(unlisted_addresses(cell, relative) for cell in cells):
-                found.append((number, 'export-file'))
-        return found
-    try:
-        walk_json(json.loads(text.lstrip('\ufeff')), relative, 1, found)
-        return found
-    except (ValueError, RecursionError):
-        pass
-    names_email = any(email_named(key) for key in JSON_KEY.findall(text))
-    for number, line in enumerate(text.splitlines(), start=1):
+    header = None
+    for number, row in enumerate(rows, start=1):
+        if header is None:
+            if any(cell.strip() for cell in row):
+                header = [index for index, cell in enumerate(row) if email_named(cell)]
+            continue
+        cells = [delimiter.join(row)] if damaged and header else [row[index] for index in header if index < len(row)]
+        if any(unlisted_addresses(cell, relative) for cell in cells):
+            found.append((number, 'export-file'))
+    return found
+
+
+def json_line_findings(lines, names_email, relative):
+    """(line, rule) for JSON read a line at a time: an object or array line is walked, and any other line (damaged,
+    or a fragment of a larger document) counts an unlisted address anywhere on it once the file names an email
+    field, so damage hides nothing."""
+    found = []
+    for number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
@@ -312,10 +333,46 @@ def export_findings(data, relative):
         except (ValueError, RecursionError):
             parsed = False
         if not parsed and names_email and unlisted_addresses(line, relative):
-            # Not a JSON line (damaged, or a fragment of a damaged document): once the file names an email field, count
-            # an unlisted address anywhere on the line, so damage hides nothing.
             found.append((number, 'export-file'))
     return found
+
+
+def export_findings(data, relative):
+    """(line, rule) for a CSV, TSV, JSON or JSONL file that holds a subscriber export: a column or field named for an
+    email address with at least one address not on the allowlist."""
+    text = decode_for_export(data)
+    suffix = os.path.splitext(relative)[1].lower()
+    if suffix in ('.csv', '.tsv'):
+        delimiter = '\t' if suffix == '.tsv' else ','
+        try:
+            rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+        except csv.Error:
+            rows = None
+        damaged = rows is None or any('\n' in cell or '\r' in cell for row in rows for cell in row)
+        if damaged:
+            # Not readable as a table (a NUL byte on Python 3.9 and 3.10), or a cell holding a line break (an unclosed
+            # quote folds the rest of the file into one): split each line by hand.
+            rows = [line.split(delimiter) for line in text.splitlines()]
+        return table_findings(rows, damaged, delimiter, relative)
+    found = []
+    try:
+        walk_json(json.loads(text.lstrip('\ufeff')), relative, 1, found)
+        return found
+    except (ValueError, RecursionError):
+        pass
+    return found + json_line_findings(text.splitlines(), any(email_named(key) for key in JSON_KEY.findall(text)), relative)
+
+
+def large_export_findings(path, relative):
+    """The export rule over a file too large to read whole: decoded as `export_findings` decodes, read a line at a
+    time under the damaged-file reading, so every row is seen and the file is never held."""
+    encoding = export_encoding(path)
+    suffix = os.path.splitext(relative)[1].lower()
+    if suffix in ('.csv', '.tsv'):
+        delimiter = '\t' if suffix == '.tsv' else ','
+        return table_findings((line.split(delimiter) for line in export_lines(path, encoding)), True, delimiter, relative)
+    names_email = any(email_named(key) for line in export_lines(path, encoding) for key in JSON_KEY.findall(line))
+    return json_line_findings(export_lines(path, encoding), names_email, relative)
 
 
 def address_findings(text, relative):
@@ -365,30 +422,36 @@ class Tally(object):
             self.findings.append('{}:{}: rule {}'.format(relative, line, rule))
 
 
-def read_bytes(path, tally):
-    try:
-        if os.path.getsize(path) > MAX_BYTES:
-            tally.skipped_large += 1
-            return None
-        with open(path, 'rb') as handle:
-            return handle.read()
-    except OSError:
+def read_small(path):
+    """The bytes of a file of at most MAX_BYTES, or None for a larger one. An unreadable file raises OSError."""
+    if os.path.getsize(path) > MAX_BYTES:
         return None
+    with open(path, 'rb') as handle:
+        return handle.read()
 
 
 def scan_file(root, relative, tally, credentials, exports, addresses):
     path = os.path.join(str(root), relative)
     if not os.path.isfile(path) or os.path.islink(path):
         return
-    data = read_bytes(path, tally)
-    if data is None:
+    export = exports and relative.lower().endswith(EXPORT_SUFFIXES)
+    try:
+        data = read_small(path)
+        if export:
+            tally.add(relative, export_findings(data, relative) if data is not None else large_export_findings(path, relative))
+    except OSError:
+        if export:
+            tally.add(relative, [(1, 'unreadable-export')])
+        return
+    if data is None and not export:
+        tally.skipped_large += 1
         return
     tally.scanned += 1
+    if data is None:
+        return
     if credentials and may_hold_credential(data, relative):
         tally.add(relative, credential_findings(data.decode('utf-8', errors='replace') if b'\0' not in data
                                                 else data.decode('latin-1'), relative))
-    if exports and relative.lower().endswith(EXPORT_SUFFIXES):
-        tally.add(relative, export_findings(data, relative))
     if addresses:
         text = decode_text_only(data)
         if text is not None:
@@ -412,7 +475,10 @@ def audit_directory(directory):
     if this_checkout:
         for relative in published_files(root):
             path = os.path.join(str(root), relative)
-            data = read_bytes(path, tally) if os.path.isfile(path) and not os.path.islink(path) else None
+            try:
+                data = read_small(path) if os.path.isfile(path) and not os.path.islink(path) else None
+            except OSError:
+                data = None
             text = decode_text_only(data) if data is not None else None
             if text is not None:
                 tally.add(relative, address_findings(text, relative))
@@ -422,7 +488,7 @@ def audit_directory(directory):
 def report(tally, label):
     for finding in sorted(set(tally.findings)):
         print('error: {}'.format(finding))
-    note = ', {} files over {} MB not read'.format(tally.skipped_large, MAX_BYTES // 1000000) if tally.skipped_large else ''
+    note = ', {} files over {} MB read by no rule'.format(tally.skipped_large, MAX_BYTES // 1000000) if tally.skipped_large else ''
     print('{}: {} files read, {} findings{}'.format(label, tally.scanned, len(set(tally.findings)), note))
 
 

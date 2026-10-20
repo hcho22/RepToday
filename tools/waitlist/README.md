@@ -163,6 +163,7 @@ The job writes counts only to `~/Library/Logs/RepToday/waitlist-daily.log`.
 `tools/check-no-waitlist-credentials.py` (CI) fails when a file git would publish holds a literal email-service credential, a bearer or API-key header with a literal value in the Waitlist's own paths, a subscriber export, or an email-shaped address that is not on its allowlist.
 Its docstring is the one statement of each rule's file scope and of the allowlist, and a finding names a file and line, never a value.
 The export rule reads every CSV, TSV, JSON or JSONL file whatever its encoding (UTF-8, else UTF-16 by its byte-order mark, else a single-byte decoding such as Latin-1), so a Windows-1252 export is found; only the stray-address rule is limited to text files.
+An export-suffixed file over the 50 MB cap the other rules keep is still read by the export rule, a line at a time, and one that cannot be read fails the run, named (`unreadable-export`).
 `tools/waitlist/audit-checkouts.sh <directory>...` is the read-only audit run at go-live against the gr0wthlab, Mandu and RepToday checkouts.
 This repository can enforce only its own side; the matching rule for the other two checkouts is gr0wthlab's Guardrail G6, verified by the audit's credential and export rules with no change made to either.
 The view producer's refusal to write in a work tree is covered by `ProducerSafety.test_refuses_a_path_inside_a_work_tree_or_a_symlink_into_one` in `test-waitlist.py`.

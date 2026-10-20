@@ -10,6 +10,7 @@ pass on the repository itself, which holds `Bearer` test fixtures and the two UR
 """
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -213,14 +214,14 @@ class ExportRule(Scratch):
         cases = {
             'nul.csv': 'name,email\nA\0B,{}\n'.format(row),  # Python 3.9 and 3.10 refuse a NUL
             'nul.tsv': 'name\temail\nA\0B\t{}\n'.format(row),
-            'long.csv': 'email,note\n{},"{}"\n'.format(row, 'x' * 200000),  # a field past the reader's default limit
-            'unbalanced.csv': 'email,note\n{},"{}\n'.format(row, 'x' * 200000),
+            'long.csv': 'email,note\n{},"{}"\n'.format(row, 'x ' * 100000),  # a field past the reader's default limit
+            'unbalanced.csv': 'email,note\n{},"{}\n'.format(row, 'x ' * 100000),
         }
         for name, content in cases.items():
             code, rules, found = self.export_rules(name, content.encode('utf-8'))
             self.assertEqual(code, 1, name)
             self.assertIn('export-file', rules, name)
-        clean = 'name,note\nA\0B,{}\n'.format('x' * 200000)
+        clean = 'name,note\nA\0B,{}\n'.format('x ' * 100000)
         code, rules, found = self.export_rules('clean.csv', clean.encode('utf-8'))
         self.assertEqual((code, rules), (0, []))
 
@@ -245,6 +246,39 @@ class ExportRule(Scratch):
         damaged = '[{"name": "Jos\xe9", "emails": [\n  "%s"\n]}, {"emails": [' % address('damaged')  # truncated
         code, rules, found = self.export_rules('damaged.json', damaged.encode('cp1252'))
         self.assertEqual((code, rules), (1, ['export-file']))
+
+    def test_an_export_over_the_size_cap_is_read_a_line_at_a_time(self):
+        """Made here and never committed: filler rows past the 50 MB cap, then one row in Windows-1252 with an accented
+        name and an unlisted address, so only the export rule, reading every row, can fail it."""
+        rows = {
+            'large.csv': (b'name,email\n', ('x y ' * 250 + ',\n').encode('ascii'), 'Jos\xe9,{}\n'),
+            'large.jsonl': (b'', ('{"note": "' + 'x y ' * 250 + '"}\n').encode('ascii'), '{{"name": "Jos\xe9", "email": "{}"}}\n'),
+        }
+        for name, (head, filler, last) in rows.items():
+            path = self.root / name
+            with open(str(path), 'wb') as handle:
+                handle.write(head)
+                for _ in range(guard.MAX_BYTES // len(filler) + guard.CHUNK_BYTES // len(filler) + 1):
+                    handle.write(filler)
+                handle.write(last.format(address('large')).encode('cp1252'))
+            self.assertGreater(path.stat().st_size, guard.MAX_BYTES + guard.CHUNK_BYTES)
+            code, found, output = self.findings()
+            path.unlink()
+            self.assertEqual(code, 1, output)
+            self.assertEqual(rules_of(found), ['export-file'], name)
+            self.assertTrue(found[0].startswith('error: {}:'.format(name)), found)
+            self.assertNotIn('read by no rule', output)
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads a file whatever its mode')
+    def test_an_export_that_cannot_be_read_fails_naming_it(self):
+        other = self.write('locked.txt', 'notes\n')
+        locked = self.write('locked.csv', 'name,email\n')
+        for path in (other, locked):
+            os.chmod(str(path), 0)
+            self.addCleanup(os.chmod, str(path), 0o600)
+        code, found, output = self.findings()
+        self.assertEqual(code, 1, output)
+        self.assertEqual(found, ['error: locked.csv:1: rule unreadable-export'])
 
     def test_a_file_with_an_email_column_but_no_unlisted_address_is_not_an_export(self):
         allowed = 'reptoday.app' + AT + 'gmail.com'
@@ -404,7 +438,7 @@ class Audit(Scratch):
 
     def test_a_damaged_csv_in_one_directory_does_not_stop_the_audit_of_the_rest(self):
         self.write('first.csv', 'name,email\nA\0B,{}\n'.format(address('first')))
-        self.write('later.csv', 'email,note\n{},"{}"\n'.format(address('later'), 'x' * 200000))
+        self.write('later.csv', 'email,note\n{},"{}"\n'.format(address('later'), 'x ' * 100000))
         other = Path(tempfile.mkdtemp(prefix='waitlist-guard-other-')).resolve()
         self.addCleanup(shutil.rmtree, str(other), True)
         (other / 'creds.sh').write_text('{}={}\n'.format(KIT_KEY_NAME, VALUE))
