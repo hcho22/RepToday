@@ -47,7 +47,7 @@ The checker was restored from a saved copy after each break.
 ## Where the reader and the PRD's prose differ
 
 The reader wins; none of these changes a requirement.
-They are listed in the PRD under "The gr0wthlab reader contract": a float `1.0` version is read as `1`; `generated_at` is stripped and every `Z` replaced, and which spellings parse depends on the Python version; only the first 10,000,001 bytes are examined; the address check on the text runs before any format or encoding failure; a repeated JSON key keeps its last value.
+They are listed in the PRD under "The gr0wthlab reader contract", and each is a committed fixture or a generated case.
 
 ## Not covered
 

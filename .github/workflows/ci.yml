@@ -211,6 +211,7 @@ jobs:
       - name: Build & run unit tests (RepToday scheme)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepToday \
@@ -228,6 +229,7 @@ jobs:
       - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepTodayUITests \
@@ -310,6 +312,7 @@ jobs:
       - name: Build & run unit tests (RepToday scheme)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepToday \
@@ -322,6 +325,7 @@ jobs:
       - name: Build XCUITest scheme (RepTodayUITests, compile-check only)
         run: |
           set -o pipefail
+          # shellcheck disable=SC2086 # SIGNING_FLAGS holds several flags; word splitting is intended.
           xcodebuild \
             -project ios/RepToday/RepToday.xcodeproj \
             -scheme RepTodayUITests \

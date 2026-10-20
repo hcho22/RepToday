@@ -1597,7 +1597,7 @@ What landed:
 - **A checker that mirrors the reader.** `tools/waitlist/check-view.py` follows gr0wthlab's `waitlist.read` in the same order: the address check over the file's text and then every key and value (a hit is `refused`, exit 2), the file-level checks, then the format (`failed`, exit 1).
   It reads the same first 10,000,001 bytes the reader keeps.
   Its reports name a rule and a position and never a value; it prints no traceback, since an exception message could carry one.
-- **The reader wins over the PRD's prose.** Reading the reader surfaced six details the prose omits (a float `1.0` version is accepted, `generated_at` is stripped and every `Z` replaced, the examined window, the address check running before encoding and JSON failures, repeated keys, an unopenable file); they are recorded in the PRD and pinned by cases.
+- **The reader wins over the PRD's prose.** Reading the reader surfaced details the prose omits; they are recorded in the PRD under "The gr0wthlab reader contract" and pinned by cases.
 - **Fixtures.** 42 committed files and 29 cases generated at test time, each address assembled from parts and written outside the repository, so no address-shaped string is ever committed; a test scans everything under `tools/waitlist/` for one.
 - **Cross-check.** With `GR0WTHLAB_CHECKOUT` set, the test imports that checkout's reader read-only (bytecode writing off, nothing written there) and requires its verdict, its refused places and its failed-read detail to equal the checker's on every fixture, generated case and 600 seeded mutations.
   It is skipped otherwise and never required in CI.
