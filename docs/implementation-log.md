@@ -1662,3 +1662,9 @@ US-WL02 replaces the four Kit embeds with one first-party form (`gtm/03-site/wai
 The [validation record](../artifacts/reports/US-WL02/validation.md) owns the commands and results.
 A page served from localhost posts to the stub, never to Kit.
 
+## Waitlist page copy and the landing-page check (US-WL03, 2026-10-20)
+
+The closing promise is now "one launch email, plus a beta invitation only if you ask for one", the FAQ names what the waitlist keeps and points to the policy, and no placement offers a mailbox join.
+`tools/waitlist/check-site.py` (CI job `waitlist`) keeps the four placements one form, the approved strings and field names intact, and the site free of stray addresses; the A/B pages differ outside the waitlist as before.
+The [validation record](../artifacts/reports/US-WL03/validation.md) owns the commands and results.
+

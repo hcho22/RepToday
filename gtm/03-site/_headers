@@ -6,11 +6,11 @@
 # with an auto-provisioned certificate. Adding Strict-Transport-Security here
 # would be redundant (and easy to misconfigure). See DEPLOY.md.
 #
-# No Content-Security-Policy is set: the Kit waitlist embed
-# (script from rep-today.kit.com) injects its form plus assets from several
-# kit.com/convertkit origins, and a wrong CSP silently breaks signups. Adding a
-# verified CSP that still lets the Kit form load is tracked as a follow-up in
-# DEPLOY.md rather than shipped blind.
+# No Content-Security-Policy is set. The waitlist form posts to Kit's public sign-up
+# endpoint (app.kit.com) and may show Kit's reCAPTCHA check in an iframe from the same
+# origin, and the web events post to the Convex site, so a CSP would need connect-src and
+# frame-src for those origins; authoring and verifying one is a follow-up in DEPLOY.md
+# rather than shipped blind.
 
 /*
   X-Content-Type-Options: nosniff

@@ -5,7 +5,7 @@ name: CI
 #
 #   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
 #   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
-#   waitlist (ubuntu) - the Waitlist contract file and anonymous-view checker tests (no Xcode).
+#   waitlist (ubuntu) - the Waitlist contract file, anonymous-view checker and landing-page checks (no Xcode).
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
 #                    compile of the XCUITest scheme (Xcode 16.4, iOS 18 simulator).
 #   ios-26 (macos) - the same build + unit tests + XCUITest compile on Xcode 26.5
@@ -101,6 +101,12 @@ jobs:
 
       - name: Test the Waitlist contract and view checker
         run: python3 tools/waitlist/test-check-view.py
+
+      - name: Check the landing pages' Waitlist placements and copy
+        run: python3 tools/waitlist/check-site.py
+
+      - name: Test the landing-page check
+        run: python3 tools/waitlist/test-check-site.py
 
   # ---------------------------------------------------------------------------
   # Toolchain 2: iOS SwiftUI app - macOS.

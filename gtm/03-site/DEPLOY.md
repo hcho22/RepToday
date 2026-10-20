@@ -71,6 +71,9 @@ serves every request over HTTPS. That is why `_headers` sets **no**
 - **`_redirects` is intentionally absent.** Pages already serves `index.html` at
   `/` automatically, so no redirect rule is warranted today. Add a `_redirects`
   file in this directory only if a real redirect need appears.
-- **Content-Security-Policy.** Omitted so the Kit waitlist embed
-  (`rep-today.kit.com`) and its form keep working; see the comment in `_headers`.
-  Authoring a verified CSP that still allows the Kit form is a follow-up.
+- **Content-Security-Policy.** Omitted for now; see the comment in `_headers`.
+  The Kit embed script is gone (the form is first-party, `waitlist.js`), but the form still
+  posts to `app.kit.com`, frames Kit's reCAPTCHA check from there when Kit asks, and the web
+  events post to the Convex site, so a verified CSP needs `connect-src` and `frame-src` for
+  those origins.
+  Authoring one is a follow-up.

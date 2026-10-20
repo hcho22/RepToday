@@ -1,0 +1,61 @@
+A/B diff outside the waitlist blocks and the sentences US-WL03 names
+before this change: 57 diff lines; after: 57 diff lines; identical modulo line numbers: True
+
+--- the (normalized) A-vs-B diff after the change ---
+--- 
++++ 
+@@ -6,2 +6,2 @@
+-<title>Rep Today - Open the app. The workout is already there.</title>
+-<meta name="description" content="Rep Today is a bodyweight micro-workout iOS app. A complete session is on screen the moment the app opens, built on your phone, offline, in under 100 milliseconds. Coming soon to iOS.">
++<title>Rep Today - Missing a day never zeroes you out.</title>
++<meta name="description" content="Rep Today is a bodyweight micro-workout iOS app with no streaks anywhere. It opens to a ready session, counts five minutes as a full show-up, and scores consistency on a rolling scale. Coming soon to iOS.">
+@@ -9,2 +9,3 @@
+-  /* Rep Today landing page, v2 (Hero A variant).
+-     Locked positioning v2: hero A "already there", five-pillar hierarchy,
++  /* Rep Today landing page, v2 (Hero B variant).
++     Locked positioning v2: hero B "never zeroes you out", forgiveness pillar
++     promoted to first position below the hero, five-pillar hierarchy,
+@@ -684,2 +685,2 @@
+-          <h1 class="display">Open the app. The workout is already there.</h1>
+-          <p class="subhead">No quiz, no picking, no catalog scroll - a complete session, 5 to 60 minutes, no equipment. Five minutes counts.</p>
++          <h1 class="display">Missing a day never zeroes you out.</h1>
++          <p class="subhead">Rep Today opens to a ready session, counts five minutes as a full show-up, and celebrates a comeback after a week away.</p>
+@@ -757 +758 @@
+-          <p class="proof-line">Generated on your phone, offline, in under 100ms. Unlimited free workouts, no account required.</p>
++          <p class="proof-line">No streaks, no badges, no XP, anywhere. A missed day can dent your score. Nothing can ever zero it.</p>
+@@ -760,0 +762,17 @@
++    </div>
++  </section>
++
++  <section>
++    <div class="container">
++      <div class="section-head">
++        <p class="overline">Pillar 3 - The score</p>
++        <h2 class="h1">A score that forgives.</h2>
++      </div>
++      <p>Rep Today keeps a Consistency Score. It is a forgiving rolling average, not a streak. A 5-minute session counts as a full show-up. Miss a day and your score dips. It never resets. Come back after a gap and the app serves a session that is easy and winnable, and it celebrates the return instead of penalizing it.</p>
++      <p>You're someone who moves, not someone who owes.</p>
++      <p class="muted">There is no XP, no levels, no badges, and no leaderboards anywhere in the app.</p>
++
++      <figure class="evidence">
++        <blockquote>"Then after 200 days, I lost my streak and... breathed a sigh of relief."</blockquote>
++        <figcaption>A Hacker News commenter on a language app's streak. Not about Rep Today; it is the mechanic we chose not to build. <a href="https://hn.algolia.com/api/v1/items/38919053">Source</a></figcaption>
++      </figure>
+@@ -877,17 +894,0 @@
+-  <section>
+-    <div class="container">
+-      <div class="section-head">
+-        <p class="overline">Pillar 3 - The score</p>
+-        <h2 class="h1">Missing a day never zeroes you out.</h2>
+-      </div>
+-      <p>Rep Today keeps a Consistency Score. It is a forgiving rolling average, not a streak. A 5-minute session counts as a full show-up. Miss a day and your score dips. It never resets. Come back after a gap and the app serves a session that is easy and winnable, and it celebrates the return instead of penalizing it.</p>
+-      <p>You're someone who moves, not someone who owes.</p>
+-      <p class="muted">There is no XP, no levels, no badges, and no leaderboards anywhere in the app.</p>
+-
+-      <figure class="evidence">
+-        <blockquote>"Then after 200 days, I lost my streak and... breathed a sigh of relief."</blockquote>
+-        <figcaption>A Hacker News commenter on a language app's streak. Not about Rep Today; it is the mechanic we chose not to build. <a href="https://hn.algolia.com/api/v1/items/38919053">Source</a></figcaption>
+-      </figure>
+-    </div>
+-  </section>
+-

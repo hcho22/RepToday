@@ -283,14 +283,14 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] The string "one message" appears nowhere on either page.
-- [ ] The closing band's lead now contains the phrase "one launch email, plus a beta invitation only if you ask for one" verbatim.
-- [ ] The hero's lead-in sentence "Rep Today is pre-launch and not yet on the App Store." and the `<noscript>` mailbox fallbacks are handled as OQ9 settles; after this story no placement offers a second way to join the waitlist.
-- [ ] The FAQ sentence "the pre-launch waitlist holds the email you add to it ... nothing more" is replaced as OQ9 settles, so it no longer understates what the form keeps; the "When does it launch?" answer stays consistent with the call to action.
-- [ ] Neither page asks the visitor for a download, a follow or a share; the form is the only action that asks anything of the visitor (a word-list grep guard).
-- [ ] `tools/waitlist/check-site.py` (CI) fails when: the four placements differ beyond element ids; any approved string from the contract file is missing or altered; "one message" is present; a `mailto:` join path is present; an email-shaped string (a whole address, as US-WL08 defines it) other than the policy's published contact address appears in a text file in `gtm/03-site/` (text as US-WL08 defines it).
-- [ ] Outside the waitlist blocks and the sentences above, `index.html` and `index-b.html` differ only as they do today (a before/after diff is attached to the evidence), so the running A/B comparison is not disturbed.
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px on `/` and `/index-b`.
+- [x] The string "one message" appears nowhere on either page.
+- [x] The closing band's lead now contains the phrase "one launch email, plus a beta invitation only if you ask for one" verbatim.
+- [x] The hero's lead-in sentence "Rep Today is pre-launch and not yet on the App Store." and the `<noscript>` mailbox fallbacks are handled as OQ9 settles; after this story no placement offers a second way to join the waitlist.
+- [x] The FAQ sentence "the pre-launch waitlist holds the email you add to it ... nothing more" is replaced as OQ9 settles, so it no longer understates what the form keeps; the "When does it launch?" answer stays consistent with the call to action.
+- [x] Neither page asks the visitor for a download, a follow or a share; the form is the only action that asks anything of the visitor (a word-list grep guard).
+- [x] `tools/waitlist/check-site.py` (CI) fails when: the four placements differ beyond element ids; any approved string from the contract file is missing or altered; "one message" is present; a `mailto:` join path is present; an email-shaped string (a whole address, as US-WL08 defines it) other than the policy's published contact address appears in a text file in `gtm/03-site/` (text as US-WL08 defines it).
+- [x] Outside the waitlist blocks and the sentences above, `index.html` and `index-b.html` differ only as they do today (a before/after diff is attached to the evidence), so the running A/B comparison is not disturbed.
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px on `/` and `/index-b`.
 
 **Validation Test:**
 
