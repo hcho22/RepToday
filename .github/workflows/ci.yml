@@ -5,7 +5,8 @@ name: CI
 #
 #   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
 #   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
-#   waitlist (ubuntu) - the Waitlist contract file, anonymous-view checker and landing-page checks (no Xcode).
+#   waitlist (ubuntu) - the Waitlist contract file, anonymous-view checker, landing-page checks, Mac-side tooling
+#                    and the address-boundary guard (no Xcode).
 #   ios   (macos)  - the iOS app: xcodebuild build + unit tests, plus a build-only
 #                    compile of the XCUITest scheme (Xcode 16.4, iOS 18 simulator).
 #   ios-26 (macos) - the same build + unit tests + XCUITest compile on Xcode 26.5
@@ -83,6 +84,12 @@ jobs:
   # is committed under tools/waitlist/. The cross-check against gr0wthlab's reader is
   # skipped here (it needs a gr0wthlab checkout and is run locally). Python 3.9 is
   # gr0wthlab's declared minimum; 3.12 is the current runner default.
+  #
+  # The Mac-side tooling's tests (storage, the view producer, removal and retention, the
+  # send-time lookup) run against a synthetic store and a local fake of Kit's API on
+  # loopback, with no Keychain and no credential. The boundary guard (US-WL08) runs on the
+  # real tree on every PR: it fails if an email-service credential, a subscriber export or
+  # an address outside its allowlist is committed.
   # ---------------------------------------------------------------------------
   waitlist:
     name: Waitlist contract (view checker tests)
@@ -110,6 +117,15 @@ jobs:
 
       - name: Test the page script's Source logic
         run: node tools/waitlist/test-source.cjs
+
+      - name: Test the Mac-side Waitlist tooling (storage, view producer, removal, lookup)
+        run: python3 tools/waitlist/test-waitlist.py
+
+      - name: Guard - no email-service credential, subscriber export or unlisted address committed
+        run: python3 tools/check-no-waitlist-credentials.py
+
+      - name: Test the address-boundary guard and the checkout audit
+        run: python3 tools/test-check-no-waitlist-credentials.py
 
   # ---------------------------------------------------------------------------
   # Toolchain 2: iOS SwiftUI app - macOS.

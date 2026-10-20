@@ -1,6 +1,6 @@
 # PRD: Rep Today Waitlist (2026-10-19)
 
-- Status: **Drafted 2026-10-19; implementation authorized 2026-10-19, built in four reviewed slices.**
+- Status: **Drafted 2026-10-19; implementation authorized 2026-10-19, built in four reviewed slices; slices 1 to 3 have landed (the contract and checker; the Kit spike, the form, the Source links and the web events; the Mac-side storage, producer, boundary guard, send-time lookup and removal and retention), slice 4 (privacy section, deploys, the installed daily job and the go-live rehearsal) is open.**
   The captain approved the gr0wthlab Dispatch request for RepToday's Waitlist (item 20261016-reptoday-waitlist) on 2026-10-19 and asked for this PRD first.
   The request fixes the sign-up, the Source links, the web events, the privacy policy content, the anonymous view's format and the address boundary.
   This PRD carries all of it verbatim (Appendix A) and adds or drops no field, Source, event property or file field.
@@ -375,18 +375,32 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [x] A first task proves the OQ1 design before anything else is built: a spike note under `artifacts/reports/US-WL06/` records, against a test destination and never the production list, whether the chosen path accepts a first-party sign-up with the Fit answer, beta choice and Source as stored fields, whether a browser can read its success or failure, whether it sends a confirmation message (the unknowns in V13) and whether that message carries a working unsubscribe link (OQ5), whether the store can permanently delete a sign-up and its fields rather than only mark it unsubscribed (OQ1; US-WL10 and the policy's "deleted within 7 days" depend on it), whether a resubmission of a listed address overwrites its stored fields (OQ11), whether the service exposes a creation time a resubmission does not change and that is the submission time, unchanged by confirmation (OQ5) (under OQ1 Option A the only source of `signed_up_on`; under every option the only source of the original dates OQ6 keeps, since those sign-ups exist only in Kit), and whether a public post can set or overwrite the field that holds the entry identifier.
   If it cannot carry the fields or report its result, the design falls back as OQ1 states and the captain approves the amended policy sentence before US-WL11; if it cannot permanently delete, the captain decides how the 7-day deletion is kept before US-WL11 publishes the wording; if a public post can set or overwrite the identifier field, the captain decides how the producer keeps identifiers its own before US-WL07 is built; if it exposes no creation time a resubmission leaves alone, the captain decides how `signed_up_on` and OQ6's original dates are kept before US-WL06 and US-WL07 are built; if that time is not the submission time under double opt-in, the captain decides which date `signed_up_on` carries before US-WL07 is built; if its confirmation message carries no working unsubscribe link, the captain decides how removal by that link is kept before US-WL11 publishes the wording.
 - [ ] A stored sign-up holds exactly: the address, the Fit answer (or none), the beta choice, the Source, the sign-up date, the entry identifier, and only the status fields the sending service itself requires (for example subscribed or unsubscribed, confirmed or not).
-- [ ] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
-- [ ] A collision with the identifier of a removed sign-up is negligible by construction (identifiers carry at least 80 bits of entropy).
-- [ ] Under OQ1 Option A, where no Rep Today code runs at sign-up, an assignment step gives every stored sign-up that lacks an entry identifier a fresh one under the rule above, writes it back to the store, and never reassigns an existing one; its runs never overlap a view-producer run or another assignment and end within the same bound, with a timeout on every network call (US-WL07).
-- [ ] A value that arrives outside the allowed sets never reaches the view as sent: a Fit value outside the three tags counts as no answer, and a Source outside the five counts as `unknown`.
+  Open after slice 3 (2026-10-20): for a sign-up that has confirmed, Kit also stores a geolocation derived from the visitor's connection (city, state, country, latitude, longitude), which the API accepts a write to and ignores, so it is neither a field this design chose nor one the D2 scrub can blank.
+  Observed on the Kit test account (a sign-up the founder confirmed carries all five, one the API created carries none).
+  The captain decides whether to accept it, look for an erase in the Kit dashboard, or have the privacy section say so, before slice 4 publishes the wording; this box stays open until then.
+- [x] The entry identifier is generated from a cryptographically secure random source, matches `[A-Za-z0-9_-]{1,64}` (recommended: 16 characters from the 62-letter-and-digit alphabet), is unique among current sign-ups, is stored with the sign-up so the view can be rebuilt from scratch with identical identifiers, never changes while the sign-up exists, and is never a function of the address (no hash, no encoding, no counter that reveals order).
+  Amended by D1 (2026-10-20): the identifier is minted by the producer (`tools/waitlist/wl_common.new_entry`: 16 characters from the 62-letter-and-digit alphabet, about 95 bits, `secrets`) and kept in the producer's ledger beside the view, which is the authority; Kit's `entry` field mirrors the ledger and is reset to it wherever it differs.
+  The view is rebuilt from scratch with identical identifiers as long as the ledger survives; losing the ledger means new identifiers, which the captain accepted.
+- [x] A collision with the identifier of a removed sign-up is negligible by construction (identifiers carry at least 80 bits of entropy).
+- [x] Under OQ1 Option A, where no Rep Today code runs at sign-up, an assignment step gives every stored sign-up that lacks an entry identifier a fresh one under the rule above, writes it back to the store, and never reassigns an existing one; its runs never overlap a view-producer run or another assignment and end within the same bound, with a timeout on every network call (US-WL07).
+  Amended by D1: the step is `waitlist.py assign` (and the first half of `produce`).
+  It writes the ledger before it writes Kit, so an interruption leaves nothing or an identifier the next run writes back; every command takes the one run lock, runs under a 600 second limit and makes every network call with a 20 second timeout.
+- [x] A value that arrives outside the allowed sets never reaches the view as sent: a Fit value outside the three tags counts as no answer, and a Source outside the five counts as `unknown`.
   Under OQ1 Option A the browser posts straight to the sending service and no Rep Today code runs at storage time, so the service keeps what was posted and the producer normalizes it when it projects the view (FR-28, US-WL07); under A2 or B, Rep Today's own code stores the value as none or `unknown`.
-- [ ] `signed_up_on` is the UTC date the sign-up was submitted, and does not change on a later resubmission.
-- [ ] A second submission with an address already on the list follows OQ11 and never creates a second entry.
-- [ ] Existing sign-ups made before this build are handled as OQ6 settles.
-- [ ] Confirmation behaves as OQ5 settles.
-- [ ] No log, error report or console output written by the storage code contains an address.
-- [ ] The names of any stored fields in the sending service are recorded in one place (renaming them later would lose data).
-- [ ] Unit tests: 5,000 generated identifiers all match the pattern, are unique, and pass US-WL01's address check; two sign-ups of the same address with a removal between them receive different identifiers.
+- [x] `signed_up_on` is the UTC date the sign-up was submitted, and does not change on a later resubmission.
+  It is the UTC date of Kit's `created_at`, which a resubmission does not move (spike, unknown 8).
+- [x] A second submission with an address already on the list follows OQ11 and never creates a second entry.
+  Kit overwrites the stored answers of the same subscriber, so no second record exists; the Fit answer and beta choice are the latest, and the producer keeps the Source first seen in the ledger.
+  D3: a resubmission made before the producer's next daily run can replace the first Source.
+- [x] Existing sign-ups made before this build are handled as OQ6 settles.
+  A sign-up with no stored answers projects as Source `unknown`, Fit `null`, beta `false` and keeps its original creation date.
+- [x] Confirmation behaves as OQ5 settles.
+  Only Kit's state `active` is projected; `inactive` (unconfirmed) and `cancelled` are never listed.
+  The click that moves a sign-up from `inactive` to `active` happens in the visitor's mailbox and cannot be made through the API, so that transition is shown on the synthetic store and was observed once on the test account in the spike.
+- [x] No log, error report or console output written by the storage code contains an address.
+- [x] The names of any stored fields in the sending service are recorded in one place (renaming them later would lose data).
+  They are `posted_fields` and `kit_producer_fields` in `tools/waitlist/contract.json`; `wl_store.FIELD_KEYS` reads them from there.
+- [x] Unit tests: 5,000 generated identifiers all match the pattern, are unique, and pass US-WL01's address check; two sign-ups of the same address with a removal between them receive different identifiers.
 
 **Validation Test:**
 
@@ -406,25 +420,31 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A command under `tools/waitlist/` reads the store (OQ1) and writes the view: top-level keys exactly `view` (`1`), `generated_at` and `entries`; each entry exactly `entry`, `source`, `fit`, `beta_opt_in`, `signed_up_on`, with the values and types in the reader contract.
-- [ ] It projects only those five fields; the address, any name and any other stored field never enter its in-memory view structure.
-- [ ] `fit` is `null` only for a sign-up that holds no answer, which includes a stored Fit outside the three tags (US-WL06); `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
-- [ ] Under OQ1 Option A, the producer runs US-WL06's identifier assignment before projecting, so it never projects a missing identifier and never mints one only in memory.
-- [ ] Under double opt-in (OQ5), an unconfirmed sign-up is never projected, and it appears once confirmed, with `signed_up_on` still its submission date.
-- [ ] `generated_at` is stamped after the store is read and carries a UTC offset, so no `signed_up_on` is later than its UTC date.
-- [ ] Entries are written in a stable order, whatever order the store returns them in: ascending by `signed_up_on`, then by entry identifier, so the reader's invitation tie-break (the view's own order) is the same on every run.
-- [ ] Before writing, it runs US-WL01's checker over the candidate bytes and refuses to replace the existing file if the check fails, leaving the previous view untouched and exiting non-zero with a message that never repeats a value.
-- [ ] Runs of the view producer and of the identifier assignment never overlap, so one sign-up never gets two identifiers; every run ends within a stated bound, with a timeout on every network call, and a run past its limit exits without replacing the file; every removal is followed, no later than the next scheduled run, by a view generated from a store read made after the removal; no run can stall another indefinitely or stop the deletion sweep, so a removed sign-up is still deleted within 7 days; and an interrupted run leaves nothing that blocks later runs.
+- [x] A command under `tools/waitlist/` reads the store (OQ1) and writes the view: top-level keys exactly `view` (`1`), `generated_at` and `entries`; each entry exactly `entry`, `source`, `fit`, `beta_opt_in`, `signed_up_on`, with the values and types in the reader contract.
+- [x] It projects only those five fields; the address, any name and any other stored field never enter its in-memory view structure.
+- [x] `fit` is `null` only for a sign-up that holds no answer, which includes a stored Fit outside the three tags (US-WL06); `source` is `unknown` for a sign-up with no valid tag; `beta_opt_in` is a boolean; `signed_up_on` is the UTC date.
+- [x] Under OQ1 Option A, the producer runs US-WL06's identifier assignment before projecting, so it never projects a missing identifier and never mints one only in memory.
+- [x] Under double opt-in (OQ5), an unconfirmed sign-up is never projected, and it appears once confirmed, with `signed_up_on` still its submission date.
+- [x] `generated_at` is stamped after the store is read and carries a UTC offset, so no `signed_up_on` is later than its UTC date.
+- [x] Entries are written in a stable order, whatever order the store returns them in: ascending by `signed_up_on`, then by entry identifier, so the reader's invitation tie-break (the view's own order) is the same on every run.
+- [x] Before writing, it runs US-WL01's checker over the candidate bytes and refuses to replace the existing file if the check fails, leaving the previous view untouched and exiting non-zero with a message that never repeats a value.
+- [x] Runs of the view producer and of the identifier assignment never overlap, so one sign-up never gets two identifiers; every run ends within a stated bound, with a timeout on every network call, and a run past its limit exits without replacing the file; every removal is followed, no later than the next scheduled run, by a view generated from a store read made after the removal; no run can stall another indefinitely or stop the deletion sweep, so a removed sign-up is still deleted within 7 days; and an interrupted run leaves nothing that blocks later runs.
+  The mechanism: one `flock` lock in the state directory that every command takes, waited for up to the run limit plus a minute, and a per-run time limit that cuts a hung run off without a write.
+  The kernel drops the lock when a process ends however it ends, so an interrupted run leaves nothing that blocks a later one.
+  A removal or sweep that starts while a run is in flight waits for it and then regenerates the view from a read made after the deletion.
   The build designs and tests the mechanism for the storage option chosen.
-- [ ] The write is atomic (a temporary file in the same directory, then a rename), the file mode is owner-only, and a file that would exceed the 10,000,000-byte limit fails the run rather than truncating.
-- [ ] A removed or retention-expired sign-up is absent from the next generation that reads the store after its removal; an empty store writes `"entries": []`.
-- [ ] The default output path is outside the gr0wthlab, Mandu and RepToday checkouts and outside every git work tree, settled in OQ4; the command resolves symbolic links and refuses to write when the directory the file would be written in, or any ancestor of it, contains a `.git` entry (a directory, or a file as in a linked worktree).
+- [x] The write is atomic (a temporary file in the same directory, then a rename), the file mode is owner-only, and a file that would exceed the 10,000,000-byte limit fails the run rather than truncating.
+- [x] A removed or retention-expired sign-up is absent from the next generation that reads the store after its removal; an empty store writes `"entries": []`.
+- [x] The default output path is outside the gr0wthlab, Mandu and RepToday checkouts and outside every git work tree, settled in OQ4; the command resolves symbolic links and refuses to write when the directory the file would be written in, or any ancestor of it, contains a `.git` entry (a directory, or a file as in a linked worktree).
 - [ ] It runs on the cadence settled in OQ4 and can be run on demand; a missed run is visible to the reader as the view's age (`generated_at`), which the launcher already reports.
+  Open: `waitlist.py produce` runs on demand and the daily job (`daily --live`) and its `launchd` definition are written, but installing the job on the founder's Mac, and so a scheduled run, is slice 4.
 - [ ] The evidence records whether a scheduled run that the Mac slept through runs when it wakes (OQ4's "confirm").
-- [ ] It needs no network at read time for gr0wthlab: the reader opens a local file; the producer's own network use (to read the store and, under OQ1 Option A, to write back new identifiers) is the producer's alone.
-- [ ] Credentials the producer needs are read from the macOS Keychain at run time (item names recorded, values never), never from a file, argument or environment value that git or a shell history could keep.
-- [ ] It logs counts only, never a value.
-- [ ] A synthetic store mode (fixture input) exists for tests, so no test touches the real store.
+  Open: needs the installed job (slice 4).
+- [x] It needs no network at read time for gr0wthlab: the reader opens a local file; the producer's own network use (to read the store and, under OQ1 Option A, to write back new identifiers) is the producer's alone.
+- [x] Credentials the producer needs are read from the macOS Keychain at run time (item names recorded, values never), never from a file, argument or environment value that git or a shell history could keep.
+  The item names are in `tools/waitlist/README.md` ("State and credentials").
+- [x] It logs counts only, never a value.
+- [x] A synthetic store mode (fixture input) exists for tests, so no test touches the real store.
 
 **Validation Test:**
 
@@ -432,7 +452,8 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - **Steps:**
   1. Run the producer against the synthetic store; run `check-view.py` on the output; if available, run the reader cross-check.
   2. Remove one synthetic sign-up and rerun; compare entries.
-  3. Make the checker fail on purpose (inject a stored entry identifier that is an address, assembled from parts at test time as in US-WL01, into the synthetic store; an out-of-set `source` would only be normalized) and rerun; confirm the previous file is unchanged.
+  3. Plant an entry value in the stored sign-ups (an address assembled from parts at test time as in US-WL01, and another sign-up's identifier) and rerun: under D1 the producer trusts only its ledger, so the value never reaches the view and Kit's field is reset to the ledger's.
+     Then make the checker fail on purpose (an address in the candidate bytes; and a sign-up whose creation time is after the view's own, which the checker's date rule rejects) and rerun; confirm the previous file is unchanged.
   4. Point the output at a path inside the RepToday checkout, then at a symlink that resolves into it.
   5. Interrupt a run between the temporary write and the rename, then start a new run.
   6. Under double opt-in, confirm the unconfirmed sign-up and rerun.
@@ -447,34 +468,39 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `tools/check-no-waitlist-credentials.py` (CI, in the style of `tools/check-no-committed-telemetry-secret.py`) fails when a tracked or untracked-but-not-ignored file in the RepToday checkout contains: an assignment of a literal value to a name used for an email-service credential, or to a header named for one (the names, including the email service's own API-key header, listed in the tool); any bearer or API-key header with a literal value in the Waitlist's own paths (`gtm/03-site/`, `tools/waitlist/` and any other path a Waitlist story adds); a subscriber-export file (any CSV, TSV, JSON or JSONL file with a column or field named for an email address that holds even one email-shaped address not on the allowlist, however few rows it has); or an email-shaped string not on the allowlist.
-- [ ] "Email-shaped" means a whole address: a local part of letters, digits and `._%+-`, an `@`, and a dotted domain whose last label is two or more letters.
-  The address rules read only text files (files that decode as UTF-8 and contain no NUL byte); committed images such as the Trainer pose art hold address-shaped byte runs by chance.
+- [x] `tools/check-no-waitlist-credentials.py` (CI, in the style of `tools/check-no-committed-telemetry-secret.py`) fails when a tracked or untracked-but-not-ignored file in the RepToday checkout contains: an assignment of a literal value to a name used for an email-service credential, or to a header named for one (the names, including the email service's own API-key header, listed in the tool); any bearer or API-key header with a literal value in the Waitlist's own paths (`gtm/03-site/`, `tools/waitlist/` and any other path a Waitlist story adds); a subscriber-export file (any CSV, TSV, JSON or JSONL file with a column or field named for an email address that holds even one email-shaped address not on the allowlist, however few rows it has); or an email-shaped string not on the allowlist.
+  Amended 2026-10-20 (the PRD's final review): the export rule reads every CSV, TSV, JSON or JSONL file in scope whatever its encoding (UTF-8, else UTF-16 by its byte-order mark, else a single-byte decoding such as Latin-1), so a non-UTF-8 export is never skipped; the text-only rule applies to the stray-address rule alone.
+- [x] "Email-shaped" means a whole address: a local part of letters, digits and `._%+-`, an `@`, and a dotted domain whose last label is two or more letters.
+  The stray-address rule reads only text files (files that decode as UTF-8 and contain no NUL byte); committed images such as the Trainer pose art hold address-shaped byte runs by chance.
+  The export rule is not so limited: it reads every file named above in whatever encoding it was saved.
   It is narrower than the reader's any-`@` rule on purpose: that rule, which US-WL01's view checker keeps for the view, would flag every scoped package path in `package-lock.json` and `proxy/package-lock.json`.
-- [ ] The allowlist is the policy's published contact address, addresses at the reserved `example` domains used by existing tests, and two existing URL-userinfo test inputs, each allowed only in its own file: the `user:password@` inputs before the App Store Server API hosts in `proxy/test/apple-fetch.test.js`, and the `user@` input before the Coach host in `ios/RepToday/RepTodayTests/CoachProxyClientConfiguredTests.swift`.
+- [x] The allowlist is the policy's published contact address, addresses at the reserved `example` domains used by existing tests, and two existing URL-userinfo test inputs, each allowed only in its own file: the `user:password@` inputs before the App Store Server API hosts in `proxy/test/apple-fetch.test.js`, and the `user@` input before the Coach host in `ios/RepToday/RepTodayTests/CoachProxyClientConfiguredTests.swift`.
+  The pinned inputs are the address-shaped parts of `user:password@` before the App Store Server API hosts (`api.storekit.apple.com`, `api.storekit-sandbox.apple.com`) and of `user@` before the Coach host.
   The two file-pinned entries apply to no other file, so no Waitlist path gains an exemption.
   The existing `Bearer` test fixtures (`CoachProxyClientTests.swift`, `ProxyVarietyLanguageProviderTests.swift` and `CoachRuntimeAuthenticationTests.swift` in `ios/RepToday/RepTodayTests/`; `coach-auth-worker.test.js` and `coach-staging-labels.test.js` in `proxy/test/`) name no email-service credential and lie outside the Waitlist paths, so they pass without an entry.
-- [ ] A finding names the file and line and never repeats the value.
-- [ ] Non-vacuity is shown the way the repository does it: adding a credential-shaped assignment, then an export file, then an address, each makes the check fail with a message naming its own rule; removing them makes it pass.
-- [ ] `tools/waitlist/audit-checkouts.sh <directory>...` is a read-only audit the founder can point at the gr0wthlab, Mandu and RepToday checkouts; it prints file names and counts only and is run at go-live (US-WL12).
+- [x] A finding names the file and line and never repeats the value.
+- [x] Non-vacuity is shown the way the repository does it: adding a credential-shaped assignment, then an export file, then an address, each makes the check fail with a message naming its own rule; removing them makes it pass.
+  Also an export saved in Windows-1252 with one accented name must fail naming the export rule alone, because the stray-address rule skips a file that is not UTF-8 text.
+- [x] `tools/waitlist/audit-checkouts.sh <directory>...` is a read-only audit the founder can point at the gr0wthlab, Mandu and RepToday checkouts; it prints file names and counts only and is run at go-live (US-WL12).
   It reads what the sandbox reads, the directory itself, not git's file list, so each rule states its file scope.
   In every directory, the guard's credential rules scan every file, git-ignored or not, skipping only `.git`, so a key kept in an ignored file (such as a root `.env`) is found.
   In every directory, the guard's export rule scans the same files except installed dependency folders (`node_modules/` and a Python virtual environment), whose third-party package metadata carries maintainers' addresses.
   On the RepToday checkout it lives in, it also applies the guard's address rule, with the guard's allowlist, to the text files in the guard's own file list (tracked, or untracked and not ignored).
   On any other directory it applies no address rule, because single address strings are not what the request forbids there and the gr0wthlab checkout's own tests and examples hold them; an export there is still caught by the export rule, which needs no row count, so even a one-row export is reported.
-- [ ] The only places a credential may live are the macOS Keychain and the hosting or email provider's own secret store; the Keychain item names (service and account, in the style of `tools/telemetry-keychain.sh`) are documented, values never.
-- [ ] The view producer's refusal to write inside a work tree (US-WL07) is covered by a test cited here.
-- [ ] The RepToday side is the only side this PRD can enforce; the matching rule for the other two checkouts is stated as gr0wthlab's Guardrail G6 and verified read-only by the audit's credential and export rules, with no change made to either.
+- [x] The only places a credential may live are the macOS Keychain and the hosting or email provider's own secret store; the Keychain item names (service and account, in the style of `tools/telemetry-keychain.sh`) are documented, values never.
+- [x] The view producer's refusal to write inside a work tree (US-WL07) is covered by a test cited here.
+  `ProducerSafety.test_refuses_a_path_inside_a_work_tree_or_a_symlink_into_one` in `tools/waitlist/test-waitlist.py`.
+- [x] The RepToday side is the only side this PRD can enforce; the matching rule for the other two checkouts is stated as gr0wthlab's Guardrail G6 and verified read-only by the audit's credential and export rules, with no change made to either.
 
 **Validation Test:**
 
 - **Setup:** The branch, with US-WL03 merged; a scratch copy of the working tree for the sabotage steps.
 - **Steps:**
   1. Run the check on the clean tree.
-  2. In the scratch copy add, one at a time: a literal credential assignment, a CSV export file with a single address-shaped row (assembled from parts), a stray address, and a binary file (holding a NUL byte) carrying the same address-shaped bytes.
+  2. In the scratch copy add, one at a time: a literal credential assignment, a CSV export file with a single address-shaped row (assembled from parts), an export saved in Windows-1252 with one accented name, a stray address, and a binary file (holding a NUL byte) carrying the same address-shaped bytes.
   3. Run the audit against the RepToday checkout, and against a scratch directory seeded with step 2's credential, export and stray address.
   4. Create a new git-ignored file holding a literal credential assignment in the RepToday checkout (for example a root `.env`, which `.gitignore` ignores, when none exists yet), run the audit against the checkout again, then delete that new file.
-- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage except the binary file fails the check with a file-and-line message that holds no value, the binary file is skipped while the same bytes as a stray address in a text file fail, and the export case's message names the export rule (its address would also trip the address rule, so failing alone proves nothing); step 3's audit reports zero findings on the real checkout and, on the scratch directory, the credential and the export but not the stray address, naming files and counts only; step 4's audit reports the credential in the ignored file, by name and without its value.
+- **Expected Result:** Step 1 passes, including over the existing proxy and iOS test fixtures named above; each step 2 sabotage except the binary file fails the check with a file-and-line message that holds no value, the binary file is skipped while the same bytes as a stray address in a text file fail, the export case's message names the export rule (its address would also trip the address rule, so failing alone proves nothing), and the Windows-1252 export fails naming the export rule alone; step 3's audit reports zero findings on the real checkout and, on the scratch directory, the credential and the export but not the stray address, naming files and counts only; step 4's audit reports the credential in the ignored file, by name and without its value.
 - **Failure Indicator:** A planted credential, export or address passes the check, a message echoes a value, the audit misses a credential (in an ignored file or not) or an export, flags a lone address outside the RepToday checkout, or writes anything.
 
 ### US-WL09: Send-time lookup on the founder's side
@@ -483,13 +509,14 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] A tool under `tools/waitlist/` supports two modes on the founder's Mac: `tag <label> <entry>...`, which marks the named sign-ups inside the email service so a broadcast to that label needs no address to leave the service, and `show <entry>`, which prints one address to the terminal.
-- [ ] `show` prints only when standard output is an interactive terminal, refuses a pipe or a redirect, never writes an address to disk and never logs one.
-- [ ] An unknown or malformed identifier is an error naming the identifier, not an empty result.
-- [ ] A batch of entry identifiers at least as large as gr0wthlab's configured Beta Cohort invitation batch (20 at this date) is handled in one call.
-- [ ] The tool reads its credential from the Keychain (US-WL08), and the tool and its tests live in the RepToday checkout without any credential or address.
-- [ ] The runbook (`docs/` or `tools/waitlist/README.md`) states the send-time path: gr0wthlab's Review Queue item names entry identifiers; the founder runs `tag`; the founder sends from the email service to that label.
+- [x] A tool under `tools/waitlist/` supports two modes on the founder's Mac: `tag <label> <entry>...`, which marks the named sign-ups inside the email service so a broadcast to that label needs no address to leave the service, and `show <entry>`, which prints one address to the terminal.
+- [x] `show` prints only when standard output is an interactive terminal, refuses a pipe or a redirect, never writes an address to disk and never logs one.
+- [x] An unknown or malformed identifier is an error naming the identifier, not an empty result.
+- [x] A batch of entry identifiers at least as large as gr0wthlab's configured Beta Cohort invitation batch (20 at this date) is handled in one call.
+- [x] The tool reads its credential from the Keychain (US-WL08), and the tool and its tests live in the RepToday checkout without any credential or address.
+- [x] The runbook (`docs/` or `tools/waitlist/README.md`) states the send-time path: gr0wthlab's Review Queue item names entry identifiers; the founder runs `tag`; the founder sends from the email service to that label.
 - [ ] The Waitlist send path always includes the unsubscribe link (US-WL10).
+  Open: this holds because every waitlist email is sent from Kit (the runbook says so), but showing a test broadcast carrying the link needs a send, which this slice does not make; it is shown in the go-live rehearsal.
 
 **Validation Test:**
 
@@ -509,14 +536,23 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **Acceptance Criteria:**
 
 - [ ] Every waitlist email (launch and beta, and the confirmation message if OQ5 settles on double opt-in) carries an unsubscribe link; a test message through the email service shows it (a configuration check, not a code change, if the service adds it).
-- [ ] A removal request by unsubscribe link or by a message to reptoday.app@gmail.com results in the sign-up and its answers being **deleted** (not merely marked unsubscribed) within 7 days of the request.
-- [ ] A `remove` command removes one sign-up by entry identifier or by an address typed at a prompt (never an argument), and a daily sweep deletes every sign-up the email service reports as unsubscribed.
-- [ ] The founder records the launch-email date once, in a small state file outside every checkout (`record-launch-email --sent-on YYYY-MM-DD`, OQ13); the retention sweep deletes every remaining sign-up on or after that date plus 30 days.
-- [ ] Both sweeps default to a dry run that prints counts, take an injected `asOf` clock in their date logic, and log counts only.
+  Open: the confirmation message carries the link (spike, unknown 5); the launch and beta broadcasts are a configuration check on a test send, shown in the go-live rehearsal.
+- [ ] A removal request by unsubscribe link or by a message to reptoday.app@gmail.com results in the sign-up and its answers being erased (Kit cannot delete a subscriber, so: unsubscribed, the address overwritten with a placeholder that is not an address, every custom field blanked; D2) within 7 days of the request.
+  Open: the commands and the daily sweep are built and proven on the test account, but the 7-day headroom depends on the installed daily job and the mailbox cadence, shown in the go-live rehearsal (slice 4); the geolocation Kit derives for a confirmed sign-up (US-WL06) also survives the scrub until the captain decides.
+- [x] A `remove` command erases one sign-up by entry identifier or by an address typed at a prompt (never an argument), and a daily sweep erases every sign-up the email service reports as unsubscribed.
+- [x] The founder records the launch-email date once, in a small state file outside every checkout (`record-launch-email --sent-on YYYY-MM-DD`, OQ13); the retention sweep deletes every remaining sign-up on or after that date plus 30 days.
+  The date is validated: `record-launch-email` refuses a malformed date, a future date, a date more than 7 days before today (a mistyped past date would otherwise delete every sign-up the next morning), and a second record without `--replace`, and prints the date the retention sweep will delete on.
+  The sweep itself refuses a record it cannot trust (damaged, a date after the day it was recorded, or one the command would have refused) and deletes nothing.
+  With no date recorded the retention sweep deletes nothing and exits 0, and the rest of the daily job (the unsubscribed sweep and the view) still runs.
+- [x] Both sweeps default to a dry run that prints counts, take an injected `asOf` clock in their date logic, and log counts only.
 - [ ] Both sweeps run live in the daily scheduled job, before the producer run OQ4 chains after them, so a sign-up past the launch-email date plus 30 days is deleted on the first daily run on or after that day; the evidence records that the installed schedule invokes both sweeps without the dry-run default.
-- [ ] Deleting a sign-up is followed by a view regeneration, so a removed sign-up leaves the file on the next generation that reads the store after its removal, and by the next scheduled run at the latest.
-- [ ] The runbook states who watches the contact mailbox and how often (recommended: at least every 5 days while the waitlist is open) so the 7-day promise is operationally real, and what the founder does for a request that names an address not on the list.
-- [ ] A deletion never touches a different person's record (the match is exact on the address or the entry identifier).
+  Each step of the daily job runs whatever an earlier step's exit status was, and the job reports every failed step and exits non-zero.
+  One run of the retention sweep erases only what fits in its 600 second limit, a few hundred sign-ups at Kit's API-key rate (about 2 requests a second; an erasure is 3 calls), so the daily job repeats it as separate passes, each under the run lock and its own limit, while the previous pass left sign-ups and erased at least one, up to 20 passes (about 6,000 sign-ups); the step is reported failed only when sign-ups remain after the 20th pass or a pass erased none.
+  The retention sweep erases a sign-up in every Kit state, `bounced` and `complained` included; Kit mails neither, so an erasure's read-back accepts either state where Kit keeps it (the test account cannot produce one, so how Kit's unsubscribe treats them is not observed).
+  Open: `launchd/app.reptoday.waitlist-daily.plist` runs `daily --live`, but installing it and recording that the installed schedule ran is slice 4's.
+- [x] Deleting a sign-up is followed by a view regeneration, so a removed sign-up leaves the file on the next generation that reads the store after its removal, and by the next scheduled run at the latest.
+- [x] The runbook states who watches the contact mailbox and how often (recommended: at least every 5 days while the waitlist is open) so the 7-day promise is operationally real, and what the founder does for a request that names an address not on the list.
+- [x] A deletion never touches a different person's record (the match is exact on the address or the entry identifier).
 
 **Validation Test:**
 
@@ -527,8 +563,9 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   3. Record a launch-email date; run the retention sweep with `asOf` at launch plus 29 days, then plus 30 days.
   4. After each deletion regenerate the view and run the checker.
   5. Add a fifth test sign-up (confirmed under double opt-in) and unsubscribe it; make a view-producer run hang; then run the daily sweep; then run the producer as the next scheduled run would.
-- **Expected Result:** The view generated before any removal lists all four; step 1's sign-up is deleted from the store and absent from the next view; step 2's likewise; step 3 deletes nothing at +29 and every remaining sign-up at +30; step 4's views never contain a removed entry, and the last view has `"entries": []`; step 5's sweep deletes the sign-up and exits, the hung run ends within its bound without writing, and the first view generated from a store read after the removal, no later than that run, omits the deleted sign-up.
-- **Failure Indicator:** The view before any removal does not list all four, a hung run stalls the sweep, outlives its bound or writes a view, or step 5's first view generated from a store read after the removal, no later than its final run, holds the deleted sign-up, a removed sign-up stays in the store or the view, a sweep deletes before +30 or fails to delete at +30, a dry run deletes, or the wrong person's record is touched.
+  6. With no launch-email date recorded, run the daily job live while a sign-up is unsubscribed; then run `record-launch-email` with a date in the future, with a date a month in the past (and a malformed one), and with a date a few days back, and read the date it prints.
+- **Expected Result:** The view generated before any removal lists all four; step 1's sign-up is deleted from the store and absent from the next view; step 2's likewise; step 3 deletes nothing at +29 and every remaining sign-up at +30; step 4's views never contain a removed entry, and the last view has `"entries": []`; step 5's sweep deletes the sign-up and exits, the hung run ends within its bound without writing, and the first view generated from a store read after the removal, no later than that run, omits the deleted sign-up. step 6's no-date run deletes nothing by retention, exits 0, erases the unsubscribed sign-up and writes a fresh view; the future and past-month dates are refused and record nothing; the recent date is recorded and its output names the deletion date 30 days after it.
+- **Failure Indicator:** The view before any removal does not list all four, a hung run stalls the sweep, outlives its bound or writes a view, or step 5's first view generated from a store read after the removal, no later than its final run, holds the deleted sign-up, a removed sign-up stays in the store or the view, a sweep deletes before +30 or fails to delete at +30, a dry run deletes, or the wrong person's record is touched, a future or past-month launch-email date is recorded, the retention sweep deletes with no date recorded or on a date it cannot trust, or one failing step of the daily job stops the next.
 
 ### US-WL11: The privacy policy's Waitlist section
 
@@ -643,16 +680,16 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - FR-36: An entry identifier must be turned into an address only on the founder's side, at send time, in RepToday's storage or the email service.
 - FR-37: No email-service credential may be placed in the gr0wthlab, Mandu or RepToday checkouts; credentials live in the Keychain or the provider's secret store.
-- FR-38: No export that holds addresses may be placed in those checkouts, and RepToday's CI must fail if a credential, an export or an unlisted address is committed.
+- FR-38: No export that holds addresses may be placed in those checkouts, and RepToday's CI must fail if a credential, an export or an unlisted address is committed. The export check reads every CSV, TSV, JSON or JSONL file whatever its encoding.
 - FR-39: Only the founder (when sending) and the storing service may see an address, and the privacy policy must name that service truthfully (OQ1).
 
 **Removal and retention**
 
 - FR-40: Every waitlist email, including the confirmation message if OQ5 settles on double opt-in, must carry an unsubscribe link.
 - FR-41: A message to reptoday.app@gmail.com must be an accepted way to ask for removal.
-- FR-42: A removal must delete the sign-up and its answers within 7 days of the request.
+- FR-42: A removal must delete the sign-up and its answers within 7 days of the request (with Kit this is an erase: unsubscribed, the address overwritten with a placeholder that is not an address, every custom field blanked; D2).
 - FR-43: A sign-up must be deleted when it has been kept until 30 days after the launch email went out, or earlier on removal, whichever comes first.
-- FR-44: The launch-email date must be recorded once by the founder, outside every checkout, and the retention sweep must read it.
+- FR-44: The launch-email date must be recorded once by the founder, outside every checkout, and the retention sweep must read it. The recording command must refuse a future date and a date more than 7 days before today, the sweep must delete nothing when no date is recorded or the record cannot be trusted, and every step of the daily job must run whatever an earlier step's status was.
 
 **Privacy policy**
 
@@ -767,6 +804,10 @@ Every marked recommendation below is accepted:
   D2 Kit's API cannot delete a subscriber, so the sweeps unsubscribe, overwrite the email with a placeholder and blank every field within a day, and the privacy wording keeps "deleted";
   D3 a same-day resubmission overwriting the first Source is accepted;
   D4 the form hosts Kit's reCAPTCHA guard iframe when Kit answers `quarantined` (origin-checked), and the privacy section names reCAPTCHA via Kit.
+- The PRD's final review (2026-10-20), carried into the build and now amended above:
+  F1 the address-boundary check and the checkout audit read every CSV, TSV, JSON or JSONL file whatever its encoding (UTF-8, else UTF-16 by its byte-order mark, else a single-byte decoding), with the text-only rule limited to the stray-address rule and a Windows-1252 sabotage case;
+  F2 the live retention sweep needs a validated launch-email date: `record-launch-email` refuses a future date or one more than 7 days back, no date means no retention deletion and exit 0, each step of the daily job runs whatever an earlier one did, and a failed step is reported.
+- Open after slice 3: Kit stores a geolocation (city, state, country, latitude, longitude) for a confirmed sign-up that its API cannot clear, so the D2 scrub leaves it behind (US-WL06, first criterion); the captain decides before the privacy wording ships.
 
 Each question lists the realistic options grounded in the current code and services, the **recommendation (marked)** with its reason, and the stories it gates.
 Behavior that this PRD could not verify from the repository (marked "confirm") is checked, not assumed: the sending service's in the US-WL06 spike, and the scheduler's in US-WL07.
