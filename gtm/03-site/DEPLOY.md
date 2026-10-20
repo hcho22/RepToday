@@ -9,6 +9,12 @@ Cloudflare Pages serves this directory as-is.
 - `index.html` - variant **A**, served at the site root (`/`).
 - `index-b.html` - variant **B**, reachable at `/index-b` (or `/index-b.html`).
 
+## Which route is live
+
+The live route is the manual Wrangler deploy in section 1 (observed 2026-10-20: the live index page lags `main`'s `gtm/03-site/index.html`, and GitHub shows no Cloudflare Pages deployments or statuses), so merging to `main` publishes nothing by itself.
+A deploy publishes everything under `gtm/03-site` on `main`, including any Waitlist change merged there.
+The Waitlist's production deploy, and the production Kit form's custom fields it needs, belong to slice 4 of `.claude/agent/tasks/prd-waitlist_261019.md`.
+
 ## 1. Deploy from the CLI (Wrangler)
 
 Run from the **repo root** so the directory argument matches:
@@ -26,6 +32,8 @@ npx wrangler pages deploy gtm/03-site --project-name reptoday-site
   `_redirects` is required: it carries the four Waitlist Source links (see "The Source links" below).
 
 ## 2. Or wire it up in the Cloudflare dashboard (Git integration)
+
+This route is not connected today; connecting it makes every merge to `main` a production deploy.
 
 If you prefer auto-deploy on push instead of manual Wrangler runs, connect the
 repo in **Workers & Pages -> Create -> Pages -> Connect to Git** and use exactly:

@@ -107,7 +107,10 @@
   }
 
   var visit = null;
-  try { visit = resolveVisit(window.location.pathname, window.sessionStorage); } catch (error) { visit = tagForPath(window.location.pathname); }
+  function readVisit() {
+    try { visit = resolveVisit(window.location.pathname, window.sessionStorage); } catch (error) { visit = tagForPath(window.location.pathname); }
+  }
+  readVisit();
 
   // The Source the sign-up carries: the visit's tag, else unknown.
   function visitSource() {
@@ -325,7 +328,8 @@
     // Browsers may restore a checked radio or box after a reload or a back-navigation: never keep one.
     form.reset();
     clearChoices();
-    window.addEventListener('pageshow', function () {
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted) { readVisit(); }
       if (form.getAttribute('data-wl-state') !== 'done') { clearChoices(); }
       source.value = visitSource();
     });

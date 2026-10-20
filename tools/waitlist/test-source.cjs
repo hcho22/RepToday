@@ -123,6 +123,7 @@ function load(pathname, storage, options = {}) {
     form: forms[0],
     timers,
     post(message) { for (const listener of windowListeners.message || []) { listener(message); } },
+    show(event) { for (const listener of windowListeners.pageshow || []) { listener(event); } },
     elapse() { for (const [id, timer] of Array.from(timers)) { timers.delete(id); timer.callback(); } },
     submit() { forms[0].dispatch('submit', { preventDefault() {} }); },
   };
@@ -225,6 +226,22 @@ test('the tag lives only in sessionStorage: no cookie or localStorage write, one
   assert.strictEqual(loaded.form.getAttribute('data-wl-state'), 'done');
   assert.deepStrictEqual(loaded.writes, []);
   assert.deepStrictEqual(Object.keys(storage.values), ['reptoday.source']);
+});
+
+test('a page restored from the back/forward cache takes the tab\'s latest tag for its sign-up and its event', async () => {
+  const storage = memoryStorage({ 'reptoday.source': 'tiktok' });
+  const loaded = load('/', storage, { hostname: 'reptoday.app', form: true, answer: (url) => (url === KIT_SIGNUP ? answer(200, { status: 'success' }) : {}) });
+  assert.strictEqual(loaded.form.parts.source.value, 'tiktok');
+  storage.values['reptoday.source'] = 'youtube';
+  loaded.show({ persisted: false });
+  assert.strictEqual(loaded.form.parts.source.value, 'tiktok');
+  loaded.show({ persisted: true });
+  assert.strictEqual(loaded.form.parts.source.value, 'youtube');
+  fillIn(loaded);
+  loaded.submit();
+  await settle();
+  assert.strictEqual(Array.from(signups(loaded)[0].init.body.entries()).find(([key]) => key === contract.posted_fields.source)[1], 'youtube');
+  assert.deepStrictEqual(events(loaded).map((event) => event.props.referrer_source), ['tiktok', 'youtube']);
 });
 
 test('a sign-up posts exactly the contract\'s four fields to Kit, with no credential and no entry identifier', async () => {

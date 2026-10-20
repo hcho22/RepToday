@@ -15,7 +15,7 @@ No email address appears in this record; the browser checks typed a placeholder 
   Other letter cases (`/TikTok`, `/YOUTUBE`) reach the page through Pages' implicit fallback, which holds only while the site has no top-level `404.html`.
 - `tools/waitlist/check-site.py` gained `source-links` (the eight rewrites exist and go to `/`) and `no-404-page`; `tools/waitlist/test-check-site.py` covers each.
   That the script's tag list is the contract's, in order, is checked by running the script: `tools/waitlist/test-source.cjs`, "the script keeps exactly the contract file's four tags, in order".
-- `tools/waitlist/test-source.cjs`: 11 Node tests of the tag logic (the contract's tag list, casings, trailing slash, what never names a tag, a query string, `utm_*` value, hash or referrer never setting the tag, last touch, a poisoned stored value, unavailable storage, no cookie or `localStorage` write, one storage key).
+- `tools/waitlist/test-source.cjs`: 12 Node tests of the tag logic (the contract's tag list, a page restored from the back/forward cache taking the tab's latest tag, casings, trailing slash, what never names a tag, a query string, `utm_*` value, hash or referrer never setting the tag, last touch, a poisoned stored value, unavailable storage, no cookie or `localStorage` write, one storage key).
   CI's `waitlist` job runs it.
 - `tools/waitlist/README.md` documents the Source rule: a new Source is a new Dispatch request plus a reviewed gr0wthlab change, and no code path accepts a fifth tag.
   The view checker already builds its allowed sources from the same contract list, so the three readers of the list cannot silently disagree.
