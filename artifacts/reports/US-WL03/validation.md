@@ -27,7 +27,8 @@ No email address appears in this record; the check's tests assemble every addres
 5. FAQ at both widths: `index-faq-390.png`, `index-faq-1440.png`, `index-b-faq-390.png`, `index-b-faq-1440.png`.
    The FAQ now names what the form keeps and points to the policy for why and for how long; it no longer says "nothing more".
 
-Other sabotage covered by the tests: a missing or altered approved string, a missing promise phrase on a page, the old wording in any case, a fourth input or a wrongly named field, a download/follow/share word, a stray address in a text file (the finding names the file and line, not the address), the published contact address alone (allowed), a binary file holding address-shaped bytes (skipped), the script not posting the contract's field names, a page without the script, and a third placement.
+Other sabotage covered by the tests: a missing or altered approved string, a missing promise phrase on a page, the old wording in any case, a fourth input or a wrongly named field, a download/follow/share word, a stray address in a text file (the finding names the file and line, not the address), the published contact address alone (allowed), a binary file holding address-shaped bytes (skipped), a missing script, a page without the script, and a third placement.
+That the script posts the contract's field names is checked by running it: `tools/waitlist/test-source.cjs`, "a sign-up posts exactly the contract's four fields to Kit, with no credential and no entry identifier".
 
 ## A/B comparison
 

@@ -13,8 +13,9 @@ No email address appears in this record; the browser checks typed a placeholder 
 - `gtm/03-site/_redirects`: each of the four links and its trailing-slash form is rewritten (status 200) to `/`.
   A rewrite to `/index.html` was tried first and `wrangler pages dev` answered it with a 308 to `/`, which would have dropped the tag from the URL, so the target is `/` (see Findings).
   Other letter cases (`/TikTok`, `/YOUTUBE`) reach the page through Pages' implicit fallback, which holds only while the site has no top-level `404.html`.
-- `tools/waitlist/check-site.py` gained `source-tags` (the script's list is the contract's, in order), `source-links` (the eight rewrites exist and go to `/`) and `no-404-page`; `tools/waitlist/test-check-site.py` covers each.
-- `tools/waitlist/test-source.cjs`: 11 Node tests of the tag logic (casings, trailing slash, what never names a tag, last touch, a poisoned stored value, unavailable storage, no cookie, one storage key).
+- `tools/waitlist/check-site.py` gained `source-links` (the eight rewrites exist and go to `/`) and `no-404-page`; `tools/waitlist/test-check-site.py` covers each.
+  That the script's tag list is the contract's, in order, is checked by running the script: `tools/waitlist/test-source.cjs`, "the script keeps exactly the contract file's four tags, in order".
+- `tools/waitlist/test-source.cjs`: 11 Node tests of the tag logic (the contract's tag list, casings, trailing slash, what never names a tag, a query string, `utm_*` value, hash or referrer never setting the tag, last touch, a poisoned stored value, unavailable storage, no cookie or `localStorage` write, one storage key).
   CI's `waitlist` job runs it.
 - `tools/waitlist/README.md` documents the Source rule: a new Source is a new Dispatch request plus a reviewed gr0wthlab change, and no code path accepts a fifth tag.
   The view checker already builds its allowed sources from the same contract list, so the three readers of the list cannot silently disagree.

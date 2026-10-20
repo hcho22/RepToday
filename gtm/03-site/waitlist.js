@@ -138,7 +138,7 @@
     } catch (error) { /* never surfaced */ }
   }
 
-  window.RepTodayWaitlist = { sourceTags: SOURCE_TAGS, tagForPath: tagForPath, resolveVisit: resolveVisit, eventSource: eventSource, track: track };
+  window.RepTodayWaitlist = { sourceTags: SOURCE_TAGS, tagForPath: tagForPath, resolveVisit: resolveVisit };
 
   function looksLikeEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);

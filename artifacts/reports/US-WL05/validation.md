@@ -20,12 +20,12 @@ No email address appears in this record; the browser checks typed a placeholder 
 
 ## Validation Test
 
-Convex side (`npm test`, in process, no deployment): 116 tests pass, 19 of them new in `convex/webEvents.test.ts`; `npm run typecheck` passes.
+Convex side (`npm test`, in process, no deployment): 118 tests pass, 21 of them new in `convex/webEvents.test.ts`; `npm run typecheck` passes.
 
-- Accepted: both names with every tag and `none` (10 rows, each exactly `{referrer_source}`, `installId` `web`, no `eventId`, no `@` anywhere in the stored rows); the `www` origin; no secret needed.
+- Accepted: exactly the contract file's `source_tags` and `no_source_event`, read from `tools/waitlist/contract.json` (its `unknown_source` is refused); both names with every tag and `none` (10 rows, each exactly `{referrer_source}`, `installId` `web`, no `eventId`, no `@` anywhere in the stored rows); the `www` origin; no secret needed.
 - Rejected with no row inserted (step 3): an extra property, a name outside the two (the app's names included), `referrer_source` `unknown`, a UTM-looking or free-text value, an address-shaped value, any other top-level field (an address, an entry identifier, an install id, a timestamp, an event id), a body that is not an object, not JSON, empty or over the cap, a missing or foreign origin (seven variants).
 - `landing_page_view` and `waitlist_signup` posted to `/logEvent` are still `400`, and `EVENT_NAMES` is still exactly 13 names without them.
-- Rate limit: the per-IP scope answers 429 at 121 and inserts nothing further while another source still works; the route-wide ceiling holds across many sources and a rolled window starts fresh; no per-install bucket is ever written by a web post.
+- Rate limit: the per-IP scope answers 429 at 121 and inserts nothing further while another source still works; a request over its source's limit does not count toward the route-wide budget; the route-wide ceiling holds across many sources and a rolled window starts fresh; no per-install bucket is ever written by a web post.
 - A failing store answers 500 with no detail.
 - Non-vacuity: removing the origin check failed two tests; removing the exact-property check failed one; each file was restored afterwards.
 
@@ -42,7 +42,7 @@ Widths: the sign-up from `/youtube` at 390 px and 1440 px (`youtube-signup-390.p
 
 ## Node checks of the page script
 
-`node tools/waitlist/test-source.cjs`: 17 tests, six of them for events: exactly one `landing_page_view` per load with only the tag or `none`; a kept tag carried and a poisoned stored value read as `none`, never `unknown`; the request shape (`POST`, `no-cors`, `credentials: 'omit'`, `keepalive`, `text/plain`, no cookie, secret or identifier); nothing sent from localhost, previews or lookalike hosts, with a stub honored on local hosts only; a rejecting, throwing, hanging or non-function `fetch` never throws into the page and is not retried; and no secret, entry or address in the event code.
+`node tools/waitlist/test-source.cjs`: 23 tests, six of them for events: exactly one `landing_page_view` per load with only the tag or `none`; a kept tag carried and a poisoned stored value read as `none`, never `unknown`; the request shape (`POST`, `no-cors`, `credentials: 'omit'`, `keepalive`, `text/plain`, no cookie, secret or identifier); nothing sent from localhost, previews or lookalike hosts, with a stub honored on local hosts only; a rejecting, throwing, hanging or non-function `fetch` never throws into the page and is not retried; and a successful sign-up sends one `waitlist_signup` carrying only the tag, with no address, entry or identifier in any event request ("a successful sign-up sends one waitlist_signup carrying only the tag: no address, entry or identifier").
 
 ## Not done here, by design
 
