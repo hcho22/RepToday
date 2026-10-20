@@ -1605,3 +1605,41 @@ What landed:
 - **Wording.** Five files that still said "this repository is public" now carry `AGENTS.md`'s premise, "treat this repository as public (its visibility has changed before)"; the no-committed-secret rule and its checks are unchanged.
 
 Accepted limits: `datetime.fromisoformat` accepts different spellings on different Python versions, so the checker is exact against the reader on the same interpreter, and the producer (US-WL07) will write the one spelling every version accepts.
+
+## Hosted windows no longer pile up on the app scene (2026-10-19)
+
+`StatusBarBackingEvidenceTests.testTodayTabKeepsTheStatusBarClearWhenScrolled` failed once on the iOS 26 CI job (run 39325755281, attempt 2) and passed on the same commit in attempt 3.
+The failing look was the fourth (largest text, dark): `"Start" never appeared; tree reads []`, then `today-ax5-dark has no scroll view`.
+Every other look in that run, and every look in 22 other iOS 18 and iOS 26 jobs since the test landed, took 3.3 to 3.9 seconds; this one used its whole 12.5 second budget.
+
+What the evidence says:
+
+- **The screen was stuck on its loading spinner.** The failing capture is 115 KB.
+  A hosted spinner renders at about 116 KB with an empty accessibility tree, the empty state at 177 KB with three labels, and a loaded screen at 230 to 260 KB.
+  So `load()` had started and the view never showed its result.
+- **The app logic was fine.** Reproduced locally (below) with counters on the real `ReadyView`: at the stall the task had started and finished, the view model held the workout and `isLoading` was false, yet the hosted view still drew the spinner.
+  A process sample shows the main thread and every pool thread idle in the run loop.
+  Reassigning the hosting controller's `rootView` made it render at once; a relayout, re-showing the window, a Core Animation flush and an intrinsic-size invalidation did not.
+  SwiftUI had lost a pending re-render, and nothing was left to ask for it.
+- **It tracks the number of live hosted windows.** Hosting the Ready screen in a loop on the iOS 26.5 Simulator under CPU load, with the windows left attached as the suite leaves them, stalled 3 times in 700 looks, all with 419 to 486 windows on the scene; in all, nine stalls in five runs, each with 287 to 486 windows.
+  With the windows released each iteration it did not stall in 700 looks (42 windows), and with each window detached from the scene it did not stall in 1,000 (2 windows), in the same configuration.
+  No stall appeared with 142 windows in 1,000 looks, or with a single container at 552 windows under heavier load, so the count is a necessary condition in these runs, not a sufficient one.
+- **The suite leaves hosted windows attached long after their tests.** A hidden window stays in `UIWindowScene.windows` while anything holds it.
+  Measured over a full run: 25 windows on the scene by the Today status-bar test, 69 by the end, although every suite that keeps a `window` hides it in `tearDown`.
+  What retains them was not pinned down (hosting in one autorelease pool kept every window, a pool per look freed most of them, and a single long-lived service container kept all of them), which is why the fix detaches windows from the scene rather than relying on their release.
+
+What changed:
+
+- **`HostedSurface` owns window lifetime.** `host` records every window it creates, and a test observer dismantles them all (`HostedSurface.dismantle`: hidden, root controller cleared, taken off the scene) when the test ends, so no suite has to remember to and the ones that did not stop accumulating them.
+  A full run now has 2 to 5 windows on the scene at the same test.
+- **The failure message names the count.** `StatusBarBackingEvidenceTests.waitFor` adds how many windows are attached to the scene, so a recurrence says whether the pile-up is back.
+- **Nothing the test checks moved.** The Today look, the 8 second wait for "Start", the scroll, the band assertion and every other suite's assertions are unchanged.
+
+What this cannot show:
+
+- The failure on CI was a one-off at about one look in a hundred.
+  The mechanism above was reproduced at hundreds of windows, not at the 25 the suite had on CI, so the link between the two is the same symptom and the same stale-render state, not an observation of CI itself.
+  The fix removes the condition the reproduction needs; a recurrence on CI after this would mean a second trigger and would arrive with the window count in its message.
+- Nothing here points at the product: the app runs one window, and the stall never appeared in the runs with a small number of windows.
+- `HostedSurfaceLifecycleTests` covers the dismantling; that the observer runs at the end of every test is shown by the window count in a full run, not by a test of its own.
+

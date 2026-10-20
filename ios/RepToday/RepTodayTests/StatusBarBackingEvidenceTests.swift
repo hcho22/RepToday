@@ -192,8 +192,10 @@ final class StatusBarBackingEvidenceTests: XCTestCase {
     private func waitFor(_ label: String, in root: UIView, timeout: TimeInterval = 8) throws {
         let deadline = Date().addingTimeInterval(timeout)
         while !AccessibilityTree.labels(in: root).contains(label), Date() < deadline { HostedSurface.pump(for: 0.1) }
+        let attached = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).count
         XCTAssertTrue(AccessibilityTree.labels(in: root).contains(label),
-                      "\"\(label)\" never appeared; tree reads \(AccessibilityTree.labels(in: root))")
+                      "\"\(label)\" never appeared; tree reads \(AccessibilityTree.labels(in: root)); "
+                      + "\(attached) windows are attached to the scene")
         HostedSurface.pump(for: 0.5)
     }
 
