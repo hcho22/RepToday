@@ -1668,3 +1668,8 @@ The closing promise is now "one launch email, plus a beta invitation only if you
 `tools/waitlist/check-site.py` (CI job `waitlist`) keeps the four placements one form, the approved strings and field names intact, and the site free of stray addresses; the A/B pages differ outside the waitlist as before.
 The [validation record](../artifacts/reports/US-WL03/validation.md) owns the commands and results.
 
+## Waitlist Source links and persistence (US-WL04, 2026-10-20)
+
+The four links record their tag in the page script (path only, last touch among them, kept per tab in `sessionStorage`, no cookie, `utm_*` ignored) and the sign-up carries it; `_redirects` rewrites them to `/` (a rewrite to `/index.html` is answered with a 308 that drops the tag), and mixed-case links rely on Pages' fallback, so a top-level `404.html` is a CI failure.
+The [validation record](../artifacts/reports/US-WL04/validation.md) owns the commands and results; the preview-deploy repeat is slice 4's.
+

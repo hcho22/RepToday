@@ -22,6 +22,12 @@ Rules:
   mailto-join       no `mailto:` link inside a placement (no second way to join)
   ask-guard         neither page asks the visitor to download, follow or share
   script            both pages load /waitlist.js once and it posts the contract's field names
+  source-tags       waitlist.js lists exactly the contract's source_tags, in order
+  source-links      _redirects rewrites each of the four Source links, and its trailing-slash
+                    form, to the landing page ("/" - a rewrite to /index.html is answered
+                    with a 308 that drops the tag from the URL)
+  no-404-page       the site has no top-level 404.html: with one, Pages stops serving the
+                    landing page for other letter cases (/TikTok), and the links break
   stray-address     no text file under the site holds an email-shaped string other than the
                     policy's published contact address
 """
@@ -171,8 +177,26 @@ def check(site, contract):
         for key, posted in contract['posted_fields'].items():
             if "'{}'".format(posted) not in script:
                 find('script', 'waitlist.js', 'does not post posted_fields.' + key)
+        listed = re.search(r'var SOURCE_TAGS = \[([^\]]*)\];', script)
+        tags = re.findall(r"'([^']*)'", listed.group(1)) if listed else None
+        if tags != contract['source_tags']:
+            find('source-tags', 'waitlist.js', 'SOURCE_TAGS is not the contract file\'s source_tags')
     else:
         find('script', 'waitlist.js', 'the script is missing')
+
+    redirects = site / '_redirects'
+    rules = set()
+    if redirects.is_file():
+        for line in redirects.read_text(encoding='utf-8').split('\n'):
+            parts = line.split('#')[0].split()
+            if len(parts) == 3:
+                rules.add(tuple(parts))
+    for tag in contract['source_tags']:
+        for suffix in ('', '/'):
+            if ('/' + tag + suffix, '/', '200') not in rules:
+                find('source-links', '_redirects', 'no rewrite of the {} link{} to the landing page'.format(tag, ' with a trailing slash' if suffix else ''))
+    if (site / '404.html').exists():
+        find('no-404-page', '404.html', 'a top-level 404 page turns the Source links in other letter cases into 404s')
 
     for path in sorted(p for p in site.rglob('*') if p.is_file()):
         raw = path.read_bytes()

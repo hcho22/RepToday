@@ -1,0 +1,20 @@
+# Cloudflare Pages _redirects - Rep Today marketing site.
+# https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# The four Waitlist Source links (US-WL04) open the landing page. A status of 200 is a
+# rewrite: the visitor keeps the link's URL and the page script reads its tag. The target is
+# "/", not "/index.html": Pages answers a rewrite to /index.html with a 308 to "/", which
+# would drop the tag from the URL (seen in `wrangler pages dev`; re-checked on the preview
+# deploy before go-live). Listing the links
+# makes the links independent of Pages' implicit fallback for unmatched paths. Other letter
+# cases (/TikTok, /YOUTUBE) still reach the page through that fallback, which only holds
+# while the site has no top-level 404.html; tools/waitlist/check-site.py fails the build if
+# one appears. The tags are the contract file's source_tags (tools/waitlist/contract.json).
+/tiktok / 200
+/tiktok/ / 200
+/youtube / 200
+/youtube/ / 200
+/reddit / 200
+/reddit/ / 200
+/network / 200
+/network/ / 200

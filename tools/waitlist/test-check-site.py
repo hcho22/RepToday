@@ -129,6 +129,26 @@ class SiteCheckTests(unittest.TestCase):
         self.edit('waitlist.js', lambda t: t.replace("'fields[fit]'", "'fit'"))
         self.assertEqual(rules(self.findings()), ['script'])
 
+    def test_a_source_list_that_differs_from_the_contract_fails(self):
+        self.edit('waitlist.js', lambda t: t.replace("['tiktok', 'youtube', 'reddit', 'network']", "['tiktok', 'youtube', 'reddit', 'network', 'fifth']"))
+        self.assertEqual(rules(self.findings()), ['source-tags'])
+        self.edit('waitlist.js', lambda t: t.replace("['tiktok', 'youtube', 'reddit', 'network', 'fifth']", "['youtube', 'tiktok', 'reddit', 'network']"))
+        self.assertEqual(rules(self.findings()), ['source-tags'])
+
+    def test_a_missing_source_link_rewrite_fails(self):
+        self.edit('_redirects', lambda t: t.replace('/reddit / 200\n', ''))
+        found = self.findings()
+        self.assertEqual(rules(found), ['source-links'])
+        self.assertEqual(len(found), 1)
+
+    def test_a_rewrite_to_index_html_is_not_accepted(self):
+        self.edit('_redirects', lambda t: t.replace('/tiktok / 200', '/tiktok /index.html 200'))
+        self.assertEqual(rules(self.findings()), ['source-links'])
+
+    def test_a_top_level_404_page_fails(self):
+        (self.site / '404.html').write_text('<!doctype html><title>x</title>', encoding='utf-8')
+        self.assertEqual(rules(self.findings()), ['no-404-page'])
+
     def test_a_page_without_the_script_fails(self):
         self.edit('index.html', lambda t: t.replace('<script src="/waitlist.js"></script>', ''))
         self.assertEqual(rules(self.findings()), ['script'])

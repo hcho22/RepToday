@@ -108,6 +108,9 @@ jobs:
       - name: Test the landing-page check
         run: python3 tools/waitlist/test-check-site.py
 
+      - name: Test the page script's Source logic
+        run: node tools/waitlist/test-source.cjs
+
   # ---------------------------------------------------------------------------
   # Toolchain 2: iOS SwiftUI app - macOS.
   #

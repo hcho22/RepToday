@@ -19,6 +19,12 @@
     timeoutMs: 20000
   };
 
+  // The four Source links (reptoday.app/tiktok and so on). This list is the contract file's
+  // source_tags, and tools/waitlist/check-site.py fails when the two differ. A new Source is a
+  // new Dispatch request plus a reviewed gr0wthlab change, never an edit here alone.
+  var SOURCE_TAGS = ['tiktok', 'youtube', 'reddit', 'network'];
+  var SOURCE_KEY = 'reptoday.source';
+
   var FIELDS = {
     email: 'email_address',
     fit: 'fields[fit]',
@@ -54,10 +60,41 @@
     return found;
   }
 
-  // The visit's Source tag for the sign-up. US-WL04 replaces this with the link's tag.
-  function visitSource() {
-    return 'unknown';
+  // The tag a path names: the whole path must be one of the four tags, in any letter case,
+  // with an optional trailing slash. Only the path counts: no query string, no utm_* value,
+  // no referrer, so nothing outside the four tags can ever be recorded as a tag.
+  function tagForPath(pathname) {
+    var match = /^\/([A-Za-z]+)\/?$/.exec(String(pathname));
+    var tag = match ? match[1].toLowerCase() : '';
+    return SOURCE_TAGS.indexOf(tag) === -1 ? null : tag;
   }
+
+  // The visit's tag: the link this tab last arrived by. Another path (the plain address, the
+  // other page variant, /privacy) leaves an existing tag in place; a later link replaces it.
+  // The tag alone is kept in this tab's sessionStorage: no cookie, no identifier.
+  function resolveVisit(pathname, storage) {
+    var arrived = tagForPath(pathname);
+    var kept = null;
+    try {
+      if (arrived) {
+        storage.setItem(SOURCE_KEY, arrived);
+      } else {
+        kept = storage.getItem(SOURCE_KEY);
+      }
+    } catch (error) { /* storage unavailable: this page load still knows its own link */ }
+    var tag = arrived || kept;
+    return SOURCE_TAGS.indexOf(tag) === -1 ? null : tag;
+  }
+
+  var visit = null;
+  try { visit = resolveVisit(window.location.pathname, window.sessionStorage); } catch (error) { visit = tagForPath(window.location.pathname); }
+
+  // The Source the sign-up carries: the visit's tag, else unknown.
+  function visitSource() {
+    return visit || 'unknown';
+  }
+
+  window.RepTodayWaitlist = { sourceTags: SOURCE_TAGS, tagForPath: tagForPath, resolveVisit: resolveVisit };
 
   function looksLikeEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);

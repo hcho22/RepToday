@@ -311,16 +311,16 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] `reptoday.app/tiktok`, `/youtube`, `/reddit` and `/network` each open the landing page with the sign-up form; the lowercase word after the slash is that visit's Source tag.
-- [ ] The links work in any letter case (`/TikTok`, `/YOUTUBE`, `/rEdDiT`, `/Network` all resolve to the lowercase tag).
-- [ ] Each link is only the bare tag: no query string, token or redirect chain is needed to use it, so it can be said aloud, typed or put in a profile.
-- [ ] Once a visit has arrived by one of the four links, the tag is kept for the rest of that visit while the visitor moves between the landing page, the FAQ anchors and `/privacy`, per the persistence rule settled in OQ3, and is what the form sends and what the events carry.
-- [ ] Every other arrival (plain `reptoday.app`, `/index-b` with no tag, an unrecognized path, any search or social referrer, a `utm_*` parameter) yields Source `unknown` for the sign-up and `none` for the events; nothing outside the four tags is ever recorded as a tag.
-- [ ] The four tags live in one list shared by the page script, the contract file (US-WL01) and the view producer; a unit test fails if the list and the view checker's allowed sources disagree.
-- [ ] Adding a Source is documented as a new Dispatch request plus a reviewed gr0wthlab change, and no code path accepts a fifth tag.
-- [ ] The routing the chosen hosting needs (OQ2) is explicit, not an accident of the fallback: a test fails if a top-level 404 page is added in a way that turns the four links into 404s.
-- [ ] No cookie is set and no identifier is stored beyond the tag (and, if OQ3 recommends it, a per-tab `sessionStorage` entry holding only the tag).
-- [ ] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
+- [x] `reptoday.app/tiktok`, `/youtube`, `/reddit` and `/network` each open the landing page with the sign-up form; the lowercase word after the slash is that visit's Source tag.
+- [x] The links work in any letter case (`/TikTok`, `/YOUTUBE`, `/rEdDiT`, `/Network` all resolve to the lowercase tag).
+- [x] Each link is only the bare tag: no query string, token or redirect chain is needed to use it, so it can be said aloud, typed or put in a profile.
+- [x] Once a visit has arrived by one of the four links, the tag is kept for the rest of that visit while the visitor moves between the landing page, the FAQ anchors and `/privacy`, per the persistence rule settled in OQ3, and is what the form sends and what the events carry.
+- [x] Every other arrival (plain `reptoday.app`, `/index-b` with no tag, an unrecognized path, any search or social referrer, a `utm_*` parameter) yields Source `unknown` for the sign-up and `none` for the events; nothing outside the four tags is ever recorded as a tag.
+- [x] The four tags live in one list shared by the page script, the contract file (US-WL01) and the view producer; a unit test fails if the list and the view checker's allowed sources disagree.
+- [x] Adding a Source is documented as a new Dispatch request plus a reviewed gr0wthlab change, and no code path accepts a fifth tag.
+- [x] The routing the chosen hosting needs (OQ2) is explicit, not an accident of the fallback: a test fails if a top-level 404 page is added in a way that turns the four links into 404s.
+- [x] No cookie is set and no identifier is stored beyond the tag (and, if OQ3 recommends it, a per-tab `sessionStorage` entry holding only the tag).
+- [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
 
 **Validation Test:**
 
