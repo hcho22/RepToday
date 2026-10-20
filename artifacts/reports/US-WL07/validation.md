@@ -7,6 +7,7 @@ Nothing was written under the founder's Application Support folder, and no `laun
 ## What was run
 
 - `python3 tools/waitlist/test-waitlist.py` (65 tests, Python 3.7 and 3.9): the producer cases are `SevenSignups`, `ProducerSafety` and `Identifiers`.
+  Review rounds later the same day added cases; `docs/test-coverage.md` lists the current ones.
 - `tools/waitlist/waitlist.py produce` against 7 Kit test subscribers (see US-WL06's record), then `tools/waitlist/check-view.py` on the output.
 - The optional cross-check against gr0wthlab's real reader (`GR0WTHLAB_CHECKOUT`): **not run** (no gr0wthlab checkout in this worktree); the producer's output is accepted by `check-view.py`, which US-WL01 proved agrees with the reader on every fixture.
 

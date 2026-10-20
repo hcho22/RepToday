@@ -11,7 +11,7 @@ No address appears below: counts, states and Kit subscriber ids only.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Offline suite (synthetic store, the real Kit client over HTTP to `tools/waitlist/fake_kit.py`, the command as a subprocess) | `python3 tools/waitlist/test-waitlist.py` | 65 tests pass on Python 3.7 and 3.9 (CI runs 3.9 and 3.12) |
+| Offline suite (synthetic store, the real Kit client over HTTP to `tools/waitlist/fake_kit.py`, the command as a subprocess) | `python3 tools/waitlist/test-waitlist.py` | 65 tests pass on Python 3.7 and 3.9 (CI runs 3.9 and 3.12); review rounds later the same day added cases, and `docs/test-coverage.md` lists the current ones |
 | Kit test account | a scratch driver (not committed) that created 7 subscribers through Kit's API, then ran `tools/waitlist/waitlist.py` as a subprocess with `WAITLIST_KIT_KEYCHAIN_SERVICE=com.reptoday.waitlist.kit-spike` and `--restrict-to-ids <the ids it created>` | every assertion below held |
 
 `--restrict-to-ids` makes a command see only the named Kit subscriber ids, so the four subscribers left in the test account by the spike and anything else there were never read or written.

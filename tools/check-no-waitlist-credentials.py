@@ -37,10 +37,11 @@ Rules, each named in a finding:
                          by its byte-order mark, else a single-byte decoding such as Latin-1), so a Windows-1252
                          export is not skipped. In a table, every row is read against each email column any row
                          above it named, so a title line above the header hides nothing, even one that mentions
-                         email; a JSON array of rows, or JSON Lines with one row per line, is read as a table too. A damaged file (a CSV or TSV the reader cannot parse or that
-                         leaves a line break inside a cell, as an unclosed quote does; a line of JSON that does not
-                         parse) is read line by line: once the file names an email column or field, any unlisted
-                         address on such a line counts, so damage hides nothing.
+                         email; a JSON array of rows, or JSON Lines with one row per line, is read as a table too.
+                         A damaged file (a CSV or TSV the reader cannot parse or that leaves a line break inside a
+                         cell, as an unclosed quote does; a line of JSON that does not parse) is read line by line:
+                         once the file names an email column or field, any unlisted address on such a line counts,
+                         so damage hides nothing.
   unreadable-export      a CSV, TSV, JSON or JSONL file in the export rule's scope that cannot be read (no
                          permission, an I/O error): it could hold an export, so it fails the run.
   unreadable-directory   in the audit, a directory that cannot be listed: whatever it holds would go unread, so it

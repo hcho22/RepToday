@@ -4,6 +4,10 @@ Run on 2026-10-20 (UTC) in a disposable worktree of the RepToday repository.
 Every sabotage ran in a scratch directory (or, for the git-ignored credential, a file created in the checkout for one run and deleted), with every credential-shaped value and address assembled from parts, so none appears here or in the tests.
 Findings print a file, a line and a rule name, never a value.
 
+Review rounds later the same day changed the guard after this run.
+An export-suffixed file over the 50 MB cap is now read by the export rule, a line at a time, and an export or a directory the audit cannot read fails the run.
+The counts and output lines below are this run's, made before those changes; `docs/test-coverage.md` lists the current cases, and the guard's docstring states the current rules.
+
 ## What was run
 
 | Check | Command | Result |
