@@ -224,6 +224,28 @@ class ExportRule(Scratch):
         code, rules, found = self.export_rules('clean.csv', clean.encode('utf-8'))
         self.assertEqual((code, rules), (0, []))
 
+    def test_an_unclosed_quote_before_the_email_column_hides_nothing(self):
+        """The reader folds the rest of the file into the quoted cell and raises nothing; saved in Windows-1252 so the
+        address rule skips it and only the export rule can fail it."""
+        for name, delimiter in (('quote.csv', ','), ('quote.tsv', '\t')):
+            content = delimiter.join(['name', 'email']) + '\n' + delimiter.join(['"Jos\xe9', address('one')]) + '\n' + \
+                delimiter.join(['B', address('two')]) + '\n'
+            code, rules, found = self.export_rules(name, content.encode('cp1252'))
+            self.assertEqual((code, rules), (1, ['export-file']), name)
+
+    def test_an_address_anywhere_beneath_an_email_field_is_found_parsed_or_damaged(self):
+        cases = {
+            'list.json': {'subscribers': [{'name': 'Jos\xe9', 'emails': [address('listed')]}]},
+            'people.json': {'names': [{'displayName': 'Ren\xe9e'}], 'emailAddresses': [{'value': address('people')}]},
+            'keyed.json': {'name': 'Jos\xe9', 'emails': {address('keyed'): True}},
+        }
+        for name, value in cases.items():
+            code, rules, found = self.export_rules(name, json.dumps(value, ensure_ascii=False).encode('cp1252'))
+            self.assertEqual((code, rules), (1, ['export-file']), name)
+        damaged = '[{"name": "Jos\xe9", "emails": [\n  "%s"\n]}, {"emails": [' % address('damaged')  # truncated
+        code, rules, found = self.export_rules('damaged.json', damaged.encode('cp1252'))
+        self.assertEqual((code, rules), (1, ['export-file']))
+
     def test_a_file_with_an_email_column_but_no_unlisted_address_is_not_an_export(self):
         allowed = 'reptoday.app' + AT + 'gmail.com'
         example = 'person' + AT + 'example.com'

@@ -32,10 +32,13 @@ Rules, each named in a finding:
   credential-header      in the Waitlist's own paths (`gtm/03-site/`, `tools/waitlist/`, this guard and its test,
                          and the Waitlist's evidence reports): any bearer or API-key header with a literal value.
   export-file            a CSV, TSV, JSON or JSONL file with a column or field named for an email address that
-                         holds even one email-shaped address not on the allowlist, however few rows it has. Every
-                         such file is read whatever its encoding (UTF-8, else UTF-16 by its byte-order mark, else
-                         a single-byte decoding such as Latin-1), so a Windows-1252 export is not skipped, and a
-                         CSV or TSV the reader cannot parse (a NUL byte, say) is read line by line instead.
+                         holds, directly or anywhere beneath it, even one email-shaped address not on the allowlist,
+                         however few rows it has. Every such file is read whatever its encoding (UTF-8, else UTF-16
+                         by its byte-order mark, else a single-byte decoding such as Latin-1), so a Windows-1252
+                         export is not skipped. A damaged file (a CSV or TSV the reader cannot parse or that leaves
+                         a line break inside a cell, as an unclosed quote does; a line of JSON that does not parse)
+                         is read line by line: once the file names an email column or field, any unlisted address
+                         on such a line counts, so damage hides nothing.
   address                an email-shaped string not on the allowlist. Only text files are read for this rule
                          (files that decode as UTF-8 and hold no NUL byte): committed images such as the Trainer
                          pose art hold address-shaped byte runs by chance.
@@ -239,10 +242,21 @@ def email_named(name):
     return 'email' in flat or flat == 'mail' or flat.endswith('mailaddress') or flat.endswith('mailaddr')
 
 
+def strings_beneath(value):
+    """Every string in a parsed JSON value, however deep, object keys included."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        value = list(value) + list(value.values())
+    if isinstance(value, list):
+        return [text for inner in value for text in strings_beneath(inner)]
+    return []
+
+
 def walk_json(value, relative, line, found):
     if isinstance(value, dict):
         for key, inner in value.items():
-            if email_named(key) and isinstance(inner, str) and unlisted_addresses(inner, relative):
+            if email_named(key) and any(unlisted_addresses(text, relative) for text in strings_beneath(inner)):
                 found.append((line, 'export-file'))
             walk_json(inner, relative, line, found)
     elif isinstance(value, list):
@@ -250,7 +264,7 @@ def walk_json(value, relative, line, found):
             walk_json(inner, relative, line, found)
 
 
-JSON_PAIR = re.compile(r'"([^"\\]*)"\s*:\s*"([^"\\]*)"')
+JSON_KEY = re.compile(r'"([^"\\]*)"\s*:')
 
 
 def export_findings(data, relative):
@@ -263,12 +277,14 @@ def export_findings(data, relative):
         delimiter = '\t' if suffix == '.tsv' else ','
         try:
             rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
-            damaged = False
         except csv.Error:
-            # Not readable as a table (a NUL byte on Python 3.9 and 3.10, say): split each line by hand and, under a
-            # header that names an email column, count an unlisted address anywhere on a line, so damage hides nothing.
+            rows = None
+        damaged = rows is None or any('\n' in cell or '\r' in cell for row in rows for cell in row)
+        if damaged:
+            # Not readable as a table (a NUL byte on Python 3.9 and 3.10), or a cell holding a line break (an unclosed
+            # quote folds the rest of the file into one): split each line by hand and, under a header that names an
+            # email column, count an unlisted address anywhere on a line, so damage hides nothing.
             rows = [line.split(delimiter) for line in text.splitlines()]
-            damaged = True
         header = None
         for number, row in enumerate(rows, start=1):
             if header is None:
@@ -284,16 +300,21 @@ def export_findings(data, relative):
         return found
     except (ValueError, RecursionError):
         pass
+    names_email = any(email_named(key) for key in JSON_KEY.findall(text))
     for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         try:
-            walk_json(json.loads(line), relative, number, found)
+            value = json.loads(line)
+            parsed = isinstance(value, (dict, list))
+            if parsed:
+                walk_json(value, relative, number, found)
         except (ValueError, RecursionError):
-            # Not JSON at all (or damaged): fall back to the pairs it spells out, so damage hides nothing.
-            for key, value in JSON_PAIR.findall(line):
-                if email_named(key) and unlisted_addresses(value, relative):
-                    found.append((number, 'export-file'))
+            parsed = False
+        if not parsed and names_email and unlisted_addresses(line, relative):
+            # Not a JSON line (damaged, or a fragment of a damaged document): once the file names an email field, count
+            # an unlisted address anywhere on the line, so damage hides nothing.
+            found.append((number, 'export-file'))
     return found
 
 
