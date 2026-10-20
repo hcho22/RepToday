@@ -158,6 +158,10 @@ export const checkAndBump = internalMutation({
 /**
  * The web events' throttle (US-WL05): the same atomic read-increment-compare as `checkAndBump`, in
  * the `webip` and `web` scopes. See `MAX_WEB_EVENTS_PER_IP_PER_WINDOW`.
+ *
+ * Unlike `checkAndBump`, the keys are not both bumped: the `web` key is shared by every visitor, so
+ * a request already over its own source's ceiling is answered without counting against it. One
+ * source flooding the route therefore uses up only its own budget, never everyone's.
  */
 export const checkAndBumpWeb = internalMutation({
   args: {
@@ -174,9 +178,13 @@ export const checkAndBumpWeb = internalMutation({
       sourceIp === null
         ? false
         : await bump(ctx, "webip", sourceIp, windowStart, MAX_WEB_EVENTS_PER_IP_PER_WINDOW);
+    if (ipOver) {
+      return { allowed: false, limitedBy: "webip" as const };
+    }
     const wholeOver = await bump(ctx, "web", "all", windowStart, MAX_WEB_EVENTS_PER_WINDOW);
-    const limitedBy: "webip" | "web" | null = ipOver ? "webip" : wholeOver ? "web" : null;
-    return { allowed: limitedBy === null, limitedBy };
+    return wholeOver
+      ? { allowed: false, limitedBy: "web" as const }
+      : { allowed: true, limitedBy: null };
   },
 });
 

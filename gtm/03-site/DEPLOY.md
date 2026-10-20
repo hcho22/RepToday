@@ -1,10 +1,10 @@
 # Deploying the Rep Today landing site to Cloudflare Pages
 
 The marketing site in this directory (`gtm/03-site/`) is **pure static HTML** - no
-build step, no bundler, no framework. Both pages are self-contained (inline SVG
-and inline CSS only); the sibling `screenshot-*.png` files are A/B report
-artifacts and are not referenced by either page. Cloudflare Pages serves this
-directory as-is.
+build step, no bundler, no framework.
+Both pages use inline SVG and inline CSS, and both load the one shared script `/waitlist.js` (the Waitlist form, the Source links and the two web events), so neither page is self-contained: deploy the directory whole.
+The sibling `screenshot-*.png` files are A/B report artifacts and are not referenced by either page.
+Cloudflare Pages serves this directory as-is.
 
 - `index.html` - variant **A**, served at the site root (`/`).
 - `index-b.html` - variant **B**, reachable at `/index-b` (or `/index-b.html`).
@@ -21,8 +21,9 @@ npx wrangler pages deploy gtm/03-site --project-name reptoday-site
   if it does not exist. Answer yes.
 - `gtm/03-site` is both the root **and** the output directory - there is no build
   output subfolder because there is no build.
-- `_headers` (and `_redirects`, if ever added) at the top of `gtm/03-site` are
-  picked up automatically by Pages.
+- `_headers` and `_redirects` at the top of `gtm/03-site` are picked up
+  automatically by Pages.
+  `_redirects` is required: it carries the four Waitlist Source links (see "The Source links" below).
 
 ## 2. Or wire it up in the Cloudflare dashboard (Git integration)
 
@@ -54,6 +55,14 @@ same account, so Cloudflare adds the CNAME/route automatically - no manual DNS
 records needed. Optionally repeat for `www.reptoday.app` and let Cloudflare
 redirect it to the apex.
 
+## The Source links (`_redirects`)
+
+`_redirects` is required, not optional.
+It rewrites the four Waitlist Source links (`/tiktok`, `/youtube`, `/reddit`, `/network`, each with or without a trailing slash) to the landing page, which reads the tag from the URL.
+Without it the links rely on Pages' implicit fallback for unmatched paths, which a top-level `404.html` would turn off.
+Its header comment explains why the target is `/` rather than `/index.html` and why the site must have no top-level `404.html`; `tools/waitlist/check-site.py` fails when a rewrite is missing or a `404.html` appears.
+The two anonymous web events the pages send are described in `convex/README.md` ("Web events").
+
 ## HTTPS / TLS
 
 Nothing to configure. `.app` is on the **HSTS preload list** (HTTPS-only in every
@@ -68,9 +77,6 @@ serves every request over HTTPS. That is why `_headers` sets **no**
   Worker** (or Pages Functions) doing cookie-stable bucketing. That is out of
   scope for this repo-side prep. Until then, variant B lives at its own path
   (`/index-b`) and A is the root.
-- **`_redirects` is intentionally absent.** Pages already serves `index.html` at
-  `/` automatically, so no redirect rule is warranted today. Add a `_redirects`
-  file in this directory only if a real redirect need appears.
 - **Content-Security-Policy.** Omitted for now; see the comment in `_headers`.
   The Kit embed script is gone (the form is first-party, `waitlist.js`), but the form still
   posts to `app.kit.com`, frames Kit's reCAPTCHA check from there when Kit asks, and the web

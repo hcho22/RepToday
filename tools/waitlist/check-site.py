@@ -21,8 +21,8 @@ Rules:
   one-message       the words "one message" appear on neither page
   mailto-join       no `mailto:` link inside a placement (no second way to join)
   ask-guard         neither page asks the visitor to download, follow or share
-  script            both pages load /waitlist.js once and it posts the contract's field names
-  source-tags       waitlist.js lists exactly the contract's source_tags, in order
+  script            waitlist.js exists and both pages load it exactly once (what it posts and
+                    which tags it keeps is tested by running it: tools/waitlist/test-source.cjs)
   source-links      _redirects rewrites each of the four Source links, and its trailing-slash
                     form, to the landing page ("/" - a rewrite to /index.html is answered
                     with a 308 that drops the tag from the URL)
@@ -171,17 +171,7 @@ def check(site, contract):
         if len(tags) != 1:
             find('script', name, 'the page must load /waitlist.js exactly once')
 
-    script_path = site / 'waitlist.js'
-    if script_path.is_file():
-        script = script_path.read_text(encoding='utf-8')
-        for key, posted in contract['posted_fields'].items():
-            if "'{}'".format(posted) not in script:
-                find('script', 'waitlist.js', 'does not post posted_fields.' + key)
-        listed = re.search(r'var SOURCE_TAGS = \[([^\]]*)\];', script)
-        tags = re.findall(r"'([^']*)'", listed.group(1)) if listed else None
-        if tags != contract['source_tags']:
-            find('source-tags', 'waitlist.js', 'SOURCE_TAGS is not the contract file\'s source_tags')
-    else:
+    if not (site / 'waitlist.js').is_file():
         find('script', 'waitlist.js', 'the script is missing')
 
     redirects = site / '_redirects'

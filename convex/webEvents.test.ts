@@ -237,6 +237,19 @@ describe("POST /webEvent: rate limit", () => {
     expect(next).toEqual({ allowed: true, limitedBy: null });
   });
 
+  test("one source over its own ceiling does not use up the route-wide budget", async () => {
+    const t = setup();
+    const start = 1_800_000_000_000 - (1_800_000_000_000 % RATE_LIMIT_WINDOW_MS);
+    for (let i = 0; i < MAX_WEB_EVENTS_PER_WINDOW; i += 1) {
+      const result = await t.mutation(internal.rateLimit.checkAndBumpWeb, { sourceIp: "198.51.100.66", nowMs: start + 1 });
+      expect(result).toEqual(i < MAX_WEB_EVENTS_PER_IP_PER_WINDOW ? { allowed: true, limitedBy: null } : { allowed: false, limitedBy: "webip" });
+    }
+    const other = await t.mutation(internal.rateLimit.checkAndBumpWeb, { sourceIp: "198.51.100.67", nowMs: start + 2 });
+    expect(other).toEqual({ allowed: true, limitedBy: null });
+    const whole = (await buckets(t)).find((row) => row.bucketKey === `web:all:${start}`);
+    expect(whole?.count).toBe(MAX_WEB_EVENTS_PER_IP_PER_WINDOW + 1);
+  });
+
   test("a request with no usable source IP is limited only by the route-wide key", async () => {
     const t = setup();
     const result = await t.mutation(internal.rateLimit.checkAndBumpWeb, { sourceIp: null, nowMs: 1_800_000_000_000 });

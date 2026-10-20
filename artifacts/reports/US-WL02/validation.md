@@ -35,7 +35,8 @@ True 390 px came from `chrome-devtools-axi emulate --viewport "390x844x3,mobile,
 5. A valid address, "I work out regularly", the box left unticked: the stub received `email_address`, `fields[fit]=exercises-regularly`, `fields[beta_opt_in]=false`, `fields[source]=unknown` and nothing else; the card showed "Check your email to confirm your address." and the fields collapsed, with the card still 342 px wide.
    `hero-390-success.png`.
 6. The stub in `fail` mode: the card showed "That did not go through. Try again in a moment.", the entered email, the chosen answer and the ticked box were all still there, the button was enabled again; a retry in `slow` mode showed the disabled "Joining..." button with `aria-busy` true and a 342 px card, then success.
-   The stub in `quarantined` mode: the guard iframe appeared in the card (`hero-390-guard.png`); activating the stand-in's button reported `ckjs:guard:confirmed` and the card showed the success wording with the iframe removed.
+   The stub in `quarantined` mode: the guard iframe appeared in the card; activating the stand-in's button reported `ckjs:guard:confirmed` and the card showed the success wording with the iframe removed.
+   This step is evidenced by this transcript only; no screenshot of it is kept.
 7. The closing band and `/index-b` behaved the same (`index-closing-1440.png`, `index-b-closing-1440.png`), including on the Night band where the card stays Paper.
 
 Other checks: tab order email, three radios, checkbox, button, all native with `tabindex` 0, so the form completes by keyboard alone; control heights 44 px (choices) and 48 px (email, button).

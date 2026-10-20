@@ -3,7 +3,7 @@
    visitor's email, Fit answer, beta choice and Source straight to Kit's public sign-up
    endpoint (the same one Kit's embed used), so no Rep Today server ever sees an address.
    The four posted field names below are the ones in tools/waitlist/contract.json;
-   tools/waitlist/check-site.py fails when they drift apart. */
+   tools/waitlist/test-source.cjs fails when they drift apart. */
 (function () {
   'use strict';
 
@@ -20,11 +20,14 @@
     // and never with the app's secret. They are sent only from the production site's own hosts.
     eventsUrl: 'https://sensible-spider-810.convex.site/webEvent',
     eventHosts: ['reptoday.app', 'www.reptoday.app'],
-    timeoutMs: 20000
+    timeoutMs: 20000,
+    // How long Kit's check may stay up without a confirmation before the form gives the
+    // visitor the failure wording and a retry.
+    guardTimeoutMs: 120000
   };
 
   // The four Source links (reptoday.app/tiktok and so on). This list is the contract file's
-  // source_tags, and tools/waitlist/check-site.py fails when the two differ. A new Source is a
+  // source_tags, and tools/waitlist/test-source.cjs fails when the two differ. A new Source is a
   // new Dispatch request plus a reviewed gr0wthlab change, never an edit here alone.
   var SOURCE_TAGS = ['tiktok', 'youtube', 'reddit', 'network'];
   var SOURCE_KEY = 'reptoday.source';
@@ -154,6 +157,7 @@
     var sending = false;
     var guardFrame = null;
     var guardListener = null;
+    var guardTimer = null;
 
     function clearChoices() {
       for (var i = 0; i < radios.length; i += 1) { radios[i].checked = false; }
@@ -218,6 +222,7 @@
     }
 
     function closeGuard() {
+      if (guardTimer) { window.clearTimeout(guardTimer); guardTimer = null; }
       if (guardListener) { window.removeEventListener('message', guardListener); guardListener = null; }
       if (guardFrame) { guardFrame.remove(); guardFrame = null; }
       guardBox.hidden = true;
@@ -246,6 +251,7 @@
         }
       };
       window.addEventListener('message', guardListener);
+      guardTimer = window.setTimeout(function () { closeGuard(); fail(); }, CONFIG.guardTimeoutMs);
       guardBox.appendChild(guardFrame);
       guardBox.hidden = false;
       setStatus('');
@@ -255,6 +261,11 @@
     function fail() {
       setBusy(false);
       setStatus(COPY.failed);
+    }
+
+    // Kit turned the post down with a list of errors, whatever the HTTP status.
+    function rejected(answer) {
+      return Boolean(answer && answer.errors);
     }
 
     function send() {
@@ -275,19 +286,21 @@
         credentials: 'omit',
         signal: controller ? controller.signal : undefined
       }).then(function (response) {
-        if (!response.ok) { throw new Error('status'); }
-        return response.json();
+        return response.json().then(function (answer) {
+          if (!response.ok && !rejected(answer)) { throw new Error('status'); }
+          return answer;
+        });
       }).then(function (answer) {
         if (timer) { window.clearTimeout(timer); }
-        if (answer && answer.status === 'success') {
+        if (rejected(answer)) {
+          setBusy(false);
+          setError(email, emailError, COPY.emailError);
+          email.focus();
+        } else if (answer && answer.status === 'success') {
           setBusy(false);
           finish();
         } else if (answer && answer.status === 'quarantined' && typeof answer.url === 'string') {
           if (!showGuard(answer.url, target)) { fail(); }
-        } else if (answer && answer.errors) {
-          setBusy(false);
-          setError(email, emailError, COPY.emailError);
-          email.focus();
         } else {
           fail();
         }

@@ -504,7 +504,9 @@ mutation, `webEvents:logWebEvent`, into the same `events` table (no third table)
   requires the request's `Origin` to be one of the site's (`https://reptoday.app`,
   `https://www.reptoday.app`; a dev deployment sets `WEB_EVENT_ALLOWED_ORIGINS` to a comma list),
   caps the body at 1 KiB, and rate limits in two scopes of its own: 120 a minute per source IP and
-  3,000 a minute for the whole route (`checkAndBumpWeb`; the per-install key cannot apply). A browser
+  3,000 a minute for the whole route (`checkAndBumpWeb`; the per-install key cannot apply). A request
+  already over its source's limit does not count toward the route's, so one source cannot use up
+  everyone's budget. A browser
   sets `Origin` and a page cannot forge it, but a script outside a browser can send any value, so these
   are cost-raisers, not a guarantee.
 - **No CORS.** The page sends a simple `text/plain` POST with `no-cors` and never reads the answer, so

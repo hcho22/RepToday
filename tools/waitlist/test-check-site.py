@@ -125,15 +125,9 @@ class SiteCheckTests(unittest.TestCase):
         (self.site / 'blob.bin').write_bytes(b'\x00\x01' + address.encode() + b'\x00')
         self.assertEqual(self.findings(), [])
 
-    def test_the_script_must_post_the_contract_field_names(self):
-        self.edit('waitlist.js', lambda t: t.replace("'fields[fit]'", "'fit'"))
+    def test_a_missing_script_fails(self):
+        (self.site / 'waitlist.js').unlink()
         self.assertEqual(rules(self.findings()), ['script'])
-
-    def test_a_source_list_that_differs_from_the_contract_fails(self):
-        self.edit('waitlist.js', lambda t: t.replace("['tiktok', 'youtube', 'reddit', 'network']", "['tiktok', 'youtube', 'reddit', 'network', 'fifth']"))
-        self.assertEqual(rules(self.findings()), ['source-tags'])
-        self.edit('waitlist.js', lambda t: t.replace("['tiktok', 'youtube', 'reddit', 'network', 'fifth']", "['youtube', 'tiktok', 'reddit', 'network']"))
-        self.assertEqual(rules(self.findings()), ['source-tags'])
 
     def test_a_missing_source_link_rewrite_fails(self):
         self.edit('_redirects', lambda t: t.replace('/reddit / 200\n', ''))

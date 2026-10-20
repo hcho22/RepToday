@@ -9,7 +9,7 @@ Everything here is Python 3 standard library or plain Node, holds no credential 
 | `contract.json` | The one contract file: approved wording, Fit answers and tags, the four Source tags, `unknown` and `none`, the posted Kit field names, the view's rules. |
 | `check-view.py`, `test-check-view.py`, `fixtures/` | The anonymous view checker (mirrors gr0wthlab's reader) and its tests. |
 | `check-site.py`, `test-check-site.py` | Static checks on the landing pages: the four placements are one form, the approved strings and field names, no `mailto:` join, no stray address, the Source links, no top-level 404 page. |
-| `test-source.cjs` | Node tests of the page script's Source logic (`gtm/03-site/waitlist.js`). |
+| `test-source.cjs` | Node tests that run the page script (`gtm/03-site/waitlist.js`) against a fake page: the Source logic, the posted field names, Kit's answers and guard, and the two web events. |
 | `stub-receiver.py` | A local stand-in for Kit's sign-up endpoint and the web-event sink, so no test posts to a real one. |
 
 ## Run the checks
@@ -34,6 +34,6 @@ On a Mac where the default `python3` is the python.org framework build, loopback
 ## The Source links
 
 The four links are `reptoday.app/tiktok`, `/youtube`, `/reddit` and `/network`.
-The tags live in one list, `source_tags` in `contract.json`, which the page script, the view checker and the site check all read or compare.
+The tags live in one list, `source_tags` in `contract.json`; the page script's copy is compared with it by `test-source.cjs`, and the view checker and the site check read it.
 A new Source is a new Dispatch request plus a reviewed gr0wthlab change (its reader keeps its own list); no code here accepts a fifth tag.
 Changing a tag after the links are posted means the old links stop recording, so treat the list as fixed once published.

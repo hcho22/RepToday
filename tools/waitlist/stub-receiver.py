@@ -93,8 +93,6 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/signup':
             with LOCK:
                 mode = STATE['mode']
-                if mode in ('success', 'slow', 'errors', 'quarantined'):
-                    pass
                 if mode in ('success', 'slow'):
                     STATE['signups'].append(parse_qsl(body, keep_blank_values=True))
             if mode == 'slow':

@@ -24,13 +24,22 @@ export default defineSchema({
      * always supplies it.
      */
     eventId: v.optional(v.string()),
-    /** One of the 13 pre-registered event names; see `EVENT_NAMES` in `events.ts`. */
+    /**
+     * One of the app's 13 pre-registered event names (`EVENT_NAMES` in `events.ts`), or one of the
+     * two Waitlist web events (`WEB_EVENT_NAMES` in `webEvents.ts`; see convex/README.md, "Web events").
+     */
     name: v.string(),
-    /** Random per-install identifier (US-T05). Never a user identity. */
+    /**
+     * Random per-install identifier (US-T05), or the one reserved value `web` that every web event
+     * row carries (`WEB_EVENT_INSTALL_ID`). Never a user identity.
+     */
     installId: v.string(),
     /** Client-side timestamp, milliseconds since the Unix epoch. */
     clientTs: v.number(),
-    /** Server-received timestamp, milliseconds since the Unix epoch, stamped by `logEvent`. */
+    /**
+     * Server-received timestamp, milliseconds since the Unix epoch, stamped by `logEvent` (or by
+     * `logWebEvent` for a web event).
+     */
     serverTs: v.number(),
     /** The event's non-identifying property bag, stored exactly as it arrived. */
     props: v.any(),
@@ -56,8 +65,9 @@ export default defineSchema({
   rateLimits: defineTable({
     /**
      * The window-scoped throttle key: `"<scope>:<identity>:<windowStart>"`, where scope is
-     * `install` or `ip`, identity is the per-install id or coarse source IP, and `windowStart` is
-     * the window this row counts. Baking the window into the key makes each window a distinct row,
+     * `install` or `ip` for the app's route, or `webip` or `web` for `POST /webEvent`; identity is
+     * the per-install id or coarse source IP (`all` in the `web` scope); and `windowStart` is the
+     * window this row counts. Baking the window into the key makes each window a distinct row,
      * so a rolled window is a fresh insert rather than a mutated counter and stale windows are
      * cleanly deletable.
      */
