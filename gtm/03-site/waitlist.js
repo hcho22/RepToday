@@ -61,12 +61,13 @@
     } catch (error) { return {}; }
   }
 
-  // The destination for this page. A local page posts to the stub, never to Kit.
+  // The destination for this page. A local page posts to the stub, never to Kit, and trusts the
+  // stub's stand-in check instead of Kit's.
   function endpoints() {
     var test = testEndpoints();
     return {
       signupUrl: typeof test.signupUrl === 'string' ? test.signupUrl : (isLocal() ? CONFIG.localSignupUrl : CONFIG.signupUrl),
-      guardOrigin: typeof test.guardOrigin === 'string' ? test.guardOrigin : CONFIG.guardOrigin
+      guardOrigin: typeof test.guardOrigin === 'string' ? test.guardOrigin : (isLocal() ? new URL(CONFIG.localSignupUrl).origin : CONFIG.guardOrigin)
     };
   }
 

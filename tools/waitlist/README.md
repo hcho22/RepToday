@@ -29,6 +29,7 @@ npx wrangler pages dev gtm/03-site --port 8788
 ```
 
 A page served from `localhost`, `127.0.0.1` or `[::1]` posts its sign-up to the stub on `127.0.0.1:8799` and never to Kit.
+In the stub's `quarantined` mode such a page shows the stub's stand-in check, because a local page trusts the stub's origin for the check instead of Kit's; no override is needed.
 On a Mac where the default `python3` is the python.org framework build, loopback connections can hang; `/usr/bin/python3` works.
 
 ## The Source links

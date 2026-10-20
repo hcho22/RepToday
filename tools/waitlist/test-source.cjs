@@ -269,6 +269,28 @@ test('a local page posts its sign-up to the stub, never to Kit', async () => {
   assert.deepStrictEqual(loaded.sent.map((request) => request.url), ['http://127.0.0.1:8799/signup']);
 });
 
+test('a local page shows the stub\'s stand-in check with no override, and only a local page trusts it', async () => {
+  const STUB_GUARD = 'http://127.0.0.1:8799/forms/guards/test';
+  const quarantined = (url) => (url.endsWith('/signup') || url === KIT_SIGNUP ? answer(200, { status: 'quarantined', url: STUB_GUARD }) : {});
+  const local = load('/', memoryStorage(), { hostname: 'localhost', form: true, answer: quarantined });
+  fillIn(local);
+  local.submit();
+  await settle();
+  const { guard } = local.form.parts;
+  assert.strictEqual(guard.children.length, 1);
+  assert.strictEqual(guard.children[0].src, STUB_GUARD);
+  local.post({ origin: 'https://app.kit.com', source: guard.children[0].contentWindow, data: { name: 'ckjs:guard:confirmed' } });
+  assert.notStrictEqual(local.form.getAttribute('data-wl-state'), 'done');
+  local.post({ origin: 'http://127.0.0.1:8799', source: guard.children[0].contentWindow, data: { name: 'ckjs:guard:confirmed' } });
+  assert.strictEqual(local.form.getAttribute('data-wl-state'), 'done');
+  const site = load('/', memoryStorage(), { hostname: 'reptoday.app', form: true, answer: quarantined });
+  fillIn(site);
+  site.submit();
+  await settle();
+  assert.strictEqual(site.form.parts.guard.children.length, 0);
+  assert.strictEqual(site.form.parts.status.textContent, 'That did not go through. Try again in a moment.');
+});
+
 test('a successful sign-up sends one waitlist_signup carrying only the tag: no address, entry or identifier', async () => {
   const loaded = load('/YouTube', memoryStorage(), { hostname: 'reptoday.app', form: true, answer: (url) => (url === KIT_SIGNUP ? answer(200, { status: 'success' }) : {}) });
   fillIn(loaded);
