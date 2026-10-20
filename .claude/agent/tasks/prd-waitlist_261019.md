@@ -761,6 +761,11 @@ Every marked recommendation below is accepted:
 - OQ12: `utm_*` parameters do not set the Source.
 - OQ13: `record-launch-email --sent-on`.
 - OQ14: (a) date-only order.
+- US-WL06 spike findings (2026-10-20, `artifacts/reports/US-WL06/spike.md`), each recommendation accepted:
+  D1 the view producer keeps a local owner-only ledger (Kit subscriber id to entry identifier) and trusts only it, because a public post can set Kit's `entry` field;
+  D2 Kit's API cannot delete a subscriber, so the sweeps unsubscribe, overwrite the email with a placeholder and blank every field within a day, and the privacy wording keeps "deleted";
+  D3 a same-day resubmission overwriting the first Source is accepted;
+  D4 the form hosts Kit's reCAPTCHA guard iframe when Kit answers `quarantined` (origin-checked), and the privacy section names reCAPTCHA via Kit.
 
 Each question lists the realistic options grounded in the current code and services, the **recommendation (marked)** with its reason, and the stories it gates.
 Behavior that this PRD could not verify from the repository (marked "confirm") is checked, not assumed: the sending service's in the US-WL06 spike, and the scheduler's in US-WL07.
