@@ -590,8 +590,8 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [x] The wording is the approved draft in Appendix C, edited by the captain, and makes no promise beyond the five points and what OQ5 and OQ10 add.
   Approved 2026-10-20 ("privacy - approve with b"): Appendix C adjusted to the captain's answers (a spam complaint is a removal request; "deleted" stays through the founder's delete in Kit), plus the session-storage sentence, the reCAPTCHA sentence (D4) and one item naming the approximate location Kit records for a confirmed sign-up; the exact text is in `gtm/03-site/privacy.html` and `artifacts/reports/US-WL11/validation.md`.
 - [x] Structure, numbering, the table of contents, the anchor and the "This website is static" note follow OQ10; no cross-reference to a renumbered section is left stale.
-- [ ] "Last updated" carries the publication date.
-  Open: set in the same change as the captain-approved production deploy (US-WL12).
+- [x] "Last updated" carries the publication date.
+  Set to October 21, 2026, the publication date the captain gave when he approved publishing the site (2026-10-21, "publish all, date 10-21-26"), ahead of the production deploy (US-WL12), which publishes it.
 - [x] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "the unsubscribe link in any waitlist email" -> US-WL10 and the US-WL06 spike's confirmation-message result; "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
 - [x] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag (section 13 after the renumbering) about the missing retention schedule is updated to say what now exists and what is still unreviewed.
 - [ ] The section is published no later than the form (US-WL12 orders the deploy).
