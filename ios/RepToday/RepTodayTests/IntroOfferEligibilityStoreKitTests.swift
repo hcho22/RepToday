@@ -46,11 +46,14 @@ final class IntroOfferEligibilityStoreKitTests: XCTestCase {
     }
 
     func testFreshUserSeesTheTrialLine() async throws {
-        let labels = try await paywallLabels(capturing: "fresh-user-paywall.png")
-        XCTAssertTrue(labels.contains { $0.contains("14-day free trial") }, "\(labels)")
+        // Read the plans before hosting the paywall: the first product load in a run waits on a cold
+        // StoreKit test session, which can outlast the paywall's settle timeout. Awaiting it here, with
+        // no timeout, warms the session the way the purchase does in the test below.
         let plans = try await plans()
         XCTAssertEqual(plans.first?.trialDescription, "14-day free trial")
         XCTAssertNil(plans.last?.trialDescription)
+        let labels = try await paywallLabels(capturing: "fresh-user-paywall.png")
+        XCTAssertTrue(labels.contains { $0.contains("14-day free trial") }, "\(labels)")
     }
 
     func testUserWhoAlreadyUsedTheTrialSeesNoTrialLine() async throws {
