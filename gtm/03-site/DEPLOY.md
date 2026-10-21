@@ -13,7 +13,7 @@ Cloudflare Pages serves this directory as-is.
 
 The live route is the manual Wrangler deploy in section 1 (observed 2026-10-20: the live index page lags `main`'s `gtm/03-site/index.html`, and GitHub shows no Cloudflare Pages deployments or statuses), so merging to `main` publishes nothing by itself.
 A deploy publishes everything under `gtm/03-site` on `main`, including any Waitlist change merged there.
-The Waitlist's production deploy, and the production Kit form's custom fields it needs, belong to slice 4 of `.claude/agent/tasks/prd-waitlist_261019.md`.
+The Waitlist went live with production deployment `fc6c12eb` on 2026-10-21 (from `main` 41c73df, after the captain saw the full live-versus-main difference and a preview); the record, including the production Kit form's custom fields, is `artifacts/reports/US-WL12/validation.md`.
 
 ## 1. Deploy from the CLI (Wrangler)
 
@@ -91,3 +91,9 @@ serves every request over HTTPS. That is why `_headers` sets **no**
   events post to the Convex site, so a verified CSP needs `connect-src` and `frame-src` for
   those origins.
   Authoring one is a follow-up.
+- **`/waitlist.js` cache time on reptoday.app (known deviation, 2026-10-21).** `_headers` gives the
+  script `max-age=0`, and `reptoday-site.pages.dev` serves exactly that, but reptoday.app's Cloudflare
+  zone serves it with `max-age=14400`, so a returning visitor's browser can keep an old script for up to
+  4 hours after a fix. The fix is a zone setting in the Cloudflare dashboard, not this directory:
+  Caching > Configuration > Browser Cache TTL "Respect Existing Headers", or a Cache Rule for
+  `/waitlist.js` that respects origin headers. Accepted for now.

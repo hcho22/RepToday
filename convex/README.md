@@ -518,8 +518,9 @@ mutation, `webEvents:logWebEvent`, into the same `events` table (no third table)
 - **Coverage.** `convex/webEvents.test.ts` (`npm test`, in process, no deployment) covers accepted and
   rejected bodies, the origin list, the two rate-limit scopes, the app route being unchanged and a
   failing store.
-- **Deploy.** Deploying this to the production deployment is a separate, credentialed, captain-approved
-  step; until then the pages carry the production URL but emit only from `reptoday.app`.
+- **Deploy.** Deployed to production on 2026-10-21 with the captain's approval (from `main` 41c73df; the
+  record is `artifacts/reports/US-WL12/validation.md`). The pages emit only from `reptoday.app`, never from a
+  preview or `localhost`.
 
 ## Read path: `reconcile:eventsForInstalls` (internal, US-T13 harness)
 
