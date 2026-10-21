@@ -8,7 +8,10 @@ because the email is dropped where the response is parsed. The two places an add
 What Kit's API does and does not do is recorded in `artifacts/reports/US-WL06/spike.md`: it cannot delete a
 subscriber, so `erase` unsubscribes, overwrites the address with a placeholder that is not an address, and
 blanks the first name and every custom field (decision D2). Kit's web app can delete one, which only the founder
-does; `exists` is how the tooling checks afterwards that a deleted id no longer answers. A list trails a fresh
+does; `exists` is how the tooling checks afterwards that a deleted id no longer answers. A single-record read
+carries Kit's own unsubscribe time (`canceled_at`, null until the subscriber unsubscribes; a list carries it only
+for `status=cancelled` with `include=canceled_at`), which `canceled_at` reads; Kit records no time for a spam
+complaint. A list trails a fresh
 write by up to a couple of minutes, a single-record read does not. A list returns a blank custom field as an empty
 string where a single-record read returns null, so a blank value is either.
 
@@ -243,6 +246,13 @@ class KitStore(object):
                                with_status=True)
         return status == 200
 
+    def canceled_at(self, subscriber_id):
+        """Kit's own time for the subscriber's unsubscribe (`canceled_at`, an ISO 8601 time), or None when the record
+        carries none."""
+        item = subscriber_in(self._call('read cancel time', 'GET', '/v4/subscribers/{}'.format(subscriber_id)))
+        value = item.get('canceled_at') if item is not None else None
+        return value if isinstance(value, str) else None
+
     def find_id_by_email(self, address):
         """The id of the one subscriber whose address is exactly `address` (ignoring case), or None."""
         wanted = address.strip().lower()
@@ -279,7 +289,7 @@ class KitStore(object):
 
 class SyntheticStore(object):
     """A store held in a JSON file, for tests: `{"subscribers": [{"id", "email", "first_name", "state", "created_at",
-    "fields"}]}`, the first name optional.
+    "canceled_at", "fields"}]}`, the first name and the cancel time optional.
     It behaves as the Kit store does, including what `erase` leaves behind, and is rewritten after every change so
     one process can leave work for the next. The file holds addresses, so it lives in a temporary directory a test
     makes and is never committed."""
@@ -341,6 +351,10 @@ class SyntheticStore(object):
         """Whether the record is still there; a test deletes it from the file as the founder does in Kit's web app."""
         return any(str(record['id']) == str(subscriber_id) for record in self._load()['subscribers'])
 
+    def canceled_at(self, subscriber_id):
+        value = self._record(self._load(), subscriber_id).get('canceled_at')
+        return value if isinstance(value, str) else None
+
     def find_id_by_email(self, address):
         wanted = address.strip().lower()
         found = [str(record['id']) for record in self._load()['subscribers']
@@ -395,6 +409,10 @@ class RestrictedStore(object):
     def exists(self, subscriber_id):
         self._allow(subscriber_id)
         return self._store.exists(subscriber_id)
+
+    def canceled_at(self, subscriber_id):
+        self._allow(subscriber_id)
+        return self._store.canceled_at(subscriber_id)
 
     def find_id_by_email(self, address):
         found = self._store.find_id_by_email(address)

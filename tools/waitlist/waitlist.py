@@ -4,7 +4,7 @@
     waitlist.py produce                      assign identifiers and write the anonymous view
     waitlist.py assign                       assign identifiers only
     waitlist.py sweep-unsubscribed [--live]  erase every sign-up Kit reports as unsubscribed or complained
-    waitlist.py sweep-retention [--live]     erase every sign-up past the launch-email date plus 30 days
+    waitlist.py sweep-retention [--live]     erase every sign-up past the launch-email date plus 25 days
     waitlist.py remove [--entry ID]          erase one sign-up, by entry identifier or an address typed at a prompt
     waitlist.py record-launch-email --sent-on YYYY-MM-DD
     waitlist.py tag LABEL ENTRY...           tag the named sign-ups inside Kit for a broadcast
@@ -21,8 +21,8 @@ macOS Keychain at run time (service `com.reptoday.waitlist.kit`, account `api-ke
 overridden with `WAITLIST_KIT_KEYCHAIN_SERVICE`), never from a file, argument or environment value.
 Output is counts, rule names, entry identifiers and Kit subscriber ids: never an address, an answer or the key.
 Kit's API cannot delete a subscriber, so every erasure is followed by the founder's delete in Kit's web app: the
-command that erased names the Kit subscriber ids, and `kit-deletes` lists every one still waiting until Kit no
-longer answers for it.
+command that erased names the Kit subscriber ids and the day to delete each by, and `kit-deletes` lists every one
+still waiting until Kit no longer answers for it.
 
 Options every command takes:
     --state-dir DIR          where the view, ledger, launch-email record and lock live
@@ -49,8 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wl_core  # noqa: E402
 from wl_common import (  # noqa: E402
     RETENTION_PASS_CAP, SWEEP_RESERVE_SECONDS, WaitlistError, RunLimitExceeded, RunLock, enable_test_faults,
-    ensure_private_dir, kit_delete_by, parse_day, require_directory_outside_work_trees, run_limit, state_dir,
-    today_local)
+    ensure_private_dir, parse_day, require_directory_outside_work_trees, run_limit, state_dir, today_local)
 from wl_store import KIT_SUBSCRIBER_PAGE, KitStore, RestrictedStore, SyntheticStore  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED, EXIT_LIMIT, EXIT_USAGE, EXIT_INTERNAL, EXIT_INTERRUPTED = 0, 1, 2, 3, 64, 70, 130
@@ -116,24 +115,25 @@ def command_assign(args):
     return locked_run(args, body)
 
 
-def sweep_status(name, counts, extra='', erased_on=None):
+def sweep_status(name, counts, directory, extra=''):
     mode = 'live' if counts['live'] else 'dry run, nothing deleted'
     say('{}: {} ({}) - due {}, erased {}, failed {}, left for the next run {}{}'.format(
         name, 'done' if not counts['failed'] and not counts['remaining'] else 'incomplete', mode,
         counts['due'], counts['erased'], counts['failed'], counts['remaining'], extra))
-    tell_kit_deletes(counts['erased_ids'], erased_on or today_local())
+    tell_kit_deletes(directory, counts['erased_ids'])
     return EXIT_FAILED if counts['failed'] or counts['remaining'] else EXIT_OK
 
 
-def tell_kit_deletes(ids, erased_on):
-    """Name the Kit subscriber ids the founder now deletes in Kit's web app, each with its page there (ids only,
-    never an address)."""
+def tell_kit_deletes(directory, ids):
+    """Name the Kit subscriber ids the founder now deletes in Kit's web app, each with the day the ledger lists it to
+    be deleted by and its page there (ids only, never an address)."""
     if ids:
-        say('kit-delete: delete {} erased sign-up{} in Kit\'s web app by {} (README, "Delete in Kit"): Kit subscriber id{} {}'.format(
-            len(ids), '' if len(ids) == 1 else 's', kit_delete_by(erased_on).isoformat(), '' if len(ids) == 1 else 's',
-            ', '.join(ids)))
+        delete_by = wl_core.Ledger(directory).load().awaiting_kit_delete
+        say('kit-delete: delete {} erased sign-up{} in Kit\'s web app (README, "Delete in Kit"): Kit subscriber id{} {}'.format(
+            len(ids), '' if len(ids) == 1 else 's', '' if len(ids) == 1 else 's', ', '.join(ids)))
         for subscriber_id in ids:
-            say('kit-delete: {}'.format(KIT_SUBSCRIBER_PAGE.format(subscriber_id)))
+            say('kit-delete: Kit subscriber id {} - delete by {} - {}'.format(
+                subscriber_id, delete_by[subscriber_id], KIT_SUBSCRIBER_PAGE.format(subscriber_id)))
 
 
 def after_erasure(store, directory, counts, soft_deadline):
@@ -147,7 +147,7 @@ def after_erasure(store, directory, counts, soft_deadline):
 def command_sweep_unsubscribed(args):
     def body(store, directory, soft_deadline):
         counts = wl_core.sweep_unsubscribed(store, directory, live=args.live, soft_deadline=soft_deadline)
-        status = sweep_status('sweep-unsubscribed', counts, ' (unsubscribed {}, spam complaints {})'.format(
+        status = sweep_status('sweep-unsubscribed', counts, directory, ' (unsubscribed {}, spam complaints {})'.format(
             counts['unsubscribed'], counts['complained']))
         return max(status, after_erasure(store, directory, counts, soft_deadline))
     return locked_run(args, body)
@@ -162,9 +162,9 @@ def retention_pass(args, as_of):
             return EXIT_OK, counts
         if counts['not_due']:
             say('sweep-retention: not due until {} - nothing deleted ({})'.format(
-                counts['deletion_date'], 'live' if counts['live'] else 'dry run'))
+                counts['erase_date'], 'live' if counts['live'] else 'dry run'))
             return EXIT_OK, counts
-        status = sweep_status('sweep-retention', counts, erased_on=as_of)
+        status = sweep_status('sweep-retention', counts, directory)
         return max(status, after_erasure(store, directory, counts, soft_deadline)), counts
     return locked_run(args, body)
 
@@ -210,14 +210,13 @@ def command_remove(args):
             raise WaitlistError('no address was typed')
 
     def body(store, directory, soft_deadline):
-        today = today_local()
         subscriber_id = wl_core.remove_signup(store, directory, entry=args.entry, address=address,
-                                              live=not args.dry_run, today=today)
+                                              live=not args.dry_run, today=today_local())
         if args.dry_run:
             say('remove: dry run - one sign-up matches exactly; nothing deleted')
             return EXIT_OK
         say('remove: erased one sign-up')
-        tell_kit_deletes([subscriber_id], today)
+        tell_kit_deletes(directory, [subscriber_id])
         return regenerate(store, directory, soft_deadline)
     return locked_run(args, body)
 
@@ -226,9 +225,9 @@ def command_record_launch_email(args):
     directory = state_dir(args.state_dir)
     require_directory_outside_work_trees(directory)
     ensure_private_dir(directory)
-    sent_on, deletes_on = wl_core.record_launch_email(directory, args.sent_on, today_local(), replace=args.replace)
-    say('record-launch-email: recorded {}; the retention sweep will delete every remaining sign-up on or after {}'.format(
-        sent_on.isoformat(), deletes_on.isoformat()))
+    sent_on, erases_on, delete_by = wl_core.record_launch_email(directory, args.sent_on, today_local(), replace=args.replace)
+    say('record-launch-email: recorded {}; the retention sweep will erase every remaining sign-up on or after {}, '
+        'each to be deleted in Kit\'s web app by {}'.format(sent_on.isoformat(), erases_on.isoformat(), delete_by.isoformat()))
     return EXIT_OK
 
 
@@ -261,9 +260,8 @@ def command_kit_deletes(args):
             'check failed {}, left unchecked {}'.format(counts['confirmed'], len(waiting), len(overdue), counts['failed'],
                                                         counts['unchecked']))
         for item in waiting:
-            say('kit-deletes: Kit subscriber id {} - erased {}, delete by {}{} - {}'.format(
-                item['id'], item['erased_on'], item['delete_by'], ' - OVERDUE' if item['overdue'] else '',
-                KIT_SUBSCRIBER_PAGE.format(item['id'])))
+            say('kit-deletes: Kit subscriber id {} - delete by {}{} - {}'.format(
+                item['id'], item['delete_by'], ' - OVERDUE' if item['overdue'] else '', KIT_SUBSCRIBER_PAGE.format(item['id'])))
         return EXIT_FAILED if overdue or counts['failed'] else EXIT_OK
     return locked_run(args, body)
 

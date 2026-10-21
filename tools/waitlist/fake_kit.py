@@ -4,9 +4,11 @@ real HTTP without ever reaching Kit (US-WL06 to US-WL10).
 Python 3 standard library only. It binds 127.0.0.1, keeps subscribers in memory, requires the API-key header a
 test gives it, and never prints a request. Its behavior follows what `artifacts/reports/US-WL06/spike.md` and the
 test-account probes showed Kit doing: `status=all` lists every state, a list is cursor-paginated, `PUT` merges the
-named custom fields and replaces the address when one is given, unsubscribing sets `cancelled`, a tag create is
-idempotent, a listing returns a blank custom field as an empty string where a single-record read returns null (as
-Kit's listing did on 2026-10-20), and there is no API delete (`DELETE` answers 404, as Kit's does). `delete` stands
+named custom fields and replaces the address when one is given, unsubscribing sets `cancelled` and stamps
+`canceled_at` (the spike saw Kit do both), a single-record read carries `canceled_at` while a listing carries it
+only for `status=cancelled` with `include=canceled_at` (Kit's API reference), a tag create is idempotent, a listing
+returns a blank custom field as an empty string where a single-record read returns null (as Kit's listing did on
+2026-10-20), and there is no API delete (`DELETE` answers 404, as Kit's does). `delete` stands
 in for the founder's delete in Kit's web app: afterwards the id answers 404. A state in `refuse_unsubscribe` makes
 the unsubscribe call answer 422, as Kit might for a record it already mails nothing. A test sets `mode` to `hang` (answers after a long pause), `error` (HTTP 500), `truncated` (an answer
 cut short of the length it states) or `busy` (HTTP
@@ -16,6 +18,7 @@ cut short of the length it states) or `busy` (HTTP
 import json
 import threading
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -42,13 +45,14 @@ class FakeKit(object):
 
     # Test setup.
 
-    def add(self, email, state='active', created_at='2026-10-02T10:00:00Z', **fields):
+    def add(self, email, state='active', created_at='2026-10-02T10:00:00Z', canceled_at=None, **fields):
         with self.lock:
             self._next_id += 1
             subscriber_id = self._next_id
             self.subscribers[subscriber_id] = {
                 'id': subscriber_id, 'first_name': None, 'email_address': email, 'state': state,
-                'created_at': created_at, 'fields': {name: fields.get(name) for name in FIELD_NAMES}}
+                'created_at': created_at, 'canceled_at': canceled_at,
+                'fields': {name: fields.get(name) for name in FIELD_NAMES}}
             return subscriber_id
 
     def get(self, subscriber_id):
@@ -140,7 +144,9 @@ class FakeKit(object):
                             return self._send(404)
                         if subscriber['state'] in fake.refuse_unsubscribe:
                             return self._send(422, {'errors': ['Subscriber cannot be unsubscribed']})
-                        subscriber['state'] = 'cancelled'
+                        if subscriber['state'] != 'cancelled':
+                            subscriber['state'] = 'cancelled'
+                            subscriber['canceled_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
                         return self._send(204)
                 if parts[:2] == ['v4', 'tags']:
                     if len(parts) == 2 and method == 'POST':
@@ -182,6 +188,9 @@ class FakeKit(object):
                 more = start + size < len(items)
                 listed = [dict(item, fields={key: '' if value is None else value
                                              for key, value in (item.get('fields') or {}).items()}) for item in chunk]
+                if query.get('status') != 'cancelled' or 'canceled_at' not in query.get('include', '').split(','):
+                    for item in listed:
+                        item.pop('canceled_at', None)
                 return self._send(200, {'subscribers': listed, 'pagination': {
                     'has_previous_page': start > 0, 'has_next_page': more,
                     'start_cursor': str(chunk[0]['id']) if chunk else None,

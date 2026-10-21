@@ -33,11 +33,11 @@ No horizontal scroll at either width.
 | What is collected: Kit's approximate location for a confirmed sign-up, deleted with the sign-up | US-WL06 finding (Kit's geolocation block); US-WL10 (the founder's delete in Kit's web app) |
 | Why: to confirm your address | OQ5 double opt-in (Kit's confirmation email, US-WL06 spike unknown 4) |
 | Why: to count without your address | US-WL07 (the anonymous view holds no address) |
-| Kept until 30 days after the launch email | US-WL10 (`record-launch-email`, the retention sweep) |
+| Kept until 30 days after the launch email | US-WL10 (`record-launch-email`, the retention sweep's erasure at the launch-email date plus 25 and the founder's delete in Kit by plus 30, checked by `kit-deletes`) |
 | The unsubscribe link in any waitlist email | US-WL06 spike unknown 5 (the confirmation email carries a working one); every waitlist email is sent from Kit (US-WL09 runbook) |
 | A message to the contact address | US-WL10 (`remove`, the mailbox cadence in the runbook) |
 | Marking a waitlist email as spam is a removal request | US-WL10 (the daily sweep erases a `complained` sign-up) |
-| Deleted within 7 days | US-WL10 (the daily scrub, then the founder's delete in Kit by the erasure day plus 5, checked by `kit-deletes`) |
+| Deleted within 7 days | US-WL10 (the daily scrub, then the founder's delete in Kit by 7 days after the request - Kit's unsubscribe time, else the last run that saw the sign-up subscribed - checked by `kit-deletes`) |
 | Only the founder and Kit see the address; never sold or shared | OQ1 Option A (the form posts straight to Kit), US-WL08 (no credential or export in any checkout), US-WL09 (`tag` and `show` on the founder's Mac) |
 | Kit's reCAPTCHA check | D4 (the form hosts Kit's guard iframe) |
 

@@ -57,4 +57,5 @@ Checked read-only on the Kit **test** account (account 2956640, test form 100705
 | `check_kit_deletes` against the real account, with a scratch ledger listing 4348812537 as awaiting its delete | Before the delete: the shell stayed waiting (delete by 2026-10-25) and an id the account does not hold was confirmed. After: `confirmed 1, waiting []`, and the ledger's awaiting list is empty while its tombstone stays. |
 
 So Kit's web-app delete removes a subscriber completely, and the tooling's check sees it.
+The `delete by 2026-10-25` above is that run's erasure-plus-5 rule; since 2026-10-21 each delete-by day is counted from when its privacy promise starts (README, "Delete in Kit"), and the retention sweep erases at the launch-email date plus 25 rather than the plus 30 the runs above record, so its Kit delete still lands by plus 30.
 The captain reached the shell through its own page (`https://app.kit.com/subscribers/<id>`), so the runbook makes that the route and the commands print each id's page; the list's status filter set to Cancelled or All is the fallback, since the default list hides unsubscribed subscribers.
