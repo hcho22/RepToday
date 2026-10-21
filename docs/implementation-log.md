@@ -1707,6 +1707,7 @@ Two of the captain's answers after slice 3 change removal and retention; nothing
 
 ## Waitlist privacy section (US-WL11, 2026-10-20)
 
-`gtm/03-site/privacy.html` now carries the captain-approved Waitlist wording ("privacy - approve with b"); nothing is published until the production deploy, which also sets "Last updated".
+`gtm/03-site/privacy.html` now carries the captain-approved Waitlist wording ("privacy - approve with b"); nothing is published until the production deploy.
+"Last updated" reads October 21, 2026, the publication date the captain set on 2026-10-21 when he approved publishing the site.
 Section 10 is "This website" (the anonymous counts, the session-storage tag, the hosting provider's analytics), the new section 11 "The waitlist" (`#waitlist`) states the five approved points with the spam-complaint and Kit-location answers, and the old sections 11-14 are 12-15; no "section N" reference pointed at a renumbered section.
 [The validation record](../artifacts/reports/US-WL11/validation.md) traces each sentence to the mechanism that makes it true.
