@@ -169,17 +169,27 @@ Such a run fails every step, saying "the Keychain is locked, so the Kit API key 
 Every step is safe to repeat, and an hour with nothing due costs a few read calls to Kit.
 A missing Keychain item says "no Kit API key in the Keychain" instead, which no later run fixes.
 
-Install it (the captain's step; nothing in the repository does this), from the checkout the job runs, which is the job-only clone `~/Developer/RepToday-waitlist-job` on `main` (the captain's choice, 2026-10-21, so no other work moves the job's code):
+Install it (the captain's step; nothing in the repository does this).
+The job runs from the job-only clone `~/Developer/RepToday-waitlist-job` on `main` (the captain's choice, 2026-10-21, so no other work moves the job's code), and every line names that clone, so the steps install the same job from whatever directory they are typed in:
 
 ```
+REPO=~/Developer/RepToday-waitlist-job
 mkdir -p ~/Library/Logs/RepToday
-sed -e "s|__REPO_ROOT__|$(git rev-parse --show-toplevel)|" -e "s|__HOME__|$HOME|" \
-  tools/waitlist/launchd/app.reptoday.waitlist-daily.plist > ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist
+sed -e "s|__REPO_ROOT__|$REPO|" -e "s|__HOME__|$HOME|" \
+  "$REPO/tools/waitlist/launchd/app.reptoday.waitlist-daily.plist" > ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist
 launchctl kickstart gui/$(id -u)/app.reptoday.waitlist-daily
 ```
 
-To update it after a merge: `git -C ~/Developer/RepToday-waitlist-job pull --ff-only`, then `launchctl bootout gui/$(id -u)/app.reptoday.waitlist-daily` and the `sed` and `bootstrap` lines above again.
+To update it after a merge (the job stays installed if the pull fails):
+
+```
+REPO=~/Developer/RepToday-waitlist-job
+git -C "$REPO" pull --ff-only && launchctl bootout gui/$(id -u)/app.reptoday.waitlist-daily && \
+  sed -e "s|__REPO_ROOT__|$REPO|" -e "s|__HOME__|$HOME|" \
+    "$REPO/tools/waitlist/launchd/app.reptoday.waitlist-daily.plist" > ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist && \
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist
+```
 The Keychain item must let `security` read it without a prompt when the job runs.
 The job writes counts only to `~/Library/Logs/RepToday/waitlist-daily.log`.
 

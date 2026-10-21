@@ -1075,9 +1075,9 @@ esac
 
 
 class KeychainRead(unittest.TestCase):
-    """The Kit key read, with a stand-in `security` first on PATH: a missing item, a locked Keychain (this Mac's
-    login Keychain locks on sleep, so a run that starts on wake meets it) and any other refusal are told apart,
-    and no message ever holds the key."""
+    """The Kit key read, with a stand-in `security` first on PATH (or none on PATH): a missing item, a locked
+    Keychain (this Mac's login Keychain locks on sleep, so a run that starts on wake meets it) and any other
+    refusal are told apart, and no message ever holds the key."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='waitlist-keychain-'))
@@ -1111,6 +1111,14 @@ class KeychainRead(unittest.TestCase):
 
     def test_a_missing_item_says_it_is_missing(self):
         text = self.failure('missing')
+        self.assertIn('no Kit API key in the Keychain', text)
+        self.assertNotIn('locked', text)
+
+    def test_no_security_tool_says_there_is_no_key(self):
+        empty = self.tmp / 'empty'
+        empty.mkdir()
+        self.env['PATH'] = str(empty)
+        text = self.failure('found')
         self.assertIn('no Kit API key in the Keychain', text)
         self.assertNotIn('locked', text)
 
@@ -1367,12 +1375,6 @@ class KitClient(unittest.TestCase):
                 KitStore(KEY, base_url=url)
         KitStore(KEY, base_url='https://api.kit.com')
         KitStore(KEY, base_url='http://127.0.0.1:9')
-
-    def test_a_missing_keychain_item_is_an_error_that_names_the_item_not_a_key(self):
-        with self.assertRaises(StoreError) as raised:
-            wl_store.read_api_key('com.reptoday.waitlist.no-such-item-for-the-test')
-        self.assertIn('no Kit API key in the Keychain', str(raised.exception))
-        self.assertIn('com.reptoday.waitlist.no-such-item-for-the-test', str(raised.exception))
 
     def test_a_sweep_through_the_kit_client_deletes_only_what_it_may(self):
         gone = self.fake.add(address('gone'), state='cancelled', fit='lost-the-routine')
