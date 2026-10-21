@@ -96,7 +96,7 @@ Two options let a command act on a shared test account without touching what a t
 | `record-launch-email --sent-on YYYY-MM-DD [--replace]` | Records the launch-email date once. Refuses a future date, a date more than 7 days before today, a malformed date, and a second record without `--replace`. Prints the day the retention sweep will erase on (the date plus 25) and the day to delete those sign-ups in Kit's web app by (the date plus 30). |
 | `tag LABEL ENTRY...` | Tags the named confirmed sign-ups inside Kit, all or nothing. |
 | `show ENTRY` | Prints one address, to an interactive terminal only. |
-| `kit-deletes` | Lists every erased sign-up still to be deleted in Kit's web app (Kit subscriber id, the day to delete it by, its page there) and stops listing each one Kit no longer answers for. It cannot delete anything. Exits 1 when an id is past its delete-by day. |
+| `kit-deletes` | Lists every erased sign-up still to be deleted in Kit's web app (Kit subscriber id, the day to delete it by, its page there) and stops listing each one Kit no longer answers for. It cannot delete anything. Exits 1 when an id is past its delete-by day or a check of one failed. |
 | `daily [--live]` | Both sweeps, then the producer, then `kit-deletes`, the retention sweep in repeated passes. |
 
 Both sweeps are dry runs unless `--live` is given.
@@ -145,7 +145,7 @@ Every removal and the retention deletion end with the founder's delete in Kit's 
 
 The tooling cannot delete a Kit subscriber, and it never tries; it names the ids and checks afterwards.
 
-1. **Which ids.** Every command that erases prints `kit-delete: delete N erased sign-ups in Kit's web app: Kit subscriber ids ...`, then one line per id with the day to delete it by and its page in Kit's web app (`https://app.kit.com/subscribers/<id>`). `waitlist.py kit-deletes` lists every id still waiting the same way. The daily job ends with the same check, so its log lists them too. Only ids are printed, never an address.
+1. **Which ids.** Every command that erases prints `kit-delete: delete N erased sign-ups in Kit's web app (README, "Delete in Kit"): Kit subscriber ids ...`, then one line per id with the day to delete it by and its page in Kit's web app (`https://app.kit.com/subscribers/<id>`). `waitlist.py kit-deletes` lists every id still waiting the same way. The daily job ends with the same check, so its log lists them too. Only ids are printed, never an address.
 2. **By when.** The day is counted from when the privacy promise starts, never from the day of the erasure, and when two promises apply the earlier day wins:
    - **Unsubscribe or spam complaint:** 7 days after the person asked. That is the day of Kit's own unsubscribe time (`canceled_at`, which Kit records for an unsubscribe and not for a spam complaint), else the last day a run of the tooling still saw the sign-up subscribed (the ledger keeps it), else the day the person signed up. A Mac that slept through daily runs therefore never moves the day later: a request first seen after missed runs can already be due or past due when it is erased.
    - **A message to the contact mailbox (`remove`):** the same day, so the delete happens in the same sitting; watching the mailbox at least every 5 days keeps that within 7 days of the message.

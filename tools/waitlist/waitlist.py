@@ -34,8 +34,9 @@ Options every command takes:
 Both sweeps are dry runs unless `--live` is given. `--as-of YYYY-MM-DD` (retention only) moves the sweep's clock
 and is accepted only in a dry run or against a synthetic store.
 
-Exit status: 0 done, 1 a step failed (for `kit-deletes`: an id is past its delete-by day), 2 the candidate view failed the checker (the old file is untouched),
-3 a run passed its time limit, 64 usage, 70 internal error, 130 interrupted (Ctrl-C stops the whole command).
+Exit status: 0 done, 1 a step failed (for `kit-deletes`: an id is past its delete-by day or a check of one
+failed), 2 the candidate view failed the checker (the old file is untouched), 3 a run passed its time limit,
+64 usage, 70 internal error, 130 interrupted (Ctrl-C stops the whole command).
 """
 import argparse
 import getpass

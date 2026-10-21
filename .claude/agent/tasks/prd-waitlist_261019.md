@@ -593,7 +593,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] "Last updated" carries the publication date.
   Open: set in the same change as the captain-approved production deploy (US-WL12).
 - [x] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "the unsubscribe link in any waitlist email" -> US-WL10 and the US-WL06 spike's confirmation-message result; "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
-- [x] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag about the missing retention schedule is updated to say what now exists and what is still unreviewed.
+- [x] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag (section 13 after the renumbering) about the missing retention schedule is updated to say what now exists and what is still unreviewed.
 - [ ] The section is published no later than the form (US-WL12 orders the deploy).
 - [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
 
@@ -1102,6 +1102,7 @@ Every proposal is plain, identity-framed and avoids loss framing.
 ## Appendix C: draft Waitlist section for `reptoday.app/privacy`
 
 A draft for the captain's edit and the legal pass the page already requires; the bracketed part follows OQ1 and OQ5.
+The captain approved an edited version on 2026-10-20 (US-WL11); that wording is section 11 of `gtm/03-site/privacy.html`, and this draft stays as the record of what was proposed.
 It uses the policy's own structure (a heading, sub-headings, plain lists) and makes no promise beyond the five approved points.
 
 > **11. The waitlist**
