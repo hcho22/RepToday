@@ -97,12 +97,11 @@ def fields_of(item):
     return fields if isinstance(fields, dict) else {}
 
 
-# What `security find-generic-password` answers when the item is not there (errSecItemNotFound), and what it says
-# when the Keychain is locked and it may not ask for the password (errSecInteractionNotAllowed: this Mac's login
-# Keychain locks on sleep, so a scheduled run that starts on wake, before the founder unlocks, meets it).
+# What `security find-generic-password` answers when the item is not there (errSecItemNotFound), and what it
+# answers when the Keychain is locked and it may not ask for the password (errSecInteractionNotAllowed: this Mac's
+# login Keychain locks on sleep, so a scheduled run that starts on wake, before the founder unlocks, meets it).
 SECURITY_ITEM_NOT_FOUND = 44
 SECURITY_LOCKED_EXITS = (36, 51, 128)
-SECURITY_LOCKED_TEXT = 'user interaction is not allowed'
 
 
 def read_api_key(service=None):
@@ -113,7 +112,7 @@ def read_api_key(service=None):
     item = '(service {}, account {})'.format(service, KEYCHAIN_ACCOUNT)
     try:
         done = subprocess.run(['security', 'find-generic-password', '-s', service, '-a', KEYCHAIN_ACCOUNT, '-w'],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=NETWORK_TIMEOUT_SECONDS * 3)
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=NETWORK_TIMEOUT_SECONDS * 3)
     except subprocess.TimeoutExpired:
         # `security` waited on an unlock dialog nobody answered.
         raise StoreError('the Keychain is locked, so the Kit API key {} could not be read; nothing was changed and '
@@ -124,10 +123,9 @@ def read_api_key(service=None):
     key = done.stdout.decode('utf-8', 'replace').strip() if done.returncode == 0 else ''
     if key:
         return key
-    said = done.stderr.decode('utf-8', 'replace').lower()
     if done.returncode == SECURITY_ITEM_NOT_FOUND:
         raise StoreError('no Kit API key in the Keychain {}'.format(item))
-    if done.returncode in SECURITY_LOCKED_EXITS or SECURITY_LOCKED_TEXT in said:
+    if done.returncode in SECURITY_LOCKED_EXITS:
         raise StoreError('the Keychain is locked, so the Kit API key {} could not be read; nothing was changed and '
                          'the next run tries again'.format(item))
     raise StoreError('the Kit API key {} could not be read (security exit {})'.format(item, done.returncode))

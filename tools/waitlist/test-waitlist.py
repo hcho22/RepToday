@@ -1067,7 +1067,6 @@ case "$WAITLIST_FAKE_SECURITY" in
   found) printf '%s\\n' "$WAITLIST_FAKE_KEY"; exit 0 ;;
   missing) echo 'security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.' >&2; exit 44 ;;
   locked) echo 'security: SecKeychainSearchCopyNext: User interaction is not allowed.' >&2; exit 36 ;;
-  locked-text) echo 'security: SecKeychainSearchCopyNext: User interaction is not allowed.' >&2; exit 1 ;;
   hang) sleep 30 ;;
   *) echo 'security: something else' >&2; exit 9 ;;
 esac
@@ -1123,10 +1122,9 @@ class KeychainRead(unittest.TestCase):
         self.assertNotIn('locked', text)
 
     def test_a_locked_keychain_says_it_is_locked(self):
-        for answer in ('locked', 'locked-text'):
-            text = self.failure(answer)
-            self.assertIn('the Keychain is locked', text, answer)
-            self.assertNotIn('no Kit API key', text, answer)
+        text = self.failure('locked')
+        self.assertIn('the Keychain is locked', text)
+        self.assertNotIn('no Kit API key', text)
 
     def test_a_read_that_waits_on_an_unlock_dialog_ends_and_says_locked(self):
         original = wl_store.NETWORK_TIMEOUT_SECONDS
