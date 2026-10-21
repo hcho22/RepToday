@@ -50,11 +50,19 @@ RETENTION_PASS_CAP = 20
 # Every network call carries its own timeout.
 NETWORK_TIMEOUT_SECONDS = 20
 
-# Removal and retention (OQ13, FR-43, FR-44).
+# Removal and retention (OQ13, FR-42, FR-43, FR-44). The privacy policy keeps a sign-up until 30 days after the
+# launch email and deletes one within 7 days of a removal request. Kit's API cannot delete a subscriber, so each
+# promise ends with the founder's delete in Kit's web app (the captain's decision, 2026-10-20), and the day the
+# tooling sets for that delete is counted from the day the promise is (the captain's decision, 2026-10-21): the
+# launch-email date plus 30, or the day the person asked plus 7, whichever comes first.
 RETENTION_DAYS = 30
+REMOVAL_DAYS = 7
+# The retention sweep erases every remaining sign-up this many days after the launch email, which leaves the
+# founder the rest of the 30 days for the delete in Kit's web app.
+RETENTION_ERASE_DAYS = 25
 # The launch-email date the founder records must be today or a few days before it. A date further back
-# would put the retention deletion in the past or a day or two away, and the sweep deletes every
-# sign-up the morning after, so a mistyped date is refused rather than recorded.
+# would bring the retention erasure, and the delete in Kit after it, close or into the past, and the sweep
+# erases every sign-up the morning after, so a mistyped date is refused rather than recorded.
 LAUNCH_WINDOW_DAYS = 7
 
 ENTRY_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -304,21 +312,43 @@ def parse_day(text):
     return parsed if parsed.isoformat() == text else None
 
 
-def utc_day_of(timestamp):
-    """The UTC date of an ISO 8601 time that states its offset, or None."""
+def moment_of(timestamp):
+    """An ISO 8601 time that states its offset, as an aware `datetime`, or None."""
     if not isinstance(timestamp, str):
         return None
     try:
         moment = datetime.fromisoformat(timestamp.strip().replace('Z', '+00:00'))
     except ValueError:
         return None
-    if moment.tzinfo is None:
-        return None
-    return moment.astimezone(timezone.utc).date()
+    return moment if moment.tzinfo is not None else None
 
 
-def deletion_date(sent_on):
+def utc_day_of(timestamp):
+    """The UTC date of an ISO 8601 time that states its offset, or None."""
+    moment = moment_of(timestamp)
+    return moment.astimezone(timezone.utc).date() if moment is not None else None
+
+
+def local_day_of(timestamp):
+    """The Mac's local date of an ISO 8601 time that states its offset, or None: the calendar `today_local` and
+    every delete-by day are counted in."""
+    moment = moment_of(timestamp)
+    return moment.astimezone().date() if moment is not None else None
+
+
+def retention_erase_date(sent_on):
+    """The day the retention sweep erases every remaining sign-up."""
+    return sent_on + timedelta(days=RETENTION_ERASE_DAYS)
+
+
+def retention_delete_by(sent_on):
+    """The last day the founder deletes in Kit's web app a sign-up kept until the retention date."""
     return sent_on + timedelta(days=RETENTION_DAYS)
+
+
+def removal_delete_by(asked_on):
+    """The last day the founder deletes in Kit's web app a sign-up whose holder asked for removal on `asked_on`."""
+    return asked_on + timedelta(days=REMOVAL_DAYS)
 
 
 def validate_launch_date(text, today):
@@ -332,11 +362,12 @@ def validate_launch_date(text, today):
         raise WaitlistError('the launch email cannot have been sent in the future (today is {})'.format(today.isoformat()))
     if (today - sent_on).days > LAUNCH_WINDOW_DAYS:
         raise WaitlistError(
-            'that date is more than {} days ago; recording it would delete every sign-up on {} (retention is {} days '
-            'after the launch email), so it is refused'.format(LAUNCH_WINDOW_DAYS, deletion_date(sent_on).isoformat(), RETENTION_DAYS))
+            'that date is more than {} days ago; recording it would erase every sign-up on {} (the retention sweep erases '
+            '{} days after the launch email), so it is refused'.format(
+                LAUNCH_WINDOW_DAYS, retention_erase_date(sent_on).isoformat(), RETENTION_ERASE_DAYS))
     return sent_on
 
 
 def retention_due(sent_on, as_of):
-    """Whether the retention sweep deletes on `as_of`: on or after the launch-email date plus 30 days."""
-    return as_of >= deletion_date(sent_on)
+    """Whether the retention sweep erases on `as_of`: on or after the launch-email date plus 25 days."""
+    return as_of >= retention_erase_date(sent_on)

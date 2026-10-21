@@ -43,3 +43,19 @@ Shown above: `remove` by entry or by an address typed at a pseudo-terminal promp
 - **A removal request is erased within 7 days.** The mechanisms are built and proven; the headroom depends on the installed daily job and the mailbox cadence, shown in the rehearsal.
 - **Both sweeps run live in the installed schedule.** `launchd/app.reptoday.waitlist-daily.plist` runs `daily --live`, but nothing was installed or loaded; recording that the installed schedule ran is slice 4's.
 - **Geolocation.** Kit keeps a derived geolocation block for a confirmed sign-up that its API cannot clear (US-WL06's record), so the erased shell is not entirely empty until the captain decides.
+
+## The founder's delete in Kit (amendment, 2026-10-20 to 2026-10-21)
+
+Kit's API cannot delete a subscriber, so removal and retention end with the founder deleting the scrubbed record in Kit's web app, and `waitlist.py kit-deletes` checks afterwards (README, "Delete in Kit").
+Checked read-only on the Kit **test** account (account 2956640, test form 10070589), ids and counts only:
+
+| Check | Result |
+| --- | --- |
+| Before the delete | 40 subscribers listed (1 active, 1 inactive, 38 cancelled), 35 read as scrubbed shells (once the listing's empty-string blanks were read as blank). A single-record read of an id the account does not hold answers `404`. |
+| The captain's first try | Shell 4348812537 still answered (`200`, still listed) at 11 reads over 5 minutes and again about 3 hours later. Kit's subscriber list hides unsubscribed subscribers by default, so the shell was not where he looked. |
+| The captain's delete of shell 4348812537 in Kit's web app | At 02:57 UTC on 2026-10-21 the id answers `404` and is gone from the listing (38 listed: 37 cancelled, 1 inactive, 34 shells). |
+| `check_kit_deletes` against the real account, with a scratch ledger listing 4348812537 as awaiting its delete | Before the delete: the shell stayed waiting (delete by 2026-10-25) and an id the account does not hold was confirmed. After: `confirmed 1, waiting []`, and the ledger's awaiting list is empty while its tombstone stays. |
+
+So Kit's web-app delete removes a subscriber completely, and the tooling's check sees it.
+The `delete by 2026-10-25` above is that run's erasure-plus-5 rule; since 2026-10-21 each delete-by day is counted from when its privacy promise starts (README, "Delete in Kit"), and the retention sweep erases at the launch-email date plus 25 rather than the plus 30 the runs above record, so its Kit delete still lands by plus 30.
+The captain reached the shell through its own page (`https://app.kit.com/subscribers/<id>`), so the runbook makes that the route and the commands print each id's page; the list's status filter set to Cancelled or All is the fallback, since the default list hides unsubscribed subscribers.

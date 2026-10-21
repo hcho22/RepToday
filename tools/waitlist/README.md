@@ -12,7 +12,7 @@ The Mac-side commands (`waitlist.py`) run on the founder's Mac; the system `/usr
 | `check-site.py`, `test-check-site.py` | Static checks on the landing pages: the four placements are one form, the approved strings and field names, no `mailto:` join, no stray address, the Source links, no top-level 404 page. |
 | `test-source.cjs` | Node tests that run the page script (`gtm/03-site/waitlist.js`) against a fake page: the Source logic, the posted field names, Kit's answers and guard, and the two web events. |
 | `stub-receiver.py` | A local stand-in for Kit's sign-up endpoint and the web-event sink, so no test posts to a real one. |
-| `waitlist.py` | The operator command: `produce`, `assign`, `sweep-unsubscribed`, `sweep-retention`, `remove`, `record-launch-email`, `tag`, `show` and `daily`. Documented below. |
+| `waitlist.py` | The operator command: `produce`, `assign`, `sweep-unsubscribed`, `sweep-retention`, `remove`, `record-launch-email`, `tag`, `show`, `kit-deletes` and `daily`. Documented below. |
 | `wl_common.py`, `wl_store.py`, `wl_core.py` | Its parts: paths, the run lock, the run's time limit and atomic writes; the Kit and synthetic stores; the ledger, identifier assignment, the view producer, the sweeps and the send-time lookup. |
 | `fake_kit.py`, `test-waitlist.py` | A local fake of the part of Kit's v4 API the tooling uses, and the tests (store logic, the real Kit client over HTTP to the fake, and the command as a subprocess, including a crash, concurrent runs, a hung run and a pseudo-terminal). |
 | `launchd/app.reptoday.waitlist-daily.plist` | The daily job's definition, for slice 4 to install. Nothing installs it from the repository. |
@@ -53,7 +53,7 @@ Changing a tag after the links are posted means the old links stop recording, so
 ## The Mac-side commands
 
 `tools/waitlist/waitlist.py` is the one command.
-It reads Kit through its API with a key from the macOS Keychain, keeps its own state in one owner-only directory, and prints counts, rule names and entry identifiers, never an address, an answer or the key.
+It reads Kit through its API with a key from the macOS Keychain, keeps its own state in one owner-only directory, and prints counts, rule names, entry identifiers and Kit subscriber ids, never an address, an answer or the key.
 Every example below is a command on the founder's Mac; none runs in CI or against anything but a synthetic store or the Kit test account.
 
 ### State and credentials
@@ -64,7 +64,7 @@ It is created owner-only (`0700`) and holds four things, each address-free and e
 | File | What it is |
 | --- | --- |
 | `waitlist-view.json` | The anonymous view gr0wthlab reads (format `1`: `view`, `generated_at`, `entries`; each entry `entry`, `source`, `fit`, `beta_opt_in`, `signed_up_on`). Its path is the one gr0wthlab's `waitlist.view.local_path` records. |
-| `ledger.json` | The producer's own record of which entry identifier it gave each Kit subscriber (decision D1), the Source first seen for it (OQ11), and the ids it has erased. Kit subscriber ids and entry identifiers only. The producer trusts only this file: a public post can set Kit's `entry` field, so the producer resets Kit's value to the ledger's. Losing the file means new identifiers, which the captain accepted. |
+| `ledger.json` | The producer's own record of which entry identifier it gave each Kit subscriber (decision D1), the Source first seen for it (OQ11), the last day a run saw it still subscribed, the ids it has erased, and the erased ids still to be deleted in Kit's web app with the day to delete each by. Kit subscriber ids, entry identifiers and dates only. The producer trusts only this file: a public post can set Kit's `entry` field, so the producer resets Kit's value to the ledger's. Losing the file means new identifiers, which the captain accepted. |
 | `launch-email.json` | The launch-email date, recorded once (OQ13). |
 | `.run.lock` | The one lock every command takes, so no two runs overlap. The kernel drops it when a process ends however it ends. |
 
@@ -90,26 +90,27 @@ Two options let a command act on a shared test account without touching what a t
 | --- | --- |
 | `produce [--output PATH]` | Lists Kit (every state), gives each stored sign-up that lacks an identifier one (16 characters from the 62-letter-and-digit alphabet, about 95 bits, from the system's secure random source), writes it back to Kit's `entry` field, projects the confirmed sign-ups into the view, runs `check-view.py`'s own code over the candidate, and replaces the file only if it passes. An unconfirmed sign-up (Kit state `inactive`) and an unsubscribed one are never projected. `fit` outside the three tags is `null`, `source` outside the four is `unknown`, `beta_opt_in` is `true` only for the stored string `true`, `signed_up_on` is the UTC date of Kit's creation time, and entries are ordered by `signed_up_on` then entry. |
 | `assign` | The identifier assignment alone. |
-| `sweep-unsubscribed [--live]` | Erases every sign-up Kit reports as unsubscribed (state `cancelled`) that still holds an address or an answer. |
-| `sweep-retention [--live]` | Erases every remaining sign-up, in any Kit state (`bounced` and `complained` included), on or after the recorded launch-email date plus 30 days. With no date recorded it deletes nothing and exits 0. One run erases what fits in its time limit; `daily` repeats it (below). |
+| `sweep-unsubscribed [--live]` | Erases every sign-up whose holder asked Kit for removal and that still holds an address or an answer: unsubscribed (state `cancelled`) or a spam complaint about a waitlist email (state `complained`), which the captain decided is a removal request too. A bounced sign-up (`bounced`) is not one; it waits for the retention sweep. |
+| `sweep-retention [--live]` | Erases every remaining sign-up, in any Kit state (`bounced` and `complained` included), on or after the recorded launch-email date plus 25 days, so the founder's delete in Kit's web app falls by the launch-email date plus 30, the day the privacy policy keeps a sign-up until. With no date recorded it deletes nothing and exits 0. One run erases what fits in its time limit; `daily` repeats it (below). |
 | `remove [--entry ID] [--dry-run]` | Erases one sign-up: by entry identifier, or by an address typed at a prompt that is never shown, never an argument and refused when stdin is not a terminal. The match is exact. |
-| `record-launch-email --sent-on YYYY-MM-DD [--replace]` | Records the launch-email date once. Refuses a future date, a date more than 7 days before today, a malformed date, and a second record without `--replace`. Prints the date the retention sweep will delete on. |
+| `record-launch-email --sent-on YYYY-MM-DD [--replace]` | Records the launch-email date once. Refuses a future date, a date more than 7 days before today, a malformed date, and a second record without `--replace`. Prints the day the retention sweep will erase on (the date plus 25) and the day to delete those sign-ups in Kit's web app by (the date plus 30). |
 | `tag LABEL ENTRY...` | Tags the named confirmed sign-ups inside Kit, all or nothing. |
 | `show ENTRY` | Prints one address, to an interactive terminal only. |
-| `daily [--live]` | Both sweeps, then the producer, the retention sweep in repeated passes. |
+| `kit-deletes` | Lists every erased sign-up still to be deleted in Kit's web app (Kit subscriber id, the day to delete it by, its page there) and stops listing each one Kit no longer answers for. It cannot delete anything. Exits 1 when an id is past its delete-by day or a check of one failed. |
+| `daily [--live]` | Both sweeps, then the producer, then `kit-deletes`, the retention sweep in repeated passes. |
 
 Both sweeps are dry runs unless `--live` is given.
 `--as-of YYYY-MM-DD` moves the retention sweep's clock for a dry run or a synthetic store; it is refused with `--live` against Kit.
 Every deletion is followed, in the same run and under the same lock, by a view generated from a store read made after it.
 
-### Erase, not delete
+### Erase, then delete in Kit
 
 Kit's API cannot delete a subscriber (US-WL06 spike, decision D2).
 `erase` unsubscribes the sign-up, overwrites its address with `removed-<subscriber id>` (not an address) and blanks the first name and every custom field the record holds (the four this tooling names and any other the account has), then reads the record back and refuses to call it erased unless the address, the name and every field are gone and Kit mails it nothing.
-What Kit keeps is an empty shell: its id, creation time, its state (`cancelled`, or `bounced` or `complained`, which Kit also never mails) and its cancel time.
-Open finding (2026-10-20, slice 3): for a sign-up that has confirmed, Kit also stores a geolocation derived from the visitor's connection (city, state, country, latitude and longitude), and its API accepts a write to that block and ignores it, so the scrub cannot clear it.
-That block stays on the shell.
-The captain decides before the privacy wording ships (slice 4) whether to accept it, look for a dashboard erase, or say so in the policy.
+A record Kit already mails nothing (`bounced`, `complained`) may refuse the unsubscribe call; the scrub then goes ahead and the read-back decides.
+What the API leaves is a shell: its id, creation time, its state (`cancelled`, or `bounced` or `complained`, which Kit also never mails), its cancel time, and, for a sign-up that confirmed, the approximate location Kit derived from the visitor's connection (city, region, country, latitude and longitude), which its API accepts a write to and ignores.
+Kit's web app can delete a subscriber completely (the captain checked it on the test account, 2026-10-20), so the founder deletes every shell there; see "Delete in Kit" below.
+A Kit listing returns a blank custom field as an empty string where a single-record read returns null; the tooling reads either as no value.
 
 ### Runs end, and never block each other
 
@@ -132,14 +133,31 @@ Every waitlist email carries Kit's unsubscribe link: send the launch email and t
 
 ### Removal and retention runbook
 
+Every removal and the retention deletion end with the founder's delete in Kit's web app (below), by a day that falls inside the privacy policy's promise for it: 7 days from the removal request, or 30 days from the launch email, whichever comes first.
+
 - **Unsubscribe link.** Kit marks the sign-up `cancelled`. The daily sweep erases it, and the view that follows omits it, within a day.
-- **A message to the contact mailbox asking to be removed.** The founder watches that mailbox at least every 5 days while the waitlist is open, so the 7-day promise has headroom. For a message that names an address, the founder runs `waitlist.py remove` and types the address at the prompt; if it reports that no sign-up has that address, the founder replies that nothing is held under it.
-- **Launch email.** After sending it, the founder runs `waitlist.py record-launch-email --sent-on YYYY-MM-DD` once, with the day it went out. The command prints the day the retention sweep will delete every remaining sign-up. It refuses a date more than 7 days back so that a mistyped date can never schedule the deletion for tomorrow.
+- **Spam complaint.** A person who marks a waitlist email as spam is asking to hear no more: Kit marks the sign-up `complained` and the daily sweep erases it exactly as it does an unsubscribed one. A bounced sign-up is kept until the retention date.
+- **A message to the contact mailbox asking to be removed.** The founder watches that mailbox at least every 5 days while the waitlist is open, so the 7-day promise has headroom. For a message that names an address, the founder runs `waitlist.py remove` and types the address at the prompt, then deletes the id it names in Kit's web app in the same sitting; if it reports that no sign-up has that address, the founder replies that nothing is held under it.
+- **Launch email.** After sending it, the founder runs `waitlist.py record-launch-email --sent-on YYYY-MM-DD` once, with the day it went out. The command prints the day the retention sweep will erase every remaining sign-up (25 days after it) and the day to have deleted them in Kit's web app by (30 days after it, the policy's retention date). It refuses a date more than 7 days back so that a mistyped date can never schedule the erasure for tomorrow.
 - **Before any date is recorded** the retention sweep deletes nothing and exits 0, while the unsubscribed sweep and the view still run every day.
+
+### Delete in Kit
+
+The tooling cannot delete a Kit subscriber, and it never tries; it names the ids and checks afterwards.
+
+1. **Which ids.** Every command that erases prints `kit-delete: delete N erased sign-ups in Kit's web app (README, "Delete in Kit"): Kit subscriber ids ...`, then one line per id with the day to delete it by and its page in Kit's web app (`https://app.kit.com/subscribers/<id>`). `waitlist.py kit-deletes` lists every id still waiting the same way. The daily job ends with the same check, so its log lists them too. Only ids are printed, never an address.
+2. **By when.** The day is counted from when the privacy promise starts, never from the day of the erasure, and when two promises apply the earlier day wins:
+   - **Unsubscribe or spam complaint:** 7 days after the person asked. That is the day of Kit's own unsubscribe time (`canceled_at`, which Kit records for an unsubscribe and not for a spam complaint), else the last day a run of the tooling still saw the sign-up subscribed (the ledger keeps it), else the day the person signed up. A Mac that slept through daily runs therefore never moves the day later: a request first seen after missed runs can already be due or past due when it is erased.
+   - **A message to the contact mailbox (`remove`):** the same day, so the delete happens in the same sitting; watching the mailbox at least every 5 days keeps that within 7 days of the message.
+   - **Retention:** the launch-email date plus 30, the day the policy keeps a sign-up until; the sweep erases on the launch-email date plus 25 to leave room for the delete.
+   - **A shell found under a lost ledger:** the day it is found, since when its holder asked is not known.
+3. **When to run it.** Delete a `remove` the same sitting. For the sweeps, run `kit-deletes` at every mailbox sitting (at least every 5 days) and delete what it lists: a request the daily sweep erases within a day is then deleted within 6 days. An id past its delete-by day is marked `OVERDUE`, and the command, and so the daily job, exits 1.
+4. **How.** Signed in to Kit's web app, open each page the command printed (`https://app.kit.com/subscribers/<id>`) and delete the subscriber there; this is how the captain deleted one on the test account. The delete is permanent and removes the record, its history and its location. A scrubbed record is unsubscribed, and Kit's subscriber list hides unsubscribed subscribers by default, so it does not appear in the default list; as a fallback, set the list's status filter to Cancelled (or All) and find the record whose email reads `removed-<id>`.
+5. **Check.** Run `waitlist.py kit-deletes`. Each id Kit no longer answers for (`404`) is reported as confirmed deleted and leaves the list; its tombstone stays in the ledger. An id Kit still answers for stays on the list.
 
 ### The daily job
 
-`waitlist.py daily --live` runs `sweep-unsubscribed`, `sweep-retention` and `produce` in that order.
+`waitlist.py daily --live` runs `sweep-unsubscribed`, `sweep-retention`, `produce` and `kit-deletes` in that order.
 Each step runs whatever an earlier one did, a step that fails or runs out of time is reported as `FAILED (exit N)`, and the job exits non-zero when any step did.
 An interrupt (Ctrl-C) is not a failure: it stops the whole job, exit 130.
 One run of the retention sweep erases only what fits before its last 120 seconds, roughly 300 sign-ups at Kit's API-key rate (about 2 requests a second; an erasure is 3 calls), so the job repeats it as separate passes, each under the lock and its own 600 second limit, while the previous pass left sign-ups and erased at least one, up to 20 passes (about 6,000 sign-ups).

@@ -27,7 +27,7 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -49,6 +49,11 @@ KEY = 'test-' + 'key-' + 'value'  # the fake's key, never a real one
 
 def address(label):
     return 'wl-{}{}example.com'.format(label, AT)
+
+
+def now_in_utc():
+    """The current time as Kit writes `canceled_at`."""
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 def contains_address(text):
@@ -79,11 +84,12 @@ class Case(unittest.TestCase):
     # A synthetic store.
 
     def add(self, state='active', created='2026-10-05T12:00:00Z', fit=None, beta=None, source=None, entry=None,
-            email=None, label=None):
+            email=None, label=None, canceled_at=None):
         self.next_id += 1
         label = label or 's{}'.format(self.next_id)
         self.records.append({'id': str(self.next_id), 'email': email or address(label), 'state': state,
-                             'created_at': created, 'fields': {'fit': fit, 'beta_opt_in': beta, 'source': source, 'entry': entry}})
+                             'created_at': created, 'canceled_at': canceled_at,
+                             'fields': {'fit': fit, 'beta_opt_in': beta, 'source': source, 'entry': entry}})
         self.save_store()
         return str(self.next_id)
 
@@ -543,6 +549,31 @@ class Removal(Case):
         self.cli('sweep-unsubscribed', '--live', expect=0)  # idempotent: a shell is not erased again
         self.assertIn('due 0', self.cli('sweep-unsubscribed', '--live')[1])
 
+    def test_a_spam_complaint_is_erased_like_an_unsubscribe_and_a_bounce_waits_for_retention(self):
+        """The captain's decision (2026-10-20): a sign-up Kit reports as complained is a removal request, erased by
+        the same daily sweep as an unsubscribed one; a bounced one stays until the retention date."""
+        self.sweep_world()
+        complained = self.add(state='complained', fit='never-had-a-routine', beta='true', source='youtube')
+        bounced = self.add(state='bounced', fit='exercises-regularly', source='network')
+        code, output = self.cli('sweep-unsubscribed', expect=0)
+        self.assertIn('due 1', output)
+        self.assertIn('unsubscribed 0, spam complaints 1', output)
+        self.assertIn(AT, self.reload_store()[complained]['email'])  # a dry run deletes nothing
+        code, output = self.cli('sweep-unsubscribed', '--live', expect=0)
+        self.assertIn('erased 1', output)
+        self.assertIn('Kit subscriber id {}'.format(complained), output)
+        store = self.reload_store()
+        self.assertNotIn(AT, store[complained]['email'])
+        self.assertTrue(all(value is None for value in store[complained]['fields'].values()))
+        self.assertEqual(store[complained]['state'], 'complained')  # Kit keeps an unmailed state as it is
+        for kept in (bounced, self.keep, self.gone, self.pending):
+            self.assertIn(AT, store[kept]['email'])
+        self.assertIn('due 0', self.cli('sweep-unsubscribed', '--live', expect=0)[1])
+        self.record('2026-11-10')
+        self.cli('sweep-retention', '--live', '--as-of', '2026-12-05', expect=0)
+        self.assertNotIn(AT, self.reload_store()[bounced]['email'])  # the bounce goes at the retention date
+        self.check_view_file()
+
     def test_retention_deletes_nothing_without_a_recorded_date_and_exits_zero(self):
         self.sweep_world()
         code, output = self.cli('sweep-retention', '--live', '--as-of', '2099-01-01', expect=0)
@@ -561,7 +592,7 @@ class Removal(Case):
         before = self.view()['generated_at']
         time.sleep(1.1)
         code, output = self.cli('daily', '--live', expect=0)
-        self.assertIn('daily: all 3 steps ok', output)
+        self.assertIn('daily: all 4 steps ok', output)
         self.assertIn('no launch-email date is recorded', output)
         store = self.reload_store()
         self.assertNotIn(AT, store[self.gone]['email'])
@@ -572,21 +603,21 @@ class Removal(Case):
     def record(self, text, today=None, replace=False):
         return wl_core.record_launch_email(self.state, text, today or date(2026, 11, 10), replace=replace)
 
-    def test_record_launch_email_prints_the_deletion_date_and_refuses_bad_dates(self):
+    def test_record_launch_email_prints_the_erasure_and_kit_delete_dates_and_refuses_bad_dates(self):
         today = date(2026, 11, 10)
         with self.assertRaises(wl_common.WaitlistError) as future:
             self.record('2026-11-11', today)
         self.assertIn('future', str(future.exception))
         with self.assertRaises(wl_common.WaitlistError) as month_old:
-            self.record('2026-10-10', today)  # a month ago: retention would delete everyone tomorrow
+            self.record('2026-10-10', today)  # a month ago: the retention erasure would already be past
         self.assertIn('more than 7 days ago', str(month_old.exception))
-        self.assertIn('2026-11-09', str(month_old.exception))
+        self.assertIn('2026-11-04', str(month_old.exception))
         for bad in ('2026-02-30', '10/10/2026', '2026-1-1', '', 'tomorrow', '2026-11-10T00:00'):
             with self.assertRaises(wl_common.WaitlistError):
                 self.record(bad, today)
         self.assertFalse((self.state / wl_common.LAUNCH_NAME).exists(), 'a refused date records nothing')
-        sent_on, deletes_on = self.record('2026-11-04', today)  # six days ago is inside the window
-        self.assertEqual((sent_on, deletes_on), (date(2026, 11, 4), date(2026, 12, 4)))
+        dates = self.record('2026-11-04', today)  # six days ago is inside the window
+        self.assertEqual(dates, (date(2026, 11, 4), date(2026, 11, 29), date(2026, 12, 4)))
         self.record('2026-11-10', today, replace=True)
         self.assertEqual(wl_core.read_launch_record(self.state), date(2026, 11, 10))
         self.assertEqual(os.stat(str(self.state / wl_common.LAUNCH_NAME)).st_mode & 0o777, 0o600)
@@ -611,15 +642,23 @@ class Removal(Case):
         self.assertIn('refused', output)
         self.assertFalse((self.state / wl_common.LAUNCH_NAME).exists())
         code, output = self.cli('record-launch-email', '--sent-on', (today - timedelta(days=2)).isoformat(), expect=0)
-        self.assertIn((today - timedelta(days=2) + timedelta(days=30)).isoformat(), output)
+        self.assertIn('erase every remaining sign-up on or after {}, each to be deleted in Kit\'s web app by {}'.format(
+            (today + timedelta(days=23)).isoformat(), (today + timedelta(days=28)).isoformat()), output)
 
-    def test_retention_deletes_nothing_at_29_days_and_everything_at_30(self):
+    def test_retention_erases_nothing_at_24_days_and_everything_at_25_for_a_kit_delete_by_30(self):
+        """The captain's decision (2026-10-21): the sweep erases on the launch-email date plus 25 days so the founder's
+        delete in Kit's web app falls by the launch-email date plus 30, the day the privacy policy keeps a sign-up to."""
         self.sweep_world()
-        self.record('2026-11-10')  # sent 2026-11-10: due on 2026-12-10
-        for as_of, expected in (('2026-12-09', 0), ('2026-12-10', 3)):
-            code, output = self.cli('sweep-retention', '--live', '--as-of', as_of, expect=0)
-            erased = sum(1 for record in self.reload_store().values() if AT not in record['email'])
-            self.assertEqual(erased, expected, (as_of, output))
+        self.record('2026-11-10')  # sent 2026-11-10: erased on 2026-12-05, deleted in Kit by 2026-12-10
+        code, output = self.cli('sweep-retention', '--live', '--as-of', '2026-12-04', expect=0)
+        self.assertIn('not due until 2026-12-05', output)
+        self.assertTrue(all(AT in record['email'] for record in self.reload_store().values()))
+        code, output = self.cli('sweep-retention', '--live', '--as-of', '2026-12-05', expect=0)
+        self.assertTrue(all(AT not in record['email'] for record in self.reload_store().values()))
+        for subscriber_id in (self.keep, self.gone, self.pending):
+            self.assertIn('Kit subscriber id {} - delete by 2026-12-10'.format(subscriber_id), output)
+        self.assertEqual(json.loads((self.state / wl_common.LEDGER_NAME).read_text())['awaiting_kit_delete'],
+                         {subscriber_id: '2026-12-10' for subscriber_id in (self.keep, self.gone, self.pending)})
         self.assertEqual(self.view()['entries'], [])  # the view was regenerated after the deletion
         self.check_view_file()
 
@@ -748,9 +787,155 @@ class Removal(Case):
         self.assertEqual(self.store_path.read_bytes(), before)
 
 
+class KitDeletes(Case):
+    """Kit's API cannot delete a subscriber, so the founder deletes each erased one in Kit's web app (the captain's
+    decision, 2026-10-20). The tooling names the ids, never an address, and only checks afterwards. The day to delete
+    each by falls inside the privacy policy's promise, counted from the day it runs from (2026-10-21)."""
+
+    def setUp(self):
+        super(KitDeletes, self).setUp()
+        self.first = self.add(fit='lost-the-routine', beta='true', source='tiktok')
+        self.second = self.add(fit='exercises-regularly', source='reddit')
+        self.third = self.add(state='cancelled', fit='never-had-a-routine', canceled_at=now_in_utc())
+        self.cli('produce', expect=0)
+
+    def delete_in_web_app(self, subscriber_id):
+        self.reload_store()
+        self.records = [record for record in self.records if record['id'] != subscriber_id]
+        self.save_store()
+
+    def set_state(self, states):
+        self.reload_store()
+        for record in self.records:
+            if record['id'] in states:
+                record['state'] = states[record['id']]
+        self.save_store()
+
+    def awaiting(self):
+        return json.loads((self.state / wl_common.LEDGER_NAME).read_text())['awaiting_kit_delete']
+
+    def test_every_erasure_names_the_ids_to_delete_and_kit_deletes_confirms_them(self):
+        today = wl_common.today_local()
+        week = (today + timedelta(days=7)).isoformat()
+        code, output = self.cli('remove', '--entry', self.ledger()[self.first]['entry'], expect=0)
+        self.assertIn('kit-delete: delete 1 erased sign-up in Kit\'s web app', output)
+        self.assertIn('kit-delete: Kit subscriber id {} - delete by {} - https://app.kit.com/subscribers/{}'.format(
+            self.first, today.isoformat(), self.first), output)  # a mailbox removal is deleted in the same sitting
+        code, output = self.cli('sweep-unsubscribed', '--live', expect=0)
+        self.assertIn('kit-delete: Kit subscriber id {} - delete by {}'.format(self.third, week), output)  # 7 days from Kit's cancel time
+        self.assertEqual(self.awaiting(), {self.first: today.isoformat(), self.third: week})
+        code, output = self.cli('kit-deletes', expect=0)
+        self.assertIn('0 confirmed deleted in Kit, 2 still to delete', output)
+        self.assertIn('Kit subscriber id {} - delete by {} - https://app.kit.com/subscribers/{}'.format(
+            self.first, today.isoformat(), self.first), output)
+        self.delete_in_web_app(self.first)
+        code, output = self.cli('kit-deletes', expect=0)
+        self.assertIn('1 confirmed deleted in Kit, 1 still to delete', output)
+        self.assertEqual(set(self.awaiting()), {self.third})
+        ledger = json.loads((self.state / wl_common.LEDGER_NAME).read_text())
+        self.assertIn(self.first, ledger['erased'])  # the tombstone stays
+        self.delete_in_web_app(self.third)
+        code, output = self.cli('kit-deletes', expect=0)
+        self.assertIn('1 confirmed deleted in Kit, 0 still to delete', output)
+        self.assertEqual(self.awaiting(), {})
+        self.assertEqual(list(self.reload_store()), [self.second])
+        self.cli('produce', expect=0)
+        self.check_view_file()
+        self.assertEqual(len(self.view()['entries']), 1)
+        self.assertIn('0 confirmed deleted in Kit, 0 still to delete', self.cli('kit-deletes', expect=0)[1])
+
+    def test_an_id_past_its_delete_by_day_is_overdue_and_fails_the_check(self):
+        wl_core.remove_signup(self.synthetic(), self.state, entry=self.ledger()[self.first]['entry'], today=date(2026, 10, 1))
+        counts = wl_core.check_kit_deletes(self.synthetic(), self.state, date(2026, 10, 1))
+        self.assertEqual([(item['id'], item['delete_by'], item['overdue']) for item in counts['waiting']],
+                         [(self.first, '2026-10-01', False)])
+        counts = wl_core.check_kit_deletes(self.synthetic(), self.state, date(2026, 10, 2))
+        self.assertTrue(counts['waiting'][0]['overdue'])
+        code, output = self.cli('kit-deletes')
+        self.assertEqual(code, 1, output)
+        self.assertIn('OVERDUE', output)
+        code, output = self.cli('daily', '--live')
+        self.assertEqual(code, 1, output)
+        self.assertIn('daily: step kit-deletes FAILED (exit 1)', output)
+        self.assertIn('daily: step produce ok', output)
+
+    def test_a_removal_first_seen_after_missed_daily_runs_counts_from_the_last_run_that_saw_it_subscribed(self):
+        """Kit records no time for a spam complaint, and a sign-up may carry no cancel time, so the 7 days then run
+        from the last run that saw it still subscribed: runs the Mac slept through never move the day later."""
+        store = self.synthetic()
+        wl_core.produce_view(store, self.state, today=date(2026, 10, 1))  # the last run that saw both subscribed
+        self.set_state({self.first: 'cancelled', self.second: 'complained'})
+        counts = wl_core.sweep_unsubscribed(store, self.state, live=True, today=date(2026, 10, 5))  # four runs missed
+        self.assertEqual(counts['erased'], 3)
+        self.assertEqual({key: self.awaiting()[key] for key in (self.first, self.second)},
+                         {self.first: '2026-10-08', self.second: '2026-10-08'})
+        for today, overdue in ((date(2026, 10, 8), False), (date(2026, 10, 9), True)):
+            waiting = {item['id']: item['overdue'] for item in wl_core.check_kit_deletes(store, self.state, today)['waiting']}
+            self.assertEqual((waiting[self.first], waiting[self.second]), (overdue, overdue), today)
+
+    def test_the_daily_job_flags_a_removal_whose_delete_by_day_passed_while_the_mac_slept(self):
+        today = wl_common.today_local()
+        late = (today - timedelta(days=2)).isoformat()
+        wl_core.produce_view(self.synthetic(), self.state, today=today - timedelta(days=9))  # then nine days with no run
+        self.set_state({self.second: 'complained'})
+        code, output = self.cli('daily', '--live')
+        self.assertEqual(code, 1, output)
+        self.assertIn('kit-delete: Kit subscriber id {} - delete by {}'.format(self.second, late), output)
+        self.assertIn('kit-deletes: Kit subscriber id {} - delete by {} - OVERDUE'.format(self.second, late), output)
+        self.assertIn('daily: step sweep-unsubscribed ok', output)
+        self.assertIn('daily: step kit-deletes FAILED (exit 1)', output)
+
+    def test_a_removal_near_the_retention_date_is_deleted_by_the_launch_email_date_plus_30(self):
+        """A request on the launch-email date plus 24 days would give plus 31, past the day the policy keeps any sign-up
+        to, so the earlier promise sets the day."""
+        wl_core.record_launch_email(self.state, '2026-11-10', date(2026, 11, 10))
+        store = self.synthetic()
+        wl_core.produce_view(store, self.state, today=date(2026, 12, 4))
+        self.set_state({self.first: 'complained'})
+        wl_core.sweep_unsubscribed(store, self.state, live=True, today=date(2026, 12, 5))
+        self.assertEqual(self.awaiting()[self.first], '2026-12-10')
+
+    def test_a_dry_run_lists_nothing_to_delete(self):
+        code, output = self.cli('sweep-unsubscribed', expect=0)
+        self.assertNotIn('kit-delete:', output)
+        self.cli('remove', '--entry', self.ledger()[self.first]['entry'], '--dry-run', expect=0)
+        self.assertFalse(self.awaiting())
+
+    def test_a_shell_erased_under_a_lost_ledger_is_listed_for_deletion_the_day_it_is_found(self):
+        self.cli('remove', '--entry', self.ledger()[self.second]['entry'], expect=0)
+        (self.state / wl_common.LEDGER_NAME).unlink()  # the ledger is lost; Kit still holds the shell
+        code, output = self.cli('produce', expect=0)
+        self.assertEqual(self.awaiting()[self.second], wl_common.today_local().isoformat())
+        self.assertNotIn(self.second, self.ledger())
+
+    def test_a_damaged_list_of_ids_to_delete_stops_the_run(self):
+        path = self.state / wl_common.LEDGER_NAME
+        good = json.loads(path.read_text())
+        erased = dict(good, erased=[self.first])
+        subscribers = dict(good['subscribers'])
+        subscribers[self.second] = dict(subscribers[self.second], seen_on='yesterday')
+        for damaged in (dict(good, awaiting_kit_delete={'999': '2026-10-01'}),
+                        dict(erased, awaiting_kit_delete={self.first: 'yesterday'}),
+                        dict(good, awaiting_kit_delete=['999']),
+                        dict(good, subscribers=subscribers)):
+            path.write_text(json.dumps(damaged))
+            code, output = self.cli('kit-deletes')
+            self.assertEqual(code, 1, output)
+            self.assertIn('the ledger is damaged', output)
+        path.write_text(json.dumps(dict(erased, awaiting_kit_delete={self.first: '2026-10-01'})))  # only the date differs
+        code, output = self.cli('kit-deletes')
+        self.assertNotIn('the ledger is damaged', output)
+        self.assertIn('Kit subscriber id {} - delete by 2026-10-01 - OVERDUE'.format(self.first), output)
+        older = dict(good)
+        older.pop('awaiting_kit_delete', None)  # a ledger written before the list existed still loads
+        path.write_text(json.dumps(older))
+        self.cli('kit-deletes', expect=0)
+
+
 class DailyJob(Case):
     def test_a_step_that_fails_does_not_stop_the_next_and_is_reported(self):
         keep = self.add(fit='lost-the-routine', beta='true', source='tiktok')
+        gone = self.add(state='cancelled', fit='lost-the-routine', canceled_at=now_in_utc())
         self.state.mkdir(mode=0o700)
         (self.state / wl_common.LAUNCH_NAME).write_text('{damaged')
         code, output = self.cli('daily', '--live')
@@ -758,9 +943,11 @@ class DailyJob(Case):
         self.assertIn('daily: step sweep-unsubscribed ok', output)
         self.assertIn('daily: step sweep-retention FAILED (exit 1)', output)
         self.assertIn('daily: step produce ok', output)
-        self.assertIn('1 of 3 steps failed: sweep-retention', output)
+        self.assertIn('1 of 4 steps failed: sweep-retention', output)
         self.assertEqual(len(self.view()['entries']), 1)  # the producer still ran
-        self.assertIn(AT, self.reload_store()[keep]['email'])
+        store = self.reload_store()
+        self.assertIn(AT, store[keep]['email'])
+        self.assertNotIn(AT, store[gone]['email'])  # a launch record the retention sweep cannot trust stops no removal
 
     def test_a_hung_first_step_is_cut_off_and_the_rest_still_run(self):
         self.add(fit='lost-the-routine', beta='true', source='tiktok')
@@ -774,7 +961,7 @@ class DailyJob(Case):
     def test_every_step_ok_exits_zero(self):
         self.add()
         code, output = self.cli('daily', '--live', expect=0)
-        self.assertIn('daily: all 3 steps ok', output)
+        self.assertIn('daily: all 4 steps ok', output)
 
     def test_without_live_the_sweeps_are_dry_runs(self):
         sub = self.add(state='cancelled', fit='lost-the-routine')
@@ -787,8 +974,8 @@ class DailyJob(Case):
         pauses 0.3 seconds, so one pass erases at most four of the ten sign-ups. Every Kit state is due."""
         states = ('active', 'inactive', 'bounced', 'complained')
         for number in range(10):
-            self.add(state=states[number % len(states)], fit='lost-the-routine', beta='true', source='tiktok')
-        self.launch_record(sent_days_ago=31)
+            self.add(state=states[number % len(states)], created=now_in_utc(), fit='lost-the-routine', beta='true', source='tiktok')
+        self.launch_record(sent_days_ago=wl_common.RETENTION_ERASE_DAYS)
         code, output = self.cli('daily', '--live', env={wl_common.RUN_LIMIT_ENV: '121', wl_common.FAULT_ENV: 'erase:pause'})
         self.assertEqual(code, 0, output)
         self.assertIn('sweep-retention: incomplete', output)
@@ -805,7 +992,7 @@ class DailyJob(Case):
         for _ in range(7):
             self.add(fit='lost-the-routine')
         self.add(created='2099-01-01T00:00:00Z', fit='lost-the-routine')
-        self.launch_record(sent_days_ago=31)
+        self.launch_record(sent_days_ago=wl_common.RETENTION_ERASE_DAYS)
         code, output = self.cli('daily', '--live', env={wl_common.RUN_LIMIT_ENV: '121', wl_common.FAULT_ENV: 'erase:pause'})
         self.assertEqual(code, 0, output)
         self.assertIn('entry-date-future', output)
@@ -820,7 +1007,7 @@ class DailyJob(Case):
         the job with 130, with no producer step."""
         for _ in range(3):
             self.add(fit='lost-the-routine')
-        self.launch_record(sent_days_ago=31)
+        self.launch_record(sent_days_ago=wl_common.RETENTION_ERASE_DAYS)
         environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', **{wl_common.RUN_LIMIT_ENV: '150', wl_common.FAULT_ENV: 'after-read:hang'})
         self.addCleanup(signal.signal, signal.SIGINT, signal.signal(signal.SIGINT, signal.default_int_handler))
         process = subprocess.Popen([sys.executable, str(WAITLIST), 'daily', '--live', '--state-dir', str(self.state),
@@ -849,7 +1036,7 @@ class DailyJob(Case):
     def test_a_retention_pass_that_erases_nothing_fails_the_step_and_is_not_repeated(self):
         for _ in range(3):
             self.add(fit='lost-the-routine')
-        self.launch_record(sent_days_ago=31)
+        self.launch_record(sent_days_ago=wl_common.RETENTION_ERASE_DAYS)
         # a 120 second limit leaves no time before the reserve, so the pass starts no erasure
         code, output = self.cli('daily', '--live', env={wl_common.RUN_LIMIT_ENV: '120'})
         self.assertEqual(code, 1, output)
@@ -958,6 +1145,59 @@ class KitClient(unittest.TestCase):
         with self.assertRaises(StoreError):
             self.store.erase(mailed)  # a record Kit still mails is never called erased
 
+    def test_a_complaint_whose_unsubscribe_kit_refuses_is_still_erased(self):
+        complained = self.fake.add(address('spam'), state='complained', fit='lost-the-routine', source='tiktok')
+        bounced = self.fake.add(address('bounce'), state='bounced', fit='lost-the-routine')
+        active = self.fake.add(address('active'), fit='lost-the-routine')
+        self.fake.refuse_unsubscribe = {'complained', 'bounced', 'active'}
+        counts = wl_core.sweep_unsubscribed(self.store, self.state, live=True)
+        self.assertEqual((counts['due'], counts['erased'], counts['complained']), (1, 1, 1))
+        record = self.fake.get(complained)
+        self.assertEqual(record['state'], 'complained')
+        self.assertNotIn(AT, record['email_address'])
+        self.assertIn(AT, self.fake.get(bounced)['email_address'])  # a bounce is not a removal request
+        with self.assertRaises(StoreError):
+            self.store.erase(active)  # a refused unsubscribe on a record Kit still mails is never ignored
+        self.assertIn(AT, self.fake.get(active)['email_address'])
+
+    def test_a_listing_with_blank_fields_as_empty_strings_reads_as_a_scrubbed_shell(self):
+        subscriber = self.fake.add(address('shell'), fit='lost-the-routine', source='tiktok', entry='SomeEntry')
+        fresh = self.fake.add(address('fresh'), fit='lost-the-routine')
+        self.store.erase(subscriber)
+        listed = {item.id: item for item in self.store.list_subscribers()}
+        self.assertTrue(listed[str(subscriber)].scrubbed)
+        self.assertIsNone(listed[str(fresh)].entry)  # a blank field is no value, never the empty string
+        self.assertIsNone(listed[str(fresh)].beta)
+        counts = wl_core.produce_view(self.store, self.state)
+        self.assertEqual((counts['assigned'], counts['reset']), (1, 0))
+
+    def test_the_kit_delete_check_reads_only_ids_kit_no_longer_lists_and_never_deletes(self):
+        kept = self.fake.add(address('kept'), state='cancelled', fit='lost-the-routine')
+        deleted = self.fake.add(address('deleted'), state='cancelled', fit='lost-the-routine')
+        wl_core.sweep_unsubscribed(self.store, self.state, live=True, today=date(2026, 10, 20))
+        self.fake.delete(deleted)
+        self.assertTrue(self.store.exists(kept))
+        self.assertFalse(self.store.exists(deleted))
+        self.fake.requests[:] = []
+        counts = wl_core.check_kit_deletes(self.store, self.state, date(2026, 10, 21))
+        self.assertEqual(counts['confirmed'], 1)
+        self.assertEqual([item['id'] for item in counts['waiting']], [str(kept)])
+        reads = [path for method, path, _ in self.fake.requests if method == 'GET' and path != '/v4/subscribers']
+        self.assertEqual(reads, ['/v4/subscribers/{}'.format(deleted)])  # a listed id is not read one by one
+        self.assertFalse([request for request in self.fake.requests if request[0] == 'DELETE'])
+        self.fake.delete(kept)
+        original = KitStore.exists
+        self.addCleanup(setattr, KitStore, 'exists', original)
+        KitStore.exists = lambda store, subscriber_id: (_ for _ in ()).throw(StoreError('Kit request failed (check deleted: HTTP 500)'))
+        counts = wl_core.check_kit_deletes(self.store, self.state, date(2026, 10, 21))
+        self.assertEqual((counts['confirmed'], counts['failed'], len(counts['waiting'])), (0, 1, 1))  # a failed read is never a delete
+        KitStore.exists = original
+        self.fake.mode = 'error'
+        with self.assertRaises(StoreError):
+            wl_core.check_kit_deletes(self.store, self.state, date(2026, 10, 21))  # a listing it cannot read is an error
+        self.fake.mode = 'normal'
+        self.assertEqual(wl_core.check_kit_deletes(self.store, self.state, date(2026, 10, 21))['confirmed'], 1)
+
     def test_find_by_address_is_exact_and_ignores_case(self):
         target = self.fake.add('Mixed-Case' + AT + 'example.com')
         self.fake.add('mixed-case-2' + AT + 'example.com')
@@ -1051,17 +1291,38 @@ class KitClient(unittest.TestCase):
     def test_retention_through_the_kit_client_with_an_injected_clock(self):
         wl_core.record_launch_email(self.state, '2026-11-10', date(2026, 11, 10))
         states = ('active', 'inactive', 'cancelled', 'bounced', 'complained')
-        ids = [self.fake.add(address('r{}'.format(n)), state=state) for n, state in enumerate(states)]
-        early = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 9), live=True)
+        ids = [str(self.fake.add(address('r{}'.format(n)), state=state)) for n, state in enumerate(states)]
+        early = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 4), live=True)
         self.assertEqual((early['due'], early['erased'], early['not_due']), (0, 0, True))
         for subscriber_id in ids:
             self.assertIn(AT, self.fake.get(subscriber_id)['email_address'])
-        due = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 10), live=True)
+        due = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 5), live=True)
         self.assertEqual((due['due'], due['erased']), (5, 5))
         for subscriber_id in ids:
             self.assertNotIn(AT, self.fake.get(subscriber_id)['email_address'])
-        later = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 11), live=True)
+        later = wl_core.sweep_retention(self.store, self.state, date(2026, 12, 6), live=True)
         self.assertEqual(later['due'], 0)  # shells are not erased again
+        # Each is deleted in Kit by the launch-email date plus 30; a removal request the sweep reaches only now, with
+        # no time Kit or a run recorded, counts from the earliest day it can have been made: the day it signed up.
+        awaiting = json.loads((self.state / wl_common.LEDGER_NAME).read_text())['awaiting_kit_delete']
+        self.assertEqual(awaiting, dict(zip(ids, ('2026-12-10', '2026-12-10', '2026-10-09', '2026-12-10', '2026-10-09'))))
+
+    def test_a_removal_counts_from_kits_own_cancel_time_and_a_complaint_from_the_last_run_that_saw_it(self):
+        unsubscribed = str(self.fake.add(address('unsub'), fit='lost-the-routine'))
+        complained = str(self.fake.add(address('complaint'), fit='lost-the-routine'))
+        wl_core.produce_view(self.store, self.state, today=date(2026, 10, 1))
+        self.fake.get(unsubscribed).update(state='cancelled', canceled_at='2026-10-03T12:00:00Z')
+        self.fake.get(complained)['state'] = 'complained'  # Kit records no time for a complaint
+        counts = wl_core.sweep_unsubscribed(self.store, self.state, live=True, today=date(2026, 10, 6))
+        self.assertEqual(counts['erased'], 2)
+        awaiting = json.loads((self.state / wl_common.LEDGER_NAME).read_text())['awaiting_kit_delete']
+        self.assertEqual(awaiting, {unsubscribed: '2026-10-10', complained: '2026-10-08'})
+
+    def test_kit_stamps_its_cancel_time_on_an_unsubscribe_and_the_client_reads_it(self):
+        subscriber = str(self.fake.add(address('stamp'), fit='lost-the-routine'))
+        self.assertIsNone(self.store.canceled_at(subscriber))
+        self.store.unsubscribe(subscriber)
+        self.assertEqual(wl_common.utc_day_of(self.store.canceled_at(subscriber)), datetime.now(timezone.utc).date())
 
     def test_tagging_marks_exactly_the_named_signups_and_a_batch_of_twenty_five_is_one_call(self):
         ids = [self.fake.add(address('t{}'.format(n)), created_at='2026-10-05T12:00:00Z', fit='lost-the-routine') for n in range(25)]
@@ -1179,12 +1440,32 @@ def run_in_pty(arguments, typed=None, timeout=60):
 
 
 class DateLogic(unittest.TestCase):
-    def test_deletion_date_and_retention_boundary(self):
+    def test_retention_erases_at_25_days_for_a_kit_delete_by_30_and_a_removal_is_deleted_by_7(self):
         sent = date(2026, 11, 10)
-        self.assertEqual(wl_common.deletion_date(sent), date(2026, 12, 10))
-        self.assertFalse(wl_common.retention_due(sent, date(2026, 12, 9)))
-        self.assertTrue(wl_common.retention_due(sent, date(2026, 12, 10)))
+        self.assertEqual(wl_common.retention_erase_date(sent), date(2026, 12, 5))
+        self.assertEqual(wl_common.retention_delete_by(sent), date(2026, 12, 10))
+        self.assertFalse(wl_common.retention_due(sent, date(2026, 12, 4)))
+        self.assertTrue(wl_common.retention_due(sent, date(2026, 12, 5)))
         self.assertTrue(wl_common.retention_due(sent, date(2027, 6, 1)))
+        self.assertEqual(wl_common.removal_delete_by(date(2026, 10, 1)), date(2026, 10, 8))
+
+    def test_a_cancel_time_is_counted_in_the_macs_local_calendar(self):
+        previous = os.environ.get('TZ')
+
+        def restore():
+            if previous is None:
+                os.environ.pop('TZ', None)
+            else:
+                os.environ['TZ'] = previous
+            time.tzset()
+        self.addCleanup(restore)
+        os.environ['TZ'] = 'America/Los_Angeles'
+        time.tzset()
+        # 02:00 UTC on the 21st is the evening of the 20th on a Pacific Mac, so the 7 days start on the 20th.
+        self.assertEqual(wl_common.local_day_of('2026-10-21T02:00:00Z'), date(2026, 10, 20))
+        self.assertEqual(wl_common.utc_day_of('2026-10-21T02:00:00Z'), date(2026, 10, 21))
+        self.assertIsNone(wl_common.local_day_of('2026-10-21T02:00:00'))
+        self.assertIsNone(wl_common.local_day_of(None))
 
     def test_signed_up_on_is_the_utc_date(self):
         self.assertEqual(wl_common.utc_day_of('2026-10-05T23:30:00-07:00'), date(2026, 10, 6))

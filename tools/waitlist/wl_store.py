@@ -7,8 +7,13 @@ because the email is dropped where the response is parsed. The two places an add
 
 What Kit's API does and does not do is recorded in `artifacts/reports/US-WL06/spike.md`: it cannot delete a
 subscriber, so `erase` unsubscribes, overwrites the address with a placeholder that is not an address, and
-blanks the first name and every custom field (decision D2). A list trails a fresh write by up to a couple of minutes, a
-single-record read does not.
+blanks the first name and every custom field (decision D2). Kit's web app can delete one, which only the founder
+does; `exists` is how the tooling checks afterwards that a deleted id no longer answers. A single-record read
+carries Kit's own unsubscribe time (`canceled_at`, null until the subscriber unsubscribes; a list carries it only
+for `status=cancelled` with `include=canceled_at`), which `canceled_at` reads; Kit records no time for a spam
+complaint. A list trails a fresh
+write by up to a couple of minutes, a single-record read does not. A list returns a blank custom field as an empty
+string where a single-record read returns null, so a blank value is either.
 
 An error raised here names the step and the HTTP status. It never carries a response body, a URL with an
 address in its query, or the credential.
@@ -27,6 +32,9 @@ from pathlib import Path
 from wl_common import NETWORK_TIMEOUT_SECONDS, WaitlistError, field_key, load_contract, write_private_atomic
 
 KIT_BASE_URL = 'https://api.kit.com'
+# A subscriber's own page in Kit's web app, where the founder deletes an erased one. Kit's subscriber list hides
+# unsubscribed subscribers by default, and every erased one is unsubscribed, so the page is reached by its id.
+KIT_SUBSCRIBER_PAGE = 'https://app.kit.com/subscribers/{}'
 KEYCHAIN_SERVICE_ENV = 'WAITLIST_KIT_KEYCHAIN_SERVICE'
 DEFAULT_KEYCHAIN_SERVICE = 'com.reptoday.waitlist.kit'
 KEYCHAIN_ACCOUNT = 'api-key'
@@ -43,9 +51,13 @@ RATE_LIMIT_RETRIES = 5
 MAX_RETRY_WAIT_SECONDS = 30.0
 
 # Kit's subscriber states. `inactive` is a sign-up that has not confirmed; `cancelled` is an unsubscribed one;
-# Kit sends nothing to a `bounced` or `complained` one either, so an erased record may be in any of those three.
+# `complained` is one whose holder marked a Kit email as spam; Kit sends nothing to a `bounced` or `complained` one
+# either, so an erased record may be in any of those three.
 ACTIVE, INACTIVE, CANCELLED, BOUNCED, COMPLAINED = 'active', 'inactive', 'cancelled', 'bounced', 'complained'
 UNMAILED = (CANCELLED, BOUNCED, COMPLAINED)
+# The states a removal request puts a sign-up in: an unsubscribe, and a spam complaint, which the captain decided
+# (2026-10-20) is a removal request too. A bounce is not one; it stays until the retention date.
+REMOVAL_REQUESTED = (CANCELLED, COMPLAINED)
 # The Kit custom-field keys, named once in contract.json: the three the form posts and the one the producer writes.
 _CONTRACT = load_contract()
 FIELD_KEYS = {'fit': field_key(_CONTRACT, 'fit'), 'beta': field_key(_CONTRACT, 'beta_opt_in'),
@@ -63,10 +75,15 @@ def placeholder_for(subscriber_id):
     return 'removed-{}'.format(subscriber_id)
 
 
+def is_blank(value):
+    """No value: null, or the empty string a Kit listing returns for a blank custom field."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def is_scrubbed(address, first_name, fields):
     """Nothing identifying is left: no address, no first name and no value in any custom field."""
-    return ((not isinstance(address, str) or '@' not in address) and not first_name
-            and all(value is None for value in fields.values()))
+    return ((not isinstance(address, str) or '@' not in address) and is_blank(first_name)
+            and all(is_blank(value) for value in fields.values()))
 
 
 def subscriber_in(answer):
@@ -121,7 +138,7 @@ class KitStore(object):
 
     # One request. `label` names the step in an error; the path may carry an address, so it is never printed.
 
-    def _call(self, label, method, path, body=None, expect=(200, 201, 204)):
+    def _call(self, label, method, path, body=None, expect=(200, 201, 204), with_status=False):
         data = json.dumps(body).encode('utf-8') if body is not None else None
         attempt = 0
         while True:
@@ -144,12 +161,13 @@ class KitStore(object):
                 continue
             if status not in expect:
                 raise StoreError('Kit request failed ({}: HTTP {})'.format(label, status))
-            if not raw:
-                return None
-            try:
-                return json.loads(raw.decode('utf-8'))
-            except ValueError:
-                raise StoreError('Kit request failed ({}: unreadable answer)'.format(label))
+            payload = None
+            if raw:
+                try:
+                    payload = json.loads(raw.decode('utf-8'))
+                except ValueError:
+                    raise StoreError('Kit request failed ({}: unreadable answer)'.format(label))
+            return (status, payload) if with_status else payload
 
     @staticmethod
     def _pause(attempt, retry_after):
@@ -184,7 +202,7 @@ class KitStore(object):
     @staticmethod
     def _parse(item):
         fields = fields_of(item)
-        values = {role: fields.get(key) for role, key in FIELD_KEYS.items()}
+        values = {role: None if is_blank(fields.get(key)) else fields.get(key) for role, key in FIELD_KEYS.items()}
         return Subscriber(str(item.get('id')), normalize_state(item.get('state')), item.get('created_at'),
                           values['fit'], values['beta'], values['source'], values['entry'],
                           is_scrubbed(item.get('email_address'), item.get('first_name'), fields))
@@ -201,18 +219,39 @@ class KitStore(object):
     def erase(self, subscriber_id):
         """Unsubscribe, replace the address with a placeholder and blank the first name and every custom field the
         record holds (the four this tooling names and any other the account has), then read the record back and
-        refuse to call it erased unless the address, the name and every field are gone and Kit mails it nothing."""
+        refuse to call it erased unless the address, the name and every field are gone and Kit mails it nothing.
+        A record Kit already mails nothing (`bounced`, `complained`) may refuse the unsubscribe call; the scrub then
+        goes ahead, and the read-back is what decides."""
         path = '/v4/subscribers/{}'.format(subscriber_id)
-        self.unsubscribe(subscriber_id)
+        try:
+            self.unsubscribe(subscriber_id)
+        except StoreError:
+            item = subscriber_in(self._call('read state', 'GET', path))
+            if item is None or normalize_state(item.get('state')) not in UNMAILED:
+                raise
         written = self._call('overwrite record', 'PUT', path, {
             'email_address': placeholder_for(subscriber_id), 'first_name': None,
             'fields': {key: None for key in FIELD_KEYS.values()}})
-        others = [key for key, value in fields_of(subscriber_in(written)).items() if value is not None]
+        others = [key for key, value in fields_of(subscriber_in(written)).items() if not is_blank(value)]
         if others:
             self._call('overwrite record', 'PUT', path, {'fields': {key: None for key in others}})
         item = subscriber_in(self._call('read back', 'GET', path))
         if item is None or not self._parse(item).scrubbed or normalize_state(item.get('state')) not in UNMAILED:
             raise StoreError('Kit record was not erased (read back)')
+
+    def exists(self, subscriber_id):
+        """Whether Kit still holds a record under this id: True when it answers, False when it answers 404 (the
+        founder deleted it in Kit's web app). Any other answer is an error, never a guess."""
+        status, _ = self._call('check deleted', 'GET', '/v4/subscribers/{}'.format(subscriber_id), expect=(200, 404),
+                               with_status=True)
+        return status == 200
+
+    def canceled_at(self, subscriber_id):
+        """Kit's own time for the subscriber's unsubscribe (`canceled_at`, an ISO 8601 time), or None when the record
+        carries none."""
+        item = subscriber_in(self._call('read cancel time', 'GET', '/v4/subscribers/{}'.format(subscriber_id)))
+        value = item.get('canceled_at') if item is not None else None
+        return value if isinstance(value, str) else None
 
     def find_id_by_email(self, address):
         """The id of the one subscriber whose address is exactly `address` (ignoring case), or None."""
@@ -250,7 +289,7 @@ class KitStore(object):
 
 class SyntheticStore(object):
     """A store held in a JSON file, for tests: `{"subscribers": [{"id", "email", "first_name", "state", "created_at",
-    "fields"}]}`, the first name optional.
+    "canceled_at", "fields"}]}`, the first name and the cancel time optional.
     It behaves as the Kit store does, including what `erase` leaves behind, and is rewritten after every change so
     one process can leave work for the next. The file holds addresses, so it lives in a temporary directory a test
     makes and is never committed."""
@@ -301,11 +340,20 @@ class SyntheticStore(object):
     def erase(self, subscriber_id):
         data = self._load()
         record = self._record(data, subscriber_id)
-        record['state'] = CANCELLED
+        if record.get('state') not in UNMAILED:
+            record['state'] = CANCELLED
         record['email'] = placeholder_for(subscriber_id)
         record['first_name'] = None
         record['fields'] = {key: None for key in set(record.get('fields') or {}) | set(FIELD_KEYS.values())}
         self._save(data)
+
+    def exists(self, subscriber_id):
+        """Whether the record is still there; a test deletes it from the file as the founder does in Kit's web app."""
+        return any(str(record['id']) == str(subscriber_id) for record in self._load()['subscribers'])
+
+    def canceled_at(self, subscriber_id):
+        value = self._record(self._load(), subscriber_id).get('canceled_at')
+        return value if isinstance(value, str) else None
 
     def find_id_by_email(self, address):
         wanted = address.strip().lower()
@@ -357,6 +405,14 @@ class RestrictedStore(object):
     def erase(self, subscriber_id):
         self._allow(subscriber_id)
         self._store.erase(subscriber_id)
+
+    def exists(self, subscriber_id):
+        self._allow(subscriber_id)
+        return self._store.exists(subscriber_id)
+
+    def canceled_at(self, subscriber_id):
+        self._allow(subscriber_id)
+        return self._store.canceled_at(subscriber_id)
 
     def find_id_by_email(self, address):
         found = self._store.find_id_by_email(address)
