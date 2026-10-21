@@ -97,18 +97,38 @@ def fields_of(item):
     return fields if isinstance(fields, dict) else {}
 
 
+# What `security find-generic-password` answers when the item is not there (errSecItemNotFound), and what it
+# answers when the Keychain is locked and it may not ask for the password (errSecInteractionNotAllowed: this Mac's
+# login Keychain locks on sleep, so a scheduled run that starts on wake, before the founder unlocks, meets it).
+SECURITY_ITEM_NOT_FOUND = 44
+SECURITY_LOCKED_EXITS = (36, 51, 128)
+
+
 def read_api_key(service=None):
-    """The Kit API key from the macOS Keychain. The value goes into a request header and nowhere else."""
+    """The Kit API key from the macOS Keychain. The value goes into a request header and nowhere else.
+    A missing item, a locked Keychain and any other refusal are told apart in the error, which never holds a
+    value: a locked Keychain is a run that retries on its own, a missing item is a setup fault."""
     service = service or os.environ.get(KEYCHAIN_SERVICE_ENV) or DEFAULT_KEYCHAIN_SERVICE
+    item = '(service {}, account {})'.format(service, KEYCHAIN_ACCOUNT)
     try:
         done = subprocess.run(['security', 'find-generic-password', '-s', service, '-a', KEYCHAIN_ACCOUNT, '-w'],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=NETWORK_TIMEOUT_SECONDS * 3)
+    except subprocess.TimeoutExpired:
+        # `security` waited on an unlock dialog nobody answered.
+        raise StoreError('the Keychain is locked, so the Kit API key {} could not be read; nothing was changed and '
+                         'the next run tries again'.format(item))
     except (OSError, subprocess.SubprocessError):
-        done = None
-    key = done.stdout.decode('utf-8', 'replace').strip() if done is not None and done.returncode == 0 else ''
-    if not key:
-        raise StoreError('no Kit API key in the Keychain (service {}, account {})'.format(service, KEYCHAIN_ACCOUNT))
-    return key
+        # No Keychain tool to ask (not macOS, or not on PATH): there is no key here.
+        raise StoreError('no Kit API key in the Keychain {}: the security tool is not available'.format(item))
+    key = done.stdout.decode('utf-8', 'replace').strip() if done.returncode == 0 else ''
+    if key:
+        return key
+    if done.returncode == SECURITY_ITEM_NOT_FOUND:
+        raise StoreError('no Kit API key in the Keychain {}'.format(item))
+    if done.returncode in SECURITY_LOCKED_EXITS:
+        raise StoreError('the Keychain is locked, so the Kit API key {} could not be read; nothing was changed and '
+                         'the next run tries again'.format(item))
+    raise StoreError('the Kit API key {} could not be read (security exit {})'.format(item, done.returncode))
 
 
 def checked_base_url(url):

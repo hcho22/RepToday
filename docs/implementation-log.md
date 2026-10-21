@@ -1711,3 +1711,9 @@ Two of the captain's answers after slice 3 change removal and retention; nothing
 "Last updated" reads October 21, 2026, the publication date the captain set on 2026-10-21 when he approved publishing the site.
 Section 10 is "This website" (the anonymous counts, the session-storage tag, the hosting provider's analytics), the new section 11 "The waitlist" (`#waitlist`) states the five approved points with the spam-complaint and Kit-location answers, and the old sections 11-14 are 12-15; no "section N" reference pointed at a renumbered section.
 [The validation record](../artifacts/reports/US-WL11/validation.md) traces each sentence to the mechanism that makes it true.
+
+## The Waitlist job runs hourly and names a locked Keychain (2026-10-21)
+
+The founder's Mac sleeps after a minute idle and its login Keychain locks on sleep, so the daily job's 06:30 run, which launchd starts on wake before he unlocks, usually could not read the Kit API key; each such run failed loudly and did nothing, but several in a row would leave unsubscribes unscrubbed with only the log to show it.
+On the captain's "job a", `tools/waitlist/launchd/app.reptoday.waitlist-daily.plist` keeps its 06:30 time and adds `StartInterval` 3600, so the first hourly run after an unlock does the work (every step is idempotent), and `wl_store.read_api_key` tells a locked Keychain (`security` exit 36, 51 or 128, or a read cut off while it waits on an unlock dialog) apart from a missing item (exit 44, or no `security` tool at all), so the log says "the Keychain is locked ... the next run tries again" instead of "no Kit API key".
+`tools/waitlist/README.md` ("The daily job") owns the behavior and the update steps for the job-only clone.

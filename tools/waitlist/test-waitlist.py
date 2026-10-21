@@ -1053,8 +1053,113 @@ class DailyJob(Case):
         self.assertEqual(arguments[0], '/usr/bin/python3')
         self.assertTrue(arguments[1].endswith('tools/waitlist/waitlist.py'))
         self.assertEqual(arguments[2:], ['daily', '--live'])
-        self.assertIn('StartCalendarInterval', definition)
+        self.assertEqual(definition['StartCalendarInterval'], {'Hour': 6, 'Minute': 30})
+        # Hourly too: a wake run that meets the locked Keychain is followed by one after the founder unlocks.
+        self.assertEqual(definition['StartInterval'], 3600)
+        self.assertFalse(definition['RunAtLoad'])
         self.assertNotIn('EnvironmentVariables', definition)
+
+
+FAKE_SECURITY = '''#!/bin/sh
+# A stand-in for macOS `security`, for the Keychain tests only. It answers as the test asks and prints no key
+# unless asked to succeed.
+case "$WAITLIST_FAKE_SECURITY" in
+  found) printf '%s\\n' "$WAITLIST_FAKE_KEY"; exit 0 ;;
+  missing) echo 'security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.' >&2; exit 44 ;;
+  locked) echo 'security: SecKeychainSearchCopyNext: User interaction is not allowed.' >&2; exit 36 ;;
+  hang) sleep 30 ;;
+  *) echo 'security: something else' >&2; exit 9 ;;
+esac
+'''
+
+
+class KeychainRead(unittest.TestCase):
+    """The Kit key read, with a stand-in `security` first on PATH (or none on PATH): a missing item, a locked
+    Keychain (this Mac's login Keychain locks on sleep, so a run that starts on wake meets it) and any other
+    refusal are told apart, and no message ever holds the key."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='waitlist-keychain-'))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        fake = self.tmp / 'bin' / 'security'
+        fake.parent.mkdir()
+        fake.write_text(FAKE_SECURITY)
+        fake.chmod(0o755)
+        self.env = dict(os.environ, PATH='{}:{}'.format(fake.parent, os.environ.get('PATH', '')), WAITLIST_FAKE_KEY=KEY)
+
+    def read(self, answer):
+        saved = dict(os.environ)
+        os.environ.clear()
+        os.environ.update(self.env, WAITLIST_FAKE_SECURITY=answer)
+        try:
+            return wl_store.read_api_key('com.reptoday.waitlist.test-item')
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def failure(self, answer):
+        with self.assertRaises(StoreError) as raised:
+            self.read(answer)
+        text = str(raised.exception)
+        self.assertNotIn(KEY, text)
+        self.assertIn('com.reptoday.waitlist.test-item', text)
+        return text
+
+    def test_a_found_item_is_the_key(self):
+        self.assertEqual(self.read('found'), KEY)
+
+    def test_a_missing_item_says_it_is_missing(self):
+        text = self.failure('missing')
+        self.assertIn('no Kit API key in the Keychain', text)
+        self.assertNotIn('locked', text)
+
+    def test_no_security_tool_says_there_is_no_key(self):
+        empty = self.tmp / 'empty'
+        empty.mkdir()
+        self.env['PATH'] = str(empty)
+        text = self.failure('found')
+        self.assertIn('no Kit API key in the Keychain', text)
+        self.assertNotIn('locked', text)
+
+    def test_a_locked_keychain_says_it_is_locked(self):
+        text = self.failure('locked')
+        self.assertIn('the Keychain is locked', text)
+        self.assertNotIn('no Kit API key', text)
+
+    def test_a_read_that_waits_on_an_unlock_dialog_ends_and_says_locked(self):
+        original = wl_store.NETWORK_TIMEOUT_SECONDS
+        wl_store.NETWORK_TIMEOUT_SECONDS = 0.2
+        self.addCleanup(setattr, wl_store, 'NETWORK_TIMEOUT_SECONDS', original)
+        started = time.monotonic()
+        text = self.failure('hang')
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertIn('the Keychain is locked', text)
+
+    def test_any_other_refusal_names_the_exit_status_only(self):
+        text = self.failure('other')
+        self.assertIn('security exit 9', text)
+
+    def test_a_daily_run_on_a_locked_keychain_fails_every_step_loudly_and_changes_nothing(self):
+        state = self.tmp / 'state'
+        state.mkdir(mode=0o700)
+        view = state / wl_common.VIEW_NAME
+        view.write_bytes(b'{"view": 1, "generated_at": "2026-10-21T06:30:00+00:00", "entries": []}\n')
+        before = sorted(item.name for item in state.iterdir()), view.read_bytes()
+        environment = dict(self.env, WAITLIST_FAKE_SECURITY='locked', PYTHONDONTWRITEBYTECODE='1')
+        environment.pop(wl_common.FAULT_ENV, None)
+        done = subprocess.run([sys.executable, str(WAITLIST), 'daily', '--live', '--state-dir', str(state)],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=environment, cwd=str(self.tmp), timeout=120)
+        output = done.stdout.decode('utf-8', 'replace')
+        self.assertEqual(done.returncode, 1, output)
+        self.assertNotIn(KEY, output)
+        for step in ('sweep-unsubscribed', 'sweep-retention', 'produce', 'kit-deletes'):
+            self.assertIn('daily: step {} FAILED (exit 1)'.format(step), output)
+        self.assertEqual(output.count('the Keychain is locked'), 4, output)
+        self.assertNotIn('no Kit API key', output)
+        self.assertIn('daily: 4 of 4 steps failed', output)
+        # Nothing was done: no ledger, no new file, the previous view's bytes unchanged.
+        self.assertEqual((sorted(item.name for item in state.iterdir() if item.name != wl_common.LOCK_NAME), view.read_bytes()),
+                         ([name for name in before[0]], before[1]))
 
 
 class KitClient(unittest.TestCase):
@@ -1268,12 +1373,6 @@ class KitClient(unittest.TestCase):
                 KitStore(KEY, base_url=url)
         KitStore(KEY, base_url='https://api.kit.com')
         KitStore(KEY, base_url='http://127.0.0.1:9')
-
-    def test_a_missing_keychain_item_is_an_error_that_names_the_item_not_a_key(self):
-        with self.assertRaises(StoreError) as raised:
-            wl_store.read_api_key('com.reptoday.waitlist.no-such-item-for-the-test')
-        self.assertIn('no Kit API key in the Keychain', str(raised.exception))
-        self.assertIn('com.reptoday.waitlist.no-such-item-for-the-test', str(raised.exception))
 
     def test_a_sweep_through_the_kit_client_deletes_only_what_it_may(self):
         gone = self.fake.add(address('gone'), state='cancelled', fit='lost-the-routine')

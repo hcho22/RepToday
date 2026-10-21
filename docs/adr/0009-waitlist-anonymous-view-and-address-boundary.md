@@ -59,4 +59,5 @@ The PRD's Open Questions section keeps the options and reasons.
 2. Hosting (OQ2): (a) stay on Cloudflare Pages, static.
 3. Source transport (OQ3): (a) per-tab last-touch among the four links; a plain path keeps an existing tag; a trailing slash counts as the same link.
 4. View production (OQ4): (ii) a daily `launchd` run that also runs after each sweep, plus on demand, writing `~/Library/Application Support/RepToday/waitlist/waitlist-view.json`, owner-only.
+   Amended 2026-10-21 to also run hourly while the Mac is awake (the PRD's "Settled 2026-10-19" block; `tools/waitlist/README.md`, "The daily job").
 5. Confirmation (OQ5): double opt-in; only confirmed sign-ups are in the view.
