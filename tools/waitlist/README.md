@@ -15,7 +15,7 @@ The Mac-side commands (`waitlist.py`) run on the founder's Mac; the system `/usr
 | `waitlist.py` | The operator command: `produce`, `assign`, `sweep-unsubscribed`, `sweep-retention`, `remove`, `record-launch-email`, `tag`, `show`, `kit-deletes` and `daily`. Documented below. |
 | `wl_common.py`, `wl_store.py`, `wl_core.py` | Its parts: paths, the run lock, the run's time limit and atomic writes; the Kit and synthetic stores; the ledger, identifier assignment, the view producer, the sweeps and the send-time lookup. |
 | `fake_kit.py`, `test-waitlist.py` | A local fake of the part of Kit's v4 API the tooling uses, and the tests (store logic, the real Kit client over HTTP to the fake, and the command as a subprocess, including a crash, concurrent runs, a hung run and a pseudo-terminal). |
-| `launchd/app.reptoday.waitlist-daily.plist` | The daily job's definition, for slice 4 to install. Nothing installs it from the repository. |
+| `launchd/app.reptoday.waitlist-daily.plist` | The daily job's definition (06:30 and hourly). The founder installs it; nothing installs it from the repository. |
 | `audit-checkouts.sh` | The read-only audit of the gr0wthlab, Mandu and RepToday checkouts (the address boundary, below). |
 
 ## Run the checks
@@ -163,9 +163,13 @@ An interrupt (Ctrl-C) is not a failure: it stops the whole job, exit 130.
 One run of the retention sweep erases only what fits before its last 120 seconds, roughly 300 sign-ups at Kit's API-key rate (about 2 requests a second; an erasure is 3 calls), so the job repeats it as separate passes, each under the lock and its own 600 second limit, while the previous pass left sign-ups and erased at least one, up to 20 passes (about 6,000 sign-ups).
 The step is reported failed only when sign-ups remain after the last pass or a pass erased none; the next daily run continues from there.
 A view that cannot be written after a pass is reported, but the pass's erasures still count and the next pass runs; the job's last step writes the view again.
-`launchd/app.reptoday.waitlist-daily.plist` runs it at 06:30 local time, and a calendar job the Mac slept through starts when the Mac next wakes.
+`launchd/app.reptoday.waitlist-daily.plist` runs it at 06:30 local time and every hour while the Mac is awake; a calendar run the Mac slept through starts when the Mac next wakes.
+The hourly run is there for the locked Keychain: the founder's Mac sleeps after a minute idle and its login Keychain locks on sleep, so the run launchd starts on wake, before he unlocks, cannot read the Kit API key.
+Such a run fails every step, saying "the Keychain is locked, so the Kit API key ... could not be read; nothing was changed and the next run tries again"; it does nothing else, because each step reads the key before it takes the lock or reads or writes anything, and the first hourly run after the unlock does the day's work.
+Every step is safe to repeat, and an hour with nothing due costs a few read calls to Kit.
+A missing Keychain item says "no Kit API key in the Keychain" instead, which no later run fixes.
 
-Install it (the captain's step, slice 4; nothing in the repository does this):
+Install it (the captain's step; nothing in the repository does this), from the checkout the job runs, which is the job-only clone `~/Developer/RepToday-waitlist-job` on `main` (the captain's choice, 2026-10-21, so no other work moves the job's code):
 
 ```
 mkdir -p ~/Library/Logs/RepToday
@@ -175,6 +179,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.reptoday.waitlist-da
 launchctl kickstart gui/$(id -u)/app.reptoday.waitlist-daily
 ```
 
+To update it after a merge: `git -C ~/Developer/RepToday-waitlist-job pull --ff-only`, then `launchctl bootout gui/$(id -u)/app.reptoday.waitlist-daily` and the `sed` and `bootstrap` lines above again.
 The Keychain item must let `security` read it without a prompt when the job runs.
 The job writes counts only to `~/Library/Logs/RepToday/waitlist-daily.log`.
 

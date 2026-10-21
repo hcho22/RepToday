@@ -438,6 +438,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [x] A removed or retention-expired sign-up is absent from the next generation that reads the store after its removal; an empty store writes `"entries": []`.
 - [x] The default output path is outside the gr0wthlab, Mandu and RepToday checkouts and outside every git work tree, settled in OQ4; the command resolves symbolic links and refuses to write when the directory the file would be written in, or any ancestor of it, contains a `.git` entry (a directory, or a file as in a linked worktree).
 - [ ] It runs on the cadence settled in OQ4 and can be run on demand; a missed run is visible to the reader as the view's age (`generated_at`), which the launcher already reports.
+  Amended 2026-10-21: the job runs at 06:30 and every hour while the Mac is awake (`StartInterval` 3600). A run that meets a locked Keychain fails every step with "the Keychain is locked ... nothing was changed and the next run tries again" (a missing item still says "no Kit API key"), does no partial work, and leaves the previous view in place; the next hourly run after the unlock does the work, and no delete-by day moves because a run was missed (`KeychainRead` in `tools/waitlist/test-waitlist.py`).
   Open: `waitlist.py produce` runs on demand and the daily job (`daily --live`) and its `launchd` definition are written, but installing the job on the founder's Mac, and so a scheduled run, is slice 4.
 - [ ] The evidence records whether a scheduled run that the Mac slept through runs when it wakes (OQ4's "confirm").
   Open: needs the installed job (slice 4).
@@ -799,6 +800,7 @@ Every marked recommendation below is accepted:
 - OQ2: (a) stay on Cloudflare Pages, static.
 - OQ3: (a) per-tab last-touch among the four links; a plain path keeps an existing tag; a trailing slash counts as the same link.
 - OQ4: (ii) a daily `launchd` run that also runs after each sweep, plus on demand, writing `~/Library/Application Support/RepToday/waitlist/waitlist-view.json`, owner-only.
+  Amended 2026-10-21 (the captain's "job a"): the job also runs every hour while the Mac is awake, because the founder's Mac sleeps after a minute idle and its login Keychain locks on sleep, so the 06:30 run that launchd starts on wake usually cannot read the Kit API key.
 - OQ5: double opt-in; only confirmed sign-ups in the view.
 - OQ6: (a) keep existing Kit sign-ups as Source `unknown`, Fit `null`, beta `false`.
 - OQ7: (a) a new, separate `POST` route for web events.
