@@ -165,7 +165,7 @@ The step is reported failed only when sign-ups remain after the last pass or a p
 A view that cannot be written after a pass is reported, but the pass's erasures still count and the next pass runs; the job's last step writes the view again.
 `launchd/app.reptoday.waitlist-daily.plist` runs it at 06:30 local time and every hour while the Mac is awake; a calendar run the Mac slept through starts when the Mac next wakes.
 The hourly run is there for the locked Keychain: the founder's Mac sleeps after a minute idle and its login Keychain locks on sleep, so the run launchd starts on wake, before he unlocks, cannot read the Kit API key.
-Such a run fails every step, saying "the Keychain is locked, so the Kit API key ... could not be read; nothing was changed and the next run tries again"; it does nothing else, because each step reads the key before it takes the lock or reads or writes anything, and the first hourly run after the unlock does the day's work.
+Such a run fails every step, saying "the Keychain is locked, so the Kit API key ... could not be read; nothing was changed and the next run tries again"; it does nothing else, because each step reads the key before it takes the lock or touches the ledger, the view or Kit, and the first hourly run after the unlock does the day's work.
 Every step is safe to repeat, and an hour with nothing due costs a few read calls to Kit.
 A missing Keychain item says "no Kit API key in the Keychain" instead, which no later run fixes.
 
@@ -190,6 +190,7 @@ git -C "$REPO" pull --ff-only && launchctl bootout gui/$(id -u)/app.reptoday.wai
     "$REPO/tools/waitlist/launchd/app.reptoday.waitlist-daily.plist" > ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist && \
   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist
 ```
+
 The Keychain item must let `security` read it without a prompt when the job runs.
 The job writes counts only to `~/Library/Logs/RepToday/waitlist-daily.log`.
 
