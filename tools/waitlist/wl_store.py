@@ -29,6 +29,9 @@ from pathlib import Path
 from wl_common import NETWORK_TIMEOUT_SECONDS, WaitlistError, field_key, load_contract, write_private_atomic
 
 KIT_BASE_URL = 'https://api.kit.com'
+# A subscriber's own page in Kit's web app, where the founder deletes an erased one. Kit's subscriber list hides
+# unsubscribed subscribers by default, and every erased one is unsubscribed, so the page is reached by its id.
+KIT_SUBSCRIBER_PAGE = 'https://app.kit.com/subscribers/{}'
 KEYCHAIN_SERVICE_ENV = 'WAITLIST_KIT_KEYCHAIN_SERVICE'
 DEFAULT_KEYCHAIN_SERVICE = 'com.reptoday.waitlist.kit'
 KEYCHAIN_ACCOUNT = 'api-key'

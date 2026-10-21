@@ -51,7 +51,7 @@ from wl_common import (  # noqa: E402
     RETENTION_PASS_CAP, SWEEP_RESERVE_SECONDS, WaitlistError, RunLimitExceeded, RunLock, enable_test_faults,
     ensure_private_dir, kit_delete_by, parse_day, require_directory_outside_work_trees, run_limit, state_dir,
     today_local)
-from wl_store import KitStore, RestrictedStore, SyntheticStore  # noqa: E402
+from wl_store import KIT_SUBSCRIBER_PAGE, KitStore, RestrictedStore, SyntheticStore  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_REFUSED, EXIT_LIMIT, EXIT_USAGE, EXIT_INTERNAL, EXIT_INTERRUPTED = 0, 1, 2, 3, 64, 70, 130
 
@@ -126,11 +126,14 @@ def sweep_status(name, counts, extra='', erased_on=None):
 
 
 def tell_kit_deletes(ids, erased_on):
-    """Name the Kit subscriber ids the founder now deletes in Kit's web app (ids only, never an address)."""
+    """Name the Kit subscriber ids the founder now deletes in Kit's web app, each with its page there (ids only,
+    never an address)."""
     if ids:
         say('kit-delete: delete {} erased sign-up{} in Kit\'s web app by {} (README, "Delete in Kit"): Kit subscriber id{} {}'.format(
             len(ids), '' if len(ids) == 1 else 's', kit_delete_by(erased_on).isoformat(), '' if len(ids) == 1 else 's',
             ', '.join(ids)))
+        for subscriber_id in ids:
+            say('kit-delete: {}'.format(KIT_SUBSCRIBER_PAGE.format(subscriber_id)))
 
 
 def after_erasure(store, directory, counts, soft_deadline):
@@ -258,8 +261,9 @@ def command_kit_deletes(args):
             'check failed {}, left unchecked {}'.format(counts['confirmed'], len(waiting), len(overdue), counts['failed'],
                                                         counts['unchecked']))
         for item in waiting:
-            say('kit-deletes: Kit subscriber id {} - erased {}, delete by {}{}'.format(
-                item['id'], item['erased_on'], item['delete_by'], ' - OVERDUE' if item['overdue'] else ''))
+            say('kit-deletes: Kit subscriber id {} - erased {}, delete by {}{} - {}'.format(
+                item['id'], item['erased_on'], item['delete_by'], ' - OVERDUE' if item['overdue'] else '',
+                KIT_SUBSCRIBER_PAGE.format(item['id'])))
         return EXIT_FAILED if overdue or counts['failed'] else EXIT_OK
     return locked_run(args, body)
 

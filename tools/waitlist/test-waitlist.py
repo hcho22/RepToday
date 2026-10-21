@@ -797,6 +797,7 @@ class KitDeletes(Case):
         self.assertIn('kit-delete: delete 1 erased sign-up in Kit\'s web app by {}'.format(
             (today + timedelta(days=wl_common.KIT_DELETE_DAYS)).isoformat()), output)
         self.assertIn('Kit subscriber id {}'.format(self.first), output)
+        self.assertIn('kit-delete: https://app.kit.com/subscribers/{}'.format(self.first), output)  # the page to delete it on
         code, output = self.cli('sweep-unsubscribed', '--live', expect=0)
         self.assertIn('Kit subscriber id {}'.format(self.third), output)
         self.assertEqual(set(self.awaiting()), {self.first, self.third})
@@ -804,6 +805,7 @@ class KitDeletes(Case):
         code, output = self.cli('kit-deletes', expect=0)
         self.assertIn('0 confirmed deleted in Kit, 2 still to delete', output)
         self.assertIn('Kit subscriber id {} - erased {}'.format(self.first, today.isoformat()), output)
+        self.assertIn('https://app.kit.com/subscribers/{}'.format(self.first), output)
         self.delete_in_web_app(self.first)
         code, output = self.cli('kit-deletes', expect=0)
         self.assertIn('1 confirmed deleted in Kit, 1 still to delete', output)
