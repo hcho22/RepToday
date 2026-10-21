@@ -1,6 +1,6 @@
 # PRD: Rep Today Waitlist (2026-10-19)
 
-- Status: **Drafted 2026-10-19; implementation authorized 2026-10-19, built in four reviewed slices; slices 1 to 3 have landed (the contract and checker; the Kit spike, the form, the Source links and the web events; the Mac-side storage, producer, boundary guard, send-time lookup and removal and retention), slice 4 (privacy section, deploys, the installed daily job and the go-live rehearsal) is open.**
+- Status: **Drafted 2026-10-19; implementation authorized 2026-10-19, built in four reviewed slices; all four have landed, and the Waitlist went live on 2026-10-21 (the privacy section, the site and the `/webEvent` route in production, the daily job on the founder's Mac, a rehearsal with his own addresses; `artifacts/reports/US-WL12/validation.md`). Still open: the first runs launchd starts on its own, including one after the Mac slept (US-WL07), and a local-stub rerun of the earlier browser Validation Tests (US-WL12).**
   The captain approved the gr0wthlab Dispatch request for RepToday's Waitlist (item 20261016-reptoday-waitlist) on 2026-10-19 and asked for this PRD first.
   The request fixes the sign-up, the Source links, the web events, the privacy policy content, the anonymous view's format and the address boundary.
   This PRD carries all of it verbatim (Appendix A) and adds or drops no field, Source, event property or file field.
@@ -440,8 +440,10 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [ ] It runs on the cadence settled in OQ4 and can be run on demand; a missed run is visible to the reader as the view's age (`generated_at`), which the launcher already reports.
   Amended 2026-10-21: the job runs at 06:30 and every hour while the Mac is awake (`StartInterval` 3600). A run that meets a locked Keychain fails every step with "the Keychain is locked ... nothing was changed and the next run tries again" (a missing item still says "no Kit API key"), does no partial work, and leaves the previous view in place; the next hourly run after the unlock does the work, and no delete-by day moves because a run was missed (`KeychainRead` in `tools/waitlist/test-waitlist.py`).
   Open: `waitlist.py produce` runs on demand and the daily job (`daily --live`) and its `launchd` definition are written, but installing the job on the founder's Mac, and so a scheduled run, is slice 4.
+  Open: installed on 2026-10-21 (`launchctl` reports the 06:30 time and the 3600-second interval) and run on demand; the first run launchd starts on its own is recorded in a later note.
 - [ ] The evidence records whether a scheduled run that the Mac slept through runs when it wakes (OQ4's "confirm").
   Open: needs the installed job (slice 4).
+  Open: the job was installed on 2026-10-21; the first 06:30 run after a night's sleep is recorded in a later note.
 - [x] It needs no network at read time for gr0wthlab: the reader opens a local file; the producer's own network use (to read the store and, under OQ1 Option A, to write back new identifiers) is the producer's alone.
 - [x] Credentials the producer needs are read from the macOS Keychain at run time (item names recorded, values never), never from a file, argument or environment value that git or a shell history could keep.
   The item names are in `tools/waitlist/README.md` ("State and credentials").
@@ -517,8 +519,9 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [x] A batch of entry identifiers at least as large as gr0wthlab's configured Beta Cohort invitation batch (20 at this date) is handled in one call.
 - [x] The tool reads its credential from the Keychain (US-WL08), and the tool and its tests live in the RepToday checkout without any credential or address.
 - [x] The runbook (`docs/` or `tools/waitlist/README.md`) states the send-time path: gr0wthlab's Review Queue item names entry identifiers; the founder runs `tag`; the founder sends from the email service to that label.
-- [ ] The Waitlist send path always includes the unsubscribe link (US-WL10).
+- [x] The Waitlist send path always includes the unsubscribe link (US-WL10).
   Open: this holds because every waitlist email is sent from Kit (the runbook says so), but showing a test broadcast carrying the link needs a send, which this slice does not make; it is shown in the go-live rehearsal.
+  Shown 2026-10-21: a Kit test broadcast to the founder carried the unsubscribe link.
 
 **Validation Test:**
 
@@ -537,10 +540,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 **Acceptance Criteria:**
 
-- [ ] Every waitlist email (launch and beta, and the confirmation message if OQ5 settles on double opt-in) carries an unsubscribe link; a test message through the email service shows it (a configuration check, not a code change, if the service adds it).
+- [x] Every waitlist email (launch and beta, and the confirmation message if OQ5 settles on double opt-in) carries an unsubscribe link; a test message through the email service shows it (a configuration check, not a code change, if the service adds it).
   Open: the confirmation message carries the link (spike, unknown 5); the launch and beta broadcasts are a configuration check on a test send, shown in the go-live rehearsal.
-- [ ] A removal request by unsubscribe link, by a spam complaint (Kit state `complained`) or by a message to reptoday.app@gmail.com results in the sign-up and its answers being deleted within 7 days of the request: Kit's API cannot delete a subscriber, so the tooling first erases it (unsubscribed, the address overwritten with a placeholder that is not an address, every custom field blanked; D2), and the founder then deletes the scrubbed record in Kit's web app, which also removes the approximate location Kit keeps on it (amended 2026-10-20).
+  Shown 2026-10-21: both rehearsal confirmation emails carried the link, and a Kit test broadcast to the founder did too.
+- [x] A removal request by unsubscribe link, by a spam complaint (Kit state `complained`) or by a message to reptoday.app@gmail.com results in the sign-up and its answers being deleted within 7 days of the request: Kit's API cannot delete a subscriber, so the tooling first erases it (unsubscribed, the address overwritten with a placeholder that is not an address, every custom field blanked; D2), and the founder then deletes the scrubbed record in Kit's web app, which also removes the approximate location Kit keeps on it (amended 2026-10-20).
   Open: the commands, the daily sweep and the delete check are built and proven on the test account, but the 7-day headroom depends on the installed daily job, the mailbox cadence and the founder's delete, shown in the go-live rehearsal (slice 4).
+  Shown in the go-live rehearsal (2026-10-21): an unsubscribe was erased by the installed job and deleted in Kit the same day, and the founder's typed `remove` erased a sign-up; the job runs hourly while the Mac is awake and the runbook keeps the mailbox cadence.
 - [x] A sign-up Kit reports as `complained` (its holder marked a waitlist email as spam) is a removal request (the captain's decision, 2026-10-20): the daily unsubscribed sweep erases it exactly as it erases a `cancelled` one, within the same window; a `bounced` sign-up is not a removal request and stays until the retention date.
   `waitlist.py sweep-unsubscribed` reports the two kinds apart; a record Kit already mails nothing may refuse the unsubscribe call, and the scrub then goes ahead with the read-back deciding.
 - [x] After every erasure the command names the Kit subscriber ids to delete in Kit's web app, each with its page there (`https://app.kit.com/subscribers/<id>`, the route the captain used on the test account, since Kit's default list hides unsubscribed subscribers), and the day to delete each by, ids only and never an address; `waitlist.py kit-deletes` lists every id still waiting, marks one past its day as overdue (exit 1) and stops listing each one Kit no longer answers for; the daily job ends with that check.
@@ -554,11 +559,12 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   The sweep itself refuses a record it cannot trust (damaged, a date after the day it was recorded, or one the command would have refused) and deletes nothing.
   With no date recorded the retention sweep deletes nothing and exits 0, and the rest of the daily job (the unsubscribed sweep and the view) still runs.
 - [x] Both sweeps default to a dry run that prints counts, take an injected `asOf` clock in their date logic, and log counts only.
-- [ ] Both sweeps run live in the daily scheduled job, before the producer run OQ4 chains after them, so a sign-up past the launch-email date plus 25 days is erased on the first daily run on or after that day; the evidence records that the installed schedule invokes both sweeps without the dry-run default.
+- [x] Both sweeps run live in the daily scheduled job, before the producer run OQ4 chains after them, so a sign-up past the launch-email date plus 25 days is erased on the first daily run on or after that day; the evidence records that the installed schedule invokes both sweeps without the dry-run default.
   Each step of the daily job runs whatever an earlier step's exit status was, and the job reports every failed step and exits non-zero.
   One run of the retention sweep erases only what fits in its 600 second limit, a few hundred sign-ups at Kit's API-key rate (about 2 requests a second; an erasure is 3 calls), so the daily job repeats it as separate passes, each under the run lock and its own limit, while the previous pass left sign-ups and erased at least one, up to 20 passes (about 6,000 sign-ups); the step is reported failed only when sign-ups remain after the 20th pass or a pass erased none.
   The retention sweep erases a sign-up in every Kit state, `bounced` and `complained` included; Kit mails neither, so an erasure's read-back accepts either state where Kit keeps it, and an unsubscribe call Kit refuses for one does not stop the scrub (the test account cannot produce either state, so how Kit's unsubscribe treats them is not observed).
   Open: `launchd/app.reptoday.waitlist-daily.plist` runs `daily --live`, but installing it and recording that the installed schedule ran is slice 4's.
+  The installed job (`~/Library/LaunchAgents/app.reptoday.waitlist-daily.plist`, from the job-only clone) runs `daily --live` at 06:30 and every hour; its runs on 2026-10-21 ran both sweeps live (`artifacts/reports/US-WL12/validation.md`).
 - [x] Deleting a sign-up is followed by a view regeneration, so a removed sign-up leaves the file on the next generation that reads the store after its removal, and by the next scheduled run at the latest.
 - [x] The runbook states who watches the contact mailbox and how often (recommended: at least every 5 days while the waitlist is open) so the 7-day promise is operationally real, and what the founder does for a request that names an address not on the list.
 - [x] A deletion never touches a different person's record (the match is exact on the address or the entry identifier).
@@ -595,7 +601,8 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
   Set to October 21, 2026, the publication date the captain gave when he approved publishing the site (2026-10-21, "publish all, date 10-21-26"), ahead of the production deploy (US-WL12), which publishes it.
 - [x] Every sentence in the section is traced to the mechanism that makes it true (a table in the evidence: "the unsubscribe link in any waitlist email" -> US-WL10 and the US-WL06 spike's confirmation-message result; "within 7 days" -> US-WL10; "30 days after the launch email" -> US-WL10; "only the founder ... and the service that stores it" -> OQ1's design; "without your address" -> US-WL07).
 - [x] The existing draft banner, header comment and legal-review flags stay; the section is flagged for the same legal pass, and section 12's flag (section 13 after the renumbering) about the missing retention schedule is updated to say what now exists and what is still unreviewed.
-- [ ] The section is published no later than the form (US-WL12 orders the deploy).
+- [x] The section is published no later than the form (US-WL12 orders the deploy).
+  Published together with the form in production deployment `fc6c12eb` on 2026-10-21.
 - [x] Verify in browser with `chrome-devtools-axi` at 390 px and 1440 px.
 
 **Validation Test:**
@@ -616,14 +623,20 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **Acceptance Criteria:**
 
 - [ ] The full flow passes on the local site and stub (all earlier stories' Validation Tests rerun).
-- [ ] With the captain's approval, the site is deployed to a Cloudflare Pages preview first and the Source-link casings, the fallback behavior and the events are rechecked there; production publication is a separate, captain-approved, credentialed step (as `AGENTS.md` already requires), with the privacy page deployed with or before the form.
-- [ ] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), confirms both addresses if OQ5 settles on double opt-in, the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
-- [ ] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
-- [ ] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
-- [ ] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, git-ignored files included, and no address outside the guard's allowlist in the RepToday checkout (US-WL08, with each rule's file scope as stated there).
-- [ ] The evidence (`artifacts/reports/US-WL12/validation.md`) contains screenshots at 390 px and 1440 px, the commands and results above, the view's path and format version, the rehearsal's start and end times (so its event rows can be excluded from the conversion), and **no address**.
-- [ ] A short hand-off note states the file's path and the go-live date for the gr0wthlab follow-up (Dependencies, item 1); this story makes no change in gr0wthlab or Mandu.
-- [ ] `AGENTS.md` (a pointer entry only), `CONTEXT.md`, `gtm/03-site/DEPLOY.md`, `convex/README.md` (if US-WL05 used Convex), `docs/implementation-log.md` and `docs/test-coverage.md` are updated, and this PRD's status header and checkboxes are brought current.
+  Open: slice 4 did not rerun the earlier stories' browser Validation Tests on the local stub; the automated suites ran on every PR in CI, and the browser checks ran on the preview and on reptoday.app instead (`artifacts/reports/US-WL12/validation.md`).
+- [x] With the captain's approval, the site is deployed to a Cloudflare Pages preview first and the Source-link casings, the fallback behavior and the events are rechecked there; production publication is a separate, captain-approved, credentialed step (as `AGENTS.md` already requires), with the privacy page deployed with or before the form.
+  A preview sends no web events by design (`waitlist.js` sends them from reptoday.app only), so the events were checked on production in the rehearsal instead.
+- [x] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), confirms both addresses if OQ5 settles on double opt-in, the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
+- [x] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
+  Address 1's stored beta answer was `false` though the founder remembered ticking it; a check on the live page showed the tick belongs to the sign-up box it sits in (a tick in the other box is not sent), so the stored answer is what that box posted.
+- [x] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
+  Address 1 was removed by its unsubscribe link (erased by the installed job, then deleted in Kit by the founder). For the mailbox request, the founder's typed `remove` worked but on another of his rehearsal sign-ups, and address 2 itself was deleted in Kit's web app directly; both left Kit and the next view (the evidence records the detail and the one harmless ledger leftover it left).
+- [x] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, git-ignored files included, and no address outside the guard's allowlist in the RepToday checkout (US-WL08, with each rule's file scope as stated there).
+  Run 2026-10-21 after the rehearsal against `~/gr0wthlab`, `~/Mandu`, `~/Developer/RepToday` and the job-only clone: 0 findings in each.
+- [x] The evidence (`artifacts/reports/US-WL12/validation.md`) contains screenshots at 390 px and 1440 px, the commands and results above, the view's path and format version, the rehearsal's start and end times (so its event rows can be excluded from the conversion), and **no address**.
+- [x] A short hand-off note states the file's path and the go-live date for the gr0wthlab follow-up (Dependencies, item 1); this story makes no change in gr0wthlab or Mandu.
+  The note is in `artifacts/reports/US-WL12/validation.md` ("Hand-off note"): the view at `~/Library/Application Support/RepToday/waitlist/waitlist-view.json`, `view` 1, and `waitlist.live_since` 2026-10-21.
+- [x] `AGENTS.md` (a pointer entry only), `CONTEXT.md`, `gtm/03-site/DEPLOY.md`, `convex/README.md` (if US-WL05 used Convex), `docs/implementation-log.md` and `docs/test-coverage.md` are updated, and this PRD's status header and checkboxes are brought current.
 
 **Validation Test:**
 

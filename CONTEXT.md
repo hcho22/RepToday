@@ -100,7 +100,7 @@ The producer's **ledger** (beside the view, Kit subscriber id to entry identifie
 The founder then deletes the erased record in Kit's web app, which also removes the approximate location Kit keeps and its API cannot clear; the tooling names the Kit subscriber ids to delete and checks afterwards that each no longer answers.
 A **removal request** is an unsubscribe, a spam complaint about a waitlist email (Kit state `complained`), or a message to the policy's contact address; a bounce is not one.
 Addresses are resolved only on the founder's side, at send time, and no email-service credential or address export is ever placed in the gr0wthlab, Mandu or RepToday checkouts.
-Being built in reviewed slices: the spec, which tracks what has landed, is `.claude/agent/tasks/prd-waitlist_261019.md` (`US-WL##`), the approved strings and tags are in `tools/waitlist/contract.json`, and the boundary decision is [ADR-0009](docs/adr/0009-waitlist-anonymous-view-and-address-boundary.md).
+Live since 2026-10-21: the spec, which tracks what has landed, is `.claude/agent/tasks/prd-waitlist_261019.md` (`US-WL##`), the approved strings and tags are in `tools/waitlist/contract.json`, and the boundary decision is [ADR-0009](docs/adr/0009-waitlist-anonymous-view-and-address-boundary.md).
 
 ## Two-Writer Policy Safety
 
