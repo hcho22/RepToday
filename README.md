@@ -211,7 +211,7 @@ RepToday/
 ├── package.json             # npm root for the Convex functions - standard Convex layout puts it here, not in convex/ (see convex/README.md)
 ├── tools/                   # Release/telemetry tooling, guarded Coach runtime helpers, and the offline US-T13 reconciliation harness
 ├── proxy/                   # Content-stateless key-holding Worker with the deployed App Attest/StoreKit Coach gateway
-├── gtm/03-site/             # Canonical reptoday.app static source: root variants, the shared Waitlist form script, hosted privacy policy, shared headers, Source-link redirects, A/B screenshots, and deploy guide
+├── gtm/03-site/             # Canonical reptoday.app static source: root variants, the shared Waitlist form script, hosted privacy policy, shared headers, Source-link redirects, and deploy guide
 ├── docs/                    # Implementation log, test-coverage map, Coach runtime-auth reference, asset-attribution ledger
 ├── .claude/agent/tasks/     # Strategic plan + implementation PRD (source of truth)
 ├── AGENTS.md                # Repo guidance and architecture reference - the real file
