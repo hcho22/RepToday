@@ -28,6 +28,12 @@ The browser session sent every host except reptoday.app to a dead proxy, so no v
 - **Installed** `app.reptoday.waitlist-daily` (`~/Library/LaunchAgents`, `daily --live` at 06:30 local, counts-only log `~/Library/Logs/RepToday/waitlist-daily.log`); `plutil -lint` OK; kickstarted once: last exit code 0, "daily: all 4 steps ok", the Kit key read from the Keychain without a prompt, no `@` in the log.
 - **Updated on 2026-10-21 at 19:14 UTC** (the captain's "reptoday - update the job", after #210): the job-only clone fast-forwarded to `main` f4f2136, the job reinstalled with the README's update steps (`launchctl bootout`, the `sed` line, `launchctl bootstrap`), `plutil -lint` OK, and `launchctl print` reports the 06:30 calendar time and `run interval = 3600 seconds`. Kickstarted once: last exit code 0, "daily: all 4 steps ok", the view written with `"entries": []` and accepted by `check-view.py`, no `@` in the log.
 - **Open:** the first runs launchd starts on its own (the next hourly run and the next 06:30), and whether a run the Mac slept through starts on wake; recorded in a later note.
+- **Later note (2026-10-22, observed at 06:46 PDT):** launchd started every run on its own after the update, with no kickstart.
+  The log shows 18 hourly runs, from 2026-10-21 20:14 UTC to 2026-10-22 13:15 UTC, about an hour apart, and the 06:30 calendar run at 2026-10-22 13:31 UTC (06:31 PDT), each ending "daily: all 4 steps ok".
+  Every count was 0 except in the last two runs, which saw the captain's own test sign-up for the beta-box fix (erased afterward): the 13:15 UTC run wrote the view with unconfirmed left out 1 and assigned 1, and the 06:30 run with entries 1.
+  `launchctl print` reports `runs = 20` (these 19 plus the update's kickstart) and `last exit code = 0`, and the log holds no `@`.
+  The wake case is still unobserved: `pmset -g log` shows no sleep since the 2026-10-21 09:56 PDT wake, before the update, so no run fell while the Mac slept.
+  It stays open until a sleep-spanning run is seen.
 
 ## A morning run while the Keychain is locked
 
