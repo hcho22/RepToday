@@ -261,6 +261,62 @@ test('a sign-up posts exactly the contract\'s four fields to Kit, with no creden
   ]);
 });
 
+// The beta box as a visitor uses it: the click flips it, then the browser fires change.
+function toggleBeta(form) {
+  form.parts.beta.checked = !form.parts.beta.checked;
+  form.parts.beta.dispatch('change', {});
+}
+const postedBeta = (request) => Array.from(request.init.body.entries()).find(([key]) => key === contract.posted_fields.beta_opt_in)[1];
+
+test('the beta choice is one per page: a tick in either box is sent by either Join (captain, 2026-10-21)', async () => {
+  const cases = [
+    { name: 'top tick, bottom Join', ticks: [0], join: 1, posted: 'true' },
+    { name: 'bottom tick, top Join', ticks: [1], join: 0, posted: 'true' },
+    { name: 'top tick, own Join', ticks: [0], join: 0, posted: 'true' },
+    { name: 'tick then untick in the same box', ticks: [0, 0], join: 1, posted: 'false' },
+    { name: 'tick in one box, untick in the other', ticks: [0, 1], join: 0, posted: 'false' },
+    { name: 'no tick', ticks: [], join: 1, posted: 'false' },
+  ];
+  for (const { name, ticks, join, posted } of cases) {
+    const loaded = load('/', memoryStorage(), { hostname: 'reptoday.app', form: 2, answer: (url) => (url === KIT_SIGNUP ? answer(200, { status: 'success' }) : {}) });
+    for (const index of ticks) { toggleBeta(loaded.forms[index]); }
+    const [top, bottom] = loaded.forms;
+    assert.strictEqual(top.parts.beta.checked, bottom.parts.beta.checked, name + ': the boxes agree');
+    assert.strictEqual(top.parts.beta.checked, posted === 'true', name + ': the boxes show the choice');
+    const form = loaded.forms[join];
+    form.parts.email.value = ADDRESS;
+    form.parts.radios[1].checked = true;
+    loaded.submit(join);
+    await settle();
+    assert.strictEqual(signups(loaded).length, 1, name);
+    assert.strictEqual(postedBeta(signups(loaded)[0]), posted, name);
+  }
+});
+
+test('a successful sign-up leaves every beta box unticked, and a back/forward restore clears them together', async () => {
+  const loaded = load('/', memoryStorage(), { hostname: 'reptoday.app', form: 2, answer: (url) => (url === KIT_SIGNUP ? answer(200, { status: 'success' }) : {}) });
+  const [top, bottom] = loaded.forms;
+  toggleBeta(top);
+  bottom.parts.email.value = ADDRESS;
+  bottom.parts.radios[0].checked = true;
+  loaded.submit(1);
+  await settle();
+  assert.strictEqual(postedBeta(signups(loaded)[0]), 'true');
+  assert.strictEqual(bottom.getAttribute('data-wl-state'), 'done');
+  assert.deepStrictEqual([top.parts.beta.checked, bottom.parts.beta.checked], [false, false]);
+  // A second sign-up from the other placement asks afresh: no tick, false.
+  top.parts.email.value = ADDRESS;
+  top.parts.radios[0].checked = true;
+  loaded.submit(0);
+  await settle();
+  assert.strictEqual(postedBeta(signups(loaded)[1]), 'false');
+  // A restored page never keeps a tick in any box.
+  const restored = load('/', memoryStorage(), { hostname: 'reptoday.app', form: 2 });
+  toggleBeta(restored.forms[1]);
+  restored.show({ persisted: true });
+  assert.deepStrictEqual(restored.forms.map((form) => form.parts.beta.checked), [false, false]);
+});
+
 test('a local page posts its sign-up to the stub, never to Kit', async () => {
   const loaded = load('/', memoryStorage(), { hostname: 'localhost', form: true, answer: () => answer(200, { status: 'success' }) });
   fillIn(loaded);
