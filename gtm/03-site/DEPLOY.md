@@ -3,7 +3,7 @@
 The marketing site in this directory (`gtm/03-site/`) is **pure static HTML** - no
 build step, no bundler, no framework.
 Both pages use inline SVG and inline CSS, and both load the one shared script `/waitlist.js` (the Waitlist form, the Source links and the two web events), so neither page is self-contained: deploy the directory whole.
-The sibling `screenshot-*.png` files are A/B report artifacts and are not referenced by either page.
+The four A/B report screenshots (`screenshot-*.png`) live in `artifacts/reports/landing-ab-screenshots/`, outside this directory, so the site no longer serves them; keep report artifacts out of here, because a deploy publishes every file in it.
 Cloudflare Pages serves this directory as-is.
 
 - `index.html` - variant **A**, served at the site root (`/`).

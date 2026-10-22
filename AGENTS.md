@@ -152,7 +152,8 @@ No LLM/AI calls in the loop, no custom backend behind the core loop (the telemet
 ## Artifact Locations
 
 PRDs and task briefs live in `.claude/agent/tasks/`; work products go under `artifacts/` - `reports/` (engineering, QA, test results), `specs/`, `learning-logs/` - created on demand.
-The canonical public-site source, including the hosted engineering-draft Privacy Policy and A/B screenshots, lives under `gtm/03-site/`; follow its `DEPLOY.md`, and treat production publication as a separate captain-approved, credentialed step.
+The canonical public-site source, including the hosted engineering-draft Privacy Policy, lives under `gtm/03-site/`; follow its `DEPLOY.md`, and treat production publication as a separate captain-approved, credentialed step.
+The landing A/B screenshots are report artifacts in `artifacts/reports/landing-ab-screenshots/`, not site files, so the site does not serve them.
 
 ## Maintaining this file
 
