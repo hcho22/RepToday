@@ -1732,4 +1732,4 @@ Each production step ran on the captain's go-ahead and nothing else was touched;
 In the go-live rehearsal a tick in one sign-up box with the other placement's Join posted `false`, because each box counted only for its own form.
 On the captain's "optin - 1", `gtm/03-site/waitlist.js` keeps both boxes but makes them one choice per page: ticking or unticking either sets the other to match, so whichever Join is pressed sends the visitor's choice, and a successful sign-up leaves every box unticked.
 The field name, its `true`/`false` values and everything Kit, Convex and the view receive are unchanged; the pages' HTML is unchanged.
-FR-2 in the PRD records the decision and `tools/waitlist/test-source.cjs` the cases; nothing changes on reptoday.app until the next captain-approved publish.
+FR-2 in the PRD records the decision, `tools/waitlist/test-source.cjs` the cases and [the validation record](../artifacts/reports/waitlist-beta-one-choice/validation.md) the browser checks; nothing changes on reptoday.app until the next captain-approved publish.
