@@ -139,6 +139,15 @@
 
   window.RepTodayWaitlist = { sourceTags: SOURCE_TAGS, tagForPath: tagForPath, resolveVisit: resolveVisit };
 
+  // The beta choice is one choice per page (captain, 2026-10-21): each placement keeps its own
+  // box, but ticking or unticking any of them sets every box on the page to match, so whichever
+  // Join is pressed sends the visitor's choice. Setting `checked` from script fires no change
+  // event, so the boxes never echo each other.
+  var betaBoxes = [];
+  function setBetaChoice(checked) {
+    for (var i = 0; i < betaBoxes.length; i += 1) { betaBoxes[i].checked = checked; }
+  }
+
   function looksLikeEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
   }
@@ -158,9 +167,12 @@
     var guardListener = null;
     var guardTimer = null;
 
+    betaBoxes.push(beta);
+    beta.addEventListener('change', function () { setBetaChoice(beta.checked); });
+
     function clearChoices() {
       for (var i = 0; i < radios.length; i += 1) { radios[i].checked = false; }
-      beta.checked = false;
+      setBetaChoice(false);
     }
 
     function setError(input, holder, message) {
@@ -195,6 +207,9 @@
       form.setAttribute('data-wl-state', 'done');
       var fields = form.querySelectorAll('[data-wl-fields]');
       for (var i = 0; i < fields.length; i += 1) { fields[i].hidden = true; }
+      // The choice was sent: every box on the page starts unticked again, so another sign-up from
+      // the other placement asks afresh rather than carrying this one's answer.
+      setBetaChoice(false);
       setStatus(COPY.success);
       track('waitlist_signup');
       status.setAttribute('tabindex', '-1');

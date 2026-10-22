@@ -253,6 +253,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 **Acceptance Criteria:**
 
 - [x] One form definition appears in all four placements (hero and closing band, on `index.html` and `index-b.html`), identical except for element ids (FR-2; US-WL03 enforces it).
+  Since the captain's decision of 2026-10-21 the beta boxes on one page always agree, so a tick in either is sent by either Join (FR-2; `tools/waitlist/test-source.cjs`).
 - [x] The heading is "Join the waitlist" and the sentence is "Add your email and we'll tell you the day it ships."
 - [x] Field 1: an Email input (`type="email"`, `autocomplete="email"`, required) with a visible label; no placeholder stands in for the label.
 - [x] Field 2: a `fieldset` with the legend "Which sounds most like you?" and three radio buttons labelled exactly "I used to work out and lost the routine" (`lost-the-routine`), "I work out regularly" (`exercises-regularly`) and "I've never had a routine" (`never-had-a-routine`); required; **none checked** on first load, after a reload and after back-navigation (form restoration must not pre-select).
@@ -629,6 +630,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 - [x] The rehearsal reproduces gr0wthlab's own acceptance test for the Waitlist: the founder signs up once through the TikTok link and once with no tag, in a fresh browser tab that has opened no Source link (with addresses the founder owns), confirms both addresses if OQ5 settles on double opt-in, the view is produced and read with the reader's own checks (and `check-view.py`), and the privacy page is opened.
 - [x] Both rehearsal sign-ups appear with Sources `tiktok` and `unknown`, the Fit answers and beta choices as entered, and no address anywhere in the file; both page views and both sign-ups are counted in the sink; the privacy page has the Waitlist section.
   Address 1's stored beta answer was `false` though the founder remembered ticking it; a check on the live page showed the tick belongs to the sign-up box it sits in (a tick in the other box is not sent), so the stored answer is what that box posted.
+  On 2026-10-21 the captain chose to make the beta choice one per page (FR-2), so a tick in either box is now sent by either Join once that change is published.
 - [x] The rehearsal then removes both sign-ups, one by the unsubscribe link and one by a message to the contact mailbox, and both leave the store and the next view.
   Address 1 was removed by its unsubscribe link (erased by the installed job, then deleted in Kit by the founder). For the mailbox request, the founder's typed `remove` worked but on another of his rehearsal sign-ups, and address 2 itself was deleted in Kit's web app directly; both left Kit and the next view (the evidence records the detail and the one harmless ledger leftover it left).
 - [x] `tools/waitlist/audit-checkouts.sh` is run read-only against the gr0wthlab, Mandu and RepToday checkouts and reports nothing: no email-service credential and no export that holds addresses in any of them, git-ignored files included, and no address outside the guard's allowlist in the RepToday checkout (US-WL08, with each rule's file scope as stated there).
@@ -654,6 +656,7 @@ The first task of US-WL06 (the spike that proves the OQ1 destination) runs befor
 
 - FR-1: Every sign-up placement must show exactly one call to action, the heading "Join the waitlist" and the sentence "Add your email and we'll tell you the day it ships."; neither page may ask the visitor for a download, a follow or a share.
 - FR-2: Where the form appears more than once, on a page or across `index.html` and `index-b.html`, it must be the same form, differing only in element ids.
+  The beta box is one choice per page (captain, 2026-10-21): each placement keeps its own box, but ticking or unticking any of them sets every box on that page to match, so whichever Join is pressed sends the visitor's choice; the boxes are no longer independent.
 - FR-3: The form must have three fields and no others; beyond them it may carry only the visit's Source tag, which the visitor is never asked for.
 - FR-4: The Email field must be required.
 - FR-5: The Fit question "Which sounds most like you?" must offer exactly "I used to work out and lost the routine" (`lost-the-routine`), "I work out regularly" (`exercises-regularly`) and "I've never had a routine" (`never-had-a-routine`), with no answer pre-selected on load, reload or back-navigation, and an answer required to sign up.

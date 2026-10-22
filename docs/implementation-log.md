@@ -1726,3 +1726,10 @@ Each production step ran on the captain's go-ahead and nothing else was touched;
 - **The founder's Mac.** The daily job runs from a job-only clone, `~/Developer/RepToday-waitlist-job`, so no other work moves its code; it writes the view to `~/Library/Application Support/RepToday/waitlist/` and runs at 06:30 and hourly (#210, because the login Keychain locks on sleep).
 - **The rehearsal.** Two sign-ups of the captain's own through `/tiktok` and plain `reptoday.app` appeared in the view with Sources `tiktok` and `unknown` and were read by gr0wthlab's own reader; each page load and accepted sign-up produced one web event; removal by the unsubscribe link and by the founder's `remove`, each followed by his delete in Kit's web app, left Kit and the view empty; the checkout audit found nothing.
 - **Known deviations.** reptoday.app's Cloudflare zone gives `/waitlist.js` a 4-hour browser cache (the fix is a zone setting, in `gtm/03-site/DEPLOY.md`); the earlier browser Validation Tests were rechecked on the preview and production rather than the local stub; the first runs launchd starts on its own are still to be recorded.
+
+## The Waitlist beta choice is one per page (2026-10-21)
+
+In the go-live rehearsal a tick in one sign-up box with the other placement's Join posted `false`, because each box counted only for its own form.
+On the captain's "optin - 1", `gtm/03-site/waitlist.js` keeps both boxes but makes them one choice per page: ticking or unticking either sets the other to match, so whichever Join is pressed sends the visitor's choice, and a successful sign-up leaves every box unticked.
+The field name, its `true`/`false` values and everything Kit, Convex and the view receive are unchanged; the pages' HTML is unchanged.
+FR-2 in the PRD records the decision, `tools/waitlist/test-source.cjs` the cases and [the validation record](../artifacts/reports/waitlist-beta-one-choice/validation.md) the browser checks; nothing changes on reptoday.app until the next captain-approved publish.
