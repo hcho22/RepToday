@@ -2,6 +2,9 @@ name: CI
 
 # Gates every PR into the default branch (and pushes to it) on the repo's
 # toolchains in parallel jobs. A PR is green only when all jobs pass.
+# The two iOS jobs (ios, ios-26) run on pull requests only and are skipped on
+# pushes to main: the repository is private, so Actions minutes are billed and
+# Mac minutes count ten times over; the merged commit is not re-tested on a Mac.
 #
 #   coach (macos) - offline proxy/runtime, native operator, capture and recovery tests.
 #   sink  (ubuntu) - the root Convex telemetry sink: npm ci + typecheck + vitest.
@@ -161,6 +164,7 @@ jobs:
   # ---------------------------------------------------------------------------
   ios:
     name: iOS app (build + unit tests)
+    if: github.event_name == 'pull_request'
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -284,6 +288,7 @@ jobs:
   # ---------------------------------------------------------------------------
   ios-26:
     name: iOS app (iOS 26)
+    if: github.event_name == 'pull_request'
     runs-on: macos-26
     timeout-minutes: 45
     env:
