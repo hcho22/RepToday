@@ -94,11 +94,17 @@ Dependency drift makes the adapter refuse; review it again instead of bypassing 
 Wrangler 4's tail replaces a lost connection with up to five new subscriptions; the adapter
 sets those attempts to zero, so a lost connection deletes the tail and exits, as Wrangler 3 did,
 and a capture keeps one subscription. The tail passes `--profile default`, so a login profile bound
-to a parent directory cannot replace the default login. The adapter exports the bundle's `main` on
-`module.exports`, which the bundle's own export list omits. The offline gate evaluates
-that exact transformed module with synthetic auth and blocked IO, and checks the export
-the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing;
-neither check invokes `main` or establishes live attachment. See the
+to a parent directory cannot replace the default login, and no `--sampling-rate`, which Wrangler
+refuses at 1 before creating a tail; with no sampling filter every event is sent. The adapter
+exports the bundle's `main` on `module.exports`, which the bundle's own export list omits. The
+offline gate evaluates that exact transformed module with synthetic auth and blocked IO, and checks
+the export the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing.
+[`proxy/test/wrangler-tail-contract.mjs`](../proxy/test/wrangler-tail-contract.mjs) (part of
+`npm run test:runtime`) runs this capture through the installed Wrangler's real `tail` against a
+local stand-in for the tails API and its WebSocket: it attaches, becomes ready, forwards the one
+guard row and stops at the deadline, on one subscription filtered to the exact version and the
+default login despite a bound profile, and a lost connection ends it without a second
+subscription. Live attachment to Cloudflare is not established offline. See the
 [export regression evidence](../artifacts/reports/coach-tail-export/validation.md).
 
 There are three different facts:

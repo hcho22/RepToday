@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:runtime": "node test/workerd-auth.mjs && node test/wrangler-deploy-contract.mjs"
+    "test:runtime": "node test/workerd-auth.mjs && node test/wrangler-deploy-contract.mjs && node test/wrangler-tail-contract.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261023.1",
