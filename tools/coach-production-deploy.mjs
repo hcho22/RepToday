@@ -587,6 +587,16 @@ export function wranglerArguments(repository, ...command) {
   return [path.join(repository, 'proxy/node_modules/wrangler/bin/wrangler.js'), ...command, '--profile', 'default'];
 }
 
+// Wrangler reads the account it last picked from a cache beside the nearest node_modules before it
+// asks the API, so a cache file some other run left in proxy/node_modules would choose the account.
+// Each run gets a new, empty cache under `build` instead; the caller removes WRANGLER_CACHE_DIR after.
+export async function wranglerEnvironment(build, base = process.env) {
+  const env = { ...base, WRANGLER_SEND_METRICS: 'false', CI: 'true', NO_COLOR: '1',
+    WRANGLER_CACHE_DIR: await fs.mkdtemp(path.join(build, 'wrangler-cache-')) };
+  delete env.NODE_OPTIONS; delete env.NODE_DEBUG; delete env.NODE_DEBUG_NATIVE;
+  return env;
+}
+
 export async function stageWithWrangler(repository, account, expectedOAuth, configFactory = stagingConfig) {
   // Refuse a changed or expiring shared credential before allowing Wrangler to select an account.
   requireThat(await readWranglerOAuth() === expectedOAuth, 'auth');
@@ -598,20 +608,22 @@ export async function stageWithWrangler(repository, account, expectedOAuth, conf
   const discard = path.join(build, 'wrangler-discard.log');
   try { await fs.unlink(discard); } catch (error) { if (error.code !== 'ENOENT') throw new DeploymentFailure('wrangler'); }
   await fs.symlink('/dev/null', discard);
-  const env = { ...process.env, WRANGLER_LOG_PATH: discard, WRANGLER_SEND_METRICS: 'false',
-    CI: 'true', NO_COLOR: '1' };
-  delete env.NODE_OPTIONS; delete env.NODE_DEBUG; delete env.NODE_DEBUG_NATIVE;
   // Wrangler selects the sole existing authenticated account. The helper has verified it;
   // no account ID, token or Keychain credential is passed as an argument/environment variable.
   requireThat(id(account), 'account');
-  const exit = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, wranglerArguments(repository, 'deploy', '--config', config),
-      { cwd: path.join(repository, 'proxy'), env, stdio: ['ignore', 'ignore', 'ignore'] });
-    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new DeploymentFailure('wrangler')); }, 120_000);
-    child.on('error', () => { clearTimeout(timer); reject(new DeploymentFailure('wrangler')); });
-    child.on('close', code => { clearTimeout(timer); resolve(code); });
-  });
-  requireThat(exit === 0, 'wrangler');
+  const env = { ...(await wranglerEnvironment(build)), WRANGLER_LOG_PATH: discard };
+  try {
+    const exit = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, wranglerArguments(repository, 'deploy', '--config', config),
+        { cwd: path.join(repository, 'proxy'), env, stdio: ['ignore', 'ignore', 'ignore'] });
+      const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new DeploymentFailure('wrangler')); }, 120_000);
+      child.on('error', () => { clearTimeout(timer); reject(new DeploymentFailure('wrangler')); });
+      child.on('close', code => { clearTimeout(timer); resolve(code); });
+    });
+    requireThat(exit === 0, 'wrangler');
+  } finally {
+    await fs.rm(env.WRANGLER_CACHE_DIR, { recursive: true, force: true });
+  }
 }
 
 async function main() {

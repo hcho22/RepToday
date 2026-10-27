@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { poisonedAccount, sharedCaches, withPoisonedCache } from './wrangler-cache.mjs';
 
 const root = resolve('..');
 const home = resolve('../build/coach-tail-contract');
@@ -16,12 +17,14 @@ const WORKER = 'reptoday-variety-language-proxy';
 const VERSION = '0123abcd-4567-4890-abcd-0123456789ab';
 const account = 'f'.repeat(32);
 const ok = result => ({ success: true, errors: [], messages: [], result });
+const foreignAccount = { success: false, errors: [{ code: 10000, message: 'Authentication error' }], messages: [], result: null };
 // The default login the capture must use, and another profile bound to build/, the parent of the
 // capture's working directory, which Wrangler 4 would pick without the adapter's --profile default.
 const login = 'default-profile-oauth-token';
 const decoy = 'bound-profile-oauth-token';
 const oauth = token => `oauth_token = "${token}"\nexpiration_time = "2999-01-01T00:00:00.000Z"\n`;
 const guardRow = { event: 'coach_final_auth_guard', stage: 'do_assertion', reason: 'assertion_signature' };
+const cachesBefore = await sharedCaches(root);
 
 const frame = (opcode, payload) => {
   const data = Buffer.from(payload);
@@ -31,7 +34,9 @@ const frame = (opcode, payload) => {
 };
 
 // `closeAbnormally`: after the events, the stand-in drops the connection with 1011.
-async function capture(closeAbnormally) {
+// `lookup`: no CLOUDFLARE_ACCOUNT_ID, so Wrangler finds the account itself, as it does for the operator,
+// and the stand-in lists the one synthetic account.
+async function capture(closeAbnormally, lookup = false) {
   const requests = [];
   const server = http.createServer((request, response) => {
     const chunks = [];
@@ -40,12 +45,16 @@ async function capture(closeAbnormally) {
       const body = Buffer.concat(chunks).toString();
       const path = new URL(request.url, 'http://local').pathname.replace('/client/v4', '').replace(account, 'ACCOUNT');
       requests.push({ method: request.method, path, login: request.headers.authorization, body: body ? JSON.parse(body) : undefined });
-      let payload = ok({});
-      if (request.method === 'POST' && path === `/accounts/ACCOUNT/workers/scripts/${WORKER}/tails`) {
+      let status = 200, payload = ok({});
+      // Another account, such as one a shared cache supplied, is refused as Cloudflare refuses it.
+      if (/^\/accounts\/[0-9a-f]{32}\//.test(path)) { status = 403; payload = foreignAccount; }
+      else if (request.method === 'GET' && path === '/accounts') payload = ok([{ id: account, name: 'Fixture account' }]);
+      else if (request.method === 'GET' && path === '/memberships') payload = ok([{ account: { id: account, name: 'Fixture account' } }]);
+      else if (request.method === 'POST' && path === `/accounts/ACCOUNT/workers/scripts/${WORKER}/tails`) {
         const id = `tail-${requests.filter(entry => entry.path === path).length}`;
         payload = ok({ id, url: `ws://127.0.0.1:${server.address().port}/${id}`, expires_at: new Date(Date.now() + 3_600_000).toISOString() });
       }
-      response.writeHead(200, { 'content-type': 'application/json' });
+      response.writeHead(status, { 'content-type': 'application/json' });
       response.end(JSON.stringify(payload));
     });
   });
@@ -90,7 +99,7 @@ async function capture(closeAbnormally) {
   await writeFile(resolve(home, '.wrangler/config/bound.toml'), oauth(decoy));
   await writeFile(resolve(home, '.wrangler/profiles/directory-bindings.json'), JSON.stringify({ [resolve(root, 'build')]: 'bound' }));
   const env = { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, XDG_CONFIG_HOME: home, NO_COLOR: '1',
-    CLOUDFLARE_API_BASE_URL: `http://127.0.0.1:${server.address().port}/client/v4`, CLOUDFLARE_ACCOUNT_ID: account };
+    CLOUDFLARE_API_BASE_URL: `http://127.0.0.1:${server.address().port}/client/v4`, ...(lookup ? {} : { CLOUDFLARE_ACCOUNT_ID: account }) };
   let printed = '';
   try {
     const status = await new Promise((done, fail) => {
@@ -133,4 +142,19 @@ const deletes = requests => requests.filter(entry => entry.method === 'DELETE');
   assert.equal(deletes(requests).length, 1);
 }
 
-console.log('validated: the final-auth capture attaches through the installed Wrangler tail against a local Cloudflare stand-in, on one version-filtered subscription and the default login despite a bound profile; no external request');
+// A wrangler-account.json another run left in the repository's node_modules, the shared cache above the
+// capture's working directory under build/, never chooses the account: the capture's own empty cache makes
+// Wrangler look the account up, and the tail goes to the one the login lists.
+{
+  const { status, requests } = await withPoisonedCache(resolve(root, 'node_modules'), () => capture(false, true));
+  for (const entry of requests.filter(entry => entry.path.startsWith('/accounts/')))
+    assert.ok(entry.path.startsWith('/accounts/ACCOUNT/') && !entry.path.includes(poisonedAccount),
+      `the shared account cache chose the account: ${entry.method} ${entry.path}`);
+  assert.ok(requests.some(entry => entry.path === '/accounts'), 'Wrangler did not look the account up');
+  assert.equal(tails(requests).length, 1);
+  assert.equal(status, 0);
+}
+
+assert.deepEqual(await sharedCaches(root), cachesBefore, 'a Wrangler run left a file in a shared account cache');
+
+console.log('validated: the final-auth capture attaches through the installed Wrangler tail against a local Cloudflare stand-in, on one version-filtered subscription and the default login despite a bound profile, and the account never taken from a shared cache; no external request');

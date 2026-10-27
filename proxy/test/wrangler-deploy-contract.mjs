@@ -1,6 +1,6 @@
 // What the installed Wrangler sends when the operator tools deploy each Coach configuration, recorded
 // against a local stand-in for the Cloudflare API. The real `wrangler deploy` runs with the operator
-// tools' own arguments, a private config home holding synthetic logins, a synthetic account,
+// tools' own arguments and environment, a private config home holding synthetic logins, a synthetic account,
 // CLOUDFLARE_API_BASE_URL on 127.0.0.1 and npm's registry on a closed port: it can reach nothing else,
 // and a request it sent elsewhere would carry no usable credential. It pins the upload the operator
 // flows depend on, so a Wrangler upgrade that changes it fails here rather than in a live deploy. Live
@@ -12,7 +12,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { runtimeConfig, TAG, CLASS } from '../../tools/coach-runtime-migrate.mjs';
 import { stagingWorkerConfig, stagingTeardownConfig, STAGING } from '../../tools/coach-staging.mjs';
-import { TARGET, wranglerArguments } from '../../tools/coach-production-deploy.mjs';
+import { TARGET, wranglerArguments, wranglerEnvironment } from '../../tools/coach-production-deploy.mjs';
+import { poisonedAccount, sharedCaches, withPoisonedCache } from './wrangler-cache.mjs';
 
 const root = resolve('..');
 const output = resolve('../build/coach-deploy-contract');
@@ -20,12 +21,14 @@ const account = 'f'.repeat(32);
 const revision = '0'.repeat(40);
 const origin = `https://${STAGING}.fixture.workers.dev/coach`;
 const ok = result => ({ success: true, errors: [], messages: [], result });
+const foreignAccount = { success: false, errors: [{ code: 10000, message: 'Authentication error' }], messages: [], result: null };
 // The default login the operator tools check, and another profile bound to a parent of every config
 // directory, which Wrangler 4 would pick without the tools' --profile default.
 const login = 'default-profile-oauth-token';
 const decoy = 'bound-profile-oauth-token';
 const oauth = token => `oauth_token = "${token}"\nexpiration_time = "2999-01-01T00:00:00.000Z"\n`;
 const dependency = { name: 'fixture-dependency', version: '1.0.0' };
+const cachesBefore = await sharedCaches(root);
 
 function metadataOf(body, type) {
   const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(type);
@@ -36,7 +39,9 @@ function metadataOf(body, type) {
 
 // `existing`: the script's current migration tag on the stand-in, or null for no script.
 // `besidePackage`: the config sits beside a package.json whose one dependency is installed.
-async function deploy(name, config, existing, besidePackage = false) {
+// `lookup`: no CLOUDFLARE_ACCOUNT_ID, so Wrangler finds the account itself, as it does for the operator
+// tools, and the stand-in lists the one synthetic account.
+async function deploy(name, config, existing, besidePackage = false, lookup = false) {
   const requests = [], logins = new Set();
   const server = http.createServer((request, response) => {
     const chunks = [];
@@ -51,7 +56,11 @@ async function deploy(name, config, existing, besidePackage = false) {
       requests.push(entry);
       const script = /^\/accounts\/ACCOUNT\/workers\/(?:services|scripts|workers)\/([^/]+)/.exec(path)?.[1];
       let status = 200, payload = ok({});
-      if (request.method === 'GET' && path === `/accounts/ACCOUNT/workers/services/${script}`) {
+      // Another account, such as one a shared cache supplied, is refused as Cloudflare refuses it.
+      if (/^\/accounts\/[0-9a-f]{32}\//.test(path)) { status = 403; payload = foreignAccount; }
+      else if (request.method === 'GET' && path === '/accounts') payload = ok([{ id: account, name: 'Fixture account' }]);
+      else if (request.method === 'GET' && path === '/memberships') payload = ok([{ account: { id: account, name: 'Fixture account' } }]);
+      else if (request.method === 'GET' && path === `/accounts/ACCOUNT/workers/services/${script}`) {
         if (existing === null) { status = 404; payload = { success: false, errors: [{ code: 10090, message: 'service not found' }], messages: [], result: null }; }
         else payload = ok({ default_environment: { environment: 'production', script: { migration_tag: existing } } });
       } else if (request.method === 'GET' && /\/(secrets|routes|domains)$/.test(path)) payload = ok([]);
@@ -81,9 +90,9 @@ async function deploy(name, config, existing, besidePackage = false) {
     await mkdir(resolve(dir, 'node_modules', dependency.name), { recursive: true });
     await writeFile(resolve(dir, 'node_modules', dependency.name, 'package.json'), JSON.stringify(dependency));
   }
-  const env = { PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: home, CI: 'true', NO_COLOR: '1', WRANGLER_SEND_METRICS: 'false',
+  const env = await wranglerEnvironment(dir, { PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: home,
     WRANGLER_LOG_PATH: resolve(dir, 'wrangler.log'), npm_config_registry: 'http://127.0.0.1:9/',
-    CLOUDFLARE_API_BASE_URL: `http://127.0.0.1:${server.address().port}/client/v4`, CLOUDFLARE_ACCOUNT_ID: account };
+    CLOUDFLARE_API_BASE_URL: `http://127.0.0.1:${server.address().port}/client/v4`, ...(lookup ? {} : { CLOUDFLARE_ACCOUNT_ID: account }) });
   let printed = '';
   try {
     const status = await new Promise((done, fail) => {
@@ -102,7 +111,7 @@ async function deploy(name, config, existing, besidePackage = false) {
   for (const write of writes)
     assert.ok([`POST ${prefix}/versions`, `POST ${prefix}/deployments`, `PATCH ${prefix}/script-settings`, `POST ${prefix}/subdomain`,
       `PUT ${prefix}`].includes(`${write.method} ${write.path}`), `${name}: unexpected ${write.method} ${write.path}`);
-  return { writes, upload: writes.find(write => write.metadata)?.metadata };
+  return { requests, writes, upload: writes.find(write => write.metadata)?.metadata };
 }
 
 const secretsKept = ['secret_text', 'secret_key'];
@@ -167,4 +176,20 @@ const find = (writes, method, suffix) => writes.find(write => write.method === m
     [{ name: dependency.name, packageJsonVersion: dependency.version, installedVersion: dependency.version }]);
 }
 
-console.log('validated: Wrangler deploy uploads for production, staging, teardown and orphan teardown against a local Cloudflare stand-in, each on the default login despite a bound profile, and no dependency list beside a package.json; no external request');
+// A wrangler-account.json another run left in proxy/node_modules, Wrangler's shared cache for the tools'
+// working directory, never chooses the account: the tools' own empty cache makes Wrangler look the account
+// up, and every account-scoped request goes to the one the login lists.
+{
+  const { requests } = await withPoisonedCache(resolve('node_modules'),
+    () => deploy('poisoned-cache', stagingTeardownConfig(root), TAG, false, true));
+  assert.ok(requests.some(entry => entry.path === '/accounts'), 'Wrangler did not look the account up');
+  const scoped = requests.filter(entry => entry.path.startsWith('/accounts/'));
+  assert.ok(scoped.length > 0);
+  for (const entry of scoped)
+    assert.ok(entry.path.startsWith('/accounts/ACCOUNT/') && !entry.path.includes(poisonedAccount),
+      `the shared account cache chose the account: ${entry.method} ${entry.path}`);
+}
+
+assert.deepEqual(await sharedCaches(root), cachesBefore, 'a Wrangler run left a file in a shared account cache');
+
+console.log('validated: Wrangler deploy uploads for production, staging, teardown and orphan teardown against a local Cloudflare stand-in, each on the default login despite a bound profile, no dependency list beside a package.json, and the account never taken from a shared cache; no external request');
