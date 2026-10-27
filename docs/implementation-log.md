@@ -1440,6 +1440,17 @@ The device capture is now a regression fixture.
 This is a server-only change; the fix reaches users only after a separately approved release.
 The [runtime authentication runbook](coach-runtime-authentication.md) owns the contract and the Wrangler 4 follow-up.
 
+## Coach Worker builds with Wrangler 4 (2026-10-27)
+
+The proxy moved from Wrangler 3.114.17 to Wrangler 4.154.0, pinned exactly with its `@cloudflare/workers-types` peer.
+Wrangler 4's `nodejs_compat` preset leaves `node:crypto` to workerd, so the crypto alias and shim from the 2026-09-29 fix are gone; `nodejs_compat` and the 2026-01-01 compatibility date are unchanged.
+The workerd suite now first dry-runs every deployable configuration and fails on any crypto stub, and it runs at the shipped compatibility date on a pinned Miniflare 4.
+A local Cloudflare stand-in records what Wrangler 4's real deploy sends for each operator configuration.
+That comparison found three differences that would have reached a live run: deferred Durable Object code updates by default (now pinned to `immediate`), a staging teardown configuration Wrangler 4 refuses (now carrying the full migration history), and Wrangler 4's tail reconnecting with new subscriptions (the tail adapter now turns reconnect off).
+Wrangler 4 needs Node 22 or later, so the operator wrappers and CI's Coach job use Node 24.
+No Coach request, reply, sign-in, data or privacy path changed; the new bundle reaches users only after a separately approved Coach server deploy.
+The [runtime authentication runbook](coach-runtime-authentication.md) owns the contract.
+
 ## Foundations are Push, Pull, Legs, Core (2026-09-30)
 
 [ADR-0006](adr/0006-foundations-push-pull-legs-core.md) owns the updated foundation rules, recalculation and note behavior, Coach vocabulary, and wire compatibility.

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { builtinModules } from 'node:module';
-import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { build } from 'esbuild';
 import { Miniflare, Response as MiniflareResponse } from 'miniflare';
@@ -12,32 +11,27 @@ import { fixtureKey, signedAssertion, deviceAssertionFixture, APP_PREFIX, TEST_G
 import { VERSION, ORIGIN, hash, assertionPayload } from '../src/coach-auth-crypto.js';
 import { validateClockSkew } from './workerd-clock-skew.mjs';
 import { coachWorkerBuild } from '../../tools/coach-runtime-migrate.mjs';
+import { checkBundle, checkDeployableBundles, wranglerBundle } from './wrangler-bundles.mjs';
 
 const root = resolve('..');
+// The runtime runs at the shipped compatibility date and flags, not only the bundler.
+const shipped = coachWorkerBuild(root);
 const output = resolve('../build/coach-runtime-auth');
 await mkdir(output, {recursive: true});
 await writeFile(resolve(output, 'node-globals.mjs'), 'import {Buffer} from "node:buffer"; import process from "node:process"; export {Buffer,process};');
-// Workerd scripts are bundled by the installed Wrangler with the Coach Worker's shared deploy build
-// settings, so these tests run the module graph that ships, nodejs_compat polyfills included. An
-// esbuild approximation resolved node:crypto natively and hid that Wrangler 3's preset replaces
-// createVerify/createSign with throwing stubs, which rejected every genuine device assertion.
-async function wranglerBundle(entry, name) {
-  const dir = resolve(output, name);
-  await mkdir(dir, {recursive: true});
-  const config = resolve(dir, 'wrangler.json');
-  await writeFile(config, JSON.stringify({name: 'coach-local-test', main: resolve(entry), ...coachWorkerBuild(root), workers_dev: false}));
-  // A private config home keeps the operator's Wrangler login unread; a closed local port keeps
-  // Wrangler's best-effort update check offline. --dry-run never contacts Cloudflare.
-  const env = {PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: dir, CI: 'true', NO_COLOR: '1',
-    WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: resolve(dir, 'wrangler.log'), npm_config_registry: 'http://127.0.0.1:9/'};
-  const result = spawnSync(process.execPath, [resolve('node_modules/wrangler/bin/wrangler.js'), 'deploy', '--dry-run',
-    '--outdir', resolve(dir, 'dist'), '--config', config], {env, encoding: 'utf8', timeout: 120_000});
-  assert.equal(result.status, 0, 'Wrangler could not bundle ' + entry);
-  return resolve(dir, 'dist', basename(entry));
-}
-await wranglerBundle('src/coach-auth-worker.js', 'gateway');
-const runtimeTests = await wranglerBundle('test/workerd-auth-entry.js', 'runtime-tests');
-const skewedState = await wranglerBundle('test/workerd-skewed-state-entry.js', 'skewed-state');
+// Every deployable configuration, built by the installed Wrangler, reaches workerd's native
+// node:crypto (wrangler-bundles.mjs). Workerd scripts below are bundled the same way with the Coach
+// Worker's shared deploy build settings, so these tests run the module graph that ships, nodejs_compat
+// polyfills included. An esbuild approximation resolved node:crypto natively and hid that Wrangler 3's
+// preset replaced createVerify/createSign with throwing stubs, which rejected every genuine device assertion.
+await checkDeployableBundles(root, output);
+const testBundle = async (entry, name, coach) => {
+  const bundle = await wranglerBundle(root, {name: 'coach-local-test', main: resolve(entry), ...shipped, workers_dev: false}, resolve(output, name));
+  await checkBundle(bundle, coach);
+  return bundle;
+};
+const runtimeTests = await testBundle('test/workerd-auth-entry.js', 'runtime-tests', true);
+const skewedState = await testBundle('test/workerd-skewed-state-entry.js', 'skewed-state', false);
 // The Node-side Apple API comparison probe keeps esbuild; it never runs in workerd.
 const nativeRequire = {name: 'wrangler-native-require-equivalence', setup(b) {
   b.onResolve({filter: /^(node:)?[a-z_]+(?:\/[a-z_]+)?$/}, a => {
@@ -103,7 +97,7 @@ function collectRuntimeOutput(stream) {
 const m = new Miniflare({handleRuntimeStdio: (stdout, stderr) => {
   collectRuntimeOutput(stdout); collectRuntimeOutput(stderr);
 }, modulesRoot: root, scriptPath: runtimeTests, modules: true,
-  compatibilityDate: '2025-07-18', compatibilityFlags: ['nodejs_compat'],
+  compatibilityDate: shipped.compatibility_date, compatibilityFlags: shipped.compatibility_flags,
   durableObjects: {COACH_AUTH_STATE: {className: 'FixtureAuthenticationState', useSQLite: true}},
   bindings: {COACH_FINAL_AUTH_DIAGNOSTICS: '1', COACH_AUTH_MODE: 'app-attest-storekit-v1', CLIENT_SHARED_SECRET: TEST_GATE, APP_ATTEST_APP_PREFIX: APP_PREFIX,
     APP_STORE_APP_ID: '1', APP_STORE_KEY_ID: APP_PREFIX, APP_STORE_ISSUER_ID: '00000000-0000-4000-8000-000000000000',
@@ -247,6 +241,6 @@ try {
     assert.equal(rejectedLocalCalls,0);
     assert.equal(localResponseCalls,0);
     await validateClockSkew({root, gatewayScript: runtimeTests, stateScript: skewedState});
-    console.log('validated: Wrangler-built bundles in installed workerd, genuine device assertion, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering, SQLite atomic replay and bounded Worker/Durable Object clock skew; zero external requests');
+    console.log('validated: every deployable Wrangler bundle reaches native node:crypto (stub control refused), Wrangler-built bundles in installed workerd at the shipped compatibility date, genuine device assertion, Apple verifier negatives, official API JWT/transport local double, proof-only gate ordering, SQLite atomic replay and bounded Worker/Durable Object clock skew; zero external requests');
   }
 } finally {await m.dispose();}

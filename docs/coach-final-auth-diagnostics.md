@@ -89,10 +89,12 @@ Cloudflare documents that [Wrangler tail includes Worker and DO requests](https:
 [Real-time logs contain request metadata and may drop samples](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 The private investigation filter has therefore been ported as
 [`coach-capture-guard-tail.py`](../tools/coach-capture-guard-tail.py), with a source-pinned,
-in-memory adapter for installed Wrangler **3.114.17**. It changes no installed package.
+in-memory adapter for installed Wrangler **4.154.0**. It changes no installed package.
 Dependency drift makes the adapter refuse; review it again instead of bypassing the hash.
-The adapter attaches its entrypoint to the final `module.exports` object because the
-pinned bundle replaces CommonJS's original `exports` alias. The offline gate evaluates
+Wrangler 4's tail replaces a lost connection with up to five new subscriptions; the adapter
+sets those attempts to zero, so a lost connection deletes the tail and exits, as Wrangler 3 did,
+and a capture keeps one subscription. The adapter exports the bundle's `main` on
+`module.exports`, which the bundle's own export list omits. The offline gate evaluates
 that exact transformed module with synthetic auth and blocked IO, and checks the export
 the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing;
 neither check invokes `main` or establishes live attachment. See the

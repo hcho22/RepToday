@@ -18,9 +18,14 @@ COACH_AUTH_MODE = "app-attest-storekit-v1"
 
 [alias]
 "node-fetch" = "./src/apple-fetch.js"
-# Workerd's native node:crypto; Wrangler 3's nodejs_compat preset stubs createVerify/createSign.
-"crypto" = "./src/native-crypto.cjs"
-"node:crypto" = "./src/native-crypto.cjs"
+
+# The settings tools/coach-runtime-migrate.mjs deploys with: Durable Objects take new code at once,
+# and the upload carries no npm dependency list.
+[dependencies_instrumentation]
+enabled = false
+
+[durable_objects]
+code_update_strategy = { mode = "immediate" }
 
 [[durable_objects.bindings]]
 name = "COACH_AUTH_STATE"

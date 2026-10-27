@@ -7,9 +7,11 @@ import { resolve } from 'node:path';
 import { Miniflare } from 'miniflare';
 import { fixtureKey, signedAssertion, APP_PREFIX, TEST_GATE, TEST_BODY_HASH, TEST_TRANSACTION_HASH } from './auth-fixtures.js';
 import { VERSION, ORIGIN, CHALLENGE_CLOCK_SKEW_MS, hash, assertionPayload, challengeToken } from '../src/coach-auth-crypto.js';
+import { coachWorkerBuild } from '../../tools/coach-runtime-migrate.mjs';
 
 export async function validateClockSkew({ root, gatewayScript, stateScript }) {
   const key = fixtureKey();
+  const shipped = coachWorkerBuild(root);
   const rows = [];
   let externalCalls = 0;
   const collect = stream => {
@@ -31,10 +33,10 @@ export async function validateClockSkew({ root, gatewayScript, stateScript }) {
     outboundService: () => { externalCalls++; return new Response('local-fixture-rejected', { status: 500 }); },
     workers: [
       { name: 'gateway', modulesRoot: root, scriptPath: gatewayScript, modules: true,
-        compatibilityDate: '2025-07-18', compatibilityFlags: ['nodejs_compat'], bindings,
+        compatibilityDate: shipped.compatibility_date, compatibilityFlags: shipped.compatibility_flags, bindings,
         durableObjects: { COACH_AUTH_STATE: { className: 'SkewedAuthenticationState', scriptName: 'skewed-state', useSQLite: true } } },
       { name: 'skewed-state', modulesRoot: root, scriptPath: stateScript, modules: true,
-        compatibilityDate: '2025-07-18', compatibilityFlags: ['nodejs_compat'], bindings },
+        compatibilityDate: shipped.compatibility_date, compatibilityFlags: shipped.compatibility_flags, bindings },
     ],
   });
   const settle = async (predicate, ms = 3000) => {

@@ -19,8 +19,8 @@ if [[ "$(git rev-parse --show-toplevel)" != "$repo_root" || -n "$(git status --p
     exit 78
 fi
 node_bin=$(command -v node)
-if [[ "$("$node_bin" -p 'process.versions.node.split(".")[0]')" != 20 ]]; then
-    echo 'blocked: use the reviewed installed Node 20 environment' >&2
+if [[ "$("$node_bin" -p 'process.versions.node.split(".")[0]')" != 24 ]]; then
+    echo 'blocked: use the reviewed installed Node 24 environment (Wrangler 4 requires Node 22 or later)' >&2
     exit 78
 fi
 # Teardown and inspection read no Keychain item; they need only the existing Wrangler login.
