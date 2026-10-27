@@ -12,9 +12,9 @@ const counts = { network: 0, child: 0, file: 0, write: 0, output: 0 };
 const deny = kind => () => { counts[kind]++; throw Error('offline capability denied'); };
 
 // No inherited credential environment; no real home directory is consulted.
-// Wrangler eagerly calls getAuthTokens() during import. A synthetic env token
-// takes its no-file branch; empty env would attempt config/default.toml, catch
-// the denied read, and misleadingly appear to initialize successfully.
+// Wrangler 4.154.0 reads no credential at import (Wrangler 3 did). The synthetic
+// env token keeps any eager lookup on its no-file branch, so a denied
+// config/default.toml read can never be caught and look like a clean start.
 process.env = { WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_API_TOKEN: 'offline-synthetic-token' };
 const home = path.join(root, '.offline-tail-home');
 require('node:os').homedir = () => home;
@@ -58,11 +58,16 @@ for (const method of ['readFile', 'open']) {
     return original.call(this, value, ...args);
   };
 }
-// Non-dependency metadata is synthetic absence, including home/config discovery.
+// Non-dependency metadata is synthetic absence, including home/config discovery. Absence takes
+// the shape Node gives it: stat with throwIfNoEntry: false answers undefined rather than throwing.
 for (const method of ['statSync', 'lstatSync', 'realpathSync', 'readdirSync', 'accessSync', 'existsSync']) {
   const original = fs[method];
   fs[method] = function(value, ...args) {
-    if (!isDependency(value)) return method === 'existsSync' ? false : missing();
+    if (!isDependency(value)) {
+      if (method === 'existsSync') return false;
+      if (method.endsWith('statSync') && args[0]?.throwIfNoEntry === false) return undefined;
+      return missing();
+    }
     return original.call(this, value, ...args);
   };
 }

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Cloudflare, DeploymentFailure, TARGET, readWranglerOAuth, stageWithWrangler } from './coach-production-deploy.mjs';
-import { APPLE, CLASS, TAG, MODE, checkAppleCredentials, coachWorkerBuild, revisionValid } from './coach-runtime-migrate.mjs';
+import { APPLE, CLASS, TAG, MODE, DURABLE_OBJECT_CODE_UPDATE, checkAppleCredentials, coachWorkerBuild, revisionValid } from './coach-runtime-migrate.mjs';
 
 export const STAGING = 'reptoday-coach-staging';
 export const STAGING_SECRET_NAMES = Object.freeze(['CLIENT_SHARED_SECRET', ...Object.values(APPLE)]);
@@ -39,15 +39,19 @@ export function stagingWorkerConfig(repository, revision, origin) {
     ...coachWorkerBuild(repository), workers_dev: true,
     preview_urls: false, routes: [], logpush: false, observability: { enabled: false }, send_metrics: false,
     vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, COACH_STAGING_ORIGIN: origin, COACH_STAGING_LABELS: '1' },
-    durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }] },
+    durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }], code_update_strategy: DURABLE_OBJECT_CODE_UPDATE },
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }
 
+// Wrangler 4 refuses to delete a class the configuration never created, so the history carries the
+// staging create migration first. Against the deployed staging script (at TAG) Wrangler uploads only
+// the step after TAG: the same single deletion Wrangler 3 sent.
 export function stagingTeardownConfig(repository) {
   return { name: STAGING, main: path.join(repository, 'proxy/src/coach-staging-teardown-worker.js'),
     compatibility_date: '2026-01-01', workers_dev: false, preview_urls: false, routes: [], logpush: false,
     observability: { enabled: false }, send_metrics: false,
-    migrations: [{ tag: 'coach-security-teardown-v1', deleted_classes: [CLASS] }] };
+    durable_objects: { bindings: [], code_update_strategy: DURABLE_OBJECT_CODE_UPDATE },
+    migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }, { tag: 'coach-security-teardown-v1', deleted_classes: [CLASS] }] };
 }
 
 // Only exact staging mutations and account-level reads; production endpoints are unreachable by construction.

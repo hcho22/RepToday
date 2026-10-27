@@ -9,13 +9,14 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:runtime": "node test/workerd-auth.mjs"
+    "test:runtime": "node test/workerd-auth.mjs && node test/wrangler-deploy-contract.mjs && node test/wrangler-tail-contract.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20250718.0",
+    "@cloudflare/workers-types": "5.20261023.1",
+    "miniflare": "4.20260730.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0",
-    "wrangler": "^3.0.0"
+    "wrangler": "4.154.0"
   },
   "dependencies": {
     "@apple/app-store-server-library": "3.1.0",

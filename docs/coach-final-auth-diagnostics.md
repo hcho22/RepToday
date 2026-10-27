@@ -89,13 +89,22 @@ Cloudflare documents that [Wrangler tail includes Worker and DO requests](https:
 [Real-time logs contain request metadata and may drop samples](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 The private investigation filter has therefore been ported as
 [`coach-capture-guard-tail.py`](../tools/coach-capture-guard-tail.py), with a source-pinned,
-in-memory adapter for installed Wrangler **3.114.17**. It changes no installed package.
+in-memory adapter for installed Wrangler **4.154.0**. It changes no installed package.
 Dependency drift makes the adapter refuse; review it again instead of bypassing the hash.
-The adapter attaches its entrypoint to the final `module.exports` object because the
-pinned bundle replaces CommonJS's original `exports` alias. The offline gate evaluates
-that exact transformed module with synthetic auth and blocked IO, and checks the export
-the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing;
-neither check invokes `main` or establishes live attachment. See the
+Wrangler 4's tail replaces a lost connection with up to five new subscriptions; the adapter
+sets those attempts to zero, so a lost connection deletes the tail and exits, as Wrangler 3 did,
+and a capture keeps one subscription. The tail passes `--profile default`, so a login profile bound
+to a parent directory cannot replace the default login, and no `--sampling-rate`, which Wrangler
+refuses at 1 before creating a tail; with no sampling filter every event is sent. The adapter
+exports the bundle's `main` on `module.exports`, which the bundle's own export list omits. The
+offline gate evaluates that exact transformed module with synthetic auth and blocked IO, and checks
+the export the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing.
+[`proxy/test/wrangler-tail-contract.mjs`](../proxy/test/wrangler-tail-contract.mjs) (part of
+`npm run test:runtime`) runs this capture through the installed Wrangler's real `tail` against a
+local stand-in for the tails API and its WebSocket: it attaches, becomes ready, forwards the one
+guard row and stops at the deadline, on one subscription filtered to the exact version and the
+default login despite a bound profile, and a lost connection ends it without a second
+subscription. Live attachment to Cloudflare is not established offline. See the
 [export regression evidence](../artifacts/reports/coach-tail-export/validation.md).
 
 There are three different facts:
@@ -181,8 +190,11 @@ key resets, reinstallations, secret rotation or a speculative auth fix.
    - Original clean source owner: `--stage`, retaining all seven existing secrets and the
      exact namespace/migration. This restores baseline source/configuration to latest settings.
    - From an empty, private config-free directory, use the reviewed installed Wrangler's
-     exact-version command once: `versions deploy "$baseline_version@100" --name
-     reptoday-variety-language-proxy`. Noninteractive confirmation must be scoped to this
+     exact-version command once, under the installed Node 24: `versions deploy
+     "$baseline_version@100" --name reptoday-variety-language-proxy --profile default
+     --durable-objects-code-update-mode immediate`. The profile keeps Wrangler on the default
+     login the tools check, and with no configuration Wrangler 4 would otherwise defer the
+     Durable Object's code update. Noninteractive confirmation must be scoped to this
      exact deployment (Wrangler's `--yes`, **never** no-mistakes `--yes`). No `--force`,
      rollback-to-latest alias, migration deletion, settings patch or namespace reset.
    - Candidate owner: `--verify-restored` with the original metadata and `held: true`.

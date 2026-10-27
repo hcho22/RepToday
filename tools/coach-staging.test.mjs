@@ -64,7 +64,11 @@ function fixture() {
     assert.equal(stagedAccount, account);
     const config = stagingTeardownConfig('/fixture/repository');
     assert.equal(config.name, STAGING); assert.equal(config.workers_dev, false); assert.deepEqual(config.routes, []);
-    assert.deepEqual(config.migrations, [{ tag: 'coach-security-teardown-v1', deleted_classes: ['CoachAuthenticationState'] }]);
+    // Full history: Wrangler 4 refuses a deletion of a class the configuration never created, and against
+    // the staging script at coach-security-v1 it uploads only the deletion step, as Wrangler 3 did.
+    assert.deepEqual(config.migrations, [{ tag: 'coach-security-v1', new_sqlite_classes: ['CoachAuthenticationState'] },
+      { tag: 'coach-security-teardown-v1', deleted_classes: ['CoachAuthenticationState'] }]);
+    assert.deepEqual(config.durable_objects, { bindings: [], code_update_strategy: { mode: 'immediate' } });
     if (!state.scripts.includes(STAGING)) state.scripts.push(STAGING);
     if (state.deleteRemoves) state.namespaces = state.namespaces.filter(item => item.script !== STAGING);
   };
@@ -84,6 +88,8 @@ test('staging configuration is a separate workers.dev script with labels, its ow
   assert.deepEqual(config.vars, { COACH_AUTH_MODE: 'app-attest-storekit-v1', COACH_AUTH_SOURCE_REV: revision,
     COACH_STAGING_ORIGIN: origin, COACH_STAGING_LABELS: '1' });
   assert.deepEqual(config.migrations, [{ tag: 'coach-security-v1', new_sqlite_classes: ['CoachAuthenticationState'] }]);
+  assert.deepEqual(config.durable_objects, { bindings: [{ name: 'COACH_AUTH_STATE', class_name: 'CoachAuthenticationState' }],
+    code_update_strategy: { mode: 'immediate' } });
   // Same bundle build as production, so staging exercises the crypto that ships.
   for (const [key, value] of Object.entries(coachWorkerBuild('/fixture/repository'))) assert.deepEqual(config[key], value);
   assert.ok(!JSON.stringify(config).includes('OPENAI') && !JSON.stringify(config).includes('coach.reptoday.app'));

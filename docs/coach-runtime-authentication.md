@@ -303,24 +303,49 @@ XCTest connects; an archived unchanged-source comparison reproduced that failure
 the CI flags. A minimal host without those entitlements passed unsigned. No app startup behavior
 was changed to resolve this harness configuration issue.
 
-Runtime tests run Wrangler-built bundles in installed Miniflare/workerd 2025-07-18 with actual SQLite atomic storage.
+Runtime tests run Wrangler-built bundles in installed Miniflare 4.20260730.0 (workerd 1.20260730.1) with actual SQLite atomic storage, at the compatibility date and flags production deploys with (2026-01-01, `nodejs_compat`).
+`proxy/package.json` pins that Miniflare because Wrangler 4.154.0 itself ships a Miniflare 5 beta with a different options API; Wrangler still builds every bundle the tests run.
 `proxy/test/workerd-auth.mjs` bundles its workerd scripts with the installed Wrangler (`deploy --dry-run`) and the same `coachWorkerBuild` settings (`tools/coach-runtime-migrate.mjs`) that production and staging deploy with, so the tests run the module graph that ships, `nodejs_compat` polyfills included.
-The dry-run build uses a private Wrangler config home, so the operator login is never read, and points Wrangler's best-effort update check at a closed local port.
+The dry-run build uses a private Wrangler config home, so the operator login is never read, and points npm's registry at a closed local port; Wrangler 4.154.0's dry-run also completes with all outbound network denied.
 Every outbound request from the runtime is intercepted by a local service; no external requests are allowed.
 Apple's verifier dependency initializes randomness, so it imports inside a handler, never module scope.
-Production configuration uses 2026-01-01; compatibility-date behavior beyond the installed runtime's date is not proven by these tests.
 
 **Native crypto in the Worker bundle.**
-Wrangler 3.114.17's `nodejs_compat` preset passes only part of `node:crypto` through to workerd.
-It replaces `createVerify`, `createSign`, `sign`, `verify` and the ciphers with stubs that throw `not implemented`.
+Wrangler 3.114.17's `nodejs_compat` preset passed only part of `node:crypto` through to workerd.
+It replaced `createVerify`, `createSign`, `sign`, `verify` and the ciphers with stubs that throw `not implemented`.
 node-app-attest verifies every assertion with `createVerify`, so every deployed Worker rejected every genuine assertion as `do_assertion/assertion_signature`.
 The App Store Server API client signs its ES256 JWT through jwa's `createSign`, so the Premium check, which runs after the assertion, would have failed next.
 The earlier esbuild test bundle resolved `node:crypto` natively, so the suite could not see either failure.
-`coachWorkerBuild` now aliases `crypto` and `node:crypto` to [`proxy/src/native-crypto.cjs`](../proxy/src/native-crypto.cjs), which is workerd's native module through `process.getBuiltinModule`.
+The first fix aliased `crypto` and `node:crypto` to a shim re-exporting workerd's native module.
+The proxy now builds with Wrangler 4.154.0, whose preset (`@cloudflare/unenv-preset` 2.16.2) leaves `node:crypto` to workerd, so the alias and the shim are gone.
+[`proxy/test/wrangler-bundles.mjs`](../proxy/test/wrangler-bundles.mjs) holds that line: `workerd-auth.mjs` first dry-runs every deployable configuration (`wrangler.toml`, `wrangler.runtime-auth.toml`, and the production, staging, staging-teardown and legacy configurations the operator tools generate).
+It fails on any unenv `crypto.*` stub or bundled unenv crypto polyfill, and on a Coach bundle that does not import `createVerify` and the CommonJS module from the runtime's own `crypto`.
+A negative control in the same run routes `node:crypto` back to unenv's polyfill through the real bundler and must be refused for `createVerify`, `createSign`, `sign` and `verify`.
 The genuine-device fixture (`proxy/test/fixtures/device-assertion-2026-09-29.json`, staging key, no content) pins the enrolled certificate, credential and COSE key relationship in Node, then verifies the captured first-assertion signature primitive in both Node and the Wrangler-built bundle.
 Every Wrangler build of the Coach Worker must take its settings from `coachWorkerBuild`; `proxy/wrangler.runtime-auth.toml` mirrors them for reference.
-Moving to Wrangler 4, whose preset leaves `node:crypto` native, is a separate follow-up, because `tools/coach-tail-ready.cjs` adapts Wrangler 3.114.17 internals.
-The fix reaches a deployed Worker only through a separately approved staging redeploy or production release.
+A deployed Worker gets the Wrangler 4 bundle only through a separately approved staging redeploy or production release, and returns to a Wrangler 3 bundle only by redeploying reverted source.
+
+**Wrangler 4 deploy behavior.**
+[`proxy/test/wrangler-deploy-contract.mjs`](../proxy/test/wrangler-deploy-contract.mjs) (part of `npm run test:runtime`) runs the installed Wrangler's real `deploy`, with the operator tools' own arguments, for the production, staging and teardown configurations against a local stand-in for the Cloudflare API, with synthetic logins and account, and pins what each sends.
+Compared with Wrangler 3.114.17 on the same configurations:
+
+- Wrangler 3 sent no Durable Object code update strategy; Wrangler 4 asks for deferred updates, keeping old code for up to 300 seconds, unless told otherwise.
+  Every Coach configuration sets `durable_objects.code_update_strategy` to `immediate` (`DURABLE_OBJECT_CODE_UPDATE`), so a release's probes reach the code it released; that Cloudflare applies it at once is a live check.
+- A version upload names `keep_bindings: ["secret_text", "secret_key"]`, so existing secrets are kept explicitly.
+- The settings patch adds `tags: []`, and the `workers.dev` and preview state is always written, to the values each configuration already states.
+- Wrangler also reads the script's secret names, settings and subdomain state before writing.
+- Wrangler uploads the npm dependency list of a `package.json` that sits beside the deployed configuration.
+  The operator tools write their configurations under `build/`, where there is none, so their uploads carry no list either way.
+  `proxy/wrangler.runtime-auth.toml` does sit beside `proxy/package.json`, so its `dependencies_instrumentation` setting (off) is what keeps a hand deploy of it, which this runbook does not allow, from uploading the proxy's list.
+  `coachWorkerBuild` carries the same setting, so a generated configuration matches that file and uploads no list wherever it is written.
+  The contract places the production configuration beside a `package.json`: it uploads no list, and with the setting removed it uploads one.
+- Wrangler 4 picks its login per directory: a profile bound (`wrangler auth activate`) to the configuration's directory or a parent wins over the default.
+  The operator tools check the `config/default.toml` login, so every Wrangler deploy and tail they run passes `--profile default`; the contract binds another profile to a parent of every configuration and requires every request to carry the default login.
+- Wrangler refuses a `deleted_classes` migration for a class the configuration never created, so the staging teardown configuration carries the full history.
+  Against the deployed staging script it uploads the same single deletion step as before.
+  With no staging script (the orphaned-namespace repair) Wrangler 4 can only send create-then-delete, where Wrangler 3 sent the deletion alone; which one Cloudflare accepts is a live check.
+
+Wrangler 4 needs Node 22 or later, so the operator wrappers require Node 24 and CI's Coach job runs Node 24.
 
 The official SDK API regression is resolved locally. The same pinned SDK, generated signing key,
 bounded adapter and local response fixture passed in Node, while workerd initially failed before
@@ -332,7 +357,7 @@ all 3xx before reading/decoding the response, including when a caller asks to fo
 The full runtime suite passes with actual SDK ES256 JWT verification, bounded local status transport,
 foreign redirect rejection, negative Apple proofs and SQLite atomic replay. Re-run the bounded
 Node/workerd comparison with `node test/workerd-auth.mjs --diagnose-apple-api` from `proxy/` using Node
-20; output contains only observed phases and fixed local fixture counts.
+24; output contains only observed phases and fixed local fixture counts.
 
 The two environment origins follow Apple's
 [App Store Server API documentation](https://developer.apple.com/documentation/appstoreserverapi)
@@ -351,16 +376,16 @@ not authority to repeat them. Before any future operation,
 Firstmate must confirm captain authorization, reviewed committed source, Apple/account prerequisites,
 existing Keychain items and production-device access; local compatibility checks do not grant that
 authority or prove those prerequisites.
-Use the installed Node 20 environment; the wrapper refuses other Node majors, dirty source or a
+Use the installed Node 24 environment; the wrapper refuses other Node majors, dirty source or a
 different task branch. Stage/release also require offline proxy unit/type/runtime checks to pass
 before opening Keychain/UI or making a control-plane request. Hold-only rollback remains available
 when runtime checks fail. The coordinator also refuses account/token overrides or OAuth expiry
 within 20 minutes. It never refreshes or writes the shared Wrangler authentication file.
 
 ```sh
-PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --stage
-PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --release
-PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --hold
+PATH="<installed Node 24 bin>:$PATH" ./tools/migrate-coach-runtime.sh --stage
+PATH="<installed Node 24 bin>:$PATH" ./tools/migrate-coach-runtime.sh --release
+PATH="<installed Node 24 bin>:$PATH" ./tools/migrate-coach-runtime.sh --hold
 ```
 
 `--stage` confirms the sole authenticated account, existing active Free zone, explicit existing
@@ -555,7 +580,7 @@ It has no custom domain, route or WAF rule, and it never touches the production 
   Without it the staging endpoint is invalid and the Coach stays unavailable.
 
 **Operation:**
-- `tools/coach-staging.sh --deploy` needs separate captain approval, a clean committed checkout, Node 20, a Wrangler login with more than 20 minutes left, the offline proxy gate, and five Keychain approvals.
+- `tools/coach-staging.sh --deploy` needs separate captain approval, a clean committed checkout, Node 24, a Wrangler login with more than 20 minutes left, the offline proxy gate, and five Keychain approvals.
   Deploy always starts from a fully torn-down staging state: before staging the Worker or writing any secret, it stops with `blocked: present` if the staging script, a namespace owned by it, or a custom domain targeting it already exists; run `tools/coach-staging.sh --teardown` first.
   It prints `confirmed`, the `deployed` line with the staging URL, and `verified` after checking exact bindings, its own namespace, no custom domain, and both labelled no-model probes.
 - The captain runs `RepTodayCoachStaging` on the phone and sends one message.

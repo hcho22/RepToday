@@ -580,6 +580,13 @@ export function stagingConfig(repository) {
   };
 }
 
+// Wrangler 4 picks a login per directory: a profile bound to the config's directory or a parent wins
+// over the default. Naming the default profile keeps Wrangler on the config/default.toml login
+// readWranglerOAuth checked.
+export function wranglerArguments(repository, ...command) {
+  return [path.join(repository, 'proxy/node_modules/wrangler/bin/wrangler.js'), ...command, '--profile', 'default'];
+}
+
 export async function stageWithWrangler(repository, account, expectedOAuth, configFactory = stagingConfig) {
   // Refuse a changed or expiring shared credential before allowing Wrangler to select an account.
   requireThat(await readWranglerOAuth() === expectedOAuth, 'auth');
@@ -598,8 +605,8 @@ export async function stageWithWrangler(repository, account, expectedOAuth, conf
   // no account ID, token or Keychain credential is passed as an argument/environment variable.
   requireThat(id(account), 'account');
   const exit = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(repository, 'proxy/node_modules/wrangler/bin/wrangler.js'),
-      'deploy', '--config', config], { cwd: path.join(repository, 'proxy'), env, stdio: ['ignore', 'ignore', 'ignore'] });
+    const child = spawn(process.execPath, wranglerArguments(repository, 'deploy', '--config', config),
+      { cwd: path.join(repository, 'proxy'), env, stdio: ['ignore', 'ignore', 'ignore'] });
     const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new DeploymentFailure('wrangler')); }, 120_000);
     child.on('error', () => { clearTimeout(timer); reject(new DeploymentFailure('wrangler')); });
     child.on('close', code => { clearTimeout(timer); resolve(code); });

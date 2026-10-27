@@ -56,7 +56,8 @@ class StreamTests(unittest.TestCase):
         self.capture = module.Capture(VERSION, self.output.append, now=lambda: self.clock)
 
     def feed(self, value):
-        encoded = (json.dumps(value, indent=2) + '\n').encode()
+        # Wrangler 4.154.0's `tail --format json` framing: JSON.stringify(event, null, 4) per event.
+        encoded = (json.dumps(value, indent=4) + '\n').encode()
         for start in range(0, len(encoded), 7):  # actual incremental, pretty-JSON framing
             self.capture.feed(encoded[start:start + 7])
 

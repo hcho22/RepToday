@@ -83,12 +83,21 @@ export class RuntimeCloudflare extends Cloudflare {
 
 // Build settings shared by every Wrangler bundle of the Coach Worker: production, staging and the
 // workerd test bundles in proxy/test/workerd-auth.mjs, so the tests run the module graph that ships.
-// node:crypto resolves to workerd's native module (proxy/src/native-crypto.cjs explains why).
+// Wrangler 4's nodejs_compat preset leaves node:crypto to workerd's native module; the bundle check
+// in proxy/test/wrangler-bundles.mjs fails any build that stubs a crypto API instead. Wrangler 4 also
+// uploads the npm dependency list of a package.json beside the config. The tools write their configs
+// under build/, where there is none; the setting keeps the list out of a config that sits beside one,
+// as proxy/wrangler.runtime-auth.toml does.
 export function coachWorkerBuild(repository) {
-  const nativeCrypto = path.join(repository, 'proxy/src/native-crypto.cjs');
   return { compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
-    alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js'), crypto: nativeCrypto, 'node:crypto': nativeCrypto } };
+    alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js') },
+    dependencies_instrumentation: { enabled: false } };
 }
+
+// Wrangler 3 sent no Durable Object code update strategy; Wrangler 4 asks for deferred updates (old
+// code for up to 300s) unless told otherwise. Every Coach deployment asks for an immediate update, so
+// a release's verification probes the code it released.
+export const DURABLE_OBJECT_CODE_UPDATE = Object.freeze({ mode: 'immediate' });
 
 export function runtimeConfig(repository, revision, diagnostics = false, finalDiagnostics = false) {
   requireThat(revisionValid(revision), 'revision');
@@ -98,7 +107,7 @@ export function runtimeConfig(repository, revision, diagnostics = false, finalDi
     preview_urls: false, routes: [], logpush: false, observability: { enabled: false }, send_metrics: false,
     vars: { COACH_AUTH_MODE: MODE, COACH_AUTH_SOURCE_REV: revision, ...(diagnostics ? { COACH_AUTH_GUARD_DIAGNOSTICS: '1' } : {}),
       ...(finalDiagnostics ? { COACH_FINAL_AUTH_DIAGNOSTICS: '1' } : {}) },
-    durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }] },
+    durable_objects: { bindings: [{ name: 'COACH_AUTH_STATE', class_name: CLASS }], code_update_strategy: DURABLE_OBJECT_CODE_UPDATE },
     migrations: [{ tag: TAG, new_sqlite_classes: [CLASS] }] };
 }
 

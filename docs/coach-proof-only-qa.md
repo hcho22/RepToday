@@ -89,7 +89,7 @@ unverified until their distinct actual exchanges succeed.
 
 ## Offline verification
 
-Use the project's Node 20 runtime for `npm test`, `npm run typecheck` and `npm run test:runtime`
+Use the project's Node 24 runtime for `npm test`, `npm run typecheck` and `npm run test:runtime`
 inside `proxy/`. The local workerd suite exercises real P-256 signature/body/purchase binding,
 SQLite nonce/counter consumption, exact replay, forged-signature denial, Premium-denial ordering
 and operator exclusion; its Premium success is a trusted local double. Every egress is intercepted,
