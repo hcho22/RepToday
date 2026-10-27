@@ -13,19 +13,19 @@
       "word": "engine",
       "forms": ["engine", "engines"],
       "say": "'Rep Today' or 'the app'",
-      "proof": "Kept out of Coach replies by the captain's decision of 2026-09-30. The app does print 'the engine' in three places (the Premium 'How it's felt' note in ProgressTabView, in two of its wordings, and StrengthGraduationRevealView), so this entry rests on that decision and not on absence."
+      "proof": "Kept out of Coach replies by the captain's decision of 2026-09-30. No string in the app contains it: the Premium 'How it's felt' note (ProgressTabView) says 'your sessions are easing you back' and the Strength graduation screen (StrengthGraduationRevealView) says 'Rep Today still picks the day's work for you'. CoachRequestVocabularyTests holds every app string to that."
     },
     {
       "word": "deterministic",
       "forms": ["deterministic"],
       "say": "'Rep Today' or 'the app'",
-      "proof": "No screen an ordinary user reaches shows it; the only string is on the hidden Coach QA screen (CoachSyntheticQAView)."
+      "proof": "No string in the app contains it; the hidden Coach QA screen (CoachSyntheticQAView) says 'Your offline workout remains available.'"
     },
     {
       "word": "stalest",
       "forms": ["stalest", "stale", "staleness"],
       "say": "'the area you've gone longest without'",
-      "proof": "No user-facing string contains it; the one occurrence is a canned reply for SwiftUI previews (CoachView)."
+      "proof": "No string in the app contains it; the canned reply for SwiftUI previews (CoachView) says 'the area you've gone longest without'."
     },
     {
       "word": "chain",
@@ -37,7 +37,7 @@
       "word": "frontier",
       "forms": ["frontier", "frontiers"],
       "say": "'your current movement'",
-      "proof": "Shown only on the hidden Coach QA screen and in its fixed QA prompts. The Progress tab says 'Your current movement in each foundation.'"
+      "proof": "No string in the app contains it; the hidden Coach QA screen and its fixed QA prompts say 'current squat movement'. The Progress tab says 'Your current movement in each foundation.'"
     },
     {
       "word": "consistency signal",

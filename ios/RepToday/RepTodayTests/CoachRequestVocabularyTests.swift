@@ -178,6 +178,52 @@ final class CoachRequestVocabularyTests: XCTestCase {
         XCTAssertFalse(listed.contains(["tiers"]))
     }
 
+    /// The entries whose proof says no string in the app contains them. The app uses its own
+    /// words for the same things ("Rep Today", "your current movement", "the area you've gone
+    /// longest without"), so a string literal anywhere in the app's sources carrying one of these is
+    /// a word the Coach is told never to say, shown on a screen instead.
+    private static let absentFromTheApp = ["engine", "deterministic", "stalest", "frontier"]
+
+    func testNoStringTheAppCanShowCarriesAWordItNeverUses() throws {
+        let absent = try Self.listedForms(only: Self.absentFromTheApp)
+        let sources = try Self.appSwiftSources()
+        XCTAssertGreaterThan(sources.count, 100, "the app's sources were not found under \(Self.appSourcesDirectory.path)")
+
+        for file in sources {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            for literal in Self.stringLiterals(in: source) {
+                let found = Self.forms(absent, foundIn: literal.text)
+                XCTAssertTrue(
+                    found.isEmpty,
+                    "\(file.lastPathComponent):\(literal.line) carries \(found): \"\(literal.text)\""
+                )
+            }
+        }
+    }
+
+    func testTheStringReaderSeesEveryLiteralAndNoComment() throws {
+        let absent = try Self.listedForms(only: Self.absentFromTheApp)
+        XCTAssertEqual(absent.count, 8, "the four entries' forms were not all read from the list")
+
+        // Positive controls: a reader that missed any of these shapes would let the scan above pass.
+        let sample = ##"""
+        // the engine, in a comment
+        /* the engine, in a block comment */
+        let a = "the engine's easing you back"
+        let b = """
+            your deterministic workout
+            """
+        let c = #"{"reply":"\#(reply) your frontier"}"#
+        let d = "\(flag ? "stale" : "fresh") sessions"
+        """##
+        let literals = Self.stringLiterals(in: sample)
+        XCTAssertEqual(
+            literals.map { Self.forms(absent, foundIn: $0.text) }.filter { !$0.isEmpty },
+            [["engine"], ["deterministic"], ["frontier"], ["stale"]]
+        )
+        XCTAssertEqual(literals.first?.line, 3)
+    }
+
     // MARK: - Building the request through the app
 
     private actor CapturingTransport: CoachProxyTransport {
@@ -298,6 +344,124 @@ final class CoachRequestVocabularyTests: XCTestCase {
         let forms = list.words.flatMap(\.forms).map(words(in:))
         XCTAssertFalse(forms.isEmpty, "\(file.path) lists no words")
         return forms
+    }
+
+    private struct NamedWordList: Decodable {
+        struct Entry: Decodable {
+            let word: String
+            let forms: [String]
+        }
+
+        let words: [Entry]
+    }
+
+    /// The listed forms of the named entries only, as runs of whole words.
+    nonisolated private static func listedForms(only names: [String]) throws -> [[String]] {
+        let file = repositoryRoot.appendingPathComponent("proxy/coach-internal-words.json")
+        let list = try JSONDecoder().decode(NamedWordList.self, from: Data(contentsOf: file))
+        let entries = list.words.filter { names.contains($0.word) }
+        XCTAssertEqual(Set(entries.map(\.word)), Set(names), "\(file.path) no longer lists every one of \(names)")
+        return entries.flatMap(\.forms).map(words(in:))
+    }
+
+    private static let appSourcesDirectory = repositoryRoot.appendingPathComponent("ios/RepToday/RepToday")
+
+    /// Every Swift file the app target compiles.
+    nonisolated private static func appSwiftSources() throws -> [URL] {
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: appSourcesDirectory, includingPropertiesForKeys: nil))
+        return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
+    }
+
+    /// The text of every string literal in Swift `source`, with the line it starts on. Comments are
+    /// skipped; plain, multi-line and raw (`#"..."#`) literals are read; an interpolation's own
+    /// literals are read as literals of their own.
+    nonisolated private static func stringLiterals(in source: String) -> [(line: Int, text: String)] {
+        let characters = Array(source)
+        var index = 0
+        var line = 1
+        var found: [(line: Int, text: String)] = []
+
+        func at(_ offset: Int) -> Character? {
+            index + offset < characters.count ? characters[index + offset] : nil
+        }
+        func starts(with text: String) -> Bool {
+            text.enumerated().allSatisfy { at($0.offset) == $0.element }
+        }
+        func advance(_ count: Int = 1) {
+            for _ in 0..<count where index < characters.count {
+                if characters[index] == "\n" { line += 1 }
+                index += 1
+            }
+        }
+
+        /// Reads code until the end, or until the `)` closing an interpolation when `inInterpolation`.
+        func code(inInterpolation: Bool) {
+            var depth = 0
+            while index < characters.count {
+                if starts(with: "//") {
+                    while let next = at(0), next != "\n" { advance() }
+                } else if starts(with: "/*") {
+                    var nesting = 0
+                    repeat {
+                        if starts(with: "/*") { nesting += 1; advance(2) }
+                        else if starts(with: "*/") { nesting -= 1; advance(2) }
+                        else { advance() }
+                    } while nesting > 0 && index < characters.count
+                } else if characters[index] == "#" || characters[index] == "\"" {
+                    var hashes = 0
+                    while at(hashes) == "#" { hashes += 1 }
+                    if at(hashes) == "\"" {
+                        advance(hashes)
+                        literal(hashes: hashes)
+                    } else {
+                        advance(max(hashes, 1))
+                    }
+                } else if characters[index] == "(" {
+                    depth += 1
+                    advance()
+                } else if characters[index] == ")" {
+                    if inInterpolation && depth == 0 { advance(); return }
+                    depth -= 1
+                    advance()
+                } else {
+                    advance()
+                }
+            }
+        }
+
+        /// Reads one literal whose opening quote is at `index`.
+        func literal(hashes: Int) {
+            let startLine = line
+            let multiline = starts(with: "\"\"\"")
+            let quote = multiline ? "\"\"\"" : "\""
+            let close = quote + String(repeating: "#", count: hashes)
+            let escape = "\\" + String(repeating: "#", count: hashes)
+            advance(quote.count)
+            var text = ""
+            while index < characters.count {
+                if starts(with: close) {
+                    advance(close.count)
+                    break
+                }
+                if starts(with: escape) {
+                    advance(escape.count)
+                    if at(0) == "(" {
+                        advance()
+                        code(inInterpolation: true)
+                        text += " "
+                    } else {
+                        advance()
+                    }
+                    continue
+                }
+                text.append(characters[index])
+                advance()
+            }
+            found.append((startLine, text))
+        }
+
+        code(inInterpolation: false)
+        return found.sorted { $0.line < $1.line }
     }
 
     /// `text` as lowercased whole words, splitting camelCase and punctuation, so "chainPositions" is

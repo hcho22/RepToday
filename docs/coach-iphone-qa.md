@@ -92,14 +92,14 @@ Only after the separately authorized service/signing/device prerequisites pass:
    `Services/Coach/CoachSyntheticFixtures.swift`, extracted verbatim from the existing native QA
    fixtures; the native operator runner and iPhone runner now share that one definition.
 6. Inspect the returned text **locally on device**. A non-empty reply is a model-return observation,
-   not semantic correctness. Check the supplied phase, squat frontier, recent patterns and
+   not semantic correctness. Check the supplied phase, current squat movement, recent patterns and
    consistency. It must distinguish summary-based reasoning from today's unknown exact session;
    reject invented exercises, prescriptions, session edits or policy changes. Mark **Local semantic
    review passes** only if those checks pass. **Review fails or is uncertain** stops the run.
 7. Only a passed first review enables **Pistol-squat form**. Tap its named Send button once; inspect
-   its shared synthetic fixture and reply against the earned phase/assisted frontier, safe form
-   guidance and no fabricated/altered workout or policy. Mark its local review outcome. This is
-   the second and last possible turn.
+   its shared synthetic fixture and reply against the earned phase and current squat movement
+   (Assisted Pistol Squat), safe form guidance and no fabricated/altered workout or policy. Mark
+   its local review outcome. This is the second and last possible turn.
 
 **Budget:** at most two total model requests across this approved QA exercise, not two per launch,
 device, installation or authentication lane. Do not also run the native operator live-QA helper.

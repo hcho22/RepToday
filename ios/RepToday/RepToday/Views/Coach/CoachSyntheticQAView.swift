@@ -97,7 +97,7 @@ struct CoachSyntheticQAView: View {
                         Text(reply)
                             .accessibilityLabel("Synthetic QA reply. \(reply)")
                         fixture(selection)
-                        Text("Non-empty text does not prove correctness. Check the supplied phase, frontier, recent patterns and consistency; distinguish summary reasoning from today's unknown exact session. For pistol form, check safe guidance relative to the assisted frontier. Reject any fabricated or altered workout or policy. Do not copy, log, screenshot or export the prompt, context, reply or Apple proofs.")
+                        Text("Non-empty text does not prove correctness. Check the supplied phase, current squat movement, recent patterns and consistency; distinguish summary reasoning from today's unknown exact session. For pistol form, check safe guidance relative to the current squat movement, Assisted Pistol Squat. Reject any fabricated or altered workout or policy. Do not copy, log, screenshot or export the prompt, context, reply or Apple proofs.")
                         Button("Local semantic review passes — clear reply") {
                             viewModel.reviewReturnedReply(passed: true)
                         }
@@ -107,7 +107,7 @@ struct CoachSyntheticQAView: View {
                         }
                         .frame(minHeight: Theme.Spacing.buttonHeight)
                     }
-                    Text("Replies exist only on this screen in memory and clear on review or leaving. Leaving before review stops the run. Your deterministic offline workout remains available.")
+                    Text("Replies exist only on this screen in memory and clear on review or leaving. Leaving before review stops the run. Your offline workout remains available.")
                         .font(Theme.Typography.caption)
                     }
                     #if COACH_IPHONE_QA

@@ -1307,9 +1307,9 @@ private struct DifficultyMixCard: View {
             return "Mostly dialed in - your sessions are landing right."
         }
         if mix.tooHard > mix.tooEasy {
-            return "Running a little hard lately - the engine's easing you back."
+            return "Running a little hard lately - your sessions are easing you back."
         }
-        return "Plenty in the tank - the engine's nudging you up."
+        return "Plenty in the tank - your sessions are nudging you up."
     }
 }
 
