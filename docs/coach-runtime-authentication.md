@@ -383,9 +383,9 @@ when runtime checks fail. The coordinator also refuses account/token overrides o
 within 20 minutes. It never refreshes or writes the shared Wrangler authentication file.
 
 ```sh
-PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --stage
-PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --release
-PATH=/Users/hcho/.nvm/versions/node/v20.19.5/bin:$PATH ./tools/migrate-coach-runtime.sh --hold
+PATH="<installed Node 24 bin>:$PATH" ./tools/migrate-coach-runtime.sh --stage
+PATH="<installed Node 24 bin>:$PATH" ./tools/migrate-coach-runtime.sh --release
+PATH="<installed Node 24 bin>:$PATH" ./tools/migrate-coach-runtime.sh --hold
 ```
 
 `--stage` confirms the sole authenticated account, existing active Free zone, explicit existing

@@ -184,8 +184,11 @@ key resets, reinstallations, secret rotation or a speculative auth fix.
    - Original clean source owner: `--stage`, retaining all seven existing secrets and the
      exact namespace/migration. This restores baseline source/configuration to latest settings.
    - From an empty, private config-free directory, use the reviewed installed Wrangler's
-     exact-version command once: `versions deploy "$baseline_version@100" --name
-     reptoday-variety-language-proxy`. Noninteractive confirmation must be scoped to this
+     exact-version command once, under the installed Node 24: `versions deploy
+     "$baseline_version@100" --name reptoday-variety-language-proxy --profile default
+     --durable-objects-code-update-mode immediate`. The profile keeps Wrangler on the default
+     login the tools check, and with no configuration Wrangler 4 would otherwise defer the
+     Durable Object's code update. Noninteractive confirmation must be scoped to this
      exact deployment (Wrangler's `--yes`, **never** no-mistakes `--yes`). No `--force`,
      rollback-to-latest alias, migration deletion, settings patch or namespace reset.
    - Candidate owner: `--verify-restored` with the original metadata and `held: true`.
