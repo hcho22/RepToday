@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import RepToday
 
 /// The app's half of one rule: the Coach model is never given a word the app does not show a user.
@@ -18,6 +20,10 @@ import XCTest
 /// - **In `proxy/test/worker.test.js`**, the Worker is run over those same files, and neither the
 ///   summary it hands the model (which never carries a field name) nor its instructions may contain a
 ///   listed word.
+///
+/// The app's own screens are held to the list where they once carried a listed word: here, the hidden
+/// Coach QA screen's fixed prompts and the Premium Progress tab's "How it's felt" note; in
+/// `StrengthGraduationEvidenceTests`, the Strength graduation reveal.
 ///
 /// When the app's request legitimately changes (a catalog change moves a tier count, say), this suite
 /// fails until the fixtures are rebuilt with `REPTODAY_WRITE_EVIDENCE=1`, and the Worker tests then
@@ -178,50 +184,62 @@ final class CoachRequestVocabularyTests: XCTestCase {
         XCTAssertFalse(listed.contains(["tiers"]))
     }
 
-    /// The entries whose proof says no string in the app contains them. The app uses its own
-    /// words for the same things ("Rep Today", "your current movement", "the area you've gone
-    /// longest without"), so a string literal anywhere in the app's sources carrying one of these is
-    /// a word the Coach is told never to say, shown on a screen instead.
-    private static let absentFromTheApp = ["engine", "deterministic", "stalest", "frontier"]
+    /// The hidden Coach QA screen sends its two fixed prompts to the model as the user's message, so
+    /// neither may carry a listed word.
+    func testTheFixedQAPromptsCarryNoListedWord() throws {
+        let listed = try Self.listedForms()
+        let prompts = CoachSyntheticFixtures.Selection.allCases.map(\.prompt)
+        XCTAssertEqual(prompts.count, 2)
 
-    func testNoStringTheAppCanShowCarriesAWordItNeverUses() throws {
-        let absent = try Self.listedForms(only: Self.absentFromTheApp)
-        let sources = try Self.appSwiftSources()
-        XCTAssertGreaterThan(sources.count, 100, "the app's sources were not found under \(Self.appSourcesDirectory.path)")
-
-        for file in sources {
-            let source = try String(contentsOf: file, encoding: .utf8)
-            for literal in Self.stringLiterals(in: source) {
-                let found = Self.forms(absent, foundIn: literal.text)
-                XCTAssertTrue(
-                    found.isEmpty,
-                    "\(file.lastPathComponent):\(literal.line) carries \(found): \"\(literal.text)\""
-                )
-            }
+        for prompt in prompts {
+            let found = Self.forms(listed, foundIn: prompt)
+            XCTAssertTrue(found.isEmpty, "the fixed QA prompt \"\(prompt)\" contains \(found)")
         }
     }
 
-    func testTheStringReaderSeesEveryLiteralAndNoComment() throws {
-        let absent = try Self.listedForms(only: Self.absentFromTheApp)
-        XCTAssertEqual(absent.count, 8, "the four entries' forms were not all read from the list")
+    /// The Premium "How it's felt" note reads one of two wordings when a user's ratings lean one way.
+    /// The Progress tab is hosted for a mostly-too-hard and a mostly-too-easy mix, and nothing it says
+    /// carries a listed form of "engine", the word the Coach is told to replace with "Rep Today".
+    func testThePremiumProgressTabNamesNoEngineForEitherLeaningMix() async throws {
+        let engine = try Self.listedForms(of: "engine")
+        let mixes: [(name: String, ratings: [PerceivedDifficulty], counts: String)] = [
+            ("mostly too hard", [.tooHard, .tooHard, .tooHard, .tooEasy, .justRight], "1 too easy, 1 just right, 3 too hard"),
+            ("mostly too easy", [.tooEasy, .tooEasy, .tooEasy, .tooHard, .justRight], "3 too easy, 1 just right, 1 too hard"),
+        ]
 
-        // Positive controls: a reader that missed any of these shapes would let the scan above pass.
-        let sample = ##"""
-        // the engine, in a comment
-        /* the engine, in a block comment */
-        let a = "the engine's easing you back"
-        let b = """
-            your deterministic workout
-            """
-        let c = #"{"reply":"\#(reply) your frontier"}"#
-        let d = "\(flag ? "stale" : "fresh") sessions"
-        """##
-        let literals = Self.stringLiterals(in: sample)
-        XCTAssertEqual(
-            literals.map { Self.forms(absent, foundIn: $0.text) }.filter { !$0.isEmpty },
-            [["engine"], ["deterministic"], ["frontier"], ["stale"]]
-        )
-        XCTAssertEqual(literals.first?.line, 3)
+        for mix in mixes {
+            let logs = try mix.ratings.enumerated().map { index, rating in
+                try Self.log(daysAgo: index + 1, now: Self.now, [], perceivedDifficulty: rating)
+            }
+            let viewModel = ProgressViewModel(
+                userService: MockUserService(user: MockPersistence.sampleUser),
+                workoutLogService: MockWorkoutLogService(logs: logs),
+                exerciseService: try MockExerciseService(),
+                subscriptionService: MockSubscriptionService(
+                    subscription: Subscription(tier: .premium, provider: .apple, expiresAt: nil, trialEndsAt: nil)
+                ),
+                consistencyService: ConsistencyScoreService(now: { Self.now }, calendar: Self.calendar),
+                now: { Self.now },
+                calendar: Self.calendar
+            )
+            await viewModel.load()
+            XCTAssertTrue(viewModel.isPremium, "\(mix.name): the deep layer is Premium-only")
+
+            let (host, window) = HostedSurface.host(
+                ProgressTabView(viewModel: viewModel), size: CGSize(width: 393, height: 4600)
+            )
+            defer { HostedSurface.dismantle(window) }
+            let spoken = AccessibilityTree.spokenStrings(in: host.view)
+
+            XCTAssertTrue(
+                spoken.contains { $0.hasPrefix("How it's felt. \(mix.counts).") },
+                "\(mix.name): the \"How it's felt\" card did not render this mix; the tab says \(spoken)"
+            )
+            for text in spoken {
+                let found = Self.forms(engine, foundIn: text)
+                XCTAssertTrue(found.isEmpty, "\(mix.name): the Progress tab says \"\(text)\", which contains \(found)")
+            }
+        }
     }
 
     // MARK: - Building the request through the app
@@ -281,7 +299,12 @@ final class CoachRequestVocabularyTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? NSDictionary)
     }
 
-    nonisolated private static func log(daysAgo: Int, now: Date, _ exercises: [LoggedExercise]) throws -> WorkoutLog {
+    nonisolated private static func log(
+        daysAgo: Int,
+        now: Date,
+        _ exercises: [LoggedExercise],
+        perceivedDifficulty: PerceivedDifficulty? = nil
+    ) throws -> WorkoutLog {
         WorkoutLog(
             id: UUID(),
             workoutId: UUID(),
@@ -290,7 +313,7 @@ final class CoachRequestVocabularyTests: XCTestCase {
             durationMinutes: 15,
             shape: .blend,
             focusPillar: nil,
-            perceivedDifficulty: nil,
+            perceivedDifficulty: perceivedDifficulty,
             exercises: exercises
         )
     }
@@ -320,6 +343,7 @@ final class CoachRequestVocabularyTests: XCTestCase {
 
     private struct WordList: Decodable {
         struct Entry: Decodable {
+            let word: String
             let forms: [String]
         }
 
@@ -337,131 +361,17 @@ final class CoachRequestVocabularyTests: XCTestCase {
     private static let fixturesDirectory = repositoryRoot
         .appendingPathComponent("proxy/test/fixtures/coach-requests")
 
-    /// Every listed form, as its run of whole words.
-    nonisolated private static func listedForms() throws -> [[String]] {
+    /// Every listed form, or only the forms of the entry `word` names, as runs of whole words.
+    /// `StrengthGraduationEvidenceTests` reads the forms of "engine" from here.
+    nonisolated static func listedForms(of word: String? = nil) throws -> [[String]] {
         let file = repositoryRoot.appendingPathComponent("proxy/coach-internal-words.json")
         let list = try JSONDecoder().decode(WordList.self, from: Data(contentsOf: file))
-        let forms = list.words.flatMap(\.forms).map(words(in:))
-        XCTAssertFalse(forms.isEmpty, "\(file.path) lists no words")
+        let forms = list.words
+            .filter { word == nil || $0.word == word }
+            .flatMap(\.forms)
+            .map(words(in:))
+        XCTAssertFalse(forms.isEmpty, "\(file.path) lists no forms of \(word ?? "any word")")
         return forms
-    }
-
-    private struct NamedWordList: Decodable {
-        struct Entry: Decodable {
-            let word: String
-            let forms: [String]
-        }
-
-        let words: [Entry]
-    }
-
-    /// The listed forms of the named entries only, as runs of whole words.
-    nonisolated private static func listedForms(only names: [String]) throws -> [[String]] {
-        let file = repositoryRoot.appendingPathComponent("proxy/coach-internal-words.json")
-        let list = try JSONDecoder().decode(NamedWordList.self, from: Data(contentsOf: file))
-        let entries = list.words.filter { names.contains($0.word) }
-        XCTAssertEqual(Set(entries.map(\.word)), Set(names), "\(file.path) no longer lists every one of \(names)")
-        return entries.flatMap(\.forms).map(words(in:))
-    }
-
-    private static let appSourcesDirectory = repositoryRoot.appendingPathComponent("ios/RepToday/RepToday")
-
-    /// Every Swift file the app target compiles.
-    nonisolated private static func appSwiftSources() throws -> [URL] {
-        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: appSourcesDirectory, includingPropertiesForKeys: nil))
-        return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
-    }
-
-    /// The text of every string literal in Swift `source`, with the line it starts on. Comments are
-    /// skipped; plain, multi-line and raw (`#"..."#`) literals are read; an interpolation's own
-    /// literals are read as literals of their own.
-    nonisolated private static func stringLiterals(in source: String) -> [(line: Int, text: String)] {
-        let characters = Array(source)
-        var index = 0
-        var line = 1
-        var found: [(line: Int, text: String)] = []
-
-        func at(_ offset: Int) -> Character? {
-            index + offset < characters.count ? characters[index + offset] : nil
-        }
-        func starts(with text: String) -> Bool {
-            text.enumerated().allSatisfy { at($0.offset) == $0.element }
-        }
-        func advance(_ count: Int = 1) {
-            for _ in 0..<count where index < characters.count {
-                if characters[index] == "\n" { line += 1 }
-                index += 1
-            }
-        }
-
-        /// Reads code until the end, or until the `)` closing an interpolation when `inInterpolation`.
-        func code(inInterpolation: Bool) {
-            var depth = 0
-            while index < characters.count {
-                if starts(with: "//") {
-                    while let next = at(0), next != "\n" { advance() }
-                } else if starts(with: "/*") {
-                    var nesting = 0
-                    repeat {
-                        if starts(with: "/*") { nesting += 1; advance(2) }
-                        else if starts(with: "*/") { nesting -= 1; advance(2) }
-                        else { advance() }
-                    } while nesting > 0 && index < characters.count
-                } else if characters[index] == "#" || characters[index] == "\"" {
-                    var hashes = 0
-                    while at(hashes) == "#" { hashes += 1 }
-                    if at(hashes) == "\"" {
-                        advance(hashes)
-                        literal(hashes: hashes)
-                    } else {
-                        advance(max(hashes, 1))
-                    }
-                } else if characters[index] == "(" {
-                    depth += 1
-                    advance()
-                } else if characters[index] == ")" {
-                    if inInterpolation && depth == 0 { advance(); return }
-                    depth -= 1
-                    advance()
-                } else {
-                    advance()
-                }
-            }
-        }
-
-        /// Reads one literal whose opening quote is at `index`.
-        func literal(hashes: Int) {
-            let startLine = line
-            let multiline = starts(with: "\"\"\"")
-            let quote = multiline ? "\"\"\"" : "\""
-            let close = quote + String(repeating: "#", count: hashes)
-            let escape = "\\" + String(repeating: "#", count: hashes)
-            advance(quote.count)
-            var text = ""
-            while index < characters.count {
-                if starts(with: close) {
-                    advance(close.count)
-                    break
-                }
-                if starts(with: escape) {
-                    advance(escape.count)
-                    if at(0) == "(" {
-                        advance()
-                        code(inInterpolation: true)
-                        text += " "
-                    } else {
-                        advance()
-                    }
-                    continue
-                }
-                text.append(characters[index])
-                advance()
-            }
-            found.append((startLine, text))
-        }
-
-        code(inInterpolation: false)
-        return found.sorted { $0.line < $1.line }
     }
 
     /// `text` as lowercased whole words, splitting camelCase and punctuation, so "chainPositions" is
@@ -483,7 +393,7 @@ final class CoachRequestVocabularyTests: XCTestCase {
     }
 
     /// The listed forms that occur in `text`, each joined back into a phrase, in list order.
-    nonisolated private static func forms(_ listed: [[String]], foundIn text: String) -> [String] {
+    nonisolated static func forms(_ listed: [[String]], foundIn text: String) -> [String] {
         let textWords = words(in: text)
         return listed.filter { form in
             guard !form.isEmpty, form.count <= textWords.count else { return false }

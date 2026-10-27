@@ -13,7 +13,7 @@
       "word": "engine",
       "forms": ["engine", "engines"],
       "say": "'Rep Today' or 'the app'",
-      "proof": "Kept out of Coach replies by the captain's decision of 2026-09-30. No string in the app contains it: the Premium 'How it's felt' note (ProgressTabView) says 'your sessions are easing you back' and the Strength graduation screen (StrengthGraduationRevealView) says 'Rep Today still picks the day's work for you'. CoachRequestVocabularyTests holds every app string to that."
+      "proof": "Kept out of Coach replies by the captain's decision of 2026-09-30. No string in the app contains it: the Premium 'How it's felt' note (ProgressTabView) says 'your sessions are easing you back' and the Strength graduation screen (StrengthGraduationRevealView) says 'Rep Today still picks the day's work for you'. CoachRequestVocabularyTests (the Progress tab, hosted for both leaning mixes) and StrengthGraduationEvidenceTests (both reveal variants) fail if either screen says a form of it."
     },
     {
       "word": "deterministic",
