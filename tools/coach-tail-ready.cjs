@@ -34,8 +34,9 @@ if (require.main === module) {
       const m = new Module(file, module); m.filename = file; m.paths = Module._nodeModulePaths(path.dirname(file));
       m._compile(source, file);
       // No method/search/status filter: DO requests must remain observable. One exact version only.
+      // The default profile: a profile bound to this directory or a parent would otherwise win.
       m.exports.coachTailMain(['tail', 'reptoday-variety-language-proxy', '--format', 'json',
-        '--version-id', version, '--sampling-rate', '1']).catch(() => { process.exitCode = 78; });
+        '--version-id', version, '--sampling-rate', '1', '--profile', 'default']).catch(() => { process.exitCode = 78; });
     }
   } catch { process.stdout.write('tail-adapter verified=false\n'); process.exitCode = 78; }
 }

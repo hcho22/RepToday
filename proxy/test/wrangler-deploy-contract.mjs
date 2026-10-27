@@ -1,9 +1,10 @@
 // What the installed Wrangler sends when the operator tools deploy each Coach configuration, recorded
-// against a local stand-in for the Cloudflare API. The real `wrangler deploy` runs with a private
-// config home, a synthetic token and account, CLOUDFLARE_API_BASE_URL on 127.0.0.1 and npm's registry
-// on a closed port: it can reach nothing else, and a request it sent elsewhere would carry no usable
-// credential. It pins the upload the operator flows depend on, so a Wrangler upgrade that changes it
-// fails here rather than in a live deploy. Live Cloudflare behavior stays a release check.
+// against a local stand-in for the Cloudflare API. The real `wrangler deploy` runs with the operator
+// tools' own arguments, a private config home holding synthetic logins, a synthetic account,
+// CLOUDFLARE_API_BASE_URL on 127.0.0.1 and npm's registry on a closed port: it can reach nothing else,
+// and a request it sent elsewhere would carry no usable credential. It pins the upload the operator
+// flows depend on, so a Wrangler upgrade that changes it fails here rather than in a live deploy. Live
+// Cloudflare behavior stays a release check.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -11,7 +12,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { runtimeConfig, TAG, CLASS } from '../../tools/coach-runtime-migrate.mjs';
 import { stagingWorkerConfig, stagingTeardownConfig, STAGING } from '../../tools/coach-staging.mjs';
-import { TARGET } from '../../tools/coach-production-deploy.mjs';
+import { TARGET, wranglerArguments } from '../../tools/coach-production-deploy.mjs';
 
 const root = resolve('..');
 const output = resolve('../build/coach-deploy-contract');
@@ -19,6 +20,12 @@ const account = 'f'.repeat(32);
 const revision = '0'.repeat(40);
 const origin = `https://${STAGING}.fixture.workers.dev/coach`;
 const ok = result => ({ success: true, errors: [], messages: [], result });
+// The default login the operator tools check, and another profile bound to a parent of every config
+// directory, which Wrangler 4 would pick without the tools' --profile default.
+const login = 'default-profile-oauth-token';
+const decoy = 'bound-profile-oauth-token';
+const oauth = token => `oauth_token = "${token}"\nexpiration_time = "2999-01-01T00:00:00.000Z"\n`;
+const dependency = { name: 'fixture-dependency', version: '1.0.0' };
 
 function metadataOf(body, type) {
   const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(type);
@@ -28,10 +35,12 @@ function metadataOf(body, type) {
 }
 
 // `existing`: the script's current migration tag on the stand-in, or null for no script.
-async function deploy(name, config, existing) {
-  const requests = [];
+// `besidePackage`: the config sits beside a package.json whose one dependency is installed.
+async function deploy(name, config, existing, besidePackage = false) {
+  const requests = [], logins = new Set();
   const server = http.createServer((request, response) => {
     const chunks = [];
+    logins.add(request.headers.authorization);
     request.on('data', chunk => chunks.push(chunk));
     request.on('end', () => {
       const body = Buffer.concat(chunks), url = new URL(request.url, 'http://local');
@@ -59,18 +68,26 @@ async function deploy(name, config, existing) {
     });
   });
   await new Promise(done => server.listen(0, '127.0.0.1', done));
-  const dir = resolve(output, name);
-  await rm(dir, { recursive: true, force: true }); await mkdir(dir, { recursive: true });
+  const dir = resolve(output, name), home = resolve(dir, 'home'), wranglerHome = resolve(home, '.wrangler');
+  await rm(dir, { recursive: true, force: true }); await mkdir(resolve(wranglerHome, 'config'), { recursive: true });
+  await mkdir(resolve(wranglerHome, 'profiles'));
+  await writeFile(resolve(wranglerHome, 'config/default.toml'), oauth(login));
+  await writeFile(resolve(wranglerHome, 'config/bound.toml'), oauth(decoy));
+  await writeFile(resolve(wranglerHome, 'profiles/directory-bindings.json'), JSON.stringify({ [output]: 'bound' }));
   const file = resolve(dir, 'wrangler.json');
   await writeFile(file, JSON.stringify(config));
-  const env = { PATH: process.env.PATH, HOME: dir, XDG_CONFIG_HOME: dir, CI: 'true', NO_COLOR: '1', WRANGLER_SEND_METRICS: 'false',
+  if (besidePackage) {
+    await writeFile(resolve(dir, 'package.json'), JSON.stringify({ private: true, dependencies: { [dependency.name]: dependency.version } }));
+    await mkdir(resolve(dir, 'node_modules', dependency.name), { recursive: true });
+    await writeFile(resolve(dir, 'node_modules', dependency.name, 'package.json'), JSON.stringify(dependency));
+  }
+  const env = { PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: home, CI: 'true', NO_COLOR: '1', WRANGLER_SEND_METRICS: 'false',
     WRANGLER_LOG_PATH: resolve(dir, 'wrangler.log'), npm_config_registry: 'http://127.0.0.1:9/',
-    CLOUDFLARE_API_BASE_URL: `http://127.0.0.1:${server.address().port}/client/v4`,
-    CLOUDFLARE_API_TOKEN: 'local-synthetic-token', CLOUDFLARE_ACCOUNT_ID: account };
+    CLOUDFLARE_API_BASE_URL: `http://127.0.0.1:${server.address().port}/client/v4`, CLOUDFLARE_ACCOUNT_ID: account };
   let printed = '';
   try {
     const status = await new Promise((done, fail) => {
-      const child = spawn(process.execPath, [resolve('node_modules/wrangler/bin/wrangler.js'), 'deploy', '--config', file],
+      const child = spawn(process.execPath, wranglerArguments(root, 'deploy', '--config', file),
         { cwd: resolve('.'), env, stdio: ['ignore', 'pipe', 'pipe'] });
       for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { printed += chunk; });
       const timer = setTimeout(() => { child.kill('SIGKILL'); fail(new Error('wrangler deploy timed out: ' + name)); }, 120_000);
@@ -78,6 +95,7 @@ async function deploy(name, config, existing) {
     });
     assert.equal(status, 0, `wrangler deploy failed against the local stand-in: ${name}\n${printed.slice(-2000)}`);
   } finally { server.close(); }
+  assert.deepEqual([...logins], [`Bearer ${login}`], `${name}: Wrangler did not use the default login`);
   // Reads are free; every write must be one of these, aimed at this script.
   const writes = requests.filter(entry => entry.method !== 'GET');
   const prefix = `/accounts/ACCOUNT/workers/scripts/${config.name}`;
@@ -95,7 +113,7 @@ const stateBinding = { name: 'COACH_AUTH_STATE', type: 'durable_object_namespace
 const find = (writes, method, suffix) => writes.find(write => write.method === method && write.path.endsWith(suffix));
 
 // Production release onto the existing Coach script: a new version at 100%, its Durable Object
-// updated at once, secrets kept, logs and development URLs off, no migration and no dependency list.
+// updated at once, secrets kept, logs and development URLs off, no migration.
 {
   const { writes, upload } = await deploy('production', runtimeConfig(root, revision), TAG);
   assert.deepEqual(writes.map(write => `${write.method} ${write.path.split('/').pop()}`),
@@ -117,7 +135,6 @@ const find = (writes, method, suffix) => writes.find(write => write.method === m
   assert.deepEqual(upload.migrations, { new_tag: TAG, steps: [{ new_sqlite_classes: [CLASS] }] });
   assert.deepEqual(upload.code_update_strategy, immediate);
   assert.deepEqual(upload.keep_bindings, secretsKept);
-  assert.equal(upload.package_dependencies, undefined);
   assert.deepEqual(find(writes, 'POST', '/subdomain').body, { enabled: true, previews_enabled: false });
 }
 
@@ -138,4 +155,16 @@ const find = (writes, method, suffix) => writes.find(write => write.method === m
     steps: [{ new_sqlite_classes: [CLASS] }, { deleted_classes: [CLASS] }] });
 }
 
-console.log('validated: Wrangler deploy uploads for production, staging, teardown and orphan teardown against a local Cloudflare stand-in; no external request');
+// Wrangler uploads the npm dependency list of a package.json beside the config. The operator tools
+// write theirs under build/, where there is none; beside one, as proxy/wrangler.runtime-auth.toml is,
+// the shared build's dependencies_instrumentation setting keeps the list out, and without it the list goes.
+{
+  const config = runtimeConfig(root, revision);
+  assert.equal((await deploy('beside-package', config, TAG, true)).upload.package_dependencies, undefined);
+  const { dependencies_instrumentation, ...uninstrumented } = config;
+  assert.deepEqual(dependencies_instrumentation, { enabled: false });
+  assert.deepEqual((await deploy('beside-package-control', uninstrumented, TAG, true)).upload.package_dependencies,
+    [{ name: dependency.name, packageJsonVersion: dependency.version, installedVersion: dependency.version }]);
+}
+
+console.log('validated: Wrangler deploy uploads for production, staging, teardown and orphan teardown against a local Cloudflare stand-in, each on the default login despite a bound profile, and no dependency list beside a package.json; no external request');

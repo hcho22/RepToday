@@ -93,7 +93,8 @@ in-memory adapter for installed Wrangler **4.154.0**. It changes no installed pa
 Dependency drift makes the adapter refuse; review it again instead of bypassing the hash.
 Wrangler 4's tail replaces a lost connection with up to five new subscriptions; the adapter
 sets those attempts to zero, so a lost connection deletes the tail and exits, as Wrangler 3 did,
-and a capture keeps one subscription. The adapter exports the bundle's `main` on
+and a capture keeps one subscription. The tail passes `--profile default`, so a login profile bound
+to a parent directory cannot replace the default login. The adapter exports the bundle's `main` on
 `module.exports`, which the bundle's own export list omits. The offline gate evaluates
 that exact transformed module with synthetic auth and blocked IO, and checks the export
 the adapter calls. `--self-check` alone checks the hash, unique replacement and parsing;

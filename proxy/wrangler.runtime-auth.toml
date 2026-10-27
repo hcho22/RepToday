@@ -20,7 +20,7 @@ COACH_AUTH_MODE = "app-attest-storekit-v1"
 "node-fetch" = "./src/apple-fetch.js"
 
 # The settings tools/coach-runtime-migrate.mjs deploys with: Durable Objects take new code at once,
-# and the upload carries no npm dependency list.
+# and, since this file sits beside package.json, a deploy of it uploads no npm dependency list.
 [dependencies_instrumentation]
 enabled = false
 

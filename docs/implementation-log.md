@@ -1447,6 +1447,7 @@ Wrangler 4's `nodejs_compat` preset leaves `node:crypto` to workerd, so the cryp
 The workerd suite now first dry-runs every deployable configuration and fails on any crypto stub, and it runs at the shipped compatibility date on a pinned Miniflare 4.
 A local Cloudflare stand-in records what Wrangler 4's real deploy sends for each operator configuration.
 That comparison found three differences that would have reached a live run: deferred Durable Object code updates by default (now pinned to `immediate`), a staging teardown configuration Wrangler 4 refuses (now carrying the full migration history), and Wrangler 4's tail reconnecting with new subscriptions (the tail adapter now turns reconnect off).
+Review found a fourth: Wrangler 4 picks its login per directory, so every Wrangler deploy and tail the operator tools run passes `--profile default`, the login they check.
 Wrangler 4 needs Node 22 or later, so the operator wrappers and CI's Coach job use Node 24.
 No Coach request, reply, sign-in, data or privacy path changed; the new bundle reaches users only after a separately approved Coach server deploy.
 The [runtime authentication runbook](coach-runtime-authentication.md) owns the contract.

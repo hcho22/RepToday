@@ -326,7 +326,7 @@ Every Wrangler build of the Coach Worker must take its settings from `coachWorke
 A deployed Worker gets the Wrangler 4 bundle only through a separately approved staging redeploy or production release, and returns to a Wrangler 3 bundle only by redeploying reverted source.
 
 **Wrangler 4 deploy behavior.**
-[`proxy/test/wrangler-deploy-contract.mjs`](../proxy/test/wrangler-deploy-contract.mjs) (part of `npm run test:runtime`) runs the installed Wrangler's real `deploy` for the production, staging and teardown configurations against a local stand-in for the Cloudflare API, with a synthetic token and account, and pins what each sends.
+[`proxy/test/wrangler-deploy-contract.mjs`](../proxy/test/wrangler-deploy-contract.mjs) (part of `npm run test:runtime`) runs the installed Wrangler's real `deploy`, with the operator tools' own arguments, for the production, staging and teardown configurations against a local stand-in for the Cloudflare API, with synthetic logins and account, and pins what each sends.
 Compared with Wrangler 3.114.17 on the same configurations:
 
 - Wrangler 3 sent no Durable Object code update strategy; Wrangler 4 asks for deferred updates, keeping old code for up to 300 seconds, unless told otherwise.
@@ -334,7 +334,13 @@ Compared with Wrangler 3.114.17 on the same configurations:
 - A version upload names `keep_bindings: ["secret_text", "secret_key"]`, so existing secrets are kept explicitly.
 - The settings patch adds `tags: []`, and the `workers.dev` and preview state is always written, to the values each configuration already states.
 - Wrangler also reads the script's secret names, settings and subdomain state before writing.
-- Wrangler would upload the project's npm dependency list when a deployed configuration sits beside a `package.json`; `coachWorkerBuild` turns that off.
+- Wrangler uploads the npm dependency list of a `package.json` that sits beside the deployed configuration.
+  The operator tools write their configurations under `build/`, where there is none, so their uploads carry no list either way.
+  `proxy/wrangler.runtime-auth.toml` does sit beside `proxy/package.json`, so its `dependencies_instrumentation` setting (off) is what keeps a hand deploy of it, which this runbook does not allow, from uploading the proxy's list.
+  `coachWorkerBuild` carries the same setting, so a generated configuration matches that file and uploads no list wherever it is written.
+  The contract places the production configuration beside a `package.json`: it uploads no list, and with the setting removed it uploads one.
+- Wrangler 4 picks its login per directory: a profile bound (`wrangler auth activate`) to the configuration's directory or a parent wins over the default.
+  The operator tools check the `config/default.toml` login, so every Wrangler deploy and tail they run passes `--profile default`; the contract binds another profile to a parent of every configuration and requires every request to carry the default login.
 - Wrangler refuses a `deleted_classes` migration for a class the configuration never created, so the staging teardown configuration carries the full history.
   Against the deployed staging script it uploads the same single deletion step as before.
   With no staging script (the orphaned-namespace repair) Wrangler 4 can only send create-then-delete, where Wrangler 3 sent the deletion alone; which one Cloudflare accepts is a live check.
@@ -351,7 +357,7 @@ all 3xx before reading/decoding the response, including when a caller asks to fo
 The full runtime suite passes with actual SDK ES256 JWT verification, bounded local status transport,
 foreign redirect rejection, negative Apple proofs and SQLite atomic replay. Re-run the bounded
 Node/workerd comparison with `node test/workerd-auth.mjs --diagnose-apple-api` from `proxy/` using Node
-20; output contains only observed phases and fixed local fixture counts.
+24; output contains only observed phases and fixed local fixture counts.
 
 The two environment origins follow Apple's
 [App Store Server API documentation](https://developer.apple.com/documentation/appstoreserverapi)

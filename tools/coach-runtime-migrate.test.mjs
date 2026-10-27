@@ -204,7 +204,7 @@ test('generated migration configuration contains public source only and exclusiv
   assert.equal(config.vars.COACH_AUTH_SOURCE_REV,revision);assert.equal(config.routes.length,0);
   assert.equal(config.workers_dev,false);assert.equal(config.preview_urls,false);assert.equal(config.observability.enabled,false);
 });
-test('the production bundle uses the shared Coach build: nodejs_compat, no crypto alias, no dependency list', () => {
+test('the production bundle uses the shared Coach build: nodejs_compat, no crypto alias, dependency instrumentation off', () => {
   const build = coachWorkerBuild('/fixture/repository');
   assert.deepEqual(build, { compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
     alias: { 'node-fetch': '/fixture/repository/proxy/src/apple-fetch.js' }, dependencies_instrumentation: { enabled: false } });

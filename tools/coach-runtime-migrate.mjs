@@ -84,8 +84,10 @@ export class RuntimeCloudflare extends Cloudflare {
 // Build settings shared by every Wrangler bundle of the Coach Worker: production, staging and the
 // workerd test bundles in proxy/test/workerd-auth.mjs, so the tests run the module graph that ships.
 // Wrangler 4's nodejs_compat preset leaves node:crypto to workerd's native module; the bundle check
-// in proxy/test/wrangler-bundles.mjs fails any build that stubs a crypto API instead. Wrangler 4 would
-// also upload the project's npm dependency list; the upload stays the source and settings alone.
+// in proxy/test/wrangler-bundles.mjs fails any build that stubs a crypto API instead. Wrangler 4 also
+// uploads the npm dependency list of a package.json beside the config. The tools write their configs
+// under build/, where there is none; the setting keeps the list out of a config that sits beside one,
+// as proxy/wrangler.runtime-auth.toml does.
 export function coachWorkerBuild(repository) {
   return { compatibility_date: '2026-01-01', compatibility_flags: ['nodejs_compat'],
     alias: { 'node-fetch': path.join(repository, 'proxy/src/apple-fetch.js') },
