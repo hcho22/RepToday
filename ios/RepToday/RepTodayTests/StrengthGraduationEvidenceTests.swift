@@ -44,8 +44,11 @@ final class StrengthGraduationEvidenceTests: XCTestCase {
         }
     }
 
-    /// It explains what changes and points to the progression map.
-    func testExplainsWhatChangesAndPointsToTheMap() {
+    /// It explains what changes and points to the progression map. Both variants say who picks the
+    /// day's work without a listed form of "engine" (`proxy/coach-internal-words.json`), a word the
+    /// Coach is told never to say.
+    func testExplainsWhatChangesAndPointsToTheMap() throws {
+        let engine = try CoachRequestVocabularyTests.listedForms(of: "engine")
         for level in FitnessLevel.allCases {
             let (host, window) = HostedSurface.host(
                 StrengthGraduationRevealView(level: level, onDismiss: {}), size: surfaceSize
@@ -57,6 +60,8 @@ final class StrengthGraduationEvidenceTests: XCTestCase {
             XCTAssertTrue(lower.contains("harder"), "\(level): must say harder work is now available; spoke: \(lower)")
             XCTAssertTrue(lower.contains("skill"), "\(level): must mention the new skills on the ladder; spoke: \(lower)")
             XCTAssertTrue(lower.contains("progression map"), "\(level): must point to the progression map; spoke: \(lower)")
+            let found = CoachRequestVocabularyTests.forms(engine, foundIn: lower)
+            XCTAssertTrue(found.isEmpty, "\(level): the reveal says \(found); spoke: \(lower)")
         }
     }
 

@@ -51,12 +51,12 @@ struct StrengthGraduationRevealView: View {
                 ? Point(
                     symbol: "arrow.up.forward",
                     title: "Harder work is ready when you are",
-                    detail: "Your sessions can now draw from every movement, not only the classics - including the harder skills you've been climbing toward. The engine still picks the day's work for you - it just has more room to vary and challenge you."
+                    detail: "Your sessions can now draw from every movement, not only the classics - including the harder skills you've been climbing toward. Rep Today still picks the day's work for you - it just has more room to vary and challenge you."
                 )
                 : Point(
                     symbol: "arrow.up.forward",
                     title: "Harder work is ready when you are",
-                    detail: "Your sessions can now reach the harder skills you've been climbing toward. The engine still picks the day's work for you - it just has more room to challenge you."
+                    detail: "Your sessions can now reach the harder skills you've been climbing toward. Rep Today still picks the day's work for you - it just has more room to challenge you."
                 ),
             wasHeldToStaples
                 ? Point(

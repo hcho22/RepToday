@@ -454,7 +454,7 @@ private struct PreviewCoachTransport: CoachProxyTransport {
         headers: [String: String],
         timeoutSeconds: Double
     ) async throws -> (data: Data, statusCode: Int) {
-        let reply = "Squats came up because they were your stalest movement this week - the engine "
+        let reply = "Squats came up because they're the area you've gone longest without this week - Rep Today "
             + "leads with whatever you've trained least. You're building a real base here."
         return (Data(#"{"reply":"\#(reply)"}"#.utf8), 200)
     }

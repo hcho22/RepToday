@@ -16,8 +16,8 @@ enum CoachSyntheticFixtures {
         consistency: .init(currentScore: 88, direction: .steady),
         strengthJourney: [.init(pattern: "squat", trend: "flat", weeksAtCurrentTier: 3, hasAdvanced: true)]
     )
-    static let whyPrompt = "Why did I get squats today? Refer to the supplied phase, squat frontier and recent patterns. Explain what the summary supports and what you cannot know about today's exact session; do not invent or change a workout."
-    static let pistolPrompt = "How do I do a pistol squat? Relate safe form guidance to my supplied current squat frontier and earned phase, without prescribing or changing a workout."
+    static let whyPrompt = "Why did I get squats today? Refer to the supplied phase, my current squat movement and recent patterns. Explain what the summary supports and what you cannot know about today's exact session; do not invent or change a workout."
+    static let pistolPrompt = "How do I do a pistol squat? Relate safe form guidance to my supplied current squat movement and earned phase, without prescribing or changing a workout."
 
 
     enum Selection: String, CaseIterable {

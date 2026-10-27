@@ -221,6 +221,7 @@ Two suites hold this to the one list:
 
 - `ios/RepToday/RepTodayTests/CoachRequestVocabularyTests.swift` builds the request through the app's own send path for three users (the first a beginner on the first movement of every foundation) and pins each to a file under `test/fixtures/coach-requests/`.
   It also checks that no value the app sends, and no movement name in the catalog, is a listed word.
+  It also fails if the hidden Coach QA screen's two fixed prompts carry a listed word, or if the Premium Progress tab ("How it's felt", for a mostly-too-hard and a mostly-too-easy mix) says a form of "engine"; `StrengthGraduationEvidenceTests` holds both Strength graduation reveal variants to the same.
 - `test/worker.test.js` runs the Worker over those same files and fails if the summary or the instructions hand the model a listed word ("gives the model no listed word for any request the app builds").
   It also fails if one of those files carries a field name or a value the summary drops ("drops no field name and no value of a request the app builds"), so the app's request cannot outgrow the Worker unnoticed.
   That check reads only what the three requests carry: a value the app can send but none of them does is not checked.
