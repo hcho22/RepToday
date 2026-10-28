@@ -5,7 +5,7 @@ import path from 'node:path';
 import worker from '../proxy/src/worker.js';
 import { Cloudflare, DeploymentFailure, TARGET, deploy, gateProbes, gateFailureLine,
   credentialsFromPacket, inspectionCredentialsFromPacket, inspect, rulesetInvariant, rateFieldClasses, settingsFieldClasses,
-  readWranglerOAuth, stagingConfig } from './coach-production-deploy.mjs';
+  readWranglerOAuth, stagingConfig, wranglerEnvironment } from './coach-production-deploy.mjs';
 
 // Deliberately non-secret doubles. This suite cannot contact the network or read Keychain.
 const credentials = { openAI: 'sk-NONSECRET_TEST_DOUBLE_1234567890',
@@ -812,6 +812,23 @@ test('staging configuration consumed by Wrangler has no public route, storage, l
   assert.deepEqual(Object.keys(config).sort(), ['compatibility_date', 'logpush', 'main', 'name', 'observability',
     'preview_urls', 'routes', 'send_metrics', 'vars', 'workers_dev']);
   assert.deepEqual(config.vars, { ANTHROPIC_MODEL: 'claude-opus-4-8' });
+});
+
+test('every Wrangler run gets its own empty account cache, whatever cache the caller inherited', async () => {
+  const build = await fs.mkdtemp(path.join(process.cwd(), 'build/coach-wrangler-env-'));
+  try {
+    const inherited = { PATH: '/usr/bin', WRANGLER_CACHE_DIR: '/shared/cache', NODE_OPTIONS: '--require=x' };
+    const first = await wranglerEnvironment(build, inherited), second = await wranglerEnvironment(build, inherited);
+    for (const env of [first, second]) {
+      assert.equal(path.dirname(env.WRANGLER_CACHE_DIR), build);
+      assert.deepEqual(await fs.readdir(env.WRANGLER_CACHE_DIR), []);
+      assert.equal(env.PATH, '/usr/bin');
+      assert.equal(env.NODE_OPTIONS, undefined);
+      assert.deepEqual([env.CI, env.NO_COLOR, env.WRANGLER_SEND_METRICS], ['true', '1', 'false']);
+    }
+    assert.notEqual(first.WRANGLER_CACHE_DIR, second.WRANGLER_CACHE_DIR);
+    assert.equal(inherited.WRANGLER_CACHE_DIR, '/shared/cache');
+  } finally { await fs.rm(build, { recursive: true, force: true }); }
 });
 
 test('Wrangler credential reader honors installed macOS path and refuses environment overrides', async () => {

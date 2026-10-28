@@ -159,14 +159,17 @@ def capture(version, seconds=120):
         return 78
     root = Path(__file__).resolve().parents[1]
     (root / 'build').mkdir(exist_ok=True)
-    # Dedicated empty cwd prevents inherited Wrangler config. Logger disk sink is /dev/null.
+    # Dedicated empty cwd prevents inherited Wrangler config. Logger disk sink is /dev/null. Wrangler
+    # would otherwise read its account cache from the repository's node_modules, where a file some
+    # other run left could choose the account, so it gets an empty cache inside this directory.
     with tempfile.TemporaryDirectory(prefix='coach-tail-', dir=root / 'build') as directory:
         sink = Path(directory) / 'discard.log'
         sink.symlink_to('/dev/null')
         env = os.environ.copy()
         for name in ('NODE_OPTIONS', 'NODE_DEBUG', 'NODE_DEBUG_NATIVE'):
             env.pop(name, None)
-        env.update(CI='true', WRANGLER_LOG_PATH=str(sink), WRANGLER_SEND_METRICS='false', WRANGLER_LOG='log')
+        env.update(CI='true', WRANGLER_LOG_PATH=str(sink), WRANGLER_SEND_METRICS='false', WRANGLER_LOG='log',
+                   WRANGLER_CACHE_DIR=str(Path(directory) / 'wrangler-cache'))
         proc = subprocess.Popen([node, str(root / 'tools/coach-tail-ready.cjs'), version], cwd=directory,
                                 env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
         selector = selectors.DefaultSelector()
