@@ -8,10 +8,11 @@ the guarded `--stage`/`--release` on 2026-09-28 as version
 replaced was `f12edbeb-1ca1-4570-ba50-8418ae0eea46`.
 A read-only listing of the Worker's deployments on 2026-10-13 shows the active version is
 `2c622512-5dd8-4fdb-8a67-c6f30969049a`, deployed 2026-09-30 from revision `03b572a` (its
-`COACH_AUTH_SOURCE_REV` binding), with no deployment after it.
-Nothing merged after `03b572a` is live until a later approved release.
-That includes the plain-language Coach instructions of 2026-09-30 (`443d6ac`) and the Coach
-summary and word list of 2026-10-13 (`proxy/README.md`, "What the model is given").
+`COACH_AUTH_SOURCE_REV` binding).
+Revision `fff7314` was then released on 2026-10-15 as version `ecc259b4`.
+Production Coach now runs `main` revision `76c9f90` as version
+`2ad4254b-1c54-48f3-92dd-e7bdcd4611a1`, released 2026-10-28.
+Nothing merged after `76c9f90` is live until a later approved release.
 This supersedes the historical Production-only `2952fab` release status. Deployment confirmation
 is not genuine-device evidence: TestFlight App Attest/StoreKit admission and a live model response
 remain unverified.
