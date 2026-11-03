@@ -47,6 +47,13 @@ struct LoggedExercise: Codable, Equatable, Identifiable {
     var completedSets: [CompletedSet]
     /// True when the user skipped this exercise; repeated skips drop it from the pool.
     var skipped: Bool
+    /// The completion screen's post-session "couldn't finish" mark (ADR-0011): after rating a session
+    /// "too hard" the user taps the moves they could not finish. `true` steps this move back and keeps
+    /// this session from counting toward its advancement; `nil` (unmarked, and every log written before
+    /// the mark existed) leaves the session's rating to decide (`AdaptiveOverload.signal(for:in:)`).
+    /// One flag per move, never per set: a set still records prescribed = performed (US-CC09).
+    /// Optional so older logs decode unchanged and older app versions ignore it.
+    var couldNotFinish: Bool? = nil
 }
 
 extension LoggedExercise {
@@ -56,6 +63,14 @@ extension LoggedExercise {
     /// patterns, so a skipped or set-less step never reads as done work on either surface.
     var wasPerformed: Bool {
         !skipped && completedSets.contains { ($0.reps ?? 0) > 0 || ($0.durationSeconds ?? 0) > 0 }
+    }
+
+    /// Whether this logged move may count toward clearing a tier's advancement criteria (and a
+    /// Foundation line): not skipped, and not marked "couldn't finish" on the completion screen
+    /// (ADR-0011). A marked move recorded the target it asked for (prescribed = performed), so its sets
+    /// would otherwise read as met.
+    var countsTowardAdvancement: Bool {
+        !skipped && couldNotFinish != true
     }
 }
 

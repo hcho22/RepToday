@@ -303,6 +303,97 @@ final class ProgressionChainSelectionTests: XCTestCase {
         XCTAssertEqual(selectInChain(chain, logs: logs)?.exercise.id, "c1")
     }
 
+    // MARK: - Step down at the floor (ADR-0011)
+
+    private func stepDownChain() -> [Exercise] {
+        makeChain("c", [
+            (id: "c0", difficulty: 1, criteria: "3x15 clean reps"),
+            (id: "c1", difficulty: 2, criteria: "3x15 clean reps"),
+            (id: "c2", difficulty: 3, criteria: "3x15 clean reps"),
+        ])
+    }
+
+    func testTooHardAtTenStepsOneRungDownTheChain() {
+        let logs = [
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 5),
+        ]
+        let selection = selectInChain(stepDownChain(), logs: logs)
+        XCTAssertEqual(selection?.exercise.id, "c1", "already at ten, too hard serves the rung below")
+        XCTAssertEqual(selection?.didAdvance, false)
+    }
+
+    func testTooHardAboveTenStaysOnTheRung() {
+        let logs = [repsLog(id: "c2", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c2", "above ten it only takes five off")
+    }
+
+    func testASkipAtTenStepsDownToo() {
+        let logs = [
+            repsLog(id: "c2", reps: [], daysAgo: 1, skipped: true),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 6),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
+    }
+
+    func testTheOldClearOfTheLowerRungDoesNotClimbStraightBack() {
+        // c1 was cleared before the user reached c2; after stepping down, only a later clear counts.
+        let logs = [
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 5),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
+    }
+
+    func testClearingTheLowerRungAfterTheStepDownClimbsBack() {
+        let logs = [
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 1),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 7),
+        ]
+        let selection = selectInChain(stepDownChain(), logs: logs)
+        XCTAssertEqual(selection?.exercise.id, "c2", "a later clear of the lower rung earns the way back")
+    }
+
+    func testWorkingTheLowerRungWithoutClearingItStaysThere() {
+        let logs = [
+            repsLog(id: "c1", reps: [10, 10, 10], daysAgo: 1),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 7),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c1")
+    }
+
+    func testTooHardAtTenOnTheLowerRungStepsDownAgain() {
+        let logs = [
+            repsLog(id: "c1", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard),
+            repsLog(id: "c2", reps: [10, 10, 10], daysAgo: 3, difficulty: .tooHard),
+            repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 7),
+            repsLog(id: "c0", reps: [15, 15, 15], daysAgo: 9),
+        ]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c0")
+    }
+
+    func testTheEntryRungAtTenStaysOnTheEntryRung() {
+        let logs = [repsLog(id: "c0", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: logs)?.exercise.id, "c0", "there is no rung below the entry")
+    }
+
+    // MARK: - "Couldn't finish" never counts toward advancement (ADR-0011)
+
+    func testAMoveMarkedCouldNotFinishNeverAdvances() {
+        var marked = repsLog(id: "c1", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)
+        marked.exercises[0].couldNotFinish = true
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: [marked])?.exercise.id, "c1",
+                       "the logged 3x15 met the criteria, but the user said they could not finish it")
+
+        var unmarked = marked
+        unmarked.exercises[0].couldNotFinish = nil
+        unmarked.perceivedDifficulty = .justRight
+        XCTAssertEqual(selectInChain(stepDownChain(), logs: [unmarked])?.exercise.id, "c2")
+    }
+
     func testFrontierIsHighestOrderWorked() {
         let chain = makeChain("c", [
             (id: "c0", difficulty: 1, criteria: "3x12 clean reps"),

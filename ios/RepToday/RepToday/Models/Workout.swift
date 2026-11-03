@@ -57,4 +57,9 @@ struct PrescribedExercise: Codable, Equatable, Identifiable {
     var durationSeconds: Int?
     /// Rest between sets in seconds.
     var restSeconds: Int
+    /// Seconds the timing fit added to each set's work window past its generous pace (ADR-0010): on a
+    /// rep-based training set the countdown runs this much longer, and the user rests through the
+    /// spare time at the end of the set. `nil` (no stretch, and every session saved before stretching
+    /// existed) leaves the window at the generous pace. Optional so older snapshots decode unchanged.
+    var stretchSeconds: Int? = nil
 }

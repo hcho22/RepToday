@@ -241,12 +241,18 @@ final class GenerousRuntimePaceTests: XCTestCase {
         for workout in [early, late] {
             for block in workout.blocks {
                 for slot in block.exercises {
+                    // The pace is a pure function of the exercise and target; the window adds only the
+                    // stretch the fit stored on the slot (ADR-0010).
                     XCTAssertEqual(
-                        SessionAssembly.workSecondsPerSet(of: slot),
+                        SessionAssembly.paceSecondsPerSet(of: slot),
                         SessionAssembly.workSecondsPerSet(
                             for: slot.exercise, reps: slot.reps, durationSeconds: slot.durationSeconds
                         ),
                         "\(slot.exercise.id) must price off the exercise and target alone"
+                    )
+                    XCTAssertEqual(
+                        SessionAssembly.workSecondsPerSet(of: slot),
+                        SessionAssembly.paceSecondsPerSet(of: slot) + (slot.stretchSeconds ?? 0)
                     )
                 }
             }

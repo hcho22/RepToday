@@ -102,8 +102,9 @@ final class AsymmetricPaceEasingPolicyTests: XCTestCase {
     /// A coach ease-down produces a lower `progressionRate`, and the engine then serves a *lower*
     /// advancing target than the engine-earned rate would - the ease genuinely reaches the session.
     func testCoachEaseDownLowersTheServedAdvancingTarget() {
-        // A high advancing capacity so the paced bump is visible in whole reps.
-        let logs = [repsLog(reps: [30, 30], daysAgo: 1)]
+        // Two "just right" sessions at 30: the fast engine-earned rate (2.0) climbs after two, an eased
+        // rate asks for more (ADR-0011), so the pace shows in the served number.
+        let logs = [repsLog(reps: [30, 30], daysAgo: 1), repsLog(reps: [30, 30], daysAgo: 2)]
 
         var engineEarned = SessionPolicy.default
         engineEarned.progressionRate = 2.0
@@ -149,7 +150,7 @@ final class AsymmetricPaceEasingPolicyTests: XCTestCase {
     /// The PRD Validation Test, end-to-end: ease down (takes effect in the served target), then attempt
     /// to raise (does not lift the served target beyond the engine-earned value).
     func testValidationEaseDownAppliesThenRaiseAttemptDoesNot() {
-        let logs = [repsLog(reps: [30, 30], daysAgo: 1)]
+        let logs = [repsLog(reps: [30, 30], daysAgo: 1), repsLog(reps: [30, 30], daysAgo: 2)]
 
         var engineEarned = SessionPolicy.default
         engineEarned.progressionRate = 1.5

@@ -252,25 +252,33 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         }
     }
 
-    /// An idle training hold (before Start hold): the poses, and no ring until the hold starts.
+    /// A training hold starts on its own (ADR-0010), so it opens with the poses and the compact ring;
+    /// after a deliberate Stop hold it is idle - the poses, no ring, and "Start hold" as the way back.
     func testIdleTrainingHoldShowsThePosesAndNoRing() throws {
         let session = workout([("Strength", .strength, [try prescription("core_forearm_plank", sets: 2)])])
         for variant in variants {
             host(ActiveSessionView(workout: session, user: user(sex: .female)), variant)
             assertPoseLabel("Forearm Plank, trainer showing start and end positions", exerciseName: "Forearm Plank")
-            XCTAssertFalse(labels().contains { $0.hasPrefix("Hold, ") || $0.hasPrefix("Work window, ") }, "no ring before Start hold")
+            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "the hold starts on its own: \(labels())")
+            XCTAssertNil(element { $0.hasPrefix("Start hold") }, "no Start-hold tap is needed")
+
+            // Stopping the hold leaves the poses, drops the ring, and offers Start hold.
+            activate("Stop hold")
+            XCTAssertTrue(pump(until: { !self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
+            XCTAssertTrue(labels().contains("Forearm Plank, trainer showing start and end positions"))
             XCTAssertNotNil(element { $0.hasPrefix("Start hold") })
             try capture("03-idle-training-hold", variant)
 
-            // Starting the hold keeps the poses and brings the compact ring in beside the name.
+            // Starting it again keeps the poses and brings the compact ring back beside the name.
             activate("Start hold")
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Forearm Plank, trainer showing start and end positions"))
         }
     }
 
-    /// A rep-based warm-up stretch: the poses, no ring, the name at full width.
-    func testRepBasedStretchShowsThePosesAndNoRing() throws {
+    /// A rep-based warm-up stretch runs on the auto-advancing work window like a training set
+    /// (ADR-0010): the poses, and the compact ring beside the name with Done as the primary control.
+    func testRepBasedStretchShowsThePosesAndTheWorkWindow() throws {
         let session = workout([
             ("Warm-up", .warmup, [try prescription("mobility_cat_cow")]),
             ("Strength", .strength, [try prescription("push_wall")]),
@@ -278,7 +286,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         for variant in variants {
             host(ActiveSessionView(workout: session, user: user(sex: .male)), variant)
             assertPoseLabel("Cat-Cow Flow, trainer showing start and end positions", exerciseName: "Cat-Cow Flow")
-            XCTAssertFalse(labels().contains { $0.hasPrefix("Hold, ") || $0.hasPrefix("Work window, ") }, "no ring on a rep stretch")
+            XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Work window, ") } }, timeout: 5), "a rep stretch counts down on its own: \(labels())")
+            assertRingAboveTheFold(prefix: "Work window, ", primary: "Done")
             try capture("04-rep-based-stretch", variant)
         }
     }
@@ -346,7 +355,6 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         let posesLabel: String
         var exerciseName: String { String(posesLabel.prefix { $0 != "," }).replacingOccurrences(of: " demonstration", with: "") }
         let ready: (String) -> Bool
-        var startsHold = false
     }
 
     private func foldStates() throws -> [FoldState] {
@@ -369,19 +377,12 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 posesLabel: "Kneeling Hip-Flexor Stretch\(pair)",
                 ready: { $0.hasPrefix("Hold, ") }
             ),
-            // A per-side training hold before Start hold, then running with its ring and side line.
-            FoldState(
-                name: "pre-hold-per-side-training",
-                session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
-                posesLabel: "Side Plank\(pair)",
-                ready: { $0.hasPrefix("Start hold") }
-            ),
+            // A per-side training hold, running on its own (ADR-0010) with its ring and side line.
             FoldState(
                 name: "running-per-side-training-hold",
                 session: workout([("Strength", .strength, [try prescription("core_side_plank", sets: 4)])]),
                 posesLabel: "Side Plank\(pair)",
-                ready: { $0.hasPrefix("Start hold") },
-                startsHold: true
+                ready: { $0.hasPrefix("Hold, ") }
             ),
             FoldState(
                 name: "rep-based-stretch",
@@ -390,7 +391,7 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                     ("Strength", .strength, [try prescription("push_wall")]),
                 ]),
                 posesLabel: "Cat-Cow Flow\(pair)",
-                ready: { $0 == "Complete set" || $0 == "Finish exercise" }
+                ready: { $0.hasPrefix("Work window, ") }
             ),
             FoldState(
                 name: "single-pose",
@@ -419,10 +420,6 @@ final class TrainerPoseEvidenceTests: XCTestCase {
                 host(ActiveSessionView(workout: state.session, user: user(sex: .female)), variant)
                 XCTAssertTrue(pump(until: { self.labels().contains(where: state.ready) }, timeout: 10),
                               "\(state.name) \(variant.suffix) never became live; tree reads \(labels())")
-                if state.startsHold {
-                    activate(startHoldLabel())
-                    XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Hold, ") } }, timeout: 5), "\(labels())")
-                }
                 HostedSurface.pump(for: 0.5) // let the card settle on its fitted height
                 XCTAssertTrue(labels().contains(state.posesLabel), "\(state.name): no \"\(state.posesLabel)\" in \(labels())")
                 // The card sits one column gap below the block line and one above the exercise title, so
@@ -478,11 +475,6 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0, from: 0), "the first measurement counts")
         XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 + 1.0 / 3, from: noisy.0), "one 3x pixel taller counts")
         XCTAssertTrue(ActiveSessionView.isMeasurementChange(noisy.0 - 1.0 / 3, from: noisy.0), "one 3x pixel shorter counts")
-    }
-
-    /// The idle hold's primary control: "Start hold", or its per-side spoken form.
-    private func startHoldLabel() -> String {
-        labels().first { $0.hasPrefix("Start hold") } ?? "Start hold"
     }
 
     // MARK: - Rest overlay (US-TP08)
@@ -549,8 +541,8 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains("Choose your Trainer") || self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5), "\(labels())")
             XCTAssertTrue(labels().contains("Male Trainer") && labels().contains("Female Trainer"), "exactly the two options: \(labels())")
             XCTAssertFalse(labels().contains { $0.contains("trainer showing") }, "no Trainer art before the choice")
-            // Open Question 3: the session is held on a pause while the choice is up - the work window
-            // does not count down behind it.
+            // Open Question 3: nothing counts down behind the choice - here the session has not even
+            // started, since the first-run explainer that follows holds the start (ADR-0010).
             let before = labels().first { $0.hasPrefix("Work window, ") }
             HostedSurface.pump(for: 2.2)
             XCTAssertNotNil(before)
@@ -570,6 +562,14 @@ final class TrainerPoseEvidenceTests: XCTestCase {
             XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Your session drives itself") } }, timeout: 5),
                           "the explainer follows the choice: \(labels())")
             XCTAssertFalse(labels().contains("Choose your Trainer"))
+            // The explainer holds the start: the window still has not moved, and its button starts it.
+            HostedSurface.pump(for: 1.2)
+            XCTAssertEqual(labels().first { $0.hasPrefix("Work window, ") }, before, "nothing runs behind the explainer")
+            activate("Got it")
+            XCTAssertTrue(
+                pump(until: { (self.labels().first { $0.hasPrefix("Work window, ") }).map { $0 != before } ?? false }, timeout: 5),
+                "the explainer's button starts the session: \(labels())"
+            )
             // The choice is stored in the background (`TrainerSessionModel.choose`), so the art and the
             // explainer can show before the write lands: read the store until it does, not once.
             let storedExpectation = expectation(description: "stored")

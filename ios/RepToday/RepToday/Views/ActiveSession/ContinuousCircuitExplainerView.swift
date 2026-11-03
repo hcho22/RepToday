@@ -9,13 +9,14 @@ import SwiftUI
 /// tells the user they are in control of a session that carries itself, not that a manual mode they
 /// had is gone.
 ///
-/// Presentation is owned by `ActiveSessionView`, which layers this over the (already-initializing)
-/// player and persists the one-shot flag, so the explainer never blocks the session from starting.
+/// Presentation is owned by `ActiveSessionView`, which layers this over the player *before* the session
+/// starts and persists the one-shot flag; the button starts the session (ADR-0010), so the card never
+/// pauses a running session and adds no tap of its own.
 /// Every color, font, and dimension comes from `Theme`; the controls meet the 60pt active-screen
 /// touch target; the whole surface is VoiceOver-modal and Dynamic-Type friendly, and the caller
 /// stills the entrance animation under Reduce Motion.
 struct ContinuousCircuitExplainerView: View {
-    /// Dismisses the explainer and lets the session play on.
+    /// Dismisses the explainer and starts the session.
     let onDismiss: () -> Void
 
     /// The four points, each a distinct state change the hands-free flow makes on its own.

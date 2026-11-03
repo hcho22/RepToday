@@ -16,11 +16,11 @@ import UIKit
 /// summary. What replaces it is a clock that actually helps: a per-exercise Hold Timer on timed
 /// movements, which counts one side of the hold down and records the set at zero, and - since US-CC01 -
 /// an auto-advancing work window on rep-based training sets, which counts the set's planned per-set
-/// seconds down and records it at zero with no tap, offering a quiet **Done** to advance early. Since
-/// US-CC05 the **warm-up and cooldown bookend holds auto-start hands-free** too - no Start-hold tap, a
-/// per-side stretch flowing side 1 -> a brief "Switch sides" beat -> side 2 with no tap - while a timed
-/// *strength / primal* hold keeps the deliberate Start-hold tap; a rep-based set outside a training
-/// block, were one generated, keeps the manual "Complete set".
+/// seconds down and records it at zero with no tap, offering a quiet **Done** to advance early. Every
+/// **hold auto-starts hands-free** too (US-CC05 for the bookends, ADR-0010 for training holds) - no
+/// Start-hold tap, a per-side hold flowing side 1 -> a brief "Switch sides" beat -> side 2 with no tap -
+/// and a rep-based warm-up / cooldown move runs on the same kind of window, so once a session starts it
+/// needs no tap at all; Pause, Done, Skip, Swap, Stop hold and + More time are optional.
 struct ActiveSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -42,6 +42,11 @@ struct ActiveSessionView: View {
     /// Drives the first-run explainer overlay (US-CC13). Set once, on first arrival at the player, and
     /// only when the persisted one-shot flag says it has never been shown.
     @State private var showExplainer = false
+
+    /// Whether this arrival holds the session's start for the first-run explainer (ADR-0010): the
+    /// card shows *before* the session starts and its button starts it, so it never pauses a running
+    /// session. Decided once, on first arrival.
+    @State private var startsAfterExplainer = false
 
     /// The height of the player's visible scroll area, and of everything in its column but the exercise
     /// card, measured so the card can fit a short screen (`cardHeight`). Unmeasured, there is room.
@@ -147,41 +152,52 @@ struct ActiveSessionView: View {
         dismiss()
     }
 
-    /// Present the first-run explainer (US-CC13) at most once, ever. The one-shot flag is flipped the
-    /// moment we decide to show it - not on dismissal - so a force-quit while it is up can never bring
-    /// it back on the next session; "Got it" then only has to dismiss the overlay. A missing `AppState`
-    /// (hosted evidence surfaces) simply never shows it. The entrance is animated unless Reduce Motion
-    /// is on, in which case it appears in place with no transition.
+    /// Start the session: its clock, its first window or hold, and the resume of a rest a snapshot
+    /// restored paused. Idempotent (`start()` keeps the original origin), so a re-appearing view or the
+    /// explainer's button can call it safely.
     ///
-    /// While the explainer is up the session is held on an explicit **user pause** (US-CC06), so the
-    /// freshly-started work window / hold / rest - and its audio-cue timing - freezes rather than
-    /// elapsing behind the modal: a first-time user reading the four points cannot miss exercise one,
-    /// hear a burst of `.halfway`/`.done` tones, or be auto-advanced into rest. `dismissExplainer`
-    /// resumes it from the exact remainder. The session has still *started* (its `onAppear` ran
-    /// `start()`), so this never gates the start; it only holds the clock until "Got it".
-    private func presentExplainerIfNeeded() {
-        guard let appState, appState.shouldShowContinuousCircuitExplainer else { return }
+    /// A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a scene-phase
+    /// change when the resumed player is presented on an already-active app, so it is resumed here too.
+    /// A no-op unless a rest is currently paused, leaving a fresh session and a resumed running rest
+    /// untouched. There is deliberately no `resumeHold` counterpart (US-O03): a hold is never restored as
+    /// a countdown at all, so there is nothing frozen to un-freeze - and un-freezing one here is
+    /// precisely how a leg the user abandoned days ago used to finish itself moments after the screen
+    /// appeared, banking a set nobody performed.
+    private func startSession() {
+        viewModel.start()
+        viewModel.resumeRest(asOf: Date())
+    }
+
+    /// Whether the first-run explainer (US-CC13) is due, flipping its one-shot flag the moment it is
+    /// decided - not on dismissal - so a force-quit while it is up can never bring it back. A missing
+    /// `AppState` (hosted evidence surfaces) never shows it.
+    private func claimExplainer() -> Bool {
+        guard let appState, appState.shouldShowContinuousCircuitExplainer else { return false }
         appState.markContinuousCircuitExplainerSeen()
+        return true
+    }
+
+    /// Present the first-run explainer over the not-yet-started session (ADR-0010). The entrance is
+    /// animated unless Reduce Motion is on, in which case it appears in place with no transition.
+    private func presentExplainer() {
         if reduceMotion {
             showExplainer = true
         } else {
             withAnimation(.easeOut(duration: 0.25)) { showExplainer = true }
         }
-        // A no-op if the first step is an idle "Start hold" training step (nothing counting down yet);
-        // otherwise it freezes the live countdown until "Got it".
-        viewModel.pause(asOf: Date())
     }
 
     /// Decide, on each arrival, what to show before the session plays on (US-TP10, decision 15): the
-    /// one-time Trainer choice first when the user's Trainer is unresolved, otherwise the US-CC13
-    /// explainer when it is due - never both at once.
+    /// one-time Trainer choice first when the user's Trainer is unresolved, then the first-run explainer
+    /// when this arrival is holding the start for it - never both at once.
     ///
     /// A user whose snapshot is unresolved is held on a user pause (US-CC06) straight away, while the
     /// freshest stored profile is read: a Trainer chosen in Settings or on an earlier arrival then
     /// resolves it with no prompt, and only a still-unresolved user is asked. While the choice is up the
     /// session stays paused (captain, Open Question 3), and choosing resumes it from the exact remainder.
-    /// Everyone else goes straight to the explainer check, and the re-read runs behind it so a Trainer
-    /// switched in Settings since the Ready Screen loaded is the one this session shows.
+    /// When the explainer is holding the start there is nothing running yet, so the pause and resume
+    /// are no-ops. Everyone else goes straight on, and the re-read runs behind it so a Trainer switched
+    /// in Settings since the Ready Screen loaded is the one this session shows.
     private func handleArrival() {
         if trainerSession.needsChoice {
             viewModel.pause(asOf: Date())
@@ -190,16 +206,17 @@ struct ActiveSessionView: View {
                     presentTrainerChoice()
                 } else {
                     viewModel.resume(asOf: Date())
-                    presentExplainerIfNeeded()
+                    if startsAfterExplainer { presentExplainer() }
                 }
             }
         } else {
-            presentExplainerIfNeeded()
+            if startsAfterExplainer { presentExplainer() }
             Task { @MainActor in _ = await trainerSession.refreshOnArrival() }
         }
     }
 
-    /// Show the Trainer choice over the (already paused) player, stilled under Reduce Motion.
+    /// Show the Trainer choice over the (already paused, or not yet started) player, stilled under
+    /// Reduce Motion.
     private func presentTrainerChoice() {
         if reduceMotion {
             showTrainerChoice = true
@@ -209,8 +226,9 @@ struct ActiveSessionView: View {
     }
 
     /// Use the chosen Trainer at once, dismiss the choice, resume the session, then let the explainer
-    /// follow if it is due. The write runs in the background: if it fails the session keeps the chosen
-    /// Trainer and, since nothing was stored, the next arrival asks again (captain, Open Question 8).
+    /// follow if it is holding the start. The write runs in the background: if it fails the session
+    /// keeps the chosen Trainer and, since nothing was stored, the next arrival asks again (captain,
+    /// Open Question 8).
     private func chooseTrainer(_ trainer: Trainer) {
         trainerSession.choose(trainer)
         viewModel.resume(asOf: Date())
@@ -219,15 +237,15 @@ struct ActiveSessionView: View {
         } else {
             withAnimation(.easeIn(duration: 0.2)) { showTrainerChoice = false }
         }
-        presentExplainerIfNeeded()
+        if startsAfterExplainer { presentExplainer() }
     }
 
-    /// Dismiss the explainer, honoring Reduce Motion the same way the entrance does, and resume the
-    /// session the presentation paused (US-CC06) from its exact remainder. `resume` is a no-op if
-    /// nothing was frozen, so the hosted-surface path with no `AppState` (which never paused) is
-    /// unaffected.
+    /// The explainer's button: dismiss it, honoring Reduce Motion the same way the entrance does, and
+    /// start the session it was holding (ADR-0010). The card was shown before anything started, so the
+    /// timer never stopped for it.
     private func dismissExplainer() {
-        viewModel.resume(asOf: Date())
+        startsAfterExplainer = false
+        startSession()
         if reduceMotion {
             showExplainer = false
         } else {
@@ -259,9 +277,8 @@ struct ActiveSessionView: View {
             }
 
             // The first-run explainer (US-CC13) rides above the player as its own layer rather than a
-            // sheet, so the entrance animation can be stilled under Reduce Motion and the session
-            // underneath keeps initializing (its `onAppear` has already fired) - the explainer never
-            // gates the start.
+            // sheet, so the entrance animation can be stilled under Reduce Motion. It shows before the
+            // session starts and its button starts it (ADR-0010), so it never pauses a running session.
             if showExplainer {
                 ContinuousCircuitExplainerView(onDismiss: dismissExplainer)
                     .transition(.opacity)
@@ -282,22 +299,17 @@ struct ActiveSessionView: View {
         // Every card and rest preview below reads the session's Trainer from here (US-TP06/US-TP08).
         .environment(\.trainer, trainerSession.trainer)
         .onAppear {
-            viewModel.start()
-            // A rest paused on backgrounding and restored from a snapshot (US-K04) never sees a
-            // scene-phase change when the resumed player is presented on an already-active app, so
-            // resume it here too. A no-op unless a rest is currently paused, leaving a fresh session
-            // and a resumed running rest untouched.
-            //
-            // There is deliberately no `resumeHold` counterpart (US-O03). A hold is never restored as a
-            // countdown at all, so there is nothing frozen to un-freeze - and un-freezing one here is
-            // precisely how a leg the user abandoned days ago used to finish itself moments after the
-            // screen appeared, banking a set nobody performed. In-session backgrounding still
-            // pauses and resumes the leg through `scenePhase` below, which is the interruption the user
-            // is actually present for.
-            viewModel.resumeRest(asOf: Date())
-            // Present the Trainer choice or the first-run explainer last, after the session is fully
-            // live, so the pause either takes freezes a running countdown rather than racing
-            // `start()`/`resumeRest` to set one up.
+            // The first time, the explainer holds the start: the card shows over the not-yet-started
+            // session and its button starts it (ADR-0010). Every other arrival starts at once. A
+            // re-appearing view while the card is still up keeps holding.
+            if !startsAfterExplainer, !showExplainer {
+                startsAfterExplainer = claimExplainer()
+            }
+            if !startsAfterExplainer { startSession() }
+            // Present the Trainer choice or the first-run explainer last, after the session is live (or
+            // deliberately held), so the pause the choice takes freezes a running countdown rather than
+            // racing `start()`/`resumeRest` to set one up. In-session backgrounding pauses and resumes
+            // every countdown through `scenePhase` below.
             handleArrival()
             // The user puts the phone down mid-plank; the screen must not lock out from under a
             // running countdown, or its cue never lands. Scoped to the session being played, and
@@ -378,11 +390,11 @@ struct ActiveSessionView: View {
             controls
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { playerHeight = $0 }
-        // A swap on a bookend hold ends the leg and lands on the substitute idle; re-arm the hands-free
+        // A swap on a hold ends the leg and lands on the substitute idle; re-arm the hands-free
         // auto-start once the swap settles (US-CC05), mirroring how `WorkWindowCountdownView` re-arms the
         // work window - the view stays mounted through a swap, so no fresh `onAppear` fires. Keyed on the
         // settled-swap counter rather than `isSwapping`, which a fast swap toggles inside one update. A
-        // no-op off the bookend-hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
+        // no-op off the hold path (`autoStartHoldIfNeeded` guards on `canAutoStartHold`).
         .onChange(of: viewModel.settledSwapCount) { _, _ in
             viewModel.autoStartHoldIfNeeded()
         }
@@ -784,6 +796,10 @@ struct ActiveSessionView: View {
 
                 ratingControl
 
+                if viewModel.asksWhichMovesWereNotFinished {
+                    finishCheckControl
+                }
+
                 Button {
                     close()
                 } label: {
@@ -845,6 +861,61 @@ struct ActiveSessionView: View {
         }
         .accessibilityLabel(Self.ratingLabel(difficulty))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    /// The "too hard" follow-up (ADR-0011): the session's worked training moves, for the user to tap
+    /// any they could not finish. A tapped move steps back next time and never counts toward moving up;
+    /// with none tapped, every move eases off as "too hard" always has. Optional and non-blocking like
+    /// the rating itself - nothing here gates Done. Each move is a toggle carrying the selected trait,
+    /// at the 60pt active-screen touch target, styled like the rating pills.
+    private var finishCheckControl: some View {
+        VStack(spacing: Theme.Spacing.sm) {
+            VStack(spacing: Theme.Spacing.xs) {
+                Text("Any you couldn't finish?")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text("Tap them and only those ease off next time. Tap none and everything eases off a little.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(viewModel.finishCheckMoves) { move in
+                finishCheckRow(move)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// One move in the "too hard" follow-up: marked moves fill with the accent, like a selected pill.
+    private func finishCheckRow(_ move: ActiveSessionViewModel.FinishCheckMove) -> some View {
+        let isMarked = viewModel.couldNotFinishExerciseIds.contains(move.id)
+        return Button {
+            viewModel.toggleCouldNotFinish(move.id)
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(move.displayName)
+                    .font(Theme.Typography.body)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: isMarked ? "checkmark.circle.fill" : "circle")
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(isMarked ? Theme.Colors.onAccent : Theme.Colors.textPrimary)
+            .padding(.horizontal, Theme.Spacing.md)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: Theme.Spacing.workoutTouchTarget)
+            .background(
+                isMarked ? Theme.Colors.accentFill : Theme.Colors.surface,
+                in: RoundedRectangle(cornerRadius: Theme.Spacing.cardCornerRadius)
+            )
+        }
+        .accessibilityLabel(move.displayName)
+        .accessibilityHint(isMarked ? "Clears the mark" : "Marks this move as not finished")
+        .accessibilityAddTraits(isMarked ? [.isSelected] : [])
     }
 
     /// The user-facing label for a perceived-difficulty rating.

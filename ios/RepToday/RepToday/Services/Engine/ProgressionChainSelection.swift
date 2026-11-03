@@ -16,6 +16,11 @@ import Foundation
 ///   already on is always exactly one step). Advancement is honored only when the next tier is
 ///   itself in the eligible pool, so a phase-gated or over-cap skill (e.g. the one-arm push-up) is
 ///   never offered to a user who cannot yet receive it.
+/// - **Step down at the floor (ADR-0011)** - "too hard" (or a skip) on a tier already at the
+///   10-rep / 10-second floor cannot take the number lower, so the tier one rung down the chain is
+///   offered instead, and the user climbs back only when a *later* session clears that lower tier's
+///   criteria again. A move marked "couldn't finish" on the completion screen never counts toward
+///   advancement (`LoggedExercise.countsTowardAdvancement`).
 /// - **Variety** - across the chains available for a pattern, an exercise used in the last
 ///   `varietyWindow` sessions (the Session Policy lever, US-E03; `recentSessionWindow` = 3 when no
 ///   policy is passed) is avoided when a fresher alternative exists, so the user is not handed the same
@@ -191,8 +196,12 @@ enum ProgressionChainSelection {
     /// - The user's **frontier** is the highest-order tier they have worked (non-skipped) in
     ///   `recentLogs`. With no worked tier, selection starts at the lowest eligible tier the Start
     ///   Seed band did not withhold (the entry, `progressionOrder` 0, when nothing was withheld).
-    /// - When the frontier tier's `advancementCriteria` are met in the logs and its next tier
-    ///   exists, the desired tier is that next tier; otherwise it is the frontier itself.
+    /// - When the frontier's most recent outcome is a step back at the floor
+    ///   (`AdaptiveOverload.floorStepBackDate`), the tier below it becomes the current tier, and the
+    ///   same check repeats on that tier for outcomes after the step down (ADR-0011).
+    /// - When the current tier's `advancementCriteria` are met in the logs (after the last step down,
+    ///   if there was one) and its next tier exists, the desired tier is that next tier; otherwise it
+    ///   is the current tier itself.
     /// - The desired tier is then clamped to what is eligible: the highest eligible tier no higher
     ///   than desired (so a gated/over-cap next tier collapses back to the frontier rather than
     ///   leaking through), or the lowest eligible tier if none sits at or below.
@@ -233,7 +242,12 @@ enum ProgressionChainSelection {
             )
         }
 
-        let desiredOrder = advancedOrder(from: frontier, in: sorted, recentLogs: recentLogs)
+        let current = steppedDownTier(from: frontier, in: sorted, recentLogs: recentLogs)
+        let desiredOrder = advancedOrder(
+            from: current.tier,
+            in: sorted,
+            recentLogs: current.since.map { cutoff in recentLogs.filter { $0.completedAt > cutoff } } ?? recentLogs
+        )
         // Clamp the desired tier to the eligible set: greatest eligible order <= desired, else the
         // lowest eligible tier. Both are guaranteed to exist (eligible is non-empty).
         let chosen = eligible.last { $0.progressionOrder <= desiredOrder } ?? lowestEligible
@@ -364,6 +378,27 @@ enum ProgressionChainSelection {
         return sorted.last { workedIds.contains($0.id) }
     }
 
+    /// The tier the user is currently on, starting from the `frontier` they have reached: while that
+    /// tier's most recent outcome is a step back at the floor (`AdaptiveOverload.floorStepBackDate`)
+    /// that came after any earlier step down, move one rung down the chain (ADR-0011). Returns the tier
+    /// and the date of the last step down, so advancement back up is earned only by sessions after it.
+    /// With no step down this is the frontier and `nil`, which reproduces the pre-grid behavior.
+    private static func steppedDownTier(
+        from frontier: Exercise,
+        in sorted: [Exercise],
+        recentLogs: [WorkoutLog]
+    ) -> (tier: Exercise, since: Date?) {
+        var tier = frontier
+        var since: Date?
+        while let stepBack = AdaptiveOverload.floorStepBackDate(for: tier, recentLogs: recentLogs),
+              since.map({ stepBack > $0 }) ?? true,
+              let lower = sorted.last(where: { $0.progressionOrder < tier.progressionOrder }) {
+            tier = lower
+            since = stepBack
+        }
+        return (tier, since)
+    }
+
     /// The tier the user should be offered from `frontier`: the next tier when the frontier's
     /// criteria are met in the logs and a next tier exists, otherwise the frontier's own order.
     private static func advancedOrder(
@@ -390,7 +425,7 @@ enum ProgressionChainSelection {
         return recentLogs.contains { log in
             log.exercises.contains { logged in
                 logged.exerciseId == exercise.id
-                    && !logged.skipped
+                    && logged.countsTowardAdvancement
                     && criteria.isMet(by: logged, isHold: exercise.isHold)
             }
         }

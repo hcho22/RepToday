@@ -77,7 +77,7 @@ final class ExerciseSwapTests: XCTestCase {
         for exercise: Exercise,
         sets: Int = 3,
         perSet: Int? = nil,
-        rest: Int = SessionAssembly.strengthRestSeconds
+        rest: Int = SessionAssembly.roundRestSeconds
     ) -> PrescribedExercise {
         let value = perSet
             ?? (exercise.isHold ? exercise.defaultDurationSeconds : exercise.defaultReps)
@@ -230,7 +230,7 @@ final class ExerciseSwapTests: XCTestCase {
     func testSwapPreservesTheSlotsTimeBudget() async throws {
         let library = try await library()
         let target = try XCTUnwrap(library.first { $0.id == "push_standard" })
-        let slot = prescription(for: target, sets: 3, rest: SessionAssembly.strengthRestSeconds)
+        let slot = prescription(for: target, sets: 3, rest: SessionAssembly.roundRestSeconds)
 
         let result = try substitute(
             ExerciseSwap.swap(slot, in: workout([slot]), user: user(), library: library, recentLogs: [])
@@ -305,13 +305,24 @@ final class ExerciseSwapTests: XCTestCase {
         // below the offered catalog (73 since ADR-0007 withdrew the three version-2 crawls) because the hard phase-gated skills (US-SP02's one-arm push-up /
         // pistol / L-sit bridges and US-SP03's Nordic-curl hinge ladder) have no in-band peer once
         // grown that far - the honest answer is to decline, and the count records it.
-        for (growth, expectedSwapped) in [(1.0, 73), (1.25, 73), (1.5, 72), (2.0, 53)] {
+        //
+        // ADR-0011 moved the counts: every slot now carries a target on the grid of five from ten, so the
+        // hardest low-rep skills (authored at 3-5 reps) are served ten and their windows run far longer
+        // than any in-band peer's - six of them decline at every growth level, while the grid's ceiling
+        // keeps x2.0 from growing targets as far as it used to, so more of the catalog stays swappable there.
+        for (growth, expectedSwapped) in [(1.0, 67), (1.25, 67), (1.5, 67), (2.0, 62)] {
             var swapped = 0
             for movement in library {
                 let baseline = (movement.isHold ? movement.defaultDurationSeconds : movement.defaultReps) ?? 10
+                // A real slot always carries a target on the grid (ADR-0011), so the grown target is
+                // landed on it the way Step 6 would serve it.
                 let slot = prescription(
                     for: movement,
-                    perSet: max(1, Int((Double(baseline) * growth).rounded()))
+                    perSet: AdaptiveOverload.onGrid(
+                        max(1, Int((Double(baseline) * growth).rounded())),
+                        isHold: movement.isHold,
+                        sides: movement.sidesPerSet
+                    )
                 )
                 guard case let .substituted(result) = ExerciseSwap.swap(
                     slot, in: workout([slot]), user: user, library: library, recentLogs: []
@@ -695,7 +706,7 @@ final class ExerciseSwapTests: XCTestCase {
         return (
             prescription(for: target, sets: 1),
             peer,
-            [log([peer], sets: 3, perSet: 12, daysAgo: 3)]
+            [log([peer], sets: 3, perSet: 15, daysAgo: 3)]
         )
     }
 

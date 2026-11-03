@@ -17,8 +17,9 @@ import Observation
 /// training block to the same set count (the block's round count "M", US-CC03), that rotation is even
 /// and the player surfaces "Round N of M". A station's r-th set *is* round r, so `currentSet` doubles
 /// as the round while the player is inside a circuit. The two rest gaps the engine plans (US-CC04)
-/// pace the rotation: a short fixed between-station transition inside a round and the bounded
-/// between-round rest at a round boundary; both flow through the US-K02 rest overlay. Warm-up and
+/// pace the rotation: a short fixed between-station transition inside a round and the between-round
+/// rest at a round boundary; both flow through the US-K02 rest overlay, and no rest the player opens
+/// runs longer than `SessionAssembly.maxRestSeconds` (ADR-0010). Warm-up and
 /// cooldown **bookends are not circuits** - they flow linearly, one station's sets then the next.
 /// Aggregate logging is unaffected by the rotation: `completedSets` is keyed by prescription id, so a
 /// station's M sets accumulate across rounds exactly as they did set-by-set, and the `WorkoutLog` and
@@ -64,29 +65,30 @@ import Observation
 /// fires the `SessionCuePlayer` `.done` cue exactly once and records the set automatically. It is
 /// counted one *side* at a time, because the engine charges a per-side movement for both sides - a set
 /// of side plank is two legs, and a single countdown that recorded the set at the end of one would
-/// quietly halve the work the session was built around. **How the leg starts depends on where it
-/// sits** (US-CC05): a **warm-up / cooldown bookend** hold auto-starts hands-free - never a Start-hold
-/// tap - and a per-side bookend flows side 1 -> a brief "Switch sides" beat -> side 2 with no tap
-/// between (`autoStartHoldIfNeeded`, `currentStepIsBookendHold`), while a timed **strength / primal
-/// training** hold keeps the deliberate Start-hold tap so the user gets into position. The countdown
+/// quietly halve the work the session was built around. **Every hold leg starts hands-free** (US-CC05
+/// for the warm-up / cooldown bookends, extended to strength / primal training holds by ADR-0010) -
+/// never a Start-hold tap - and a per-side hold flows side 1 -> a brief "Switch sides" beat -> side 2
+/// with no tap between (`autoStartHoldIfNeeded`); the transition before it is the user's get-ready
+/// beat. "Start hold" survives only as the way back after a deliberate **Stop hold**. The countdown
 /// itself is in-memory only and is never persisted or restored: backgrounding *within* the session
 /// freezes and resumes the leg through `scenePhase`, while tearing the player down ends it outright,
 /// and only the side the user still owes is carried into the snapshot - so a resumed session always
-/// comes back idle (a resumed bookend then auto-starts that side fresh). (`init(state:)` records why a
+/// comes back idle (and then auto-starts that side fresh). (`init(state:)` records why a
 /// hold is not a rest.) The timer is the offer, not the only way through: a timed exercise keeps a
 /// manual completion in the secondary row - offered while a leg runs too - so a user who held it
 /// off-timer or was interrupted part-way through banks the work rather than losing it to a skip.
 ///
 /// A rep-based **training** set (a strength or, at 41-60 min, dedicated-primal block set) instead
 /// counts down on an auto-advancing **work window** (US-CC01): a `Countdown` sized to the set's planned
-/// per-set seconds (`SessionAssembly.workSecondsPerSet`, the single source of truth US-CC08 calibrates)
+/// per-set seconds (`SessionAssembly.workSecondsPerSet(of:)`, the single source of truth US-CC08
+/// calibrates, including any stretch the timing fit added for the user to rest through, ADR-0010)
 /// that auto-starts hands-free, records the set completed at zero exactly like a tapped completion, and
 /// flows into the existing rest with no tap - replacing the manual "Complete set" for those sets. A
 /// prominent **Done** ends the window early and advances immediately; being caught mid-rep at zero
-/// carries no penalty and no skip. Warm-up / cooldown bookends keep their manual path here (US-CC05
-/// makes them hands-free), and a rep-based set outside a training block - were one ever generated -
-/// keeps the manual "Complete set". Like the hold leg, the window is in-memory only: a resumed session
-/// re-opens the set and auto-starts a fresh window.
+/// carries no penalty and no skip. A rep-based warm-up / cooldown move runs on the same window at its
+/// generous pace (ADR-0010; the bookends are never stretched), so no set needs a "Complete set" tap.
+/// Like the hold leg, the window is in-memory only: a resumed session re-opens the set and auto-starts
+/// a fresh window.
 @Observable
 final class ActiveSessionViewModel {
 
@@ -481,9 +483,9 @@ final class ActiveSessionViewModel {
         // On a resume/relaunch re-entry the window still auto-starts, but its `.go` cue is withheld: the
         // user reopening the app must not be dropped straight into a "go" tone (US-CC10).
         startWorkWindow(suppressGoCue: isResumeEntry)
-        // US-CC05: a warm-up / cooldown bookend hold likewise auto-starts hands-free (never a Start-hold
-        // tap), including on a resume, where the leg re-opens idle and begins fresh (US-O03). Idempotent
-        // via `canAutoStartHold`, and a no-op on a training hold, which keeps its manual path.
+        // US-CC05 / ADR-0010: a hold likewise auto-starts hands-free (never a Start-hold tap), including
+        // on a resume, where the leg re-opens idle and begins fresh (US-O03). Idempotent via
+        // `canAutoStartHold`.
         autoStartHoldIfNeeded()
     }
 
@@ -666,12 +668,84 @@ final class ActiveSessionViewModel {
         guard isComplete else { return }
         perceivedDifficulty = difficulty
         completedLog?.perceivedDifficulty = difficulty
+        // The "couldn't finish" marks belong to a "too hard" rating only (ADR-0011): changing the rating
+        // away from it clears them, so a log never carries marks its rating does not explain.
+        if difficulty != .tooHard, !couldNotFinishExerciseIds.isEmpty {
+            couldNotFinishExerciseIds = []
+            applyCouldNotFinishMarks()
+        }
         recordRating(difficulty)
+    }
+
+    // MARK: - "Couldn't finish" follow-up (ADR-0011)
+
+    /// One move the completion screen offers after a "too hard" rating, for the user to mark as not
+    /// finished.
+    struct FinishCheckMove: Identifiable, Equatable {
+        /// The catalog exercise id, which is what the mark is stored against.
+        let id: String
+        let displayName: String
+    }
+
+    /// The exercise ids the user marked "couldn't finish" on the completion screen. Only meaningful
+    /// under a "too hard" rating; cleared when the rating changes away from it.
+    private(set) var couldNotFinishExerciseIds: Set<String> = []
+
+    /// The moves the "too hard" follow-up lists (ADR-0011): the session's strength and primal training
+    /// moves the user actually worked (performed, not skipped), in session order. Warm-up and cooldown
+    /// stretches are not listed - they never step back or advance. Empty until the session is complete.
+    var finishCheckMoves: [FinishCheckMove] {
+        guard isComplete else { return [] }
+        var seen: Set<String> = []
+        return steps.compactMap { step in
+            let exercise = step.prescription.exercise
+            guard
+                Self.autoAdvancingCategories.contains(step.blockCategory),
+                !skippedStepIDs.contains(step.id),
+                !(completedSets[step.id] ?? []).isEmpty,
+                seen.insert(exercise.id).inserted
+            else { return nil }
+            return FinishCheckMove(id: exercise.id, displayName: exercise.displayName)
+        }
+    }
+
+    /// Whether the completion screen should ask which moves the user could not finish: they rated the
+    /// session "too hard" and it worked at least one training move.
+    var asksWhichMovesWereNotFinished: Bool {
+        isComplete && perceivedDifficulty == .tooHard && !finishCheckMoves.isEmpty
+    }
+
+    /// Mark or unmark one listed move as "couldn't finish" and persist the marks onto the
+    /// already-written log (ADR-0011). A marked move steps back next session and its sets never count
+    /// toward advancement; with none marked, "too hard" steps every move back as it always has. A no-op
+    /// unless the follow-up is showing and `exerciseId` is one of its moves. The persist rides the same
+    /// fire-and-forget, chained re-save as the rating, so it can never be clobbered by an earlier write.
+    func toggleCouldNotFinish(_ exerciseId: String) {
+        guard asksWhichMovesWereNotFinished, finishCheckMoves.contains(where: { $0.id == exerciseId }) else { return }
+        if couldNotFinishExerciseIds.contains(exerciseId) {
+            couldNotFinishExerciseIds.remove(exerciseId)
+        } else {
+            couldNotFinishExerciseIds.insert(exerciseId)
+        }
+        applyCouldNotFinishMarks()
+        recordRating(.tooHard)
+    }
+
+    /// Copy the current marks onto the durable log's per-move rows: `true` on a marked move, `nil`
+    /// (unmarked) on every other.
+    private func applyCouldNotFinishMarks() {
+        guard var log = completedLog else { return }
+        for index in log.exercises.indices {
+            log.exercises[index].couldNotFinish =
+                couldNotFinishExerciseIds.contains(log.exercises[index].exerciseId) ? true : nil
+        }
+        completedLog = log
     }
 
     private func recordRating(_ difficulty: PerceivedDifficulty) {
         // Only meaningful when the completion was actually recorded (a log was written). Without a
-        // service/user (previews), the rating is kept in memory for the UI but persists nothing.
+        // service/user (previews), the rating is kept in memory for the UI but persists nothing. The
+        // re-save carries the whole log, so the "couldn't finish" marks (ADR-0011) land with it.
         guard let completionService, user != nil, let log = completedLog else { return }
         let previous = completionTask
         completionTask = Task {
@@ -841,9 +915,13 @@ final class ActiveSessionViewModel {
     /// its end; it defaults to a plain `.rest` so every existing caller is unchanged.
     ///
     /// `cue` (US-CC10) fires at the rest's **start** so the user can tell by ear which gap they are in -
-    /// `.transition` for the short between-station beat, `.roundRest` for the longer between-round break -
+    /// `.transition` for the short between-station beat, `.roundRest` for the between-round break -
     /// without watching the clock. `nil` (the default, and always for a `.switchSides` beat) fires none.
+    ///
+    /// No rest opens longer than `SessionAssembly.maxRestSeconds` (ADR-0010), so a session saved before
+    /// rests were shortened still plays short rests; the user can still ask for more with **+15s**.
     func startRest(seconds: Int, context: RestContext = .rest, cue: SessionCue? = nil) {
+        let seconds = min(seconds, SessionAssembly.maxRestSeconds)
         guard seconds > 0 else { return }
         rest = Countdown(seconds: seconds, from: now())
         restContext = context
@@ -862,20 +940,11 @@ final class ActiveSessionViewModel {
         // `.transition` or `.roundRest` tone.)
         endRest()
         // The rest is over and the next effort is revealed - auto-start its work window when it is a
-        // rep-based training set (US-CC01), or its hold leg when it is a warm-up / cooldown bookend
-        // stretch, including side 2 as a switch-sides beat ends (US-CC05). Both are idempotent no-ops
-        // off their own path.
+        // rep-based training set (US-CC01), or its hold leg when it is a timed movement, including
+        // side 2 as a switch-sides beat ends (US-CC05, ADR-0010). Both are idempotent no-ops off their
+        // own path.
         startWorkWindow()
         autoStartHoldIfNeeded()
-        // If nothing self-cued and the rest revealed a manual strength/primal training hold - which keeps
-        // the US-O03 Start-hold tap and so fires no `.go` of its own - sound the `.go` here so a natural
-        // rest ending is never silent at a boundary the user must act on (US-CC10, restoring US-K02's
-        // "rest over" signal). A rep-based set already fired `.go` from its auto-starting window and a
-        // bookend hold auto-started hands-free, so both leave a window or hold running and are skipped;
-        // `skipRest` deliberately stays silent (the user chose to move on).
-        if !isRunningWorkWindow, !isHolding, currentStepIsManualTrainingHold {
-            fireCue(.go)
-        }
         persist()
     }
 
@@ -946,50 +1015,36 @@ final class ActiveSessionViewModel {
     /// so the timer cannot ask for less work than the session was planned around.
     var holdSidesPerSet: Int { currentStep?.prescription.exercise.sidesPerSet ?? 1 }
 
-    /// The brief hands-free "Switch sides" beat between the two legs of a per-side bookend hold
-    /// (US-CC05) - a get-ready pause, deliberately short, run on the shared rest countdown so it
+    /// The brief hands-free "Switch sides" beat between the two legs of a per-side hold (US-CC05,
+    /// ADR-0010) - a get-ready pause, deliberately short, run on the shared rest countdown so it
     /// pauses/resumes and auto-flows like every other interval. It is a runtime pacing beat only, not
     /// part of the engine's planned wall-clock (the plan prices a per-side hold as two legs with no gap
     /// between them); its runtime calibration is US-CC08's job.
     static let switchSidesSeconds = 5
 
     /// Whether the current step is a **warm-up / cooldown bookend** timed hold, as opposed to a timed
-    /// strength / primal *training* hold. A bookend hold auto-starts hands-free and flows its per-side
-    /// legs through a "Switch sides" beat (US-CC05); a training hold keeps the US-O03 manual Start-hold
-    /// path (the strength/primal circuit player is US-CC02's, untouched here). The distinction is the
-    /// block category, matching the work-window gate: a training block is `.strength`/`.primal`, and
-    /// everything else (`.warmup`/`.cooldown`) is a bookend.
+    /// strength / primal *training* hold. Both auto-start hands-free and flow their per-side legs
+    /// through a "Switch sides" beat (US-CC05, ADR-0010); the distinction survives for the copy and the
+    /// tests that tell the two apart. It is the block category, matching the work-window gate: a
+    /// training block is `.strength`/`.primal`, and everything else (`.warmup`/`.cooldown`) is a bookend.
     var currentStepIsBookendHold: Bool {
         guard let step = currentStep, holdSecondsPerSide != nil else { return false }
         return !Self.autoAdvancingCategories.contains(step.blockCategory)
     }
 
-    /// Whether the current step is a timed strength / primal *training* hold - the complement of
-    /// `currentStepIsBookendHold` among timed steps. This is the one revealed step that self-cues on
-    /// nothing: a rep-based set fires `.go` from its auto-starting work window and a bookend hold
-    /// auto-starts hands-free, but a training hold keeps the US-O03 manual Start-hold path, so when a
-    /// natural rest reveals it the flow would otherwise go silent at a boundary the user must act on
-    /// (US-CC10). `completeRestIfElapsed` fires `.go` for exactly this case.
-    var currentStepIsManualTrainingHold: Bool {
-        guard let step = currentStep, holdSecondsPerSide != nil else { return false }
-        return Self.autoAdvancingCategories.contains(step.blockCategory)
-    }
+    /// Whether a hold leg should auto-start right now (US-CC05, ADR-0010): the session has started, a
+    /// timed movement is on screen and nothing (rest, running hold, swap, completion) is in the way. The
+    /// hold analogue of `canStartWorkWindow` - the idempotency guard that makes `autoStartHoldIfNeeded()`
+    /// safe to call after any transition that could reveal a hold. Before `start()` nothing counts down,
+    /// which is what lets the first-run explainer sit over a session that has not begun.
+    var canAutoStartHold: Bool { startedAt != nil && canStartHold }
 
-    /// Whether a bookend hold leg should auto-start right now (US-CC05): a bookend hold is on screen and
-    /// nothing (rest, running hold, swap, completion) is in the way. The bookend analogue of
-    /// `canStartWorkWindow` - the idempotency guard that makes `autoStartHoldIfNeeded()` safe to call
-    /// after any transition that could reveal a bookend hold, and a no-op on a training hold.
-    var canAutoStartHold: Bool {
-        currentStepIsBookendHold && canStartHold
-    }
-
-    /// Auto-start the current bookend hold leg hands-free (US-CC05), the mirror of `startWorkWindow()`:
-    /// driven from every transition that reveals a bookend hold (`start()`, a rest / switch-sides beat
-    /// ending, a set/side advance with no rest, a skip). Idempotent via `canAutoStartHold`, so repeated
-    /// calls are safe no-ops, and it never touches a timed strength/primal *training* hold, which keeps
-    /// its manual Start-hold path. A user who deliberately taps **Stop hold** is *not* re-armed here
-    /// (nothing re-triggers it), so stopping stays a real escape - the manual Start-hold control is the
-    /// way back.
+    /// Auto-start the current hold leg hands-free (US-CC05 for bookends, ADR-0010 for training holds),
+    /// the mirror of `startWorkWindow()`: driven from every transition that reveals a hold (`start()`,
+    /// a rest / switch-sides beat ending, a set/side advance with no rest, a skip, a settled swap), so no
+    /// session ever needs a Start-hold tap. Idempotent via `canAutoStartHold`, so repeated calls are
+    /// safe no-ops. A user who deliberately taps **Stop hold** is *not* re-armed here (nothing
+    /// re-triggers it), so stopping stays a real escape - the Start-hold control is the way back.
     func autoStartHoldIfNeeded() {
         guard canAutoStartHold else { return }
         startHold()
@@ -1029,18 +1084,12 @@ final class ActiveSessionViewModel {
         guard hold?.hasElapsed(asOf: date) == true else { return }
         let sides = holdSidesPerSet
         let finishedSide = holdSide
-        // Captured before `endHold` (which leaves `currentStep` untouched, so this stays valid) to
-        // decide whether the between-legs transition flows hands-free.
-        let wasBookend = currentStepIsBookendHold
         endHold(fireFeedback: true)
         if finishedSide < sides {
             holdSide = finishedSide + 1
-            // US-CC05: a per-side *bookend* stretch flows hands-free - a brief "Switch sides" beat, then
-            // side 2 auto-starts as the beat ends (`completeRestIfElapsed` / `skipRest`). A per-side
-            // *training* hold (strength/primal) keeps parking on side 2 for a deliberate Start-hold tap.
-            if wasBookend {
-                startRest(seconds: Self.switchSidesSeconds, context: .switchSides)
-            }
+            // US-CC05 / ADR-0010: a per-side hold flows hands-free - a brief "Switch sides" beat, then
+            // side 2 auto-starts as the beat ends (`completeRestIfElapsed` / `skipRest`).
+            startRest(seconds: Self.switchSidesSeconds, context: .switchSides)
             persist()
         } else {
             // Records the set and starts the rest; `completeSet` resets the side back to 1 for the next.
@@ -1103,29 +1152,27 @@ final class ActiveSessionViewModel {
     /// teardown, so a resumed session simply re-opens the set and `start()` auto-starts a fresh window.
     private var workWindow: Countdown?
 
-    /// The training-block categories whose sets play as a circuit and whose *rep-based* sets auto-advance
-    /// on a countdown window (US-CC01): the strength block and, at 41-60 min, the dedicated primal block.
-    /// This is also the bookend gate its complement draws (`currentStepIsBookendHold`): everything outside
-    /// these categories is a warm-up / cooldown bookend, whose rep-based sets keep the manual "Complete
-    /// set" and whose *holds* auto-start hands-free on the US-CC05 bookend path rather than the work
-    /// window. Kept aligned with `SessionAssembly.isCircuit`, the engine's own circuit/linear split.
+    /// The training-block categories whose sets play as a circuit (US-CC01/US-CC02): the strength block
+    /// and, at 41-60 min, the dedicated primal block. This is the gate `currentStepIsBookendHold` draws:
+    /// everything outside these categories is a warm-up / cooldown bookend. Kept aligned with
+    /// `SessionAssembly.isCircuit`, the engine's own circuit/linear split.
     private static let autoAdvancingCategories: Set<ExerciseCategory> = [.strength, .primal]
 
-    /// Whether the current step is a rep-based training set that auto-advances on a countdown window
-    /// (US-CC01). A timed movement keeps the US-O03 Hold Timer instead (`holdSecondsPerSide != nil`) -
-    /// which, for a warm-up / cooldown bookend, now auto-starts hands-free too (US-CC05,
-    /// `currentStepIsBookendHold`), just not as a work window. `false` once the session is complete.
+    /// Whether the current step is a rep-based set that auto-advances on a countdown window - a training
+    /// set (US-CC01) and, since ADR-0010, a rep-based warm-up / cooldown move too, so no set in a session
+    /// ever needs a "Complete set" tap. A timed movement keeps the Hold Timer instead
+    /// (`holdSecondsPerSide != nil`), which auto-starts hands-free too. `false` once the session is
+    /// complete.
     var currentStepAutoAdvances: Bool {
-        guard let step = currentStep, Self.autoAdvancingCategories.contains(step.blockCategory) else { return false }
-        return holdSecondsPerSide == nil
+        currentStep != nil && holdSecondsPerSide == nil
     }
 
     /// The runtime work-window seconds for the current rep-based training set - **exactly** the per-set
     /// value the engine budgeted the set at (`SessionAssembly.workSecondsPerSet(of:)`), so the on-screen
     /// countdown is the same single source of truth as the plan (US-CC08) and can never be roomier or
-    /// tighter than the minutes the fit landed. Per-side and hold pricing carry through unchanged, since
-    /// this reads the very function planning uses. `nil` when the current step is not an auto-advancing
-    /// set. The runtime *calibration* of that number is US-CC08's job; US-CC01 only reads it.
+    /// tighter than the minutes the fit landed. That value includes any stretch the timing fit gave the
+    /// set (ADR-0010): the user finishes the reps and rests until the window ends. `nil` when the
+    /// current step is not an auto-advancing set.
     var workWindowSecondsPerSet: Int? {
         guard currentStepAutoAdvances, let step = currentStep else { return nil }
         let seconds = SessionAssembly.workSecondsPerSet(of: step.prescription)
@@ -1140,11 +1187,14 @@ final class ActiveSessionViewModel {
     /// Zero between windows.
     var workWindowTotalSeconds: Int { workWindow?.total ?? 0 }
 
-    /// Whether a work window can start right now: an auto-advancing set is on screen and no rest, hold,
-    /// running window, swap, or completion is in the way. This makes `startWorkWindow()` idempotent and
-    /// safe to call after any transition that could reveal a new set.
+    /// Whether a work window can start right now: the session has started, an auto-advancing set is on
+    /// screen and no rest, hold, running window, swap, or completion is in the way. This makes
+    /// `startWorkWindow()` idempotent and safe to call after any transition that could reveal a new set -
+    /// including the countdown view's own appearance, which must not start a window under the first-run
+    /// explainer before the session begins (ADR-0010).
     var canStartWorkWindow: Bool {
-        !isComplete && !isResting && !isHolding && !isSwapping && !isRunningWorkWindow && workWindowSecondsPerSet != nil
+        startedAt != nil && !isComplete && !isResting && !isHolding && !isSwapping && !isRunningWorkWindow
+            && workWindowSecondsPerSet != nil
     }
 
     /// Whether the running work window is paused (the app is backgrounded). Distinct from

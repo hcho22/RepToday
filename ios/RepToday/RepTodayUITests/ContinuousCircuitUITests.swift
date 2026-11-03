@@ -197,9 +197,9 @@ final class ContinuousCircuitUITests: XCTestCase {
 
         // Rotate through the rest of the circuit, recording the (round, exercise) pairs a finger sees, and
         // advance each station by whichever control it offers, staying hands-free without waiting on a
-        // real-time hold: **Done** ends a rep-based work window, and the manual **Complete set** /
-        // **Finish exercise** banks a training hold's set instantly (a training hold keeps its manual path,
-        // US-CC05 - so it never blocks the walk on a wall-clock countdown). The one exercise we
+        // real-time hold: **Done** ends a rep-based work window, and the optional **Complete set** /
+        // **Finish exercise** banks a training hold's set instantly (the hold starts on its own since
+        // ADR-0010, but banking it by hand keeps the walk off a wall-clock countdown). The one exercise we
         // deliberately skipped above must appear in none of the recorded pairs. Stops as soon as a later
         // round is reached - that is all this case needs to prove the skip held past round 1.
         var seen: [(round: String, exercise: String)] = []
@@ -320,10 +320,10 @@ final class ContinuousCircuitUITests: XCTestCase {
 
         // Reach a warm-up stretch's auto-started hold. A hold auto-starts the moment its stretch is
         // revealed, so we only ever Skip past a dynamic (non-hold) warm-up movement - never tap
-        // Start hold. The scan is bounded to the warm-up: a strength/primal *training* hold reached past
-        // it legitimately shows Start hold (US-CC02's manual circuit surface), so leaving the warm-up
-        // stops the scan rather than failing it. While inside the warm-up, a Start-hold control is an
-        // outright failure - a bookend hold must never wait on a tap.
+        // Start hold. The scan is bounded to the warm-up, which is what this case is about (training holds
+        // auto-start too since ADR-0010), so leaving the warm-up stops the scan rather than failing it.
+        // While inside the warm-up, a Start-hold control is an outright failure - a hold must never wait
+        // on a tap.
         var reachedAutoStartedHold = false
         for _ in 0..<10 {
             // A rest overlay between stretches hides the block context; clear it first, then re-check.

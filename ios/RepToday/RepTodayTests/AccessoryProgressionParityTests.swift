@@ -183,7 +183,7 @@ final class AccessoryProgressionParityTests: XCTestCase {
 
         // Session 1: horizontal push high (diamond cleared -> the primary sits at archer), vertical push
         // untouched, so the vertical accessory enters fresh at floor-dips (order 0).
-        let session1Logs = [repsLog(id: "push_diamond", reps: [10, 10, 10], daysAgo: 1)]
+        let session1Logs = [repsLog(id: "push_diamond", reps: [15, 15, 15], daysAgo: 1)]
         let stations1 = strengthStations(minutes: 60, level: .advanced, library: library, logs: session1Logs)
         let vertical1 = try XCTUnwrap(
             stations1.first { $0.exercise.progressionChainId == "push_vertical" },
@@ -210,7 +210,8 @@ final class AccessoryProgressionParityTests: XCTestCase {
 
     // MARK: - Behavior 2: Adaptive Overload is capacity-relative to the accessory's own movement (Step 6)
 
-    /// An *easier* second-chain accessory earns *more* reps than a *harder* primary, because
+    /// An *easier* second-chain accessory earns at least as many reps as a *harder* primary (more
+    /// wherever neither sits at the ten-rep floor, ADR-0011), because
     /// `appendTrainingItem` doses both through the one `AdaptiveOverload.target` call - capacity-relative
     /// to each movement, never a fixed number. Read off `planBlocks` (fit-independent), so the accessory
     /// is dosed whether or not the timing fit later promotes it.
@@ -223,7 +224,7 @@ final class AccessoryProgressionParityTests: XCTestCase {
     /// movement's own default (clamped), which is what makes the equality assertions below exact.
     func testEasierAccessoryEarnsMoreRepsThanAHarderPrimary() async throws {
         let library = try await library()
-        let logs = [repsLog(id: "push_diamond", reps: [10, 10, 10], daysAgo: 1)]
+        let logs = [repsLog(id: "push_diamond", reps: [15, 15, 15], daysAgo: 1)]
         let stations = strengthStations(minutes: 60, level: .advanced, library: library, logs: logs)
 
         let primary = try XCTUnwrap(
@@ -243,9 +244,11 @@ final class AccessoryProgressionParityTests: XCTestCase {
         )
         let primaryReps = try XCTUnwrap(primary.reps)
         let accessoryReps = try XCTUnwrap(accessory.reps)
-        XCTAssertGreaterThan(
+        // On the grid (ADR-0011) both defaults sit at the ten-rep floor here (archer's 5 and floor-dips'
+        // 10 both serve 10), so the easier accessory earns at least as many reps, never fewer.
+        XCTAssertGreaterThanOrEqual(
             accessoryReps, primaryReps,
-            "the easier second-chain accessory must earn proportionally more reps than the harder primary"
+            "the easier second-chain accessory must never earn fewer reps than the harder primary"
         )
 
         // And each station is dosed by the very same Step 6 rule, recomputed here - proof there is no

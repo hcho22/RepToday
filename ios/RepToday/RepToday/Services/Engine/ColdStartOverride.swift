@@ -154,7 +154,7 @@ enum ColdStartOverride {
                 repMultiplier: eased(
                     contract.startingRepMultiplier,
                     toward: Contract.neutralStartingRepMultiplier,
-                    to: contract.startingRepMultiplier * pow(AdaptiveOverload.hardStep, Double(volumeSignals))
+                    to: contract.startingRepMultiplier * pow(volumeEaseFactor, Double(volumeSignals))
                 ),
                 sets: eased(
                     contract.startingSets,
@@ -198,6 +198,13 @@ enum ColdStartOverride {
     static func isTierDownSignal(_ log: WorkoutLog) -> Bool {
         log.perceivedDifficulty == .tooHard
     }
+
+    /// How much each volume down-signal eases the Start Seed's rep multiplier toward neutral: one
+    /// signal takes it to 80% of its aim (the factor the percentage ramp's eager back-off used before
+    /// targets moved onto the grid of five, ADR-0011, kept so the seed eases exactly as it did). The
+    /// eased multiplier still scales a grid-rounded default and lands on the grid
+    /// (`AdaptiveOverload.target`).
+    static let volumeEaseFactor = 0.80
 
     /// How many eager down-signals the user has produced for the *volume* half of the seed: sessions
     /// rated `tooHard`, plus sessions where they bailed on a banded (strength/primal) movement.

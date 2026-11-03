@@ -820,7 +820,7 @@ final class StartSeedTests: XCTestCase {
             startingRepMultiplier: 1.30,
             startingSets: 4
         )
-        XCTAssertEqual(target.reps, 13, "10 default reps x1.30 rounds to 13")
+        XCTAssertEqual(target.reps, 15, "10 default reps x1.30 is 13, landing on the nearest grid number, 15 (ADR-0011)")
         XCTAssertEqual(target.sets, 4)
     }
 
@@ -833,7 +833,7 @@ final class StartSeedTests: XCTestCase {
             startingRepMultiplier: 1.15,
             startingSets: 3
         )
-        XCTAssertEqual(target.durationSeconds, 23, "20 default seconds x1.15 rounds to 23")
+        XCTAssertEqual(target.durationSeconds, 25, "20 default seconds x1.15 is 23, landing on the nearest grid number, 25 (ADR-0011)")
         XCTAssertNil(target.reps)
         XCTAssertEqual(target.sets, 3)
     }
@@ -849,7 +849,7 @@ final class StartSeedTests: XCTestCase {
             startingSets: AdaptiveOverload.defaultSets
         )
         XCTAssertEqual(neutral, unseeded)
-        XCTAssertEqual(unseeded.reps, 12)
+        XCTAssertEqual(unseeded.reps, 10, "a default of 12 is served rounded down onto the grid (ADR-0011)")
         XCTAssertEqual(unseeded.sets, AdaptiveOverload.defaultSets)
     }
 
@@ -921,9 +921,11 @@ final class StartSeedTests: XCTestCase {
         )
 
         XCTAssertLessThan(eased.reps!, seeded.reps!, "a too-hard seeded session eases within one cycle")
-        XCTAssertGreaterThan(
+        // On the grid both directions move one step of five (ADR-0011); the back-off is still the faster
+        // one because it takes one session, while a climb from "just right" takes three.
+        XCTAssertGreaterThanOrEqual(
             seeded.reps! - eased.reps!, intensified.reps! - seeded.reps!,
-            "the ramp still backs off faster than it climbs"
+            "the back-off is never smaller than the climb"
         )
 
         // A skip of the seeded movement is the same eager down-signal.
@@ -1119,7 +1121,7 @@ final class StartSeedTests: XCTestCase {
                 startingSets: seed.sets
             ).reps,
             durationSeconds: nil,
-            restSeconds: SessionAssembly.strengthRestSeconds
+            restSeconds: SessionAssembly.roundRestSeconds
         )
         let session = Workout(
             id: UUID(),
@@ -1140,7 +1142,7 @@ final class StartSeedTests: XCTestCase {
         let defaultReps = try XCTUnwrap(substitute.exercise.defaultReps)
         XCTAssertEqual(
             substitute.reps,
-            Int((Double(defaultReps) * seed.repMultiplier).rounded()),
+            Self.gridSeeded(defaultReps, by: seed.repMultiplier),
             "the substitute must carry the session's Start Seed, not the neutral seed"
         )
 
@@ -1155,8 +1157,8 @@ final class StartSeedTests: XCTestCase {
         // slot's time budget best. What must hold either way is that the seeded run opens above the
         // movement's default and the unseeded run opens exactly at it.
         XCTAssertEqual(
-            neutral.reps, try XCTUnwrap(neutral.exercise.defaultReps),
-            "the neutral seed opens at the movement's own default"
+            neutral.reps, Self.gridSeeded(try XCTUnwrap(neutral.exercise.defaultReps), by: 1.0),
+            "the neutral seed opens at the movement's own default, on the grid"
         )
         XCTAssertGreaterThan(try XCTUnwrap(substitute.reps), defaultReps)
     }
@@ -1429,12 +1431,12 @@ final class StartSeedTests: XCTestCase {
         let defaultReps = try XCTUnwrap(advanced.exercise.defaultReps)
         XCTAssertEqual(
             advanced.reps,
-            Int((Double(defaultReps) * 1.30).rounded()),
+            Self.gridSeeded(defaultReps, by: 1.30),
             "the advanced first prescription carries the x1.30 volume seed"
         )
 
-        // The beginner is untouched: their own default reps over the default set count.
-        XCTAssertEqual(beginner.reps, beginner.exercise.defaultReps)
+        // The beginner is untouched: their own default reps (on the grid) over the default set count.
+        XCTAssertEqual(beginner.reps, Self.gridSeeded(try XCTUnwrap(beginner.exercise.defaultReps), by: 1.0))
         XCTAssertEqual(beginner.sets, AdaptiveOverload.defaultSets)
 
         // The bookends are never seeded: the same number of movements for both levels, one set each at the
@@ -1653,5 +1655,13 @@ final class StartSeedTests: XCTestCase {
         }
 
         XCTAssertEqual(signature(), signature())
+    }
+
+    /// A rep default seeded by `multiplier` the way Step 6 serves it (ADR-0011): the default rounded down
+    /// onto the grid of five (never below ten), scaled, and landed on the nearest grid number.
+    private static func gridSeeded(_ defaultReps: Int, by multiplier: Double) -> Int {
+        let base = AdaptiveOverload.onGrid(defaultReps, isHold: false, sides: 1)
+        let nearest = Int((Double(base) * multiplier / 5).rounded()) * 5
+        return AdaptiveOverload.onGrid(nearest, isHold: false, sides: 1)
     }
 }

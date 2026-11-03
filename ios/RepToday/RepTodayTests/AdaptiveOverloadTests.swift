@@ -2,13 +2,14 @@ import XCTest
 @testable import RepToday
 
 /// Tests pipeline Step 6 of the deterministic engine (US-C06): turning a chosen exercise into a
-/// capacity-relative rep/set/hold target.
+/// capacity-relative rep/set/hold target, on the grid of round numbers (ADR-0011).
 ///
-/// Coverage mirrors the PRD acceptance criteria: the progressive bump from demonstrated capacity,
-/// the `tooHard` ease and `tooEasy` intensify (both within one cycle), the same logic for holds in
-/// seconds, the no-history fallback to the exercise's own defaults, and the guarantee that every
-/// target is derived from capacity rather than a fixed heroic number. The final two tests run the
-/// PRD's own validation case (3x12 squats marked `tooHard`) over the real bundled library.
+/// Coverage: every target is a multiple of five, never below ten; a number logged before the grid
+/// rounds down onto it; the climb (three "just right" sessions in a row at one number add five, "too
+/// easy" adds five at once, "too hard" or a skip takes five off); the completion screen's "couldn't
+/// finish" marks; the floor step-back signal Step 5 reads; holds and per-side moves on the same rule;
+/// and the three levers (`progressionRate`, the Re-entry Ramp scale, the Start Seed) mapped onto
+/// five-steps. The last tests run the PRD's validation cases over the real bundled library.
 final class AdaptiveOverloadTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -129,368 +130,317 @@ final class AdaptiveOverloadTests: XCTestCase {
         )
     }
 
-    // MARK: - No history -> defaults
+    /// A session `daysAgo` rated `difficulty` that worked several moves, each `(id, reps, couldNotFinish)`.
+    private func multiLog(
+        _ moves: [(id: String, reps: Int, couldNotFinish: Bool?)],
+        daysAgo: Int,
+        difficulty: PerceivedDifficulty?
+    ) -> WorkoutLog {
+        WorkoutLog(
+            id: UUID(),
+            workoutId: UUID(),
+            completedAt: date(daysAgo: daysAgo),
+            requestedMinutes: 10,
+            durationMinutes: 10,
+            shape: .singleFocus,
+            focusPillar: .strength,
+            perceivedDifficulty: difficulty,
+            exercises: moves.map { move in
+                LoggedExercise(
+                    id: UUID(),
+                    exerciseId: move.id,
+                    pillar: .strength,
+                    movementPattern: .squat,
+                    completedSets: Array(repeating: CompletedSet(reps: move.reps, durationSeconds: nil), count: 3),
+                    skipped: false,
+                    couldNotFinish: move.couldNotFinish
+                )
+            }
+        )
+    }
 
-    func testNoHistoryUsesExerciseRepDefaults() {
+    /// A per-side variant of `holdExercise`.
+    private func perSideHold(defaultDurationSeconds: Int = 30) -> Exercise {
+        var exercise = holdExercise(defaultDurationSeconds: defaultDurationSeconds)
+        exercise.isPerSide = true
+        return exercise
+    }
+
+    /// `n` "just right" sessions at `reps`, the newest `firstDaysAgo` days ago, one day apart.
+    private func justRightRun(_ n: Int, reps: Int, firstDaysAgo: Int = 1, difficulty: PerceivedDifficulty? = .justRight) -> [WorkoutLog] {
+        (0..<n).map { repsLog(id: "ex", reps: [reps, reps, reps], daysAgo: firstDaysAgo + $0, difficulty: difficulty) }
+    }
+
+    // MARK: - No history -> grid-rounded defaults
+
+    func testNoHistoryUsesTheDefaultRoundedDownOntoTheGrid() {
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 15), recentLogs: []).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 12), recentLogs: []).reps, 10,
+                       "a default of 12 is served as the round number below it")
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 3), recentLogs: []).reps, 10,
+                       "a default below the floor is raised to ten")
         let target = AdaptiveOverload.target(for: repsExercise(defaultReps: 12), recentLogs: [])
         XCTAssertEqual(target.sets, AdaptiveOverload.defaultSets)
-        XCTAssertEqual(target.reps, 12)
         XCTAssertNil(target.durationSeconds)
     }
 
-    func testNoHistoryUsesExerciseHoldDefaults() {
-        let target = AdaptiveOverload.target(for: holdExercise(defaultDurationSeconds: 25), recentLogs: [])
-        XCTAssertEqual(target.sets, AdaptiveOverload.defaultSets)
-        XCTAssertEqual(target.durationSeconds, 25)
-        XCTAssertNil(target.reps)
+    func testNoHistoryHoldUsesTheDefaultRoundedDownOntoTheGrid() {
+        XCTAssertEqual(AdaptiveOverload.target(for: holdExercise(defaultDurationSeconds: 30), recentLogs: []).durationSeconds, 30)
+        XCTAssertEqual(AdaptiveOverload.target(for: holdExercise(defaultDurationSeconds: 12), recentLogs: []).durationSeconds, 10)
+        XCTAssertEqual(AdaptiveOverload.target(for: holdExercise(defaultDurationSeconds: 8), recentLogs: []).durationSeconds, 10)
     }
 
-    /// A non-skipped log with no usable sets (all empty/zero) is not "capacity" - the step still
-    /// falls back to defaults rather than reading a phantom 0.
     func testEmptyOrZeroSetsFallBackToDefaults() {
-        let logs = [repsLog(id: "ex", reps: [0, 0], daysAgo: 1, difficulty: .tooEasy)]
-        let target = AdaptiveOverload.target(for: repsExercise(defaultReps: 10), recentLogs: logs)
-        XCTAssertEqual(target.reps, 10)
-        XCTAssertEqual(target.sets, AdaptiveOverload.defaultSets)
+        let logs = [repsLog(id: "ex", reps: [0, 0], daysAgo: 1)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 15), recentLogs: logs).reps, 15)
     }
 
-    // MARK: - Progressive (just-right / no rating)
+    // MARK: - Round-down of numbers logged before the grid
 
-    func testProgressiveBumpFromCapacityWithNoRating() {
-        // 3x12, unrated -> sets track capacity (3), reps nudge just above 12.
-        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1)]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.sets, 3)
-        XCTAssertEqual(target.reps, 13)
+    func testAnOldOddNumberRoundsDownToTheGridAtTheNextSession() {
+        // 13s rated too easy would once have become 14; on the grid, 13 is served as 10, plus five.
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [13, 13, 13], daysAgo: 1, difficulty: .tooEasy)]).reps, 15)
+        // A single just-right 14 holds at the round number below it.
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [14, 14, 14], daysAgo: 1)]).reps, 10)
+        // 22 rounds down to 20.
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [22, 22, 22], daysAgo: 1)]).reps, 20)
     }
 
-    func testJustRightProgressesAtOrAboveCapacity() {
-        let logs = [repsLog(id: "ex", reps: [10, 10], daysAgo: 1, difficulty: .justRight)]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.sets, 2)
-        XCTAssertGreaterThan(target.reps!, 10) // round(10 * 1.05) = 11, strictly above capacity
+    func testAnOldNumberBelowTheFloorRoundsUpToTen() {
+        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [6, 6, 6], daysAgo: 1)])
+        XCTAssertEqual(target.reps, 10, "the floor is ten, so a logged six is served as ten")
     }
 
-    /// A just-right rating on a small capacity that rounding would otherwise stall (round(8 * 1.05)
-    /// == 8) still climbs by at least one, matching the directional guarantee on too_easy/too_hard.
-    func testSmallCapacityJustRightStillClimbs() {
-        let logs = [repsLog(id: "ex", reps: [8, 8], daysAgo: 1, difficulty: .justRight)]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.reps, 9) // forced to capacity + 1
-    }
-
-    // MARK: - too_hard / too_easy within one cycle
-
-    func testTooHardReducesBelowCapacity() {
-        // PRD validation shape: 3x12 marked too_hard -> at or below 3x12, capacity-derived.
-        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooHard)]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.sets, 3)
-        XCTAssertLessThan(target.reps!, 12)
-        XCTAssertEqual(target.reps, 10) // round(12 * 0.80), the eager down-step (US-E05)
-    }
-
-    func testTooEasyIncreasesAboveCapacity() {
-        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooEasy)]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertGreaterThan(target.reps!, 12)
-        XCTAssertEqual(target.reps, 13) // round(12 * 1.10), the patient up-step (US-E05)
-    }
-
-    /// Direction is guaranteed even when rounding would otherwise stall: a small capacity still
-    /// moves by at least one in the signalled direction.
-    func testSmallCapacityStillMovesInSignalledDirection() {
-        let easy = AdaptiveOverload.target(
-            for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [3, 3], daysAgo: 1, difficulty: .tooEasy)]
-        )
-        XCTAssertEqual(easy.reps, 4) // round(3 * 1.10) = 3, forced to capacity + 1
-
-        let hard = AdaptiveOverload.target(
-            for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [5, 5], daysAgo: 1, difficulty: .tooHard)]
-        )
-        XCTAssertEqual(hard.reps, 4) // round(5 * 0.80) = 4, which is already capacity - 1
-    }
-
-    /// Easing never drops below the rep floor, so the prescription stays meaningful.
-    func testTooHardNeverDropsBelowFloor() {
-        let logs = [repsLog(id: "ex", reps: [3, 3], daysAgo: 1, difficulty: .tooHard)]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.reps, AdaptiveOverload.minReps)
-    }
-
-    // MARK: - Asymmetric Ramp (US-E05)
-
-    /// The core invariant: from the same demonstrated capacity, a `too_hard` backs off by at least as
-    /// much as a `too_easy` climbs - the eager down-step is never smaller than the patient up-step.
-    func testAsymmetricRampBacksOffAtLeastAsFastAsItClimbs() {
-        let capacity = 20
-        let hard = AdaptiveOverload.target(
-            for: repsExercise(),
-            recentLogs: [repsLog(id: "ex", reps: [capacity, capacity], daysAgo: 1, difficulty: .tooHard)]
-        )
-        let easy = AdaptiveOverload.target(
-            for: repsExercise(),
-            recentLogs: [repsLog(id: "ex", reps: [capacity, capacity], daysAgo: 1, difficulty: .tooEasy)]
-        )
-        let downStep = capacity - hard.reps!  // magnitude of the eager back-off (20 -> 16 = 4)
-        let upStep = easy.reps! - capacity     // magnitude of the patient climb (20 -> 22 = 2)
-        XCTAssertGreaterThan(downStep, 0, "too_hard must move down")
-        XCTAssertGreaterThan(upStep, 0, "too_easy must move up")
-        XCTAssertGreaterThanOrEqual(downStep, upStep, "the ramp backs off at least as fast as it climbs")
-    }
-
-    /// The asymmetry is pinned on the tunable constants themselves, so a future re-tune that violates
-    /// it (an up-step larger than the down-step) fails loudly.
-    func testRampConstantsAreAsymmetric() {
-        let downMagnitude = 1.0 - AdaptiveOverload.hardStep   // 0.20
-        let upMagnitude = AdaptiveOverload.easyStep - 1.0     // 0.10
-        XCTAssertGreaterThanOrEqual(downMagnitude, upMagnitude)
-        // And the gentle progressive nudge never out-climbs the explicit too_easy up-step.
-        XCTAssertLessThanOrEqual(AdaptiveOverload.progressiveStep - 1.0, upMagnitude)
-    }
-
-    /// A single recent skip of this exercise is an eager down-signal: the next target eases below the
-    /// capacity from the earlier worked session, exactly as a `too_hard` would.
-    func testRecentSkipEasesTargetLikeTooHard() {
-        let skipHistory = [
-            repsLog(id: "ex", reps: [], daysAgo: 1, skipped: true),
-            repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 3, difficulty: .justRight),
-        ]
-        let skipTarget = AdaptiveOverload.target(for: repsExercise(), recentLogs: skipHistory)
-
-        let hardHistory = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooHard)]
-        let hardTarget = AdaptiveOverload.target(for: repsExercise(), recentLogs: hardHistory)
-
-        XCTAssertEqual(skipTarget.reps, hardTarget.reps, "a skip eases like a too_hard")
-        XCTAssertLessThan(skipTarget.reps!, 12)
-    }
-
-    /// The recent skip wins even over an earlier `too_easy`: the more-recent bail is the stronger
-    /// signal, so the target eases rather than intensifying off the older rating.
-    func testRecentSkipOverridesEarlierTooEasy() {
-        let logs = [
-            repsLog(id: "ex", reps: [], daysAgo: 1, skipped: true),
-            repsLog(id: "ex", reps: [10, 10], daysAgo: 4, difficulty: .tooEasy),
-        ]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertLessThan(target.reps!, 10, "the recent skip eases even over an earlier too_easy")
-        XCTAssertEqual(target.reps, 8) // round(10 * 0.80)
-    }
-
-    /// A skip eases holds too, in seconds.
-    func testRecentSkipEasesHold() {
-        let logs = [
-            holdLog(id: "ex", seconds: [], daysAgo: 1, skipped: true),
-            holdLog(id: "ex", seconds: [40, 40], daysAgo: 3, difficulty: .justRight),
-        ]
-        let target = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs)
-        XCTAssertLessThan(target.durationSeconds!, 40)
-        XCTAssertEqual(target.durationSeconds, 32) // round(40 * 0.80)
-    }
-
-    // MARK: - Holds
-
-    func testHoldProgressionUsesSeconds() {
-        let logs = [holdLog(id: "ex", seconds: [30, 30], daysAgo: 1, difficulty: .tooEasy)]
-        let target = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs)
-        XCTAssertNil(target.reps)
-        XCTAssertEqual(target.sets, 2)
-        XCTAssertEqual(target.durationSeconds, 33) // round(30 * 1.10), the patient up-step
-    }
-
-    func testHoldTooHardEasesSeconds() {
-        let logs = [holdLog(id: "ex", seconds: [40, 40, 40], daysAgo: 1, difficulty: .tooHard)]
-        let target = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs)
-        XCTAssertEqual(target.durationSeconds, 32) // round(40 * 0.80), the eager down-step
-        XCTAssertLessThan(target.durationSeconds!, 40)
-    }
-
-    // MARK: - progressionRate lever (US-E03)
-
-    /// A higher `progressionRate` advances a too-easy target faster; the neutral rate reproduces
-    /// the prior curve exactly.
-    func testProgressionRateAdvancesTooEasyFaster() {
-        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooEasy)]
-        let neutral = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 1.0)
-        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 2.0)
-        XCTAssertEqual(neutral.reps, 13) // round(12 * 1.10)
-        XCTAssertEqual(fast.reps, 14)    // round(12 * (1 + 0.10*2)) = round(14.4)
-        XCTAssertGreaterThan(fast.reps!, neutral.reps!)
-    }
-
-    /// The progressive (unrated / just-right) nudge is paced by the rate too.
-    func testProgressionRateAdvancesProgressiveNudgeFaster() {
-        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)] // unrated
-        let neutral = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 1.0)
-        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 3.0)
-        XCTAssertEqual(neutral.reps, 21) // round(20 * 1.05)
-        XCTAssertEqual(fast.reps, 23)    // round(20 * (1 + 0.05*3)) = round(23.0)
-    }
-
-    /// The default rate parameter equals an explicit neutral `1.0`, so no caller that omits it
-    /// changes behavior (the no-regression guarantee at the unit level).
-    func testDefaultProgressionRateIsNeutral() {
-        let logs = [repsLog(id: "ex", reps: [12, 12], daysAgo: 1, difficulty: .tooEasy)]
-        XCTAssertEqual(
-            AdaptiveOverload.target(for: repsExercise(), recentLogs: logs),
-            AdaptiveOverload.target(
-                for: repsExercise(), recentLogs: logs, progressionRate: AdaptiveOverload.neutralProgressionRate
-            )
-        )
-    }
-
-    /// The rate never scales the `too_hard` ease: a faster program must not back off harder (the
-    /// eager down-step is the Asymmetric Ramp's job in US-E05, not `progressionRate`'s).
-    func testProgressionRateDoesNotScaleTooHardEase() {
-        let logs = [repsLog(id: "ex", reps: [12, 12, 12], daysAgo: 1, difficulty: .tooHard)]
-        let neutral = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 1.0)
-        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 3.0)
-        XCTAssertEqual(neutral.reps, 10) // round(12 * 0.80)
-        XCTAssertEqual(fast.reps, neutral.reps, "the too_hard ease is rate-independent")
-    }
-
-    /// A high rate still clamps to the rep safety rail.
-    func testProgressionRateStaysWithinRails() {
-        let logs = [repsLog(id: "ex", reps: [45, 45], daysAgo: 1, difficulty: .tooEasy)]
-        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 5.0)
-        XCTAssertEqual(fast.reps, AdaptiveOverload.maxReps) // round(45 * 1.50)=68, clamped to 50
-    }
-
-    /// Holds advance faster under a higher rate too, in seconds.
-    func testProgressionRateAdvancesHoldsFaster() {
-        let logs = [holdLog(id: "ex", seconds: [30, 30], daysAgo: 1, difficulty: .tooEasy)]
-        let neutral = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs, progressionRate: 1.0)
-        let fast = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs, progressionRate: 2.0)
-        XCTAssertEqual(neutral.durationSeconds, 33) // round(30 * 1.10)
-        XCTAssertEqual(fast.durationSeconds, 36)    // round(30 * 1.20)
-        XCTAssertGreaterThan(fast.durationSeconds!, neutral.durationSeconds!)
-    }
-
-    // MARK: - Re-entry Ramp scale (US-E06)
-
-    /// A `reentryScale < 1.0` holds a capacity-derived target below the normal (neutral-scale) target,
-    /// so a Return / Re-entry Ramp session is gentler than the un-held one.
-    func testReentryScaleHoldsCapacityTargetBelowNormal() {
-        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)] // unrated -> progress from capacity 20
-        let normal = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        let held = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.7)
-        XCTAssertEqual(normal.reps, 21) // round(20 * 1.05)
-        XCTAssertLessThan(held.reps!, normal.reps!, "the reentry hold must land below the normal target")
-        XCTAssertEqual(held.reps, 15) // min(round(21 * 0.7), 20)
-        XCTAssertEqual(held.sets, normal.sets, "the set count still tracks demonstrated capacity")
-    }
-
-    /// The hold climbs back toward normal as the scale relaxes from the floor to neutral - the shape of
-    /// the Re-entry Ramp walking difficulty back up over its sessions.
-    func testReentryScaleClimbsAsItRelaxes() {
-        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)]
-        let targets = [0.7, 0.8, 0.9, 1.0].map {
-            AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: $0).reps!
-        }
-        XCTAssertEqual(targets, [15, 17, 19, 21], "the target climbs monotonically as the ramp relaxes")
-        for index in 1..<targets.count {
-            XCTAssertGreaterThan(targets[index], targets[index - 1], "each ramp step is above the last")
+    func testOnGridIsAlwaysAMultipleOfFiveWithinTheRails() {
+        for value in -5...80 {
+            let reps = AdaptiveOverload.onGrid(value, isHold: false, sides: 1)
+            XCTAssertEqual(reps % AdaptiveOverload.step, 0)
+            XCTAssertTrue((AdaptiveOverload.minReps...AdaptiveOverload.maxReps).contains(reps))
+            let perSide = AdaptiveOverload.onGrid(value * 3, isHold: true, sides: 2)
+            XCTAssertEqual(perSide % AdaptiveOverload.step, 0)
+            XCTAssertTrue((10...90).contains(perSide), "a per-side hold tops out at half the 180s ceiling")
         }
     }
 
-    /// The neutral scale reproduces the pre-ramp target exactly, so no caller that omits it changes
-    /// behavior (the no-regression guarantee at the unit level).
-    func testNeutralReentryScaleIsNoOp() {
-        let logs = [repsLog(id: "ex", reps: [12, 12], daysAgo: 1, difficulty: .tooEasy)]
-        XCTAssertEqual(
-            AdaptiveOverload.target(for: repsExercise(), recentLogs: logs),
-            AdaptiveOverload.target(
-                for: repsExercise(), recentLogs: logs, reentryScale: AdaptiveOverload.neutralReentryScale
-            )
-        )
+    // MARK: - The climb
+
+    func testThreeJustRightSessionsAtOneNumberAddFive() {
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(1, reps: 15)).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(2, reps: 15)).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(3, reps: 15)).reps, 20)
     }
 
-    /// The hold never drops below the rep floor, so even a small capacity stays a meaningful target.
-    func testReentryScaleHonorsRepFloor() {
-        let logs = [repsLog(id: "ex", reps: [3, 3], daysAgo: 1)] // capacity at the floor
-        let held = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.7)
-        XCTAssertGreaterThanOrEqual(held.reps!, AdaptiveOverload.minReps)
+    func testAnUnratedSessionCountsAsJustRight() {
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(3, reps: 15, difficulty: nil)).reps, 20)
     }
 
-    /// The Re-entry Ramp holds eased holds too, in seconds.
-    func testReentryScaleEasesHolds() {
-        let logs = [holdLog(id: "ex", seconds: [40, 40], daysAgo: 1, difficulty: .justRight)]
-        let normal = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs)
-        let held = AdaptiveOverload.target(for: holdExercise(), recentLogs: logs, reentryScale: 0.7)
-        XCTAssertEqual(normal.durationSeconds, 42) // round(40 * 1.05)
-        XCTAssertLessThan(held.durationSeconds!, normal.durationSeconds!)
-        XCTAssertGreaterThanOrEqual(held.durationSeconds!, AdaptiveOverload.minHoldSeconds)
+    func testTheRunCountsOnlySessionsAtTheSameNumber() {
+        // Two at 20 after a climb from 15: the run at 20 is two, so it holds.
+        let logs = justRightRun(2, reps: 20) + justRightRun(3, reps: 15, firstDaysAgo: 3)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs).reps, 20)
     }
 
-    /// A no-history default is already the gentle starting value, so the Re-entry Ramp leaves it
-    /// untouched (the hold applies only to capacity-derived targets).
-    func testReentryScaleDoesNotEaseNoHistoryDefault() {
-        let held = AdaptiveOverload.target(for: repsExercise(defaultReps: 12), recentLogs: [], reentryScale: 0.7)
-        XCTAssertEqual(held.reps, 12, "a no-history default is not eased by the reentry ramp")
+    func testAnyOtherSessionBreaksTheRun() {
+        let logs = justRightRun(2, reps: 15)
+            + [repsLog(id: "ex", reps: [15, 15, 15], daysAgo: 3, difficulty: .tooEasy)]
+            + justRightRun(2, reps: 15, firstDaysAgo: 4)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs).reps, 15)
     }
 
-    /// The Re-entry Ramp composes with `progressionRate`: it holds the target below whatever the
-    /// (possibly faster) program would otherwise prescribe.
-    func testReentryScaleComposesWithProgressionRate() {
-        let logs = [repsLog(id: "ex", reps: [20, 20], daysAgo: 1, difficulty: .tooEasy)]
-        let fast = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, progressionRate: 2.0)
-        let fastHeld = AdaptiveOverload.target(
-            for: repsExercise(), recentLogs: logs, progressionRate: 2.0, reentryScale: 0.7
-        )
-        XCTAssertLessThan(fastHeld.reps!, fast.reps!, "the reentry hold still lands below the faster target")
+    func testTooEasyAddsFiveAtOnce() {
+        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooEasy)])
+        XCTAssertEqual(target.reps, 20)
     }
 
-    // MARK: - Capacity, not a fixed number
-
-    /// Every target is capacity-relative: different demonstrated capacities yield different targets,
-    /// so the engine can never be prescribing a fixed heroic constant.
-    func testTargetsAreCapacityRelativeNotConstant() {
-        let low = AdaptiveOverload.target(
-            for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [8, 8], daysAgo: 1)]
-        )
-        let high = AdaptiveOverload.target(
-            for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [20, 20], daysAgo: 1)]
-        )
-        XCTAssertNotEqual(low.reps, high.reps)
-        XCTAssertEqual(low.reps, 9)  // round(8 * 1.05) = 8, forced to capacity + 1
-        XCTAssertEqual(high.reps, 21) // round(20 * 1.05)
+    func testTooHardTakesFiveOff() {
+        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [20, 20, 20], daysAgo: 1, difficulty: .tooHard)])
+        XCTAssertEqual(target.reps, 15)
     }
 
-    /// No-history defaults come from the exercise itself, not a shared constant: two exercises with
-    /// different defaults prescribe differently.
-    func testDefaultsAreExerciseSpecific() {
-        let a = AdaptiveOverload.target(for: repsExercise(id: "a", defaultReps: 8), recentLogs: [])
-        let b = AdaptiveOverload.target(for: repsExercise(id: "b", defaultReps: 15), recentLogs: [])
-        XCTAssertEqual(a.reps, 8)
-        XCTAssertEqual(b.reps, 15)
+    func testTooHardAtTheFloorStaysAtTenAndSignalsAChainStepDown() {
+        let logs = [repsLog(id: "ex", reps: [10, 10, 10], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs).reps, 10)
+        XCTAssertEqual(AdaptiveOverload.floorStepBackDate(for: repsExercise(), recentLogs: logs), date(daysAgo: 1))
     }
 
-    /// Capacity comes from the most recent usable session, and that session's rating applies.
+    func testAStepBackAboveTheFloorDoesNotSignalAChainStepDown() {
+        let logs = [repsLog(id: "ex", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertNil(AdaptiveOverload.floorStepBackDate(for: repsExercise(), recentLogs: logs))
+        XCTAssertNil(AdaptiveOverload.floorStepBackDate(for: repsExercise(), recentLogs: justRightRun(1, reps: 10)))
+    }
+
+    func testRecentSkipTakesFiveOffEvenAfterTooEasy() {
+        let logs = [
+            repsLog(id: "ex", reps: [], daysAgo: 1, skipped: true),
+            repsLog(id: "ex", reps: [20, 20, 20], daysAgo: 3, difficulty: .tooEasy)
+        ]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs).reps, 15)
+    }
+
+    func testRecentSkipAtTheFloorSignalsAChainStepDownDatedAtTheSkip() {
+        let logs = [
+            repsLog(id: "ex", reps: [], daysAgo: 1, skipped: true),
+            repsLog(id: "ex", reps: [10, 10, 10], daysAgo: 3)
+        ]
+        XCTAssertEqual(AdaptiveOverload.floorStepBackDate(for: repsExercise(), recentLogs: logs), date(daysAgo: 1))
+    }
+
+    func testTheClimbNeverPassesTheCeiling() {
+        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [50, 50, 50], daysAgo: 1, difficulty: .tooEasy)])
+        XCTAssertEqual(target.reps, AdaptiveOverload.maxReps)
+    }
+
+    func testItStillBacksOffFasterThanItClimbs() {
+        // One "too hard" day takes five off; a climb of five takes three good days.
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [20, 20, 20], daysAgo: 1, difficulty: .tooHard)]).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(1, reps: 20)).reps, 20)
+    }
+
+    // MARK: - Holds and per-side moves
+
+    func testHoldsClimbInFiveSecondSteps() {
+        let hold = holdExercise()
+        let run = (0..<3).map { holdLog(id: "ex", seconds: [30, 30, 30], daysAgo: 1 + $0, difficulty: .justRight) }
+        XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: run).durationSeconds, 35)
+        XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: [holdLog(id: "ex", seconds: [30], daysAgo: 1, difficulty: .tooHard)]).durationSeconds, 25)
+        XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: [holdLog(id: "ex", seconds: [32], daysAgo: 1)]).durationSeconds, 30,
+                       "an old 32-second hold rounds down to 30")
+    }
+
+    func testPerSideHoldFollowsTheRulePerSideAndStopsAtTheGridCeiling() {
+        let sidePlank = perSideHold()
+        let target = AdaptiveOverload.target(for: sidePlank, recentLogs: [holdLog(id: "ex", seconds: [90], daysAgo: 1, difficulty: .tooEasy)])
+        XCTAssertEqual(target.durationSeconds, 90, "180 seconds of work a set is 90 a side")
+        let climb = AdaptiveOverload.target(for: sidePlank, recentLogs: [holdLog(id: "ex", seconds: [30], daysAgo: 1, difficulty: .tooEasy)])
+        XCTAssertEqual(climb.durationSeconds, 35)
+    }
+
+    // MARK: - "Couldn't finish" marks
+
+    func testTooHardWithMarksStepsBackOnlyTheMarkedMoves() {
+        let a = repsExercise(id: "a"), b = repsExercise(id: "b")
+        let logs = [multiLog([("a", 20, true), ("b", 20, nil)], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(AdaptiveOverload.target(for: a, recentLogs: logs).reps, 15, "the marked move steps back")
+        XCTAssertEqual(AdaptiveOverload.target(for: b, recentLogs: logs).reps, 20, "the unmarked move holds")
+    }
+
+    func testAnUnmarkedMoveInAMarkedTooHardSessionDoesNotCountTowardTheClimb() {
+        let b = repsExercise(id: "b")
+        let logs = [multiLog([("a", 20, true), ("b", 20, nil)], daysAgo: 1, difficulty: .tooHard)]
+            + (0..<3).map { multiLog([("b", 20, nil)], daysAgo: 2 + $0, difficulty: .justRight) }
+        XCTAssertEqual(AdaptiveOverload.target(for: b, recentLogs: logs).reps, 20,
+                       "the held session ends the run, so three older good sessions do not climb it")
+        XCTAssertEqual(AdaptiveOverload.signal(for: logs[0].exercises[1], in: logs[0]), .hold)
+    }
+
+    func testTooHardWithNothingMarkedStepsEveryMoveBack() {
+        let logs = [multiLog([("a", 20, nil), ("b", 15, nil)], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(id: "a"), recentLogs: logs).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(id: "b"), recentLogs: logs).reps, 10)
+    }
+
+    func testAMarkedMoveAtTheFloorSignalsAChainStepDown() {
+        let logs = [multiLog([("a", 10, true), ("b", 10, nil)], daysAgo: 1, difficulty: .tooHard)]
+        XCTAssertNotNil(AdaptiveOverload.floorStepBackDate(for: repsExercise(id: "a"), recentLogs: logs))
+        XCTAssertNil(AdaptiveOverload.floorStepBackDate(for: repsExercise(id: "b"), recentLogs: logs),
+                     "an unmarked move at ten holds rather than stepping down")
+    }
+
+    func testAMarkedMoveNeverCountsTowardAdvancement() {
+        let marked = LoggedExercise(id: UUID(), exerciseId: "a", pillar: .strength, movementPattern: .squat,
+                                    completedSets: [], skipped: false, couldNotFinish: true)
+        XCTAssertFalse(marked.countsTowardAdvancement)
+        var unmarked = marked
+        unmarked.couldNotFinish = nil
+        XCTAssertTrue(unmarked.countsTowardAdvancement)
+        unmarked.skipped = true
+        XCTAssertFalse(unmarked.countsTowardAdvancement)
+    }
+
+    // MARK: - Levers mapped onto five-steps
+
+    func testProgressionRateSetsHowManyGoodSessionsAClimbTakes() {
+        XCTAssertEqual(AdaptiveOverload.justRightSessionsToClimb(progressionRate: 1.0), 3)
+        XCTAssertEqual(AdaptiveOverload.justRightSessionsToClimb(progressionRate: 0.5), 6)
+        XCTAssertEqual(AdaptiveOverload.justRightSessionsToClimb(progressionRate: 0.85), 4)
+        XCTAssertEqual(AdaptiveOverload.justRightSessionsToClimb(progressionRate: 1.15), 3)
+        XCTAssertEqual(AdaptiveOverload.justRightSessionsToClimb(progressionRate: 2.0), 2)
+        XCTAssertEqual(AdaptiveOverload.justRightSessionsToClimb(progressionRate: 0.1), 6, "clamped to the rate rail")
+        // Monotone: a faster rate never asks for more sessions.
+        var previous = Int.max
+        for rate in stride(from: 0.5, through: 2.0, by: 0.05) {
+            let sessions = AdaptiveOverload.justRightSessionsToClimb(progressionRate: rate)
+            XCTAssertLessThanOrEqual(sessions, previous)
+            previous = sessions
+        }
+    }
+
+    func testAFasterRateClimbsSoonerAndAnEasedRateLater() {
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(2, reps: 15), progressionRate: 2.0).reps, 20)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(3, reps: 15), progressionRate: 0.5).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: justRightRun(6, reps: 15), progressionRate: 0.5).reps, 20)
+    }
+
+    func testTheRateNeverChangesTheStepSizeOrTheBackOff() {
+        let tooEasy = [repsLog(id: "ex", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooEasy)]
+        let tooHard = [repsLog(id: "ex", reps: [20, 20, 20], daysAgo: 1, difficulty: .tooHard)]
+        for rate in [0.5, 1.0, 2.0] {
+            XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: tooEasy, progressionRate: rate).reps, 20)
+            XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: tooHard, progressionRate: rate).reps, 15)
+        }
+    }
+
+    func testReentryScaleHoldsTheTargetAtLeastOneStepBelowOnTheGrid() {
+        let logs = [repsLog(id: "ex", reps: [20, 20, 20], daysAgo: 1)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.9).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.7).reps, 10)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 1.0).reps, 20)
+        let deep = [repsLog(id: "ex", reps: [40, 40, 40], daysAgo: 1)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: deep, reentryScale: 0.7).reps, 25)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: deep, reentryScale: 0.9).reps, 35)
+    }
+
+    func testReentryScaleNeverGoesBelowTheFloorOrTouchesADefault() {
+        let logs = [repsLog(id: "ex", reps: [10, 10, 10], daysAgo: 1)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, reentryScale: 0.7).reps, 10)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(defaultReps: 15), recentLogs: [], reentryScale: 0.7).reps, 15)
+    }
+
+    func testStartSeedScalesTheGridDefaultToTheNearestGridNumber() {
+        let squat = repsExercise(defaultReps: 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: squat, recentLogs: [], startingRepMultiplier: 1.0).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: squat, recentLogs: [], startingRepMultiplier: 1.15).reps, 15)
+        XCTAssertEqual(AdaptiveOverload.target(for: squat, recentLogs: [], startingRepMultiplier: 1.30).reps, 20)
+        let hold = holdExercise(defaultDurationSeconds: 30)
+        XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: [], startingRepMultiplier: 1.15).durationSeconds, 35)
+        XCTAssertEqual(AdaptiveOverload.target(for: hold, recentLogs: [], startingRepMultiplier: 1.30).durationSeconds, 40)
+        // A larger multiplier never serves less.
+        for base in [10, 15, 20, 30] {
+            let low = AdaptiveOverload.target(for: repsExercise(defaultReps: base), recentLogs: [], startingRepMultiplier: 1.0).reps!
+            let high = AdaptiveOverload.target(for: repsExercise(defaultReps: base), recentLogs: [], startingRepMultiplier: 1.30).reps!
+            XCTAssertGreaterThanOrEqual(high, low)
+        }
+    }
+
+    func testStartSeedNeverTouchesACapacityDerivedTarget() {
+        let logs = [repsLog(id: "ex", reps: [15, 15, 15], daysAgo: 1)]
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs, startingRepMultiplier: 1.30, startingSets: 4).reps, 15)
+    }
+
+    // MARK: - Sets and determinism
+
+    func testSetCountTracksDemonstratedSets() {
+        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: [repsLog(id: "ex", reps: [15, 15], daysAgo: 1)])
+        XCTAssertEqual(target.sets, 2)
+    }
+
     func testUsesMostRecentUsablePerformance() {
         let logs = [
-            repsLog(id: "ex", reps: [20, 20], daysAgo: 5, difficulty: .tooEasy), // older, ignored
-            repsLog(id: "ex", reps: [10, 10], daysAgo: 1, difficulty: .tooHard), // most recent wins
+            repsLog(id: "ex", reps: [25, 25, 25], daysAgo: 1, difficulty: .tooEasy),
+            repsLog(id: "ex", reps: [10, 10, 10], daysAgo: 8, difficulty: .tooEasy)
         ]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.reps, 8) // eased from 10 (round(10 * 0.80)), not progressed from 20
-        XCTAssertLessThan(target.reps!, 10)
+        XCTAssertEqual(AdaptiveOverload.target(for: repsExercise(), recentLogs: logs).reps, 30)
     }
-
-    /// A skipped most-recent performance is not the capacity *source* (the set count still tracks the
-    /// earlier worked session), but under the Asymmetric Ramp (US-E05) the skip is an eager
-    /// down-signal, so the next target eases below that demonstrated capacity.
-    func testSkippedPerformanceIsNotCapacityAndEasesTarget() {
-        let logs = [
-            repsLog(id: "ex", reps: [], daysAgo: 1, skipped: true),
-            repsLog(id: "ex", reps: [12, 12], daysAgo: 3, difficulty: .justRight),
-        ]
-        let target = AdaptiveOverload.target(for: repsExercise(), recentLogs: logs)
-        XCTAssertEqual(target.sets, 2)           // sets from the worked session, not the skip
-        XCTAssertLessThan(target.reps!, 12)      // the skip eases rather than progressing up
-        XCTAssertEqual(target.reps, 10)          // round(12 * 0.80), the eager down-step
-    }
-
-    // MARK: - Determinism
 
     func testTargetIsDeterministic() {
         let logs = [repsLog(id: "ex", reps: [11, 13, 12], daysAgo: 2, difficulty: .tooEasy)]
@@ -500,53 +450,41 @@ final class AdaptiveOverloadTests: XCTestCase {
         }
     }
 
-    // MARK: - Real bundled library (PRD US-C06 validation test)
+    // MARK: - Real bundled library (PRD validation)
 
-    /// The PRD's own validation case over the real library: last log 3x12 bodyweight squats marked
-    /// `too_hard` -> the next squat target is at or below 3x12 and computed from capacity.
+    /// The PRD's validation case over the real library: last log 3x15 bodyweight squats marked
+    /// `too_hard` -> the next squat target steps back to 10, computed from capacity.
     func testPRDValidationEasesSquatsMarkedTooHard() async throws {
         let library = try await MockExerciseService().exercises()
         let squat = try XCTUnwrap(library.first { $0.id == "squat_bodyweight" })
-        let logs = [repsLog(id: squat.id, reps: [12, 12, 12], daysAgo: 1, difficulty: .tooHard)]
+        let logs = [repsLog(id: squat.id, reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)]
 
         let target = AdaptiveOverload.target(for: squat, recentLogs: logs)
         XCTAssertEqual(target.sets, 3)
-        XCTAssertLessThanOrEqual(target.reps!, 12, "too_hard must ease at or below demonstrated 3x12")
-        XCTAssertNotEqual(target.reps, squat.defaultReps, "target is from capacity, not the static default")
+        XCTAssertEqual(target.reps, 10)
     }
 
-    /// A fresh user with no history gets the real squat's own default, never a heroic constant.
+    /// A fresh user gets the real squat's own (round) default, never a heroic constant.
     func testPRDFreshUserGetsSquatDefaultOverRealLibrary() async throws {
         let library = try await MockExerciseService().exercises()
         let squat = try XCTUnwrap(library.first { $0.id == "squat_bodyweight" })
 
         let target = AdaptiveOverload.target(for: squat, recentLogs: [])
-        XCTAssertEqual(target.reps, squat.defaultReps)
+        XCTAssertEqual(target.reps, 15)
         XCTAssertEqual(target.sets, AdaptiveOverload.defaultSets)
     }
 
-    /// The PRD's US-E05 validation case over the real library: 3x12 squats marked `too_hard` vs a
-    /// separate 3x12 history marked `too_easy` -> the too_hard history eases immediately and by more
-    /// than the too_easy history raises its target, and both stay within the rails.
-    func testPRDAsymmetricRampEasesMoreThanItClimbs() async throws {
+    /// Every catalog movement's no-history target sits on the grid: reps and training holds a multiple
+    /// of five from ten, at every Start Seed level.
+    func testEveryCatalogDefaultLandsOnTheGrid() async throws {
         let library = try await MockExerciseService().exercises()
-        let squat = try XCTUnwrap(library.first { $0.id == "squat_bodyweight" })
-
-        let hard = AdaptiveOverload.target(
-            for: squat, recentLogs: [repsLog(id: squat.id, reps: [12, 12, 12], daysAgo: 1, difficulty: .tooHard)]
-        )
-        let easy = AdaptiveOverload.target(
-            for: squat, recentLogs: [repsLog(id: squat.id, reps: [12, 12, 12], daysAgo: 1, difficulty: .tooEasy)]
-        )
-
-        let downStep = 12 - hard.reps!  // eager back-off
-        let upStep = easy.reps! - 12     // patient climb
-        XCTAssertLessThan(hard.reps!, 12, "too_hard eases immediately")
-        XCTAssertGreaterThan(easy.reps!, 12, "too_easy climbs")
-        XCTAssertGreaterThan(downStep, upStep, "the drop is larger than the rise")
-
-        // Rails honored on both sides.
-        XCTAssertGreaterThanOrEqual(hard.reps!, AdaptiveOverload.minReps)
-        XCTAssertLessThanOrEqual(easy.reps!, AdaptiveOverload.maxReps)
+        for exercise in library {
+            for multiplier in [1.0, 1.15, 1.30] {
+                let target = AdaptiveOverload.target(for: exercise, recentLogs: [], startingRepMultiplier: multiplier)
+                let value = try XCTUnwrap(exercise.isHold ? target.durationSeconds : target.reps)
+                XCTAssertEqual(value % 5, 0, "\(exercise.id) x\(multiplier) -> \(value)")
+                XCTAssertGreaterThanOrEqual(value, 10, exercise.id)
+            }
+        }
     }
 }

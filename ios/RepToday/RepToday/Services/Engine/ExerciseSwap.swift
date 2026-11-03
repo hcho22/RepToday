@@ -172,7 +172,11 @@ enum ExerciseSwap {
             reentry: sessionPolicy.reentry
         )
 
+        // The slot's window includes any stretch the timing fit gave it (ADR-0010). A rep-based
+        // substitute inherits the same stretch, so the session still lands where it was fitted; a hold
+        // keeps its prescribed seconds and gives the stretch up, which the drift below accounts for.
         let originalWorkPerSet = SessionAssembly.workSecondsPerSet(of: prescription)
+        let slotStretch = max(0, prescription.stretchSeconds ?? 0)
         let originalSlotSeconds = slotSeconds(
             workPerSet: originalWorkPerSet,
             sets: prescription.sets,
@@ -210,7 +214,7 @@ enum ExerciseSwap {
                 for: candidate,
                 reps: overload.reps,
                 durationSeconds: overload.durationSeconds
-            )
+            ) + (candidate.isHold ? 0 : slotStretch)
             guard let fit = bestFitSets(
                 workPerSet: workPerSet,
                 rest: prescription.restSeconds,
@@ -251,7 +255,7 @@ enum ExerciseSwap {
         }!
 
         return .substituted(
-            materialize(chosen.exercise, at: chosen.overload, sets: chosen.sets, like: prescription)
+            materialize(chosen.exercise, at: chosen.overload, sets: chosen.sets, stretch: slotStretch, like: prescription)
         )
     }
 
@@ -330,6 +334,7 @@ enum ExerciseSwap {
         _ exercise: Exercise,
         at overload: OverloadTarget,
         sets: Int,
+        stretch: Int,
         like prescription: PrescribedExercise
     ) -> PrescribedExercise {
         PrescribedExercise(
@@ -338,7 +343,8 @@ enum ExerciseSwap {
             sets: sets,
             reps: exercise.isHold ? nil : overload.reps,
             durationSeconds: exercise.isHold ? overload.durationSeconds : nil,
-            restSeconds: prescription.restSeconds
+            restSeconds: prescription.restSeconds,
+            stretchSeconds: !exercise.isHold && stretch > 0 ? stretch : nil
         )
     }
 
