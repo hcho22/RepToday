@@ -32,7 +32,11 @@ final class ContinuousCircuitExplainerTests: XCTestCase {
             spoken.localizedCaseInsensitiveContains("never rushes you"),
             "the '+ More time' reassurance must be announced; spoke: \(spoken)"
         )
-        // 3. Done jumps ahead.
+        // 3. Each set's countdown includes rest after the reps, and Done moves on early.
+        XCTAssertTrue(
+            spoken.localizedCaseInsensitiveContains("recover until the clock ends"),
+            "the rest-through point must be announced; spoke: \(spoken)"
+        )
         XCTAssertTrue(spoken.contains("Done"), "the 'Done' point must name the control; spoke: \(spoken)")
         // 4. Tones mark state changes.
         XCTAssertTrue(

@@ -46,7 +46,8 @@ struct ActiveSessionView: View {
 
     /// Whether this arrival holds the session's start for the first-run explainer (ADR-0010): the
     /// card shows *before* the session starts and its button starts it, so it never pauses a running
-    /// session. Decided once, on first arrival.
+    /// session. Decided once, on first arrival, while the one-shot flag says it has never been shown
+    /// (a missing `AppState`, as on hosted evidence surfaces, never shows it).
     @State private var startsAfterExplainer = false
 
     /// The height of the player's visible scroll area, and of everything in its column but the exercise
@@ -169,18 +170,13 @@ struct ActiveSessionView: View {
         viewModel.resumeRest(asOf: Date())
     }
 
-    /// Whether the first-run explainer (US-CC13) is due, flipping its one-shot flag the moment it is
-    /// decided - not on dismissal - so a force-quit while it is up can never bring it back. A missing
-    /// `AppState` (hosted evidence surfaces) never shows it.
-    private func claimExplainer() -> Bool {
-        guard let appState, appState.shouldShowContinuousCircuitExplainer else { return false }
-        appState.markContinuousCircuitExplainerSeen()
-        return true
-    }
-
-    /// Present the first-run explainer over the not-yet-started session (ADR-0010). The entrance is
-    /// animated unless Reduce Motion is on, in which case it appears in place with no transition.
+    /// Present the first-run explainer over the not-yet-started session (ADR-0010), flipping its
+    /// one-shot flag (US-CC13) the moment it shows - not on dismissal, so a force-quit while it is up can
+    /// never bring it back, and not before, so a force-quit behind an earlier Trainer choice keeps it
+    /// for the next arrival. The entrance is animated unless Reduce Motion is on, in which case it
+    /// appears in place with no transition.
     private func presentExplainer() {
+        appState?.markContinuousCircuitExplainerSeen()
         if reduceMotion {
             showExplainer = true
         } else {
@@ -313,7 +309,7 @@ struct ActiveSessionView: View {
             // while the card is still up keeps holding. In-session backgrounding pauses and resumes every
             // countdown through `scenePhase` below.
             if !startsAfterExplainer, !showExplainer {
-                startsAfterExplainer = claimExplainer()
+                startsAfterExplainer = appState?.shouldShowContinuousCircuitExplainer ?? false
             }
             handleArrival()
             // The user puts the phone down mid-plank; the screen must not lock out from under a

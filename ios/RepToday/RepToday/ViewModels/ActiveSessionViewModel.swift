@@ -368,7 +368,7 @@ final class ActiveSessionViewModel {
         }
         // A hold is different, and this is the rule that keeps it safe: a leg **never** survives the
         // player being torn down. Only the side the user still owes is restored, so a resumed session
-        // always comes back idle showing "Start hold" and the leg begins again on a deliberate tap.
+        // always comes back idle on that side, and `start()` begins its leg fresh from the full count.
         //
         // The alternative - restoring the countdown, however carefully guarded - kept regenerating the
         // same defect through different doors: a past deadline, a frozen remainder of zero, and a frozen
@@ -1106,9 +1106,9 @@ final class ActiveSessionViewModel {
 
     /// End the hold leg at zero, firing the completion cue exactly once. On the last side that also
     /// records the set and opens the rest (US-K02), so a timed exercise advances without the user
-    /// touching the screen; on an earlier side it parks on the next side, where the tap to start it is
-    /// the user's own time to change position. Idempotent and safe to call every tick from the view's
-    /// ticker (a paused or unfinished leg is left untouched), so the cue fires once at the right instant
+    /// touching the screen; on an earlier side it opens the brief "Switch sides" beat, the user's time to
+    /// change position, and the next side starts on its own as the beat ends. Idempotent and safe to
+    /// call every tick from the view's ticker (a paused or unfinished leg is left untouched), so the cue fires once at the right instant
     /// and never per-tick.
     func completeHoldIfElapsed(asOf date: Date) {
         guard hold?.hasElapsed(asOf: date) == true else { return }

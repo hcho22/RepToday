@@ -587,13 +587,44 @@ final class TrainerPoseEvidenceTests: XCTestCase {
         }
     }
 
-    /// A user who force-quit before choosing comes back with the first-run explainer already claimed:
-    /// the choice is asked again, and it holds the start rather than pausing a running session -
-    /// nothing counts down and `session_started` is not sent until the user chooses, and choosing
-    /// starts the session with no further tap (ADR-0010).
+    /// A user who has already seen the first-run explainer but whose Trainer is still unresolved is
+    /// asked again on a later arrival, and the choice holds the start rather than pausing a running
+    /// session - nothing counts down and `session_started` is not sent until the user chooses, and
+    /// choosing starts the session with no further tap (ADR-0010).
     func testAnUnresolvedTrainerHoldsTheStartOnALaterArrival() throws {
         let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
         try assertChoiceHoldsTheStart(session: session, service: MockUserService(user: user(sex: .other)), choosing: "Female Trainer")
+    }
+
+    /// A force-quit behind the Trainer choice, before choosing, leaves the first-run explainer unseen:
+    /// the next arrival asks for the Trainer again and the explainer still follows the choice.
+    func testAForceQuitBeforeChoosingKeepsTheExplainerForTheNextArrival() throws {
+        let session = workout([("Strength", .strength, [try prescription("hinge_glute_bridge", sets: 2)])])
+        let suiteName = "TrainerPoseEvidence-\(UUID().uuidString)"
+        let service = MockUserService(user: user(sex: .other))
+        host(
+            ActiveSessionView(workout: session, user: user(sex: .other), userService: service)
+                .environment(AppState(userDefaults: try XCTUnwrap(UserDefaults(suiteName: suiteName)))),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the first arrival asks for the Trainer: \(labels())")
+        XCTAssertFalse(labels().contains { $0.hasPrefix("Your session drives itself") }, "never stacked with the explainer")
+
+        // The app is killed with the choice still up, and the relaunch reads the same store afresh.
+        let relaunched = AppState(userDefaults: try XCTUnwrap(UserDefaults(suiteName: suiteName)))
+        XCTAssertTrue(relaunched.shouldShowContinuousCircuitExplainer, "nothing has shown the explainer yet")
+        host(
+            ActiveSessionView(workout: session, user: user(sex: .other), userService: service)
+                .environment(relaunched),
+            variants[0]
+        )
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Choose your Trainer") } }, timeout: 5),
+                      "the next arrival asks again: \(labels())")
+        activate("Female Trainer")
+        XCTAssertTrue(pump(until: { self.labels().contains { $0.hasPrefix("Your session drives itself") } }, timeout: 5),
+                      "the explainer follows the choice on the next arrival: \(labels())")
+        XCTAssertFalse(relaunched.shouldShowContinuousCircuitExplainer, "once shown, it is never shown again")
     }
 
     /// A choice whose write failed leaves the Trainer unresolved (captain, Open Question 8), so the next

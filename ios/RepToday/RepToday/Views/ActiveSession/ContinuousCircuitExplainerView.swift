@@ -4,8 +4,9 @@ import SwiftUI
 ///
 /// Shown at most once, the first time a user reaches the auto-advancing player, so the shift to a
 /// hands-free flow lands as reassurance rather than surprise. It states the four things a first-time
-/// user needs to trust the session: it drives itself, **+ More time** is always there, **Done** jumps
-/// ahead, and tones mark each state change. The copy is identity-framed and never loss-framed - it
+/// user needs to trust the session: it drives itself, **+ More time** is always there, each set's
+/// countdown includes rest after the reps with **Done** to move on early, and tones mark each state
+/// change. The copy is identity-framed and never loss-framed - it
 /// tells the user they are in control of a session that carries itself, not that a manual mode they
 /// had is gone.
 ///
@@ -40,8 +41,8 @@ struct ContinuousCircuitExplainerView: View {
         ),
         Point(
             symbol: "forward.end",
-            title: "Done jumps you ahead",
-            detail: "Finished early? Tap **Done** to move straight to what's next. You set the pace."
+            title: "Rest is built into each set",
+            detail: "Finish the reps, then recover until the clock ends. Ready sooner? Tap **Done** to move on early."
         ),
         Point(
             symbol: "speaker.wave.2",
