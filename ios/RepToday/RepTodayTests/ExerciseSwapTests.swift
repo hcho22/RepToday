@@ -781,6 +781,38 @@ final class ExerciseSwapTests: XCTestCase {
         )
     }
 
+    /// A swap mid-ramp follows the ramp's step-back rule too: held against the pre-Return capacity, but
+    /// never above a ramp session's number less 5 once that session stepped the move back.
+    func testSwapDuringTheReentryRampHonoursAStepBackInsideTheRamp() async throws {
+        let library = try await library()
+        let fixture = try leveredSwapFixture(library: library)
+        let slot = prescription(for: fixture.slot.exercise, sets: 1, perSet: 20)
+        var ramping = SessionPolicy.default
+        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 2)
+        var returnLog = log([fixture.peer], sets: 3, perSet: 20, daysAgo: 3)
+        returnLog.wasReturn = true
+
+        func reps(ramp1Difficulty: PerceivedDifficulty, tapped: Bool?) throws -> Int {
+            var ramp1 = log([fixture.peer], sets: 3, perSet: 20, daysAgo: 2)
+            ramp1.perceivedDifficulty = ramp1Difficulty
+            ramp1.exercises[0].couldNotFinish = tapped
+            let result = try substitute(
+                ExerciseSwap.swap(
+                    slot,
+                    in: workout([slot], wasReturn: false),
+                    user: user(),
+                    library: [slot.exercise, fixture.peer],
+                    recentLogs: [log([fixture.peer], sets: 3, perSet: 30, daysAgo: 20), returnLog, ramp1],
+                    sessionPolicy: ramping
+                )
+            )
+            return try XCTUnwrap(result.reps)
+        }
+
+        XCTAssertEqual(try reps(ramp1Difficulty: .justRight, tapped: nil), 20, "30 held at 0.8, from before the Return")
+        XCTAssertEqual(try reps(ramp1Difficulty: .tooHard, tapped: true), 15, "too hard on the ramp session drops 5")
+    }
+
     /// The general property the two tests above are instances of: *every* Step 6 lever the session was
     /// sized with visibly moves the substitute's target. A lever the swap seam forgets to thread makes
     /// its row here collapse onto the neutral target, so a third one cannot go missing silently.

@@ -2877,8 +2877,10 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(vm.couldNotFinishExerciseIds, ["push_up"])
         let log = try XCTUnwrap(vm.completionLog())
         XCTAssertEqual(log.exercises.first { $0.exerciseId == "push_up" }?.couldNotFinish, true)
-        XCTAssertNil(log.exercises.first { $0.exerciseId == "squat" }?.couldNotFinish)
+        XCTAssertEqual(log.exercises.first { $0.exerciseId == "squat" }?.couldNotFinish, false,
+                       "an untapped listed move records its answer")
         XCTAssertNil(log.exercises.first { $0.exerciseId == "cat_cow" }?.couldNotFinish)
+        XCTAssertNil(log.exercises.first { $0.exerciseId == "hinge" }?.couldNotFinish)
         XCTAssertEqual(log.perceivedDifficulty, .tooHard)
 
         // The marks persist through the same chained re-save as the rating.
@@ -2887,12 +2889,15 @@ final class ActiveSessionViewModelTests: XCTestCase {
         XCTAssertEqual(ratings.last?.difficulty, .tooHard)
         XCTAssertGreaterThanOrEqual(ratings.count, 2, "the rating and the mark were each re-saved")
 
-        // Tapping again unmarks; with nothing marked, "too hard" steps every move back.
+        // Tapping again unmarks; with nothing marked, "too hard" steps every move back and the session
+        // counts toward no move's advancement - recorded as answered, not as a log without marks.
         vm.toggleCouldNotFinish("push_up")
         XCTAssertTrue(vm.couldNotFinishExerciseIds.isEmpty)
         let unmarked = try XCTUnwrap(vm.completionLog())
-        XCTAssertTrue(unmarked.exercises.allSatisfy { $0.couldNotFinish == nil })
+        XCTAssertEqual(unmarked.exercises.filter { $0.couldNotFinish == false }.map(\.exerciseId), ["push_up", "squat"])
+        XCTAssertFalse(unmarked.exercises.contains { $0.couldNotFinish == true })
         XCTAssertEqual(AdaptiveOverload.signal(for: unmarked.exercises[1], in: unmarked), .stepBack)
+        XCTAssertFalse(unmarked.exercises.contains { unmarked.countsTowardAdvancement($0) })
     }
 
     func testChangingTheRatingAwayFromTooHardClearsTheMarks() throws {

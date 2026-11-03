@@ -347,13 +347,19 @@ final class AdaptiveOverloadTests: XCTestCase {
     }
 
     func testOnlyAMoveTheSessionStepsBackIsKeptFromAdvancement() {
-        let marked = multiLog([("a", 15, true), ("b", 15, nil)], daysAgo: 1, difficulty: .tooHard)
+        let marked = multiLog([("a", 15, true), ("b", 15, false)], daysAgo: 1, difficulty: .tooHard)
         XCTAssertFalse(marked.countsTowardAdvancement(marked.exercises[0]), "the tapped move never counts")
         XCTAssertTrue(marked.countsTowardAdvancement(marked.exercises[1]), "an untapped move beside it still counts")
 
-        let noneMarked = multiLog([("a", 15, nil), ("b", 15, nil)], daysAgo: 1, difficulty: .tooHard)
+        let noneMarked = multiLog([("a", 15, false), ("b", 15, false)], daysAgo: 1, difficulty: .tooHard)
         XCTAssertFalse(noneMarked.exercises.contains { noneMarked.countsTowardAdvancement($0) },
                        "too hard with nothing tapped eases every move, so none counts")
+
+        let beforeTheFollowUp = multiLog([("a", 15, nil), ("b", 15, nil)], daysAgo: 1, difficulty: .tooHard)
+        XCTAssertTrue(beforeTheFollowUp.exercises.allSatisfy { beforeTheFollowUp.countsTowardAdvancement($0) },
+                      "a log the follow-up never reached counts every worked move, as it always has")
+        XCTAssertEqual(AdaptiveOverload.signal(for: beforeTheFollowUp.exercises[0], in: beforeTheFollowUp), .stepBack,
+                       "while its too hard still steps every move back")
 
         var justRight = multiLog([("a", 15, nil)], daysAgo: 1, difficulty: .justRight)
         XCTAssertTrue(justRight.countsTowardAdvancement(justRight.exercises[0]))

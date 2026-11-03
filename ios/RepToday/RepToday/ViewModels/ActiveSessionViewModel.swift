@@ -668,12 +668,11 @@ final class ActiveSessionViewModel {
         guard isComplete else { return }
         perceivedDifficulty = difficulty
         completedLog?.perceivedDifficulty = difficulty
-        // The "couldn't finish" marks belong to a "too hard" rating only (ADR-0011): changing the rating
-        // away from it clears them, so a log never carries marks its rating does not explain.
-        if difficulty != .tooHard, !couldNotFinishExerciseIds.isEmpty {
-            couldNotFinishExerciseIds = []
-            applyCouldNotFinishMarks()
-        }
+        // The "couldn't finish" marks belong to a "too hard" rating only (ADR-0011): rating it records an
+        // answer on every listed move, and changing the rating away from it clears them, so a log never
+        // carries marks its rating does not explain.
+        if difficulty != .tooHard { couldNotFinishExerciseIds = [] }
+        applyCouldNotFinishMarks()
         recordRating(difficulty)
     }
 
@@ -717,7 +716,8 @@ final class ActiveSessionViewModel {
 
     /// Mark or unmark one listed move as "couldn't finish" and persist the marks onto the
     /// already-written log (ADR-0011). A marked move steps back next session and its sets never count
-    /// toward advancement; with none marked, "too hard" steps every move back as it always has. A no-op
+    /// toward advancement; with none marked, "too hard" steps every move back as it always has and the
+    /// session counts toward no move's advancement. A no-op
     /// unless the follow-up is showing and `exerciseId` is one of its moves. The persist rides the same
     /// fire-and-forget, chained re-save as the rating, so it can never be clobbered by an earlier write.
     func toggleCouldNotFinish(_ exerciseId: String) {
@@ -731,13 +731,16 @@ final class ActiveSessionViewModel {
         recordRating(.tooHard)
     }
 
-    /// Copy the current marks onto the durable log's per-move rows: `true` on a marked move, `nil`
-    /// (unmarked) on every other.
+    /// Copy the current marks onto the durable log's per-move rows: while the follow-up is showing,
+    /// `true` on a marked move and `false` on every other move it lists, so "nothing tapped" is recorded
+    /// rather than read as a log the follow-up never reached; `nil` on every move it does not list, and on
+    /// every move once the rating is no longer "too hard".
     private func applyCouldNotFinishMarks() {
         guard var log = completedLog else { return }
+        let listed = asksWhichMovesWereNotFinished ? Set(finishCheckMoves.map(\.id)) : []
         for index in log.exercises.indices {
-            log.exercises[index].couldNotFinish =
-                couldNotFinishExerciseIds.contains(log.exercises[index].exerciseId) ? true : nil
+            let id = log.exercises[index].exerciseId
+            log.exercises[index].couldNotFinish = listed.contains(id) ? couldNotFinishExerciseIds.contains(id) : nil
         }
         completedLog = log
     }

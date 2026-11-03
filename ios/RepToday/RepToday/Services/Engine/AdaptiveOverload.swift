@@ -163,6 +163,13 @@ enum AdaptiveOverload {
     /// `step` below the un-held target (down to the floor), so the ease is never lost to rounding. A
     /// no-history default is already the gentle starting value and is left untouched.
     ///
+    /// `heldSince` is when a Re-entry Ramp's held run began (`ReturnOverride.heldSince`, the Return
+    /// session), `nil` otherwise. The held target is then read from the capacity the user demonstrated
+    /// *before* it, so each held session is not held against the previous one's held number; but once a
+    /// session in the held run steps this move back ("too hard", "couldn't finish" or a skip), the move
+    /// is never served above the climb's own target over every log - that session's number less one
+    /// `step` - until a later session earns it back by the normal climb (ADR-0011).
+    ///
     /// `startingRepMultiplier` / `startingSets` are the cold-start **Start Seed** (US-O02), and they
     /// apply *only* to the no-history default target - the very first prescription of a movement. The
     /// multiplier scales the grid-rounded default and lands on the nearest grid number (never below
@@ -173,27 +180,52 @@ enum AdaptiveOverload {
         recentLogs: [WorkoutLog],
         progressionRate: Double = neutralProgressionRate,
         reentryScale: Double = neutralReentryScale,
+        heldSince: Date? = nil,
         startingRepMultiplier: Double = neutralStartingRepMultiplier,
         startingSets: Int = defaultSets
     ) -> OverloadTarget {
-        guard let capacity = demonstratedCapacity(for: exercise, recentLogs: recentLogs) else {
-            return defaultTarget(
+        let baseLogs = heldSince.map { since in recentLogs.filter { $0.completedAt < since } } ?? recentLogs
+        let target: OverloadTarget
+        if let capacity = demonstratedCapacity(for: exercise, recentLogs: baseLogs) {
+            let perSet = adjusted(
+                capacity,
+                isHold: exercise.isHold,
+                sides: exercise.sidesPerSet,
+                progressionRate: progressionRate,
+                reentryScale: reentryScale
+            )
+            target = OverloadTarget(
+                sets: clampSets(capacity.sets),
+                reps: exercise.isHold ? nil : perSet,
+                durationSeconds: exercise.isHold ? perSet : nil
+            )
+        } else {
+            target = defaultTarget(
                 for: exercise,
                 startingRepMultiplier: startingRepMultiplier,
                 startingSets: startingSets
             )
         }
-        let perSet = adjusted(
-            capacity,
+
+        guard
+            let heldSince,
+            recentLogs.contains(where: { log in
+                log.completedAt >= heldSince
+                    && log.exercises.contains { $0.exerciseId == exercise.id && log.stepsBack($0) }
+            }),
+            let latest = demonstratedCapacity(for: exercise, recentLogs: recentLogs)
+        else { return target }
+        let ceiling = adjusted(
+            latest,
             isHold: exercise.isHold,
             sides: exercise.sidesPerSet,
             progressionRate: progressionRate,
-            reentryScale: reentryScale
+            reentryScale: neutralReentryScale
         )
         return OverloadTarget(
-            sets: clampSets(capacity.sets),
-            reps: exercise.isHold ? nil : perSet,
-            durationSeconds: exercise.isHold ? perSet : nil
+            sets: target.sets,
+            reps: target.reps.map { min($0, ceiling) },
+            durationSeconds: target.durationSeconds.map { min($0, ceiling) }
         )
     }
 

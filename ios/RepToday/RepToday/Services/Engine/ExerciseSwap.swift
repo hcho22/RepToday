@@ -171,7 +171,7 @@ enum ExerciseSwap {
             isReturn: workout.wasReturn,
             reentry: sessionPolicy.reentry
         )
-        let capacityLogs = ReturnOverride.capacityLogs(
+        let heldSince = ReturnOverride.heldSince(
             recentLogs,
             isReturn: workout.wasReturn,
             reentry: sessionPolicy.reentry
@@ -210,9 +210,10 @@ enum ExerciseSwap {
 
             let overload = overloadTarget(
                 for: candidate,
-                recentLogs: capacityLogs,
+                recentLogs: recentLogs,
                 sessionPolicy: sessionPolicy,
                 reentryScale: reentryScale,
+                heldSince: heldSince,
                 startVolume: startVolume
             )
             let workPerSet = SessionAssembly.workSecondsPerSet(
@@ -317,6 +318,7 @@ enum ExerciseSwap {
         recentLogs: [WorkoutLog],
         sessionPolicy: SessionPolicy,
         reentryScale: Double,
+        heldSince: Date?,
         startVolume: ColdStartOverride.VolumeSeed
     ) -> OverloadTarget {
         let volume = exercise.pillar == .mobility ? .neutral : startVolume
@@ -325,6 +327,7 @@ enum ExerciseSwap {
             recentLogs: recentLogs,
             progressionRate: sessionPolicy.progressionRate,
             reentryScale: reentryScale,
+            heldSince: heldSince,
             startingRepMultiplier: volume.repMultiplier,
             startingSets: volume.sets
         )

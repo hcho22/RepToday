@@ -414,7 +414,8 @@ final class ProgressionChainSelectionTests: XCTestCase {
         let standard = try XCTUnwrap(library.first { $0.id == "push_standard" })
         let chain = library.filter { $0.progressionChainId == standard.progressionChainId }
 
-        let untapped = repsLog(id: "push_standard", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)
+        var untapped = repsLog(id: "push_standard", reps: [15, 15, 15], daysAgo: 1, difficulty: .tooHard)
+        untapped.exercises[0].couldNotFinish = false
         XCTAssertEqual(selectInChain(chain, logs: [untapped])?.exercise.id, "push_standard",
                        "too hard with nothing tapped never moves the user up")
         XCTAssertEqual(AdaptiveOverload.target(for: standard, recentLogs: [untapped]).reps, 10,
@@ -424,6 +425,7 @@ final class ProgressionChainSelectionTests: XCTestCase {
             (id: "push_standard", pattern: .push, sets: Array(repeating: CompletedSet(reps: 15, durationSeconds: nil), count: 3), skipped: false),
             (id: "squat_bodyweight", pattern: .squat, sets: Array(repeating: CompletedSet(reps: 15, durationSeconds: nil), count: 3), skipped: false),
         ], difficulty: .tooHard)
+        otherTapped.exercises[0].couldNotFinish = false
         otherTapped.exercises[1].couldNotFinish = true
         XCTAssertEqual(selectInChain(chain, logs: [otherTapped])?.exercise.id, "push_diamond",
                        "an untapped move in a session that tapped another still counts")

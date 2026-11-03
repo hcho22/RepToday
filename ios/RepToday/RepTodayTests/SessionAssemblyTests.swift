@@ -1266,6 +1266,45 @@ final class SessionAssemblyTests: XCTestCase {
         XCTAssertEqual(targets, targets.sorted(), "the ramp never takes the target down from one session to the next")
     }
 
+    /// "Too hard" still drops 5 during a Re-entry Ramp: the ramp keeps its pre-Return base, but once a
+    /// ramp session steps a move back the move is never served above that session's number less 5 until
+    /// the normal climb earns it back. A beginner last at 30 squats is served 20 on the Return and 20 on
+    /// the first ramp session, rates that one too hard and taps squat; the next ramp session serves 15,
+    /// and the one after stays at 15 unless the user climbs (here "too easy", one step to 20).
+    func testReentryRampStillStepsBackAMoveRatedTooHard() async throws {
+        let library = try await library()
+        let beginner = user(level: .beginner)
+        let preReturn = log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 20, difficulty: .justRight)
+
+        func squatReps(rampRemaining: Int, logs: [WorkoutLog]) throws -> Int {
+            var policy = SessionPolicy.default
+            policy.varietyWindow = 0
+            policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: rampRemaining)
+            let workout = assemble(minutes: 60, user: beginner, library: library, logs: logs, policy: policy)
+            let squat = try XCTUnwrap(workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
+            return try XCTUnwrap(squat.reps)
+        }
+
+        let returned = try squatReps(rampRemaining: ReturnOverride.rampSessions, logs: [preReturn])
+        var returnLog = log([("squat_bodyweight", .strength, .squat, returned)], daysAgo: 3)
+        returnLog.wasReturn = true
+        let ramp1 = try squatReps(rampRemaining: 3, logs: [preReturn, returnLog])
+        var ramp1Log = log([("squat_bodyweight", .strength, .squat, ramp1)], daysAgo: 2, difficulty: .tooHard)
+        ramp1Log.exercises[0].couldNotFinish = true
+        let afterTooHard = [preReturn, returnLog, ramp1Log]
+
+        let ramp2 = try squatReps(rampRemaining: 2, logs: afterTooHard)
+        XCTAssertEqual([returned, ramp1], [20, 20])
+        XCTAssertEqual(ramp2, 15, "too hard on a ramp session drops the next one by 5")
+
+        let ramp2JustRight = log([("squat_bodyweight", .strength, .squat, ramp2)], daysAgo: 1, difficulty: .justRight)
+        XCTAssertEqual(try squatReps(rampRemaining: 1, logs: afterTooHard + [ramp2JustRight]), 15,
+                       "the ramp's own climb does not lift a stepped-back move without a qualifying climb")
+        let ramp2TooEasy = log([("squat_bodyweight", .strength, .squat, ramp2)], daysAgo: 1, difficulty: .tooEasy)
+        XCTAssertEqual(try squatReps(rampRemaining: 1, logs: afterTooHard + [ramp2TooEasy]), 20,
+                       "a qualifying climb earns one step back")
+    }
+
     /// The Return override is suppressed while cold-start is active: cold-start already serves gentle,
     /// capped, strength-led sessions, so a "Return" during the First-Week window defers to the
     /// cold-start strength lead. Both now lead strength (US-004/US-005), so the guard is that the

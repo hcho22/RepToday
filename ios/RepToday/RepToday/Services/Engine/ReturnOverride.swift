@@ -115,26 +115,19 @@ enum ReturnOverride {
         return rampScale(remaining: reentry.rampSessionsRemaining)
     }
 
-    /// The logs Step 6 reads demonstrated capacity from, so the Return and every ramp session are held
-    /// relative to the user's last capacity from before the Return rather than the previous held
-    /// session's own log (which would compound each hold onto the last until the floor).
-    ///
-    /// - A **Return** reads every log: they all come from before this Return.
-    /// - An active **Re-entry Ramp** reads only the logs before the most recent Return session
-    ///   (`wasReturn`), so the Return's own log and the ramp sessions after it never become the capacity
-    ///   the next ramp session is held against.
-    /// - Otherwise every log, so the steady state is unchanged.
-    static func capacityLogs(
+    /// When this session's held run began, for Step 6 (`AdaptiveOverload.target(heldSince:)`): during an
+    /// active **Re-entry Ramp** the most recent Return session (`wasReturn`), so the Return and every
+    /// ramp session are held against the user's last capacity from before the Return rather than the
+    /// previous held session's own number (which would compound each hold onto the last until the
+    /// floor), while a step back inside the run still takes the move down. `nil` on the **Return**
+    /// itself (every log comes from before it) and outside a ramp, so the steady state is unchanged.
+    static func heldSince(
         _ recentLogs: [WorkoutLog],
         isReturn: Bool,
         reentry: SessionPolicy.Reentry?
-    ) -> [WorkoutLog] {
-        guard
-            !isReturn,
-            let reentry, reentry.rampSessionsRemaining > 0,
-            let returnedAt = recentLogs.filter(\.wasReturn).map(\.completedAt).max()
-        else { return recentLogs }
-        return recentLogs.filter { $0.completedAt < returnedAt }
+    ) -> Date? {
+        guard !isReturn, let reentry, reentry.rampSessionsRemaining > 0 else { return nil }
+        return recentLogs.filter(\.wasReturn).map(\.completedAt).max()
     }
 
     /// The climbing volume scale for a Re-entry Ramp session: the gentle floor when `remaining` is

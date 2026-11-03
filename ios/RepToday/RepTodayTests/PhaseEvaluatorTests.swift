@@ -350,6 +350,25 @@ final class PhaseEvaluatorTests: XCTestCase {
         XCTAssertEqual(evaluate(logs), .discipline, "a skipped clearing set does not earn competence")
     }
 
+    /// A log written before the "couldn't finish" follow-up existed carries no marks, so a "too hard"
+    /// rating on it never meant "nothing tapped": the Foundation entry rung it cleared stays cleared,
+    /// exactly as before ADR-0011. Once the follow-up answered a "too hard" session with nothing tapped,
+    /// that session counts toward no line.
+    func testOldUnmarkedTooHardLogThatClearedAFoundationStaysCleared() {
+        var logs = sustainedHistory(weeks: 8) + competenceLogs()
+        let pushIndex = logs.firstIndex { $0.exercises.contains { $0.exerciseId == "push_wall" } }!
+        logs[pushIndex].perceivedDifficulty = .tooHard
+        XCTAssertNil(logs[pushIndex].exercises[0].couldNotFinish)
+        XCTAssertEqual(progress(logs).foundations.first { $0.foundation == .push }?.isCleared, true,
+                       "an older too-hard log still clears its Foundation line")
+        XCTAssertEqual(evaluate(logs), .strength)
+
+        logs[pushIndex].exercises[0].couldNotFinish = false
+        XCTAssertEqual(progress(logs).foundations.first { $0.foundation == .push }?.isCleared, false,
+                       "a too-hard session the follow-up answered with nothing tapped clears nothing")
+        XCTAssertEqual(evaluate(logs), .discipline)
+    }
+
     // MARK: - Determinism
 
     func testDeterministic() {
