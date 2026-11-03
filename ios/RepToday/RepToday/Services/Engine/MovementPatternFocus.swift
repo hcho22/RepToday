@@ -175,8 +175,9 @@ enum PatternFocus {
     ///
     /// Restricting the lead pattern to `candidatePatterns` makes the rule pillar-aware: a strength
     /// session ignores yesterday's mobility warm-up and keys off yesterday's first *strength*
-    /// pattern instead.
-    private static func recentLeadPattern(
+    /// pattern instead. Also read by `SessionAssembly`'s Different workout pattern order, which keeps
+    /// the same hold-back.
+    static func recentLeadPattern(
         among candidatePatterns: [MovementPattern],
         recentLogs: [WorkoutLog],
         asOf: Date,

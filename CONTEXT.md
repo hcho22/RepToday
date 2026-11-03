@@ -69,6 +69,16 @@ This is an engine-only change; the continuous-circuit player renders the reshape
 The decision is recorded as [ADR-0004](docs/adr/0004-round-cap-wide-circuit.md) (which supersedes ADR-0003's 45-minute "8 rounds x 4 stations" consequence); its PRD is `.claude/agent/tasks/prd-round-cap-wide-circuits.md` (`US-RC##`).
 The owning code is `Services/Engine/SessionAssembly.swift` (round rails, reserve generation, depth-first fit, `blockSeconds`) and `Services/Engine/ProgressionChainSelection.swift` (the per-pattern multi-chain frontier via `selectAll`/`selectInChain`).
 
+## Different workout
+
+The Ready Screen's button that rebuilds today's session at the same length with other moves, pressed as often as the user likes before they start.
+Each press ranks the moves the earlier presses of the same sequence already showed behind their alternatives; it never filters, so movement access, injury flags, earned tiers and the timing fit still decide every pick.
+When nothing new is left the default session comes back and the presses start over, so the same history and the same number of presses always give the same workout.
+A length change starts over, a paused session waiting to be resumed is untouched, and nothing is logged until the session is started, so a press never counts toward variety, progression or the Consistency Score.
+Starting a session, fresh or resumed, ends the sequence, so the next Ready Screen shows the default session for the history that session leaves.
+It is unrelated to the in-session **Swap**, which replaces one move while a session runs.
+The owning code is `Models/SessionVariation.swift`, `SessionAssembly.assemble(variation:)` and `ReadyViewModel.showDifferentWorkout()`.
+
 ## Staple movement
 
 A movement most people already know by name - a push-up, a squat, a plank, a glute bridge - and the only kind a beginner or intermediate user is offered while they are in the **Discipline Phase**.

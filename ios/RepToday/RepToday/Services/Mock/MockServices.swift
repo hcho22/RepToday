@@ -29,7 +29,8 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation
     ) async throws -> Workout {
         // The full deterministic pipeline (US-C01…US-C07) runs through `SessionAssembly`, which
         // chains Steps 1-6 and assembles a timing-fit, fully-formed `Workout`. Routing the mock
@@ -45,6 +46,7 @@ final class MockWorkoutEngine: WorkoutEngineProtocol {
             library: library,
             recentLogs: recentLogs,
             sessionPolicy: sessionPolicy,
+            variation: variation,
             asOf: now()
         )
     }

@@ -42,7 +42,8 @@ final class AccountPreservationTests: XCTestCase {
                 try await policies.save(policy, for: user.id)
                 let engine = MockWorkoutEngine(exerciseService: try MockExerciseService(), now: { user.createdAt })
                 let workout = try await engine.generateWorkout(
-                    requestedMinutes: 15, user: user, recentLogs: MockPersistence.sampleLogs, sessionPolicy: policy
+                    requestedMinutes: 15, user: user, recentLogs: MockPersistence.sampleLogs, sessionPolicy: policy,
+                    variation: .none
                 )
                 var session = ActiveSessionState(fresh: workout)
                 session.currentSet = 2
@@ -77,7 +78,8 @@ final class AccountPreservationTests: XCTestCase {
                 XCTAssertTrue(appState.isOnboarded)
                 XCTAssertEqual(authority.subscription, subscription, "sign-in must neither grant nor remove Premium")
                 let generated = try await engine.generateWorkout(
-                    requestedMinutes: 15, user: XCTUnwrap(reloaded), recentLogs: reloadedLogs, sessionPolicy: policy
+                    requestedMinutes: 15, user: XCTUnwrap(reloaded), recentLogs: reloadedLogs, sessionPolicy: policy,
+                    variation: .none
                 )
                 XCTAssertFalse(generated.blocks.isEmpty, "free workouts remain usable after every outcome")
                 let appleSession = try await active.load(for: "synthetic-new-apple-id")

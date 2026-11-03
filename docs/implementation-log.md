@@ -1746,6 +1746,33 @@ On the captain's "optin - 1", `gtm/03-site/waitlist.js` keeps both boxes but mak
 The field name, its `true`/`false` values and everything Kit, Convex and the view receive are unchanged; the pages' HTML is unchanged.
 FR-2 in the PRD records the decision, `tools/waitlist/test-source.cjs` the cases and [the validation record](../artifacts/reports/waitlist-beta-one-choice/validation.md) the browser checks; nothing changes on reptoday.app until the next captain-approved publish.
 
+## Different workout on the Ready Screen (2026-11-02)
+
+Before this, the only way to change the session the Ready Screen offered was to pick another length; swapping one move existed only once the session was running.
+The captain chose one button that rebuilds the whole workout with other moves, same length and same kind of training, pressable again for another one.
+
+What landed:
+
+- **The control.** `DifferentWorkoutButton` (`Views/Ready/ReadyView.swift`) sits under the duration chips, styled like them so Start stays the one dominant action.
+  It regenerates in place with no spinner, never disables Start, and has no animation to still under Reduce Motion.
+  VoiceOver reads "Different workout" with the hint "Builds another N minute workout with other moves."; at the accessibility text sizes the icon moves above the label so the label wraps between words.
+- **An explicit engine input.** `SessionVariation` (`Models/SessionVariation.swift`) is the set of moves the earlier presses of the current sequence showed, passed to `WorkoutEngineProtocol.generateWorkout(..., variation:)` and `SessionAssembly.assemble(variation:)`.
+  The assembler ranks those moves behind their alternatives at the three choice points: the strength pattern order (a pattern with an unshown move leads, Step 3's no-repeat lead still held), each pattern's chain ranking (`ProgressionChainSelection.selectAll`, after the Start Seed withheld key and ahead of the variety window), and the warm-up and cooldown pools.
+  It is a preference, never a filter, so movement access, injury flags, earned frontiers, the round cap, even rounds, the timing fit and Adaptive Overload targets decide every pick as before.
+  `.none`, the default, takes the unchanged path.
+- **Cycling.** Every press that shows anything new adds at least one move to the set; when a press can show nothing new, the engine serves the default session and `SessionVariation.advanced(past:)` starts the next press over from it.
+  The engine stays deterministic and `asOf`-pure: the same inputs and press count give the same workout.
+- **Ready Screen state.** `ReadyViewModel.showDifferentWorkout()` holds the variation in memory, re-reads the profile like a chip tap so injury flags are current, and ignores a slower result a newer press or chip tap has overtaken.
+  A length change starts the sequence over; a re-appear keeps the chosen workout; a paused session waiting to be resumed is never touched.
+  Starting a session, fresh or resumed, ends the sequence (`sessionWillStart()`), so the next load builds the default session for the history that session leaves rather than re-applying old presses to it.
+  Nothing is logged, persisted or reported until the user starts a session, so a press never counts toward variety, progression or the Consistency Score.
+- **Tests.** The "Different workout" row in [`docs/test-coverage.md`](test-coverage.md).
+
+Found while testing, and left alone here: for a user with an injury flag, the default 60-minute session (and with two flags the 45-minute one) already lands several minutes short, because the narrowed pool runs out of movements once every station is at the four-round cap.
+That shortfall is the default session's, not this change's; `DifferentWorkoutTests` checks the ±60 s promise wherever the default keeps it and allows the exemption only to an injured user.
+(Closed by the hands-free sessions change below: the stretched work windows fill a narrowed pool's long session, so `DifferentWorkoutTests` now checks the ±60 s promise on every press, injured users included.)
+How the button feels on a physical iPhone is untested.
+
 ## Hands-free sessions, short rests and round numbers (2026-11-02)
 
 On the captain's 2026-11-02 answers, a session now runs for the length the user chose with no tap after it starts, every rest is at most 15 seconds, and reps and holds are round numbers.
@@ -1757,4 +1784,5 @@ On the captain's 2026-11-02 answers, a session now runs for the length the user 
 - **Round numbers and the climb.** `AdaptiveOverload` lands every target on a grid of five from 10 (reps to 50, holds to the per-side-aware ceiling), reads an older logged number rounded down onto it, and moves one step at a time: three "just right" sessions in a row at one number, "too easy" at once, "too hard" or a skip back one step. At the floor, `ProgressionChainSelection` serves the rung below until a later session clears it again (`AdaptiveOverload.floorStepBackDate`). The levers map onto five-steps as ADR-0011's table records; the Start Seed's volume easing keeps its `x0.8` as `ColdStartOverride.volumeEaseFactor`.
 - **"Couldn't finish".** After "too hard" the completion screen lists the session's worked strength and primal moves to tap (`ActiveSessionViewModel.finishCheckMoves`/`toggleCouldNotFinish`); the marks persist through the rating's re-save as `LoggedExercise.couldNotFinish`, and `LoggedExercise.countsTowardAdvancement` keeps a marked move out of chain advancement, the plateau check and Foundation clearing.
 - **Catalog.** Every rep advancement criterion at or below 10 per set is raised to 15 in `Exercises.json` (21 criteria, set counts and per-side wording kept; the captain's option C), so a newly reached move needs at least four sessions to clear; no Foundation entry rung changed.
+- **Injured users' long sessions.** An injury flag that removes whole patterns used to leave the 45- and 60-minute sessions several minutes short (noted under "Different workout" above); the stretch fills them, which is why its rail (`maxStretchSecondsPerSet`) is 90 seconds rather than 60 - a lower-back user's 60-minute session stretches each rep set by about a minute, while every unflagged session stays at 21 seconds or less.
 - **Not done here (follow-ups).** No on-screen cue marks the spare seconds at the end of a stretched set; the progression map still names the highest rung reached when the user has stepped down; how stretched sets and ten-rep floors on the hardest moves feel on a phone is the captain's check by hand.

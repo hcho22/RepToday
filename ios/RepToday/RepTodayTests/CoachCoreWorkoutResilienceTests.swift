@@ -119,7 +119,8 @@ final class CoachCoreWorkoutResilienceTests: XCTestCase {
                 requestedMinutes: ready.requestedMinutes,
                 user: user,
                 recentLogs: ready.recentLogs,
-                sessionPolicy: ready.policy
+                sessionPolicy: ready.policy,
+                variation: .none
             )
             XCTAssertEqual(workoutSignature(workout), workoutSignature(expected))
 

@@ -916,7 +916,8 @@ private final class CapturingWorkoutEngine: WorkoutEngineProtocol {
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation
     ) async throws -> Workout {
         capturedRequestedMinutes = requestedMinutes
         capturedPolicy = sessionPolicy
@@ -954,7 +955,8 @@ private final class FlakyWorkoutEngine: WorkoutEngineProtocol {
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation
     ) async throws -> Workout {
         if shouldFail { throw GenerationError() }
         return Workout(
@@ -1096,7 +1098,8 @@ private final class PillarByDurationEngine: WorkoutEngineProtocol {
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation
     ) async throws -> Workout {
         Workout(
             id: UUID(),
@@ -1158,7 +1161,8 @@ private final class ClockAdvancingWorkoutEngine: WorkoutEngineProtocol {
         requestedMinutes: Int,
         user: User,
         recentLogs: [WorkoutLog],
-        sessionPolicy: SessionPolicy
+        sessionPolicy: SessionPolicy,
+        variation: SessionVariation
     ) async throws -> Workout {
         generateCallCount += 1
         clock.advance(advanceBy)
