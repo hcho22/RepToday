@@ -180,9 +180,10 @@ final class DeterministicSessionPolicyService: SessionPolicyServiceProtocol {
             return PlateauDiagnosis.reweighted(policy, for: plateau)
 
         case .return:
-            // Discipline overrides optimization: the Return itself carries no readjustment. Seeding
-            // the Re-entry Ramp is the only policy change; the engine (US-E06) holds difficulty
-            // below normal and walks it back over these sessions. Optimization levers are untouched.
+            // Discipline overrides optimization: the Return itself carries no readjustment. Recording
+            // the Re-entry Ramp is the only policy change; the engine (US-E06) holds difficulty below
+            // normal over the sessions after the Return, reading its position from the logs rather than
+            // this record. Optimization levers are untouched.
             var next = policy
             next.reentry = SessionPolicy.Reentry(rampSessionsRemaining: ReturnOverride.rampSessions)
             return next

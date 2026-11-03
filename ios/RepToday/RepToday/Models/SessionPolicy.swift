@@ -156,11 +156,14 @@ extension SessionPolicy {
         static let neutralStartingSets = 3
     }
 
-    /// The Re-entry Ramp state after a Return (US-E06). Difficulty is held below normal and
-    /// walked back up over the remaining sessions - the readjustment for lost time lives here,
-    /// never in the Return itself.
+    /// The Re-entry Ramp the Programmer recorded after a Return (US-E06). Difficulty is held below
+    /// normal and walked back up over the sessions after the Return - the readjustment for lost time
+    /// lives there, never in the Return itself. The engine reads the ramp's position from the logs
+    /// (`ReturnOverride.rampSessionsRemaining(recentLogs:)`), not from this value; it stays so older data
+    /// and older app versions still load.
     struct Reentry: Codable, Equatable {
-        /// Sessions still to ramp back up; decrements each session until it reaches zero.
+        /// The ramp length recorded at the Return. Nothing counts it down, so it is not the ramp's
+        /// position.
         var rampSessionsRemaining: Int
     }
 

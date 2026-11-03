@@ -1176,35 +1176,37 @@ final class SessionAssemblyTests: XCTestCase {
     }
 
     /// The Re-entry Ramp walks Step 6's volume back up over the sessions after a Return: the lead
-    /// exercise's rep target climbs from the gentle floor toward normal as `rampSessionsRemaining`
-    /// decrements, and the readjustment lands here (never in the Return itself).
+    /// exercise's rep target climbs from the gentle floor toward normal with each session completed since
+    /// the Return log, and the readjustment lands here (never in the Return itself).
     func testReentryRampClimbsRepTargetAcrossSessions() async throws {
         let library = try await library()
-        // A present user (most recent session today, so no new Return): squat leads a single-focus
-        // strength session, last worked six days ago at 15 (below its 3x20 criteria, so it stays on
-        // tier) after three "just right" sessions there, so its un-held target climbs to 20 (ADR-0011).
-        let logs = [
-            log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 0),
-            log([
-                ("push_standard", .strength, .push, 10),
-                ("hinge_glute_bridge", .strength, .hinge, 10),
-                ("core_bird_dog", .strength, .core, 10),
-                ("pull_superman", .strength, .pull, 10),
-                ("primal_bear_crawl", .primal, .locomotion, 10),
-            ], daysAgo: 1),
+        // A user back from a gap (the Return was four days ago, so no new Return): squat leads a
+        // single-focus strength session, last worked before the Return at 15 (below its 3x20 criteria,
+        // so it stays on tier) after three "just right" sessions there, so its un-held target climbs to
+        // 20 (ADR-0011).
+        var returnLog = log([
+            ("push_standard", .strength, .push, 10),
+            ("hinge_glute_bridge", .strength, .hinge, 10),
+            ("core_bird_dog", .strength, .core, 10),
+            ("pull_superman", .strength, .pull, 10),
+            ("primal_bear_crawl", .primal, .locomotion, 10),
+        ], daysAgo: 4)
+        returnLog.wasReturn = true
+        let history = [
+            returnLog,
             log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 6, difficulty: .justRight),
             log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 8, difficulty: .justRight),
             log([("squat_bodyweight", .strength, .squat, 15)], daysAgo: 10, difficulty: .justRight),
         ]
-        XCTAssertFalse(ReturnOverride.isReturn(recentLogs: logs, asOf: asOf, calendar: calendar), "a present user is not returning")
+        XCTAssertFalse(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a present user is not returning")
 
-        func squatReps(rampRemaining: Int?) throws -> Int {
+        func squatReps(sessionsSinceReturn: Int) throws -> Int {
+            let since = (0..<sessionsSinceReturn).map { log([("mobility_cat_cow", .mobility, .mobility, 10)], daysAgo: 3 - $0) }
             var policy = SessionPolicy.default
             // Pin the variety window to 1 so every run selects squat_bodyweight identically, isolating
             // the reentry ramp as the only mover.
             policy.varietyWindow = 1
-            if let rampRemaining { policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: rampRemaining) }
-            let workout = assemble(minutes: 10, user: user(), library: library, logs: logs, policy: policy)
+            let workout = assemble(minutes: 10, user: user(), library: library, logs: history + since, policy: policy)
             let squat = try XCTUnwrap(
                 workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
                 "squat_bodyweight should lead this single-focus strength session"
@@ -1212,10 +1214,10 @@ final class SessionAssemblyTests: XCTestCase {
             return try XCTUnwrap(squat.reps)
         }
 
-        let ramp3 = try squatReps(rampRemaining: 3) // first session back: most eased (floor)
-        let ramp2 = try squatReps(rampRemaining: 2)
-        let ramp1 = try squatReps(rampRemaining: 1)
-        let normal = try squatReps(rampRemaining: nil) // ramp retired: back to normal
+        let ramp3 = try squatReps(sessionsSinceReturn: 0) // first session back: most eased (floor)
+        let ramp2 = try squatReps(sessionsSinceReturn: 1)
+        let ramp1 = try squatReps(sessionsSinceReturn: 2)
+        let normal = try squatReps(sessionsSinceReturn: 3) // ramp over: back to normal
 
         // On the grid of five (ADR-0011): the un-held 20 x 0.7/0.8/0.9 rounds down onto the grid, at
         // least one step below 20.
@@ -1233,11 +1235,10 @@ final class SessionAssemblyTests: XCTestCase {
         let beginner = user(level: .beginner)
         var history = [log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 20, difficulty: .justRight)]
 
-        func squatReps(rampRemaining: Int) throws -> Int {
+        func squatReps() throws -> Int {
             var policy = SessionPolicy.default
             // Every chain counts as fresh, so the squat pattern keeps the chain the user is progressing.
             policy.varietyWindow = 0
-            policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: rampRemaining)
             let workout = assemble(minutes: 60, user: beginner, library: library, logs: history, policy: policy)
             let squat = try XCTUnwrap(
                 workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" },
@@ -1247,18 +1248,17 @@ final class SessionAssemblyTests: XCTestCase {
         }
 
         XCTAssertTrue(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar), "a 20-day gap is a Return")
-        // The Programmer seeds the ramp on the Return trigger before the Return session is generated.
-        let returned = try squatReps(rampRemaining: ReturnOverride.rampSessions)
+        let returned = try squatReps()
         var returnLog = log([("squat_bodyweight", .strength, .squat, returned)], daysAgo: 3)
         returnLog.wasReturn = true
         history.append(returnLog)
 
         var targets = [returned]
-        for (remaining, daysAgo) in [(3, 2), (2, 1), (1, 0)] {
+        for daysAgo in [2, 1, 0] {
             XCTAssertFalse(ReturnOverride.isReturn(recentLogs: history, asOf: asOf, calendar: calendar))
-            let reps = try squatReps(rampRemaining: remaining)
+            let reps = try squatReps()
             targets.append(reps)
-            if remaining > 1 { history.append(log([("squat_bodyweight", .strength, .squat, reps)], daysAgo: daysAgo)) }
+            if daysAgo > 0 { history.append(log([("squat_bodyweight", .strength, .squat, reps)], daysAgo: daysAgo)) }
         }
 
         // 30 held at 0.7, 0.7, 0.8, 0.9 on the grid, each at least one step below 30.
@@ -1276,32 +1276,31 @@ final class SessionAssemblyTests: XCTestCase {
         let beginner = user(level: .beginner)
         let preReturn = log([("squat_bodyweight", .strength, .squat, 30)], daysAgo: 20, difficulty: .justRight)
 
-        func squatReps(rampRemaining: Int, logs: [WorkoutLog]) throws -> Int {
+        func squatReps(logs: [WorkoutLog]) throws -> Int {
             var policy = SessionPolicy.default
             policy.varietyWindow = 0
-            policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: rampRemaining)
             let workout = assemble(minutes: 60, user: beginner, library: library, logs: logs, policy: policy)
             let squat = try XCTUnwrap(workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
             return try XCTUnwrap(squat.reps)
         }
 
-        let returned = try squatReps(rampRemaining: ReturnOverride.rampSessions, logs: [preReturn])
+        let returned = try squatReps(logs: [preReturn])
         var returnLog = log([("squat_bodyweight", .strength, .squat, returned)], daysAgo: 3)
         returnLog.wasReturn = true
-        let ramp1 = try squatReps(rampRemaining: 3, logs: [preReturn, returnLog])
+        let ramp1 = try squatReps(logs: [preReturn, returnLog])
         var ramp1Log = log([("squat_bodyweight", .strength, .squat, ramp1)], daysAgo: 2, difficulty: .tooHard)
         ramp1Log.exercises[0].couldNotFinish = true
         let afterTooHard = [preReturn, returnLog, ramp1Log]
 
-        let ramp2 = try squatReps(rampRemaining: 2, logs: afterTooHard)
+        let ramp2 = try squatReps(logs: afterTooHard)
         XCTAssertEqual([returned, ramp1], [20, 20])
         XCTAssertEqual(ramp2, 15, "too hard on a ramp session drops the next one by 5")
 
         let ramp2JustRight = log([("squat_bodyweight", .strength, .squat, ramp2)], daysAgo: 1, difficulty: .justRight)
-        XCTAssertEqual(try squatReps(rampRemaining: 1, logs: afterTooHard + [ramp2JustRight]), 15,
+        XCTAssertEqual(try squatReps(logs: afterTooHard + [ramp2JustRight]), 15,
                        "the ramp's own climb does not lift a stepped-back move without a qualifying climb")
         let ramp2TooEasy = log([("squat_bodyweight", .strength, .squat, ramp2)], daysAgo: 1, difficulty: .tooEasy)
-        XCTAssertEqual(try squatReps(rampRemaining: 1, logs: afterTooHard + [ramp2TooEasy]), 20,
+        XCTAssertEqual(try squatReps(logs: afterTooHard + [ramp2TooEasy]), 20,
                        "a qualifying climb earns one step back")
     }
 

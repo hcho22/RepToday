@@ -174,6 +174,63 @@ final class SessionCompletionServiceTests: XCTestCase {
         XCTAssertEqual(control, .strength, "the same session, finished, earns the Strength Phase")
     }
 
+    /// The Re-entry Ramp runs its documented sessions on the real completion path and then ends, though
+    /// the stored policy still records the ramp the Programmer seeded at the Return (nothing counts it
+    /// down). A beginner last at 30 squats (sumo is out of their reach) returns after a 20-day gap; each
+    /// day the engine assembles a session from the stored logs, the player plays it to the end, the user
+    /// rates it too easy, and the completion service writes the log. The Return and the three ramp
+    /// sessions are held against the pre-Return 30, and the next session climbs by the normal rules.
+    func testReentryRampRunsItsSessionsThroughCompletionThenTheClimbResumes() async throws {
+        let library = try await MockExerciseService().exercises()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        var user = MockPersistence.sampleUser
+        user.profile.fitnessLevel = .beginner
+        user.coldStart = User.ColdStart(sessionsLogged: 10, active: false)
+        let preReturn = WorkoutLog(
+            id: UUID(), workoutId: UUID(), completedAt: calendar.date(byAdding: .day, value: -20, to: now)!,
+            requestedMinutes: 20, durationMinutes: 20, wasReturn: false, shape: .blend, focusPillar: nil,
+            perceivedDifficulty: .justRight,
+            exercises: [LoggedExercise(
+                id: UUID(), exerciseId: "squat_bodyweight", pillar: .strength, movementPattern: .squat,
+                completedSets: Array(repeating: CompletedSet(reps: 30, durationSeconds: nil), count: 3), skipped: false
+            )]
+        )
+        let logService = MockWorkoutLogService(logs: [preReturn])
+        let service = makeService(logService: logService, userService: MockUserService(user: user), store: InMemorySessionPolicyStore())
+        var policy = SessionPolicy.default
+        policy.varietyWindow = 0
+        policy.reentry = SessionPolicy.Reentry(rampSessionsRemaining: ReturnOverride.rampSessions)
+
+        var served: [Int] = []
+        var returns: [Bool] = []
+        for day in 0..<5 {
+            let asOf = calendar.date(byAdding: .day, value: day, to: now)!
+            let logs = try await logService.workoutLogs(from: nil, to: nil)
+            let workout = SessionAssembly.assemble(
+                requestedMinutes: 60, user: user, library: library, recentLogs: logs,
+                sessionPolicy: policy, asOf: asOf, calendar: calendar
+            )
+            let squat = try XCTUnwrap(workout.blocks.flatMap(\.exercises).first { $0.exercise.id == "squat_bodyweight" })
+            served.append(try XCTUnwrap(squat.reps))
+            returns.append(workout.wasReturn)
+
+            let player = ActiveSessionViewModel(
+                workout: workout, user: user, recentLogs: logs, completionService: service, now: { asOf },
+                cuePlayer: SilentCuePlayer(), voiceOverActive: { false }
+            )
+            player.start()
+            while !player.isComplete { player.completeSet() }
+            player.rate(.tooEasy)
+            player.recordSessionEnd()
+            await player.completionTask?.value
+        }
+
+        XCTAssertEqual(returns, [true, false, false, false, false])
+        XCTAssertEqual(served, [20, 20, 20, 25, 30],
+                       "30 held at 0.7, 0.7, 0.8 and 0.9, then the ramp ends and too easy adds 5")
+    }
+
     /// Plays one session of the push line's entry rung at its own advancement target for a user whose
     /// history already clears every other Foundation line with sustained consistency, runs
     /// `onCompletionScreen` on the finished player, closes the completion screen, and returns the

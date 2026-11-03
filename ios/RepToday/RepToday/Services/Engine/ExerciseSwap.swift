@@ -129,8 +129,8 @@ enum ExerciseSwap {
     /// is sized by the *same* Step 6 levers, at the same scope, the rest of the lineup was: the policy's
     /// `progressionRate`, during cold-start the Start Seed (US-O02, strength and primal only), and on a
     /// Return or its Re-entry Ramp the eased
-    /// `reentryScale` (US-E06, read off the session's own `wasReturn` stamp plus the policy's ramp
-    /// state, so the swap never re-derives the decision at a different clock). Without them a
+    /// `reentryScale` (US-E06, read off the session's own `wasReturn` stamp plus the ramp position in
+    /// `recentLogs`, so the swap never re-derives the decision at a different clock). Without them a
     /// mid-session swap would silently re-derive the substitute's target at the neutral levers, handing
     /// an advanced cold-start user a x1.00 slot in a session built at x1.30, or a returning user one
     /// full-volume slot in a session whose whole point is to be uniformly gentle. `sessionPolicy`
@@ -167,15 +167,8 @@ enum ExerciseSwap {
         // The Return / Re-entry Ramp ease in force for this session (US-E06), read off the stamp the
         // assembler already made rather than re-derived against a fresh clock, so a substitute is held
         // back exactly as much as the slot it replaces.
-        let reentryScale = ReturnOverride.reentryScale(
-            isReturn: workout.wasReturn,
-            reentry: sessionPolicy.reentry
-        )
-        let heldSince = ReturnOverride.heldSince(
-            recentLogs,
-            isReturn: workout.wasReturn,
-            reentry: sessionPolicy.reentry
-        )
+        let reentryScale = ReturnOverride.reentryScale(isReturn: workout.wasReturn, recentLogs: recentLogs)
+        let heldSince = ReturnOverride.heldSince(recentLogs, isReturn: workout.wasReturn)
 
         // The slot's window includes any stretch the timing fit gave it (ADR-0010). A rep-based
         // substitute inherits the same stretch, so the session still lands where it was fitted; a hold

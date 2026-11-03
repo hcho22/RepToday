@@ -270,8 +270,9 @@ enum SessionAssembly {
     /// Step 5's no-repeat window and its `progressionRate` paces Step 6's overload bump (its
     /// `pillarWeighting` is inert since US-M01 - see `SessionPolicy`). It also carries the situational
     /// overrides the
-    /// engine reads: the `coldStartContract` for a brand-new user (US-E04) and the `reentry` ramp for a
-    /// returning one (US-E06). It defaults to `SessionPolicy.default` (every lever neutral, no
+    /// engine reads: the `coldStartContract` for a brand-new user (US-E04). The Return and its Re-entry
+    /// Ramp (US-E06) are read from `recentLogs` instead (`ReturnOverride`). It defaults to
+    /// `SessionPolicy.default` (every lever neutral, no
     /// overrides), which reproduces pre-policy behavior exactly, so an unpolicied caller is unchanged.
     ///
     /// `variation` is the Ready Screen's **Different workout** request (`SessionVariation`): the moves
@@ -445,9 +446,9 @@ enum SessionAssembly {
         )
 
         // The Return / Re-entry Ramp holds Step 6's volume below normal: the gentle floor on the Return
-        // itself, climbing back over the following ramp sessions (`sessionPolicy.reentry`). Neutral in
-        // the steady state, so it is a no-op.
-        let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, reentry: sessionPolicy.reentry)
+        // itself, climbing back over the ramp sessions completed since it (read from the logs). Neutral
+        // in the steady state, so it is a no-op.
+        let reentryScale = ReturnOverride.reentryScale(isReturn: isReturn, recentLogs: recentLogs)
 
         // The Start Seed's volume half: the reps/sets a no-history prescription opens at, matched to
         // the self-reported fitness level and eased by any cold-start down-signal already logged, so it
@@ -479,7 +480,7 @@ enum SessionAssembly {
             progressionRate: sessionPolicy.progressionRate,
             varietyWindow: sessionPolicy.varietyWindow,
             reentryScale: reentryScale,
-            heldSince: ReturnOverride.heldSince(recentLogs, isReturn: isReturn, reentry: sessionPolicy.reentry),
+            heldSince: ReturnOverride.heldSince(recentLogs, isReturn: isReturn),
             startVolume: startVolume,
             withheldByStartSeed: withheldByStartSeed,
             // US-M03: the desk-worker `sitsLong` signal is a pure *bias* input to bookend selection -

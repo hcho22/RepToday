@@ -753,12 +753,25 @@ final class ExerciseSwapTests: XCTestCase {
         )
     }
 
+    /// The peer's capacity before a Return, the Return, and the first two ramp sessions after it, so
+    /// the next session is the ramp's last (one session to go).
+    private func lastRampSessionLogs(peer: Exercise) -> [WorkoutLog] {
+        var returnLog = log([], sets: 3, perSet: 15, daysAgo: 5)
+        returnLog.wasReturn = true
+        return [
+            log([peer], sets: 3, perSet: 15, daysAgo: 10),
+            returnLog,
+            log([], sets: 3, perSet: 15, daysAgo: 4),
+            log([], sets: 3, perSet: 15, daysAgo: 3),
+        ]
+    }
+
     /// The Re-entry Ramp sessions that follow a Return are eased too, by the ramp's own partial scale.
     func testSwapDuringTheReentryRampCarriesThePartialEase() async throws {
         let library = try await library()
         let fixture = try leveredSwapFixture(library: library)
-        var ramping = SessionPolicy.default
-        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 1)
+        let logs = lastRampSessionLogs(peer: fixture.peer)
+        XCTAssertEqual(ReturnOverride.rampSessionsRemaining(recentLogs: logs), 1)
 
         let result = try substitute(
             ExerciseSwap.swap(
@@ -766,19 +779,20 @@ final class ExerciseSwapTests: XCTestCase {
                 in: workout([fixture.slot], wasReturn: false),
                 user: user(),
                 library: [fixture.slot.exercise, fixture.peer],
-                recentLogs: fixture.logs,
-                sessionPolicy: ramping
+                recentLogs: logs
             )
         )
         XCTAssertEqual(
             result.reps,
             AdaptiveOverload.target(
                 for: result.exercise,
-                recentLogs: fixture.logs,
-                reentryScale: ReturnOverride.reentryScale(isReturn: false, reentry: ramping.reentry)
+                recentLogs: logs,
+                reentryScale: ReturnOverride.reentryScale(isReturn: false, recentLogs: logs),
+                heldSince: ReturnOverride.heldSince(logs, isReturn: false)
             ).reps,
             "a swap mid-ramp must carry the ramp's partial ease, not the full capacity target"
         )
+        XCTAssertLessThan(try XCTUnwrap(result.reps), 15, "held below the 15 the user worked before the Return")
     }
 
     /// A swap mid-ramp follows the ramp's step-back rule too: held against the pre-Return capacity, but
@@ -787,8 +801,6 @@ final class ExerciseSwapTests: XCTestCase {
         let library = try await library()
         let fixture = try leveredSwapFixture(library: library)
         let slot = prescription(for: fixture.slot.exercise, sets: 1, perSet: 20)
-        var ramping = SessionPolicy.default
-        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 2)
         var returnLog = log([fixture.peer], sets: 3, perSet: 20, daysAgo: 3)
         returnLog.wasReturn = true
 
@@ -802,8 +814,7 @@ final class ExerciseSwapTests: XCTestCase {
                     in: workout([slot], wasReturn: false),
                     user: user(),
                     library: [slot.exercise, fixture.peer],
-                    recentLogs: [log([fixture.peer], sets: 3, perSet: 30, daysAgo: 20), returnLog, ramp1],
-                    sessionPolicy: ramping
+                    recentLogs: [log([fixture.peer], sets: 3, perSet: 30, daysAgo: 20), returnLog, ramp1]
                 )
             )
             return try XCTUnwrap(result.reps)
@@ -821,14 +832,14 @@ final class ExerciseSwapTests: XCTestCase {
         let fixture = try leveredSwapFixture(library: library)
         let catalog = [fixture.slot.exercise, fixture.peer]
 
-        func reps(policy: SessionPolicy = .default, wasReturn: Bool = false) throws -> Int {
+        func reps(policy: SessionPolicy = .default, wasReturn: Bool = false, logs: [WorkoutLog]? = nil) throws -> Int {
             let result = try substitute(
                 ExerciseSwap.swap(
                     fixture.slot,
                     in: workout([fixture.slot], wasReturn: wasReturn),
                     user: user(),
                     library: catalog,
-                    recentLogs: fixture.logs,
+                    recentLogs: logs ?? fixture.logs,
                     sessionPolicy: policy
                 )
             )
@@ -843,9 +854,8 @@ final class ExerciseSwapTests: XCTestCase {
 
         XCTAssertLessThan(try reps(wasReturn: true), neutral, "the Return ease (US-E06) must reach the swap")
 
-        var ramping = SessionPolicy.default
-        ramping.reentry = SessionPolicy.Reentry(rampSessionsRemaining: 1)
-        XCTAssertLessThan(try reps(policy: ramping), neutral, "the Re-entry Ramp (US-E06) must reach the swap")
+        XCTAssertLessThan(try reps(logs: lastRampSessionLogs(peer: fixture.peer)), neutral,
+                          "the Re-entry Ramp (US-E06) must reach the swap")
 
         // The Start Seed's volume half (US-O02) only reaches a *no-history* target, so it is pinned on
         // the untouched peer: a fresh advanced user's substitute opens above the movement's own default.

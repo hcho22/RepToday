@@ -17,12 +17,14 @@ import Foundation
 ///   is the two gentleness rails that flank that lead - `returnPool` caps the eligible difficulty so a
 ///   strong pre-gap history can't serve a punishing tier, and `reentryScale` eases Step 6's volume to
 ///   the gentle floor. The Return itself carries no readjustment - it is uniformly gentle.
-/// - **The Re-entry Ramp** (`sessionPolicy.reentry`, set to `rampSessions` by the Programmer after a
-///   Return, US-F03) walks difficulty back up over the sessions that follow: `reentryScale` starts at
-///   the same gentle floor and climbs toward neutral as `rampSessionsRemaining` decrements, so the
-///   user is eased back to their real level gradually rather than in one jump. Only Step 6's volume is
-///   held - the tier and pillar selection resume normally, exactly as the PRD's "Step 6 holds
-///   difficulty below normal" describes.
+/// - **The Re-entry Ramp** walks difficulty back up over the `rampSessions` sessions that follow the
+///   most recent Return session (`wasReturn`) in the logs: `reentryScale` starts at the same gentle
+///   floor and climbs toward neutral with each session completed since that Return, so the user is
+///   eased back to their real level gradually rather than in one jump, and the ramp ends once those
+///   sessions are done. Its position is read from the logs (`rampSessionsRemaining(recentLogs:)`), not
+///   from the stored `SessionPolicy.reentry` the Programmer seeds after a Return (US-F03), which nothing
+///   counts down and the engine no longer reads. Only Step 6's volume is held - the tier and pillar
+///   selection resume normally, exactly as the PRD's "Step 6 holds difficulty below normal" describes.
 ///
 /// The Return and the cold-start override are mutually exclusive by construction: the caller gates the
 /// Return off while cold-start is active (`ColdStartOverride.isActive`), since cold-start already
@@ -37,9 +39,8 @@ enum ReturnOverride {
     /// Tunable (PRD provisional `>= 7`); a shorter gap is just a normal session.
     static let returnThresholdDays = 7
 
-    /// Sessions the Re-entry Ramp walks difficulty back up over after a Return (PRD provisional 3).
-    /// The Programmer seeds `reentry.rampSessionsRemaining` to this after a Return (US-F03), and it
-    /// decrements each session until the ramp retires.
+    /// Sessions the Re-entry Ramp walks difficulty back up over after a Return (PRD provisional 3): the
+    /// ramp covers the first this-many sessions completed after the Return session, then ends.
     static let rampSessions = 3
 
     /// The volume floor a Return (and the start of its Re-entry Ramp) serves at: the eased per-set
@@ -104,15 +105,22 @@ enum ReturnOverride {
     ///
     /// - A **Return** serves the gentle floor (`reentryFloorScale`) - uniformly easy, carrying no
     ///   readjustment.
-    /// - An active **Re-entry Ramp** (`reentry.rampSessionsRemaining > 0`, set after a Return) climbs
-    ///   from that floor back toward neutral as the counter decrements (`rampScale`).
+    /// - An active **Re-entry Ramp** (`rampSessionsRemaining(recentLogs:) > 0`) climbs from that floor
+    ///   back toward neutral with each session completed since the Return (`rampScale`).
     /// - Otherwise the ramp is inactive and this is `AdaptiveOverload.neutralReentryScale` (a no-op).
-    static func reentryScale(isReturn: Bool, reentry: SessionPolicy.Reentry?) -> Double {
+    static func reentryScale(isReturn: Bool, recentLogs: [WorkoutLog]) -> Double {
         if isReturn { return reentryFloorScale }
-        guard let reentry, reentry.rampSessionsRemaining > 0 else {
-            return AdaptiveOverload.neutralReentryScale
-        }
-        return rampScale(remaining: reentry.rampSessionsRemaining)
+        let remaining = rampSessionsRemaining(recentLogs: recentLogs)
+        guard remaining > 0 else { return AdaptiveOverload.neutralReentryScale }
+        return rampScale(remaining: remaining)
+    }
+
+    /// The Re-entry Ramp sessions still to come, read from the logs: `rampSessions` less the sessions
+    /// completed after the most recent Return session (`wasReturn`), never below zero. Zero when
+    /// `recentLogs` holds no Return session, so a Return older than the logs the engine is given leaves
+    /// no ramp. Pure over the logs, like the Return detection it follows.
+    static func rampSessionsRemaining(recentLogs: [WorkoutLog]) -> Int {
+        activeRamp(recentLogs)?.remaining ?? 0
     }
 
     /// When this session's held run began, for Step 6 (`AdaptiveOverload.target(heldSince:)`): during an
@@ -121,19 +129,23 @@ enum ReturnOverride {
     /// previous held session's own number (which would compound each hold onto the last until the
     /// floor), while a step back inside the run still takes the move down. `nil` on the **Return**
     /// itself (every log comes from before it) and outside a ramp, so the steady state is unchanged.
-    static func heldSince(
-        _ recentLogs: [WorkoutLog],
-        isReturn: Bool,
-        reentry: SessionPolicy.Reentry?
-    ) -> Date? {
-        guard !isReturn, let reentry, reentry.rampSessionsRemaining > 0 else { return nil }
-        return recentLogs.filter(\.wasReturn).map(\.completedAt).max()
+    static func heldSince(_ recentLogs: [WorkoutLog], isReturn: Bool) -> Date? {
+        guard !isReturn else { return nil }
+        return activeRamp(recentLogs)?.returnedAt
+    }
+
+    /// The most recent Return session and the ramp sessions still to come after it, or `nil` when the
+    /// logs hold no Return session or its ramp is already done.
+    private static func activeRamp(_ recentLogs: [WorkoutLog]) -> (returnedAt: Date, remaining: Int)? {
+        guard let returnedAt = recentLogs.filter(\.wasReturn).map(\.completedAt).max() else { return nil }
+        let remaining = rampSessions - recentLogs.filter { $0.completedAt > returnedAt }.count
+        return remaining > 0 ? (returnedAt, remaining) : nil
     }
 
     /// The climbing volume scale for a Re-entry Ramp session: the gentle floor when `remaining` is
-    /// largest (right after the Return) rising linearly to neutral `1.0` as it decrements to zero, so
-    /// difficulty is walked back up over the ramp rather than restored in one jump. `remaining` is
-    /// clamped to `0...rampSessions` so an out-of-range counter can never over- or under-shoot.
+    /// largest (right after the Return) rising linearly to neutral `1.0` as the ramp's sessions are
+    /// completed, so difficulty is walked back up over the ramp rather than restored in one jump.
+    /// `remaining` is clamped to `0...rampSessions` so it can never over- or under-shoot.
     static func rampScale(remaining: Int) -> Double {
         let clamped = min(max(remaining, 0), rampSessions)
         return 1.0 - (Double(clamped) / Double(rampSessions)) * (1.0 - reentryFloorScale)
